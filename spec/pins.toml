@@ -1,0 +1,46 @@
+# Demonstration pins.
+#
+# One entry per clause, naming the single artifact that demonstrates it:
+#
+#   "store.commit.refusal.partial-snapshot" = { test = "contextful_store::commit::tests::partial_snapshot_refused" }
+#   "authority.admit.invariant.narrowing"   = { theorem = "Contextful.Authority.narrowing_implies_parent" }
+#   "store.declare.shape.table-block"       = { item = "contextful_core::pipeline::TableModel" }
+#
+# A clause with no entry computes `committed`. A clause whose entry resolves, and every
+# one of whose backticked identifiers registered `resolves = "code"` is defined in a
+# definition position, computes `performed`. An entry that does not resolve computes
+# `broken` and reds the gate — a rename is what fails, where a forgotten prose edit is
+# silent.
+#
+# A `refusal` or `limit` clause takes a `test` or a `theorem`. An `item` proves presence,
+# not behavior, and `spec pins` refuses one on either kind.
+#
+# `contextful spec state` reads this file and writes spec/status.md. Nothing else does.
+
+[pin]
+
+# The floor is machine-maintained. `contextful spec pins --raise` lifts a contract's
+# entry after a clean run; `spec state` fails when a live count falls below it, so a
+# failing pin is fixed rather than deleted.
+
+[floor]
+corpus = 0
+topology = 0
+store = 0
+sync = 0
+read = 0
+memory = 0
+run = 0
+pipeline = 0
+connector = 0
+secret = 0
+derive = 0
+authority = 0
+enforcement = 0
+visibility = 0
+disclosure = 0
+accountability = 0
+control = 0
+console = 0
+formal = 0
+build = 0

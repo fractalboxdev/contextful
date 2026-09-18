@@ -1,0 +1,84 @@
+# formal — the formal model.
+# Operations, subject terms, error identifiers and named bounds owned by
+# spec/60-formal.md.
+
+[operation]
+model             = { gloss = "The Lean package, its toolchain pin, its single library target, and the definitions the theorems range over.", file = "spec/60-formal.md", aliases = ["formalize", "define-the-model"] }
+prove             = { gloss = "The theorem inventory itself: layer composition, the placement theorems, the evidence floor, and the five targets over the authority mapping.", file = "spec/60-formal.md", aliases = ["theorem", "mechanize"] }
+audit-axioms      = { gloss = "The axiom footprint, the exact allowlist, the transitive audit over elaborated proofs, and the shapes of check refused as verdicts.", file = "spec/60-formal.md", aliases = ["axiom-audit", "proof-gate"] }
+recheck           = { gloss = "Rebuilding and re-auditing from pinned source in a credential-free environment, and the cost model that keeps the check per-change.", file = "spec/60-formal.md", aliases = ["rebuild-and-reaudit"] }
+scope-claim       = { gloss = "The sentence the assurance claim is allowed to be: its named decisions, its trusted dependencies, its translation chain, and the reach of refinement.", file = "spec/60-formal.md", aliases = ["assurance-scope", "state-the-claim"] }
+differential-test = { gloss = "The executable reference model, the case generator, the minimized counterexample corpus, and the standing link to the engine's decision functions.", file = "spec/60-formal.md", aliases = ["differential-harness-run", "cross-check"] }
+
+[term]
+layer-predicate                    = { gloss = "The model's rendering of one enforcement stage: a total function from a row identifier to a boolean.", owner = "formal", resolves = "concept" }
+composed                           = { gloss = "The conjunctive fold over a list of layer predicates.", owner = "formal", resolves = "code" }
+composed_sound                     = { gloss = "A row admitted by the fold is admitted by every member of the list.", owner = "formal", resolves = "code" }
+composed_narrows                   = { gloss = "A row admitted by a list extended at the head is admitted by its tail.", owner = "formal", resolves = "code" }
+composed_nil                       = { gloss = "The empty list admits every row, the unit of the conjunctive fold.", owner = "formal", resolves = "code" }
+zone_layer_sound                   = { gloss = "With the placement check taken as one more member, a row admitted by the whole list passed that check.", owner = "formal", resolves = "code" }
+floor                              = { gloss = "The pointwise intersection of a list of allow-sets.", owner = "formal", resolves = "code" }
+floor_no_downgrade                 = { gloss = "The floor admitting a caller forces every member of its evidence list to admit that caller.", owner = "formal", resolves = "code" }
+floor_with_failclosed_denies_public = { gloss = "An evidence list holding one fail-closed member yields a floor admitting no public-cloud caller.", owner = "formal", resolves = "code" }
+failClosed_denies_public           = { gloss = "The fail-closed allow-set rejects the public-cloud category.", owner = "formal", resolves = "code" }
+failClosed_denies_private          = { gloss = "The fail-closed allow-set rejects the private-cloud category.", owner = "formal", resolves = "code" }
+lean_lib                           = { gloss = "The package manifest's library target declaration.", owner = "formal", resolves = "code" }
+lean-toolchain                     = { gloss = "The file at the package root naming one exact toolchain release string.", owner = "formal", resolves = "code" }
+propext                            = { gloss = "Propositional extensionality, an admitted axiom of the model's footprint.", owner = "formal", resolves = "code" }
+"Quot.sound"                       = { gloss = "Quotient soundness, an admitted axiom of the model's footprint.", owner = "formal", resolves = "code" }
+"Classical.choice"                 = { gloss = "The choice axiom, admitted to the allowlist by an explicit reviewed addition.", owner = "formal", resolves = "code" }
+negative-space                     = { gloss = "The statement published beside a theorem naming what that theorem leaves open.", owner = "formal", resolves = "concept" }
+zone-inclusion                     = { gloss = "The decision, over every constructor and identifier, of whether one allow-set subsumes another.", owner = "formal", resolves = "concept" }
+proof-target                       = { gloss = "One of the five named statements about the authority mapping the model sets out to establish.", owner = "formal", resolves = "concept" }
+mediation-theorem                  = { gloss = "A statement that no reachable state reaches stored rows outside the fold, proved by induction over an execution relation.", owner = "formal", resolves = "concept" }
+execution-relation                 = { gloss = "The transition relation a mediation theorem ranges over.", owner = "formal", resolves = "concept" }
+axiom-allowlist                    = { gloss = "The exact set of axioms a required constant's transitive footprint is admitted to reach.", owner = "formal", resolves = "concept" }
+axiom-footprint                    = { gloss = "The transitive axiom dependencies of one constant, read off the elaborated environment.", owner = "formal", resolves = "concept" }
+elaborated-proof                   = { gloss = "The proof term the toolchain produced, as distinct from the characters of the file that produced it.", owner = "formal", resolves = "concept" }
+theorem-inventory                  = { gloss = "The file of required constants, their modules, their expected statements and their admitted axioms, maintained apart from the declarations that satisfy them.", owner = "formal", resolves = "code" }
+recheck                            = { gloss = "The second pass: a rebuild from pinned source and a re-audit of every footprint in a credential-free environment.", owner = "formal", resolves = "concept" }
+assurance-claim                    = { gloss = "The scoped sentence: named authorization decisions satisfy named Lean specifications under named translation and runtime assumptions.", owner = "formal", resolves = "concept" }
+trusted-dependency                 = { gloss = "A component the claim rests on and names, rather than proves.", owner = "formal", resolves = "concept" }
+translation-chain                  = { gloss = "The four links a statement about translated code inherits: compiler lowering, the translator, external-definition models, and the production build configuration.", owner = "formal", resolves = "concept" }
+refinement                         = { gloss = "Translation of the pure decision functions into Lean and proof that they refine the independent specification.", owner = "formal", resolves = "concept" }
+reference-model                    = { gloss = "The executable Lean rendering of the decision functions, built to a binary the harness drives.", owner = "formal", resolves = "concept" }
+differential-harness               = { gloss = "The generator and comparator driving the reference model and the engine's decision functions over one case.", owner = "formal", resolves = "concept" }
+counterexample-corpus              = { gloss = "The retained set of minimized disagreements, replayed ahead of fresh cases on every invocation.", owner = "formal", resolves = "concept" }
+
+[error]
+FormalPackageDependency        = { gloss = "The package manifest declares an external library.", owner = "formal" }
+ProofToolchainDrift            = { gloss = "The resolved toolchain release string differs from the pinned one.", owner = "formal" }
+UnmodelledConstructor          = { gloss = "A placement category the manifest admits has no case in the model's inductive.", owner = "formal" }
+TheoremWithoutNegativeSpace    = { gloss = "A theorem is published with no statement of what it leaves open.", owner = "formal" }
+CommutationClaimed             = { gloss = "Order-independence is asserted over stages whose order the composition theorem fixes.", owner = "formal" }
+MediationClaimedFromComposition = { gloss = "A filter-composition theorem is offered as a mediation theorem.", owner = "formal" }
+ZoneInclusionSampled           = { gloss = "Inclusion was decided by evaluating a fixed collection of example values.", owner = "formal" }
+ProofTargetUnbound             = { gloss = "A proof target is named in the claim with no authenticated query path bound to it.", owner = "formal" }
+AxiomOutsideAllowlist          = { gloss = "A constant's footprint reaches an axiom absent from the allowlist.", owner = "formal" }
+ProofHoleAxiom                 = { gloss = "A footprint contains the hole axiom.", owner = "formal" }
+NativeEvaluationAxiom          = { gloss = "A footprint contains a per-declaration native-evaluation axiom.", owner = "formal" }
+SourceTextVerdict              = { gloss = "A verdict was derived from a search over source characters.", owner = "formal" }
+DeclarationCountVerdict        = { gloss = "A count of declarations was offered as a pass condition.", owner = "formal" }
+TheoremConstantMissing         = { gloss = "A required constant is absent from the elaborated environment.", owner = "formal" }
+TheoremStatementDrift          = { gloss = "A required constant's elaborated statement differs from its expected text.", owner = "formal" }
+RecheckEnvironmentCredentialed = { gloss = "The recheck environment exposes a credential.", owner = "formal" }
+ArtifactSourceMismatch         = { gloss = "A rebuilt artifact differs from the committed one.", owner = "formal" }
+ClaimBeyondNamedDecisions      = { gloss = "The assurance claim asserts an object wider than its named decisions.", owner = "formal" }
+TrustedDependencyUnnamed       = { gloss = "The claim rests on a component absent from its dependency list.", owner = "formal" }
+TranslationChainUnstated       = { gloss = "A theorem over translated code is claimed without its trust chain.", owner = "formal" }
+RefinementScopeExceeded        = { gloss = "Translation reaches cryptography, a parsing adapter, a database call or concurrency.", owner = "formal" }
+ReferenceModelDrift            = { gloss = "The reference model and the engine's decision function disagree on a generated case.", owner = "formal" }
+CounterexampleDiscarded        = { gloss = "A run reported a disagreement and wrote no corpus entry.", owner = "formal" }
+
+[limit]
+formal-library-targets           = { value = 1,   unit = "entries", owner = "formal.model.limit.library-targets", gloss = "Library targets the package manifest declares." }
+formal-package-dependencies      = { value = 0,   unit = "entries", owner = "formal.model.limit.declared-dependencies", gloss = "External libraries the package manifest requires." }
+formal-build-wall-time           = { value = 60,  unit = "s",       owner = "formal.model.limit.build-wall-time", gloss = "Cold elaboration of the whole package." }
+formal-build-artifacts           = { value = 512, unit = "KiB",     owner = "formal.model.limit.build-artifacts", gloss = "Artifacts a full elaboration writes." }
+formal-proof-targets             = { value = 5,   unit = "entries", owner = "formal.prove.limit.proof-targets", gloss = "Named statements the authority mapping carries." }
+formal-axiom-allowlist           = { value = 3,   unit = "entries", owner = "formal.audit-axioms.limit.allowlist-entries", gloss = "Axioms a required constant's footprint is admitted to reach." }
+formal-recheck-credentials       = { value = 0,   unit = "entries", owner = "formal.recheck.limit.credentials", gloss = "Credentials exposed to the recheck environment." }
+formal-recheck-wall-time         = { value = 600, unit = "s",       owner = "formal.recheck.limit.wall-time", gloss = "A recheck from an empty artifact directory." }
+formal-refinement-first-functions = { value = 2,  unit = "entries", owner = "formal.scope-claim.limit.refinement-first-functions", gloss = "Decision functions refinement opens on." }
+formal-counterexample-corpus     = { value = 256, unit = "entries", owner = "formal.differential-test.limit.corpus-entries", gloss = "Minimized disagreements the corpus retains." }
+formal-differential-run-budget   = { value = 300, unit = "s",       owner = "formal.differential-test.limit.run-budget", gloss = "One differential invocation, corpus replay included." }

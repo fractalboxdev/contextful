@@ -1,0 +1,125 @@
+# Contracts — the first segment of every clause id.
+#
+# A contract entry carries an ordered file list, so one contract spans several
+# files and a split re-keys nothing. `spec lint --titles` holds each file's
+# `# ` heading to the title recorded here.
+
+[contract.corpus]
+title = "Corpus law"
+files = ["spec/00-corpus.md"]
+titles = ["Corpus law"]
+gloss = "The grammar the corpus obeys: addressing, anatomy, registration, reference, rationale, computed state."
+
+[contract.topology]
+title = "System topology and boundaries"
+files = ["spec/01-topology.md"]
+titles = ["System topology and boundaries"]
+gloss = "The parties, the contract inventory, the read path and run path as halves of one workspace, the crossings between them, and the build profiles."
+
+[contract.store]
+title = "The context store"
+files = ["spec/10-store.md"]
+titles = ["The context store"]
+gloss = "Parquet parts, the JSON manifest, the rebuildable catalog, snapshot commit, table declaration, reserved columns, and the two time bases."
+
+[contract.sync]
+title = "Sync, leases and replicas"
+files = ["spec/11-sync.md"]
+titles = ["Sync, leases and replicas"]
+gloss = "The bucket wire format, push and pull ordering, prefix confinement, conditional-write commit, and the read replica."
+
+[contract.read]
+title = "The read face"
+files = ["spec/20-read.md"]
+titles = ["The read face"]
+gloss = "View registration, the statement guard, candidate generation and ranking, the tool surface, result shape, and the published model."
+
+[contract.memory]
+title = "Synthesized memory"
+files = ["spec/21-memory.md"]
+titles = ["Synthesized memory"]
+gloss = "The memory table shapes, the synthesis stages, belief revision within one valid-time line, provenance tiers, and coverage gaps."
+
+[contract.run]
+title = "Durable run execution"
+files = ["spec/30-run.md"]
+titles = ["Durable run execution"]
+gloss = "Journal, cursor commit and awakeable; the determinism boundary, replay pinning, retry, cancellation, and the run record."
+
+[contract.pipeline]
+title = "Pipeline declaration and the write path"
+files = ["spec/31-pipeline.md"]
+titles = ["Pipeline declaration and the write path"]
+gloss = "The pipeline specification, its serializations and content hash; table models, write modes, partitioning, and the landing sequence."
+
+[contract.connector]
+title = "The connector contract and the built-in sources"
+files = ["spec/32-connector.md"]
+titles = ["The connector contract and the built-in sources"]
+gloss = "One interface in two authoring paths: the component world, host-mediated capabilities, packaging and pinning, and the compiled-in sources."
+
+[contract.secret]
+title = "Outbound credentials"
+files = ["spec/33-secrets.md"]
+titles = ["Outbound credentials"]
+gloss = "The two credential planes, the reference scheme and provider chain, just-in-time hydration, the redacting wrapper, and rotation."
+
+[contract.derive]
+title = "The derive tier"
+files = ["spec/34-derive.md"]
+titles = ["The derive tier"]
+gloss = "Deferred per-row work over landed rows: the store-reading source, the work set, the operator-defined engine, resource bounds, and the failure row."
+
+[contract.authority]
+title = "Admission and authority"
+files = ["spec/40-authority.md"]
+titles = ["Admission and authority"]
+gloss = "The subject tuple and its attestation, the delegation profile, admission, the scoped session, custody, revocation, and identity federation."
+
+[contract.enforcement]
+title = "Enforcement and inference placement"
+files = ["spec/41-enforcement.md"]
+titles = ["Enforcement and inference placement"]
+gloss = "The three enforcement layers, row and column restriction, mask strategies, inference zones, and the fail-closed default."
+
+[contract.visibility]
+title = "Source-faithful visibility and outbound answers"
+files = ["spec/42-visibility.md"]
+titles = ["Source-faithful visibility and outbound answers"]
+gloss = "The two-key rule, permission tables mirrored as data, the staleness budget, fidelity levels, and an answer leaving for a channel other people read."
+
+[contract.disclosure]
+title = "Aggregate disclosure and derived results"
+files = ["spec/43-disclosure.md"]
+titles = ["Aggregate disclosure and derived results"]
+gloss = "Deriving a result without exposing rows: the two deployment settings, the disclosure budget enforced at build, suppression, and the activatable segment."
+
+[contract.accountability]
+title = "Audit, erasure and the receipt"
+files = ["spec/44-accountability.md"]
+titles = ["Audit, erasure and the receipt"]
+gloss = "The span every read emits, the hash-linked audit record, negative assurance, erasure as a rewrite plus a cascade, and the residency posture."
+
+[contract.control]
+title = "Cadence, dispatch and the operator plane"
+files = ["spec/50-control-plane.md"]
+titles = ["Cadence, dispatch and the operator plane"]
+gloss = "The schedule grammar, the reconciler and its manifest, bounded dispatch under exclusion keys, the operator portal, and the deployment posture of a published hostname."
+
+[contract.console]
+title = "The analyst console"
+files = ["spec/51-console.md"]
+titles = ["The analyst console"]
+gloss = "The visitor-facing read surface: product language, the two trust layers, grounded answers, widgets, time travel, and the trace panel."
+
+[contract.formal]
+title = "The formal model"
+files = ["spec/60-formal.md"]
+titles = ["The formal model"]
+gloss = "The proof package, the theorems the enforcement stack relies on, the trusted dependency set, the differential harness, and the proof gate."
+
+[contract.build]
+title = "Engineering conventions, gates and the quality harness"
+files = ["spec/61-engineering.md"]
+titles = ["Engineering conventions, gates and the quality harness"]
+gloss = "One home per capability, adapter rather than restatement, typed automation, test placement, the gate's resource budget, and retrieval quality measurement."

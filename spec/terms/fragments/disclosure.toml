@@ -1,0 +1,177 @@
+# Registry fragment — the `disclosure` contract.
+# Aggregate disclosure and derived results: spec/43-disclosure.md
+
+[operation]
+set-mode    = { gloss = "The two deployment settings a derived result is computed in, their preconditions, the offline diagnostic, and the cross-owner hashed join.", file = "spec/43-disclosure.md", aliases = ["deployment-setting", "mode-select"] }
+classify    = { gloss = "Column sensitivity classes, their declaration site, and the digest a class refuses as sole protection.", file = "spec/43-disclosure.md", aliases = ["tag-sensitivity", "label-column"] }
+release     = { gloss = "The ordered derivation pipeline, the write-time disclosure policy, per-unit budgets, and segment activation.", file = "spec/43-disclosure.md", aliases = ["derive-aggregate", "publish-aggregate"] }
+suppress    = { gloss = "The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves behind.", file = "spec/43-disclosure.md", aliases = ["withhold-group", "sentinel-collapse"] }
+template    = { gloss = "Typed strictly-bound relations, the allowlist authorizing them, their tool projection, and the row ceiling.", file = "spec/43-disclosure.md", aliases = ["whitelisted-query", "bound-relation"] }
+bound-cohort = { gloss = "The boundary between a per-person table and a cohort table, and what an ownership question resolves to.", file = "spec/43-disclosure.md", aliases = ["cohort-governance", "person-boundary"] }
+
+[term]
+# set-mode
+deployment-setting     = { gloss = "One of the two settings a derived result is computed in: single-operator output privacy, or a clean room across owners.", owner = "disclosure", resolves = "concept" }
+mode-declaration       = { gloss = "The project-open declaration naming the deployment setting a store operates under.", owner = "disclosure", resolves = "code" }
+single-operator-mode   = { gloss = "The setting in which one operator holds every contributor's rows and a published aggregate exposes no individual contributor.", owner = "disclosure", resolves = "code" }
+mode-exclusion         = { gloss = "The cross-owner machinery a single-operator deployment carries none of.", owner = "disclosure", resolves = "concept" }
+clean-room             = { gloss = "A query pattern across a trust boundary between distinct data owners.", owner = "disclosure", resolves = "code" }
+disclosure-diagnostic  = { gloss = "The offline validation of a single-operator deployment's disclosure preconditions over the project files.", owner = "disclosure", resolves = "code" }
+cross-owner-diagnostic = { gloss = "The validation of a clean-room configuration run ahead of any write crossing a prefix boundary.", owner = "disclosure", resolves = "code" }
+diagnostic-request     = { gloss = "An outbound call the disclosure diagnostic would make against the object store.", owner = "disclosure", resolves = "concept" }
+policy-coverage        = { gloss = "The diagnostic finding that every published aggregate-shaped model carries a disclosure policy or a recorded opt-out.", owner = "disclosure", resolves = "code" }
+model-file             = { gloss = "The statement text a published model references and the diagnostic reads from local disk.", owner = "disclosure", resolves = "code" }
+diagnostic-warning     = { gloss = "A diagnostic finding that reports without failing the run.", owner = "disclosure", resolves = "code" }
+aggregate-shape-test   = { gloss = "The stripped case-insensitive scan for a grouping clause that decides whether a model looks like a cross-subject aggregate.", owner = "disclosure", resolves = "code" }
+shape-scan             = { gloss = "The blind spots of the aggregate-shape test in both directions, and the per-model declaration that silences its coverage finding.", owner = "disclosure", resolves = "concept" }
+tenant-prefix          = { gloss = "One owner's write-scoped prefix under a shared object store in a clean room.", owner = "disclosure", resolves = "code" }
+manifest-subtree       = { gloss = "A per-owner manifest entry in a hash tree whose path to the root a reader verifies.", owner = "disclosure", resolves = "code" }
+escrow                 = { gloss = "The third party carrying per-pair peppers between two owners, holding no signing material and seeing ciphertext.", owner = "disclosure", resolves = "code" }
+hashed-join            = { gloss = "A match between two owners' disjoint datasets on a key each side hashes at write time.", owner = "disclosure", resolves = "code" }
+pepper                 = { gloss = "The per-pair re-randomized secret a cross-owner hashed join keys on, exchanged through escrow and rotated per join.", owner = "disclosure", resolves = "code" }
+key-domain             = { gloss = "The value space of a join key, and whether an adversary enumerates it end to end.", owner = "disclosure", resolves = "concept" }
+
+# classify
+sensitive-column   = { gloss = "A column carrying a declared sensitivity class and a masking strategy.", owner = "disclosure", resolves = "code" }
+column-scope       = { gloss = "The rule that a classification attaches to a named column of a named table and to nothing coarser.", owner = "disclosure", resolves = "concept" }
+pii-class          = { gloss = "The operator's declaration of what kind of sensitive value a column holds.", owner = "disclosure", resolves = "code" }
+class-vocabulary   = { gloss = "The registered set of sensitivity class values a column declaration draws from.", owner = "disclosure", resolves = "code" }
+exhaustible-class  = { gloss = "A sensitivity class whose entire value space is generable offline, making a digest invertible by enumeration.", owner = "disclosure", resolves = "concept" }
+digest             = { gloss = "The output of a hash strategy over a column value.", owner = "disclosure", resolves = "code" }
+digest-width       = { gloss = "The character width of a hash digest, against which a truncation is measured.", owner = "disclosure", resolves = "concept" }
+token-width        = { gloss = "The character width of a token, against which a truncation is measured.", owner = "disclosure", resolves = "concept" }
+combine            = { gloss = "The secondary transformation paired with a primary masking strategy as one inseparable value.", owner = "disclosure", resolves = "code" }
+truncation-width   = { gloss = "The retained character count of a truncated digest, chosen by the operator against the column's value space.", owner = "disclosure", resolves = "code" }
+class-reach        = { gloss = "The set of layers a declared sensitivity class governs once attached to a column.", owner = "disclosure", resolves = "concept" }
+
+# release
+privacy-unit           = { gloss = "The protected entity a release primitive is scoped to: a tenant, or the individual a row is about.", owner = "disclosure", resolves = "concept" }
+leak-surface           = { gloss = "Output leakage and process leakage, the two paths a derived result closes.", owner = "disclosure", resolves = "concept" }
+release-pipeline       = { gloss = "The four ordered steps a statistics release applies: bound, suppress, add noise, debit.", owner = "disclosure", resolves = "code" }
+contribution-bound     = { gloss = "The per-unit cap on rows and the clamp of per-row values into a declared range.", owner = "disclosure", resolves = "code" }
+release-job            = { gloss = "The journaled run-path execution that derives a release and publishes its output as a first-class table.", owner = "disclosure", resolves = "code" }
+release-provenance     = { gloss = "The per-unit record of which units contributed to a release and what each was charged.", owner = "disclosure", resolves = "code" }
+central-copy           = { gloss = "A single decryptable copy of every unit's raw rows, which no operator of a derived product holds.", owner = "disclosure", resolves = "concept" }
+disclosure-policy      = { gloss = "The declaration a model's materialization is safe by construction under: grouping allowlist, floors, contributor key, sentinel and forbidden columns.", owner = "disclosure", resolves = "code" }
+unpublished-model      = { gloss = "A governed model whose output is not published, bound by the same disclosure policy as a published one.", owner = "disclosure", resolves = "code" }
+contributor-breakdown  = { gloss = "The one row per group and contributor a governed model emits, carrying that contributor's own measures.", owner = "disclosure", resolves = "code" }
+published-shape        = { gloss = "The columns and schema fingerprint a governed model publishes, identical to its ungoverned form.", owner = "disclosure", resolves = "concept" }
+grain-column           = { gloss = "A non-numeric, non-grain column carried in the grouping rather than picked arbitrarily.", owner = "disclosure", resolves = "code" }
+group-key              = { gloss = "The columns a governed model groups by, checked against the permitted grouping allowlist.", owner = "disclosure", resolves = "code" }
+contributor-key        = { gloss = "The model output the disclosure policy counts contributors on, excluded from the published columns.", owner = "disclosure", resolves = "code" }
+forbidden-column       = { gloss = "A column a disclosure policy bars from the published output.", owner = "disclosure", resolves = "code" }
+key-exclusion          = { gloss = "The removal of the contributor key from the published column set before the forbidden check runs.", owner = "disclosure", resolves = "concept" }
+policy-hash            = { gloss = "The hash over a disclosure policy's declared fields, recorded on every run.", owner = "disclosure", resolves = "code" }
+policy-log             = { gloss = "The append-only build log entry carrying a run's policy hash beyond the life of its freshness record.", owner = "disclosure", resolves = "code" }
+aggregate-grant        = { gloss = "The grant shape carrying a group-size floor, a contributor-share ceiling, permitted aggregate functions, a groups ceiling and a row ceiling.", owner = "disclosure", resolves = "code" }
+grant-read             = { gloss = "The rule that raw table authority derives from read grants and from no other grant kind.", owner = "disclosure", resolves = "concept" }
+group-ceiling          = { gloss = "The maximum number of groups one aggregate query returns.", owner = "disclosure", resolves = "code" }
+unit-budget            = { gloss = "The catalog-tracked per-run spend and per-unit lifetime cap a release debits.", owner = "disclosure", resolves = "code" }
+budget-exhaustion      = { gloss = "The state of a unit whose lifetime budget is spent, which a release stops drawing on.", owner = "disclosure", resolves = "code" }
+segment                = { gloss = "A lookalike audience released as an identifier, a size, coarse composition cells and an activation handle.", owner = "disclosure", resolves = "code" }
+activation-handle      = { gloss = "The token authorizing the engine to act on a segment over one channel, and not to read its members.", owner = "disclosure", resolves = "code" }
+audience-floor         = { gloss = "The declared minimum size a segment build resolves at or above.", owner = "disclosure", resolves = "code" }
+audience-size          = { gloss = "The resolved member count of a segment build, checked against the audience floor.", owner = "disclosure", resolves = "code" }
+composition-cell       = { gloss = "One coarse breakdown cell of a released segment.", owner = "disclosure", resolves = "code" }
+member-readback        = { gloss = "A request for a segment's members, answered with statistics alone.", owner = "disclosure", resolves = "code" }
+candidate-pool         = { gloss = "The population a segment's candidates are drawn from, which sets the release posture.", owner = "disclosure", resolves = "code" }
+cross-party-pool       = { gloss = "A candidate pool spanning other tenants' end users, requiring per-tenant isolation and a recorded consent contract.", owner = "disclosure", resolves = "code" }
+segment-scoring        = { gloss = "Centroid profiling of a seed set followed by approximate nearest-neighbour ranking to a target size.", owner = "disclosure", resolves = "code" }
+guarantee-strength     = { gloss = "The description a release carries, bounded or differentially private, matched to the controls actually applied.", owner = "disclosure", resolves = "concept" }
+noise-reproducibility  = { gloss = "The run-to-run variation a noise-carrying release yields over identical inputs.", owner = "disclosure", resolves = "concept" }
+repeated-release       = { gloss = "The two composition paths back to a member across repeated reads and repeated segment builds.", owner = "disclosure", resolves = "concept" }
+release-template       = { gloss = "The reviewed template a releasing principal executes in place of a free-form statement.", owner = "disclosure", resolves = "concept" }
+
+# suppress
+min-group-size     = { gloss = "The declared count of distinct contributors below which a group is withheld.", owner = "disclosure", resolves = "code" }
+floor-scope        = { gloss = "What the group-size floor guards and what it stays silent on.", owner = "disclosure", resolves = "concept" }
+contributor-share  = { gloss = "The declared fraction of a group's metric mass above which one contributor's dominance withholds it.", owner = "disclosure", resolves = "code" }
+dominance          = { gloss = "The concentration of a group's metric mass in one contributor.", owner = "disclosure", resolves = "concept" }
+dominance-evidence = { gloss = "The per-contributor masses a share constraint is evaluated over.", owner = "disclosure", resolves = "code" }
+empty-policy       = { gloss = "A disclosure policy setting neither threshold, under which no group is ever withheld.", owner = "disclosure", resolves = "code" }
+zero-floor         = { gloss = "A declared group-size floor of zero.", owner = "disclosure", resolves = "code" }
+share-range        = { gloss = "The interval a declared contributor share lies in.", owner = "disclosure", resolves = "code" }
+grouping-allowlist = { gloss = "The permitted grouping columns a governed model's group key is a subset of.", owner = "disclosure", resolves = "code" }
+sentinel           = { gloss = "The field-free marker a withheld group collapses into, naming no rule.", owner = "disclosure", resolves = "code" }
+suppression-count  = { gloss = "The number of withheld groups, which reaches no caller.", owner = "disclosure", resolves = "concept" }
+suppression-tally  = { gloss = "The per-rule counts of withheld groups, recorded on the audit record.", owner = "disclosure", resolves = "code" }
+sentinel-bit       = { gloss = "The single boolean on a run's freshness record reporting that suppression occurred.", owner = "disclosure", resolves = "code" }
+row-carriage       = { gloss = "The rule keeping the suppression signal off the published rows.", owner = "disclosure", resolves = "concept" }
+
+# template
+query-template        = { gloss = "A declared identifier, single statement, typed positional parameters and optional row ceiling.", owner = "disclosure", resolves = "code" }
+template-parameter    = { gloss = "One typed positional parameter of a template, written name-colon-type.", owner = "disclosure", resolves = "code" }
+argument-binding      = { gloss = "The strict by-name binding of a caller's arguments to a template's declared parameters.", owner = "disclosure", resolves = "code" }
+template-validation   = { gloss = "The fail-closed check of every template at manifest check and again at face startup.", owner = "disclosure", resolves = "code" }
+placeholder-cover     = { gloss = "The equality between a template statement's placeholders and its declared parameter list.", owner = "disclosure", resolves = "code" }
+statement-count       = { gloss = "The number of statements a template declaration holds.", owner = "disclosure", resolves = "code" }
+template-identifier   = { gloss = "The name a template is called by and projected as.", owner = "disclosure", resolves = "code" }
+plain-identifier      = { gloss = "A store table name written bare, carrying a path separator and no dot, star or leading separator.", owner = "disclosure", resolves = "code" }
+template-enforcement  = { gloss = "The enforcement layers that apply to whatever a template's statement touches.", owner = "disclosure", resolves = "concept" }
+template-allowlist    = { gloss = "The list of template identifiers a grant confers, with a star standing for all.", owner = "disclosure", resolves = "code" }
+attenuation           = { gloss = "The subsetting of a parent's template allowlist by a derived grant.", owner = "disclosure", resolves = "code" }
+template-grant        = { gloss = "The capability authorizing a caller to execute a named template.", owner = "disclosure", resolves = "code" }
+projected-tool        = { gloss = "The tool a manifest template auto-projects into, carrying its typed schema.", owner = "disclosure", resolves = "code" }
+manifest-surface      = { gloss = "The reviewed manifest as the single source of truth for the agent surface.", owner = "disclosure", resolves = "concept" }
+row-ceiling           = { gloss = "The maximum row count a template read returns, resolved as the smallest declared bound.", owner = "disclosure", resolves = "code" }
+overfetch             = { gloss = "The read past the effective ceiling that establishes the truncation flag.", owner = "disclosure", resolves = "code" }
+ceiling-advertisement = { gloss = "The declared ceiling published on a projected tool ahead of the first call.", owner = "disclosure", resolves = "code" }
+
+# bound-cohort
+governance-declaration = { gloss = "The per-table declaration naming a table per-person or cohort.", owner = "disclosure", resolves = "code" }
+default-governance     = { gloss = "The regime a table declaring neither value resolves to.", owner = "disclosure", resolves = "code" }
+dual-governance        = { gloss = "A table declared under both regimes at once.", owner = "disclosure", resolves = "code" }
+cohort-floor           = { gloss = "The group-size guard on a cohort table, run after candidate generation and ahead of the top-K cut.", owner = "disclosure", resolves = "code" }
+under-floor-group      = { gloss = "A group whose contributor count falls beneath the cohort floor.", owner = "disclosure", resolves = "concept" }
+cohort-widening        = { gloss = "The merging of an under-floor group into a coarser key to recover it.", owner = "disclosure", resolves = "concept" }
+per-individual-row     = { gloss = "A row about one person read from a cohort-governed deployment.", owner = "disclosure", resolves = "code" }
+cohort-key             = { gloss = "The group key of a cohort table, naming an attribute shared by many contributors.", owner = "disclosure", resolves = "code" }
+singleton-cohort       = { gloss = "A declared cohort key whose grain resolves to one person.", owner = "disclosure", resolves = "code" }
+ownership-answer       = { gloss = "The artifact and attached person an ownership question resolves to.", owner = "disclosure", resolves = "code" }
+person-artifact        = { gloss = "The artifact identifier, attachment field and principal an ownership answer carries.", owner = "disclosure", resolves = "code" }
+ranked-people          = { gloss = "A ranking, aggregate or activity count computed over a person rather than read off a record.", owner = "disclosure", resolves = "concept" }
+
+[error]
+DisclosurePolicyAbsent               = { gloss = "A published aggregate-shaped model carries neither a disclosure policy nor a recorded opt-out.", owner = "disclosure" }
+DisclosureModelUnreadable            = { gloss = "A published model's referenced statement text does not read.", owner = "disclosure" }
+DisclosureCleanRoomPreconditionUnmet = { gloss = "A shared store meets fewer than all three clean-room deployment requirements.", owner = "disclosure" }
+DisclosureStaticPepper               = { gloss = "A cross-owner hashed join is keyed on a static pepper.", owner = "disclosure" }
+DisclosureUnknownSensitivityClass    = { gloss = "A column declares a sensitivity class outside the registered set.", owner = "disclosure" }
+DisclosureDigestUnqualified          = { gloss = "A hash strategy stands alone over an exhaustible identifier class.", owner = "disclosure" }
+DisclosureCombineDoesNotGeneralize   = { gloss = "A secondary transformation leaves the primary strategy's output unchanged.", owner = "disclosure" }
+DisclosureDuplicateGrain             = { gloss = "A carried non-grain column is not constant within its group.", owner = "disclosure" }
+DisclosureGroupKeyNotPermitted       = { gloss = "A governed model's group key is not a subset of the permitted grouping columns.", owner = "disclosure" }
+DisclosureContributorKeyAbsent       = { gloss = "A governed model's statement omits the contributor key its policy counts on.", owner = "disclosure" }
+DisclosureForbiddenColumnPublished   = { gloss = "A contract declares, or a materialization produces, a column the policy forbids.", owner = "disclosure" }
+DisclosureUnitBudgetExhausted        = { gloss = "A named unit's lifetime privacy budget is spent.", owner = "disclosure" }
+DisclosureAudienceBelowFloor         = { gloss = "A segment build resolves below its declared minimum audience size.", owner = "disclosure" }
+DisclosureSegmentMemberReadback      = { gloss = "A caller requests the members of a segment.", owner = "disclosure" }
+DisclosureCrossPartyPoolUnconsented  = { gloss = "A candidate pool spans other tenants' end users with no recorded consent contract.", owner = "disclosure" }
+DisclosureDominanceUnverifiable      = { gloss = "Per-contributor masses are unavailable where a share constraint applies.", owner = "disclosure" }
+DisclosurePolicySuppressesNothing    = { gloss = "A disclosure policy sets neither the group-size floor nor the contributor-share ceiling.", owner = "disclosure" }
+DisclosureMinGroupSizeZero           = { gloss = "A disclosure policy declares a group-size floor of zero.", owner = "disclosure" }
+DisclosureShareOutOfRange            = { gloss = "A declared contributor share lies outside its interval.", owner = "disclosure" }
+DisclosureGroupingAllowlistEmpty     = { gloss = "A grouping allowlist is empty, or a permitted name is not column-shaped.", owner = "disclosure" }
+DisclosureTemplateBindingMismatch    = { gloss = "A template argument is missing, unknown, or type-mismatched.", owner = "disclosure" }
+DisclosureTemplatePlaceholderMismatch = { gloss = "A template statement's placeholders do not cover exactly its declared parameters.", owner = "disclosure" }
+DisclosureTemplateMultiStatement     = { gloss = "A template declaration holds more than one statement.", owner = "disclosure" }
+DisclosureTemplateIdentifierCollision = { gloss = "A template identifier collides with a built-in tool prefix.", owner = "disclosure" }
+DisclosureTemplateNonPlainIdentifier = { gloss = "A template names something other than a store table as a plain identifier.", owner = "disclosure" }
+DisclosureTemplateNotGranted         = { gloss = "A caller invokes a template its grant's allowlist does not carry.", owner = "disclosure" }
+DisclosureCohortDualGovernance       = { gloss = "A table is declared both per-person and cohort.", owner = "disclosure" }
+DisclosureCohortWidening             = { gloss = "A read merges an under-floor group into a coarser key to recover it.", owner = "disclosure" }
+DisclosurePerIndividualUngranted     = { gloss = "A per-individual row is read without the explicit grant on the reader's token.", owner = "disclosure" }
+DisclosureSingletonCohort            = { gloss = "A declared cohort key's grain resolves to one person.", owner = "disclosure" }
+DisclosureRankedPeopleRequest        = { gloss = "A request asks for a ranking, an aggregate over a person, or one person's activity count.", owner = "disclosure" }
+
+[limit]
+diagnostic-store-requests     = { value = 0,    unit = "requests", owner = "disclosure.set-mode.limit.diagnostic-request",       gloss = "Object-store calls the single-operator diagnostic issues." }
+shape-declaration-per-model   = { value = 1,    unit = "entries",  owner = "disclosure.set-mode.limit.aggregate-shape-test",     gloss = "Non-aggregate declarations a model carries to silence the coverage finding." }
+digest-width                  = { value = 32,   unit = "chars",    owner = "disclosure.classify.limit.digest-width",             gloss = "Character width of a hash digest, against which a truncation is measured." }
+token-width                   = { value = 20,   unit = "chars",    owner = "disclosure.classify.limit.token-width",              gloss = "Character width of a token, against which a truncation is measured." }
+aggregate-grant-group-ceiling = { value = 1,    unit = "entries",  owner = "disclosure.release.limit.group-ceiling",             gloss = "Floor on an aggregate grant's declared groups-per-query ceiling." }
+segment-audience-floor        = { value = 1000, unit = "subjects", owner = "disclosure.release.limit.audience-floor",            gloss = "Working minimum audience size a segment build resolves at or above." }
+segment-composition-cell      = { value = 100,  unit = "subjects", owner = "disclosure.release.limit.composition-cell",          gloss = "Working minimum size of a released segment's composition cell." }
+min-group-size-floor          = { value = 2,    unit = "subjects", owner = "disclosure.suppress.limit.min-group-size",           gloss = "Floor on a declared minimum distinct-contributor group size." }
+contributor-share-range       = { value = 100,  unit = "percent",  owner = "disclosure.suppress.limit.contributor-share",        gloss = "Upper bound of a declared maximum single-contributor share of a group's metric mass." }
+template-overfetch            = { value = 1,    unit = "rows",     owner = "disclosure.template.limit.overfetch",                gloss = "Rows read past the effective ceiling to establish the truncation flag." }

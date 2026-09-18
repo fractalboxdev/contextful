@@ -1,0 +1,28 @@
+# Units — every numeral in a `limit` clause carries one of these tokens.
+# `spec register` refuses a spelling that normalizes onto a canonical or an
+# alias here, after expanding SI prefixes and byte multiples.
+
+[unit]
+B        = { gloss = "byte", aliases = ["byte", "bytes"] }
+KiB      = { gloss = "kibibyte, 1024 B", aliases = ["kib", "kilobyte", "KB"] }
+MiB      = { gloss = "mebibyte, 1024 KiB", aliases = ["mib", "megabyte", "MB"] }
+GiB      = { gloss = "gibibyte, 1024 MiB", aliases = ["gib", "gigabyte", "GB"] }
+ms       = { gloss = "millisecond", aliases = ["millis", "milliseconds"] }
+s        = { gloss = "second", aliases = ["sec", "secs", "seconds"] }
+min      = { gloss = "minute", aliases = ["mins", "minutes"] }
+h        = { gloss = "hour", aliases = ["hr", "hrs", "hours"] }
+d        = { gloss = "day", aliases = ["days"] }
+rows     = { gloss = "table rows" }
+batches  = { gloss = "record batches" }
+files    = { gloss = "files" }
+parts    = { gloss = "parquet parts" }
+calls    = { gloss = "host calls" }
+requests = { gloss = "outbound requests" }
+subjects = { gloss = "distinct subjects contributing to a cell" }
+chars    = { gloss = "characters" }
+tokens   = { gloss = "model tokens" }
+entries  = { gloss = "registry or index entries" }
+hops     = { gloss = "delegation hops" }
+attempts = { gloss = "retry attempts" }
+workers  = { gloss = "runtime worker threads" }
+percent  = { gloss = "percent", aliases = ["%", "pct"] }

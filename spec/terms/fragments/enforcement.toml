@@ -1,0 +1,219 @@
+# Registry fragment — the enforcement contract.
+# Operations, canonical subjects, error identifiers and named bounds asserted by
+# spec/41-enforcement.md.
+
+[operation]
+redact               = { gloss = "Removal and transformation inside the writer, ahead of columnar bytes and ahead of the run path's durable record.", file = "spec/41-enforcement.md", aliases = ["write-time-redaction", "scrub"] }
+compose              = { gloss = "The three layers as one reference monitor, the order a registered relation applies, and where the single pass sits in a ranked read.", file = "spec/41-enforcement.md", aliases = ["layer-composition", "stack"] }
+filter-rows          = { gloss = "The typed row-predicate grammar, subject binding, the tenant equality and the project default.", file = "spec/41-enforcement.md", aliases = ["row-level-security", "rls"] }
+mask                 = { gloss = "Column strategies and combines, the guardrails over an exhaustible value space, the project pepper, and masked behavior under caller SQL.", file = "spec/41-enforcement.md", aliases = ["column-level-security", "cls"] }
+refuse               = { gloss = "The two shapes an unauthorized read takes, the scope guard's decidable cases, and what a refusal discloses.", file = "spec/41-enforcement.md", aliases = ["deny", "scope-refusal"] }
+bound-redistribution = { gloss = "The per-table licence bound applied at push, the root-object allowlist, and the per-credential filter a serving edge applies.", file = "spec/41-enforcement.md", aliases = ["replication-bound", "withhold"] }
+place                = { gloss = "Inference zones: grammar, composition across grains, floors, incognito, and the serve-time outcome.", file = "spec/41-enforcement.md", aliases = ["inference-placement", "zone-policy"] }
+reside               = { gloss = "Where the data plane runs, the region allow-set gating placement, and operation with no external reach.", file = "spec/41-enforcement.md", aliases = ["residency", "data-placement"] }
+resist               = { gloss = "Adversary-facing placement: where enforcement sits relative to the prompt, and which paths stay closed to an injected instruction.", file = "spec/41-enforcement.md", aliases = ["injection-posture", "threat-placement"] }
+
+[term]
+
+# --- redact -----------------------------------------------------------------
+write-time-removal                   = { gloss = "The writer stage applying drop or transform to a declared column before columnar encoding.", owner = "enforcement", resolves = "code" }
+pipeline-wide-rules                  = { gloss = "A removal rule set declared on a pipeline and binding every table that pipeline lands.", owner = "enforcement", resolves = "code" }
+stage-follows-normalization          = { gloss = "The placement of the removal stage after relational normalization has produced child tables.", owner = "enforcement", resolves = "concept" }
+value-precedes-the-durable-record    = { gloss = "The ordering that keeps a removed value out of the run path's permanent record.", owner = "enforcement", resolves = "concept" }
+rule-over-a-recorded-source          = { gloss = "A removal rule declared over a source whose pulls are recorded verbatim.", owner = "enforcement", resolves = "concept" }
+refetch-replaces-replay              = { gloss = "The consequence of removal for a pipeline's re-run: the source is read again.", owner = "enforcement", resolves = "concept" }
+stolen-credential-yields-removed-bytes = { gloss = "The at-rest guarantee write-time removal carries against a leaked object-store credential.", owner = "enforcement", resolves = "concept" }
+query-time-leaves-cleartext          = { gloss = "The absence of an at-rest guarantee for a column protected in the relation alone.", owner = "enforcement", resolves = "concept" }
+index-over-a-removed-column          = { gloss = "A declared index whose inputs are the values a removal rule took out.", owner = "enforcement", resolves = "code" }
+summarize-only-retains-the-text      = { gloss = "The storage behavior of a summarize-only column: the value lands whole and binds on release.", owner = "enforcement", resolves = "code" }
+rules-per-pipeline                   = { gloss = "The bound on a pipeline's removal rule set.", owner = "enforcement", resolves = "concept" }
+rule-row                             = { gloss = "The declared shape of one removal rule: table, column, operation, argument.", owner = "enforcement", resolves = "code" }
+
+# --- compose ----------------------------------------------------------------
+three-layers                     = { gloss = "Write-time removal, the redistribution bound and query-time restriction, taken together as the reference monitor.", owner = "enforcement", resolves = "concept" }
+complete-mediation               = { gloss = "The always-invoked obligation the reference-monitor name imports.", owner = "enforcement", resolves = "concept" }
+unmediated-path                  = { gloss = "A code path arriving at stored rows outside a registered relation.", owner = "enforcement", resolves = "concept" }
+single-owning-module             = { gloss = "The one module owning the enforcement decision, compiled native and to WebAssembly.", owner = "enforcement", resolves = "code" }
+second-verifier                  = { gloss = "A duplicate implementation of any part of the enforcement decision.", owner = "enforcement", resolves = "concept" }
+protection-is-a-rewrite          = { gloss = "Enforcement as data-plane transformation rather than an admission-time verdict.", owner = "enforcement", resolves = "concept" }
+relation-order                   = { gloss = "The fixed order a registered relation composes its six stages in.", owner = "enforcement", resolves = "code" }
+conjunctive-narrowing            = { gloss = "Composition by conjunction: appending a layer removes rows and adds none.", owner = "enforcement", resolves = "concept" }
+pass-precedes-the-cut            = { gloss = "The completion of the single enforcement pass before a ranked result is cut to size.", owner = "enforcement", resolves = "concept" }
+vector-arm-rejoins               = { gloss = "The re-join through the registered relation that gives a sidecar index arm its enforcement.", owner = "enforcement", resolves = "code" }
+every-face-reads-the-registration = { gloss = "The rule binding every row-returning surface to the registered relation by bare table name.", owner = "enforcement", resolves = "concept" }
+replica-is-constrained-again     = { gloss = "Per-query restriction of a caller who already holds a filtered replica.", owner = "enforcement", resolves = "concept" }
+order-is-not-commutative         = { gloss = "The non-interchangeability of row restriction and column masking.", owner = "enforcement", resolves = "concept" }
+registered-relation              = { gloss = "The per-table, per-session relation the compiler emits and every read binds to.", owner = "enforcement", resolves = "code" }
+session-build                    = { gloss = "The build of a session's relation set at admission and its rebuild on invalidation.", owner = "enforcement", resolves = "code" }
+relations-per-session            = { gloss = "The bound on a session's relation set.", owner = "enforcement", resolves = "concept" }
+mirrored-join-leads              = { gloss = "The leading position of the source-derived permission semi-join in the composition.", owner = "enforcement", resolves = "concept" }
+
+# --- filter-rows ------------------------------------------------------------
+predicate-grammar                    = { gloss = "The typed boolean subset of SQL a row predicate is written in.", owner = "enforcement", resolves = "code" }
+parsed-at-manifest-load              = { gloss = "The parse of every declared predicate when the manifest loads.", owner = "enforcement", resolves = "code" }
+term-outside-the-grammar             = { gloss = "A predicate node the typed subset omits.", owner = "enforcement", resolves = "concept" }
+subject-relation                     = { gloss = "The session-scoped relation carrying subject claims as bound parameters.", owner = "enforcement", resolves = "code" }
+interpolated-claim                   = { gloss = "A subject claim spliced into SQL text rather than bound.", owner = "enforcement", resolves = "concept" }
+join-pushes-down                     = { gloss = "The pushdown of the subject join into the scan.", owner = "enforcement", resolves = "code" }
+narrowing-order                      = { gloss = "Credential predicate, then matching table predicates, then the project default.", owner = "enforcement", resolves = "concept" }
+matched-override                     = { gloss = "A table predicate widening its own arm for a matching subject condition.", owner = "enforcement", resolves = "code" }
+default-is-deny                      = { gloss = "The project default: no grant match yields no rows.", owner = "enforcement", resolves = "code" }
+tenant-equality-is-engine-applied    = { gloss = "The bound-parameter byte equality on the tenant-scope column the engine conjoins.", owner = "enforcement", resolves = "code" }
+isolation-survives-a-forgotten-clause = { gloss = "The property that isolation does not depend on a clause the consumer writes.", owner = "enforcement", resolves = "concept" }
+exception-condition                  = { gloss = "A boolean expression over subject fields that relaxes a declared predicate.", owner = "enforcement", resolves = "code" }
+predicate-size                       = { gloss = "The bound on one declared predicate's source text.", owner = "enforcement", resolves = "concept" }
+membership-list                      = { gloss = "The bound on a membership list inside a predicate.", owner = "enforcement", resolves = "concept" }
+
+# --- mask -------------------------------------------------------------------
+strategies                             = { gloss = "The six column-mask strategies: drop, hash, tokenize, truncate, bucket, range-generalize.", owner = "enforcement", resolves = "code" }
+summarize-only                         = { gloss = "The flag retaining a value for grounding while bounding verbatim release.", owner = "enforcement", resolves = "code" }
+verbatim-quote                         = { gloss = "The bound on what a summarize-only column releases word for word in one citation.", owner = "enforcement", resolves = "concept" }
+no-surface-exceeds-the-quote           = { gloss = "The contract binding every read surface to the verbatim-release bound.", owner = "enforcement", resolves = "concept" }
+drop-yields-null                       = { gloss = "The value a dropped cell carries, by column type.", owner = "enforcement", resolves = "code" }
+primary-and-combine-are-one-value      = { gloss = "The single mask value whose primary and secondary halves are both private.", owner = "enforcement", resolves = "code" }
+one-value-two-layers                   = { gloss = "The application of one mask value at write time and at query time.", owner = "enforcement", resolves = "concept" }
+digest-alone-over-an-exhaustible-class = { gloss = "A keyed hash standing alone over a column whose value space is enumerable.", owner = "enforcement", resolves = "concept" }
+high-entropy-hashes-alone              = { gloss = "The column classes a keyed hash protects with no secondary.", owner = "enforcement", resolves = "concept" }
+combine-without-generalization         = { gloss = "A secondary that leaves its primary's output unchanged.", owner = "enforcement", resolves = "concept" }
+truncation-generalizes-a-digest        = { gloss = "The collapse of many digests onto one leading hexadecimal run.", owner = "enforcement", resolves = "concept" }
+hash-truncation-width                  = { gloss = "The bound on a truncation width declared behind a keyed hash.", owner = "enforcement", resolves = "concept" }
+token-truncation-width                 = { gloss = "The bound on a truncation width declared behind a tokenization.", owner = "enforcement", resolves = "concept" }
+truncation-that-cuts-nothing           = { gloss = "A declared width at or past the primary's own output width.", owner = "enforcement", resolves = "concept" }
+project-pepper                         = { gloss = "The environment-supplied key both masking layers derive hashes and tokens from.", owner = "enforcement", resolves = "code" }
+development-fallback-is-loud           = { gloss = "The source-tree constant the pepper resolves to when unset, and its per-run signal.", owner = "enforcement", resolves = "code" }
+digest-joins-across-layers             = { gloss = "The equality of the write-time digest and the relation-body digest expression.", owner = "enforcement", resolves = "code" }
+subject-exception                      = { gloss = "A mask exception written as a boolean expression over subject fields.", owner = "enforcement", resolves = "code" }
+columns-replaced-in-place              = { gloss = "In-place substitution of masked columns, preserving the column set and its order.", owner = "enforcement", resolves = "code" }
+star-expands-to-the-masked-projection  = { gloss = "The expansion of a star projection into the masked projection.", owner = "enforcement", resolves = "concept" }
+equality-on-a-dropped-column           = { gloss = "The empty result an equality filter against a dropped column produces.", owner = "enforcement", resolves = "concept" }
+aggregates-read-the-masked-column      = { gloss = "Aggregation over masked values, and the two strategies preserving aggregate shape.", owner = "enforcement", resolves = "concept" }
+mask-on-an-absent-column               = { gloss = "A declared mask naming a column the table's schema omits.", owner = "enforcement", resolves = "concept" }
+masks-per-table                        = { gloss = "The bound on a table's column mask set.", owner = "enforcement", resolves = "concept" }
+
+# --- refuse -----------------------------------------------------------------
+out-of-scope-read                   = { gloss = "A read of another scope's rows on a table the caller does hold a grant on.", owner = "enforcement", resolves = "concept" }
+no-empty-result-substitution        = { gloss = "The rule producing a typed error rather than an empty result for an out-of-scope read.", owner = "enforcement", resolves = "concept" }
+requested-value-echoes-the-statement = { gloss = "The rule that a refusal's requested value comes from the statement, never from storage.", owner = "enforcement", resolves = "concept" }
+ungranted-table                     = { gloss = "A table the caller holds no grant on, absent from listings and descriptions.", owner = "enforcement", resolves = "concept" }
+grant-is-not-an-existence-oracle    = { gloss = "The property keeping a grant from enumerating what lies beyond it.", owner = "enforcement", resolves = "concept" }
+error-payload                       = { gloss = "The bound on a refusal payload.", owner = "enforcement", resolves = "concept" }
+scope-guard-surfaces                = { gloss = "The two caller surfaces the scope guard decides over in one parse walk.", owner = "enforcement", resolves = "code" }
+top-level-conjuncts-only            = { gloss = "The restriction of the guard's reading to top-level conjuncts of a scoped statement.", owner = "enforcement", resolves = "concept" }
+guard-walk                          = { gloss = "The bound on the parse-tree nodes the scope guard visits.", owner = "enforcement", resolves = "concept" }
+undecidable-shapes-compose          = { gloss = "The handling of a constraint the guard cannot settle: it conjoins as an ordinary predicate.", owner = "enforcement", resolves = "concept" }
+drifted-scope-reads-empty           = { gloss = "The empty result a scope value matching no partition produces, and where byte identity is settled.", owner = "enforcement", resolves = "concept" }
+
+# --- bound-redistribution ---------------------------------------------------
+cleared-flag-withholds             = { gloss = "The push behavior of a table whose redistribution flag is clear.", owner = "enforcement", resolves = "code" }
+exclusion-precedes-the-diff        = { gloss = "The ordering placing the withholding decision ahead of the object diff.", owner = "enforcement", resolves = "code" }
+licence-outranks-a-full-grant      = { gloss = "The redistribution bound's independence from a caller's authority.", owner = "enforcement", resolves = "concept" }
+two-envelopes-carry-rows           = { gloss = "The two carriers of row values: a table's columnar files and the verbatim pull record.", owner = "enforcement", resolves = "concept" }
+root-object-allowlist              = { gloss = "The enumerated set of root-level objects that ship while a table is withheld.", owner = "enforcement", resolves = "code" }
+root-object-outside-the-allowlist  = { gloss = "A root-level object the allowlist does not name.", owner = "enforcement", resolves = "concept" }
+objects-left-behind                = { gloss = "Objects an earlier unrestricted push uploaded for a table now withheld.", owner = "enforcement", resolves = "concept" }
+manifest-is-an-index               = { gloss = "The property that a manifest indexes objects and authorizes nothing.", owner = "enforcement", resolves = "concept" }
+reported-objects                   = { gloss = "The bound on the objects a left-behind report names.", owner = "enforcement", resolves = "concept" }
+detector-window-is-narrowed        = { gloss = "The two-pass check and the deployment assumption its guarantee rests on.", owner = "enforcement", resolves = "code" }
+sync-edge-filter                   = { gloss = "The per-credential filter a serving edge applies between the bucket and a replica.", owner = "enforcement", resolves = "code" }
+
+# --- place ------------------------------------------------------------------
+zone-constructors                        = { gloss = "The five forms an inference zone value takes.", owner = "enforcement", resolves = "code" }
+zone-string                              = { gloss = "The wire grammar a zone tag parses under.", owner = "enforcement", resolves = "code" }
+allow-set-pattern                        = { gloss = "The entry grammar of a zone allow-set.", owner = "enforcement", resolves = "code" }
+unparsed-pattern                         = { gloss = "An allow-set entry matching no pattern form.", owner = "enforcement", resolves = "concept" }
+allow-set-is-disjunctive                 = { gloss = "Admission of a zone when any allow-set entry matches it.", owner = "enforcement", resolves = "concept" }
+undeclared-is-most-restrictive           = { gloss = "The resolution of an absent or unrecognized zone tag.", owner = "enforcement", resolves = "concept" }
+zone-belongs-to-the-caller               = { gloss = "The zone tag as a property of the calling process rather than of the store.", owner = "enforcement", resolves = "concept" }
+policy-picks-no-model                    = { gloss = "The exclusion of model selection, prompt assembly and dispatch from placement policy.", owner = "enforcement", resolves = "concept" }
+vendor-client-library                    = { gloss = "A model-vendor client library linked into a crate of this workspace.", owner = "enforcement", resolves = "concept" }
+two-questions-compose                    = { gloss = "The composition of authority (who reads what) with placement (where it is processed).", owner = "enforcement", resolves = "concept" }
+unlabeled-table-fails-closed             = { gloss = "The effective allow-set of a table declaring no zone policy.", owner = "enforcement", resolves = "code" }
+permissive-default-with-several-principals = { gloss = "A permissive zone default in a deployment more than one principal owns.", owner = "enforcement", resolves = "concept" }
+floor-covers-discovered-tables           = { gloss = "The reach of the fail-closed resolution over tables found after startup.", owner = "enforcement", resolves = "concept" }
+protected-class-floor                    = { gloss = "The zone floor a protected-class surface carries.", owner = "enforcement", resolves = "code" }
+floor-widened-without-an-override        = { gloss = "A manifest widening a protected-class surface past its floor with no override flag.", owner = "enforcement", resolves = "concept" }
+removal-with-public-cloud                = { gloss = "A surface declaring write-time removal and a public-cloud allow-set together.", owner = "enforcement", resolves = "concept" }
+narrowest-grain-wins                     = { gloss = "The narrowing of a table's allow-set by a column's, and of both by a principal's.", owner = "enforcement", resolves = "concept" }
+excluded-cell-is-null                    = { gloss = "The value a cell carries when its effective allow-set omits the session's zone.", owner = "enforcement", resolves = "concept" }
+excluded-row-is-withheld                 = { gloss = "The removal of a whole row whose table allow-set omits the session's zone.", owner = "enforcement", resolves = "concept" }
+per-principal-policy                     = { gloss = "The allow-set a principal declaration carries, travelling with rows it authors.", owner = "enforcement", resolves = "code" }
+evidence-floor                           = { gloss = "The intersection of evidence allow-sets a synthesized row's declaration sits beneath.", owner = "enforcement", resolves = "code" }
+declaration-above-the-evidence-floor     = { gloss = "A synthesized row declaring a set wider than its evidence intersection.", owner = "enforcement", resolves = "concept" }
+incognito-pins-the-session               = { gloss = "The session-wide pin to a local device plus an on-premises environment.", owner = "enforcement", resolves = "code" }
+widening-under-incognito                 = { gloss = "A session asserting a zone wider than the incognito pin.", owner = "enforcement", resolves = "concept" }
+incognito-binds-the-local-owner          = { gloss = "The application of zone resolution to an uncredentialed local owner's reads.", owner = "enforcement", resolves = "concept" }
+team-default                             = { gloss = "The project-declared default zone, the widening lock and the incognito default.", owner = "enforcement", resolves = "code" }
+wildcard-on-the-subject-side             = { gloss = "A credential granting a wildcard inference zone.", owner = "enforcement", resolves = "concept" }
+excluded-rows-leave-before-the-cut       = { gloss = "The removal of zone-excluded rows ahead of the ranked cut.", owner = "enforcement", resolves = "concept" }
+serve-time-outcome                       = { gloss = "The per-row result of zone resolution: a drop flag and masked column names.", owner = "enforcement", resolves = "code" }
+response-envelope                        = { gloss = "The per-response report of what filtering removed and under which asserted zone.", owner = "enforcement", resolves = "code" }
+envelope-carries-no-content              = { gloss = "The rule keeping filtered values out of the envelope that counts them.", owner = "enforcement", resolves = "concept" }
+inclusion-is-symbolic                    = { gloss = "Decision of zone inclusion over every constructor and identifier rather than by example.", owner = "enforcement", resolves = "code" }
+allow-set-entries                        = { gloss = "The bound on an allow-set's entry count.", owner = "enforcement", resolves = "concept" }
+zone-identifier-length                   = { gloss = "The bound on a zone identifier's length.", owner = "enforcement", resolves = "concept" }
+claim-defends-against-accident           = { gloss = "The honesty footing of a self-asserted zone and what it buys.", owner = "enforcement", resolves = "concept" }
+placement-meets-data-placement           = { gloss = "The composition of where data lives with where inference runs, per deployment mode.", owner = "enforcement", resolves = "concept" }
+excluded-concerns                        = { gloss = "What placement leaves undefined: routing, zone proof, per-row tags, cost accounting.", owner = "enforcement", resolves = "concept" }
+
+# --- reside -----------------------------------------------------------------
+data-plane-is-the-operators = { gloss = "The operator-controlled bucket holding columnar files, manifest and catalog.", owner = "enforcement", resolves = "concept" }
+control-plane-holds-no-rows = { gloss = "The optional hosted control plane's contents: manifests and schedules.", owner = "enforcement", resolves = "concept" }
+region-allow-set            = { gloss = "The declared region set gating placement, empty meaning unconstrained.", owner = "enforcement", resolves = "code" }
+region-mismatch             = { gloss = "A configured resource resolving to a region the policy omits.", owner = "enforcement", resolves = "concept" }
+air-gapped-operation        = { gloss = "Single-node and cluster operation with no public-internet reach.", owner = "enforcement", resolves = "concept" }
+region-entries              = { gloss = "The bound on a residency allow-set's entry count.", owner = "enforcement", resolves = "concept" }
+
+# --- resist -----------------------------------------------------------------
+enforcement-sits-below-the-prompt = { gloss = "The compilation of restriction into the relation, out of reach of ingested text.", owner = "enforcement", resolves = "concept" }
+ingested-content-is-grounding     = { gloss = "The standing of ingested text as provenanced grounding rather than instruction.", owner = "enforcement", resolves = "concept" }
+credential-shaped-value           = { gloss = "A value matching a credential shape, caught on the write path.", owner = "enforcement", resolves = "concept" }
+org-face-is-read-only             = { gloss = "The read subset an organization-wide face serves, with writes server-authored.", owner = "enforcement", resolves = "concept" }
+write-tool-on-a-read-face         = { gloss = "A write tool registered on an organization-wide face.", owner = "enforcement", resolves = "concept" }
+ingest-is-not-egress              = { gloss = "The allowlisted host access and zone pin that keep an ingestion path from becoming an exit.", owner = "enforcement", resolves = "concept" }
+residue-is-bounded                = { gloss = "The harm injection retains inside the reader's own scope, and what still binds on the way out.", owner = "enforcement", resolves = "concept" }
+classifier-is-not-the-control     = { gloss = "The exclusion of a pre-model classifier from the enforcement path.", owner = "enforcement", resolves = "concept" }
+twin-api-as-a-source              = { gloss = "An API licensed to see what no individual user sees, used as an ingestion path.", owner = "enforcement", resolves = "concept" }
+
+[error]
+EnforceRedactionOnRecordedSource     = { gloss = "Removal rules declared over a source whose pulls are recorded verbatim.", owner = "enforcement" }
+EnforceIndexOverRemovedColumn        = { gloss = "An index declared over a column removed at write time.", owner = "enforcement" }
+EnforceUnmediatedPath                = { gloss = "A read reaching stored rows outside a registered relation.", owner = "enforcement" }
+EnforceSecondVerifier                = { gloss = "A duplicate implementation of the enforcement decision.", owner = "enforcement" }
+EnforcePredicateOutsideGrammar       = { gloss = "A row predicate referencing a node the typed subset omits.", owner = "enforcement" }
+EnforceInterpolatedSubjectClaim      = { gloss = "A subject claim spliced into SQL text.", owner = "enforcement" }
+EnforceDigestAloneOnExhaustibleClass = { gloss = "A keyed hash standing alone over an enumerable value space.", owner = "enforcement" }
+EnforceCombineWithoutGeneralization  = { gloss = "A secondary strategy that leaves its primary's output unchanged.", owner = "enforcement" }
+EnforceTruncationCutsNothing         = { gloss = "A truncation width at or past the primary's own output width.", owner = "enforcement" }
+EnforceMaskOnAbsentColumn            = { gloss = "A mask naming a column the table's schema omits.", owner = "enforcement" }
+EnforceScopeDenied                   = { gloss = "A read of another scope's rows on a granted table.", owner = "enforcement" }
+EnforceUnknownRelation               = { gloss = "A read naming a table the caller holds no grant on.", owner = "enforcement" }
+EnforceRootObjectNotAllowlisted      = { gloss = "A root-level object pushed while the allowlist does not name it.", owner = "enforcement" }
+EnforceStaleRedistributedObjects     = { gloss = "Objects an earlier push left addressable for a now-withheld table.", owner = "enforcement" }
+EnforceZonePatternUnparsed           = { gloss = "An allow-set entry matching no zone pattern form.", owner = "enforcement" }
+EnforcePermissiveZoneDefault         = { gloss = "A permissive zone default in a deployment with several principals.", owner = "enforcement" }
+EnforceProtectedFloorWidened         = { gloss = "A protected-class surface widened past its floor with no override flag.", owner = "enforcement" }
+EnforceRemovalWithPublicCloud        = { gloss = "Write-time removal and a public-cloud allow-set declared on one surface.", owner = "enforcement" }
+EnforceEvidenceFloorExceeded         = { gloss = "A synthesized row declaring a zone set wider than its evidence intersection.", owner = "enforcement" }
+EnforceIncognitoWidening             = { gloss = "A session asserting a zone wider than the incognito pin.", owner = "enforcement" }
+EnforceWildcardZoneOnSubject         = { gloss = "A credential granting a wildcard inference zone.", owner = "enforcement" }
+EnforceVendorClientLibrary           = { gloss = "A model-vendor client library linked into a workspace crate.", owner = "enforcement" }
+EnforceRegionMismatch                = { gloss = "A configured resource resolving outside the declared residency set.", owner = "enforcement" }
+EnforceCredentialShapedValue         = { gloss = "A credential-shaped value arriving on the write path.", owner = "enforcement" }
+EnforceWriteOnReadOnlyFace           = { gloss = "A write tool registered on an organization-wide face.", owner = "enforcement" }
+EnforceTwinApiSource                 = { gloss = "An organization-twin API declared as an ingestion source.", owner = "enforcement" }
+
+[limit]
+redaction-rules-per-pipeline = { value = 256,  unit = "entries", owner = "enforcement.redact.limit.rules-per-pipeline",                gloss = "Removal rules one pipeline declares." }
+relations-per-session        = { value = 1024, unit = "entries", owner = "enforcement.compose.limit.relations-per-session",             gloss = "Registered relations one session holds." }
+row-predicate-size           = { value = 4,    unit = "KiB",     owner = "enforcement.filter-rows.limit.predicate-size",                gloss = "Source text of one declared row predicate." }
+membership-list-entries      = { value = 512,  unit = "entries", owner = "enforcement.filter-rows.limit.membership-list",               gloss = "Literals in one membership list inside a predicate." }
+summarize-only-quote         = { value = 280,  unit = "chars",   owner = "enforcement.mask.limit.verbatim-quote",                       gloss = "Verbatim release from a summarize-only column in one citation." }
+hash-truncation-width        = { value = 32,   unit = "chars",   owner = "enforcement.mask.limit.hash-truncation-width",                gloss = "Output width of a keyed hash; a truncation behind it sits below this." }
+token-truncation-width       = { value = 20,   unit = "chars",   owner = "enforcement.mask.limit.token-truncation-width",               gloss = "Output width of a tokenization; a truncation behind it sits below this." }
+masks-per-table              = { value = 128,  unit = "entries", owner = "enforcement.mask.limit.masks-per-table",                      gloss = "Column masks one table declares." }
+refusal-payload              = { value = 512,  unit = "B",       owner = "enforcement.refuse.limit.error-payload",                      gloss = "Bytes one refusal payload carries." }
+scope-guard-walk             = { value = 4096, unit = "entries", owner = "enforcement.refuse.limit.guard-walk",                         gloss = "Parse-tree nodes the scope guard visits for one statement." }
+stale-object-report          = { value = 100,  unit = "files",   owner = "enforcement.bound-redistribution.limit.reported-objects",     gloss = "Objects a left-behind report names by key." }
+zone-allow-set-entries       = { value = 32,   unit = "entries", owner = "enforcement.place.limit.allow-set-entries",                   gloss = "Patterns one zone allow-set holds." }
+zone-identifier-length       = { value = 128,  unit = "chars",   owner = "enforcement.place.limit.zone-identifier-length",              gloss = "Characters in a zone's identifier segment." }
+residency-region-entries     = { value = 16,   unit = "entries", owner = "enforcement.reside.limit.region-entries",                     gloss = "Regions one residency allow-set names." }

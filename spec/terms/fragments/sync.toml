@@ -1,0 +1,69 @@
+# Registry fragment — contract `sync`, file spec/11-sync.md.
+
+[operation]
+push      = { gloss = "Uploading the store to a bucket: the wire format, prefix confinement, and the index write that commits it.", file = "spec/11-sync.md", aliases = ["upload", "publish-to-bucket"] }
+pull      = { gloss = "Fetching the bucket into a store: the digest diff, the parallel download, and the catalog replaced last.", file = "spec/11-sync.md", aliases = ["fetch", "download", "reconcile"] }
+probe     = { gloss = "Measuring a backend's conditional-write behavior with a live sentinel, and resolving the coordination mode from that outcome.", file = "spec/11-sync.md", aliases = ["cas-probe", "capability-check"] }
+merge     = { gloss = "Reconciling one bucket index between writers: the scoped union, the per-class conflict rules, and the writer node id the ownership arms key on.", file = "spec/11-sync.md", aliases = ["rebase", "index-merge"] }
+lease     = { gloss = "Single-writer exclusion over a pipeline: two implementations behind one port, the fencing token, and the cursor position riding beside the lease.", file = "spec/11-sync.md", aliases = ["exclusion", "write-lock"] }
+replicate = { gloss = "A consuming replica of the bucket: the refresh diff, what it holds whole, what it declines, and what it rebuilds.", file = "spec/11-sync.md", aliases = ["replica-refresh", "mirror"] }
+
+[term]
+bucket-manifest       = { gloss = "The reserved `manifest.json` at a prefix root mapping each relative key to its SHA-256 digest and byte size.", owner = "sync", resolves = "code" }
+prefix                = { gloss = "The `[sync] prefix` config key confining every key a deployment reads and writes.", owner = "sync", resolves = "code" }
+prefix_from           = { gloss = "The `[sync] prefix_from` config key binding the prefix from a named environment variable at process start.", owner = "sync", resolves = "code" }
+coordination          = { gloss = "The `[sync] coordination` config key, taking `cas` or `single-writer`, unset deriving from the probe.", owner = "sync", resolves = "code" }
+cas                   = { gloss = "The coordination mode in which the bucket serializes writers through atomic conditional writes.", owner = "sync", resolves = "code" }
+single-writer         = { gloss = "The coordination mode in which one machine is declared the sole writer and no probe runs.", owner = "sync", resolves = "code" }
+push_retries          = { gloss = "The `[sync] push_retries` config key bounding the re-read-and-re-commit loop on a lost index commit.", owner = "sync", resolves = "code" }
+pull_before_run       = { gloss = "The `[sync] pull_before_run` config key reconciling against the bucket ahead of landing rows.", owner = "sync", resolves = "code" }
+commit-point          = { gloss = "The index write after which a consumer observes a tree whose every key is already durable.", owner = "sync", resolves = "concept" }
+scoped-union          = { gloss = "The merge in which the remote contributes an entry where this writer has never written, and nowhere else.", owner = "sync", resolves = "concept" }
+sentinel              = { gloss = "The probe object written under `_contextful/cas-probe/` inside the configured prefix and deleted on success.", owner = "sync", resolves = "code" }
+cas-probe             = { gloss = "The live sequence of a create, two losing conditional writes, a byte read-back and a delete that demonstrates a backend's conditional-write behavior.", owner = "sync", resolves = "code" }
+node-id               = { gloss = "A machine's writer identity, resolved per process and interpolated into run directory segments and request-ledger filenames.", owner = "sync", resolves = "code" }
+CONTEXTFUL_NODE_ID    = { gloss = "The environment read that takes precedence in node id resolution.", owner = "sync", resolves = "code" }
+CONTEXTFUL_STATE_DIR  = { gloss = "The environment read naming where a generated node id persists, outside the store root.", owner = "sync", resolves = "code" }
+bucket-lease          = { gloss = "The sentinel object at `leases/<pipeline_id>.json` taken by conditional create and renewed by tag-checked conditional replace.", owner = "sync", resolves = "code" }
+machine-lease         = { gloss = "The default lease, a row in the machine's own catalog, serializing processes on one machine.", owner = "sync", resolves = "code" }
+fencing-token         = { gloss = "The per-pipeline monotonically increasing `fence` value granted at lease acquisition and stamped on each object the holder commits.", owner = "sync", resolves = "code" }
+cursor-object         = { gloss = "The committed cursor position at `cursors/<pipeline_id>.json`, written at release and adopted at acquisition.", owner = "sync", resolves = "code" }
+compaction-owner      = { gloss = "The one machine a store names as permitted to fold its run files into snapshots.", owner = "sync", resolves = "concept" }
+sync-edge             = { gloss = "The boundary at which the bucket manifest and its per-table section are projected by a pulling credential's table grants.", owner = "sync", resolves = "concept" }
+replica               = { gloss = "A consuming copy of the bucket that answers reads, holds whole Parquet per snapshot, and sends every write to the canonical store.", owner = "sync", resolves = "concept" }
+proxying-face         = { gloss = "The served read path a consumer uses for a table its replica does not hold, returning projected rows rather than file handles.", owner = "sync", resolves = "concept" }
+refresh               = { gloss = "A replica's content-digest diff against the top-level index, followed by a current-snapshot pointer swap.", owner = "sync", resolves = "code" }
+
+[error]
+SyncPrefixEscape             = { gloss = "A key resolved outside the configured prefix.", owner = "sync" }
+SyncPrefixUnbound            = { gloss = "The environment variable named by `prefix_from` is unset at startup.", owner = "sync" }
+SyncPrefixOverspecified      = { gloss = "`prefix` and `prefix_from` are declared together.", owner = "sync" }
+SyncPushInFlight             = { gloss = "A second push of one store started on a machine already pushing it.", owner = "sync" }
+SyncObjectDigestMismatch     = { gloss = "A downloaded object's computed digest differs from the index entry naming it.", owner = "sync" }
+SyncPullDidNotConverge       = { gloss = "A pull exhausted its convergence rounds against keys moving beneath it.", owner = "sync" }
+SyncCatalogRebuildDuringPull = { gloss = "A full cache reconstruction was invoked as part of a pull.", owner = "sync" }
+SyncProbeInconclusive        = { gloss = "The conditional-write probe returned an unsupported-method response, a forbidden response, or a transport error.", owner = "sync" }
+SyncCoordinationUnproven     = { gloss = "`cas` is declared against a backend whose probe did not demonstrate the capability.", owner = "sync" }
+SyncManifestRebaseExhausted  = { gloss = "The index commit lost its race past the retry bound.", owner = "sync" }
+SyncCursorConflict           = { gloss = "A cursor entry was resolved by recency rather than by its declared kind.", owner = "sync" }
+SyncNodeIdInvalid            = { gloss = "A node id falls outside the path-safe pattern.", owner = "sync" }
+SyncNodeIdShared             = { gloss = "A node id is declared in a control-plane configuration applied to many machines.", owner = "sync" }
+SyncCompactionNotOwned       = { gloss = "A compaction pass started on a machine the store does not name as its compaction owner.", owner = "sync" }
+LeaseHeld                    = { gloss = "A run found an unexpired lease held by another node.", owner = "sync" }
+LeaseNotHeld                 = { gloss = "A release was attempted against a lease held by another node.", owner = "sync" }
+LeaseFenced                  = { gloss = "A commit carried a fencing token below the one the lease object holds.", owner = "sync" }
+LeaseNodeIdLocal             = { gloss = "The bucket lease was attempted from a machine whose node id fell back to the unresolved value.", owner = "sync" }
+LeaseCursorKindMismatch      = { gloss = "A cursor value whose kind takes no lease reached the `cursors/` prefix.", owner = "sync" }
+ReplicaWriteRefused          = { gloss = "A write verb was invoked against a replica.", owner = "sync" }
+ReplicaPartialParquet        = { gloss = "A replica holds a strict subset of a snapshot's data files.", owner = "sync" }
+ReplicaMissingIndex          = { gloss = "A query needs a sidecar index or a partition the replica does not hold.", owner = "sync" }
+ReplicaSensitiveTable        = { gloss = "A refresh requested a table carrying declared sensitive columns.", owner = "sync" }
+
+[limit]
+sync-multipart-threshold    = { value = 5,   unit = "MiB",      owner = "sync.push.limit.multipart-threshold", gloss = "Object size above which a push uploads in multiple parts." }
+sync-pull-convergence-rounds = { value = 3,  unit = "attempts", owner = "sync.pull.limit.convergence-rounds", gloss = "Index re-fetches a pull performs against keys moving beneath it." }
+sync-probe-losing-writes    = { value = 2,   unit = "attempts", owner = "sync.probe.limit.losing-writes", gloss = "Conditional writes the endpoint rejects before the capability counts as demonstrated." }
+sync-push-retries           = { value = 5,   unit = "attempts", owner = "sync.merge.limit.commit-retries", gloss = "Re-read-and-re-commit rounds on a lost index compare-and-set." }
+sync-node-id-length         = { value = 64,  unit = "chars",    owner = "sync.merge.limit.node-id-length", gloss = "Maximum length of a writer node id, which is interpolated into a path segment." }
+sync-lease-ttl              = { value = 10,  unit = "min",      owner = "sync.lease.limit.ttl", gloss = "Granted life of a lease, after which it expires with no action from anyone." }
+sync-lease-renewal-interval = { value = 200, unit = "s",        owner = "sync.lease.limit.renewal-interval", gloss = "Interval at which a holder renews, a third of the granted life." }

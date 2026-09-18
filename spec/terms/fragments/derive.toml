@@ -1,0 +1,270 @@
+# Registry fragment — the derive tier. Every clause id in spec/34-derive.md
+# resolves its second and fourth segments here, and every refusal and limit it
+# asserts is registered below.
+
+[operation]
+select      = { gloss = "Turning a landed table into the outstanding unit list: the declared configuration, the anti-join, eligibility and a run's budget.", file = "spec/34-derive.md", aliases = ["scan", "work-set"] }
+bind        = { gloss = "Where an engine's definition lives and what the port every engine implements hands back.", file = "spec/34-derive.md", aliases = ["engine-binding"] }
+exec        = { gloss = "Running operator-declared argv chains against binaries installed on this machine, under one deadline and one process group.", file = "spec/34-derive.md", aliases = ["subprocess-chain"] }
+fetch       = { gloss = "Following an address a third party wrote into a row, under an operator host list and pre-socket guards.", file = "spec/34-derive.md", aliases = ["link-fetch"] }
+land        = { gloss = "The derived row and the marker: columns, the status union, attempt accounting, citation keys and provenance.", file = "spec/34-derive.md", aliases = ["derived-row"] }
+parse-cues  = { gloss = "Reading a caption document into passages: one grammar for two formats, defect accounting, coalescing and rolling display.", file = "spec/34-derive.md", aliases = ["cue-parsing"] }
+test-engine = { gloss = "Building one engine outside a pipeline and running it against a single file on disk.", file = "spec/34-derive.md", aliases = ["derive-test"] }
+
+# ---------------------------------------------------------------------------
+# Subjects — the fourth segment of every clause id, one entry per clause.
+# ---------------------------------------------------------------------------
+
+[term]
+
+# select
+derive-source          = { gloss = "The built-in source whose input is the context store.", owner = "derive", resolves = "code" }
+source-config          = { gloss = "The `[pipeline.source.config]` key set a derive pipeline declares.", owner = "derive", resolves = "code" }
+required-key           = { gloss = "The four configuration keys a derive source cannot be built without.", owner = "derive", resolves = "concept" }
+build-context          = { gloss = "The store root and pipeline identifier the source receives from the build.", owner = "derive", resolves = "concept" }
+outstanding-set        = { gloss = "The parent rows lacking derived output at the instant of the scan.", owner = "derive", resolves = "concept" }
+anti-join              = { gloss = "The drop of every parent the output table already holds a row for.", owner = "derive", resolves = "concept" }
+foreign-output-table   = { gloss = "An output table belonging to a pipeline other than this one.", owner = "derive", resolves = "concept" }
+cap-after-the-anti-join = { gloss = "The ordering that truncates the outstanding list rather than the scanned list.", owner = "derive", resolves = "concept" }
+rows-per-run           = { gloss = "The per-run row budget, `max_rows_per_run`.", owner = "derive", resolves = "code" }
+attempts-per-unit      = { gloss = "The per-unit retry budget, `max_attempts`.", owner = "derive", resolves = "code" }
+seconds-per-run        = { gloss = "The wall-clock budget for one serial unit loop, `max_seconds_per_run`.", owner = "derive", resolves = "code" }
+select-predicate       = { gloss = "The `select` table of column-to-value string equalities against a parent row.", owner = "derive", resolves = "code" }
+require-absent         = { gloss = "The `require_absent` column list, where blank reads as absent.", owner = "derive", resolves = "code" }
+incomplete-unit        = { gloss = "A parent row missing its key or its media value.", owner = "derive", resolves = "concept" }
+time-budget-stop       = { gloss = "The mid-list stop when the wall-clock budget elapses.", owner = "derive", resolves = "concept" }
+journaled-pull         = { gloss = "A derive pipeline configured to journal its pulls verbatim.", owner = "derive", resolves = "concept" }
+unmetered-grant        = { gloss = "A shared-quota grant declared by a task that opens no metered socket.", owner = "derive", resolves = "concept" }
+metered-client         = { gloss = "The mediated client a link task's requests pass through.", owner = "derive", resolves = "concept" }
+egress-claim           = { gloss = "What a transcribe pipeline states on the run record about reaching its engine.", owner = "derive", resolves = "concept" }
+in-memory-scan         = { gloss = "The newest-wins membership scan over snapshot plus run files, with no query engine.", owner = "derive", resolves = "concept" }
+work-record            = { gloss = "The counts and truncated list the scan hands to the run.", owner = "derive", resolves = "code" }
+spine-is-inherited     = { gloss = "The write-path machinery a derive pipeline holds without re-implementing.", owner = "derive", resolves = "concept" }
+
+# bind
+two-sided-binding      = { gloss = "The split between a pipeline naming an engine and a machine defining it.", owner = "derive", resolves = "concept" }
+unbound-engine         = { gloss = "An engine name with no `[derive.<name>]` block behind it.", owner = "derive", resolves = "concept" }
+command-in-a-manifest  = { gloss = "An executable key written on the request side of the binding split.", owner = "derive", resolves = "concept" }
+task-vocabulary        = { gloss = "The `task` values `transcribe` and `link_preview`.", owner = "derive", resolves = "code" }
+unknown-task           = { gloss = "A `task` spelling outside the supported pair.", owner = "derive", resolves = "concept" }
+driver-mismatch        = { gloss = "A `driver` and `task` pairing the tier does not serve.", owner = "derive", resolves = "concept" }
+inert-driver           = { gloss = "`driver = \"none\"`, a bound engine that lands zero rows.", owner = "derive", resolves = "code" }
+deriver-port           = { gloss = "The `Deriver` trait and its four obligations.", owner = "derive", resolves = "code" }
+engine-id-identity     = { gloss = "The stability and distinctness `engine_id` asserts.", owner = "derive", resolves = "code" }
+endpoint-host-is-bare  = { gloss = "The host-only shape of `endpoint_host`.", owner = "derive", resolves = "code" }
+run-audit-drains       = { gloss = "The once-per-pull emptying of `run_audit`.", owner = "derive", resolves = "code" }
+anchor-traits          = { gloss = "`Transcriber` and `LinkReader`, the two traits above the port.", owner = "derive", resolves = "code" }
+asr-capabilities       = { gloss = "The `AsrCapabilities` probe a caller reads once per run.", owner = "derive", resolves = "code" }
+timestamps-are-not-synthesized = { gloss = "The refusal to interpolate an interval an engine did not produce.", owner = "derive", resolves = "concept" }
+media-ref              = { gloss = "`MediaRef`, the three shapes media reaches an engine in.", owner = "derive", resolves = "code" }
+url-handover-is-opted-into = { gloss = "The two conditions under which an address is handed to an engine.", owner = "derive", resolves = "concept" }
+remote-url-unsupported = { gloss = "An address handed to an engine that declines remote addresses.", owner = "derive", resolves = "concept" }
+media-unreadable       = { gloss = "A media value that is neither an address nor a readable file.", owner = "derive", resolves = "concept" }
+transcript             = { gloss = "The `Transcript` an engine returns.", owner = "derive", resolves = "code" }
+cue                    = { gloss = "The `Cue`: an interval, its text, an opaque speaker label and a confidence.", owner = "derive", resolves = "code" }
+confidence-out-of-range = { gloss = "A confidence value outside the normalized interval.", owner = "derive", resolves = "concept" }
+transcript-source      = { gloss = "`TranscriptSource`, who wrote the words: `published` or `asr`.", owner = "derive", resolves = "code" }
+derive-error           = { gloss = "`DeriveError`, the typed per-unit error union and its retryable arms.", owner = "derive", resolves = "code" }
+upstream-excerpt       = { gloss = "The bounded excerpt an `Upstream` error carries.", owner = "derive", resolves = "code" }
+engine-unavailable-scope = { gloss = "The run-level rather than unit-level reach of `EngineUnavailable`.", owner = "derive", resolves = "concept" }
+link-reader-unavailable = { gloss = "A link engine returning the run-ending variant.", owner = "derive", resolves = "concept" }
+stub-transcriber       = { gloss = "The public no-I/O adapter answering from a canned transcript.", owner = "derive", resolves = "code" }
+locality               = { gloss = "`Locality`, where inference physically happened.", owner = "derive", resolves = "code" }
+locality-is-the-adapters = { gloss = "The adapter as the declarer of the value that lands on a row.", owner = "derive", resolves = "concept" }
+advisory-zone          = { gloss = "The binding's `zone` key, which informs an operator and lands on no row.", owner = "derive", resolves = "code" }
+public-egress-fails-closed = { gloss = "The tag that matches no zone entry until an operator widens the list.", owner = "derive", resolves = "concept" }
+
+# exec
+chain-shape            = { gloss = "Zero or more preprocess steps followed by one engine step.", owner = "derive", resolves = "concept" }
+step-condition         = { gloss = "A preprocess step's `when`, probed rather than hand-wired.", owner = "derive", resolves = "code" }
+argv-array             = { gloss = "A step's `command` as an argument array with no shell.", owner = "derive", resolves = "code" }
+shell-string           = { gloss = "A command written as one string rather than an array.", owner = "derive", resolves = "concept" }
+placeholder-substitution = { gloss = "Whole-element substitution of `{input}`, `{input_url}`, `{output}` and `{output_stem}`.", owner = "derive", resolves = "code" }
+output-path-template   = { gloss = "`output_path`, the one substring template in the chain.", owner = "derive", resolves = "code" }
+cleared-environment    = { gloss = "The child environment built from nothing plus an explicit allowlist.", owner = "derive", resolves = "concept" }
+env-name               = { gloss = "The spelling rule for an environment allowlist entry.", owner = "derive", resolves = "concept" }
+unresolved-reference   = { gloss = "A credential-reference template naming nothing resolvable.", owner = "derive", resolves = "concept" }
+chain-deadline         = { gloss = "`timeout_secs`, the whole-chain kill deadline for one unit.", owner = "derive", resolves = "code" }
+step-output            = { gloss = "`max_output_bytes`, the captured-output bound per step.", owner = "derive", resolves = "code" }
+audit-entries          = { gloss = "The bound on captured step output reaching the run record.", owner = "derive", resolves = "concept" }
+step-error-excerpt     = { gloss = "The bound on a failing step's error text inside the typed error.", owner = "derive", resolves = "concept" }
+scratch-directory      = { gloss = "The per-unit working directory created and removed around a chain.", owner = "derive", resolves = "concept" }
+non-zero-exit          = { gloss = "A step ending with a non-zero status.", owner = "derive", resolves = "concept" }
+deadline-elapsed       = { gloss = "A chain outrunning its deadline.", owner = "derive", resolves = "concept" }
+process-group-kill     = { gloss = "The child leading its own process group and the signal reaching the group.", owner = "derive", resolves = "concept" }
+reader-enforced-cap    = { gloss = "The output bound tested in the reader before each wait rather than after an exit.", owner = "derive", resolves = "concept" }
+overflowing-step       = { gloss = "A step whose captured output crosses its bound.", owner = "derive", resolves = "concept" }
+silent-step            = { gloss = "A preprocess step exiting zero without writing its output file.", owner = "derive", resolves = "concept" }
+stderr-on-success      = { gloss = "Capture of a step's error stream regardless of its exit status.", owner = "derive", resolves = "concept" }
+command-resolution     = { gloss = "The build-time resolution, executability check, canonicalization and digest of `command[0]`.", owner = "derive", resolves = "concept" }
+missing-binary         = { gloss = "A `command[0]` that is not an executable file on this machine.", owner = "derive", resolves = "concept" }
+unpinned-path          = { gloss = "A path-form command carrying no `sha256`.", owner = "derive", resolves = "code" }
+digest-mismatch        = { gloss = "A pinned file whose bytes differ from its recorded digest.", owner = "derive", resolves = "concept" }
+engine-id-is-hashed    = { gloss = "The hash over every step's binary digest and arguments that yields the engine identifier.", owner = "derive", resolves = "concept" }
+engine-id-prefix       = { gloss = "The hexadecimal prefix inside an `exec` engine identifier.", owner = "derive", resolves = "concept" }
+no-endpoint-host       = { gloss = "An `exec` engine's absence of an observable hostname.", owner = "derive", resolves = "concept" }
+blocking-thread        = { gloss = "The move of a subprocess chain off the async runtime after credentials resolve.", owner = "derive", resolves = "concept" }
+blocking-payload-ownership = { gloss = "How chain state and the resolved environment cross onto the blocking thread.", owner = "derive", resolves = "concept" }
+output-formats         = { gloss = "`output_format`: `vtt`, `srt` or `contextful-json`.", owner = "derive", resolves = "code" }
+provenance-sidecar     = { gloss = "The optional file beside a cue document stating source and absence reason.", owner = "derive", resolves = "code" }
+malformed-sidecar      = { gloss = "A sidecar that does not parse, and what survives it.", owner = "derive", resolves = "concept" }
+
+# fetch
+operator-allowlist     = { gloss = "`allow_hosts`, the machine-side list of hosts a fetch engine reaches.", owner = "derive", resolves = "code" }
+empty-host-list        = { gloss = "An `allow_hosts` list with no entries.", owner = "derive", resolves = "concept" }
+wildcard-host          = { gloss = "A bare star entry in a host list.", owner = "derive", resolves = "concept" }
+malformed-host-entry   = { gloss = "A host entry carrying a scheme, a port, a path, or nothing.", owner = "derive", resolves = "concept" }
+scheme                 = { gloss = "The `http`/`https` restriction on a followed address.", owner = "derive", resolves = "concept" }
+address-literal        = { gloss = "A host written as a numeric address rather than a name.", owner = "derive", resolves = "concept" }
+loopback-host          = { gloss = "A host naming the machine the fetch runs on.", owner = "derive", resolves = "concept" }
+host-not-listed        = { gloss = "A host absent from the operator's list.", owner = "derive", resolves = "concept" }
+guard-cost             = { gloss = "What a pre-socket refusal costs: one settled unit, no request, a continuing run.", owner = "derive", resolves = "concept" }
+per-hop-list           = { gloss = "Re-application of the host list at every redirect hop.", owner = "derive", resolves = "concept" }
+redirect-downgrade     = { gloss = "A redirect from a secure scheme to a plain one.", owner = "derive", resolves = "concept" }
+redirect-chain         = { gloss = "The bound on how many hops a redirect chain runs.", owner = "derive", resolves = "concept" }
+no-proxy-no-referer    = { gloss = "The client's refusal of a system proxy and of a referring header.", owner = "derive", resolves = "concept" }
+exec-keys-on-a-fetch-binding = { gloss = "Process-spawning keys written on a binding that spawns none.", owner = "derive", resolves = "concept" }
+document-prefix        = { gloss = "`max_document_bytes`, the prefix the head scanner reads.", owner = "derive", resolves = "code" }
+probe-prefix           = { gloss = "`max_probe_bytes`, the range request against a picture.", owner = "derive", resolves = "code" }
+hop-timeout            = { gloss = "`request_timeout_secs`, the per-hop deadline.", owner = "derive", resolves = "code" }
+retry-after-default    = { gloss = "The rate-limit wait used when a response supplies none.", owner = "derive", resolves = "concept" }
+head-scanner           = { gloss = "The prefix scanner and its stop conditions.", owner = "derive", resolves = "concept" }
+script-bodies-skipped  = { gloss = "Whole-body skipping of script and style elements.", owner = "derive", resolves = "concept" }
+attribute-reading      = { gloss = "Attribute order tolerance, address resolution, entity decoding and whitespace handling.", owner = "derive", resolves = "concept" }
+picture-fields         = { gloss = "The six elements a picture candidate may be declared in.", owner = "derive", resolves = "concept" }
+field-order-is-provenance = { gloss = "`image_field` as a record of which element named a candidate rather than a filter.", owner = "derive", resolves = "code" }
+head-fact-fallbacks    = { gloss = "The fallback chains for title, description and site name.", owner = "derive", resolves = "concept" }
+absent-rather-than-blank = { gloss = "An unresolved head fact landing absent rather than as an empty string.", owner = "derive", resolves = "concept" }
+declared-charset       = { gloss = "A non-UTF-8 character set declared by header or by element.", owner = "derive", resolves = "concept" }
+invalid-bytes          = { gloss = "A document that declares nothing and fails UTF-8 validation.", owner = "derive", resolves = "concept" }
+candidate-rows         = { gloss = "One row per picture candidate, head facts repeated on each.", owner = "derive", resolves = "concept" }
+link-row-columns       = { gloss = "The link-specific columns beside the shared envelope.", owner = "derive", resolves = "code" }
+status-mapping-positive = { gloss = "The outcomes that land a successful or established-empty status.", owner = "derive", resolves = "concept" }
+status-mapping-negative = { gloss = "The outcomes that land a failed status, retryable or settled.", owner = "derive", resolves = "concept" }
+no-http-answer-band    = { gloss = "The internal status reported when no HTTP answer arrives at all.", owner = "derive", resolves = "concept" }
+probe-never-fails-the-unit = { gloss = "The picture probe's outcome as a candidate-level rather than unit-level fact.", owner = "derive", resolves = "concept" }
+image-host-list        = { gloss = "`allow_image_hosts`, defaulting to the document host list.", owner = "derive", resolves = "code" }
+probed-length          = { gloss = "`image_bytes` as the file's own length rather than the prefix's.", owner = "derive", resolves = "code" }
+dimensions-or-nothing  = { gloss = "The dimension helper declining rather than landing a zero pair.", owner = "derive", resolves = "concept" }
+document-host-on-the-row = { gloss = "The document's final host standing as a link row's endpoint host.", owner = "derive", resolves = "concept" }
+media-is-image         = { gloss = "`media_is_image`, reading the row's column as a picture address directly.", owner = "derive", resolves = "code" }
+
+# land
+derived-row            = { gloss = "The column set a transcribe row carries.", owner = "derive", resolves = "code" }
+marker-row             = { gloss = "The single row a unit that produced nothing lands.", owner = "derive", resolves = "concept" }
+marker-is-visible-to-the-scan = { gloss = "The anti-join's reading of a marker, retiring a settled unit.", owner = "derive", resolves = "concept" }
+failure-off-the-table  = { gloss = "Per-unit failure state recorded anywhere but the output table.", owner = "derive", resolves = "concept" }
+unit-status            = { gloss = "`unit_status`, the four-value outcome discriminator.", owner = "derive", resolves = "code" }
+unavailable-is-the-default = { gloss = "The status an engine's unexplained silence lands.", owner = "derive", resolves = "concept" }
+unknown-status         = { gloss = "A status value outside the registered four.", owner = "derive", resolves = "concept" }
+discriminator-name     = { gloss = "The reserved column name a derive table declines to use.", owner = "derive", resolves = "concept" }
+retryable-is-permanence = { gloss = "`retryable` as the settled flag the outstanding-set filter reads.", owner = "derive", resolves = "code" }
+settled-unit-revived   = { gloss = "A settled unit re-entering the outstanding set.", owner = "derive", resolves = "concept" }
+attempts-count-what-happened = { gloss = "`attempts` as a count of tries rather than an encoding of permanence.", owner = "derive", resolves = "code" }
+empty-attempt-ceiling  = { gloss = "The single-look bound on the established-empty status.", owner = "derive", resolves = "concept" }
+ceiling-is-per-status  = { gloss = "Attempt ceilings differing by outcome status.", owner = "derive", resolves = "concept" }
+markers-fold-on-attempts = { gloss = "Reading a unit's fate from the marker with the highest attempt count.", owner = "derive", resolves = "concept" }
+citation-keys          = { gloss = "`segment_id`, `url` and the whole-second interval a passage cites.", owner = "derive", resolves = "code" }
+keys-union-rather-than-double = { gloss = "Byte-identical citation keys across two producers of one moment.", owner = "derive", resolves = "concept" }
+link-segment-key       = { gloss = "The candidate-indexed segment identifier a link row carries.", owner = "derive", resolves = "concept" }
+unredacted-error       = { gloss = "A `last_error` write bypassing address redaction.", owner = "derive", resolves = "code" }
+missing-primary-key    = { gloss = "A derive output table declaring no key pair.", owner = "derive", resolves = "concept" }
+one-row-builder        = { gloss = "One constructor producing both content rows and markers.", owner = "derive", resolves = "concept" }
+provenance-on-every-row = { gloss = "Engine, host and zone columns present on every row the tier writes.", owner = "derive", resolves = "concept" }
+
+# parse-cues
+one-parser             = { gloss = "A single function reading both caption formats.", owner = "derive", resolves = "concept" }
+cue-grammar            = { gloss = "Blocks separated by blank lines, each a timing line and its text.", owner = "derive", resolves = "concept" }
+headers-fall-out       = { gloss = "Comment blocks and sequence numbers needing no special case.", owner = "derive", resolves = "concept" }
+defects-degrade        = { gloss = "Skipping and counting an unparseable block rather than failing the document.", owner = "derive", resolves = "concept" }
+backward-cue           = { gloss = "A block starting before the block already accepted.", owner = "derive", resolves = "concept" }
+passage-chars          = { gloss = "The character length that closes an open passage.", owner = "derive", resolves = "concept" }
+passage-span           = { gloss = "The elapsed span that closes an open passage.", owner = "derive", resolves = "concept" }
+passage-bytes          = { gloss = "The byte ceiling on one passage's text.", owner = "derive", resolves = "concept" }
+passages-per-document  = { gloss = "The ceiling on passages produced from one document.", owner = "derive", resolves = "concept" }
+rolling-overlap        = { gloss = "The whole-word suffix strip against a rolling caption display.", owner = "derive", resolves = "concept" }
+overlap-gate           = { gloss = "The word floor and contiguity condition on the overlap strip.", owner = "derive", resolves = "concept" }
+
+# test-engine
+single-file-run        = { gloss = "`contextful derive test`, one engine against one file.", owner = "derive", resolves = "code" }
+identical-build        = { gloss = "The verb resolving binding, search path, pins and allowlist as a pipeline does.", owner = "derive", resolves = "concept" }
+no-side-effects        = { gloss = "The verb writing nothing and reading no store.", owner = "derive", resolves = "concept" }
+json-output            = { gloss = "The `--json` object carrying identity, zone, capability, claims, text and cues.", owner = "derive", resolves = "code" }
+unsupported-driver     = { gloss = "A driver the single-file verb does not exercise.", owner = "derive", resolves = "concept" }
+
+# ---------------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------------
+
+[error]
+DeriveConfigKeyMissing      = { gloss = "A required `[pipeline.source.config]` key is absent or blank.", owner = "derive" }
+DeriveNoStoreRoot           = { gloss = "The source was built without a store root or without its pipeline identifier.", owner = "derive" }
+DeriveForeignOutputTable    = { gloss = "Configuration named an output table belonging to another pipeline.", owner = "derive" }
+DeriveUnitIncomplete        = { gloss = "A parent row carries no key or no media value.", owner = "derive" }
+DeriveJournaledPull         = { gloss = "A derive pipeline was configured to journal its pulls.", owner = "derive" }
+DeriveUnmeteredGrant        = { gloss = "A transcribe pipeline declared a shared-quota grant.", owner = "derive" }
+DeriveMeteredClient         = { gloss = "A link pipeline opened a socket outside the mediated client.", owner = "derive" }
+DeriveEngineUnbound         = { gloss = "A pipeline named an engine the machine has not defined.", owner = "derive" }
+DeriveCommandInManifest     = { gloss = "An executable key appeared on the request side of the binding split.", owner = "derive" }
+DeriveUnknownTask           = { gloss = "A `task` value outside the supported pair.", owner = "derive" }
+DeriveDriverMismatch        = { gloss = "A `driver` and `task` pairing the tier does not serve.", owner = "derive" }
+DeriveEndpointHostNotBare   = { gloss = "An engine answered with more than a host in `endpoint_host`.", owner = "derive" }
+DeriveRemoteUrlUnsupported  = { gloss = "A remote address was handed to an engine that declines them.", owner = "derive" }
+DeriveMediaUnreadable       = { gloss = "A media value is neither an address nor a readable file on this machine.", owner = "derive" }
+DeriveConfidenceOutOfRange  = { gloss = "An adapter returned a confidence outside the normalized interval.", owner = "derive" }
+DeriveLinkEngineUnavailable = { gloss = "A link engine returned the run-ending engine variant.", owner = "derive" }
+DeriveAdvisoryZone          = { gloss = "A row's zone column was taken from the operator's advisory key.", owner = "derive" }
+DeriveShellCommand          = { gloss = "A step's command was given as a string rather than an argument array.", owner = "derive" }
+DeriveEnvNameInvalid        = { gloss = "An environment allowlist entry is spelled outside the permitted character set.", owner = "derive" }
+DeriveSecretUnresolved      = { gloss = "A credential-reference template names nothing the provider chain resolves.", owner = "derive" }
+DeriveStepExit              = { gloss = "A chain step ended with a non-zero status.", owner = "derive" }
+DeriveStepTimeout           = { gloss = "A chain outran its deadline and its process group was killed.", owner = "derive" }
+DeriveOutputCap             = { gloss = "A step's captured output crossed its byte bound.", owner = "derive" }
+DeriveStepProducedNothing   = { gloss = "A preprocess step exited zero without writing its output file.", owner = "derive" }
+DeriveBinaryMissing         = { gloss = "A declared command is not an executable file on this machine.", owner = "derive" }
+DeriveUnpinnedPath          = { gloss = "A path-form command carries no content digest.", owner = "derive" }
+DeriveDigestMismatch        = { gloss = "A pinned file's bytes differ from its recorded digest.", owner = "derive" }
+DeriveHostListEmpty         = { gloss = "A fetch binding declared an empty host list.", owner = "derive" }
+DeriveHostListWildcard      = { gloss = "A fetch binding declared a bare star as a host entry.", owner = "derive" }
+DeriveHostEntryMalformed    = { gloss = "A host entry is empty or carries a scheme, a port or a path.", owner = "derive" }
+DeriveSchemeUnsupported     = { gloss = "A followed address uses a scheme other than http or https.", owner = "derive" }
+DeriveAddressLiteral        = { gloss = "A followed address names a numeric literal rather than a host name.", owner = "derive" }
+DeriveLoopbackHost          = { gloss = "A followed address names the machine the fetch runs on.", owner = "derive" }
+DeriveHostNotAllowed        = { gloss = "A followed host is absent from the operator's list.", owner = "derive" }
+DeriveRedirectDowngrade     = { gloss = "A redirect moved from a secure scheme to a plain one.", owner = "derive" }
+DeriveFetchBindingKey       = { gloss = "A process-spawning key appeared on a fetch binding.", owner = "derive" }
+DeriveCharsetUnsupported    = { gloss = "A document declared a character set other than UTF-8.", owner = "derive" }
+DeriveBytesNotUtf8          = { gloss = "A document declaring no character set failed UTF-8 validation.", owner = "derive" }
+DeriveFailureOffTable       = { gloss = "Per-unit failure state was recorded outside the output table.", owner = "derive" }
+DeriveUnitStatusUnknown     = { gloss = "A row carries a status outside the registered four.", owner = "derive" }
+DeriveReservedDiscriminator = { gloss = "A derive table declared the reserved genre-flipping column name.", owner = "derive" }
+DeriveSettledUnitRevived    = { gloss = "A permanently settled unit re-entered the outstanding set.", owner = "derive" }
+DeriveUnredactedError       = { gloss = "A `last_error` value was written without passing address redaction.", owner = "derive" }
+DerivePrimaryKeyMissing     = { gloss = "A derive output table declared no unit-and-sequence key pair.", owner = "derive" }
+DeriveCueOutOfOrder         = { gloss = "A caption block starts before the block already accepted.", owner = "derive" }
+DeriveTestEngineUnsupported = { gloss = "The single-file verb was handed a driver it does not exercise.", owner = "derive" }
+
+# ---------------------------------------------------------------------------
+# Named bounds — one entry per limit clause, one clause per entry.
+# ---------------------------------------------------------------------------
+
+[limit]
+derive-rows-per-run        = { value = 25,      unit = "rows",     owner = "derive.select.limit.rows-per-run",              gloss = "Units one derive run attempts, after the anti-join truncates the outstanding list." }
+derive-attempts-per-unit   = { value = 3,       unit = "attempts", owner = "derive.select.limit.attempts-per-unit",         gloss = "Attempts one unit receives before its marker settles." }
+derive-seconds-per-run     = { value = 300,     unit = "s",        owner = "derive.select.limit.seconds-per-run",           gloss = "Wall clock the serial unit loop holds for a socket-opening task." }
+derive-upstream-excerpt    = { value = 4,       unit = "KiB",      owner = "derive.bind.limit.upstream-excerpt",            gloss = "Vendor response text an upstream error carries back." }
+derive-chain-deadline      = { value = 1800,    unit = "s",        owner = "derive.exec.limit.chain-deadline",              gloss = "Wall clock one unit's whole subprocess chain runs for." }
+derive-step-output         = { value = 8,       unit = "MiB",      owner = "derive.exec.limit.step-output",                 gloss = "Captured output one chain step may produce." }
+derive-audit-entries       = { value = 64,      unit = "entries",  owner = "derive.exec.limit.audit-entries",               gloss = "Captured step-output entries one chain contributes to the run record." }
+derive-step-error-excerpt  = { value = 4,       unit = "KiB",      owner = "derive.exec.limit.step-error-excerpt",          gloss = "Error text a failing step carries inside its typed error." }
+derive-engine-id-prefix    = { value = 12,      unit = "chars",    owner = "derive.exec.limit.engine-id-prefix",            gloss = "Hexadecimal characters of digest inside an exec engine identifier." }
+derive-redirect-chain      = { value = 5,       unit = "hops",     owner = "derive.fetch.limit.redirect-chain",             gloss = "Redirect hops one fetch follows." }
+derive-document-prefix     = { value = 1,       unit = "MiB",      owner = "derive.fetch.limit.document-prefix",            gloss = "Document prefix the head scanner reads before the remainder is dropped." }
+derive-probe-prefix        = { value = 64,      unit = "KiB",      owner = "derive.fetch.limit.probe-prefix",               gloss = "Bytes one range request against a picture candidate reads." }
+derive-hop-timeout         = { value = 20,      unit = "s",        owner = "derive.fetch.limit.hop-timeout",                gloss = "Wall clock one fetch hop holds." }
+derive-retry-after-default = { value = 60,      unit = "s",        owner = "derive.fetch.limit.retry-after-default",        gloss = "Rate-limit wait used when a response supplies no usable header." }
+derive-empty-ceiling       = { value = 1,       unit = "attempts", owner = "derive.land.limit.empty-attempt-ceiling",       gloss = "Attempts a unit in the established-empty status receives in total." }
+derive-passage-chars       = { value = 600,     unit = "chars",    owner = "derive.parse-cues.limit.passage-chars",         gloss = "Character length at which an open passage closes." }
+derive-passage-span        = { value = 60,      unit = "s",        owner = "derive.parse-cues.limit.passage-span",          gloss = "Elapsed span at which an open passage closes." }
+derive-passage-bytes       = { value = 8,       unit = "KiB",      owner = "derive.parse-cues.limit.passage-bytes",         gloss = "Text one passage holds." }
+derive-passages-per-doc    = { value = 2000,    unit = "rows",     owner = "derive.parse-cues.limit.passages-per-document", gloss = "Passages one caption document yields." }

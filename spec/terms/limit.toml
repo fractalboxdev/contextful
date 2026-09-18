@@ -1,0 +1,216 @@
+# Named bounds — a numeral in a `limit` clause resolves to exactly one entry, and each
+# entry is asserted by exactly one clause. Two independent bounds carrying the same
+# number are two entries; one shared ceiling is one entry reached by reference.
+
+[limit]
+aggregate-grant-group-ceiling = { value = 1, unit = "entries", owner = "disclosure.release.limit.group-ceiling", gloss = "Floor on an aggregate grant's declared groups-per-query ceiling." }
+assignment-value = { value = 16, unit = "chars", owner = "pipeline.guard-secrets.limit.assignment", gloss = "Minimum value length for a keyword-equals-value match." }
+attribution-value-count = { value = 512, unit = "entries", owner = "connector.export.limit.attribution-budget", gloss = "Partition values one failure attribution export returns per session." }
+attribution-value-size = { value = 512, unit = "B", owner = "connector.export.limit.attribution-budget", gloss = "Bytes in one attributed partition value." }
+audit-appends-per-root = { value = 16, unit = "entries", owner = "accountability.attest.limit.appends-per-root", gloss = "Entries between two signed roots." }
+audit-root-commit-cadence = { value = 10, unit = "min", owner = "accountability.attest.limit.root-commit-cadence", gloss = "Default cadence at which signed roots reach the replication bucket." }
+aws-key-id-body = { value = 16, unit = "chars", owner = "pipeline.guard-secrets.limit.matcher", gloss = "Uppercase alphanumerics following an access-key id prefix." }
+broadcast-ring-entries = { value = 256, unit = "entries", owner = "run.project.limit.broadcast-ring", gloss = "Snapshots the per-run broadcast buffer holds before a subscriber resynchronizes." }
+build-container-disk = { value = 18, unit = "GiB", owner = "build.gate.limit.container-disk", gloss = "Usable disk available to the gate container." }
+build-container-memory = { value = 12, unit = "GiB", owner = "build.gate.limit.container-memory", gloss = "Memory available to the gate container." }
+build-default-dead-band = { value = 2, unit = "percent", owner = "build.baseline.limit.default-dead-band", gloss = "Dead band a rate-valued baseline entry gates at when it declares no override." }
+build-duplicate-row-rate = { value = 0, unit = "percent", owner = "build.evaluate.limit.duplicate-row-rate", gloss = "Share of a ranking that may repeat one table-and-row-key pair." }
+build-engine-build-dir = { value = 2.2, unit = "GiB", owner = "build.build.limit.engine-build-dir", gloss = "Build-directory cost of one cargo invocation that rebuilds the bundled SQL engine." }
+build-engine-library = { value = 1.1, unit = "GiB", owner = "build.build.limit.engine-library", gloss = "Size of the static library such an invocation emits." }
+build-forbidden-row-rate = { value = 0, unit = "percent", owner = "build.evaluate.limit.forbidden-row-rate", gloss = "Share of a regression case's returned rows that may be named in a must-not-retrieve set." }
+build-in-window-rate = { value = 95, unit = "percent", owner = "build.evaluate.limit.in-window-rate", gloss = "In-window rate floor on a case declaring a recency bound." }
+build-parallel-job-memory = { value = 3, unit = "GiB", owner = "build.gate.limit.parallel-job-memory", gloss = "Memory budgeted per parallel build job, from which the job count derives." }
+build-precision-floor = { value = 60, unit = "percent", owner = "build.evaluate.limit.precision-floor", gloss = "Precision floor a ranked run holds." }
+build-query-function-link-cost = { value = 55, unit = "MiB", owner = "build.build.limit.query-function-link-cost", gloss = "Size the linked query functions add to each engine-linked binary." }
+build-rank-quality-dead-band = { value = 3, unit = "percent", owner = "build.baseline.limit.rank-quality-dead-band", gloss = "Dead band the ranked-quality entry gates at against its committed value." }
+build-residency-soak-drift = { value = 5, unit = "percent", owner = "build.gate.limit.residency-soak", gloss = "Allowed drift of the resident set between the first and the seventh day of a soak." }
+build-size-ceiling = { value = 12, unit = "GiB", owner = "build.gate.limit.build-size-ceiling", gloss = "Ceiling the budget stage holds total build size to." }
+build-stage-free-disk = { value = 2, unit = "GiB", owner = "build.gate.limit.stage-free-disk", gloss = "Free disk a stage has available before it begins work." }
+build-test-binary-link-cost = { value = 290, unit = "MiB", owner = "build.test.limit.binary-link-cost", gloss = "Static link size of one test binary compiled from a file directly under the tests directory, for a crate linking the bundled SQL engine." }
+cancel-poll-interval = { value = 500, unit = "ms", owner = "run.cancel.limit.poll-interval", gloss = "Cadence at which a pull in flight reads the cancellation columns." }
+compaction-interval-trigger = { value = 6, unit = "h", owner = "store.fold.limit.compaction-interval", gloss = "Elapsed time after which a table's compaction pass fires." }
+console-articles-per-subject = { value = 3, unit = "entries", owner = "console.brief.limit.articles-per-subject", gloss = "Matched articles one card subject carries." }
+console-axis-label = { value = 40, unit = "chars", owner = "console.render.limit.view-cell", gloss = "Characters one axis label carries." }
+console-card-subjects = { value = 3, unit = "subjects", owner = "console.brief.limit.card-subjects", gloss = "Subjects one greeting card carries." }
+console-catchup-window = { value = 7, unit = "d", owner = "console.brief.limit.catchup-window", gloss = "The cap the backend applies to a requested catch-up window." }
+console-earlier-widgets = { value = 2, unit = "entries", owner = "console.render.limit.earlier-widgets", gloss = "Earlier widgets kept behind a turn's disclosure." }
+console-learnings-per-turn = { value = 3, unit = "entries", owner = "console.learn.limit.learnings-per-turn", gloss = "Durable conclusions one distillation pass writes." }
+console-line-chart-floor = { value = 3, unit = "rows", owner = "console.render.limit.line-chart-floor", gloss = "Rows on distinct days a result needs before a line is drawn." }
+console-overlay-cache = { value = 5, unit = "min", owner = "console.plan-turn.limit.overlay-cache", gloss = "The cache lifetime of a store's persona overlay, a miss included." }
+console-overlay-length = { value = 8000, unit = "chars", owner = "console.plan-turn.limit.overlay-length", gloss = "The truncation point of a store-supplied persona overlay." }
+console-replan-rounds = { value = 1, unit = "attempts", owner = "console.plan-turn.limit.replan-rounds", gloss = "Further planning rounds granted after a first round returns nothing usable." }
+console-resolver-scan = { value = 1000, unit = "rows", owner = "console.render.limit.resolver-scan", gloss = "Rows of a result the property resolver scans." }
+console-sample-labels = { value = 3, unit = "entries", owner = "console.set-vantage.limit.sample-labels", gloss = "Sampled labels one table contributes to the arrivals strip." }
+console-sources-per-turn = { value = 8, unit = "entries", owner = "console.ground.limit.sources-per-turn", gloss = "The ceiling on entries in a turn's numbered source list." }
+console-topic-tier-tokens = { value = 2, unit = "tokens", owner = "console.brief.limit.topic-tier-tokens", gloss = "Shared tokens the topic tier requires between a conclusion and a row." }
+console-unit-length = { value = 12, unit = "chars", owner = "console.render.limit.unit-length", gloss = "Characters a view hint's unit string carries." }
+console-view-cell = { value = 300, unit = "chars", owner = "console.render.limit.view-cell", gloss = "Characters one rendered cell carries." }
+console-view-columns = { value = 12, unit = "entries", owner = "console.render.limit.view-table", gloss = "Columns a rendered view carries." }
+console-view-points = { value = 200, unit = "entries", owner = "console.render.limit.view-series", gloss = "Points a rendered view carries across its series." }
+console-view-rows = { value = 50, unit = "rows", owner = "console.render.limit.view-table", gloss = "Rows a rendered view carries." }
+console-view-series = { value = 6, unit = "entries", owner = "console.render.limit.view-series", gloss = "Series a rendered view carries." }
+contract-file-lines = { value = 900, unit = "rows", owner = "corpus.anatomy.limit.file-length", gloss = "The line ceiling on a file whose role is contract." }
+contributor-share-range = { value = 100, unit = "percent", owner = "disclosure.suppress.limit.contributor-share", gloss = "Upper bound of a declared maximum single-contributor share of a group's metric mass." }
+control-artifact-compressed = { value = 60, unit = "MiB", owner = "topology.package.limit.control-budget", gloss = "Compressed release artifact of the control profile." }
+control-cold-start = { value = 8, unit = "s", owner = "control.serve.limit.cold-start", gloss = "The span within which a retrieval container reaches readiness from cold." }
+control-external-beat = { value = 5, unit = "min", owner = "control.arm.limit.external-beat", gloss = "The fixed granularity of the platform heartbeat that wakes a suspending deployment." }
+control-heartbeat-beat = { value = 15, unit = "s", owner = "control.dispatch.limit.heartbeat-beat", gloss = "The interval between worker heartbeats." }
+control-heartbeat-lapse = { value = 60, unit = "s", owner = "control.dispatch.limit.heartbeat-lapse", gloss = "The heartbeat lapse after which in-flight work reschedules onto another worker." }
+control-idle-rss = { value = 80, unit = "MiB", owner = "topology.package.limit.control-budget", gloss = "Idle resident set of the control profile." }
+control-isolate-memory = { value = 128, unit = "MiB", owner = "control.serve.limit.isolate-memory", gloss = "Memory available to the routing isolate that terminates a read request." }
+control-listing-page = { value = 1000, unit = "entries", owner = "control.visualize.limit.listing-page", gloss = "The ceiling on objects one pack listing call answers with." }
+control-poll-interval = { value = 30, unit = "s", owner = "control.reconcile.limit.poll-interval", gloss = "The control poll interval when a control block declares none." }
+control-step-cpu-free = { value = 10, unit = "ms", owner = "control.dispatch.limit.step-cpu-free", gloss = "Per-step CPU on a free orchestrator tier." }
+control-step-cpu-paid = { value = 5, unit = "min", owner = "control.dispatch.limit.step-cpu-paid", gloss = "Per-step CPU on a paid orchestrator tier." }
+control-step-result = { value = 1, unit = "MiB", owner = "control.dispatch.limit.step-result", gloss = "The cap on a checkpointed step result, which carries a pointer rather than a payload." }
+control-tick-interval = { value = 500, unit = "ms", owner = "control.arm.limit.tick-interval", gloss = "The in-process trigger evaluates the armed set on this interval." }
+control-worker-count = { value = 2, unit = "workers", owner = "topology.package.limit.runtime-worker", gloss = "The control profile's async-runtime worker count." }
+deadline-granularity = { value = 100, unit = "ms", owner = "connector.package.limit.call-deadline", gloss = "Epoch-interruption granularity the deadlines are armed at." }
+derive-attempts-per-unit = { value = 3, unit = "attempts", owner = "derive.select.limit.attempts-per-unit", gloss = "Attempts one unit receives before its marker settles." }
+derive-audit-entries = { value = 64, unit = "entries", owner = "derive.exec.limit.audit-entries", gloss = "Captured step-output entries one chain contributes to the run record." }
+derive-chain-deadline = { value = 1800, unit = "s", owner = "derive.exec.limit.chain-deadline", gloss = "Wall clock one unit's whole subprocess chain runs for." }
+derive-document-prefix = { value = 1, unit = "MiB", owner = "derive.fetch.limit.document-prefix", gloss = "Document prefix the head scanner reads before the remainder is dropped." }
+derive-empty-ceiling = { value = 1, unit = "attempts", owner = "derive.land.limit.empty-attempt-ceiling", gloss = "Attempts a unit in the established-empty status receives in total." }
+derive-engine-id-prefix = { value = 12, unit = "chars", owner = "derive.exec.limit.engine-id-prefix", gloss = "Hexadecimal characters of digest inside an exec engine identifier." }
+derive-hop-timeout = { value = 20, unit = "s", owner = "derive.fetch.limit.hop-timeout", gloss = "Wall clock one fetch hop holds." }
+derive-passage-bytes = { value = 8, unit = "KiB", owner = "derive.parse-cues.limit.passage-bytes", gloss = "Text one passage holds." }
+derive-passage-chars = { value = 600, unit = "chars", owner = "derive.parse-cues.limit.passage-chars", gloss = "Character length at which an open passage closes." }
+derive-passage-span = { value = 60, unit = "s", owner = "derive.parse-cues.limit.passage-span", gloss = "Elapsed span at which an open passage closes." }
+derive-passages-per-doc = { value = 2000, unit = "rows", owner = "derive.parse-cues.limit.passages-per-document", gloss = "Passages one caption document yields." }
+derive-probe-prefix = { value = 64, unit = "KiB", owner = "derive.fetch.limit.probe-prefix", gloss = "Bytes one range request against a picture candidate reads." }
+derive-redirect-chain = { value = 5, unit = "hops", owner = "derive.fetch.limit.redirect-chain", gloss = "Redirect hops one fetch follows." }
+derive-retry-after-default = { value = 60, unit = "s", owner = "derive.fetch.limit.retry-after-default", gloss = "Rate-limit wait used when a response supplies no usable header." }
+derive-rows-per-run = { value = 25, unit = "rows", owner = "derive.select.limit.rows-per-run", gloss = "Units one derive run attempts, after the anti-join truncates the outstanding list." }
+derive-seconds-per-run = { value = 300, unit = "s", owner = "derive.select.limit.seconds-per-run", gloss = "Wall clock the serial unit loop holds for a socket-opening task." }
+derive-step-error-excerpt = { value = 4, unit = "KiB", owner = "derive.exec.limit.step-error-excerpt", gloss = "Error text a failing step carries inside its typed error." }
+derive-step-output = { value = 8, unit = "MiB", owner = "derive.exec.limit.step-output", gloss = "Captured output one chain step may produce." }
+derive-upstream-excerpt = { value = 4, unit = "KiB", owner = "derive.bind.limit.upstream-excerpt", gloss = "Vendor response text an upstream error carries back." }
+describe-history-ceiling = { value = 500, unit = "rows", owner = "run.record.limit.describe-window", gloss = "Highest ceiling the describe surface honors." }
+describe-history-default = { value = 5, unit = "rows", owner = "run.record.limit.describe-window", gloss = "Runs the describe surface answers with when the caller names no ceiling." }
+diagnostic-store-requests = { value = 0, unit = "requests", owner = "disclosure.set-mode.limit.diagnostic-request", gloss = "Object-store calls the single-operator diagnostic issues." }
+digest-width = { value = 32, unit = "chars", owner = "disclosure.classify.limit.digest-width", gloss = "Character width of a hash digest, against which a truncation is measured." }
+discovery-call-deadline = { value = 60, unit = "s", owner = "connector.package.limit.call-deadline", gloss = "Wall-clock deadline on one discovery call." }
+edge-artifact-compressed = { value = 50, unit = "MiB", owner = "topology.package.limit.edge-budget", gloss = "Compressed release artifact of the edge profile." }
+edge-idle-rss = { value = 60, unit = "MiB", owner = "topology.package.limit.edge-budget", gloss = "Idle resident set of the edge profile." }
+erasure-expedited-collection = { value = 24, unit = "h", owner = "accountability.erase.limit.expedited-collection", gloss = "Collection schedule for snapshots superseded by an erasure." }
+erasure-propagation = { value = 72, unit = "h", owner = "accountability.erase.limit.propagation", gloss = "Request to last-replica refresh." }
+exchange-mint-lifetime-ceiling = { value = 3600, unit = "s", owner = "authority.exchange.limit.minted-lifetime-ceiling", gloss = "Ceiling a configured minted lifetime clamps down to." }
+exchange-mint-lifetime-default = { value = 900, unit = "s", owner = "authority.exchange.limit.minted-lifetime-default", gloss = "Lifetime a minted credential carries when the exchange policy declares none." }
+expansion-buffer = { value = 268435456, unit = "B", owner = "connector.source.limit.expansion-budget", gloss = "Buffered expansion document bytes in one read, 256 MiB." }
+expansion-elapsed = { value = 600, unit = "s", owner = "connector.source.limit.expansion-budget", gloss = "Elapsed time one expanding read may take." }
+expansion-follow-ups = { value = 200, unit = "requests", owner = "connector.source.limit.expansion-budget", gloss = "Follow-up requests one expanding read may issue." }
+export-history-ceiling = { value = 5000, unit = "rows", owner = "run.record.limit.export-ceiling", gloss = "Highest ceiling the export honors, applied per pipeline before the merge." }
+export-history-default = { value = 500, unit = "rows", owner = "run.record.limit.export-ceiling", gloss = "Runs the export answers with when the caller names no ceiling." }
+formal-axiom-allowlist = { value = 3, unit = "entries", owner = "formal.audit-axioms.limit.allowlist-entries", gloss = "Axioms a required constant's footprint is admitted to reach." }
+formal-build-artifacts = { value = 512, unit = "KiB", owner = "formal.model.limit.build-artifacts", gloss = "Artifacts a full elaboration writes." }
+formal-build-wall-time = { value = 60, unit = "s", owner = "formal.model.limit.build-wall-time", gloss = "Cold elaboration of the whole package." }
+formal-counterexample-corpus = { value = 256, unit = "entries", owner = "formal.differential-test.limit.corpus-entries", gloss = "Minimized disagreements the corpus retains." }
+formal-differential-run-budget = { value = 300, unit = "s", owner = "formal.differential-test.limit.run-budget", gloss = "One differential invocation, corpus replay included." }
+formal-library-targets = { value = 1, unit = "entries", owner = "formal.model.limit.library-targets", gloss = "Library targets the package manifest declares." }
+formal-package-dependencies = { value = 0, unit = "entries", owner = "formal.model.limit.declared-dependencies", gloss = "External libraries the package manifest requires." }
+formal-proof-targets = { value = 5, unit = "entries", owner = "formal.prove.limit.proof-targets", gloss = "Named statements the authority mapping carries." }
+formal-recheck-credentials = { value = 0, unit = "entries", owner = "formal.recheck.limit.credentials", gloss = "Credentials exposed to the recheck environment." }
+formal-recheck-wall-time = { value = 600, unit = "s", owner = "formal.recheck.limit.wall-time", gloss = "A recheck from an empty artifact directory." }
+formal-refinement-first-functions = { value = 2, unit = "entries", owner = "formal.scope-claim.limit.refinement-first-functions", gloss = "Decision functions refinement opens on." }
+full-artifact-compressed = { value = 150, unit = "MiB", owner = "topology.package.limit.full-budget", gloss = "Compressed release artifact of the full profile." }
+full-idle-rss = { value = 180, unit = "MiB", owner = "topology.package.limit.full-budget", gloss = "Idle resident set of the full profile." }
+full-worker-cap = { value = 8, unit = "workers", owner = "topology.package.limit.runtime-worker", gloss = "Ceiling on the full profile's async-runtime worker count." }
+function-wall-clock = { value = 15, unit = "min", owner = "topology.deploy.limit.wall-clock-cap", gloss = "Per-invocation wall clock above which a target hosts neither a backfill nor a component connector." }
+github-token-tail = { value = 36, unit = "chars", owner = "pipeline.guard-secrets.limit.token-tail", gloss = "Characters a GitHub token prefix is matched with." }
+guest-config-size = { value = 65536, unit = "B", owner = "connector.import.limit.config-size", gloss = "Serialized guest configuration table, 64 KiB." }
+hash-truncation-width = { value = 32, unit = "chars", owner = "enforcement.mask.limit.hash-truncation-width", gloss = "Output width of a keyed hash; a truncation behind it sits below this." }
+in-flight-requests = { value = 8, unit = "requests", owner = "connector.package.limit.session-budget", gloss = "Outbound requests one connector holds open at once." }
+issuance-lifetime-ceiling = { value = 24, unit = "h", owner = "authority.issue.limit.issuance-ceiling", gloss = "Longest credential lifetime a project's persisted issuance policy permits." }
+issuer-key-rotation-cadence = { value = 90, unit = "d", owner = "authority.issue.limit.key-rotation-cadence", gloss = "Interval at which the credential-signing key rotates." }
+journal-inline-cutoff = { value = 1, unit = "MiB", owner = "run.journal.limit.inline-cutoff", gloss = "Largest journaled value held inline in its own row." }
+key-set-refresh-interval = { value = 300, unit = "s", owner = "authority.verify.limit.key-set-refresh", gloss = "Lifetime of a fetched published key set before refresh." }
+key-set-stale-ceiling = { value = 1, unit = "h", owner = "authority.verify.limit.key-set-staleness", gloss = "Total age past which a last-known-good key set stops being served." }
+linear-memory-ceiling = { value = 2147483648, unit = "B", owner = "connector.package.limit.linear-memory", gloss = "Ceiling a per-connector override may raise linear memory to, 2 GiB." }
+linear-memory-default = { value = 268435456, unit = "B", owner = "connector.package.limit.linear-memory", gloss = "Default linear memory per connector instance, 256 MiB." }
+masks-per-table = { value = 128, unit = "entries", owner = "enforcement.mask.limit.masks-per-table", gloss = "Column masks one table declares." }
+membership-list-entries = { value = 512, unit = "entries", owner = "enforcement.filter-rows.limit.membership-list", gloss = "Literals in one membership list inside a predicate." }
+memory-evidence-references = { value = 256, unit = "entries", owner = "memory.recall.limit.evidence-references", gloss = "Evidence row references one claim may name before recall suppresses it." }
+memory-extract-attempts = { value = 3, unit = "attempts", owner = "memory.synthesize.limit.extract-attempts", gloss = "Retries of a schema-invalid extract response, with feedback, per batch." }
+min-group-size-floor = { value = 2, unit = "subjects", owner = "disclosure.suppress.limit.min-group-size", gloss = "Floor on a declared minimum distinct-contributor group size." }
+modality-value-count = { value = 5, unit = "entries", owner = "store.reserve.limit.modality-values", gloss = "Accepted values of the reserved modality column." }
+office-decompression = { value = 67108864, unit = "B", owner = "connector.source.limit.decompression-budget", gloss = "Total decompressed bytes across a multi-part office read, 64 MiB." }
+outcome-grace-window = { value = 86400, unit = "s", owner = "memory.settle.limit.grace-window", gloss = "Inclusive window past a prediction's deadline within which an observation is still scored." }
+parity-soak-window = { value = 24, unit = "h", owner = "topology.deploy.limit.parity-soak", gloss = "Accumulation period before the parity comparison runs." }
+partition-median-floor = { value = 16, unit = "MiB", owner = "store.index.limit.partition-median-size", gloss = "Projected median partition size below which planning warns." }
+plan-version-prefix = { value = 16, unit = "chars", owner = "pipeline.compile.limit.plan-version", gloss = "Leading characters of a compiled plan's hash that form its version." }
+projection-coalesce-window = { value = 100, unit = "ms", owner = "run.project.limit.coalescing", gloss = "Window snapshot broadcasts collapse into." }
+read-call-deadline = { value = 30, unit = "s", owner = "connector.package.limit.call-deadline", gloss = "Wall-clock deadline on one read call." }
+read-candidate-window-floor = { value = 200, unit = "rows", owner = "read.retrieve.limit.candidate-window", gloss = "Smallest candidate window a ranked read draws from." }
+read-cold-start-ceiling = { value = 8, unit = "s", owner = "read.cache.limit.cold-start", gloss = "Interval within which a cold retrieval container reaches readiness." }
+read-content-token-cap = { value = 12, unit = "tokens", owner = "read.retrieve.limit.token-cap", gloss = "Ceiling on the content-token set extracted from one query." }
+read-filter-values = { value = 256, unit = "entries", owner = "read.retrieve.limit.filter-budget", gloss = "Values admitted in one filter membership list." }
+read-lexical-index-cache = { value = 64, unit = "entries", owner = "read.rank.limit.lexical-index-cache", gloss = "Entries held in the FIFO cache of full-text indexes." }
+read-plural-suffix-floor = { value = 4, unit = "chars", owner = "read.retrieve.limit.plural-suffix-floor", gloss = "Token length below which the optional plural suffix is dropped." }
+read-row-ceiling-overfetch = { value = 1, unit = "rows", owner = "read.respond.limit.row-ceiling", gloss = "Rows fetched past the row ceiling, whose presence sets the truncation flag." }
+read-sidecar-probe-floor = { value = 64, unit = "rows", owner = "read.retrieve.limit.sidecar-oversampling", gloss = "Smallest candidate count one sidecar probe requests." }
+read-sidecar-size-cap = { value = 64, unit = "MiB", owner = "read.retrieve.limit.sidecar-size-cap", gloss = "Stored-vector size past which a sidecar is left unloaded." }
+read-token-length-floor = { value = 2, unit = "chars", owner = "read.retrieve.limit.token-length-floor", gloss = "Shortest ASCII run kept in the content-token set." }
+read-window-anchor-tolerance = { value = 24, unit = "h", owner = "read.rank.limit.window-anchor-tolerance", gloss = "How far past the question's anchor a publication instant still counts as in-window." }
+redaction-rules-per-pipeline = { value = 256, unit = "entries", owner = "enforcement.redact.limit.rules-per-pipeline", gloss = "Removal rules one pipeline declares." }
+refusal-payload = { value = 512, unit = "B", owner = "enforcement.refuse.limit.error-payload", gloss = "Bytes one refusal payload carries." }
+relations-per-session = { value = 1024, unit = "entries", owner = "enforcement.compose.limit.relations-per-session", gloss = "Registered relations one session holds." }
+reserved-optional-column-count = { value = 4, unit = "entries", owner = "store.reserve.limit.optional-producer-columns", gloss = "Reserved optional columns a producer may set on a row." }
+residency-region-entries = { value = 16, unit = "entries", owner = "enforcement.reside.limit.region-entries", gloss = "Regions one residency allow-set names." }
+restatement-gram = { value = 8, unit = "tokens", owner = "corpus.reference.refusal.restated-sentence", gloss = "The n-gram width at which two statements count as a restatement." }
+retry-base-delay = { value = 100, unit = "ms", owner = "run.retry.limit.default-policy", gloss = "First delay of the default exponential schedule." }
+retry-default-attempts = { value = 5, unit = "attempts", owner = "run.retry.limit.default-policy", gloss = "Total attempts the default schedule allows, the first included." }
+retry-max-delay = { value = 30, unit = "s", owner = "run.retry.limit.default-policy", gloss = "Clamp on any single computed retry delay." }
+retry-single-attempt = { value = 1, unit = "attempts", owner = "run.retry.limit.single-attempt", gloss = "Total attempts of the no-retry schedule." }
+row-predicate-size = { value = 4, unit = "KiB", owner = "enforcement.filter-rows.limit.predicate-size", gloss = "Source text of one declared row predicate." }
+run-error-cap = { value = 2, unit = "KiB", owner = "run.record.limit.error-cap", gloss = "Size a recorded run error is clipped to on the shared projection." }
+run-metadata-bytes = { value = 16384, unit = "B", owner = "run.project.limit.metadata-size", gloss = "Serialized bound on application metadata attached to a run snapshot." }
+run-retention-window = { value = 7, unit = "d", owner = "store.fold.limit.run-retention", gloss = "Default window a folded or displaced run directory stays readable." }
+scope-guard-walk = { value = 4096, unit = "entries", owner = "enforcement.refuse.limit.guard-walk", gloss = "Parse-tree nodes the scope guard visits for one statement." }
+secret-lease-backoff-cap = { value = 30, unit = "s", owner = "secret.lease.limit.retry-backoff", gloss = "Ceiling on exponential mint backoff." }
+secret-lease-backoff-floor = { value = 250, unit = "ms", owner = "secret.lease.limit.retry-backoff", gloss = "Default first mint backoff under `CONTEXTFUL_LEASE_RETRY_BACKOFF_MS`." }
+secret-lease-calls-per-resolver = { value = 1, unit = "calls", owner = "secret.lease.limit.calls-per-resolver", gloss = "Mint calls a resolver issues per declared name per lease window." }
+secret-lease-retirement-cap = { value = 30, unit = "s", owner = "secret.lease.limit.retirement-margin", gloss = "Ceiling on the early-retirement margin." }
+secret-lease-retirement-fraction = { value = 10, unit = "percent", owner = "secret.lease.limit.retirement-margin", gloss = "Share of a lease window a cached entry retires early." }
+secret-lease-retry-attempts = { value = 3, unit = "attempts", owner = "secret.lease.limit.retry-attempts", gloss = "Default mint retries under `CONTEXTFUL_LEASE_MAX_ATTEMPTS`." }
+secret-lease-vendor-requests-on-failure = { value = 0, unit = "requests", owner = "secret.lease.limit.vendor-requests-on-failure", gloss = "Vendor requests a run issues on an expired lease whose provider is unreachable." }
+secret-name-length = { value = 128, unit = "chars", owner = "secret.reference.limit.name-length", gloss = "Longest logical name a reference carries." }
+secret-record-expiry-warning = { value = 30, unit = "d", owner = "secret.record.limit.expiry-warning", gloss = "Window within which the inventory marks an expiring credential." }
+secret-resolve-cache-ttl = { value = 300, unit = "s", owner = "secret.resolve.limit.cache-ttl", gloss = "Longest life of a hydrated value in a resolver's cache." }
+segment-audience-floor = { value = 1000, unit = "subjects", owner = "disclosure.release.limit.audience-floor", gloss = "Working minimum audience size a segment build resolves at or above." }
+segment-composition-cell = { value = 100, unit = "subjects", owner = "disclosure.release.limit.composition-cell", gloss = "Working minimum size of a released segment's composition cell." }
+session-log-budget = { value = 1048576, unit = "B", owner = "connector.package.limit.session-budget", gloss = "Logging budget per connector session, 1 MiB." }
+shape-declaration-per-model = { value = 1, unit = "entries", owner = "disclosure.set-mode.limit.aggregate-shape-test", gloss = "Non-aggregate declarations a model carries to silence the coverage finding." }
+site-id-max-length = { value = 64, unit = "chars", owner = "run.record.limit.site-id-length", gloss = "Longest accepted site id." }
+site-id-min-length = { value = 1, unit = "chars", owner = "run.record.limit.site-id-length", gloss = "Shortest accepted site id." }
+snapshot-default-retention = { value = 7, unit = "d", owner = "accountability.erase.limit.default-retention", gloss = "Collection schedule for snapshots superseded by ordinary writes." }
+snapshot-id-digits = { value = 20, unit = "chars", owner = "store.lay-out.limit.snapshot-id-width", gloss = "Width of the zero-padded nanosecond field in a snapshot directory name." }
+stale-object-report = { value = 100, unit = "files", owner = "enforcement.bound-redistribution.limit.reported-objects", gloss = "Objects a left-behind report names by key." }
+subject-value-bytes = { value = 256, unit = "B", owner = "authority.identify.limit.subject-value", gloss = "Longest subject value the mint accepts." }
+summarize-only-quote = { value = 280, unit = "chars", owner = "enforcement.mask.limit.verbatim-quote", gloss = "Verbatim release from a summarize-only column in one citation." }
+sync-lease-renewal-interval = { value = 200, unit = "s", owner = "sync.lease.limit.renewal-interval", gloss = "Interval at which a holder renews, a third of the granted life." }
+sync-lease-ttl = { value = 10, unit = "min", owner = "sync.lease.limit.ttl", gloss = "Granted life of a lease, after which it expires with no action from anyone." }
+sync-multipart-threshold = { value = 5, unit = "MiB", owner = "sync.push.limit.multipart-threshold", gloss = "Object size above which a push uploads in multiple parts." }
+sync-node-id-length = { value = 64, unit = "chars", owner = "sync.merge.limit.node-id-length", gloss = "Maximum length of a writer node id, which is interpolated into a path segment." }
+sync-probe-losing-writes = { value = 2, unit = "attempts", owner = "sync.probe.limit.losing-writes", gloss = "Conditional writes the endpoint rejects before the capability counts as demonstrated." }
+sync-pull-convergence-rounds = { value = 3, unit = "attempts", owner = "sync.pull.limit.convergence-rounds", gloss = "Index re-fetches a pull performs against keys moving beneath it." }
+sync-push-retries = { value = 5, unit = "attempts", owner = "sync.merge.limit.commit-retries", gloss = "Re-read-and-re-commit rounds on a lost index compare-and-set." }
+telemetry-projection-latency = { value = 1, unit = "s", owner = "accountability.record.limit.projection-latency", gloss = "The response time of a projection lookup." }
+telemetry-projection-window = { value = 24, unit = "h", owner = "accountability.record.limit.projection-window", gloss = "The rolling window the telemetry projection answers over." }
+template-overfetch = { value = 1, unit = "rows", owner = "disclosure.template.limit.overfetch", gloss = "Rows read past the effective ceiling to establish the truncation flag." }
+tenant-child-lifetime = { value = 15, unit = "min", owner = "authority.grant.limit.tenant-child-lifetime", gloss = "Lifetime of a per-query tenant-scoped child credential." }
+token-truncation-width = { value = 20, unit = "chars", owner = "enforcement.mask.limit.token-truncation-width", gloss = "Output width of a tokenization; a truncation behind it sits below this." }
+token-width = { value = 20, unit = "chars", owner = "disclosure.classify.limit.token-width", gloss = "Character width of a token, against which a truncation is measured." }
+visibility-access-tables = { value = 7, unit = "entries", owner = "visibility.mirror.limit.access-table-count", gloss = "The mirror occupies seven reserved table names in a store." }
+visibility-declared-levels = { value = 4, unit = "entries", owner = "visibility.declare-fidelity.limit.declared-levels", gloss = "The declared fidelity vocabulary: mirrored, coarse, federated, excluded." }
+visibility-group-depth = { value = 8, unit = "hops", owner = "visibility.reach.limit.group-closure-depth", gloss = "Default bound on the recursive walk over the mirrored group graph." }
+visibility-observed-classes = { value = 4, unit = "entries", owner = "visibility.mirror.limit.observed-classes", gloss = "The per-resource observed class vocabulary: mirrored, coarse, federated, unknown." }
+visibility-principal-kinds = { value = 6, unit = "entries", owner = "visibility.reach.limit.principal-kinds", gloss = "The principal kind vocabulary: user, group, team, channel, org, public." }
+visibility-source-families = { value = 4, unit = "entries", owner = "visibility.declare-fidelity.limit.source-families", gloss = "The source family vocabulary: container-roster, item-exception, person-container, directory." }
+visibility-stale-postures = { value = 2, unit = "entries", owner = "visibility.bound-staleness.limit.stale-postures", gloss = "The stale posture vocabulary: refuse, public_only." }
+visibility-sweep-kinds = { value = 3, unit = "entries", owner = "visibility.sweep.limit.sweep-kinds", gloss = "The sweep kind vocabulary: full, incremental, webhook." }
+visibility-tombstone-scopes = { value = 3, unit = "entries", owner = "visibility.sweep.limit.tombstone-scopes", gloss = "The tombstone scope vocabulary: resource, grant, principal." }
+walk-page-cap = { value = 1000, unit = "requests", owner = "connector.source.limit.page-cap", gloss = "Requests one paginated walk may issue." }
+worksheet-cell-text = { value = 67108864, unit = "B", owner = "connector.source.limit.worksheet-landing", gloss = "Resolved cell text landed from one worksheet, 64 MiB." }
+worksheet-rows = { value = 1048576, unit = "rows", owner = "connector.source.limit.worksheet-landing", gloss = "Rows landed from one worksheet." }
+zone-allow-set-entries = { value = 32, unit = "entries", owner = "enforcement.place.limit.allow-set-entries", gloss = "Patterns one zone allow-set holds." }
+zone-identifier-length = { value = 128, unit = "chars", owner = "enforcement.place.limit.zone-identifier-length", gloss = "Characters in a zone's identifier segment." }

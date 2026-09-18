@@ -1,0 +1,114 @@
+# Registry fragment — the `visibility` contract.
+# Merged into spec/terms/{operation,term,error,limit}.toml by `contextful spec`.
+
+[operation]
+mirror           = { gloss = "The three-way conjunction, the access tables as ordinary store data, and the binding that compiles a table's semi-join.", file = "spec/42-visibility.md", aliases = ["acl-mirror", "permission-mirror"] }
+sweep            = { gloss = "Observation of one source's permission state: sweep kinds, the observation clock, the coverage watermark, tombstones and revocation.", file = "spec/42-visibility.md", aliases = ["acl-sweep", "permission-sweep"] }
+reach            = { gloss = "Per-request resolution of a subject to the resources it reaches, the bounded group closure, and the cache keyed on committed access state.", file = "spec/42-visibility.md", aliases = ["reachable-set", "resolve-reach"] }
+bound-staleness  = { gloss = "The declared age budget on mirrored authorization, the refusal past it, and the one narrowing posture.", file = "spec/42-visibility.md", aliases = ["staleness-budget", "acl-freshness"] }
+declare-fidelity = { gloss = "The fidelity level a table claims, the source family that bounds the claim, and live federation under a reader's own delegated credential.", file = "spec/42-visibility.md", aliases = ["fidelity", "declare-level"] }
+pack             = { gloss = "The reviewed unit that lands one source: a manifest fragment plus a connector pin, its access mapping, its defaults and its container allowlist.", file = "spec/42-visibility.md", aliases = ["source-pack"] }
+explain          = { gloss = "The decision endpoint, replay over a window, negative assurance with its coverage, and the audience report.", file = "spec/42-visibility.md", aliases = ["explain-access", "why-visible"] }
+publish-answer   = { gloss = "An answer computed at one reader's scope reaching a surface with an audience, and what leaves the organization.", file = "spec/42-visibility.md", aliases = ["outbound-answer", "share-answer"] }
+
+[term]
+# The conjunction and its vocabulary
+two-key-rule          = { gloss = "The three-way conjunction of mirrored source access list, manifest policy and the caller's credential that decides whether a row reaches a subject.", owner = "visibility", resolves = "concept" }
+source-faithful       = { gloss = "Reproducing the originating system's own audience without widening it, oversharing included.", owner = "visibility", resolves = "concept" }
+access_resources      = { gloss = "Mirror table: one row per governed object, carrying its observed visibility class.", owner = "visibility", resolves = "code" }
+access_grants         = { gloss = "Mirror table: one row per resource, principal and level.", owner = "visibility", resolves = "code" }
+access_principals     = { gloss = "Mirror table: one row per source principal with its kind and the source's own label.", owner = "visibility", resolves = "code" }
+access_group_members  = { gloss = "Mirror table: one row per edge of the source group graph.", owner = "visibility", resolves = "code" }
+access_identity_links = { gloss = "Mirror table: one row mapping a source principal onto a workspace subject with the method that established it.", owner = "visibility", resolves = "code" }
+access_tombstones     = { gloss = "Mirror table: one row per observed revocation, keyed by normalized scope columns.", owner = "visibility", resolves = "code" }
+access_freshness      = { gloss = "Mirror table: one row per source and sweep kind, carrying the enforced watermark and the diagnostic fields.", owner = "visibility", resolves = "code" }
+visibility_class      = { gloss = "Per-resource observed class in mirrored, coarse, federated, unknown, written by a sweep.", owner = "visibility", resolves = "code" }
+principal_kind        = { gloss = "The kind of a mirrored principal: user, group, team, channel, org or public.", owner = "visibility", resolves = "code" }
+public-principal      = { gloss = "The literal principal `public`, carried into the grant join by every request.", owner = "visibility", resolves = "code" }
+grant-level           = { gloss = "The `level` column: a source-defined string the mapping projects onto engine actions, counted on a read as read-conferring or not.", owner = "visibility", resolves = "code" }
+tombstone-scope       = { gloss = "The `scope` column deciding which of resource_id, principal and level participate in a suppression match.", owner = "visibility", resolves = "code" }
+watermark_at          = { gloss = "The enforced coverage instant: the completion of the last sweep that read every governed resource in a source.", owner = "visibility", resolves = "code" }
+_acl_observed_at      = { gloss = "The instant a permission state was read at its source, held separately from the instant the row landed.", owner = "visibility", resolves = "code" }
+_acl_sweep_kind       = { gloss = "The kind of run that wrote an access row: full, incremental or webhook.", owner = "visibility", resolves = "code" }
+_acl_sweep_id         = { gloss = "The identifier of the run that wrote an access row.", owner = "visibility", resolves = "code" }
+observation           = { gloss = "One dated reading of a source's permission state, carried on an access row by its clock, kind and run identifier.", owner = "visibility", resolves = "concept" }
+
+# The binding
+visibility-block      = { gloss = "The `[pipeline.tables.visibility]` declaration binding one content table to a source, a resource key, a grain, a fidelity level, a family, a budget and a stale posture.", owner = "visibility", resolves = "code" }
+resource_key          = { gloss = "The column on a content table naming the governed object its rows belong to.", owner = "visibility", resolves = "code" }
+resource_kind         = { gloss = "The source's own name for the grain a binding joins at.", owner = "visibility", resolves = "code" }
+semi-join             = { gloss = "The filter against the caller's reachable resource set compiled into that caller's registered view.", owner = "visibility", resolves = "concept" }
+organization-wide-face = { gloss = "A deployment that has any visibility block or any permission sweep, and therefore serves readers inside their inherited audience.", owner = "visibility", resolves = "concept" }
+
+# Reach
+reachable-set         = { gloss = "The set of resources one subject reaches, resolved per request from links, closure, grants and tombstones.", owner = "visibility", resolves = "concept" }
+max_group_depth       = { gloss = "The declared bound on the recursive walk over the mirrored group graph.", owner = "visibility", resolves = "code" }
+group-closure         = { gloss = "The set of groups a subject's principals belong to, transitively, within the depth bound.", owner = "visibility", resolves = "concept" }
+source-epoch          = { gloss = "The cache-key component covering committed grants, resources, tombstones and freshness for one source.", owner = "visibility", resolves = "code" }
+directory-epoch       = { gloss = "The cache-key component covering the committed group graph and identity links.", owner = "visibility", resolves = "code" }
+link-method           = { gloss = "How an identity link was established: scim_email, oidc_sub or operator_asserted.", owner = "visibility", resolves = "code" }
+
+# Staleness
+max_acl_staleness     = { gloss = "The declared age budget on mirrored authorization for one table.", owner = "visibility", resolves = "code" }
+on_stale              = { gloss = "The declared posture past the budget: refuse or public_only.", owner = "visibility", resolves = "code" }
+source-lag            = { gloss = "The distance from a source's watermark to the request instant, compared against a table's budget.", owner = "visibility", resolves = "concept" }
+public-status-probe   = { gloss = "The single-field re-read of a resource's public status that the narrowing posture serves on.", owner = "visibility", resolves = "concept" }
+
+# Fidelity
+fidelity              = { gloss = "The declared level a table claims: mirrored, coarse, federated or excluded.", owner = "visibility", resolves = "code" }
+source-family         = { gloss = "The structural class of a source — container-roster, item-exception, person-container or directory — that bounds the level it may declare.", owner = "visibility", resolves = "code" }
+federated-leg         = { gloss = "The part of an answer queried live under the reader's own delegated credential rather than read from the store.", owner = "visibility", resolves = "concept" }
+grain                 = { gloss = "The scope a coarse binding joins at, carried into the response envelope by its source's own name.", owner = "visibility", resolves = "concept" }
+
+# Pack
+source-pack           = { gloss = "A manifest fragment plus a connector pin landing one source with its tables, mapping, defaults, sweeps and templates.", owner = "visibility", resolves = "concept" }
+access-mapping        = { gloss = "The pack declaration projecting a source's permission model onto the access tables, asserting no audience.", owner = "visibility", resolves = "code" }
+container-allowlist   = { gloss = "The default-deny, all-of list of container identifiers admitting a row from a source that exposes membership and no permission data.", owner = "visibility", resolves = "code" }
+
+# Explain and publication
+access-explanation    = { gloss = "The decision plus the path that produced it, returned without a row from the resource under examination.", owner = "visibility", resolves = "concept" }
+window-verdict        = { gloss = "The replayed result over a window, printed beneath the coverage block that qualifies it.", owner = "visibility", resolves = "concept" }
+negative-assurance    = { gloss = "A claim that a subject did not reach a resource, scoped to the observations on record and their intervals.", owner = "visibility", resolves = "concept" }
+audience-report       = { gloss = "The aggregate over the mirror naming resources that reach more than a declared share of the organization.", owner = "visibility", resolves = "concept" }
+provenance-line       = { gloss = "The line a published answer carries, stating it was drawn from the sharer's own access.", owner = "visibility", resolves = "concept" }
+publication           = { gloss = "The asker's deliberate act of posting an answer where other people read it.", owner = "visibility", resolves = "concept" }
+
+[error]
+VisibilityViewBypass           = { gloss = "A read path reached table rows around the caller's registered view.", owner = "visibility" }
+VisibilityUnboundTable         = { gloss = "A table on an organization-wide face carries no visibility block and no exclusion.", owner = "visibility" }
+VisibilityBindingIncomplete    = { gloss = "A servable binding lacks a declared sweep for its source or a declared staleness budget.", owner = "visibility" }
+VisibilityUngappedStream       = { gloss = "The watermark was advanced from an event stream not declared gap-detectable.", owner = "visibility" }
+VisibilityOrphanGrant          = { gloss = "A grant landed with no resource row, or against a resource observed as unknown.", owner = "visibility" }
+VisibilityUnverifiedLink       = { gloss = "An identity link outside the verified method set reached the reachable-set computation.", owner = "visibility" }
+VisibilityClosureDepth         = { gloss = "The group closure reached its declared depth bound; no set is returned.", owner = "visibility" }
+VisibilityDegradedCached       = { gloss = "A reachable set or result produced past a budget, or under the narrowing posture, was retained.", owner = "visibility" }
+VisibilityBudgetMalformed      = { gloss = "A staleness budget is a compound form, a bare number, or carries an unrecognized suffix.", owner = "visibility" }
+VisibilityAccessStale          = { gloss = "Source lag exceeds a touched table's budget, or the source has never completed a full sweep.", owner = "visibility" }
+VisibilityBudgetUnreachable    = { gloss = "A declared budget is tighter than the sweep cadence its source sustains.", owner = "visibility" }
+VisibilityFamilyBound          = { gloss = "A table declared a fidelity level its source family does not permit.", owner = "visibility" }
+VisibilityFamilyUndeclared     = { gloss = "A mapping landed a table without naming its source family.", owner = "visibility" }
+VisibilityFederatedRegistered  = { gloss = "A federated table was registered on a read face.", owner = "visibility" }
+VisibilityFederatedCacheShared = { gloss = "A federated result was retained under a key that omits the subject.", owner = "visibility" }
+VisibilityComputedInputsMirrored = { gloss = "A mapping projected a sharing engine's inputs into the grant table.", owner = "visibility" }
+VisibilityRosterFromPayload    = { gloss = "A mapping derived grants from a people list inside a content payload.", owner = "visibility" }
+VisibilityMappingAbsent        = { gloss = "A pack landed a table with neither an access mapping nor an exclusion.", owner = "visibility" }
+VisibilityPackAssertsAccess    = { gloss = "A pack entry carries an access-shaped key the mapping schema does not define.", owner = "visibility" }
+VisibilityAllowlistAnyOf       = { gloss = "A container allowlist is evaluated as any-of rather than all-of.", owner = "visibility" }
+VisibilityUnsupportedCoarse    = { gloss = "A table declared coarse where its source emits no container or workspace signal.", owner = "visibility" }
+VisibilityDiagnosticRow        = { gloss = "An access explanation returned content from the resource under examination.", owner = "visibility" }
+VisibilityNoObservations       = { gloss = "A replay window holds no observations, so no claim is available.", owner = "visibility" }
+VisibilityUnqualifiedAssurance = { gloss = "An assurance answer was emitted without its coverage block.", owner = "visibility" }
+VisibilityIndividualNamed      = { gloss = "An explanation rendered the members of a group on the path.", owner = "visibility" }
+VisibilityShareAffordance      = { gloss = "A surface offered a share control on access-explanation output.", owner = "visibility" }
+VisibilityAskerlessAudience    = { gloss = "A scheduled job posted to an audience under a service identity.", owner = "visibility" }
+
+[limit]
+visibility-access-tables     = { value = 7, unit = "entries", owner = "visibility.mirror.limit.access-table-count", gloss = "The mirror occupies seven reserved table names in a store." }
+visibility-observed-classes  = { value = 4, unit = "entries", owner = "visibility.mirror.limit.observed-classes", gloss = "The per-resource observed class vocabulary: mirrored, coarse, federated, unknown." }
+visibility-sweep-kinds       = { value = 3, unit = "entries", owner = "visibility.sweep.limit.sweep-kinds", gloss = "The sweep kind vocabulary: full, incremental, webhook." }
+visibility-tombstone-scopes  = { value = 3, unit = "entries", owner = "visibility.sweep.limit.tombstone-scopes", gloss = "The tombstone scope vocabulary: resource, grant, principal." }
+visibility-principal-kinds   = { value = 6, unit = "entries", owner = "visibility.reach.limit.principal-kinds", gloss = "The principal kind vocabulary: user, group, team, channel, org, public." }
+visibility-group-depth       = { value = 8, unit = "hops", owner = "visibility.reach.limit.group-closure-depth", gloss = "Default bound on the recursive walk over the mirrored group graph." }
+visibility-declared-levels   = { value = 4, unit = "entries", owner = "visibility.declare-fidelity.limit.declared-levels", gloss = "The declared fidelity vocabulary: mirrored, coarse, federated, excluded." }
+visibility-source-families   = { value = 4, unit = "entries", owner = "visibility.declare-fidelity.limit.source-families", gloss = "The source family vocabulary: container-roster, item-exception, person-container, directory." }
+visibility-stale-postures    = { value = 2, unit = "entries", owner = "visibility.bound-staleness.limit.stale-postures", gloss = "The stale posture vocabulary: refuse, public_only." }

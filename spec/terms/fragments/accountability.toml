@@ -1,0 +1,68 @@
+# accountability — audit, erasure and the receipt.
+# Operations, subject terms, error identifiers and named bounds owned by
+# spec/44-accountability.md.
+
+[operation]
+record  = { gloss = "What a read leaves behind: the span it emits, the audit entry and its linkage, the attributes each entry carries, and where telemetry lands.", file = "spec/44-accountability.md", aliases = ["audit-append", "log-the-read"] }
+attest  = { gloss = "Turning the record into evidence: chain verification, signed segment roots, lineage and access explanations, and the strength each guarantee carries.", file = "spec/44-accountability.md", aliases = ["verify-the-chain", "explain"] }
+erase   = { gloss = "Removing a subject or a tenant: the declared subject column, the request ledger, direct tombstones, the lineage cascade, the tenant rewrite, and propagation to replicas.", file = "spec/44-accountability.md", aliases = ["forget", "right-to-erasure"] }
+receipt = { gloss = "The signed artifact a tenant purge returns: its claim, its coverage block, its idempotence, and credential-free verification.", file = "spec/44-accountability.md", aliases = ["purge-receipt"] }
+
+[term]
+span                    = { gloss = "The telemetry record a read emits, carrying the subject tuple, the statement digest, the rules applied and the result counts.", owner = "accountability", resolves = "concept" }
+entry                   = { gloss = "One line of the audit chain: a sequence number, a predecessor hash, the attributes, and the entry's own digest.", owner = "accountability", resolves = "concept" }
+chain                   = { gloss = "The append-only hash-linked sequence of audit entries; the attestable record of what was read and what was erased.", owner = "accountability", resolves = "concept" }
+genesis                 = { gloss = "The first entry of a chain, whose predecessor field is the zero digest.", owner = "accountability", resolves = "concept" }
+telemetry               = { gloss = "The queryable projection of the chain, exported to an operator-configured sink.", owner = "accountability", resolves = "concept" }
+seq                     = { gloss = "The ascending sequence number on an audit entry.", owner = "accountability", resolves = "code" }
+prev_hash               = { gloss = "The digest of the preceding entry, carried on each audit entry.", owner = "accountability", resolves = "code" }
+entry_hash              = { gloss = "sha256 over the sequence number, the predecessor hash and the attributes of one entry.", owner = "accountability", resolves = "code" }
+signed-root             = { gloss = "A `{root, count, signature}` object over a segment's tip hash.", owner = "accountability", resolves = "concept" }
+transparency-log        = { gloss = "An optional external append-only store for signed roots.", owner = "accountability", resolves = "concept" }
+lineage-attestation     = { gloss = "A signed summary of how a synthesized fact was produced, carrying no evidence row identifiers.", owner = "accountability", resolves = "concept" }
+cardinality-band        = { gloss = "Evidence volume reported as one of `0`, `1-9`, `10-99`, `100+`.", owner = "accountability", resolves = "concept" }
+negative-assurance      = { gloss = "A statement that a subject could not reach a resource, scoped to the observations that back it.", owner = "accountability", resolves = "concept" }
+overshare-report        = { gloss = "A single aggregate over the mirrored grants naming resources readable above a declared organizational share.", owner = "accountability", resolves = "concept" }
+compliance-substrate    = { gloss = "The mechanisms a compliance program attests against — erasure, residency-aware placement, sensitive-column tagging, a tamper-evident chain — as distinct from a certification.", owner = "accountability", resolves = "concept" }
+tombstone               = { gloss = "The marker that removes a subject's row from every read of a subject-keyed shape.", owner = "accountability", resolves = "concept" }
+cascade                 = { gloss = "The one-hop invalidation of derived facts whose provenance references an erased subject or an erased row identifier.", owner = "accountability", resolves = "concept" }
+staleness-marker        = { gloss = "The row-free `{subject_hash, executed_at}` object at the store root that arms the restaging gate.", owner = "accountability", resolves = "concept" }
+purge                   = { gloss = "The tenant erasure path: a columnar rewrite of every reachable file retaining rows outside the named tenant.", owner = "accountability", resolves = "concept" }
+receipt                 = { gloss = "The signed artifact a purge returns, scoping its claim to rewrite-and-exclude over the canonical store.", owner = "accountability", resolves = "concept" }
+forget_requests         = { gloss = "The catalog table holding one row per erasure request.", owner = "accountability", resolves = "code" }
+request_id              = { gloss = "The engine-minted identifier of one erasure request.", owner = "accountability", resolves = "code" }
+prior_request_id        = { gloss = "The completed request preceding this one for the same hash.", owner = "accountability", resolves = "code" }
+subject_hash            = { gloss = "`sha256:<hex>` of a subject key, written in place of the key itself.", owner = "accountability", resolves = "code" }
+tenant_hash             = { gloss = "`sha256:<hex>` of a tenant identifier, written in place of the identifier itself.", owner = "accountability", resolves = "code" }
+requested_at            = { gloss = "When an erasure request opened.", owner = "accountability", resolves = "code" }
+completed_at            = { gloss = "When an erasure request closed; null while it is in flight.", owner = "accountability", resolves = "code" }
+subject_id              = { gloss = "The manifest key naming a table's subject-identifier column.", owner = "accountability", resolves = "code" }
+receipt_version         = { gloss = "The field whose value fixes the reach of a receipt's claim.", owner = "accountability", resolves = "code" }
+coverage                = { gloss = "The receipt block naming what the claim includes and what it excludes.", owner = "accountability", resolves = "code" }
+payload_hash            = { gloss = "The digest over the canonical payload bytes of a signed artifact.", owner = "accountability", resolves = "code" }
+public_key              = { gloss = "The issuer key in tagged distribution form, carried on a signed artifact.", owner = "accountability", resolves = "code" }
+
+[error]
+AuditEntryUnpersisted    = { gloss = "A read's audit entry could not be written, and the read returns no rows.", owner = "accountability" }
+UnconfiguredEgress       = { gloss = "An outbound call is reachable without operator configuration.", owner = "accountability" }
+AuditChainBroken         = { gloss = "A sequence gap or a disagreeing digest, carrying the index of the earliest such entry.", owner = "accountability" }
+AtRestClaimUnqualified   = { gloss = "The at-rest guarantee is asserted without the qualifier that scopes it.", owner = "accountability" }
+AssuranceWindowEmpty     = { gloss = "A window holding zero observations supports no verdict.", owner = "accountability" }
+ErasureSubjectUndeclared = { gloss = "A subject erasure names a table that declares no subject-identifier column.", owner = "accountability" }
+ErasureRestagingRequired = { gloss = "A fact read arrives while the restaging gate stands.", owner = "accountability" }
+PurgeTenantColumnType    = { gloss = "The resolved tenant column is not a string type.", owner = "accountability" }
+PurgeTenantUndeclared    = { gloss = "No model declares an outermost partition key from which to resolve the tenant.", owner = "accountability" }
+PurgeRequiresOwner       = { gloss = "A purge was presented with a capability token.", owner = "accountability" }
+ReceiptClaimWidened      = { gloss = "A coverage block names a scope broader than its receipt version declares.", owner = "accountability" }
+ReceiptIdentifierLeak    = { gloss = "A receipt carries a tenant identifier in cleartext.", owner = "accountability" }
+ReceiptReplayed          = { gloss = "The byte-identical earlier artifact was returned in place of a freshly signed one.", owner = "accountability" }
+ReceiptWithoutRewrite    = { gloss = "The columnar rewrite engine is unavailable, so no artifact is signed.", owner = "accountability" }
+
+[limit]
+telemetry-projection-window   = { value = 24, unit = "h", owner = "accountability.record.limit.projection-window", gloss = "The rolling window the telemetry projection answers over." }
+telemetry-projection-latency  = { value = 1, unit = "s", owner = "accountability.record.limit.projection-latency", gloss = "The response time of a projection lookup." }
+audit-appends-per-root        = { value = 16, unit = "entries", owner = "accountability.attest.limit.appends-per-root", gloss = "Entries between two signed roots." }
+audit-root-commit-cadence     = { value = 10, unit = "min", owner = "accountability.attest.limit.root-commit-cadence", gloss = "Default cadence at which signed roots reach the replication bucket." }
+erasure-propagation           = { value = 72, unit = "h", owner = "accountability.erase.limit.propagation", gloss = "Request to last-replica refresh." }
+erasure-expedited-collection  = { value = 24, unit = "h", owner = "accountability.erase.limit.expedited-collection", gloss = "Collection schedule for snapshots superseded by an erasure." }
+snapshot-default-retention    = { value = 7, unit = "d", owner = "accountability.erase.limit.default-retention", gloss = "Collection schedule for snapshots superseded by ordinary writes." }

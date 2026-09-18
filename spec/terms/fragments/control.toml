@@ -1,0 +1,210 @@
+# Registry fragment — the `control` contract.
+# Cadence, dispatch and the operator plane, in `spec/50-control-plane.md`.
+
+[operation]
+arm = { gloss = "The schedule grammar, the trigger adapter and its durability, the wake route, and how an entry computes its next fire.", file = "spec/50-control-plane.md", aliases = ["schedule", "trigger"] }
+reconcile = { gloss = "The control source, the snapshot pointer and its versions, the pure schedule diff, and what a failed poll leaves armed.", file = "spec/50-control-plane.md", aliases = ["diff"] }
+fire = { gloss = "Job declaration, the closed kind union, same-tick ordering, the fire watermark, and the one-shot evaluation.", file = "spec/50-control-plane.md", aliases = ["tick"] }
+dispatch = { gloss = "The two deployment roles, the bounded fire pool and its exclusion keys, step results, and the worker adapter contract.", file = "spec/50-control-plane.md", aliases = ["delegate"] }
+serve = { gloss = "The read path's two hops, a published hostname's declared posture, and the states in which a store is unavailable.", file = "spec/50-control-plane.md", aliases = ["route"] }
+register-store = { gloss = "Which stores a deployment serves, how a store's credential and binding names derive from its id, and how a request reaches its origin.", file = "spec/50-control-plane.md", aliases = ["registry"] }
+edit = { gloss = "The configuration document, the structured schedule specification, and connector configuration in the operator surface.", file = "spec/50-control-plane.md", aliases = ["author"] }
+apply = { gloss = "Validation, the immutable version claim, the pointer advance, and the authority an apply carries.", file = "spec/50-control-plane.md", aliases = ["materialize"] }
+visualize = { gloss = "The operations canvas, the file and ingestion views, and the learnings record a store publishes about itself.", file = "spec/50-control-plane.md", aliases = ["render"] }
+
+[term]
+"adapter-durability-is-printed" = { gloss = "The selected adapter and its durability print at startup and read the same on the health surface", owner = "control", resolves = "concept" }
+"admin-capability-is-backend-held" = { gloss = "Every edit and every apply carries an admin capability held as a server-side secret and never in the browser", owner = "control", resolves = "concept" }
+"apply-cannot-widen-enforcement" = { gloss = "The operator surface edits configuration rather than row visibility", owner = "control", resolves = "concept" }
+"apply-claims-a-version" = { gloss = "An apply validates the document through the engine", owner = "control", resolves = "code" }
+"apply-fires-nothing" = { gloss = "An id new to a snapshot arms from the current instant and does not fire", owner = "control", resolves = "concept" }
+"apply-is-attributed" = { gloss = "Every apply is attributed to the verified identity that made it and lands in the append-only audit log", owner = "control", resolves = "concept" }
+"arming-from-run-history" = { gloss = "An added or retimed entry computes its next fire from the history recorded for it rather than from the", owner = "control", resolves = "concept" }
+"auth-mode" = { gloss = "An entry authors `auth`: `token`, the mode when none is written, reads the derived secret", owner = "control", resolves = "code" }
+"auth-mode-is-not-derived" = { gloss = "Intent is authored rather than inferred from a secret's presence", owner = "control", resolves = "concept" }
+"authored-credential-name" = { gloss = "An entry carrying its own credential or binding name raises `StoreNameAuthored`", owner = "control", resolves = "concept" }
+"beat-order" = { gloss = "One beat runs in order: read the pointer; fetch that version's document from the control plane over a", owner = "control", resolves = "concept" }
+"binding-dispatch" = { gloss = "Reaching a store whose origin sits behind its own identity perimeter goes over a worker-to-worker service", owner = "control", resolves = "code" }
+"binding-name-resolution" = { gloss = "A binding name is checked to resolve to an actual fetcher", owner = "control", resolves = "concept" }
+"build-target" = { gloss = "A `build` target naming no declared model raises `JobTargetUnbound` at the same validation pass", owner = "control", resolves = "code" }
+"cadence-lease" = { gloss = "The reconciler holds a lease on a deployment's cadence", owner = "control", resolves = "concept" }
+"canvas-node-kinds" = { gloss = "The operations canvas is an interactive graph with pan", owner = "control", resolves = "code" }
+"capability-tagged-routing" = { gloss = "A worker registers arbitrary tags and a step declares `requires` as a strict constraint and `prefer` as", owner = "control", resolves = "concept" }
+"cold-start" = { gloss = "A retrieval container reaches readiness within 8 s of a cold start", owner = "control", resolves = "code" }
+"compact-target" = { gloss = "A `compact` target names the on-disk table spelled `<pipeline>_<table>`, with every non-alphanumeric", owner = "control", resolves = "code" }
+"connector-configuration" = { gloss = "Adding a connector runs four steps: pick it and a pinned version from the registry, so a replay reaches", owner = "control", resolves = "code" }
+"control-source" = { gloss = "A `[control]` block in `contextful.toml` subscribes a daemon to applied snapshots: one of `snapshot_dir`", owner = "control", resolves = "code" }
+"control-url-is-loopback" = { gloss = "A control `url` whose host is a loopback address is polled", owner = "control", resolves = "concept" }
+"crdt-at-edit-time-only" = { gloss = "The document is a CRDT persisted per store under conditional replacement", owner = "control", resolves = "concept" }
+"cron-keeps-its-instant" = { gloss = "A cron entry keeps the absolute instant it names", owner = "control", resolves = "concept" }
+"cursor-is-the-only-state" = { gloss = "The armed cursor is the reconciler's only state and survives between beats", owner = "control", resolves = "concept" }
+"cycle-exit-status" = { gloss = "A cycle exits zero when its evaluation completed with nothing failed", owner = "control", resolves = "code" }
+"daemon-outlives-the-ui" = { gloss = "Closing either shell stops no ingestion, since cadence lives in the materialized configuration a daemon", owner = "control", resolves = "concept" }
+"deferred-fire-stays-due" = { gloss = "Work deferred by an exclusion key or by the pool's bound stays due and is reconsidered on the next tick", owner = "control", resolves = "concept" }
+"derived-names" = { gloss = "A store's bearer lives in the secret named by the upper snake-case of its id suffixed `_QUERY_TOKEN`", owner = "control", resolves = "code" }
+"descriptor-unknown-field" = { gloss = "A descriptor names the contract version it was written against and decodes with excess properties refused", owner = "control", resolves = "concept" }
+"dial-out-holds-no-port" = { gloss = "A dial-out worker opens an outbound long-lived connection and pulls work, holding no public address and no", owner = "control", resolves = "concept" }
+"diff-buckets" = { gloss = "The decision half is a pure function over a desired schedule set and a running one", owner = "control", resolves = "code" }
+"document-is-the-single-writer" = { gloss = "The editable configuration document is the single writer configuration has: entry definitions", owner = "control", resolves = "concept" }
+"dry-run" = { gloss = "A dry-run action exercises a connector's health check or first-page pull against the declared grants", owner = "control", resolves = "code" }
+"edits-are-not-live-until-apply" = { gloss = "An edit is not live until an apply, and the claimed version is the visible marker of which configuration a", owner = "control", resolves = "concept" }
+"empty-control-store-waits" = { gloss = "Before a first snapshot exists the daemon arms an empty pipeline set and waits", owner = "control", resolves = "concept" }
+"engine-answer-wins" = { gloss = "The engine is preferred and the view reports which source answered", owner = "control", resolves = "concept" }
+"exchange-is-turn-key" = { gloss = "A store on exchange authentication needs no pre-provisioned secret", owner = "control", resolves = "concept" }
+"exclusion-keys" = { gloss = "A per-source exclusion key serializes fires against one upstream", owner = "control", resolves = "concept" }
+"external-beat" = { gloss = "A platform heartbeat wakes a suspending deployment on a fixed granularity of 5 min and carries no cadence", owner = "control", resolves = "code" }
+"external-trigger-without-a-face" = { gloss = "`external` selected on a deployment serving no HTTP face raises `TriggerFaceMissing` at startup", owner = "control", resolves = "concept" }
+"fail-static" = { gloss = "An unreadable pointer, a snapshot that does not parse, or a control plane answering `5xx` raises", owner = "control", resolves = "concept" }
+"failure-continues-the-loop" = { gloss = "A failed entry is logged and evaluation continues", owner = "control", resolves = "concept" }
+"file-surface-is-read-only" = { gloss = "A read-only route serves one object from a store's pack over a read-only binding", owner = "control", resolves = "concept" }
+"fire-pool-bound" = { gloss = "Due work enters a pool bounded by a configured count of fires in flight", owner = "control", resolves = "concept" }
+"fire-watermark" = { gloss = "A maintenance job persists no run record", owner = "control", resolves = "code" }
+"footer-names-its-zone" = { gloss = "Cron-family previews evaluate on the engine clock with a display-only zone toggle", owner = "control", resolves = "concept" }
+"gateway-adds-no-authority" = { gloss = "The gateway performs no translation from one credential into another and issues nothing of its own", owner = "control", resolves = "concept" }
+"heartbeat-beat" = { gloss = "A worker heartbeat runs every 15 s", owner = "control", resolves = "code" }
+"heartbeat-lapse" = { gloss = "A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker", owner = "control", resolves = "code" }
+"heavy-steps-delegate" = { gloss = "A run decomposes into steps inside the orchestrator's step budget", owner = "control", resolves = "concept" }
+"hostname-descriptor" = { gloss = "Every published hostname carries a descriptor naming its worker", owner = "control", resolves = "code" }
+"hot-set-is-local" = { gloss = "The retrieval container keeps the current snapshot set on local disk and maps it in place", owner = "control", resolves = "concept" }
+"idempotent-submit" = { gloss = "`submit` under a repeated idempotency key returns the existing job and starts no duplicate", owner = "control", resolves = "concept" }
+"ids-are-kebab" = { gloss = "A store id is lower kebab-case, so it maps injectively onto a legal environment-variable name and", owner = "control", resolves = "code" }
+"in-band-tool-error" = { gloss = "A step driving the engine over the tool protocol judges success on the tool result rather than on", owner = "control", resolves = "concept" }
+"ingestion-view-grain" = { gloss = "The ingestion view's grain is the ingested row: a vantage-bounded bulk route returns every committed row", owner = "control", resolves = "concept" }
+"interval-anchor" = { gloss = "An `every` interval is unanchored: it ticks from the previous fire", owner = "control", resolves = "concept" }
+"isolate-memory" = { gloss = "The routing isolate holds 128 MiB of memory and a per-request CPU budget", owner = "control", resolves = "code" }
+"issuer-key" = { gloss = "The engine's HTTP face refuses to start without a verification key that both resolves and parses", owner = "control", resolves = "concept" }
+"job-block" = { gloss = "A `[[job]]` block declares `name`, a stable identifier used in logs and diffs", owner = "control", resolves = "code" }
+"job-carries-no-argv" = { gloss = "A block naming a kind outside the union, an argument vector, or a host command raises `JobKindUnknown` at", owner = "control", resolves = "concept" }
+"job-kinds-closed" = { gloss = "The scheduler fires a closed union of kinds — `acl-sweep`", owner = "control", resolves = "code" }
+"job-namespace" = { gloss = "A job name occupies a namespace separate from pipeline ids", owner = "control", resolves = "concept" }
+"jobs-are-operator-local" = { gloss = "Job blocks live in a daemon's own configuration and enter no control-plane document", owner = "control", resolves = "concept" }
+"keep-warm-per-active-deployment" = { gloss = "The reconciler keeps a retrieval container warm for a deployment with active traffic", owner = "control", resolves = "concept" }
+"layered-schedule-input" = { gloss = "Input layers onto that one specification: a constrained phrase box whose failed parse leaves the current", owner = "control", resolves = "code" }
+"learnings-timeline" = { gloss = "The learnings view is one query over the store's own fact mirror rather than a bespoke engine route", owner = "control", resolves = "concept" }
+"lease-fallback-covers-empty-states" = { gloss = "The fallback covers each state an empty control plane produces", owner = "control", resolves = "concept" }
+lexicon = { gloss = "An entry may declare a lexicon, whose shape one shared normalizer owns and whose malformed fields it filters", owner = "control", resolves = "code" }
+"listing-is-confined-by-construction" = { gloss = "The sibling listing route reports objects beneath the pack prefix", owner = "control", resolves = "concept" }
+"listing-page" = { gloss = "One listing call answers at most 1000 entries", owner = "control", resolves = "code" }
+"live-count-excludes-valid-time" = { gloss = "The operator timeline's live count omits the valid-time bound", owner = "control", resolves = "concept" }
+"loopback-on-the-connection" = { gloss = "The poll client follows no redirect, ignores proxy environment variables, and pins `localhost` onto the", owner = "control", resolves = "concept" }
+"malformed-entry" = { gloss = "A payload that does not parse falls back to the built-ins", owner = "control", resolves = "concept" }
+"merge-boundary-is-visible" = { gloss = "The surface separates an irreversible last-write-wins area from the mergeable configuration area", owner = "control", resolves = "concept" }
+"missed-window" = { gloss = "At startup the last fire is read, the elapsed gap counted and logged, and the declared policy decides", owner = "control", resolves = "concept" }
+"no-dependency-edges" = { gloss = "The armed set carries no edge between two entries and no success-triggers-start orchestration", owner = "control", resolves = "concept" }
+"no-hot-reload" = { gloss = "A retimed entry's in-flight run completes under its earlier arming and the new cadence governs its next fire", owner = "control", resolves = "concept" }
+"no-pack-no-file-surface" = { gloss = "A store declaring no pack prefix carries no file surface at all", owner = "control", resolves = "concept" }
+"one-credential-resolver" = { gloss = "Every path needing a store's credential — the tool calls", owner = "control", resolves = "concept" }
+"one-due-evaluation" = { gloss = "Both adapters reach the armed set through one due-ness function", owner = "control", resolves = "concept" }
+"one-endpoint-per-store" = { gloss = "An entry is exactly one endpoint", owner = "control", resolves = "concept" }
+"one-event-derivation" = { gloss = "Both sources derive their events and count their live facts through one pair of functions", owner = "control", resolves = "concept" }
+"one-instance-per-due-unit" = { gloss = "The reconciler starts one durable orchestrator instance per due dispatchable unit rather than one chain", owner = "control", resolves = "concept" }
+"one-progress-writer" = { gloss = "A delegated step reports progress by posting to the same callback route the orchestrating run already exposes", owner = "control", resolves = "concept" }
+"one-shot-control-source" = { gloss = "A configured control source that does not resolve under one-shot evaluation raises", owner = "control", resolves = "concept" }
+"one-shot-cycle" = { gloss = "The `cycle` command evaluates the armed set once and exits", owner = "control", resolves = "code" }
+"one-shot-difference" = { gloss = "One-shot evaluation differs from the daemon's exactly where being one-shot forces it: a missed window", owner = "control", resolves = "concept" }
+"owner-storage" = { gloss = "The hosted configuration owner takes strongly conditional object storage", owner = "control", resolves = "concept" }
+"per-store-version" = { gloss = "The version counter is per store, so applying to one store advances no other store's pointer", owner = "control", resolves = "concept" }
+"plain-data-crosses" = { gloss = "Only plain data crosses between the producer of a snapshot and its consumer", owner = "control", resolves = "concept" }
+"pointer-body" = { gloss = "A pointer body that is not wholly a version raises `ControlPointerMalformed` rather than reading a", owner = "control", resolves = "concept" }
+"poll-interval" = { gloss = "`poll` takes a schedule string and stands at `every 30s` when none is declared", owner = "control", resolves = "code" }
+"portal-store-fields" = { gloss = "The operator surface reads the same store registry as the visitor surface, with the same derived names", owner = "control", resolves = "code" }
+"posture-mismatch" = { gloss = "A hostname answering outside its declared gate", owner = "control", resolves = "concept" }
+"posture-probe" = { gloss = "A deploy asks each declared hostname what an anonymous `GET /` receives and judges the answer against that", owner = "control", resolves = "concept" }
+"probe-table-equals-descriptors" = { gloss = "The deploy's probe table and the descriptors name the same `(hostname", owner = "control", resolves = "concept" }
+"published-at-separates-silence-from-staleness" = { gloss = "The newest report instant in a published record separates a store that has learned nothing from one whose", owner = "control", resolves = "concept" }
+"published-mirror" = { gloss = "A store that cannot be queried publishes its record instead: each fact's subject", owner = "control", resolves = "code" }
+"published-model-needs-a-build-job" = { gloss = "A document publishing a model with no enabled `build` job covering it draws a validation warning per model", owner = "control", resolves = "concept" }
+"published-path-withholds-the-fire-control" = { gloss = "On the published-records path the run-now control is withheld", owner = "control", resolves = "concept" }
+"read-only-surfaces" = { gloss = "Run history and status, the memory record, the append-only audit log, secret material and credential", owner = "control", resolves = "concept" }
+"reconciler-owns-the-set" = { gloss = "The reconciler owns the entire pipeline schedule set the snapshot derives: an id a newer snapshot omits", owner = "control", resolves = "concept" }
+"registry-variables" = { gloss = "Which stores a deployment serves resolves per request from the worker's environment: `CONTEXTFUL_STORES_JSON`", owner = "control", resolves = "code" }
+"remote-control-requirements" = { gloss = "A control transport reaching off the loopback carries all three of a bearer-authenticated read", owner = "control", resolves = "concept" }
+"reserved-id" = { gloss = "Both built-in ids are reserved, and a configured entry claiming one raises `StoreIdReserved` rather than", owner = "control", resolves = "concept" }
+"retention-is-operator-policy" = { gloss = "The owner collects no superseded version; retention of applied versions is operator policy", owner = "control", resolves = "concept" }
+"round-trip-lift" = { gloss = "A stored cron lifts into the structured editor when recompiling it reproduces the expression exactly", owner = "control", resolves = "concept" }
+"router-and-container" = { gloss = "The read path splits into an isolate that terminates the request", owner = "control", resolves = "concept" }
+"schedule-footer" = { gloss = "An always-visible footer carries the humanized schedule", owner = "control", resolves = "code" }
+"schedule-kinds" = { gloss = "Five trigger kinds compile into that string: manual emits no schedule and runs on an explicit fire", owner = "control", resolves = "code" }
+"schedule-string" = { gloss = "The schedule string a pipeline or a job declares: an unanchored interval form, or a five-field cron expression in UTC", owner = "control", resolves = "code" }
+"schedule-string-is-a-compile-target" = { gloss = "The manifest schedule string is the wire contract and the compile target rather than the editing model", owner = "control", resolves = "concept" }
+"secret-at-runtime-binding-at-deploy" = { gloss = "A secret is added while a worker runs; a service binding is declared before that worker ships", owner = "control", resolves = "concept" }
+"secret-material-in-the-document" = { gloss = "A credential value typed into a configuration field raises `SecretMaterialInDocument`", owner = "control", resolves = "concept" }
+"snapshot-is-the-schedule-set" = { gloss = "Under a configured control source the snapshot is the sole source of the pipeline schedule set: local", owner = "control", resolves = "concept" }
+"snapshot-keys" = { gloss = "A control snapshot store holds one `<store>/manifest@current` pointer whose body is the applied version as", owner = "control", resolves = "code" }
+"stage-order" = { gloss = "Entries due in one tick fire in produce-before-publish order: `validate`", owner = "control", resolves = "code" }
+"stage-order-is-a-tiebreak" = { gloss = "That order is a same-tick tiebreak rather than a barrier", owner = "control", resolves = "concept" }
+"state-outside-the-container" = { gloss = "A worker writes its output to the shared object store and returns the key", owner = "control", resolves = "concept" }
+"step-cpu-free" = { gloss = "Per-step CPU is the orchestrator's one hard cap", owner = "control", resolves = "code" }
+"step-cpu-paid" = { gloss = "A paid orchestrator tier raises that same per-step CPU cap to 5 min", owner = "control", resolves = "code" }
+"step-is-not-a-head" = { gloss = "Where a deployment's entries are landing steps of one dependent run", owner = "control", resolves = "concept" }
+"step-result" = { gloss = "A checkpointed step returns a pointer — an object-store key or a catalog row id — against a 1 MiB", owner = "control", resolves = "code" }
+"table-color-is-deterministic" = { gloss = "A deterministic categorical color per table name is shared with the canvas's table pills", owner = "control", resolves = "concept" }
+"three-canvas-sources" = { gloss = "The canvas renders whatever one of three sources supplied and reports which answered", owner = "control", resolves = "concept" }
+"tick-interval" = { gloss = "The in-process adapter evaluates the armed set every 500 ms", owner = "control", resolves = "code" }
+"trigger-adapter" = { gloss = "The trigger is selected by the serve command's `--trigger` option or its environment equivalent", owner = "control", resolves = "code" }
+"two-built-in-stores" = { gloss = "Exactly two stores ship inside the product, on the criterion that they need no configuration: a bundled", owner = "control", resolves = "concept" }
+"two-roles" = { gloss = "A deployment splits into two roles and any provider hosts either", owner = "control", resolves = "concept" }
+"two-shells-one-renderer" = { gloss = "One renderer runs under two shells: a hosted surface behind an identity perimeter talking to a", owner = "control", resolves = "concept" }
+"two-unavailable-states" = { gloss = "The warming state resolves into readiness on its own while the unconfigured state never becomes ready", owner = "control", resolves = "concept" }
+"unanchored-interval-first-fire" = { gloss = "Under `fire-once` an interval entry with no fire on record is due at the next evaluation", owner = "control", resolves = "concept" }
+"unchanged-keeps-next-fire" = { gloss = "An id landing in `unchanged` keeps its existing next fire", owner = "control", resolves = "concept" }
+"unconfigured-gateway" = { gloss = "A gateway with no store configuration serves `503` on every route and never opens", owner = "control", resolves = "concept" }
+"uninitialized-store" = { gloss = "An edit or an apply against a store that has not been initialized raises `StoreNotInitialized` answered as", owner = "control", resolves = "concept" }
+"unknown-history" = { gloss = "History that cannot be read or parsed reads as unknown rather than as never-fired and leaves arming", owner = "control", resolves = "concept" }
+"unknown-trigger" = { gloss = "An unrecognized trigger value raises `TriggerAdapterUnknown` at startup rather than downgrading onto the", owner = "control", resolves = "concept" }
+"unreadable-schedule" = { gloss = "A schedule string the grammar cannot read raises `ScheduleUnreadable` against that one entry", owner = "control", resolves = "concept" }
+"unset-serves-built-ins" = { gloss = "Both variables unset serve the built-ins alone", owner = "control", resolves = "concept" }
+"uploaded-connector-binary" = { gloss = "The operator surface references registered connectors by id and version and edits their grants and", owner = "control", resolves = "concept" }
+"validate-before-arm" = { gloss = "An entry revalidates against the manifest guardrails before it joins the armed set", owner = "control", resolves = "concept" }
+validation = { gloss = "A document failing engine validation raises `ApplyValidationRefused` and claims no version", owner = "control", resolves = "concept" }
+"verification-at-both-hops" = { gloss = "The gateway verifies the credential a caller presented", owner = "control", resolves = "concept" }
+"version-gate" = { gloss = "A poll reads the pointer and re-parses the named snapshot when its version is strictly greater than the", owner = "control", resolves = "code" }
+"version-race" = { gloss = "An apply whose compare-and-swap loses raises `ManifestVersionConflict`", owner = "control", resolves = "concept" }
+"wake-authority" = { gloss = "The wake route takes an authorization covering the wake resource itself", owner = "control", resolves = "concept" }
+"wake-held-open" = { gloss = "The request stays open for the whole evaluation it triggered", owner = "control", resolves = "concept" }
+"wake-outcome" = { gloss = "The wake answers with what its evaluation fired, what failed, what stays armed, and the next due instant,", owner = "control", resolves = "code" }
+"wake-route" = { gloss = "`POST /schedule/run-due` names nothing to execute", owner = "control", resolves = "code" }
+"wall-clock-is-uncapped" = { gloss = "Wall clock per step carries no cap and a suspension counts against no step quota", owner = "control", resolves = "concept" }
+"warming-state" = { gloss = "A data route answers `503` with `Retry-After` while a store warms", owner = "control", resolves = "concept" }
+"wildcard-application-gates-nothing" = { gloss = "A wildcard application over a deployment's domain protects no hostname by itself: it carries a reusable", owner = "control", resolves = "concept" }
+"worker-adapter" = { gloss = "Every worker target implements four operations: `submit(job, idempotencyKey)` returning a job handle", owner = "control", resolves = "code" }
+"worker-secret-boundary" = { gloss = "A dial-out worker resolves credential references against its own local store", owner = "control", resolves = "concept" }
+
+[error]
+ApplyValidationRefused = { gloss = "A configuration document that engine validation refused, so no version was claimed.", owner = "control" }
+ConfigOwnerUnconfigured = { gloss = "A hosted configuration owner with no storage configured behind it.", owner = "control" }
+ConnectorUploadRefused = { gloss = "A connector artifact offered through the operator surface rather than the signed publishing path.", owner = "control" }
+ControlPointerMalformed = { gloss = "A snapshot pointer body that is not wholly an applied version.", owner = "control" }
+ControlSnapshotUnreadable = { gloss = "A control poll that could not read its pointer or parse the document it named.", owner = "control" }
+ControlSourceNotLoopback = { gloss = "A control URL whose host is not a loopback address.", owner = "control" }
+CycleControlSourceUnresolved = { gloss = "A configured control source that does not resolve under one-shot evaluation.", owner = "control" }
+DescriptorUnknownField = { gloss = "A hostname descriptor carrying a property its declared contract version does not model.", owner = "control" }
+DispatchUnitNotAHead = { gloss = "A due id that is a step of a dependent run rather than the run it heads.", owner = "control" }
+GatewayUnconfigured = { gloss = "A gateway holding no store configuration, which answers every route and opens none.", owner = "control" }
+HostnamePostureMismatch = { gloss = "A published hostname answering outside the gate its descriptor declares, or unreachable.", owner = "control" }
+IssuerKeyUnusable = { gloss = "A verification key that does not resolve or does not parse at engine start.", owner = "control" }
+JobKindUnknown = { gloss = "A job block naming a kind outside the closed union, or carrying a command to execute.", owner = "control" }
+JobTargetUnbound = { gloss = "A job target binding to no produced table and no declared model.", owner = "control" }
+ManifestVersionConflict = { gloss = "An apply whose compare-and-swap on the store pointer lost to a concurrent apply.", owner = "control" }
+ScheduleUnreadable = { gloss = "A schedule string the grammar cannot read; the entry carrying it stays out of the armed set.", owner = "control" }
+SecretMaterialInDocument = { gloss = "A credential value written into the configuration document rather than a reference to it.", owner = "control" }
+StepToolError = { gloss = "A tool result carrying an in-band error on a step that drives the engine over the tool protocol.", owner = "control" }
+StoreEntryMalformed = { gloss = "One registry entry that does not decode, dropped while its siblings are served.", owner = "control" }
+StoreIdReserved = { gloss = "A configured store claiming one of the two built-in ids.", owner = "control" }
+StoreNameAuthored = { gloss = "A store entry carrying its own credential or binding name instead of deriving it from its id.", owner = "control" }
+StoreNotInitialized = { gloss = "An edit or an apply against a store that has taken no guarded import.", owner = "control" }
+TriggerAdapterUnknown = { gloss = "A trigger value naming no adapter, raised at startup rather than downgraded.", owner = "control" }
+TriggerFaceMissing = { gloss = "The external trigger selected on a deployment that serves no route for the wake to reach.", owner = "control" }
+
+[limit]
+"control-tick-interval" = { value = 500, unit = "ms", owner = "control.arm.limit.tick-interval", gloss = "The in-process trigger evaluates the armed set on this interval." }
+"control-external-beat" = { value = 5, unit = "min", owner = "control.arm.limit.external-beat", gloss = "The fixed granularity of the platform heartbeat that wakes a suspending deployment." }
+"control-poll-interval" = { value = 30, unit = "s", owner = "control.reconcile.limit.poll-interval", gloss = "The control poll interval when a control block declares none." }
+"control-step-result" = { value = 1, unit = "MiB", owner = "control.dispatch.limit.step-result", gloss = "The cap on a checkpointed step result, which carries a pointer rather than a payload." }
+"control-step-cpu-free" = { value = 10, unit = "ms", owner = "control.dispatch.limit.step-cpu-free", gloss = "Per-step CPU on a free orchestrator tier." }
+"control-step-cpu-paid" = { value = 5, unit = "min", owner = "control.dispatch.limit.step-cpu-paid", gloss = "Per-step CPU on a paid orchestrator tier." }
+"control-heartbeat-beat" = { value = 15, unit = "s", owner = "control.dispatch.limit.heartbeat-beat", gloss = "The interval between worker heartbeats." }
+"control-heartbeat-lapse" = { value = 60, unit = "s", owner = "control.dispatch.limit.heartbeat-lapse", gloss = "The heartbeat lapse after which in-flight work reschedules onto another worker." }
+"control-isolate-memory" = { value = 128, unit = "MiB", owner = "control.serve.limit.isolate-memory", gloss = "Memory available to the routing isolate that terminates a read request." }
+"control-cold-start" = { value = 8, unit = "s", owner = "control.serve.limit.cold-start", gloss = "The span within which a retrieval container reaches readiness from cold." }
+"control-listing-page" = { value = 1000, unit = "entries", owner = "control.visualize.limit.listing-page", gloss = "The ceiling on objects one pack listing call answers with." }

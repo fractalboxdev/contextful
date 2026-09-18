@@ -1,0 +1,202 @@
+# Registry fragment — the `console` contract.
+# The analyst console, in `spec/51-console.md`.
+
+[operation]
+speak = { gloss = "The language every visitor-visible string carries, answer hygiene as a persona and audience contract, the deterministic backstops beneath it, and what a gated surface publishes about itself.", file = "spec/51-console.md", aliases = ["product-language", "answer-hygiene"] }
+ground = { gloss = "Where an answer's material comes from: the closed tool set, the two trust layers, the per-reader credential, the web supplement, and the sources block.", file = "spec/51-console.md", aliases = ["grounding", "cite"] }
+plan-turn = { gloss = "The shape of one turn: planner scaffolding, the replanning round, the answerability test, the code path under a failed search, and the store's prompt overlay.", file = "spec/51-console.md", aliases = ["turn-loop", "replan"] }
+set-vantage = { gloss = "A session's time basis: one vantage, its statement to the reader, the bound each leg carries, the snapshot timeline, and the arrivals strip.", file = "spec/51-console.md", aliases = ["vantage", "time-basis"] }
+browse = { gloss = "What a store advertises before a question is asked: discovered chips, humanized labels, soft discovery, the file gallery, and the insights panel.", file = "spec/51-console.md", aliases = ["chips", "discover"] }
+learn = { gloss = "The reading loop's memory: recall ahead of planning, the per-turn distillation, an anchored conclusion at a vantage, and the commit a write runs.", file = "spec/51-console.md", aliases = ["learning", "console-memory"] }
+render = { gloss = "The render contract: three channels, the component union, deterministic component choice, view hints, and the sanitizer walk.", file = "spec/51-console.md", aliases = ["widget", "view-spec"] }
+brief = { gloss = "The proactive card: its derivation, its payload, its matching tiers, the client-side clock, and the absence it earns.", file = "spec/51-console.md", aliases = ["catch-up", "greeting"] }
+
+# ---------------------------------------------------------------------------
+# Subjects — the fourth segment of every clause id, one entry per clause.
+# ---------------------------------------------------------------------------
+
+[term]
+"product-language" = { gloss = "Every string a visitor sees or receives — store names and blurbs, placeholders, empty and error", owner = "console", resolves = "concept" }
+"audience-contract" = { gloss = "The analyst's system text carries a persona and an audience contract: the reader learns what the", owner = "console", resolves = "concept" }
+"intent-first" = { gloss = "An answer leads with the finding in plain business language, spells dates the way a person reads", owner = "console", resolves = "concept" }
+"decline-and-pivot" = { gloss = "A question reaching for machinery — the statement that ran, the engine underneath, the name of a", owner = "console", resolves = "concept" }
+"hygiene-is-a-principle" = { gloss = "The persona and the audience contract are the primary mechanism, and the deterministic checks", owner = "console", resolves = "concept" }
+"identifier-redaction" = { gloss = "A deterministic redactor passes over the streamed prose, and the same rule walks every rendered", owner = "console", resolves = "concept" }
+"temporal-humanizer" = { gloss = "Engine debug spellings of an instant are rewritten into readable prose over the grounding channel", owner = "console", resolves = "concept" }
+"backstops-are-silent" = { gloss = "A backstop corrects in place and emits no notice, so a corrected span reads as ordinary prose", owner = "console", resolves = "concept" }
+"error-copy" = { gloss = "An unreachable store, a refused read and an empty result render as sentences a reader can act on,", owner = "console", resolves = "concept" }
+"unanswerable-suggestion" = { gloss = "A suggested prompt whose answer under these rules would be a decline raises", owner = "console", resolves = "concept" }
+"no-discovery-metadata" = { gloss = "A surface behind an identity perimeter is unreachable by a crawler, human or agent, and publishes", owner = "console", resolves = "concept" }
+"tool-results-only" = { gloss = "Every sentence of an answer is built from what a tool call returned", owner = "console", resolves = "concept" }
+"ungrounded-answer" = { gloss = "A turn holding no tool result answers that the store carries nothing on the question, and any path", owner = "console", resolves = "concept" }
+"server-authored-calls" = { gloss = "A tool name and its arguments are chosen on the server from the turn's admitted set, and neither is", owner = "console", resolves = "concept" }
+"unadmitted-tool" = { gloss = "A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches", owner = "console", resolves = "concept" }
+"mutating-tool" = { gloss = "The visitor-facing endpoint admits a read subset", owner = "console", resolves = "concept" }
+"direct-file-read" = { gloss = "A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on", owner = "console", resolves = "concept" }
+"caller-not-owner" = { gloss = "The surface is a caller over a store rather than the owner of one: it holds no privileged relation,", owner = "console", resolves = "concept" }
+"two-trust-layers" = { gloss = "Two independent layers decide what a reader receives: the identity perimeter decides who reaches", owner = "console", resolves = "concept" }
+"same-origin-only" = { gloss = "The page calls same-origin routes, and the server attaches the store credential outbound, so no", owner = "console", resolves = "concept" }
+"perimeter-reverified" = { gloss = "The server re-checks the perimeter's assertion rather than trusting the hop that set it, and takes", owner = "console", resolves = "concept" }
+"per-reader-credential" = { gloss = "A store on exchange authentication receives a credential per reader: the server posts that reader's", owner = "console", resolves = "concept" }
+"mint-cache" = { gloss = "A minted credential caches against the pair of reader and assertion, under its own lifetime, so a", owner = "console", resolves = "concept" }
+"mint-refused" = { gloss = "A refused mint raises `ConsoleTokenExchangeRefused`. A store carrying a shared credential falls", owner = "console", resolves = "concept" }
+"web-supplement" = { gloss = "A public-web tool exists for a store whose operator configured a search key, and is absent from the", owner = "console", resolves = "concept" }
+"web-attribution" = { gloss = "A fact drawn from the public web is attributed inside the sentence carrying it and labelled as a", owner = "console", resolves = "concept" }
+"sources-block" = { gloss = "An answered turn closes with a numbered source list of linked title, publisher host and publication", owner = "console", resolves = "concept" }
+"source-dedup" = { gloss = "Candidates fold on the link, a title-only duplicate merging into the entry that carries one,", owner = "console", resolves = "concept" }
+"sources-per-turn" = { gloss = "A source list carries at most 8 entries", owner = "console", resolves = "concept" }
+"structural-reads-do-not-cite" = { gloss = "A schema listing, a catalogue call and the store's own conclusions contribute no source entry", owner = "console", resolves = "concept" }
+"turn-legs" = { gloss = "A turn runs recall, then planning, then its retrieval rounds, then synthesis, and each leg renders", owner = "console", resolves = "concept" }
+"planner-scaffolding" = { gloss = "The planner receives each data table's real columns, prefetched from the schema call, and writes", owner = "console", resolves = "concept" }
+"planner-reached-memory" = { gloss = "Planner scaffolding and every deterministic fallback cover data tables", owner = "console", resolves = "concept" }
+"replan-rounds" = { gloss = "A first round returning nothing usable earns 1 attempts of further planning", owner = "console", resolves = "concept" }
+"answerability-is-code" = { gloss = "Whether a round answered is decided by code rather than by the model's judgement, so the verdict is", owner = "console", resolves = "concept" }
+"answerability-test" = { gloss = "A structured query counts as answering once it returns rows; a free-text search counts when its", owner = "console", resolves = "concept" }
+"code-path-fallback" = { gloss = "Two rounds producing nothing usable hand the turn to retrieval written in code: the question's", owner = "console", resolves = "concept" }
+"plain-emptiness" = { gloss = "A store genuinely holding nothing on a subject yields that answer plainly", owner = "console", resolves = "concept" }
+"overlay-route" = { gloss = "A store serves its analyst persona as a markdown document behind the same admission its other", owner = "console", resolves = "concept" }
+"overlay-cache" = { gloss = "The overlay caches for 5 min, a miss included, so a store carrying none costs one probe per interval", owner = "console", resolves = "concept" }
+"overlay-length" = { gloss = "An overlay is truncated at 8000 chars", owner = "console", resolves = "concept" }
+"overlay-carries-register" = { gloss = "The overlay carries domain register — persona, citation vocabulary, background", owner = "console", resolves = "concept" }
+"overlay-envelope" = { gloss = "The overlay sits inside a delimited block closed by an explicit subordination sentence, with a", owner = "console", resolves = "concept" }
+"overlay-absent" = { gloss = "With no overlay the composed text is byte-identical to the generic text, and a loader failure", owner = "console", resolves = "concept" }
+"lexicon-shapes-interpretation" = { gloss = "A store's declared lexicon reaches the engine's heuristics — which column carries a title, a link,", owner = "console", resolves = "concept" }
+"timeframe-phrases-are-additive" = { gloss = "Timeframe phrasing is the one additive part of that declaration: a store adds vocabulary for a", owner = "console", resolves = "concept" }
+"one-vantage-per-conversation" = { gloss = "A conversation holds exactly one historical vantage, so a transcript carries no two answers", owner = "console", resolves = "concept" }
+"hop-forks" = { gloss = "A conversation with no turns adopts a vantage in place", owner = "console", resolves = "concept" }
+"vantage-is-session-state" = { gloss = "The vantage lives on the session, so two sessions over one store hold two different ones side by", owner = "console", resolves = "concept" }
+"every-leg-carries-it" = { gloss = "The chat, the browse templates and a store's published output routes all read at the session's", owner = "console", resolves = "concept" }
+"unparseable-vantage" = { gloss = "A vantage that is neither a calendar day nor an instant answers `400` and raises", owner = "console", resolves = "code" }
+"time-basis-pill" = { gloss = "A pill opens both the empty state and the transcript, stating either that the answer stands as of a", owner = "console", resolves = "concept" }
+"friendly-dates" = { gloss = "A date renders as prose wherever a reader sees it; a raw machine spelling stays out of", owner = "console", resolves = "concept" }
+"one-frame-per-turn" = { gloss = "The analyst is told its frame in a single direction per turn: a rewound turn answers in the past", owner = "console", resolves = "concept" }
+"temporal-intent" = { gloss = "Temporal phrasing resolves to a window before the model runs — phrasings for the current day, the", owner = "console", resolves = "concept" }
+"window-binds-the-turn" = { gloss = "A resolved window binds the whole turn: the current date is anchored in the analyst's text,", owner = "console", resolves = "concept" }
+"pre-window-source-is-not-an-explanation" = { gloss = "A source predating the window is barred from being presented as explaining what happened inside it", owner = "console", resolves = "concept" }
+"web-leg-bounds-on-publication" = { gloss = "The public web exposes publication date and no ingestion clock, so a rewound turn sends an", owner = "console", resolves = "concept" }
+"empty-window-retry" = { gloss = "An empty dated window retries once with the start bound relaxed", owner = "console", resolves = "concept" }
+"unbounded-web-leg" = { gloss = "A web leg whose bound fails to parse fails that leg and raises `ConsoleWebBoundUnparseable`", owner = "console", resolves = "concept" }
+"undated-sources-kept" = { gloss = "A result an upstream returns with no publication date, or with one no parser accepts, is kept", owner = "console", resolves = "concept" }
+"undated-disclosure" = { gloss = "Both channels disclose it", owner = "console", resolves = "concept" }
+"snapshot-timeline" = { gloss = "A store's timeline derives from its own catalogue with no bespoke route: list the data tables, then", owner = "console", resolves = "concept" }
+"arrivals-strip" = { gloss = "Selecting a stop reveals what entered since the previous one: the same union windowed between the", owner = "console", resolves = "concept" }
+"label-sampler" = { gloss = "The sampler prefers a declared label column, and otherwise picks the column whose sampled values", owner = "console", resolves = "concept" }
+"sample-labels" = { gloss = "A table's arrivals contribute at most 3 entries of sampled label", owner = "console", resolves = "concept" }
+"strip-races" = { gloss = "A hop clears the previous window at once and shows a checking state, an out-of-order response", owner = "console", resolves = "concept" }
+"chip-discovery" = { gloss = "Suggestion chips derive at load from the store's own catalogue: list the tables, read each content", owner = "console", resolves = "concept" }
+"chip-kinds" = { gloss = "A time column earns a latest-of chip, a categorical column a by-facet chip, a numeric column a", owner = "console", resolves = "concept" }
+"chip-determinism" = { gloss = "One schema yields one chip set in one order, so two loads over an unchanged store offer the same", owner = "console", resolves = "concept" }
+"no-domain-assumption" = { gloss = "The surface assumes no domain table", owner = "console", resolves = "concept" }
+"humanized-labels" = { gloss = "A generated label reads as language rather than as an identifier: an underscore survives into none", owner = "console", resolves = "concept" }
+"machinery-is-not-subject-matter" = { gloss = "A table whose subject is the engine's own machinery — the memory substrate, the prediction and", owner = "console", resolves = "concept" }
+"discovery-fails-soft" = { gloss = "An unreachable store, a refused catalogue call, and a store holding engine tables alone each yield", owner = "console", resolves = "concept" }
+"advertising-tracks-service" = { gloss = "A table a store stops serving loses its chip at the next load, so what a store cannot answer it", owner = "console", resolves = "concept" }
+"published-routes-stay-authored" = { gloss = "A store's published output route is absent from its catalogue, so what those routes offer is", owner = "console", resolves = "concept" }
+"insights-panel" = { gloss = "Selecting a store loads its published output routes straight away: rows render by their own column", owner = "console", resolves = "concept" }
+"insights-names-no-columns" = { gloss = "The payload passes through unparsed and the panel names no column of it", owner = "console", resolves = "concept" }
+"file-gallery" = { gloss = "Two tools carry the data-file view: one lists committed files with the run that wrote each and its", owner = "console", resolves = "concept" }
+"recall-before-planning" = { gloss = "A turn opens by recalling the store's standing conclusions at the session's vantage, ahead of the", owner = "console", resolves = "concept" }
+"recall-bounds" = { gloss = "The recall a turn issues carries the session's vantage and no second time argument; the pair of", owner = "console", resolves = "concept" }
+"recalled-block" = { gloss = "Recalled conclusions enter the system text and the synthesis grounding as their own labelled block,", owner = "console", resolves = "concept" }
+"recall-is-the-only-door" = { gloss = "A conclusion reaches an answer through the recall step", owner = "console", resolves = "concept" }
+"distillation-pass" = { gloss = "Once the answer has streamed, a second pass distils the exchange into durable,", owner = "console", resolves = "code" }
+"learnings-per-turn" = { gloss = "A distillation writes at most 3 entries, zero included", owner = "console", resolves = "concept" }
+"unscoped-learning" = { gloss = "A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`,", owner = "console", resolves = "concept" }
+"engine-decides-standing" = { gloss = "The surface hands over the conclusion and the engine consolidates it and stamps its provenance", owner = "console", resolves = "concept" }
+"learning-lands-like-a-row" = { gloss = "A landed conclusion carries the same ingestion instant and run identity as an ingested row, and", owner = "console", resolves = "concept" }
+"write-is-a-visible-step" = { gloss = "The write renders as a step in the transcript rather than as a silent side effect", owner = "console", resolves = "concept" }
+"anchored-at-a-vantage" = { gloss = "A turn at a historical vantage still learns, anchored: its write carries an observation time at the", owner = "console", resolves = "concept" }
+"anchored-coexists" = { gloss = "An anchored conclusion sits beside a present one rather than retiring it, while the ingestion clock", owner = "console", resolves = "concept" }
+"tombstone-commits" = { gloss = "A forget commits alongside the conclusions it retires, so a pull cannot resurrect what a reader", owner = "console", resolves = "concept" }
+"subjects-belong-to-the-store" = { gloss = "A distilled subject belongs to the store rather than to the reader who produced it, so a", owner = "console", resolves = "concept" }
+"greeting-never-learns" = { gloss = "The proactive card sits outside the session's turns, so the distiller draws nothing from it", owner = "console", resolves = "concept" }
+"three-channels" = { gloss = "A tool return splits three ways: `grounding`, the text the model reads and the answer is built", owner = "console", resolves = "code" }
+"model-reads-one-channel" = { gloss = "The model receives `grounding` and nothing else", owner = "console", resolves = "code" }
+"internals-off-by-default" = { gloss = "The trace channel arrives when a call asks for it, and the verbatim protocol round-trip shows", owner = "console", resolves = "concept" }
+"component-union" = { gloss = "A rendered output is a component name drawn from a closed, per-component versioned union, plus", owner = "console", resolves = "concept" }
+"client-owns-the-registry" = { gloss = "The client resolves a name against the registry it ships", owner = "console", resolves = "concept" }
+"client-authored-view" = { gloss = "A view specification arriving from a client, or composed by the model rather than inferred from a", owner = "console", resolves = "concept" }
+"names-are-shapes" = { gloss = "A component is named for the shape it draws rather than the domain it came from, so a banded range", owner = "console", resolves = "concept" }
+"union-is-a-compatibility-surface" = { gloss = "A component name persists inside a saved transcript, so the union is a compatibility surface rather", owner = "console", resolves = "concept" }
+"payload-is-json" = { gloss = "A view payload is JSON-serializable and survives a reload out of browser storage", owner = "console", resolves = "concept" }
+"model-picks-the-tool" = { gloss = "Choosing which tool to call is the model's whole presentational power", owner = "console", resolves = "concept" }
+"component-choice" = { gloss = "Column kinds decide the component: a single row carrying one measure draws a metric; a date column", owner = "console", resolves = "concept" }
+"line-chart-floor" = { gloss = "A line requires 3 rows on distinct days", owner = "console", resolves = "concept" }
+"provenance-drops-before-inference" = { gloss = "Provenance columns leave the result ahead of shape inference, and a repeated x value disqualifies a", owner = "console", resolves = "concept" }
+"view-hint" = { gloss = "A table declares a view block in the store's manifest — a component name plus column bindings for", owner = "console", resolves = "concept" }
+"hints-bind-columns" = { gloss = "Every hint field names a column and none carries a value, so a wrong or hostile hint yields a", owner = "console", resolves = "concept" }
+"hints-are-advisory" = { gloss = "A hint applies when the result carries every column it binds, and otherwise the turn falls through", owner = "console", resolves = "concept" }
+"unit-is-authored-text" = { gloss = "The unit is the single free-text field a hint carries, and it takes the authored-string path of", owner = "console", resolves = "concept" }
+"unit-length" = { gloss = "A unit string holds at most 12 chars", owner = "console", resolves = "concept" }
+"sanitizer-walks-the-object" = { gloss = "A view is an object, so it is walked rather than streamed through the prose redactor, and the rule", owner = "console", resolves = "concept" }
+"string-provenance" = { gloss = "An authored string — a caption, a label, a series name — takes the identifier redactor", owner = "console", resolves = "concept" }
+"headers-humanize" = { gloss = "A column header humanizes into a display label, while a provenance or engine identifier drops", owner = "console", resolves = "concept" }
+"view-table" = { gloss = "A view carries at most 50 rows and 12 entries of column", owner = "console", resolves = "concept" }
+"view-cell" = { gloss = "A cell holds at most 300 chars and an axis label at most 40 chars", owner = "console", resolves = "concept" }
+"view-series" = { gloss = "A view carries at most 6 entries of series over at most 200 entries of point", owner = "console", resolves = "concept" }
+"resolver-scan" = { gloss = "The property resolver scans at most 1000 rows of a result", owner = "console", resolves = "concept" }
+"failed-validation-costs-nothing" = { gloss = "A view failing validation yields no widget rather than an error, the way a citation and a chip fail", owner = "console", resolves = "concept" }
+"answer-stands-without-its-widget" = { gloss = "A widget rides its own frame emitted after the prose, and the synthesis text is never told a widget", owner = "console", resolves = "concept" }
+"widget-dedup" = { gloss = "A turn shows one widget per tool result that yields one, deduplicated by rendered shape, the last", owner = "console", resolves = "concept" }
+"earlier-widgets" = { gloss = "At most 2 entries of earlier widget sit behind a disclosure", owner = "console", resolves = "concept" }
+"capability-packs" = { gloss = "Tools group into packs, each carrying an admission predicate over the request context", owner = "console", resolves = "concept" }
+"view-over-the-same-index" = { gloss = "The greeting is one derivation over two governed reads plus one component, introducing no storage,", owner = "console", resolves = "concept" }
+"no-model-on-the-path" = { gloss = "With no model on the path the greeting cannot fabricate, it renders inside the first second of a", owner = "console", resolves = "concept" }
+"absence-is-earned" = { gloss = "Five conditions carry the card: a session with no turns, a session at present time, a store holding", owner = "console", resolves = "concept" }
+"never-delays-the-composer" = { gloss = "The card never blocks or delays the composer, and a reader who types immediately wins that race", owner = "console", resolves = "concept" }
+"catchup-payload" = { gloss = "The route answers `{since, clamped, totalNew, items}`, where `since` is the window start actually", owner = "console", resolves = "code" }
+"catchup-item" = { gloss = "An item carries a subject slug, a product-language display name, the newest live conclusion text", owner = "console", resolves = "concept" }
+"four-step-derivation" = { gloss = "The derivation runs four steps over a handful of bounded queries: read live conclusions at present", owner = "console", resolves = "concept" }
+"interests-are-conclusions" = { gloss = "A store's interests are its reading-session conclusions, so no separate interest list exists to", owner = "console", resolves = "concept" }
+"entity-tier" = { gloss = "The entity tier requires the conclusion's subject slug to appear among the row's ingest-time entity", owner = "console", resolves = "concept" }
+"topic-tier-tokens" = { gloss = "The topic tier requires at least 2 tokens shared between the conclusion's subject and text and the", owner = "console", resolves = "concept" }
+"ranking" = { gloss = "An entity hit outranks a topic hit", owner = "console", resolves = "concept" }
+"card-subjects" = { gloss = "A card carries at most 3 subjects", owner = "console", resolves = "concept" }
+"articles-per-subject" = { gloss = "A subject carries at most 3 entries of article", owner = "console", resolves = "concept" }
+"catchup-window" = { gloss = "The backend caps the requested window at 7 d", owner = "console", resolves = "concept" }
+"entity-ids" = { gloss = "An entity-id column lands from a tagging transform over the deployment's own entity pack, carrying", owner = "console", resolves = "concept" }
+"slug-case" = { gloss = "The join compares lowercase on both sides: every parsed entity id is lowercased and the", owner = "console", resolves = "concept" }
+"last-visit-clock" = { gloss = "The derivation's backend holds no state, so the last-visit clock lives in the client: each question", owner = "console", resolves = "concept" }
+"browser-state-scoping" = { gloss = "The last-visit clock, the session list and the card seed are keyed to one identity and one store", owner = "console", resolves = "concept" }
+"two-browsers-two-clocks" = { gloss = "Two browsers hold two last visits, clearing local storage resets all of it, and persistence across", owner = "console", resolves = "concept" }
+"presentational-until-touched" = { gloss = "The card lives outside the session's turns and stops rendering once the first real turn lands, so", owner = "console", resolves = "concept" }
+"click-prefills" = { gloss = "A click fills the composer and focuses it", owner = "console", resolves = "concept" }
+"copy-claims-no-tailoring" = { gloss = "The card's copy claims no personal tailoring: the conclusions behind it are the store's, and a", owner = "console", resolves = "concept" }
+"scheduled-delivery-has-no-asker" = { gloss = "The payload is plain JSON over two governed reads, so a delivery step renders it as mail or chat", owner = "console", resolves = "concept" }
+"card-is-not-the-published-brief" = { gloss = "A store's published brief route answers what is interesting across the whole store; the card", owner = "console", resolves = "concept" }
+
+[error]
+ConsoleUngroundedAnswer = { gloss = "A path that would compose an answer from the model's own knowledge rather than from a tool result.", owner = "console" }
+ConsoleToolNotAdmitted = { gloss = "A tool call naming something outside the read subset the turn's packs admit.", owner = "console" }
+ConsoleMutatingToolRequested = { gloss = "A client-reachable path naming a write on the visitor-facing endpoint.", owner = "console" }
+ConsoleFileAccessDirect = { gloss = "A table function resolving a path straight against stored bytes on the caller surface.", owner = "console" }
+ConsoleTokenExchangeRefused = { gloss = "A per-reader mint the store's exchange route refused.", owner = "console" }
+ConsoleVantageUnparseable = { gloss = "A vantage that is neither a calendar day nor an instant.", owner = "console" }
+ConsoleWebBoundUnparseable = { gloss = "A public-web leg whose publication bound could not be parsed.", owner = "console" }
+ConsoleBriefUnavailable = { gloss = "A greeting derivation that errored or exceeded its budget; the card does not render.", owner = "console" }
+ConsoleViewNotServerBuilt = { gloss = "A view specification arriving from a client or composed by the model rather than inferred from a result.", owner = "console" }
+ConsoleSuggestionUnanswerable = { gloss = "A suggested prompt whose answer under the answer-hygiene contract would be a decline.", owner = "console" }
+ConsolePlannerReachedMemory = { gloss = "Planner scaffolding or a deterministic fallback naming a memory relation.", owner = "console" }
+ConsoleLearningUnscoped = { gloss = "A distilled conclusion landing without the reading-session scope.", owner = "console" }
+
+[limit]
+"console-sources-per-turn" = { value = 8, unit = "entries", owner = "console.ground.limit.sources-per-turn", gloss = "The ceiling on entries in a turn's numbered source list." }
+"console-replan-rounds" = { value = 1, unit = "attempts", owner = "console.plan-turn.limit.replan-rounds", gloss = "Further planning rounds granted after a first round returns nothing usable." }
+"console-overlay-cache" = { value = 5, unit = "min", owner = "console.plan-turn.limit.overlay-cache", gloss = "The cache lifetime of a store's persona overlay, a miss included." }
+"console-overlay-length" = { value = 8000, unit = "chars", owner = "console.plan-turn.limit.overlay-length", gloss = "The truncation point of a store-supplied persona overlay." }
+"console-sample-labels" = { value = 3, unit = "entries", owner = "console.set-vantage.limit.sample-labels", gloss = "Sampled labels one table contributes to the arrivals strip." }
+"console-learnings-per-turn" = { value = 3, unit = "entries", owner = "console.learn.limit.learnings-per-turn", gloss = "Durable conclusions one distillation pass writes." }
+"console-line-chart-floor" = { value = 3, unit = "rows", owner = "console.render.limit.line-chart-floor", gloss = "Rows on distinct days a result needs before a line is drawn." }
+"console-view-rows" = { value = 50, unit = "rows", owner = "console.render.limit.view-table", gloss = "Rows a rendered view carries." }
+"console-view-columns" = { value = 12, unit = "entries", owner = "console.render.limit.view-table", gloss = "Columns a rendered view carries." }
+"console-view-cell" = { value = 300, unit = "chars", owner = "console.render.limit.view-cell", gloss = "Characters one rendered cell carries." }
+"console-axis-label" = { value = 40, unit = "chars", owner = "console.render.limit.view-cell", gloss = "Characters one axis label carries." }
+"console-view-series" = { value = 6, unit = "entries", owner = "console.render.limit.view-series", gloss = "Series a rendered view carries." }
+"console-view-points" = { value = 200, unit = "entries", owner = "console.render.limit.view-series", gloss = "Points a rendered view carries across its series." }
+"console-resolver-scan" = { value = 1000, unit = "rows", owner = "console.render.limit.resolver-scan", gloss = "Rows of a result the property resolver scans." }
+"console-unit-length" = { value = 12, unit = "chars", owner = "console.render.limit.unit-length", gloss = "Characters a view hint's unit string carries." }
+"console-earlier-widgets" = { value = 2, unit = "entries", owner = "console.render.limit.earlier-widgets", gloss = "Earlier widgets kept behind a turn's disclosure." }
+"console-topic-tier-tokens" = { value = 2, unit = "tokens", owner = "console.brief.limit.topic-tier-tokens", gloss = "Shared tokens the topic tier requires between a conclusion and a row." }
+"console-card-subjects" = { value = 3, unit = "subjects", owner = "console.brief.limit.card-subjects", gloss = "Subjects one greeting card carries." }
+"console-articles-per-subject" = { value = 3, unit = "entries", owner = "console.brief.limit.articles-per-subject", gloss = "Matched articles one card subject carries." }
+"console-catchup-window" = { value = 7, unit = "d", owner = "console.brief.limit.catchup-window", gloss = "The cap the backend applies to a requested catch-up window." }

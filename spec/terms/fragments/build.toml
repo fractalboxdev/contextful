@@ -1,0 +1,167 @@
+# Registry fragment — the `build` contract.
+# Engineering conventions, gates and the quality harness, in `spec/61-engineering.md`.
+
+[operation]
+structure-tree = { gloss = "Where a capability lives, what a surface calls, when an adapter stands in for a call, and who owns control-plane state.", file = "spec/61-engineering.md", aliases = ["single-home", "dry"] }
+automate = { gloss = "Typed subcommands over compiled binaries, the boundary shell keeps, and the tree's record of an operator credential.", file = "spec/61-engineering.md", aliases = ["orchestrate", "script"] }
+test = { gloss = "Assertion construction, guard validation, and where a suite compiles and runs.", file = "spec/61-engineering.md", aliases = ["assert"] }
+build = { gloss = "Target directories, engine-linked cargo invocations, linked query functions, and debug information.", file = "spec/61-engineering.md", aliases = ["target-dir"] }
+gate = { gloss = "Stage order, the container's four resources, the disk and footprint steps, and the proof and surface stages.", file = "spec/61-engineering.md", aliases = ["check-in"] }
+evaluate = { gloss = "The read-path quality harness: the case format, the deterministic metrics, the judged dimensions and the grounded reader.", file = "spec/61-engineering.md", aliases = ["measure", "score"] }
+baseline = { gloss = "Holding a run against committed thresholds, golden custody, case generation, and the anti-gaming rules.", file = "spec/61-engineering.md", aliases = ["threshold"] }
+
+[term]
+"able-to-fail" = { gloss = "A test is able to fail on the condition its name states.", owner = "build", resolves = "concept" }
+"absent-truth-is-nan" = { gloss = "All five ranked metrics are undefined where no relevant set exists and answer NaN there, and a NaN drops out", owner = "build", resolves = "concept" }
+"abstention-returns-nothing" = { gloss = "A must-abstain case returns zero rows.", owner = "build", resolves = "concept" }
+"adapter-not-restatement" = { gloss = "A surface genuinely unable to call the engine — a worker holding the sole handle to a storage binding, with", owner = "build", resolves = "code" }
+"answer-key-in-the-corpus" = { gloss = "A golden set ingested into the store it measures raises `GoldenSetIngested`", owner = "build", resolves = "concept" }
+"bands-carry-their-units" = { gloss = "A band is expressed in its metric's own units, so a duration entry carries a duration band", owner = "build", resolves = "concept" }
+"baseline-file" = { gloss = "A baseline file carries a reserved run block — `{k, tier, model, samples}` — and one entry per gated metric", owner = "build", resolves = "code" }
+"binary-link-cost" = { gloss = "A binary compiled from a file directly under `tests/` statically links everything it touches, reaching 290", owner = "build", resolves = "code" }
+"build-size-ceiling" = { gloss = "The budget stage holds total build size to 12 GiB, printing that size, the free space remaining and the", owner = "build", resolves = "code" }
+"build-size-exceeded" = { gloss = "Build size past that ceiling raises `BuildSizeCeilingExceeded`, naming the artifacts at the head of the list.", owner = "build", resolves = "concept" }
+"case-format" = { gloss = "A case carries an id, a corpus reference, a question, and an expected block holding answer, artifacts, edges", owner = "build", resolves = "code" }
+"container-disk" = { gloss = "The container holds 18 GiB of usable disk.", owner = "build", resolves = "code" }
+"container-memory" = { gloss = "The container holds 12 GiB of memory.", owner = "build", resolves = "code" }
+"control-plane-state" = { gloss = "The engine holds the control-plane state model — persisted collaborative documents, their validation", owner = "build", resolves = "code" }
+"converter-not-scoring-path" = { gloss = "Every benchmark and every application's ground truth converts once into that one format, and the runner sees", owner = "build", resolves = "concept" }
+"corpus-carries-policy-labels" = { gloss = "An evaluation corpus carries zone and row-policy labels, so a run exercises the access-control path rather", owner = "build", resolves = "concept" }
+"corpus-loads-through-the-store" = { gloss = "The corpus loads through the real store rather than a fixture database, and the retriever under test calls", owner = "build", resolves = "concept" }
+"curation-is-one-directional" = { gloss = "A reviewer's edit reaches the gate through a change to the tree", owner = "build", resolves = "concept" }
+"debug-info" = { gloss = "Development and test profiles carry line-tables-only debug information, so a panic backtrace keeps its file", owner = "build", resolves = "code" }
+"default-dead-band" = { gloss = "A rate-valued entry with no override gates at a 2 percent dead band.", owner = "build", resolves = "code" }
+"derivation-carries-a-check" = { gloss = "Derivation without an enforced staleness check is a copy with extra steps", owner = "build", resolves = "code" }
+"deterministic-tier-calls-no-model" = { gloss = "Recall@k, precision@k, hit-rate@k, reciprocal rank and nDCG@k gate at near-zero cost with no model call", owner = "build", resolves = "concept" }
+"distinct-top-k" = { gloss = "Membership in the top k is distinct, so a repeated id counts once.", owner = "build", resolves = "concept" }
+"duplicate-row-rate" = { gloss = "A repeated table-and-row-key pair holds at 0 percent, measured over the ranking rather than over its", owner = "build", resolves = "code" }
+"duplicated-capability" = { gloss = "A surface carrying its own copy of a capability the engine holds raises `CapabilityDuplicated` at review", owner = "build", resolves = "concept" }
+"engine-build-dir" = { gloss = "Each cargo invocation that rebuilds the bundled SQL engine spends 2.2 GiB of build directory.", owner = "build", resolves = "code" }
+"engine-library" = { gloss = "Each such invocation emits a 1.1 GiB static library.", owner = "build", resolves = "code" }
+"export-hygiene" = { gloss = "The collector endpoint is named per environment, so one variable flip cannot redirect a deployed store's", owner = "build", resolves = "concept" }
+"failing-stage-reports-first" = { gloss = "A failing stage emits its diagnostics before propagating its own exit code, so a red run carries context", owner = "build", resolves = "concept" }
+"feature-gated-suite" = { gloss = "A feature-gated suite carries a module-level `cfg` attribute at the head of its own module file and compiles", owner = "build", resolves = "code" }
+"floors-are-absolute" = { gloss = "An absolute floor gates independently of any committed value, so editing a baseline moves no floor and a run", owner = "build", resolves = "concept" }
+"footprint" = { gloss = "Per change and per profile, the footprint step builds for the static-linked Linux target, compresses the", owner = "build", resolves = "code" }
+"footprint-over-budget" = { gloss = "An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises", owner = "build", resolves = "concept" }
+"forbidden-row-rate" = { gloss = "A row named in a must-not-retrieve set holds at 0 percent of a regression case's returned rows.", owner = "build", resolves = "code" }
+"formal-hole" = { gloss = "The proof stage type-checks the formal package and raises `ProofHolePresent` ahead of the build, naming the", owner = "build", resolves = "concept" }
+"four-ceilings" = { gloss = "The container carries four ceilings — processor count, memory, usable disk, and a per-stage wall clock — and", owner = "build", resolves = "concept" }
+"free-disk-precondition" = { gloss = "A stage starting below that floor raises `BuildDiskPrecondition` and exits 28 before doing work.", owner = "build", resolves = "concept" }
+"gate-inputs-stay-held-out" = { gloss = "Retrieval and synthesis are tuned on no gate input, and a gate set stays held out of every tuning loop.", owner = "build", resolves = "concept" }
+"gate-runs-offline" = { gloss = "The gate is a local command comparing the run's report against in-tree baselines and against absolute floors", owner = "build", resolves = "concept" }
+"gate-stage-sequence" = { gloss = "The gate runs ordered stages: connector pins, toolchain, schema, workspace, features, connectors, TypeScript", owner = "build", resolves = "code" }
+"golden-custody" = { gloss = "Version-controlled JSONL in the tree is canonical, and one loader is the single ingestion door", owner = "build", resolves = "code" }
+"grounded-reader" = { gloss = "The harness supplies its own reader: a loop answering from retrieved rows alone", owner = "build", resolves = "code" }
+"guard-fires-both-ways" = { gloss = "A guard is validated by watching it fire: run it against the fixture that motivated it and against the state", owner = "build", resolves = "concept" }
+"hosted-trace-export" = { gloss = "An evaluation or observation run touching a deployed store exports its traces to a self-hosted collector", owner = "build", resolves = "concept" }
+"in-window-rate" = { gloss = "A case declaring a recency bound holds an in-window rate at or above 95 percent.", owner = "build", resolves = "code" }
+"independent-writers" = { gloss = "Two independent owners serialize their edits with object-store conditional replacement, and a loser retries", owner = "build", resolves = "concept" }
+"intervals-are-reported" = { gloss = "A confidence interval is reported alongside each judged figure, over enough samples that a two-point delta", owner = "build", resolves = "concept" }
+"judge" = { gloss = "The judge is a judge-agnostic interface holding a pinned open-weights instruct instance, run at temperature 0", owner = "build", resolves = "code" }
+"judged-dimensions" = { gloss = "The reading stage adds four judged dimensions: answer accuracy; abstention, carrying correct-refusal rate on", owner = "build", resolves = "concept" }
+"linked-query-functions" = { gloss = "The functions every read needs — columnar file reading and statement serialization — link into each build", owner = "build", resolves = "code" }
+"memory-is-a-number" = { gloss = "Disk exhaustion names itself", owner = "build", resolves = "concept" }
+"metric-path" = { gloss = "A baseline names a metric by the report's own field path: `retrieval.<modality>.<metric>`", owner = "build", resolves = "code" }
+"mirrored-constant" = { gloss = "A hand-written constant mirroring an engine constant raises `ContractRestated`, naming both sites.", owner = "build", resolves = "concept" }
+"narrow-exemption" = { gloss = "One duplicate stands: a review-time check over committed text mirroring a build-time verb, catching the same", owner = "build", resolves = "concept" }
+"native-benchmark-is-the-gate" = { gloss = "A native benchmark generated from a real corpus — exercising synthesis, entity resolution and the hybrid path", owner = "build", resolves = "concept" }
+"native-set-rotates" = { gloss = "The native set rotates on a cadence, so a visible in-tree gate cannot be memorized", owner = "build", resolves = "concept" }
+"new-stage-is-cheap" = { gloss = "Adding a stage costs one more directory and no more peak; widening an existing stage raises peak directly.", owner = "build", resolves = "concept" }
+"one-engine-build-per-run" = { gloss = "The engine-linked packages fold into a single cargo invocation naming all of them and the union of their", owner = "build", resolves = "code" }
+"one-home" = { gloss = "Enforcement, control-plane state, credential resolution, statement guarding and visibility each resolve to", owner = "build", resolves = "code" }
+"one-integration-binary" = { gloss = "Integration tests for a crate live in one target, `tests/integration/main.rs`, which declares its suites as", owner = "build", resolves = "code" }
+"one-path-two-places" = { gloss = "The gate invokes the subcommand a contributor invokes, so a local reproduction and a gate run execute one", owner = "build", resolves = "code" }
+"optional-by-presence" = { gloss = "Each surface's checks are optional by presence: a surface declaring no script for a given check is skipped", owner = "build", resolves = "concept" }
+"own-process-is-the-exception" = { gloss = "A test genuinely needing its own process gets a top-level file and states at its site why", owner = "build", resolves = "concept" }
+"parallel-job-memory" = { gloss = "Parallel build jobs derive from the memory ceiling at 3 GiB per job.", owner = "build", resolves = "code" }
+"per-case-checkpoint" = { gloss = "A run appends its per-case results as JSONL, so a crash inside the judged tier re-runs the in-flight case", owner = "build", resolves = "code" }
+"pins-stage" = { gloss = "The first stage resolves every pinned artifact identity a run depends on, ahead of any compilation, so an", owner = "build", resolves = "code" }
+"platform-only-credential" = { gloss = "A credential existing as a deployed platform secret alone holds no value in the tree, and its entry lands in", owner = "build", resolves = "code" }
+"precision-floor" = { gloss = "Precision@k holds at or above 60 percent.", owner = "build", resolves = "code" }
+"presence-before-absence" = { gloss = "A test whose central claim is an absence carries a presence check ahead of it: construct the condition the", owner = "build", resolves = "concept" }
+"processor-ceiling" = { gloss = "Processor count is the one ceiling nothing inside the container relieves", owner = "build", resolves = "concept" }
+"promotion-source" = { gloss = "Only an adjudicated outcome label promotes into a golden set", owner = "build", resolves = "concept" }
+"query-function-link-cost" = { gloss = "Linking those functions adds 55 MiB to each engine-linked binary.", owner = "build", resolves = "code" }
+"raise-is-one-directional" = { gloss = "A baseline update moves each improved entry to its measured value and moves no entry in the worse direction", owner = "build", resolves = "concept" }
+"rank-metrics-miss-noise" = { gloss = "Recall and nDCG say nothing about wrong rows arriving, and a surface answering with exactly the requested", owner = "build", resolves = "concept" }
+"rank-quality-dead-band" = { gloss = "The ranked-quality entry gates at a 3 percent dead band against its committed value.", owner = "build", resolves = "code" }
+"raw-production-text" = { gloss = "A golden mined from a live query or promoted from a labeled outcome passes the store's write-time redaction", owner = "build", resolves = "concept" }
+"real-read-path" = { gloss = "An evaluation run is ingest, index, retrieve, read, judge, plus a scoring pass, each stage exercising the", owner = "build", resolves = "concept" }
+"records-are-committed" = { gloss = "An operator credential for a deployed surface lives as an encrypted entry in a file the tree carries", owner = "build", resolves = "code" }
+"refuse-before-the-suite" = { gloss = "Everything checkable without the report is refused ahead of the suite, so a typo in a baseline costs nothing", owner = "build", resolves = "concept" }
+"residency-soak" = { gloss = "A soak holds the resident set on the seventh day within 5 percent of the first day's.", owner = "build", resolves = "code" }
+"review-questions" = { gloss = "Four questions gate a change adding behavior to a surface: whether the engine performs it; whether the", owner = "build", resolves = "concept" }
+"rotation-pins-a-stamp" = { gloss = "Rotation makes runs incomparable across generations unless the run stamp is pinned, and a comparison across", owner = "build", resolves = "concept" }
+"run-report" = { gloss = "A run's report carries one field per metric the gate reads, the sample count standing behind each mean, the", owner = "build", resolves = "code" }
+"run-stamp-drift" = { gloss = "A run block differing from the run's own configuration raises `BaselineRunStampMismatch`", owner = "build", resolves = "concept" }
+"runtime-extension-load" = { gloss = "Loading an extension into a binary that statically links the SQL engine places two copies of a type's runtime", owner = "build", resolves = "concept" }
+"sample-count-suffix" = { gloss = "Every mean-valued path takes a `.n` suffix naming the sample count behind it", owner = "build", resolves = "code" }
+"sampling-is-logged" = { gloss = "Whatever a run sampled or dropped is logged, so a partial run does not read as full coverage.", owner = "build", resolves = "concept" }
+"schema-stage" = { gloss = "The schema stage regenerates each derived artifact into a scratch location and compares it byte for byte", owner = "build", resolves = "code" }
+"second-state-model" = { gloss = "A surface holding its own model of state the engine owns re-derives that state on every read rather than", owner = "build", resolves = "code" }
+"shared-target-is-the-default" = { gloss = "The shared target is the default placement", owner = "build", resolves = "concept" }
+"shell-boundary" = { gloss = "Straight-line glue of a few commands stays shell", owner = "build", resolves = "code" }
+"silent-local-writer" = { gloss = "An absent credential or an uninitialized store raises `ControlStateUnreachable`", owner = "build", resolves = "concept" }
+"stage-free-disk" = { gloss = "A stage begins work with 2 GiB of free disk available to it.", owner = "build", resolves = "code" }
+"stage-subset" = { gloss = "A subset of stages is selectable by name, so one stage reproduces locally without the stages ahead of it.", owner = "build", resolves = "code" }
+"stages-do-not-share" = { gloss = "Two stages resolving the same crates under different feature unifications re-emit artifacts under a second", owner = "build", resolves = "concept" }
+"subcommand-surface" = { gloss = "A subcommand exposes typed options, generated help and an entry point a test calls directly, so its branches", owner = "build", resolves = "code" }
+"surface-check-failed" = { gloss = "A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the", owner = "build", resolves = "concept" }
+"surface-of-consumption" = { gloss = "An entry names the deployed surface consuming the credential, together with the deployed secret name the same", owner = "build", resolves = "code" }
+"systems-metrics" = { gloss = "Tokens per query, latency and cost travel beside the quality figures, bucketed by corpus size in tokens", owner = "build", resolves = "code" }
+"target-dir-per-stage" = { gloss = "Each cargo stage builds into a target directory of its own, reclaimed once that stage passes, which puts peak", owner = "build", resolves = "code" }
+"three-generators" = { gloss = "Three generators bootstrap a golden set from the deployment's own store: walking entities through facts into", owner = "build", resolves = "code" }
+"toolchain-is-build-time" = { gloss = "The automation toolchain exists at build time and links into no build profile.", owner = "build", resolves = "code" }
+"trace-store-is-a-recorder" = { gloss = "A trace store holds run history, progression, slice drill-down and curation staging", owner = "build", resolves = "concept" }
+"truth-is-scored-per-surface" = { gloss = "Expected artifacts score the artifact retriever and expected edges score a second retriever over the edge", owner = "build", resolves = "concept" }
+"two-doors" = { gloss = "A surface has two doors onto a capability: the engine route and the registered view", owner = "build", resolves = "code" }
+"typed-subcommand" = { gloss = "Automation carrying judgment — a gate step, infrastructure provisioning, a deploy, parity tooling, a", owner = "build", resolves = "code" }
+"typescript-surfaces" = { gloss = "The TypeScript surfaces — the shared component package, the deploy emitter, the consoles, the headless client", owner = "build", resolves = "code" }
+"unchecked-shell" = { gloss = "Shell surviving in the tree passes `shellcheck`, and a file it rejects raises `ShellCheckFailed` in the", owner = "build", resolves = "code" }
+"union-feature-compilation" = { gloss = "Under that fold, a crate's suites compile against the union rather than in isolation", owner = "build", resolves = "concept" }
+"unlabeled-corpus" = { gloss = "An unlabeled corpus meets the fail-closed default and reads empty, driving recall to zero", owner = "build", resolves = "concept" }
+"unresolvable-path" = { gloss = "A path resolving to nothing, a metric measured over an empty sample, a malformed entry, or a non-finite dead", owner = "build", resolves = "concept" }
+"unscored-tally" = { gloss = "Edge truth with no edge surface configured is skipped and counted under an unscored tally of its own rather", owner = "build", resolves = "concept" }
+"update-adds-no-path" = { gloss = "The update introduces no path", owner = "build", resolves = "concept" }
+"vacuous-exclusion" = { gloss = "An exclusion assertion evaluated over an empty collection raises `VacuousAssertion`", owner = "build", resolves = "concept" }
+"version-assignment" = { gloss = "The engine assigns every version and materializes every manifest", owner = "build", resolves = "code" }
+"weak-conditional-backend" = { gloss = "Scoped service mode over a backend lacking strong conditional replacement raises", owner = "build", resolves = "concept" }
+
+[error]
+BaselinePathUnresolved = { gloss = "A baseline entry naming no report field, measured over an empty sample, or malformed.", owner = "build" }
+BaselineRunStampMismatch = { gloss = "A baseline run block differing from the configuration the run actually used.", owner = "build" }
+BuildDiskPrecondition = { gloss = "A gate stage beginning below the free-disk floor; it exits before doing work.", owner = "build" }
+BuildSizeCeilingExceeded = { gloss = "Total build size past the gate's ceiling, reported with the largest artifacts.", owner = "build" }
+CapabilityDuplicated = { gloss = "A surface carrying its own copy of a capability the engine already answers, found at review.", owner = "build" }
+ConditionalWriteUnsupported = { gloss = "Scoped service mode over a backend that offers no strong conditional replacement.", owner = "build" }
+ContractRestated = { gloss = "A hand-written constant mirroring an engine constant instead of deriving from it.", owner = "build" }
+ControlStateUnreachable = { gloss = "An absent credential or uninitialized store on the control-plane state path.", owner = "build" }
+EvalCorpusUnlabeled = { gloss = "An evaluation corpus carrying no zone or row-policy label, which would read empty.", owner = "build" }
+ExtensionAutoloadRefused = { gloss = "A read path reaching for a query-engine extension at query time.", owner = "build" }
+FootprintBudgetExceeded = { gloss = "A profile artifact over its declared budget, or carrying an unexpected dynamic dependency.", owner = "build" }
+GoldenRedactionFailed = { gloss = "A generated golden that the write-time redaction pass could not clear.", owner = "build" }
+GoldenSetIngested = { gloss = "A golden set ingested into the store it measures.", owner = "build" }
+ProofHolePresent = { gloss = "A formal package carrying a hole, refused ahead of the build.", owner = "build" }
+ShellCheckFailed = { gloss = "A shell file in the tree that the shell linter rejects.", owner = "build" }
+SurfaceCheckFailed = { gloss = "A TypeScript surface whose typecheck, unit tests or framework build failed.", owner = "build" }
+TraceExportOutOfPerimeter = { gloss = "A hosted trace endpoint configured for a run touching a deployed store.", owner = "build" }
+VacuousAssertion = { gloss = "An exclusion assertion evaluated over an empty collection, which holds with no evidence.", owner = "build" }
+
+[limit]
+"build-test-binary-link-cost" = { value = 290, unit = "MiB", owner = "build.test.limit.binary-link-cost", gloss = "Static link size of one test binary compiled from a file directly under the tests directory, for a crate linking the bundled SQL engine." }
+"build-engine-build-dir" = { value = 2.2, unit = "GiB", owner = "build.build.limit.engine-build-dir", gloss = "Build-directory cost of one cargo invocation that rebuilds the bundled SQL engine." }
+"build-engine-library" = { value = 1.1, unit = "GiB", owner = "build.build.limit.engine-library", gloss = "Size of the static library such an invocation emits." }
+"build-query-function-link-cost" = { value = 55, unit = "MiB", owner = "build.build.limit.query-function-link-cost", gloss = "Size the linked query functions add to each engine-linked binary." }
+"build-container-memory" = { value = 12, unit = "GiB", owner = "build.gate.limit.container-memory", gloss = "Memory available to the gate container." }
+"build-container-disk" = { value = 18, unit = "GiB", owner = "build.gate.limit.container-disk", gloss = "Usable disk available to the gate container." }
+"build-parallel-job-memory" = { value = 3, unit = "GiB", owner = "build.gate.limit.parallel-job-memory", gloss = "Memory budgeted per parallel build job, from which the job count derives." }
+"build-stage-free-disk" = { value = 2, unit = "GiB", owner = "build.gate.limit.stage-free-disk", gloss = "Free disk a stage has available before it begins work." }
+"build-size-ceiling" = { value = 12, unit = "GiB", owner = "build.gate.limit.build-size-ceiling", gloss = "Ceiling the budget stage holds total build size to." }
+"build-residency-soak-drift" = { value = 5, unit = "percent", owner = "build.gate.limit.residency-soak", gloss = "Allowed drift of the resident set between the first and the seventh day of a soak." }
+"build-forbidden-row-rate" = { value = 0, unit = "percent", owner = "build.evaluate.limit.forbidden-row-rate", gloss = "Share of a regression case's returned rows that may be named in a must-not-retrieve set." }
+"build-duplicate-row-rate" = { value = 0, unit = "percent", owner = "build.evaluate.limit.duplicate-row-rate", gloss = "Share of a ranking that may repeat one table-and-row-key pair." }
+"build-in-window-rate" = { value = 95, unit = "percent", owner = "build.evaluate.limit.in-window-rate", gloss = "In-window rate floor on a case declaring a recency bound." }
+"build-precision-floor" = { value = 60, unit = "percent", owner = "build.evaluate.limit.precision-floor", gloss = "Precision floor a ranked run holds." }
+"build-default-dead-band" = { value = 2, unit = "percent", owner = "build.baseline.limit.default-dead-band", gloss = "Dead band a rate-valued baseline entry gates at when it declares no override." }
+"build-rank-quality-dead-band" = { value = 3, unit = "percent", owner = "build.baseline.limit.rank-quality-dead-band", gloss = "Dead band the ranked-quality entry gates at against its committed value." }
