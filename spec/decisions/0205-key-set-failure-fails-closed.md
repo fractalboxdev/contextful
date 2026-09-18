@@ -46,9 +46,9 @@ than an invitation to use an older one.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Refuse every credential, `503` at a gateway and a refusal to start at the engine** *(chosen)* | One answer at every hop; a route outage is visible immediately rather than as silently frozen key material | Key-route availability becomes admission availability for every deployment that opted in |
-| Fall back onto the static pins | Admission survives a route outage with no operator action | Returns the deployment to verifying against keys frozen at deployment time — the exact state the route exists to leave — and does it silently |
-| Serve the last-known-good set with no age bound | Rides out an outage of any length | Accepts a retired key for as long as the route stays unreachable, so retirement stops being a withdrawal instrument |
-| Answer an authentication error rather than a server error | A caller sees a familiar credential failure | Misdescribes the condition: no credential the caller could present would succeed, and a client retries a mint it does not need |
+| Fall back onto the static pins | Admission survives a route outage with no operator action | Lost on silent restoration of frozen key material: the deployment verifies against keys written down at deployment time — the exact state the route exists to leave — with nothing in its behavior saying so |
+| Serve the last-known-good set with no age bound | Rides out an outage of any length | Lost on the frozen-key criterion with no bound at all: a retired version keeps verifying for as long as the route stays unreachable, so retirement stops being a withdrawal instrument |
+| Answer an authentication error rather than a server error | A caller sees a familiar credential failure | Lost on whether the error describes what happened: no credential the caller could present would succeed, and a client retries a mint it does not need |
 
 ## Criteria
 

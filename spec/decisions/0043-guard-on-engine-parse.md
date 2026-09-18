@@ -70,7 +70,7 @@ a statement form, or begins serializing a form that is not a read, admission cha
 this decision with no local edit. The residual risk is specific and bounded: a form the engine
 serializes as a query but the guard does not model is admitted by default, so the guard's tree
 walk has to be exhaustive over node kinds rather than selective. That exhaustiveness is
-unverified against engine versions not yet released.
+unverified against engine versions other than the one the build pins.
 
 Reversing this is expensive: reintroducing a text-level check would mean maintaining a second
 model of the engine's dialect, which is the position this avoids.

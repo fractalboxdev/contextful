@@ -140,7 +140,7 @@ sees across that set, and which widening stops at the write instead of being abs
 | --- | --- | --- |
 | `store.reconcile.invariant.explicit-file-list` | Every read hands `read_parquet([...])` an explicit, sorted list of files rather than a glob, so the manifests decide what a table reads and a stray file in the tree joins nothing. | |
 | `store.reconcile.invariant.type-unification` | Every read passes `union_by_name=true`. A column resolves across the whole file set to the common supertype of the files that carry it, and a column that widened mid-life reads at the widened type on every row, including rows in files physically written narrower. | |
-| `store.reconcile.invariant.no-per-column-cast` | The generated relation carries no per-column cast: the widening happens in the scan's own type resolution, and a projection adding one would reproduce the same arithmetic a second time. | |
+| `store.reconcile.invariant.no-per-column-cast` | The generated relation carries no per-column cast: the widening happens in the scan's own type resolution, and a projection adding one reproduces the same arithmetic a second time. | |
 | `store.reconcile.shape.type-lattice` | The lattice models one promotion, `Int64` with `Float64` to `Float64`, and it is the one pairing that produces physically mixed Parquet. A JSON type absorbs its partner, since both sides land as UTF-8. | |
 | `store.reconcile.refusal.incompatible-pair` | Any other pair of observed types for one column raises `StoreSchemaIncompatible` at the write, naming the column, the stored type and the arriving one. | `0019` |
 | `store.reconcile.invariant.float-promotion-is-lossy` | Above 9007199254740992 the promotion loses precision: an integer of 9007199254740993 reads back exactly until a `Float64` batch lands on that column, after which it reads 9007199254740992. The loss sits in the lattice rather than in a projection. | |
@@ -202,7 +202,7 @@ are the physical arrangement that makes the cheapest index — the zone map — 
 | `store.index.invariant.candidate-ids-only` | A sidecar sits outside SQL and inherits nothing from a scanned relation, so it yields candidate identifiers rather than rows. Those identifiers re-join through the enforced relation, and enforcement runs before a top-K is finalized. | |
 | `store.index.invariant.vector-sidecar-is-a-fold-output` | The fold builds a vector sidecar for a table carrying an embedding column under a single-column primary key, and the same rename publishes that sidecar with the data it indexes. | |
 | `store.index.interface.build-telemetry` | An index build emits `contextful.index.*` spans carrying rows indexed, builder duration and embedding request count, so the cost of an index is answerable from the trace. | |
-| `store.index.refusal.index-column-absent` | Declaring an index over a column the table's reconciled schema does not carry raises `StoreIndexColumnAbsent` at manifest validation, ahead of the pass that would build it. | `0023` |
+| `store.index.refusal.index-column-absent` | Declaring an index over a column the table's reconciled schema does not carry raises `StoreIndexColumnAbsent` at manifest validation, ahead of the pass that builds it. | `0023` |
 | `store.index.interface.clustering` | `cluster_by` sets row order inside a Parquet file so zone maps skip row groups with no explicit index. The sort is lexicographic over the declared columns in their declared order. | |
 | `store.index.invariant.zone-maps-need-no-declaration` | Zone maps ride the Parquet footer of every file, so a declared `cluster_by` buys row-group skipping with no index entry in the manifest and no sidecar on disk. | |
 | `store.index.interface.partitioning` | Partitioning is opt-in and off when undeclared: a single snapshot serves a table small enough that a partitioned scan adds directories without removing bytes. | |
@@ -213,7 +213,7 @@ are the physical arrangement that makes the cheapest index — the zone map — 
 
 unsettled: Is the on-disk vector graph format stable enough to commit to, and how many incremental extensions precede a full rebuild? owner: store affects: store.index
 
-unsettled: Should clustering carry a space-filling curve ordering beside the lexicographic sort, and what filter distributions would justify it? owner: store affects: store.index
+unsettled: Should clustering carry a space-filling curve ordering beside the lexicographic sort, and which filter distributions justify it? owner: store affects: store.index
 
 ## Clauses — bound-time
 

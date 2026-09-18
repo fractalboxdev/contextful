@@ -37,7 +37,7 @@ named target. The mint client ignores any system proxy configuration.
 | Follow a same-host redirect | A provider can move a path within its own host without a configuration edit | Lost on the same criterion at lower value: a mint endpoint has no pagination or canonicalization need that a redirect serves, so the exposure buys a convenience nobody needs |
 | Follow a redirect to any TLS target | Provider migrations are transparent | Lost outright on the criterion: the party answering chooses where the standing credential is replayed, and TLS bounds the observer rather than the recipient |
 | Honor the system proxy | Works on machines whose only egress is a proxy, with no extra configuration | Lost on exposure: mint traffic leaves the machine through a component the deployment did not choose for it, and that component terminates or observes the connection carrying the standing credential |
-| Honor a proxy configured specifically for mint traffic | Reachability without ambient configuration deciding it | Lost on effort and timing: it is a further setting to specify and to pin, and the loopback and direct-reachability paths already cover the deployments blocked today |
+| Honor a proxy configured specifically for mint traffic | Reachability without ambient configuration deciding it | Lost on effort and timing: it is a further setting to specify and to pin, and the loopback and direct-reachability paths already cover the deployments a proxy-only egress strands |
 
 ## Criteria
 
@@ -67,8 +67,8 @@ network neither may be available without a firewall change, and the failure pres
 connect error at mint time rather than as a configuration refusal. A deployment in that
 position cannot adopt the lease posture until its network is changed.
 
-A second cost: a provider migration that would have been transparent through a redirect
-becomes a coordinated edit, and until it lands the deployment's leased sources fail closed.
+A second cost: a provider moving its endpoint, which a redirect would have absorbed
+silently, becomes a coordinated edit, and until it lands the deployment's leased sources fail closed.
 
 ## Revisit triggers
 

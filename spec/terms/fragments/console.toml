@@ -3,7 +3,7 @@
 
 [operation]
 speak = { gloss = "The language every visitor-visible string carries, answer hygiene as a persona and audience contract, the deterministic backstops beneath it, and what a gated surface publishes about itself.", file = "spec/51-console.md", aliases = ["product-language", "answer-hygiene"] }
-ground = { gloss = "Where an answer's material comes from: the closed tool set, the two trust layers, the per-reader credential, the web supplement, and the sources block.", file = "spec/51-console.md", aliases = ["grounding", "cite"] }
+ground = { gloss = "Where an answer's material comes from: the closed tool set, the two trust layers, the per-reader credential, the web supplement, and the sources block.", file = "spec/51-console.md", aliases = ["cite"] }
 plan-turn = { gloss = "The shape of one turn: planner scaffolding, the replanning round, the answerability test, the code path under a failed search, and the store's prompt overlay.", file = "spec/51-console.md", aliases = ["turn-loop", "replan"] }
 set-vantage = { gloss = "A session's time basis: one vantage, its statement to the reader, the bound each leg carries, the snapshot timeline, and the arrivals strip.", file = "spec/51-console.md", aliases = ["vantage", "time-basis"] }
 browse = { gloss = "What a store advertises before a question is asked: discovered chips, humanized labels, soft discovery, the file gallery, and the insights panel.", file = "spec/51-console.md", aliases = ["chips", "discover"] }
@@ -25,7 +25,7 @@ brief = { gloss = "The proactive card: its derivation, its payload, its matching
 "temporal-humanizer" = { gloss = "Engine debug spellings of an instant are rewritten into readable prose over the grounding channel", owner = "console", resolves = "concept" }
 "backstops-are-silent" = { gloss = "A backstop corrects in place and emits no notice, so a corrected span reads as ordinary prose", owner = "console", resolves = "concept" }
 "error-copy" = { gloss = "An unreachable store, a refused read and an empty result render as sentences a reader can act on,", owner = "console", resolves = "concept" }
-"unanswerable-suggestion" = { gloss = "A suggested prompt whose answer under these rules would be a decline raises", owner = "console", resolves = "concept" }
+"unanswerable-suggestion" = { gloss = "A suggested prompt whose answer under these rules is a decline raises", owner = "console", resolves = "concept" }
 "no-discovery-metadata" = { gloss = "A surface behind an identity perimeter is unreachable by a crawler, human or agent, and publishes", owner = "console", resolves = "concept" }
 "tool-results-only" = { gloss = "Every sentence of an answer is built from what a tool call returned", owner = "console", resolves = "concept" }
 "ungrounded-answer" = { gloss = "A turn holding no tool result answers that the store carries nothing on the question, and any path", owner = "console", resolves = "concept" }
@@ -110,6 +110,7 @@ brief = { gloss = "The proactive card: its derivation, its payload, its matching
 "tombstone-commits" = { gloss = "A forget commits alongside the conclusions it retires, so a pull cannot resurrect what a reader", owner = "console", resolves = "concept" }
 "subjects-belong-to-the-store" = { gloss = "A distilled subject belongs to the store rather than to the reader who produced it, so a", owner = "console", resolves = "concept" }
 "greeting-never-learns" = { gloss = "The proactive card sits outside the session's turns, so the distiller draws nothing from it", owner = "console", resolves = "concept" }
+grounding = { gloss = "The channel of a tool return the model reads: the text every sentence of an answer is built from, beside `view` and `internals`.", owner = "console", resolves = "code" }
 "three-channels" = { gloss = "A tool return splits three ways: `grounding`, the text the model reads and the answer is built", owner = "console", resolves = "code" }
 "model-reads-one-channel" = { gloss = "The model receives `grounding` and nothing else", owner = "console", resolves = "code" }
 "internals-off-by-default" = { gloss = "The trace channel arrives when a call asks for it, and the verbatim protocol round-trip shows", owner = "console", resolves = "concept" }
@@ -166,7 +167,7 @@ brief = { gloss = "The proactive card: its derivation, its payload, its matching
 "card-is-not-the-published-brief" = { gloss = "A store's published brief route answers what is interesting across the whole store; the card", owner = "console", resolves = "concept" }
 
 [error]
-ConsoleUngroundedAnswer = { gloss = "A path that would compose an answer from the model's own knowledge rather than from a tool result.", owner = "console" }
+ConsoleUngroundedAnswer = { gloss = "A path composing an answer from the model's own knowledge rather than from a tool result.", owner = "console" }
 ConsoleToolNotAdmitted = { gloss = "A tool call naming something outside the read subset the turn's packs admit.", owner = "console" }
 ConsoleMutatingToolRequested = { gloss = "A client-reachable path naming a write on the visitor-facing endpoint.", owner = "console" }
 ConsoleFileAccessDirect = { gloss = "A table function resolving a path straight against stored bytes on the caller surface.", owner = "console" }
@@ -175,7 +176,7 @@ ConsoleVantageUnparseable = { gloss = "A vantage that is neither a calendar day 
 ConsoleWebBoundUnparseable = { gloss = "A public-web leg whose publication bound could not be parsed.", owner = "console" }
 ConsoleBriefUnavailable = { gloss = "A greeting derivation that errored or exceeded its budget; the card does not render.", owner = "console" }
 ConsoleViewNotServerBuilt = { gloss = "A view specification arriving from a client or composed by the model rather than inferred from a result.", owner = "console" }
-ConsoleSuggestionUnanswerable = { gloss = "A suggested prompt whose answer under the answer-hygiene contract would be a decline.", owner = "console" }
+ConsoleSuggestionUnanswerable = { gloss = "A suggested prompt whose answer under the answer-hygiene contract is a decline.", owner = "console" }
 ConsolePlannerReachedMemory = { gloss = "Planner scaffolding or a deterministic fallback naming a memory relation.", owner = "console" }
 ConsoleLearningUnscoped = { gloss = "A distilled conclusion landing without the reading-session scope.", owner = "console" }
 

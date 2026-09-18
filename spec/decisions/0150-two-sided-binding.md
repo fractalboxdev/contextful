@@ -76,7 +76,7 @@ an engine implementation across every pipeline that names it is one block edit.
 
 What is now expensive to reverse: refusing manifest-side command keys is a compatibility
 boundary. Manifests in circulation are written without them, and permitting them later would
-make previously-refused configurations execute.
+make a refused configuration execute.
 
 ## Revisit triggers
 

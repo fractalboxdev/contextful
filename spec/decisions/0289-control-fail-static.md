@@ -71,7 +71,7 @@ piece of reconciler state worth persisting between beats.
 
 The cost accepted: a control plane that stops publishing does not stop the deployment. A
 control source decommissioned, repointed at an empty store, or left broken after a
-migration leaves every daemon subscribed to it running its last cadence forever, and the
+reconfiguration leaves every daemon subscribed to it running its last cadence forever, and the
 only evidence is a repeating log line. An entry an operator believes they removed keeps
 firing. Cadence staleness is unbounded by construction, and detecting it requires reading
 logs or comparing the armed cursor against the applied version from outside.

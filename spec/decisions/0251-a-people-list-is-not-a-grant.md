@@ -94,5 +94,5 @@ projection into `access_grants` and not the presence of the data.
   consults, making the list an access list rather than a proxy for one.
 - The federated path for participation-shaped sources is built and measured, which would
   change how much the coverage cost actually bites.
-- Sources begin exposing per-item permission endpoints that were previously absent, which
+- Sources begin exposing per-item permission endpoints this class of source lacks, which
   would shrink the class this decision excludes without changing the rule.

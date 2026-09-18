@@ -1,12 +1,28 @@
 # Subjects — the fourth segment of a clause id, and every backticked token appearing
-# in two or more files. `resolves = "code"` marks a token the status computation looks
-# for in a definition position; `"concept"` is excluded from that test.
+# in two or more contract files. `resolves = "code"` marks a token the status
+# computation looks for in a definition position; `"concept"` is excluded from that
+# test. Owner `wire` names protocol vocabulary no contract owes, which no clause is
+# addressed on and the usage-to-owner join passes over.
+#
+# Generated from spec/terms/fragments/.
 
 [term]
+Authorization = { gloss = "The request header carrying a caller's credential.", owner = "wire", resolves = "concept" }
 CONTEXTFUL_NODE_ID = { gloss = "The environment read that takes precedence in node id resolution.", owner = "sync", resolves = "code" }
 CONTEXTFUL_STATE_DIR = { gloss = "The environment read naming where a generated node id persists, outside the store root.", owner = "sync", resolves = "code" }
 "Classical.choice" = { gloss = "The choice axiom, admitted to the allowlist by an explicit reviewed addition.", owner = "formal", resolves = "code" }
+Content-Type = { gloss = "The response header naming a payload's media type.", owner = "wire", resolves = "concept" }
+Deriver = { gloss = "The port every derive engine implements, owing an engine identity, an endpoint host, a locality and a run audit.", owner = "derive", resolves = "code" }
+ETag = { gloss = "The response header carrying an opaque identity for a stored object's bytes.", owner = "wire", resolves = "concept" }
+If-Match = { gloss = "The request header making a write conditional on a stored object's identity.", owner = "wire", resolves = "concept" }
+If-None-Match = { gloss = "The request header making a read conditional on a stored object's identity.", owner = "wire", resolves = "concept" }
+Last-Modified = { gloss = "The response header carrying an object's modification instant.", owner = "wire", resolves = "concept" }
+Link = { gloss = "The response header carrying pagination relations.", owner = "wire", resolves = "concept" }
+LinkReader = { gloss = "The trait above the derive port carrying capability probing, link reading and an unmetered-egress claim.", owner = "derive", resolves = "code" }
 "Quot.sound" = { gloss = "Quotient soundness, an admitted axiom of the model's footprint.", owner = "formal", resolves = "code" }
+Retry-After = { gloss = "The response header an upstream states its own wait in.", owner = "wire", resolves = "concept" }
+Transcriber = { gloss = "The trait above the derive port carrying capability probing and media transcription.", owner = "derive", resolves = "code" }
+User-Agent = { gloss = "The request header naming the calling software.", owner = "wire", resolves = "concept" }
 _acl_observed_at = { gloss = "The instant a permission state was read at its source, held separately from the instant the row landed.", owner = "visibility", resolves = "code" }
 _acl_sweep_id = { gloss = "The identifier of the run that wrote an access row.", owner = "visibility", resolves = "code" }
 _acl_sweep_kind = { gloss = "The kind of run that wrote an access row: full, incremental or webhook.", owner = "visibility", resolves = "code" }
@@ -23,6 +39,7 @@ a-bound-filters = { gloss = "A bound returns every covering version rather than 
 abandoned-is-a-reading = { gloss = "Running and abandoned as readings of the rows rather than a heartbeat mechanism.", owner = "run", resolves = "concept" }
 abandoned-pull = { gloss = "A pull dropped mid-await, surfacing as a typed failure rather than a dropped future.", owner = "run", resolves = "concept" }
 able-to-fail = { gloss = "A test is able to fail on the condition its name states.", owner = "build", resolves = "concept" }
+abort = { gloss = "The table-error setting halting a fire at the first failing table.", owner = "pipeline", resolves = "code" }
 absence-is-earned = { gloss = "Five conditions carry the card: a session with no turns, a session at present time, a store holding", owner = "console", resolves = "concept" }
 absent-author = { gloss = "A null row-authorship value, meaning no capability credential authorized that write.", owner = "authority", resolves = "concept" }
 absent-block = { gloss = "The omission of the retrieval block where no ranker produced a number.", owner = "read", resolves = "concept" }
@@ -31,6 +48,7 @@ absent-read-backend = { gloss = "A binary linked without the embedded SQL engine
 absent-truth-is-nan = { gloss = "All five ranked metrics are undefined where no relevant set exists and answer NaN there, and a NaN drops out", owner = "build", resolves = "concept" }
 absent-watermark = { gloss = "A null watermark for a materialization that carries none.", owner = "read", resolves = "concept" }
 abstention-returns-nothing = { gloss = "A must-abstain case returns zero rows.", owner = "build", resolves = "concept" }
+access = { gloss = "The gate value declaring a hostname answers an anonymous request with a redirect to the owning team's login.", owner = "topology", resolves = "code" }
 access-explanation = { gloss = "The decision plus the path that produced it, returned without a row from the resource under examination.", owner = "visibility", resolves = "concept" }
 access-mapping = { gloss = "The pack declaration projecting a source's permission model onto the access tables, asserting no audience.", owner = "visibility", resolves = "code" }
 access_freshness = { gloss = "Mirror table: one row per source and sweep kind, carrying the enforced watermark and the diagnostic fields.", owner = "visibility", resolves = "code" }
@@ -40,13 +58,16 @@ access_identity_links = { gloss = "Mirror table: one row mapping a source princi
 access_principals = { gloss = "Mirror table: one row per source principal with its kind and the source's own label.", owner = "visibility", resolves = "code" }
 access_resources = { gloss = "Mirror table: one row per governed object, carrying its observed visibility class.", owner = "visibility", resolves = "code" }
 access_tombstones = { gloss = "Mirror table: one row per observed revocation, keyed by normalized scope columns.", owner = "visibility", resolves = "code" }
+acl-observation = { gloss = "One dated reading of a source's permission state, carried on an access row by its clock, kind and run identifier.", owner = "visibility", resolves = "concept" }
 acquire = { gloss = "The limiter call that reserves a batch of permits against a shared vendor quota.", owner = "connector", resolves = "code" }
 action = { gloss = "One of `read`, `write`, `execute`, `admin`.", owner = "authority", resolves = "code" }
 activation-handle = { gloss = "The token authorizing the engine to act on a segment over one channel, and not to read its members.", owner = "disclosure", resolves = "code" }
 adapter-durability-is-printed = { gloss = "The selected adapter and its durability print at startup and read the same on the health surface", owner = "control", resolves = "concept" }
 adapter-not-restatement = { gloss = "A surface genuinely unable to call the engine \u2014 a worker holding the sole handle to a storage binding, with", owner = "build", resolves = "code" }
 address-literal = { gloss = "A host written as a numeric address rather than a name.", owner = "derive", resolves = "concept" }
+admin = { gloss = "The action verb a grant carries to mint; the vocabulary's fourth verb.", owner = "authority", resolves = "code" }
 admin-capability-is-backend-held = { gloss = "Every edit and every apply carries an admin capability held as a server-side secret and never in the browser", owner = "control", resolves = "concept" }
+adminToken = { gloss = "The gate value declaring a hostname authenticates its own callers and shows no login in front of them.", owner = "topology", resolves = "code" }
 admission-decides-entry = { gloss = "The boundary between admission and enforcement: admission settles entry, the data plane settles exposure.", owner = "authority", resolves = "concept" }
 admission-pin = { gloss = "The connector identity a run records when it opens, which replay resolves against.", owner = "run", resolves = "code" }
 admitted-authority = { gloss = "The value a verification produces: the normalized subject tuple plus the grants it narrows to, taken as an argument by every read surface and every row-landing effect.", owner = "authority", resolves = "code" }
@@ -55,6 +76,8 @@ advertised-is-enforced = { gloss = "The equality between a published limits bloc
 advertising-tracks-service = { gloss = "A table a store stops serving loses its chip at the next load, so what a store cannot answer it", owner = "console", resolves = "concept" }
 advisory-zone = { gloss = "The binding's `zone` key, which informs an operator and lands on no row.", owner = "derive", resolves = "code" }
 agent-ceiling = { gloss = "The rule bounding an agent's reach by the reach of the human it acts for.", owner = "authority", resolves = "concept" }
+agent_description = { gloss = "The declaration key carrying a reader-facing description of what a table holds.", owner = "store", resolves = "code" }
+agent_hint = { gloss = "The declaration key carrying reader-facing guidance on how a table is queried.", owner = "store", resolves = "code" }
 aggregate-constraint = { gloss = "The grant fields bounding a derived-result read: minimum group size, contributor share, permitted functions, group ceiling, row ceiling.", owner = "authority", resolves = "code" }
 aggregate-grant = { gloss = "The grant shape carrying a group-size floor, a contributor-share ceiling, permitted aggregate functions, a groups ceiling and a row ceiling.", owner = "disclosure", resolves = "code" }
 aggregate-shape-test = { gloss = "The stripped case-insensitive scan for a grouping clause that decides whether a model looks like a cross-subject aggregate.", owner = "disclosure", resolves = "code" }
@@ -83,6 +106,7 @@ answer-stands-without-its-widget = { gloss = "A widget rides its own frame emitt
 answerability-is-code = { gloss = "Whether a round answered is decided by code rather than by the model's judgement, so the verdict is", owner = "console", resolves = "concept" }
 answerability-test = { gloss = "A structured query counts as answering once it returns rows; a free-text search counts when its", owner = "console", resolves = "concept" }
 anti-join = { gloss = "The drop of every parent the output table already holds a row for.", owner = "derive", resolves = "concept" }
+append = { gloss = "The write mode a table takes when the key is absent: a run adds rows and no key retires when it stops appearing.", owner = "store", resolves = "code" }
 appended-block = { gloss = "A block added after the first, contributing no authority fact to an allow decision.", owner = "authority", resolves = "concept" }
 application-cadence = { gloss = "Freshness thresholds and observation intervals owned by the application.", owner = "memory", resolves = "concept" }
 application-scope = { gloss = "The domain material an application owns.", owner = "topology", resolves = "concept" }
@@ -159,6 +183,7 @@ blocking-thread = { gloss = "The move of a subprocess chain off the async runtim
 body-format = { gloss = "The `format` key deciding how a response or file body decodes.", owner = "connector", resolves = "code" }
 bootstrap-backend = { gloss = "`CONTEXTFUL_LEASE_BOOTSTRAP_BACKEND` \u2014 the environment read composing a manager behind the lease provider for the mint reference.", owner = "secret", resolves = "code" }
 bound-hit-is-transient = { gloss = "A connector striking a declared resource bound answering as a transient failure.", owner = "run", resolves = "concept" }
+bound-host = { gloss = "The one exact, non-wildcard host a source binding a credential declares, judged at validation and again at session open.", owner = "secret", resolves = "concept" }
 bound-outcome = { gloss = "What a connector returns on striking a declared resource bound.", owner = "connector", resolves = "concept" }
 bound-spelling = { gloss = "The two accepted spellings of a history window's lower bound.", owner = "run", resolves = "concept" }
 bound-tenancy = { gloss = "The organization identifier stamped into the minted subject's account member and read through a bound parameter.", owner = "authority", resolves = "code" }
@@ -184,6 +209,7 @@ built-in-grant-absent = { gloss = "A compiled-in vendor-reaching source shipped 
 built-in-registry = { gloss = "The enumerated list of names resolving to a compiled-in source.", owner = "connector", resolves = "concept" }
 byte-and-row-counts = { gloss = "The landed rows and bytes a run row reports, counted at the destination.", owner = "run", resolves = "code" }
 cache-is-opt-in = { gloss = "Per-table opt-in for the result cache, and its exclusion for private tables.", owner = "read", resolves = "concept" }
+cadence = { gloss = "The canvas node kind standing for an entry's schedule, its countdown and its next fire instants.", owner = "control", resolves = "code" }
 cadence-lease = { gloss = "The reconciler holds a lease on a deployment's cadence", owner = "control", resolves = "concept" }
 call-deadline = { gloss = "The wall-clock deadline armed around one guest call.", owner = "connector", resolves = "concept" }
 caller-embedding = { gloss = "A caller-supplied query vector, which turns on the cosine leg.", owner = "read", resolves = "code" }
@@ -195,10 +221,11 @@ candidate-rows = { gloss = "One row per picture candidate, head facts repeated o
 candidate-schema = { gloss = "The declared output schema every extracted candidate validates against.", owner = "memory", resolves = "code" }
 candidate-window = { gloss = "The bounded, recency-ordered row set a ranked read draws candidates from.", owner = "read", resolves = "code" }
 canonical-column = { gloss = "A column a memory shape requires of any table declaring that shape.", owner = "memory", resolves = "concept" }
-canvas-node-kinds = { gloss = "The operations canvas is an interactive graph with pan", owner = "control", resolves = "code" }
+canvas-node-kinds = { gloss = "The three visualization-only node kinds the operations canvas adds: `data`, `instruction` and `cadence`.", owner = "control", resolves = "code" }
 cap-after-the-anti-join = { gloss = "The ordering that truncates the outstanding list rather than the scanned list.", owner = "derive", resolves = "concept" }
 capability-packs = { gloss = "Tools group into packs, each carrying an admission predicate over the request context", owner = "console", resolves = "concept" }
 capability-tagged-routing = { gloss = "A worker registers arbitrary tags and a step declares `requires` as a strict constraint and `prefer` as", owner = "control", resolves = "concept" }
+captured-output = { gloss = "`max_output_bytes`, the bound on the standard output and standard error one chain step may produce.", owner = "derive", resolves = "code" }
 card-authorization = { gloss = "The entity read grant the card requires, and the separate claim grant its claims require.", owner = "memory", resolves = "concept" }
 card-is-not-the-published-brief = { gloss = "A store's published brief route answers what is interesting across the whole store; the card", owner = "console", resolves = "concept" }
 card-subjects = { gloss = "A card carries at most 3 subjects", owner = "console", resolves = "concept" }
@@ -250,7 +277,7 @@ clause-id = { gloss = "Four dot-separated segments addressing one normative sent
 clean-room = { gloss = "A query pattern across a trust boundary between distinct data owners.", owner = "disclosure", resolves = "code" }
 cleared-environment = { gloss = "The child environment built from nothing plus an explicit allowlist.", owner = "derive", resolves = "concept" }
 cleared-flag-withholds = { gloss = "The push behavior of a table whose redistribution flag is clear.", owner = "enforcement", resolves = "code" }
-cleartext-attachment = { gloss = "A reference-resolved header presented against a cleartext endpoint.", owner = "connector", resolves = "concept" }
+cleartext-attachment = { gloss = "A host-attached header on the mediated outbound path, judged against the endpoint's transport.", owner = "connector", resolves = "concept" }
 cli-binary = { gloss = "The single command binary `contextful`.", owner = "topology", resolves = "code" }
 click-prefills = { gloss = "A click fills the composer and focuses it", owner = "console", resolves = "concept" }
 client-authored-view = { gloss = "A view specification arriving from a client, or composed by the model rather than inferred from a", owner = "console", resolves = "concept" }
@@ -278,10 +305,11 @@ combine-without-generalization = { gloss = "A secondary that leaves its primary'
 command-in-a-manifest = { gloss = "An executable key written on the request side of the binding split.", owner = "derive", resolves = "concept" }
 command-resolution = { gloss = "The build-time resolution, executability check, canonicalization and digest of `command[0]`.", owner = "derive", resolves = "concept" }
 commit = { gloss = "The post-run commit a memory write shares with the write path.", owner = "memory", resolves = "code" }
+commit-order = { gloss = "The order rows and a stream position become durable in.", owner = "pipeline", resolves = "concept" }
 commit-point = { gloss = "The index write after which a consumer observes a tree whose every key is already durable.", owner = "sync", resolves = "concept" }
 commit-signal = { gloss = "The catalog row that makes a chunk's files committed rather than in-flight.", owner = "pipeline", resolves = "concept" }
 commit-visibility = { gloss = "The point at which a run's rows for one table become visible to a query.", owner = "connector", resolves = "concept" }
-compact-target = { gloss = "A `compact` target names the on-disk table spelled `<pipeline>_<table>`, with every non-alphanumeric", owner = "control", resolves = "code" }
+compact-target = { gloss = "The on-disk table a `fold` job names, spelled `<pipeline>_<table>` with every non-alphanumeric character folded.", owner = "control", resolves = "code" }
 compaction-cadence = { gloss = "The fold job a seeded table declares.", owner = "pipeline", resolves = "concept" }
 compaction-interval = { gloss = "The elapsed-time trigger for a table's pass.", owner = "store", resolves = "concept" }
 compaction-owner = { gloss = "The one machine a store names as permitted to fold its run files into snapshots.", owner = "sync", resolves = "concept" }
@@ -301,6 +329,7 @@ composed_nil = { gloss = "The empty list admits every row, the unit of the conju
 composed_sound = { gloss = "A row admitted by the fold is admitted by every member of the list.", owner = "formal", resolves = "code" }
 composition-cell = { gloss = "One coarse breakdown cell of a released segment.", owner = "disclosure", resolves = "code" }
 concurrency-by-kind = { gloss = "The rule that a position's kind, not the executor, decides how many writers move it.", owner = "run", resolves = "concept" }
+confidence = { gloss = "The strength column a claim, a preference and an edge carry on the interval 0..1.", owner = "memory", resolves = "code" }
 confidence-decay = { gloss = "The 0.5 multiplier applied to a retired claim's confidence when the object changed.", owner = "memory", resolves = "concept" }
 confidence-out-of-range = { gloss = "A confidence value outside the normalized interval.", owner = "derive", resolves = "concept" }
 config-hashing = { gloss = "Folding the forwarded guest table into the connector's content hash.", owner = "connector", resolves = "concept" }
@@ -314,12 +343,14 @@ connect = { gloss = "Handing a subscriber its snapshot and its receiver under on
 connection-views = { gloss = "The per-connection create-or-replace registration issued ahead of a statement.", owner = "read", resolves = "code" }
 connector-configuration = { gloss = "Adding a connector runs four steps: pick it and a pinned version from the registry, so a replay reaches", owner = "control", resolves = "code" }
 connector-pin = { gloss = "The recorded connector identity a run is admitted against.", owner = "pipeline", resolves = "code" }
+connector-probe = { gloss = "The operator action that exercises a connector's health check or first-page pull against its declared grants, committing no schedule.", owner = "control", resolves = "code" }
 consensus-system = { gloss = "A bundled replication or coordination service, absent from the tree.", owner = "topology", resolves = "concept" }
 console-scope = { gloss = "The console as one shared interface over engine capabilities plus application metadata.", owner = "topology", resolves = "concept" }
 consumer-comparison = { gloss = "The cross-query build-identifier comparison a derivation performs on itself.", owner = "read", resolves = "concept" }
 container-allowlist = { gloss = "The default-deny, all-of list of container identifiers admitting a row from a source that exposes membership and no permission data.", owner = "visibility", resolves = "code" }
 container-disk = { gloss = "The container holds 18 GiB of usable disk.", owner = "build", resolves = "code" }
 container-memory = { gloss = "The container holds 12 GiB of memory.", owner = "build", resolves = "code" }
+container-readiness = { gloss = "The point at which a retrieval container answers, reached ahead of its snapshot-set hydration.", owner = "control", resolves = "code" }
 content-hash = { gloss = "The sha256 over a specification's canonical JSON, and the input a replay pin keys on.", owner = "pipeline", resolves = "code" }
 content-tokens = { gloss = "The normalized, deduplicated token set extracted from a query string.", owner = "read", resolves = "concept" }
 "contextful.bounds" = { gloss = "The envelope block echoing the resolved bounds a read ran under.", owner = "store", resolves = "code" }
@@ -330,6 +361,7 @@ contract-identity = { gloss = "A published table's version paired with its schem
 contract-inventory = { gloss = "The twenty contracts partitioning the corpus, registered in `spec/terms/contract.toml`.", owner = "topology", resolves = "code" }
 contribution-bound = { gloss = "The per-unit cap on rows and the clamp of per-row values into a declared range.", owner = "disclosure", resolves = "code" }
 contributor-breakdown = { gloss = "The one row per group and contributor a governed model emits, carrying that contributor's own measures.", owner = "disclosure", resolves = "code" }
+contributor-column = { gloss = "The model output the disclosure policy counts contributors on, excluded from the published columns.", owner = "disclosure", resolves = "code" }
 contributor-key = { gloss = "The registrable domain a fetched result stamps, so contributors count distinct publishers.", owner = "memory", resolves = "code" }
 contributor-share = { gloss = "The declared fraction of a group's metric mass above which one contributor's dominance withholds it.", owner = "disclosure", resolves = "code" }
 control-budget = { gloss = "The control profile's compressed and idle-resident bound pair.", owner = "topology", resolves = "concept" }
@@ -392,6 +424,7 @@ declared-charset = { gloss = "A non-UTF-8 character set declared by header or by
 declared-encoding = { gloss = "The encoding label a non-UTF-8 delimited body decodes through.", owner = "connector", resolves = "code" }
 declared-grant = { gloss = "The manifest's statement of the host access a connector reaches for.", owner = "connector", resolves = "concept" }
 declared-key-required = { gloss = "The destination-side key that makes a re-landed boundary instant idempotent.", owner = "run", resolves = "concept" }
+declared-lexicon = { gloss = "The vocabulary a store registry entry declares, normalized and filtered by one shared normalizer.", owner = "control", resolves = "code" }
 declared-scope = { gloss = "The scope introspection reports off a credential, legible without evaluation.", owner = "authority", resolves = "code" }
 decline-and-pivot = { gloss = "A question reaching for machinery \u2014 the statement that ran, the engine underneath, the name of a", owner = "console", resolves = "concept" }
 declined-tally = { gloss = "The per-extension count of what a directory walk skipped.", owner = "connector", resolves = "concept" }
@@ -419,6 +452,7 @@ dependency-allowlist = { gloss = "The libraries a connector author's crate may d
 dependency-direction = { gloss = "Adapters depend on the domain crate and the domain crate on none of them.", owner = "topology", resolves = "concept" }
 dependency-lattice = { gloss = "Which heavy dependency links into which profiles.", owner = "topology", resolves = "concept" }
 deployment-declaration = { gloss = "`contextful.toml`, the one declaration deploying to every provider.", owner = "topology", resolves = "code" }
+deployment-role = { gloss = "Control-plane target or worker target.", owner = "topology", resolves = "concept" }
 deployment-setting = { gloss = "One of the two settings a derived result is computed in: single-operator output privacy, or a clean room across owners.", owner = "disclosure", resolves = "concept" }
 derivation-carries-a-check = { gloss = "Derivation without an enforced staleness check is a copy with extra steps", owner = "build", resolves = "code" }
 derivation-order = { gloss = "The composition of successive derivations, re-checked as a whole chain at admission.", owner = "authority", resolves = "concept" }
@@ -432,14 +466,14 @@ describe-window = { gloss = "The default and clamped ceilings the describe surfa
 descriptor = { gloss = "The per-hostname artifact naming its worker, hostname, contract version and gate.", owner = "topology", resolves = "code" }
 descriptor-emission = { gloss = "The deploy's derivation of a hostname's provider configuration from its descriptor.", owner = "topology", resolves = "concept" }
 descriptor-field = { gloss = "A key a descriptor models, against which an unmodelled key is refused.", owner = "topology", resolves = "code" }
-descriptor-unknown-field = { gloss = "A descriptor names the contract version it was written against and decodes with excess properties refused", owner = "control", resolves = "concept" }
+descriptor-unknown-field = { gloss = "A key this surface does not model, met while decoding its own descriptor.", owner = "control", resolves = "concept" }
 destination = { gloss = "The sink a pipeline's rows land in.", owner = "pipeline", resolves = "code" }
 detector-window-is-narrowed = { gloss = "The two-pass check and the deployment assumption its guarantee rests on.", owner = "enforcement", resolves = "code" }
 deterministic-tier-calls-no-model = { gloss = "Recall@k, precision@k, hit-rate@k, reciprocal rank and nDCG@k gate at near-zero cost with no model call", owner = "build", resolves = "concept" }
 deterministic-verdict = { gloss = "A refusal pure over static input, terminal and outside the attempt budget.", owner = "run", resolves = "concept" }
 development-fallback-is-loud = { gloss = "The source-tree constant the pepper resolves to when unset, and its per-run signal.", owner = "enforcement", resolves = "code" }
 diagnostic-request = { gloss = "An outbound call the disclosure diagnostic would make against the object store.", owner = "disclosure", resolves = "concept" }
-diagnostic-url = { gloss = "The reduced form a URL takes in an error, a log line or a landed column.", owner = "connector", resolves = "concept" }
+diagnostic-url = { gloss = "The reduced form a URL takes when a connector's diagnostic, log line or landed column receives it.", owner = "connector", resolves = "concept" }
 diagnostic-warning = { gloss = "A diagnostic finding that reports without failing the run.", owner = "disclosure", resolves = "code" }
 dial-out-holds-no-port = { gloss = "A dial-out worker opens an outbound long-lived connection and pulls work, holding no public address and no", owner = "control", resolves = "concept" }
 diff-buckets = { gloss = "The decision half is a pure function over a desired schedule set and a running one", owner = "control", resolves = "code" }
@@ -472,6 +506,7 @@ document-host-on-the-row = { gloss = "The document's final host standing as a li
 document-identity = { gloss = "The slug-plus-ordinal key a document row carries.", owner = "connector", resolves = "concept" }
 document-is-the-single-writer = { gloss = "The editable configuration document is the single writer configuration has: entry definitions", owner = "control", resolves = "concept" }
 document-prefix = { gloss = "`max_document_bytes`, the prefix the head scanner reads.", owner = "derive", resolves = "code" }
+document-truncation = { gloss = "A document read that reached part of the content and stopped.", owner = "connector", resolves = "concept" }
 document-unreadable = { gloss = "An encrypted document, or one with no extractable text on any page.", owner = "connector", resolves = "concept" }
 domain-crate = { gloss = "`contextful-core`, the pure domain crate with no I/O.", owner = "topology", resolves = "code" }
 domain-type = { gloss = "A type the domain crate defines and every adapter consumes.", owner = "topology", resolves = "code" }
@@ -482,6 +517,7 @@ driver-mismatch = { gloss = "A `driver` and `task` pairing the tier does not ser
 drop-yields-null = { gloss = "The value a dropped cell carries, by column type.", owner = "enforcement", resolves = "code" }
 dry-run = { gloss = "A forget that returns the cascade list and writes nothing.", owner = "memory", resolves = "code" }
 dual-governance = { gloss = "A table declared under both regimes at once.", owner = "disclosure", resolves = "code" }
+duckdb = { gloss = "The Cargo feature linking the SQL engine with its write path, taken by the full profile.", owner = "topology", resolves = "code" }
 duplicate-row-rate = { gloss = "A repeated table-and-row-key pair holds at 0 percent, measured over the ranking rather than over its", owner = "build", resolves = "code" }
 duplicated-capability = { gloss = "A surface carrying its own copy of a capability the engine holds raises `CapabilityDuplicated` at review", owner = "build", resolves = "concept" }
 durable-write = { gloss = "The per-batch durability a destination write provides.", owner = "connector", resolves = "concept" }
@@ -499,6 +535,7 @@ edge-provenance = { gloss = "Lineage and validity stamped on an edge in the shap
 edge-revision = { gloss = "The claim revision rule applied over source, relation type, target and scope.", owner = "memory", resolves = "concept" }
 edits-are-not-live-until-apply = { gloss = "An edit is not live until an apply, and the claimed version is the visible marker of which configuration a", owner = "control", resolves = "concept" }
 effect-boundary = { gloss = "The journal as the line every observable side effect crosses.", owner = "run", resolves = "concept" }
+effective-row-ceiling = { gloss = "The smallest of the grant's, request's, template's and face's row ceilings, applied to a read.", owner = "authority", resolves = "code" }
 egress-claim = { gloss = "What a transcribe pipeline states on the run record about reaching its engine.", owner = "derive", resolves = "concept" }
 elaborated-proof = { gloss = "The proof term the toolchain produced, as distinct from the characters of the file that produced it.", owner = "formal", resolves = "concept" }
 emission-never-blocks = { gloss = "Progress handed to a bounded drop-on-full channel after the durable write.", owner = "run", resolves = "concept" }
@@ -535,6 +572,7 @@ entity-id = { gloss = "The opaque canonical identifier of a resolved thing.", ow
 entity-ids = { gloss = "An entity-id column lands from a tagging transform over the deployment's own entity pack, carrying", owner = "console", resolves = "concept" }
 entity-tier = { gloss = "The entity tier requires the conclusion's subject slug to appear among the row's ingest-time entity", owner = "console", resolves = "concept" }
 entity-upsert = { gloss = "The single-row entity writer, reachable from the command line.", owner = "memory", resolves = "code" }
+entity_id = { gloss = "The `memory_entities` column carrying that identifier, and the key a row pointing at an entity holds.", owner = "memory", resolves = "code" }
 entry = { gloss = "One line of the audit chain: a sequence number, a predecessor hash, the attributes, and the entry's own digest.", owner = "accountability", resolves = "concept" }
 entry-key = { gloss = "The journal table's primary key, execution id plus step label plus input hash.", owner = "run", resolves = "code" }
 entry_hash = { gloss = "sha256 over the sequence number, the predecessor hash and the attributes of one entry.", owner = "accountability", resolves = "code" }
@@ -546,6 +584,8 @@ environment-name = { gloss = "A declared environment variable name bound to a re
 episode-columns = { gloss = "The canonical column set of `memory_episodes`.", owner = "memory", resolves = "concept" }
 epoch-comparison = { gloss = "Casting text instants to epoch seconds before comparing them in the view.", owner = "memory", resolves = "concept" }
 equality-on-a-dropped-column = { gloss = "The empty result an equality filter against a dropped column produces.", owner = "enforcement", resolves = "concept" }
+erasure-cascade = { gloss = "The one-hop invalidation of derived facts whose provenance references an erased subject or an erased row identifier.", owner = "accountability", resolves = "concept" }
+erasure-tombstone = { gloss = "The marker that removes a subject's row from every read of a subject-keyed shape.", owner = "accountability", resolves = "concept" }
 error-cap = { gloss = "The masked, size-capped rendering of a recorded run error on the shared projection.", owner = "run", resolves = "concept" }
 error-copy = { gloss = "An unreachable store, a refused read and an empty result render as sentences a reader can act on,", owner = "console", resolves = "concept" }
 error-payload = { gloss = "The bound on a refusal payload.", owner = "enforcement", resolves = "concept" }
@@ -559,6 +599,7 @@ evidence-floor = { gloss = "The intersection of evidence allow-sets a synthesize
 evidence-gate = { gloss = "Serving a synthesized claim when every evidence row reads through the caller's session.", owner = "memory", resolves = "concept" }
 evidence-references = { gloss = "The bound on how many evidence rows one claim names.", owner = "memory", resolves = "concept" }
 evidence-unresolved = { gloss = "Suppression of a claim whose lineage does not resolve.", owner = "memory", resolves = "concept" }
+example_queries = { gloss = "The declaration key carrying reader-facing example questions a table answers.", owner = "store", resolves = "code" }
 exception-condition = { gloss = "A boolean expression over subject fields that relaxes a declared predicate.", owner = "enforcement", resolves = "code" }
 exchange-is-turn-key = { gloss = "A store on exchange authentication needs no pre-provisioned secret", owner = "control", resolves = "concept" }
 exchange-policy = { gloss = "`policy.toml` \u2014 expected issuer and audience, subject map, role claim and role grants, default grants, lifetime, minted issuer and audience.", owner = "authority", resolves = "code" }
@@ -596,6 +637,7 @@ fact-columns = { gloss = "The canonical column set of `memory_facts`.", owner = 
 fail-static = { gloss = "An unreadable pointer, a snapshot that does not parse, or a control plane answering `5xx` raises", owner = "control", resolves = "concept" }
 failClosed_denies_private = { gloss = "The fail-closed allow-set rejects the private-cloud category.", owner = "formal", resolves = "code" }
 failClosed_denies_public = { gloss = "The fail-closed allow-set rejects the public-cloud category.", owner = "formal", resolves = "code" }
+failed = { gloss = "The terminal value naming work that ended on an error, on a run, a step, a tally or a unit.", owner = "run", resolves = "concept" }
 failed-validation-costs-nothing = { gloss = "A view failing validation yields no widget rather than an error, the way a citation and a chip fail", owner = "console", resolves = "concept" }
 failing-stage-reports-first = { gloss = "A failing stage emits its diagnostics before propagating its own exit code, so a red run carries context", owner = "build", resolves = "concept" }
 failure-continues-the-loop = { gloss = "A failed entry is logged and evaluation continues", owner = "control", resolves = "concept" }
@@ -603,6 +645,7 @@ failure-off-the-table = { gloss = "Per-unit failure state recorded anywhere but 
 failure-publishes = { gloss = "The bucket push running on the failure arm so a failure row leaves its machine.", owner = "run", resolves = "concept" }
 failure-taxonomy = { gloss = "The one tagged failure type crossing every port and both halves of the engine.", owner = "run", resolves = "code" }
 fallback-counts-tokens = { gloss = "The token-scoring fallback used without the lexical backend.", owner = "read", resolves = "concept" }
+false = { gloss = "The boolean literal, carried as a response cell and as a settled marker value.", owner = "read", resolves = "concept" }
 feature-bundle = { gloss = "The Cargo feature set a profile selects.", owner = "topology", resolves = "code" }
 feature-gated-suite = { gloss = "A feature-gated suite carries a module-level `cfg` attribute at the head of its own module file and compiles", owner = "build", resolves = "code" }
 federated-leg = { gloss = "The part of an answer queried live under the reader's own delegated credential rather than read from the store.", owner = "visibility", resolves = "concept" }
@@ -667,6 +710,7 @@ gain-never-loss = { gloss = "The accelerated arm as a strict superset of the exa
 gap-record = { gloss = "The stored row for an open gap: subject, gap kind, observing pass, last-observed instant.", owner = "memory", resolves = "concept" }
 gate = { gloss = "A descriptor's declared posture: `access`, `adminToken`, or acknowledged `public`.", owner = "topology", resolves = "code" }
 gate-inputs-stay-held-out = { gloss = "Retrieval and synthesis are tuned on no gate input, and a gate set stays held out of every tuning loop.", owner = "build", resolves = "concept" }
+gate-probe = { gloss = "The anonymous request this surface is judged by against its declared gate.", owner = "control", resolves = "concept" }
 gate-runs-offline = { gloss = "The gate is a local command comparing the run's report against in-tree baselines and against absolute floors", owner = "build", resolves = "concept" }
 gate-stage-sequence = { gloss = "The gate runs ordered stages: connector pins, toolchain, schema, workspace, features, connectors, TypeScript", owner = "build", resolves = "code" }
 gateway-adds-no-authority = { gloss = "The gateway performs no translation from one credential into another and issues nothing of its own", owner = "control", resolves = "concept" }
@@ -683,8 +727,10 @@ grant-is-not-an-existence-oracle = { gloss = "The property keeping a grant from 
 grant-level = { gloss = "The `level` column: a source-defined string the mapping projects onto engine actions, counted on a read as read-conferring or not.", owner = "visibility", resolves = "code" }
 grant-read = { gloss = "The rule that raw table authority derives from read grants and from no other grant kind.", owner = "disclosure", resolves = "concept" }
 grant-unhonorable = { gloss = "A limiter grant declared on a source that bypasses the mediated client.", owner = "connector", resolves = "concept" }
+granted-pattern = { gloss = "A granted table selector in one of three forms: bare star, prefix star, or exact name.", owner = "authority", resolves = "code" }
 greeting-never-learns = { gloss = "The proactive card sits outside the session's turns, so the distiller draws nothing from it", owner = "console", resolves = "concept" }
 grounded-reader = { gloss = "The harness supplies its own reader: a loop answering from retrieved rows alone", owner = "build", resolves = "code" }
+grounding = { gloss = "The channel of a tool return the model reads: the text every sentence of an answer is built from, beside `view` and `internals`.", owner = "console", resolves = "code" }
 group-ceiling = { gloss = "The maximum number of groups one aggregate query returns.", owner = "disclosure", resolves = "code" }
 group-closure = { gloss = "The set of groups a subject's principals belong to, transitively, within the depth bound.", owner = "visibility", resolves = "concept" }
 group-key = { gloss = "The columns a governed model groups by, checked against the permitted grouping allowlist.", owner = "disclosure", resolves = "code" }
@@ -711,6 +757,7 @@ hints-are-advisory = { gloss = "A hint applies when the result carries every col
 hints-bind-columns = { gloss = "Every hint field names a column and none carries a value, so a wrong or hostile hint yields a", owner = "console", resolves = "concept" }
 history-export = { gloss = "The process listing and NDJSON export that carry history off the machine.", owner = "run", resolves = "code" }
 history-window = { gloss = "The inclusive start bound plus row ceiling a history read is answered under.", owner = "run", resolves = "code" }
+hnsw = { gloss = "The Cargo feature linking the vector sidecar, taken by the full profile.", owner = "topology", resolves = "code" }
 hold = { gloss = "An entry keeping one build's files reachable past collection.", owner = "pipeline", resolves = "code" }
 hop-forks = { gloss = "A conversation with no turns adopts a vantage in place", owner = "console", resolves = "concept" }
 hop-timeout = { gloss = "`request_timeout_secs`, the per-hop deadline.", owner = "derive", resolves = "code" }
@@ -719,12 +766,15 @@ host-built-pin = { gloss = "A digest written from a host toolchain build rather 
 host-not-listed = { gloss = "A host absent from the operator's list.", owner = "derive", resolves = "concept" }
 host-stage = { gloss = "Engine code performing type inference, flattening, extraction and id assignment.", owner = "pipeline", resolves = "concept" }
 hosted-trace-export = { gloss = "An evaluation or observation run touching a deployed store exports its traces to a self-hosted collector", owner = "build", resolves = "concept" }
-hostname-descriptor = { gloss = "Every published hostname carries a descriptor naming its worker", owner = "control", resolves = "code" }
+hostname-descriptor = { gloss = "The descriptor this surface publishes each of its hostnames under.", owner = "control", resolves = "code" }
 hot-local-parquet = { gloss = "The locally synced, memory-mapped snapshot set a container reads.", owner = "read", resolves = "concept" }
 hot-set-is-local = { gloss = "The retrieval container keeps the current snapshot set on local disk and maps it in place", owner = "control", resolves = "concept" }
+http = { gloss = "The HTTP protocol, named as one of a binary's optional faces and as an address scheme.", owner = "read", resolves = "concept" }
 http-headers = { gloss = "The generic HTTP source's headers configuration table.", owner = "connector", resolves = "code" }
+https = { gloss = "The transport-secured URL scheme a settling citation is written in.", owner = "memory", resolves = "concept" }
 humanized-labels = { gloss = "A generated label reads as language rather than as an identifier: an underscore survives into none", owner = "console", resolves = "concept" }
 hygiene-is-a-principle = { gloss = "The persona and the audience contract are the primary mechanism, and the deterministic checks", owner = "console", resolves = "concept" }
+id = { gloss = "The row-identifier column an evidence reference reads where a table declares no single-column primary key.", owner = "memory", resolves = "code" }
 idempotence = { gloss = "Repeating a synthesis pass over one row set under one template writing nothing new.", owner = "memory", resolves = "concept" }
 idempotent-attempt = { gloss = "A successful attempt's write under the step key that blocks a double-fire.", owner = "run", resolves = "concept" }
 idempotent-resolution = { gloss = "A repeated resolution with an identical payload returning the written value.", owner = "run", resolves = "concept" }
@@ -754,6 +804,7 @@ incognito-member = { gloss = "The subject member a caller sets to pin a session 
 incognito-pins-the-session = { gloss = "The session-wide pin to a local device plus an on-premises environment.", owner = "enforcement", resolves = "code" }
 incompatible-pair = { gloss = "Two observed types for one column outside the lattice.", owner = "store", resolves = "concept" }
 incomplete-unit = { gloss = "A parent row missing its key or its media value.", owner = "derive", resolves = "concept" }
+incremental = { gloss = "The manifest key naming the stream clock a pipeline reads incrementally.", owner = "pipeline", resolves = "code" }
 incremental-field = { gloss = "The pipeline-level declaration naming a stream's clock column.", owner = "pipeline", resolves = "code" }
 independent-writers = { gloss = "Two independent owners serialize their edits with object-store conditional replacement, and a loser retries", owner = "build", resolves = "concept" }
 index-column-absent = { gloss = "An index declared over a column the reconciled schema lacks.", owner = "store", resolves = "concept" }
@@ -776,6 +827,7 @@ input-unreadable = { gloss = "Input a parser cannot read, answered as data rathe
 insecure-artifact = { gloss = "A connector artifact referenced over plain HTTP.", owner = "connector", resolves = "concept" }
 insights-names-no-columns = { gloss = "The payload passes through unparsed and the panel names no column of it", owner = "console", resolves = "concept" }
 insights-panel = { gloss = "Selecting a store loads its published output routes straight away: rows render by their own column", owner = "console", resolves = "concept" }
+instruction = { gloss = "The canvas node kind standing for the artifacts a synthesis step consumes.", owner = "control", resolves = "code" }
 intent-first = { gloss = "An answer leads with the finding in plain business language, spells dates the way a person reads", owner = "console", resolves = "concept" }
 interests-are-conclusions = { gloss = "A store's interests are its reading-session conclusions, so no separate interest list exists to", owner = "console", resolves = "concept" }
 internal-score-stays-internal = { gloss = "The lexical engine's corpus-relative float, withheld from a caller.", owner = "read", resolves = "concept" }
@@ -793,7 +845,7 @@ issuance-ceiling = { gloss = "The persisted longest lifetime any mint path in a 
 issuer-key = { gloss = "The engine's HTTP face refuses to start without a verification key that both resolves and parses", owner = "control", resolves = "concept" }
 job-block = { gloss = "A `[[job]]` block declares `name`, a stable identifier used in logs and diffs", owner = "control", resolves = "code" }
 job-carries-no-argv = { gloss = "A block naming a kind outside the union, an argument vector, or a host command raises `JobKindUnknown` at", owner = "control", resolves = "concept" }
-job-kinds-closed = { gloss = "The scheduler fires a closed union of kinds \u2014 `acl-sweep`", owner = "control", resolves = "code" }
+job-kinds-closed = { gloss = "The closed union of maintenance kinds a tick fires, reached by an exhaustive match.", owner = "control", resolves = "code" }
 job-namespace = { gloss = "A job name occupies a namespace separate from pipeline ids", owner = "control", resolves = "concept" }
 jobs-are-operator-local = { gloss = "Job blocks live in a daemon's own configuration and enter no control-plane document", owner = "control", resolves = "concept" }
 join-pushes-down = { gloss = "The pushdown of the subject join into the scan.", owner = "enforcement", resolves = "code" }
@@ -878,6 +930,7 @@ logical-name = { gloss = "The `[a-z0-9-]+` name that joins a declaration, a prov
 loopback-host = { gloss = "A host naming the machine the fetch runs on.", owner = "derive", resolves = "concept" }
 loopback-on-the-connection = { gloss = "The poll client follows no redirect, ignores proxy environment variables, and pins `localhost` onto the", owner = "control", resolves = "concept" }
 lowering = { gloss = "The node-by-node mapping of a plan onto a durable substrate.", owner = "pipeline", resolves = "concept" }
+m = { gloss = "The vector sidecar's HNSW builder parameter fixing the graph degree \u2014 the edge budget a node carries.", owner = "store", resolves = "code" }
 machine-lease = { gloss = "The default lease, a row in the machine's own catalog, serializing processes on one machine.", owner = "sync", resolves = "code" }
 machinery-is-not-subject-matter = { gloss = "A table whose subject is the engine's own machinery \u2014 the memory substrate, the prediction and", owner = "console", resolves = "concept" }
 malformed-entry = { gloss = "A payload that does not parse falls back to the built-ins", owner = "control", resolves = "concept" }
@@ -901,6 +954,7 @@ marker-row = { gloss = "The single row a unit that produced nothing lands.", own
 markers-fold-on-attempts = { gloss = "Reading a unit's fate from the marker with the highest attempt count.", owner = "derive", resolves = "concept" }
 mask-on-an-absent-column = { gloss = "A declared mask naming a column the table's schema omits.", owner = "enforcement", resolves = "concept" }
 mask-only = { gloss = "The posture under which a match masks and the pull continues.", owner = "pipeline", resolves = "concept" }
+mask-replacement = { gloss = "The fixed text a masked span carries in place of the matched bytes.", owner = "pipeline", resolves = "code" }
 mask-span = { gloss = "The matched byte range the replacement covers.", owner = "pipeline", resolves = "code" }
 mask-tally = { gloss = "The per-pull count of masked cells beside the columns they sat in.", owner = "pipeline", resolves = "code" }
 masks-per-table = { gloss = "The bound on a table's column mask set.", owner = "enforcement", resolves = "concept" }
@@ -924,6 +978,8 @@ merge-boundary-is-visible = { gloss = "The surface separates an irreversible las
 metadata-size = { gloss = "The serialized bound application metadata on a snapshot holds.", owner = "run", resolves = "concept" }
 metered-client = { gloss = "The mediated client a link task's requests pass through.", owner = "derive", resolves = "concept" }
 metered-disclosure = { gloss = "The per-run record of whether a compiled-in read ran metered.", owner = "connector", resolves = "concept" }
+method = { gloss = "The identity-link field recording how the link was established.", owner = "authority", resolves = "code" }
+metric = { gloss = "The declared numeric column a table's ordering and fold rules read.", owner = "store", resolves = "code" }
 metric-grain = { gloss = "The grain at which the vendor computes a metric exactly.", owner = "connector", resolves = "concept" }
 metric-path = { gloss = "A baseline names a metric by the report's own field path: `retrieval.<modality>.<metric>`", owner = "build", resolves = "code" }
 min-group-size = { gloss = "The declared count of distinct contributors below which a group is withheld.", owner = "disclosure", resolves = "code" }
@@ -939,6 +995,7 @@ minted-lifetime-ceiling = { gloss = "The ceiling a configured minted lifetime cl
 minted-lifetime-default = { gloss = "The lifetime a minted credential carries when the policy declares none.", owner = "authority", resolves = "code" }
 mirrored-constant = { gloss = "A hand-written constant mirroring an engine constant raises `ContractRestated`, naming both sites.", owner = "build", resolves = "concept" }
 mirrored-join-leads = { gloss = "The leading position of the source-derived permission semi-join in the composition.", owner = "enforcement", resolves = "concept" }
+mismatched-download = { gloss = "A pulled object whose recomputed digest differs from the bucket-manifest entry that named it, discarded rather than written into the tree.", owner = "sync", resolves = "concept" }
 missed-window = { gloss = "At startup the last fire is read, the elapsed gap counted and logged, and the declared policy decides", owner = "control", resolves = "concept" }
 missing-binary = { gloss = "A `command[0]` that is not an executable file on this machine.", owner = "derive", resolves = "concept" }
 missing-blob = { gloss = "A journal row whose blob reference resolves to no file.", owner = "run", resolves = "concept" }
@@ -954,6 +1011,7 @@ model-file = { gloss = "The statement text a published model references and the 
 model-identifier = { gloss = "The `embedding_model` value travelling beside every vector.", owner = "connector", resolves = "code" }
 model-picks-the-tool = { gloss = "Choosing which tool to call is the model's whole presentational power", owner = "console", resolves = "concept" }
 model-reads-one-channel = { gloss = "The model receives `grounding` and nothing else", owner = "console", resolves = "code" }
+model-target = { gloss = "The model a `build` job names, bound at the same validation pass that binds a fold target.", owner = "control", resolves = "code" }
 mutating-tool = { gloss = "The visitor-facing endpoint admits a read subset", owner = "console", resolves = "concept" }
 names-are-shapes = { gloss = "A component is named for the shape it draws rather than the domain it came from, so a banded range", owner = "console", resolves = "concept" }
 narrow-exemption = { gloss = "One duplicate stands: a review-time check over committed text mirroring a build-time verb, catching the same", owner = "build", resolves = "concept" }
@@ -965,7 +1023,7 @@ native-extra = { gloss = "The optional extras a compiled-in source may offer bes
 native-read = { gloss = "The compiled-in source's read over a table from a position.", owner = "connector", resolves = "code" }
 native-set-rotates = { gloss = "The native set rotates on a cadence, so a visible in-tree gate cannot be memorized", owner = "build", resolves = "concept" }
 native-verification = { gloss = "The `--verify --native` check of the pinned build inputs without a container.", owner = "connector", resolves = "code" }
-negative-assurance = { gloss = "A claim that a subject did not reach a resource, scoped to the observations on record and their intervals.", owner = "visibility", resolves = "concept" }
+negative-assurance = { gloss = "A statement that a subject could not reach a resource, scoped to the observations that back it.", owner = "accountability", resolves = "concept" }
 negative-space = { gloss = "The statement published beside a theorem naming what that theorem leaves open.", owner = "formal", resolves = "concept" }
 nested-value = { gloss = "A structurally nested value riding as `json` until the normalize stage.", owner = "connector", resolves = "concept" }
 nesting-depth = { gloss = "The declared bound on how far normalization descends.", owner = "pipeline", resolves = "code" }
@@ -1007,6 +1065,7 @@ observation = { gloss = "One row of `outcomes`: the prediction settled, the verd
 observation-id = { gloss = "The content address over every field an observation row asserts.", owner = "memory", resolves = "code" }
 office-part-selection = { gloss = "The named archive parts an office container read opens.", owner = "connector", resolves = "concept" }
 offline-derivation = { gloss = "Deriving a narrower child by local signature, with no round trip to the issuer.", owner = "authority", resolves = "concept" }
+oidc_sub = { gloss = "A link method: the identity provider's subject claim matched the source account. Authorizes.", owner = "authority", resolves = "code" }
 on-behalf-of = { gloss = "`on_behalf_of` \u2014 the verified subject member naming the human or service a credential acts for.", owner = "authority", resolves = "code" }
 on_stale = { gloss = "The declared posture past the budget: refuse or public_only.", owner = "visibility", resolves = "code" }
 one-call-per-read = { gloss = "The single tool call each read costs, which is what makes transports interchangeable.", owner = "read", resolves = "concept" }
@@ -1023,7 +1082,7 @@ one-integration-binary = { gloss = "Integration tests for a crate live in one ta
 one-owning-site = { gloss = "Exactly one site folds a store's tables.", owner = "store", resolves = "concept" }
 one-parser = { gloss = "A single function reading both caption formats.", owner = "derive", resolves = "concept" }
 one-path-two-places = { gloss = "The gate invokes the subcommand a contributor invokes, so a local reproduction and a gate run execute one", owner = "build", resolves = "code" }
-one-progress-writer = { gloss = "A delegated step reports progress by posting to the same callback route the orchestrating run already exposes", owner = "control", resolves = "concept" }
+one-progress-writer = { gloss = "Dispatch gives a delegate no second channel of its own toward a subscriber.", owner = "control", resolves = "concept" }
 one-projection = { gloss = "The single canonical response body every transport serializes.", owner = "read", resolves = "code" }
 one-row-builder = { gloss = "One constructor producing both content rows and markers.", owner = "derive", resolves = "concept" }
 one-shot-control-source = { gloss = "A configured control source that does not resolve under one-shot evaluation raises", owner = "control", resolves = "concept" }
@@ -1040,6 +1099,7 @@ operator-graph = { gloss = "The operator view's graph, derived from configured p
 operator-metadata = { gloss = "Table metadata on the operator surface: column count and backing file list.", owner = "read", resolves = "concept" }
 operator-record = { gloss = "The plaintext comment above an encrypted entry, stating grants, covered scope, creation date, expiry and rotation location.", owner = "secret", resolves = "concept" }
 operator-template = { gloss = "The operator's own prompt text, unfenced and inside the idempotency hash.", owner = "connector", resolves = "concept" }
+operator_asserted = { gloss = "A link method: an operator declared the mapping. Carries an explanation trace and authorizes nothing.", owner = "authority", resolves = "code" }
 optional-by-presence = { gloss = "Each surface's checks are optional by presence: a surface declaring no script for a given check is skipped", owner = "build", resolves = "concept" }
 optional-producer-columns = { gloss = "The four reserved columns a producer may set.", owner = "store", resolves = "concept" }
 optional-world = { gloss = "An additional world composing one optional export, probed by name.", owner = "connector", resolves = "code" }
@@ -1135,6 +1195,7 @@ phase = { gloss = "One of planning, seeding, backfilling and streaming, recorded
 physical-delete = { gloss = "Removal of tombstoned rows from the files at the next compaction.", owner = "memory", resolves = "concept" }
 picture-fields = { gloss = "The six elements a picture candidate may be declared in.", owner = "derive", resolves = "concept" }
 pii-class = { gloss = "The operator's declaration of what kind of sensitive value a column holds.", owner = "disclosure", resolves = "code" }
+pii_type = { gloss = "The optional reserved column naming a row's sensitive-data class, set by a producer that stands behind the value.", owner = "store", resolves = "code" }
 pillar = { gloss = "One of the five properties the composition holds across both halves.", owner = "topology", resolves = "concept" }
 pillar-connector = { gloss = "Agent-authorable sandboxed connectors with a native sibling authoring path.", owner = "topology", resolves = "concept" }
 pillar-inference = { gloss = "One operator-configured model egress and no model-vendor SDK in any crate.", owner = "topology", resolves = "concept" }
@@ -1147,6 +1208,7 @@ pin-recovery = { gloss = "Restoring the recorded build and resuming, or rewindin
 pin-release = { gloss = "The exhaustive split of terminal statuses into those that free a pin and those that hold it.", owner = "run", resolves = "concept" }
 pin-requirement-switches = { gloss = "The store-wide key and the per-connector flag that close an unpinned local load.", owner = "connector", resolves = "code" }
 pin-verb = { gloss = "`contextful connector pin`, which builds in a container and writes the digest.", owner = "connector", resolves = "code" }
+pinned-file-mismatch = { gloss = "A pinned command file whose bytes differ from the digest its binding records.", owner = "derive", resolves = "concept" }
 pinned-plan-changed = { gloss = "A connector identity, component world or plan hash moving under a pending owner.", owner = "run", resolves = "concept" }
 pins-stage = { gloss = "The first stage resolves every pinned artifact identity a run depends on, ahead of any compilation, so an", owner = "build", resolves = "code" }
 pipeline-id = { gloss = "The key specifications merge on and destination table names derive from.", owner = "pipeline", resolves = "code" }
@@ -1177,10 +1239,12 @@ pointer = { gloss = "A sentence naming an owning section and one local consequen
 pointer-ambiguity = { gloss = "Both expansion pointer forms declared on one block.", owner = "connector", resolves = "concept" }
 pointer-body = { gloss = "A pointer body that is not wholly a version raises `ControlPointerMalformed` rather than reading a", owner = "control", resolves = "concept" }
 pointer-column-missing = { gloss = "An expansion placeholder naming a column the rows do not carry as a scalar.", owner = "connector", resolves = "concept" }
+policy = { gloss = "The declaration key naming a table's row- and column-level policy block, which the enforcement layer reads.", owner = "store", resolves = "code" }
 policy-coverage = { gloss = "The diagnostic finding that every published aggregate-shaped model carries a disclosure policy or a recorded opt-out.", owner = "disclosure", resolves = "code" }
 policy-hash = { gloss = "The hash over a disclosure policy's declared fields, recorded on every run.", owner = "disclosure", resolves = "code" }
 policy-log = { gloss = "The append-only build log entry carrying a run's policy hash beyond the life of its freshness record.", owner = "disclosure", resolves = "code" }
 policy-picks-no-model = { gloss = "The exclusion of model selection, prompt assembly and dispatch from placement policy.", owner = "enforcement", resolves = "concept" }
+poll-cadence = { gloss = "The schedule string a `[control]` block polls its snapshot pointer on.", owner = "control", resolves = "code" }
 poll-interval = { gloss = "The cadence at which a pull in flight reads the cancellation columns.", owner = "run", resolves = "concept" }
 poll-only-increments = { gloss = "The cron-poll shape of incremental loading.", owner = "connector", resolves = "concept" }
 port-set = { gloss = "The trait set every adapter implements.", owner = "topology", resolves = "code" }
@@ -1217,7 +1281,7 @@ privilege = { gloss = "The forget grant, excluded from the default grant set.", 
 probe-never-fails-the-unit = { gloss = "The picture probe's outcome as a candidate-level rather than unit-level fact.", owner = "derive", resolves = "concept" }
 probe-prefix = { gloss = "`max_probe_bytes`, the range request against a picture.", owner = "derive", resolves = "code" }
 probe-table = { gloss = "The deploy's hostname-and-gate table, derived from the descriptor set.", owner = "topology", resolves = "code" }
-probe-table-equals-descriptors = { gloss = "The deploy's probe table and the descriptors name the same `(hostname", owner = "control", resolves = "concept" }
+probe-table-equals-descriptors = { gloss = "The equality between the hostnames this surface declares and the ones a deploy probes.", owner = "control", resolves = "concept" }
 probe-transport = { gloss = "The transport and allowlist rules the scope probe's own call satisfies.", owner = "connector", resolves = "concept" }
 probed-length = { gloss = "`image_bytes` as the file's own length rather than the prefix's.", owner = "derive", resolves = "code" }
 process-group-kill = { gloss = "The child leading its own process group and the signal reaching the group.", owner = "derive", resolves = "concept" }
@@ -1248,7 +1312,9 @@ provider-chain = { gloss = "The assembled adapter order a reference walks, first
 provider-origin = { gloss = "The search provider host pinned at the call site.", owner = "connector", resolves = "concept" }
 provider-port = { gloss = "The single port every credential backend implements as an adapter.", owner = "secret", resolves = "code" }
 provider-shaped-step = { gloss = "The one step in the engine shaped by a model provider's wire format.", owner = "connector", resolves = "concept" }
+provider-sign-out = { gloss = "A sign-out at the identity provider, which ends no credential already minted.", owner = "authority", resolves = "concept" }
 proxying-face = { gloss = "The served read path a consumer uses for a table its replica does not hold, returning projected rows rather than file handles.", owner = "sync", resolves = "concept" }
+public = { gloss = "The literal principal every request carries alongside a subject's own principals, and the descriptor gate value naming a surface open to anyone.", owner = "visibility", resolves = "code" }
 public-egress-fails-closed = { gloss = "The tag that matches no zone entry until an operator widens the list.", owner = "derive", resolves = "concept" }
 public-key-only = { gloss = "The rule that a verifying checkpoint holds public key material and no signing secret.", owner = "authority", resolves = "concept" }
 public-principal = { gloss = "The literal principal `public`, carried into the grant join by every request.", owner = "visibility", resolves = "code" }
@@ -1297,9 +1363,11 @@ rebuild-never-touches-parquet = { gloss = "Swapping a builder rewrites a sidecar
 rebuild-survival = { gloss = "Journal rows and execution ownership passing through a catalog rebuild unchanged.", owner = "run", resolves = "concept" }
 recall-before-planning = { gloss = "A turn opens by recalling the store's standing conclusions at the session's vantage, ahead of the", owner = "console", resolves = "concept" }
 recall-bounds = { gloss = "The recall a turn issues carries the session's vantage and no second time argument; the pair of", owner = "console", resolves = "concept" }
+recall-clocks = { gloss = "The pair recall bounds: the session's vantage over ingestion time, and the validity columns over what a row claims.", owner = "memory", resolves = "concept" }
 recall-is-the-only-door = { gloss = "A conclusion reaches an answer through the recall step", owner = "console", resolves = "concept" }
 recalled-block = { gloss = "Recalled conclusions enter the system text and the synthesis grounding as their own labelled block,", owner = "console", resolves = "concept" }
 receipt = { gloss = "The signed artifact a purge returns, scoping its claim to rewrite-and-exclude over the canonical store.", owner = "accountability", resolves = "concept" }
+receipt-coverage = { gloss = "The receipt block naming what the claim includes and what it excludes.", owner = "accountability", resolves = "code" }
 receipt_version = { gloss = "The field whose value fixes the reach of a receipt's claim.", owner = "accountability", resolves = "code" }
 recheck = { gloss = "The second pass: a rebuild from pinned source and a re-audit of every footprint in a credential-free environment.", owner = "formal", resolves = "concept" }
 reconciler-owns-the-set = { gloss = "The reconciler owns the entire pipeline schedule set the snapshot derives: an id a newer snapshot omits", owner = "control", resolves = "concept" }
@@ -1338,9 +1406,10 @@ relevance-floor = { gloss = "The minimum matched-token count a row clears to rea
 remote-control-requirements = { gloss = "A control transport reaching off the loopback carries all three of a bearer-authenticated read", owner = "control", resolves = "concept" }
 remote-unpinned = { gloss = "A remote artifact reference carrying no content pin.", owner = "connector", resolves = "concept" }
 remote-url-unsupported = { gloss = "An address handed to an engine that declines remote addresses.", owner = "derive", resolves = "concept" }
-removable-value = { gloss = "A value a policy would strip, which reaches the journal under no ordering.", owner = "run", resolves = "concept" }
+removable-value = { gloss = "A value a policy strips, which reaches the journal under no ordering.", owner = "run", resolves = "concept" }
 removal-with-public-cloud = { gloss = "A surface declaring write-time removal and a public-cloud allow-set together.", owner = "enforcement", resolves = "concept" }
 repeated-release = { gloss = "The two composition paths back to a member across repeated reads and repeated segment builds.", owner = "disclosure", resolves = "concept" }
+replace = { gloss = "The write mode under which a landing run carries the source's whole current state and every earlier commit stops being read.", owner = "store", resolves = "code" }
 replace-reads-a-frontier = { gloss = "The replacing run plus everything committed after it.", owner = "store", resolves = "concept" }
 replacement-supersedes = { gloss = "Displaced runs stay readable for the retention window.", owner = "store", resolves = "concept" }
 replacement-writes-no-receipt = { gloss = "Replacement emits no erasure receipt and walks no lineage.", owner = "store", resolves = "concept" }
@@ -1375,6 +1444,7 @@ reserved-fact = { gloss = "Current time, deployment audience, resolved resources
 reserved-id = { gloss = "Both built-in ids are reserved, and a configured entry claiming one raises `StoreIdReserved` rather than", owner = "control", resolves = "concept" }
 reserved-key = { gloss = "The fixed set an unmodelled configuration key is checked against.", owner = "topology", resolves = "code" }
 reserved-namespaces = { gloss = "The table namespaces the engine holds against an application.", owner = "store", resolves = "concept" }
+reserved-relation = { gloss = "An engine-held table namespace as it appears through ordinary registration.", owner = "read", resolves = "concept" }
 reserved-set-widens-together = { gloss = "An added injected column travels with a semantics version naming it.", owner = "store", resolves = "concept" }
 reserved-table = { gloss = "The run record as a reserved store table of two append-only rows per run.", owner = "run", resolves = "code" }
 reserved-table-name = { gloss = "A declared table colliding with a reservation.", owner = "store", resolves = "concept" }
@@ -1397,6 +1467,7 @@ resume-route = { gloss = "The HTTP surface that resumes and inspects a suspensio
 retain_runs = { gloss = "The window a folded or displaced run directory stays readable before collection.", owner = "store", resolves = "code" }
 retention = { gloss = "Survival of an expired researched claim through citation or promotion.", owner = "memory", resolves = "concept" }
 retention-is-operator-policy = { gloss = "The owner collects no superseded version; retention of applied versions is operator policy", owner = "control", resolves = "concept" }
+retime-does-not-interrupt = { gloss = "A retimed entry's in-flight run completes under its earlier arming while the new cadence governs its next fire.", owner = "control", resolves = "concept" }
 retired-row-stays = { gloss = "A superseded row remaining in the table for audit and point-in-time reads.", owner = "memory", resolves = "concept" }
 retirement-is-atomic = { gloss = "Position publication and owner retirement sharing one catalog transaction.", owner = "run", resolves = "concept" }
 retirement-margin = { gloss = "The interval a cached lease is dropped ahead of nominal expiry.", owner = "secret", resolves = "concept" }
@@ -1464,6 +1535,7 @@ schema-evolution = { gloss = "Additive columns and widening promotions accepted 
 schema-reconciliation = { gloss = "A destination's reconciliation of an incoming schema against the stored one.", owner = "connector", resolves = "code" }
 schema-stage = { gloss = "The schema stage regenerates each derived artifact into a scratch location and compares it byte for byte", owner = "build", resolves = "code" }
 scheme = { gloss = "The `http`/`https` restriction on a followed address.", owner = "derive", resolves = "concept" }
+scim_email = { gloss = "A link method: the directory-provisioning feed matched the source account on a verified mail address. Authorizes.", owner = "authority", resolves = "code" }
 scope = { gloss = "The optional string partitioning one subject's claims by the surface that produced them.", owner = "memory", resolves = "code" }
 scope-entry = { gloss = "The record in scope.toml giving a check its globs and its exemptions.", owner = "corpus", resolves = "code" }
 scope-exceeded = { gloss = "A granted scope falling outside the manifest's declared expectation.", owner = "connector", resolves = "concept" }
@@ -1522,6 +1594,7 @@ session-budget = { gloss = "The logging and in-flight-request ceilings on one co
 session-build = { gloss = "The build of a session's relation set at admission and its rebuild on invalidation.", owner = "enforcement", resolves = "code" }
 settled-unit-revived = { gloss = "A settled unit re-entering the outstanding set.", owner = "derive", resolves = "concept" }
 settling-citation = { gloss = "The `http` or `https` reference a judgment verdict carries onto the label view.", owner = "memory", resolves = "code" }
+sha256 = { gloss = "The content-digest field a snapshot source's position carries beside its row count.", owner = "connector", resolves = "code" }
 shape-declaration = { gloss = "The `shape` key a table names beside its columns, binding the schema validator to a canonical column set.", owner = "memory", resolves = "code" }
 shape-scan = { gloss = "The blind spots of the aggregate-shape test in both directions, and the per-model declaration that silences its coverage finding.", owner = "disclosure", resolves = "concept" }
 shard-lease = { gloss = "The row granting one holder a source partition until its expiry.", owner = "topology", resolves = "code" }
@@ -1547,6 +1620,7 @@ signed-root = { gloss = "A `{root, count, signature}` object over a segment's ti
 signing-port = { gloss = "The provider-agnostic interface every mint signs through.", owner = "authority", resolves = "code" }
 silent-local-writer = { gloss = "An absent credential or an uninitialized store raises `ControlStateUnreachable`", owner = "build", resolves = "concept" }
 silent-step = { gloss = "A preprocess step exiting zero without writing its output file.", owner = "derive", resolves = "concept" }
+since = { gloss = "The field naming the window start a bounded read reports.", owner = "read", resolves = "code" }
 single-attempt = { gloss = "The no-retry schedule, where one failure closes the step.", owner = "run", resolves = "concept" }
 single-file-run = { gloss = "`contextful derive test`, one engine against one file.", owner = "derive", resolves = "code" }
 single-operator-mode = { gloss = "The setting in which one operator holds every contributor's rows and a published aggregate exposes no individual contributor.", owner = "disclosure", resolves = "code" }
@@ -1585,7 +1659,7 @@ span-label = { gloss = "The pattern name a reported span is attributed to.", own
 spine-is-inherited = { gloss = "The write-path machinery a derive pipeline holds without re-implementing.", owner = "derive", resolves = "concept" }
 stage-follows-normalization = { gloss = "The placement of the removal stage after relational normalization has produced child tables.", owner = "enforcement", resolves = "concept" }
 stage-free-disk = { gloss = "A stage begins work with 2 GiB of free disk available to it.", owner = "build", resolves = "code" }
-stage-order = { gloss = "Entries due in one tick fire in produce-before-publish order: `validate`", owner = "control", resolves = "code" }
+stage-order = { gloss = "The produce-before-publish order entries due in one tick fire in.", owner = "control", resolves = "code" }
 stage-order-is-a-tiebreak = { gloss = "That order is a same-tick tiebreak rather than a barrier", owner = "control", resolves = "concept" }
 stage-subset = { gloss = "A subset of stages is selectable by name, so one stage reproduces locally without the stages ahead of it.", owner = "build", resolves = "code" }
 stages-do-not-share = { gloss = "Two stages resolving the same crates under different feature unifications re-emit artifacts under a second", owner = "build", resolves = "concept" }
@@ -1649,6 +1723,7 @@ support = { gloss = "The `{contributors, records}` evidence cardinality stamped 
 support-band = { gloss = "The banded rendering of `support` as `0`, `1-9`, `10-99` or `100+`.", owner = "memory", resolves = "concept" }
 support-is-derived = { gloss = "Support computed at write time and excluded from the deduplication key.", owner = "memory", resolves = "concept" }
 suppression-count = { gloss = "The number of withheld groups, which reaches no caller.", owner = "disclosure", resolves = "concept" }
+suppression-sentinel = { gloss = "The field-free marker a withheld group collapses into, naming no rule.", owner = "disclosure", resolves = "code" }
 suppression-tally = { gloss = "The per-rule counts of withheld groups, recorded on the audit record.", owner = "disclosure", resolves = "code" }
 surface-check-failed = { gloss = "A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the", owner = "build", resolves = "concept" }
 surface-of-consumption = { gloss = "An entry names the deployed surface consuming the credential, together with the deployed secret name the same", owner = "build", resolves = "code" }
@@ -1685,6 +1760,7 @@ template-enforcement = { gloss = "The enforcement layers that apply to whatever 
 template-grant = { gloss = "The capability authorizing a caller to execute a named template.", owner = "disclosure", resolves = "code" }
 template-hash = { gloss = "The hash covering the operator template alone, excluding the data markers around ingested values.", owner = "memory", resolves = "code" }
 template-identifier = { gloss = "The name a template is called by and projected as.", owner = "disclosure", resolves = "code" }
+template-not-allowed = { gloss = "A query template the caller's allowlist does not name or cover.", owner = "authority", resolves = "concept" }
 template-parameter = { gloss = "One typed positional parameter of a template, written name-colon-type.", owner = "disclosure", resolves = "code" }
 template-projection = { gloss = "The projection of a manifest query template into a named, typed tool.", owner = "read", resolves = "concept" }
 template-relation-shape = { gloss = "The plain-identifier form a template's relation names take.", owner = "read", resolves = "concept" }
@@ -1705,6 +1781,7 @@ tenant_hash = { gloss = "`sha256:<hex>` of a tenant identifier, written in place
 term-outside-the-grammar = { gloss = "A predicate node the typed subset omits.", owner = "enforcement", resolves = "concept" }
 terminal-run = { gloss = "A run past its terminal status, which accepts no cancellation mark.", owner = "run", resolves = "concept" }
 test-kit = { gloss = "The conformance, fixture-replay and property tests shipped with the authoring toolkit.", owner = "connector", resolves = "concept" }
+text = { gloss = "Character content: the reserved modality value for a row whose payload is characters, and the spelling a field or an event carrying such content takes.", owner = "store", resolves = "code" }
 text-free-table-scores-null = { gloss = "A null rather than zero lexical score for a table carrying no snippet text.", owner = "read", resolves = "concept" }
 theorem-inventory = { gloss = "The file of required constants, their modules, their expected statements and their admitted axioms, maintained apart from the declarations that satisfy them.", owner = "formal", resolves = "code" }
 three-canvas-sources = { gloss = "The canvas renders whatever one of three sources supplied and reports which answered", owner = "control", resolves = "concept" }
@@ -1727,6 +1804,7 @@ timeframe-phrases-are-additive = { gloss = "Timeframe phrasing is the one additi
 timeout-is-sticky = { gloss = "A persisted expiry transition that an earlier instant cannot read back as pending.", owner = "run", resolves = "concept" }
 timestamp-grammar = { gloss = "The one grammar under which every checkpoint decodes a credential's timestamps to instants.", owner = "authority", resolves = "code" }
 timestamps-are-not-synthesized = { gloss = "The refusal to interpolate an interval an engine did not produce.", owner = "derive", resolves = "concept" }
+title = { gloss = "The headline text a search result row lands.", owner = "connector", resolves = "code" }
 token-cap = { gloss = "The ceiling on content-token set size.", owner = "read", resolves = "concept" }
 token-length-floor = { gloss = "The shortest ASCII run kept in the content-token set.", owner = "read", resolves = "concept" }
 token-tail = { gloss = "The run of characters a prefixed token carries after its prefix.", owner = "pipeline", resolves = "concept" }
@@ -1774,7 +1852,7 @@ two-genres = { gloss = "Items and artifacts on one substrate.", owner = "store",
 two-grains = { gloss = "The run scope and the pipeline scope a stop names.", owner = "run", resolves = "code" }
 two-key-rule = { gloss = "The three-way conjunction of mirrored source access list, manifest policy and the caller's credential that decides whether a row reaches a subject.", owner = "visibility", resolves = "concept" }
 two-questions-compose = { gloss = "The composition of authority (who reads what) with placement (where it is processed).", owner = "enforcement", resolves = "concept" }
-two-roles = { gloss = "A deployment splits into two roles and any provider hosts either", owner = "control", resolves = "concept" }
+two-roles = { gloss = "The placement of a run: its control on a control-plane target, its compute on a worker target.", owner = "control", resolves = "concept" }
 two-shells-one-renderer = { gloss = "One renderer runs under two shells: a hosted surface behind an identity perimeter talking to a", owner = "control", resolves = "concept" }
 two-sided-binding = { gloss = "The split between a pipeline naming an engine and a machine defining it.", owner = "derive", resolves = "concept" }
 two-trust-layers = { gloss = "Two independent layers decide what a reader receives: the identity perimeter decides who reaches", owner = "console", resolves = "concept" }
@@ -1788,7 +1866,7 @@ typed-subcommand = { gloss = "Automation carrying judgment \u2014 a gate step, i
 typescript-surfaces = { gloss = "The TypeScript surfaces \u2014 the shared component package, the deploy emitter, the consoles, the headless client", owner = "build", resolves = "code" }
 unadmitted-tool = { gloss = "A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches", owner = "console", resolves = "concept" }
 unanchored-interval-first-fire = { gloss = "Under `fire-once` an interval entry with no fire on record is due at the next evaluation", owner = "control", resolves = "concept" }
-unanswerable-suggestion = { gloss = "A suggested prompt whose answer under these rules would be a decline raises", owner = "console", resolves = "concept" }
+unanswerable-suggestion = { gloss = "A suggested prompt whose answer under these rules is a decline raises", owner = "console", resolves = "concept" }
 unauthenticated-upgrade = { gloss = "A stream request carrying no valid credential at the pre-upgrade check.", owner = "run", resolves = "concept" }
 unauthorized-mint = { gloss = "A mint request presenting no grant carrying the admin action.", owner = "authority", resolves = "concept" }
 unavailable-is-the-default = { gloss = "The status an engine's unexplained silence lands.", owner = "derive", resolves = "concept" }
@@ -1841,6 +1919,7 @@ unlinked-principal = { gloss = "A subject whose source principal resolves to no 
 unmediated-path = { gloss = "A code path arriving at stored rows outside a registered relation.", owner = "enforcement", resolves = "concept" }
 unmetered-grant = { gloss = "A shared-quota grant declared by a task that opens no metered socket.", owner = "derive", resolves = "concept" }
 unmetered-request = { gloss = "A vendor request issued without a granted reservation under a declared limiter.", owner = "connector", resolves = "concept" }
+unobserved-window = { gloss = "A replay window holding no observation of the resource under examination, over which no verdict is available.", owner = "visibility", resolves = "concept" }
 unorderable-position = { gloss = "A clock value with no ordering, or a stream switching position types mid-pass.", owner = "run", resolves = "concept" }
 unparseable-vantage = { gloss = "A vantage that is neither a calendar day nor an instant answers `400` and raises", owner = "console", resolves = "code" }
 unparsed-pattern = { gloss = "An allow-set entry matching no pattern form.", owner = "enforcement", resolves = "concept" }
@@ -1869,6 +1948,7 @@ unwired-capability = { gloss = "A capability the running profile links no implem
 update-adds-no-path = { gloss = "The update introduces no path", owner = "build", resolves = "concept" }
 uploaded-connector-binary = { gloss = "The operator surface references registered connectors by id and version and edits their grants and", owner = "control", resolves = "concept" }
 upstream-excerpt = { gloss = "The bounded excerpt an `Upstream` error carries.", owner = "derive", resolves = "code" }
+url = { gloss = "The result address a search row lands and declares its primary key over.", owner = "connector", resolves = "code" }
 url-handover-is-opted-into = { gloss = "The two conditions under which an address is handed to an engine.", owner = "derive", resolves = "concept" }
 url-scrubbing = { gloss = "Reducing a URL to scheme, host, port and path before a diagnostic, a log line or a column receives it.", owner = "secret", resolves = "concept" }
 vacuous-exclusion = { gloss = "An exclusion assertion evaluated over an empty collection raises `VacuousAssertion`", owner = "build", resolves = "concept" }
@@ -1877,11 +1957,13 @@ valid-time-declaration = { gloss = "The manifest block naming a table's own cloc
 valid-time-line = { gloss = "The partition a fold keeps alongside the key on a table declaring validity.", owner = "pipeline", resolves = "concept" }
 valid_as_of = { gloss = "The valid-time bound over the pair a table declares.", owner = "store", resolves = "code" }
 valid_time = { gloss = "The table's declaration of which of its own columns carry the source's clock.", owner = "store", resolves = "code" }
+validate = { gloss = "The command verb auditing a manifest and a seeded table's ordering.", owner = "pipeline", resolves = "code" }
 validate-before-arm = { gloss = "An entry revalidates against the manifest guardrails before it joins the armed set", owner = "control", resolves = "concept" }
 validation = { gloss = "A document failing engine validation raises `ApplyValidationRefused` and claims no version", owner = "control", resolves = "concept" }
 validation-warning = { gloss = "A non-blocking diagnostic a manifest check emits per table.", owner = "pipeline", resolves = "concept" }
 validity-line = { gloss = "The equivalence that scopes revision: both claims open-ended, or both anchored to one instant.", owner = "memory", resolves = "concept" }
 validity-pair = { gloss = "A memory shape naming its validity columns through the ordinary table declaration.", owner = "memory", resolves = "concept" }
+value = { gloss = "The `memory_preferences` column holding what a subject prefers under one key.", owner = "memory", resolves = "code" }
 value-precedes-the-durable-record = { gloss = "The ordering that keeps a removed value out of the run path's permanent record.", owner = "enforcement", resolves = "concept" }
 value-template = { gloss = "Literal text carrying `${secret://<name>}` placeholders, hydrated before a request is built.", owner = "secret", resolves = "code" }
 value-tier = { gloss = "Whether a journaled value is inline bytes or a blob pointer; a caller branches on neither.", owner = "run", resolves = "concept" }
@@ -1896,6 +1978,7 @@ version-assignment = { gloss = "The engine assigns every version and materialize
 version-gate = { gloss = "A poll reads the pointer and re-parses the named snapshot when its version is strictly greater than the", owner = "control", resolves = "code" }
 version-monotonic = { gloss = "The per-fold counter a client uses to discard reordered or stale deltas.", owner = "run", resolves = "code" }
 version-race = { gloss = "An apply whose compare-and-swap loses raises `ManifestVersionConflict`", owner = "control", resolves = "concept" }
+view = { gloss = "The declaration key naming the relation a table is read through.", owner = "store", resolves = "code" }
 view-cell = { gloss = "A cell holds at most 300 chars and an axis label at most 40 chars", owner = "console", resolves = "concept" }
 view-hint = { gloss = "A table declares a view block in the store's manifest \u2014 a component name plus column bindings for", owner = "console", resolves = "concept" }
 view-over-the-same-index = { gloss = "The greeting is one derivation over two governed reads plus one component, introducing no storage,", owner = "console", resolves = "concept" }
@@ -1927,7 +2010,7 @@ widening = { gloss = "A proposed child broader than its parent on some grant dim
 widening-under-incognito = { gloss = "A session asserting a zone wider than the incognito pin.", owner = "enforcement", resolves = "concept" }
 widget-dedup = { gloss = "A turn shows one widget per tool result that yields one, deduplicated by rendered shape, the last", owner = "console", resolves = "concept" }
 wildcard-application = { gloss = "A domain-wide application carrying a reusable bypass policy, gating no hostname on its own.", owner = "topology", resolves = "concept" }
-wildcard-application-gates-nothing = { gloss = "A wildcard application over a deployment's domain protects no hostname by itself: it carries a reusable", owner = "control", resolves = "concept" }
+wildcard-application-gates-nothing = { gloss = "The absence of protection a domain-wide application confers on this surface's hostnames.", owner = "control", resolves = "concept" }
 wildcard-beside-attachment = { gloss = "A wildcard allowlist entry on a connector that binds host-attached material.", owner = "connector", resolves = "concept" }
 wildcard-host = { gloss = "A bare star entry in a host list.", owner = "derive", resolves = "concept" }
 wildcard-on-the-subject-side = { gloss = "A credential granting a wildcard inference zone.", owner = "enforcement", resolves = "concept" }
@@ -1936,6 +2019,7 @@ window-anchor-tolerance = { gloss = "How far past the anchor a publication insta
 window-binds-the-turn = { gloss = "A resolved window binds the whole turn: the current date is anchored in the analyst's text,", owner = "console", resolves = "concept" }
 window-verdict = { gloss = "The replayed result over a window, printed beneath the coverage block that qualifies it.", owner = "visibility", resolves = "concept" }
 wire-field = { gloss = "A declared field of the credential's claim shape, retained even while refused.", owner = "authority", resolves = "code" }
+wire-snapshot = { gloss = "The wire shape one fold of a run's events produces.", owner = "run", resolves = "code" }
 wire-status = { gloss = "The run and step status unions the projection serializes.", owner = "run", resolves = "code" }
 withdrawn-format = { gloss = "A credential in a format no admission path accepts any longer.", owner = "authority", resolves = "concept" }
 withdrawn-row = { gloss = "A row the source stopped serving, and what each write mode returns for it.", owner = "store", resolves = "concept" }
@@ -1950,6 +2034,7 @@ workspace = { gloss = "The one Cargo workspace both halves compile from.", owner
 world-authorship = { gloss = "Host ownership of the interface definition and the author's method bodies.", owner = "connector", resolves = "concept" }
 world-compatibility = { gloss = "Semver compatibility between a guest's world and a host's.", owner = "connector", resolves = "concept" }
 world-drain = { gloss = "The retirement path a major world bump follows.", owner = "connector", resolves = "concept" }
+write = { gloss = "The destination export landing one record batch.", owner = "connector", resolves = "code" }
 write-handle = { gloss = "The destination exports `prepare`, `write`, `commit` and `abort`.", owner = "connector", resolves = "code" }
 write-is-a-visible-step = { gloss = "The write renders as a step in the transcript rather than as a silent side effect", owner = "console", resolves = "concept" }
 write-mode = { gloss = "Whether a landing run adds to a table or supersedes it.", owner = "pipeline", resolves = "code" }

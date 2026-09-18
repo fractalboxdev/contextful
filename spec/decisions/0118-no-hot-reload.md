@@ -8,7 +8,7 @@
 A run is journaled. When the engine admits a connector it records the tuple that identifies
 the bytes it resolved, and a replayed read resolves its artifact from that record rather
 than from the name. That is what makes replay a reconstruction of what happened instead of
-a re-execution of what would happen today.
+a fresh execution against whatever the name resolves to at replay time.
 
 Re-resolving a connector while a run is live breaks the record's meaning from the middle. A
 run's early steps ran against one artifact; its later steps would run against another; and
@@ -18,7 +18,7 @@ disagreement is not a crash. It is a quiet divergence between recorded output an
 output, which is exactly the property replay exists to guarantee the absence of.
 
 The pull toward reloading in place is real. An urgent connector fix — a vendor changed a
-field, a parse is dropping rows — wants to reach the run that is currently failing, not the
+field, a parse is dropping rows — wants to reach the failing run, not the
 next one. And the engine already has a drain mechanism for world-version changes, which
 suggests draining on any version change as a general answer.
 

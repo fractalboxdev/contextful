@@ -68,7 +68,7 @@ gap rather than filing a bug about an empty table.
 The accepted cost is that a tenant cannot audit its own vendor calls through this face at all,
 and widening it is not a grant change. The tenant dimension has to reach ledger rows first,
 which means the connector recording each call has to know and record which tenant the call was
-made for — information the run-level ledger does not currently carry and that some connectors
+made for — information the run-level ledger does not carry and that some connectors
 may not have.
 
 ## Revisit triggers

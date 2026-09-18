@@ -56,7 +56,7 @@ failure in the same vocabulary as any other step's.
 | `connector.export.invariant.optional-world` | Operator configuration and failure attribution are each their own interface composed into an additional world and probed on the instance by name. A guest built against the base world instantiates untouched, and neither addition moves the world version. |  |
 | `connector.export.interface.partition-attribution` | A guest exporting failure attribution answers with the values of the outermost partition column that a failed read belongs to, byte for byte — no trimming, no case folding, no normalization anywhere along the chain. The host reads the export after the walk on the failure path and on the success path alike, since a read holding one partition back and landing the rest returns success. An empty list keeps the global, unattributed refusal. |  |
 | `connector.export.limit.attribution-budget` | Failure attribution is bounded at 512 entries per session, each value at most 512 B. |  |
-| `connector.export.interface.native-read` | A native source declares its cursor kind and reads a table from a position, returning batches each paired with the position after it. It may bound a read to a half-open chunk range; the default delegates to the unbounded read, so a source unable to bound a chunk degrades to overlapping reads rather than mis-bounding one. |  |
+| `connector.export.interface.native-read` | A native source reads a table from a position, returning batches each paired with the position after it. It may bound a read to a half-open chunk range; the default delegates to the unbounded read, so a source unable to bound a chunk degrades to overlapping reads rather than mis-bounding one. |  |
 | `connector.export.interface.native-extra` | A native source may additionally offer a cheap content fingerprint — a stat or a head request, never a download — its own connector identity, entries for the run's audit, and a declaration of why its vendor traffic goes unstamped or unmetered. |  |
 | `connector.export.invariant.store-blindness` | A source is handed credentials, limiter bindings, the run id, the request ledger, the component pin and the incremental position, and no store handle. A run driven by a query over the store receives its resolved query set as run parameters from the caller already holding the store. |  |
 | `connector.export.invariant.world-authorship` | The interface definition is immutable from an authoring agent's position: bindings are emitted from a host-owned template parameterized on the input specification and the connector name, and the author's whole surface is the method bodies — authentication, paging, and the cursor-kind declaration. An author working outside Rust compiles against the same definition through a component toolchain for their language. |  |
@@ -65,7 +65,10 @@ failure in the same vocabulary as any other step's.
 
 The host owns every inward edge. A declared name resolves to material through the
 provider chain in [`spec/33-secrets.md` § Reference scheme](33-secrets.md); a manifest
-carries the name and the host carries the value.
+carries the name and the host carries the value. The wire that material crosses, and
+the form a URL takes once a diagnostic or a landed column receives it, belong to
+[`spec/33-secrets.md` § Attachment](33-secrets.md); a connector names the header and
+the host decides the request.
 
 | Clause | Statement | decided-by |
 | --- | --- | --- |
@@ -79,9 +82,9 @@ carries the name and the host carries the value.
 | `connector.import.refusal.config-unclaimed` | Where the artifact is local and the probe holds bytes, a guest table declared against a guest that exports no configuration interface raises `ConnectorConfigUnclaimed`. | `0108` |
 | `connector.import.invariant.unusable-key` | A guest raises a permanent failure for a configuration key or a value it cannot act on, leaving no manifest that reads as describing a read it does not describe. |  |
 | `connector.import.invariant.config-hashing` | The forwarded table folds into the connector's content hash. A pipeline forwarding no guest table keeps the artifact digest verbatim as that hash. |  |
-| `connector.import.invariant.client-selection` | Declaring any header selects the client that bypasses the system proxy; a source attaching no header keeps the proxy. Header presence decides it, rather than whether a value is spelled as a reference, since a token pasted inline forwards verbatim on a cross-host hop. Every client sends no referer header, so a followed hop carries neither the previous URL nor its query string. |  |
-| `connector.import.refusal.cleartext-attachment` | A header whose value resolves from a reference is marked sensitive and raises `ConnectorCleartextCredential` against a cleartext endpoint, with loopback exempt including its IPv6 spelling. Each such header is recorded in the run's list of headers that carried material. | `0109` |
-| `connector.import.invariant.diagnostic-url` | A URL reaching an error message, a log line or a landed column carries its scheme, host, port and path and nothing further; query, fragment and userinfo are dropped as a typed edit ahead of rendering, and a URL arriving by another route is scrubbed as text under the same rule. |  |
+| `connector.import.invariant.client-selection` | Which client a mediated call takes follows from whether the source declares a header at all. {{secret.attach.invariant.header-presence-selects-the-client}} {{secret.attach.invariant.referer-off}} |  |
+| `connector.import.refusal.cleartext-attachment` | A host-attached header reaches a vendor over a confidential transport alone, under `SecretCleartextEndpoint`. | `0109` |
+| `connector.import.invariant.diagnostic-url` | {{secret.attach.invariant.url-scrubbing}} {{secret.attach.invariant.typed-url-edit}} |  |
 
 ## Clauses — declare-capability
 
@@ -124,7 +127,7 @@ A shared vendor quota is coordinated at the same boundary the request crosses.
 | `connector.meter.interface.report` | Report is an authenticated POST taking quota, class, granted, spent, an ordered array of one entry per vendor response carrying status, retry-after and verbatim headers, an observation instant and the run id. |  |
 | `connector.meter.invariant.report-delivery` | Report delivery is at-least-once under bounded backoff inside the run. A report that never lands is recorded in the run audit without failing the run. |  |
 | `connector.meter.refusal.unmetered-request` | A connector carrying a declared limiter makes no outbound vendor request without a granted reservation, and raises `ConnectorUnmetered` rather than proceeding when the limiter is unreachable or the binding is absent. | `0113` |
-| `connector.meter.invariant.allowlist-precedence` | A request the capability allowlist would refuse never reaches the limiter, so a request that was never going out spends none of the consumer's quota. |  |
+| `connector.meter.invariant.allowlist-precedence` | A request the capability allowlist refuses never reaches the limiter, so a held-back request spends none of the consumer's quota. |  |
 | `connector.meter.invariant.held-back-request` | A guest that swallows a held-back request still fails the call, and a failure inside the engine's own reservation machinery stays failed rather than healing into a permissive no-op. |  |
 | `connector.meter.invariant.synthesized-throttle` | A denied reservation returns to the guest as a synthesized 429 carrying the retry-after, which never leaves the host, so a connector already mapping vendor throttles to the rate-limited variant needs no further interface and cannot tell which party throttled it. An unreachable limiter fails the mediated request as a transport failure, having no honest retry-after to offer. |  |
 | `connector.meter.invariant.replay-reservation` | Replay makes no limiter call. A replayed read issues no outbound request, and a reservation is coupled to one. |  |
@@ -143,9 +146,9 @@ a read filtered on placement consults that mapping rather than the endpoint's UR
 | --- | --- | --- |
 | `connector.infer.invariant.model-endpoint` | Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, the rate limit and the per-call span; the component owns the prompt template and the response schema and observes no material. |  |
 | `connector.infer.refusal.vendor-sdk` | A crate importing a model-vendor SDK raises `ConnectorVendorSdk`, and the gate enforces the absence across the workspace. A provider swap is a URL edit with no conditional branch anywhere in the engine. | `0115` |
-| `connector.infer.invariant.provider-shaped-step` | Exactly one step is provider-shaped: serializing a tool's parameter schema into that provider's tool envelope. Swapping the driver moves narration quality and moves nothing about rendering. |  |
+| `connector.infer.invariant.provider-shaped-step` | {{topology.compose.invariant.pillar-inference}} Swapping the driver moves narration quality and moves nothing about rendering. |  |
 | `connector.infer.invariant.data-fence` | No ingested value reaches a model without a boundary declaring it data. Each value sits between marker pairs whose opening marker carries that value's provenance label, preceded by a preamble declaring the blocks data and followed by a closing line re-asserting the caller's rules. |  |
-| `connector.infer.invariant.marker-derivation` | A marker carries a token derived from the fenced content itself, so closing one's own fence would require authoring content containing the digest of a batch containing that content. |  |
+| `connector.infer.invariant.marker-derivation` | A marker carries a token derived from the fenced content itself, so closing one's own fence requires authoring content containing the digest of a batch containing that content. |  |
 | `connector.infer.invariant.fenced-value-hygiene` | Control characters are stripped from a fenced value, and a value past its declared character cap is truncated and carries a truncation mark into the prompt. |  |
 | `connector.infer.invariant.operator-template` | The operator's own prompt template stays in the system role, unfenced, as the thing the fence subordinates ingested text to. The idempotency hash covers the template alone, and hardening the boundary leaves a dedup key intact. |  |
 | `connector.infer.invariant.default-embedder` | The embedding capability is a port whose default is deterministic and free of I/O: it hashes token term frequencies into an L2-normalized vector. A first run needs no download, no key and no network call. |  |
@@ -175,14 +178,14 @@ unsettled: Which generation of the sandbox interface does the guest world target
 | `connector.package.workflow.pin-verb` | `contextful connector pin <manifest>` builds the guest inside a digest-pinned container on one fixed platform, writes the artifact next to the manifest, and writes the digest into the manifest. `--verify` rebuilds and compares without writing, failing on drift. |  |
 | `connector.package.refusal.host-built-pin` | `--local` builds with the host toolchain for a build-run-edit loop and states plainly that the digest it prints is host-local; writing a pin from a host build raises `ConnectorHostPinRefused`, a host build reading its toolchain off the path. | `0117` |
 | `connector.package.invariant.path-remap` | Every build applies a path remap over the source root and the package cache, so where a checkout sits on disk is not an input to the digest. |  |
-| `connector.package.interface.native-verification` | `--verify --native` checks the host triple, the compiler and the package-manager build against pinned constants, clears every variable and refuses every configuration key that would move the bytes, and only then builds. Its answer is either the container's answer or a diagnostic naming the input that differs, under a distinct exit status so an unable-to-check runner never reads as a wrong committed digest. |  |
+| `connector.package.interface.native-verification` | `--verify --native` checks the host triple, the compiler and the package-manager build against pinned constants, clears every variable and refuses every configuration key that moves the bytes, and only then builds. Its answer is either the container's answer or a diagnostic naming the input that differs, under a distinct exit status so an unable-to-check runner never reads as a wrong committed digest. |  |
 | `connector.package.limit.linear-memory` | A connector runs under 256 MiB of linear memory by default, raised per connector to at most 2 GiB. |  |
 | `connector.package.limit.call-deadline` | A read call carries a 30 s wall-clock deadline and a discovery call a 60 s one, each armed by epoch interruption at 100 ms granularity. |  |
 | `connector.package.limit.session-budget` | A session carries a 1 MiB logging budget, with messages past it dropped and counted in the session audit, and holds at most 8 requests outbound at once. |  |
 | `connector.package.invariant.bound-outcome` | A connector striking a declared bound returns the transient variant and may be retried; repeated strikes fail the run fast. Every bound decision is recorded on the run record rather than logged alone. |  |
 | `connector.package.invariant.world-compatibility` | Compatibility is semver over the world. A guest built against one minor loads on any host advertising a compatible minor, and a major bump is what parts them. |  |
 | `connector.package.invariant.world-drain` | On a major world bump the old world drains: no new run admits against it, in-flight runs complete or suspend on the world they pinned, and the old host world retires after that. A run is never carried across world versions. |  |
-| `connector.package.refusal.live-reresolution` | Re-resolving or reloading a connector while a journaled run is live raises `ConnectorHotReload`; a new version applies to runs admitted after the change. | `0118` |
+| `connector.package.refusal.live-reresolution` | Re-resolving or reloading a connector raises `ConnectorHotReload` while a journaled run holds it live; a new version applies to runs admitted after the change. | `0118` |
 | `connector.package.shape.built-in-registry` | The names resolving to a compiled-in source form one enumerated list, which callers reasoning about installed connectors read rather than re-listing. A listed name reaches no component path, so it carries no manifest and has no artifact to pin. A feature-gated entry stays listed unconditionally, so a build without that feature answers with a rebuild hint. |  |
 | `connector.package.workflow.scaffolder` | The scaffolder emits a compliant crate, a manifest with inferred capabilities, and a round-trip test against a recorded fixture, branching on the shape of the input specification: a machine-readable REST description is the primary path, a REST API documented in prose alone needs more iteration, a graph API scaffolds constant documents with every dynamic value bound as a variable, and a database or binary protocol is hand-written native code against an established driver. |  |
 | `connector.package.workflow.test-kit` | Three test kinds ship with the authoring toolkit: a conformance suite asserting that discovery returns valid schemas, that opening a table yields a finite stream, and that a position round-trips; fixture replay of recorded HTTP interactions; and property tests over position monotonicity and schema invariants. |  |
@@ -197,12 +200,12 @@ the write carried.
 | Clause | Statement | decided-by |
 | --- | --- | --- |
 | `connector.resolve-destination.invariant.local-store` | The local context store is the destination a pipeline resolves. |  |
-| `connector.resolve-destination.refusal.unknown-destination` | Every destination name other than the local store raises `ConnectorUnknownDestination` when the pipeline is assembled, ahead of any row moving. | `0119` |
+| `connector.resolve-destination.refusal.unknown-destination` | Every destination name other than the local store raises `ConnectorUnknownDestination` at assembly, ahead of any row moving. | `0119` |
 | `connector.resolve-destination.invariant.no-host-arm` | The destination world is declared with no host arm, so a guest cannot supply a destination the runtime does not resolve. |  |
 | `connector.resolve-destination.invariant.synthesized-artifact` | A synthesized artifact is written back through this same destination and becomes queryable corpus. There is no separate sink. |  |
-| `connector.resolve-destination.interface.schema-reconciliation` | A destination reconciles an incoming schema against the stored one, creating the table on first sight. |  |
+| `connector.resolve-destination.interface.schema-reconciliation` | {{store.reconcile.workflow.first-sight-creates}} |  |
 | `connector.resolve-destination.refusal.irreconcilable-schema` | A schema change the destination cannot reconcile raises `ConnectorSchemaIrreconcilable`. | `0119` |
-| `connector.resolve-destination.invariant.durable-write` | A destination durably writes one batch per call, so a crash leaves a recoverable partial run rather than a half-written batch. |  |
+| `connector.resolve-destination.invariant.durable-write` | A destination durably writes one batch per call, leaving no half-written batch behind. |  |
 | `connector.resolve-destination.invariant.commit-visibility` | Commit publishes a run's data for one table, after which a query sees its rows. |  |
 | `connector.resolve-destination.shape.batch-ordinal` | A write may carry the batch's ordinal within its run, which is the join key onto the run's request ledger. |  |
 
@@ -213,7 +216,9 @@ source pack supplies is [`spec/42-visibility.md` § Source-supplied mappings](42
 a pack's rows reach the read path through that contract rather than through this one. Work
 deferred over rows a source has already landed is
 [`spec/34-derive.md` § The store-reading source](34-derive.md); a body left null here is
-filled there.
+filled there. The commit an unchanged-input skip lands is
+[`spec/30-run.md` § Clauses — advance](30-run.md); a replacing table keeps serving its
+last non-empty state across one.
 
 unsettled: What bounds allowed lateness for an out-of-order source, and does a lateness window belong to the position, to the table, or to neither? owner: connector affects: connector.source
 
@@ -251,9 +256,9 @@ unsettled: What bounds allowed lateness for an out-of-order source, and does a l
 | `connector.source.refusal.document-unreadable` | An encrypted document, and one carrying no extractable text on any page, raise `ConnectorDocumentUnreadable` permanently, naming the path — never an empty body on every page, which reads downstream as a document the store holds and has nothing to say about. | `0125` |
 | `connector.source.refusal.frontmatter-shape` | A note's frontmatter is a flat scalar-and-list subset: a nested map, a block scalar, and a key carrying the reserved producer prefix each raise `ConnectorFrontmatterRejected` rather than dropping a column silently or shadowing a producer-set one. | `0125` |
 | `connector.source.refusal.conversion-required` | A compound-binary office container raises `ConnectorConversionRequired` naming the conversion command, detected by magic bytes as well as by extension so neither misnaming changes the answer. | `0126` |
-| `connector.source.refusal.partial-parse` | A reader that reaches part of a document and stops raises `ConnectorPartialParse` for the whole rather than landing the pages it managed, a truncated ingest being indistinguishable downstream from a complete one. | `0125` |
-| `connector.source.refusal.input-unreadable` | Input a parser cannot read is data rather than a fault: the parse raises `ConnectorInputUnreadable` permanently, naming the path and, where the input has internal structure, the position inside it — the page, the worksheet, the entry. Permanent is terminal against the retry schedule, and the failing unit is that table's read, so one unreadable document among five hundred is answerable by name from the run record. | `0125` |
-| `connector.source.invariant.parse-containment` | A decode that can die runs off the daemon's process, and a non-zero exit or a fatal signal becomes the same permanent refusal naming the same input. That boundary is what bounds a native decode's time and memory, and no input reachable from a watched directory, a bucket prefix or a fetched response body ends the daemon. |  |
+| `connector.source.refusal.document-truncation` | A reader that reaches part of a document and stops raises `ConnectorPartialParse` for the whole rather than landing the pages it managed, a truncated ingest being indistinguishable downstream from a complete one. | `0125` |
+| `connector.source.refusal.input-unreadable` | Unreadable input is data rather than a fault: the source raises `ConnectorInputUnreadable` permanently, naming the path and the position inside a structured input — page, worksheet, entry. Permanence is terminal against the retry schedule, and the failing unit is that table's read, so five hundred documents holding one unreadable member answer by name from the run record. | `0125` |
+| `connector.source.invariant.parse-containment` | {{pipeline.land.invariant.parse-boundary}} {{pipeline.land.refusal.parse-boundary}} A compiled-in source's decode sits behind that same boundary. |  |
 | `connector.source.invariant.office-part-selection` | An office container is read by exact part name — four parts for a workbook, two for a word-processor document — so charts, pivot caches, macros and drawings are absent structurally rather than by a filter, and no external entity is resolved. |  |
 | `connector.source.limit.decompression-budget` | A multi-part office read is bounded at 64 MiB of total decompressed bytes, and on the wire the archive bound is the operator's body cap intersected with that figure. Archive size, entry count and decompressed bytes per part are judged against the directory's claim and against what actually arrives. |  |
 | `connector.source.limit.worksheet-landing` | Landing one worksheet is bounded at 64 MiB of resolved cell text counted as cells land, and at 1048576 rows, shared-string fan-out turning a small input into an unbounded output that counting distinct strings does not see. |  |
@@ -283,8 +288,7 @@ unsettled: What bounds allowed lateness for an out-of-order source, and does a l
 | `connector.source.refusal.provider-origin` | Each search provider's host is pinned at the call site rather than read from configuration: a non-TLS transport and any host other than that provider's raise `ConnectorProviderOriginRejected`, loopback excepted so a fixture is pointable. Adding a provider is a match arm plus an allowlist entry rather than a new pipeline shape. | `0129` |
 | `connector.source.invariant.search-degradation` | An absent provider key and a provider 5xx are transient failures yielding zero rows and a zero-row run outcome rather than a crash, and a reader answers from the corpus already landed. |  |
 | `connector.source.invariant.search-replay` | A search read is journaled, so a replay returns the recorded result set and re-issues no billed query. |  |
-| `connector.source.interface.unchanged-skip` | A snapshot source with `skip_unchanged` records the input's content digest in its position as a `sha256` and a row count. A matching digest returns zero batches: zero rows land, the position is preserved, and the run records a zero-row success as the skip signal. The option defaults off, and the digest covers the input's raw bytes, so it elides a re-read of a byte-identical input alone. |  |
-| `connector.source.invariant.zero-row-commit` | A zero-row commit adds nothing and replaces nothing, so a table whose write mode replaces keeps serving its last non-empty state across an unchanged-input skip, and a skip never reads downstream as the source having gone empty. |  |
+| `connector.source.interface.unchanged-skip` | A snapshot source with `skip_unchanged` records the input's content digest in its position as a `sha256` and a row count. A matching digest returns zero batches: zero rows land, the position is preserved, and the run records a zero-row success as the skip signal. The option defaults off. {{run.advance.invariant.digest-scope}} |  |
 | `connector.source.invariant.poll-only-increments` | Incremental loading is cron-poll. A forever-open replication socket is not a read of this kind, its output being unbounded with no recorded request and response to replay, and a position assumes a mostly-monotonic source. |  |
 
 ## Shapes
@@ -417,7 +421,7 @@ flowchart LR
   Q -->|unreachable| R3["ConnectorUnmetered"]
   Q -->|granted| H
   H --> S{"scheme TLS or loopback?"}
-  S -->|no| R4["ConnectorCleartextCredential"]
+  S -->|no| R4["SecretCleartextEndpoint"]
   S -->|yes| V["vendor"]
   V --> P["origin check on the landed URL"]
   P --> J["journal the batch and the position"]

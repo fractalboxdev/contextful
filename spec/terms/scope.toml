@@ -80,10 +80,15 @@ reads = ["contract", "record"]
 reads = ["record"]
 
 [check.tense]
+# Dated vocabulary — a record is no more entitled to it than a contract file.
 reads = ["contract", "record"]
-# The roadmap names milestones and the generated file reports verdicts; both are
-# exempt by role rather than by an ad-hoc path test.
 exempt-roles = ["plan", "generated"]
+
+[check.mood]
+# Counterfactual mood. A record describes the behavior of a path the system does
+# not take, which is what `Options considered` is for; a contract file has no
+# such section and no such need.
+reads = ["contract"]
 
 [check.unsettled]
 reads = ["contract"]

@@ -70,8 +70,8 @@ least-privilege credential, so the caller it authenticated is the principal the 
 
 The cost accepted is expressiveness pressure on grants. Anything an operator or a tool needs
 has to be sayable as a grant over the registered relation, which is why the bare-star table
-pattern exists, and surfaces that previously reached beneath the tables need grant-filtered
-tools built for them. Some of those tools are work that a perimeter secret would have made
+pattern exists, and work reaching below the table level needs grant-filtered tooling built
+for it. Some of those tools are work that a perimeter secret would have made
 unnecessary.
 
 Reversing this is easy to type and hard to undo: once a deployment is reachable with a

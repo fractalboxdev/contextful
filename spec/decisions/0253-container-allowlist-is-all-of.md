@@ -66,7 +66,7 @@ unrecognized container is dropped, and its content is absent from answers a read
 entitled to receive. Nothing distinguishes that absence from the material simply not
 existing, so the reader experiences an incomplete answer rather than a refusal.
 
-Reversing to any-of is cheap in code and expensive in fact: every row previously dropped
+Reversing to any-of is cheap in code and expensive in fact: every dropped row
 becomes servable at once, across every reader, with no per-row record of what changed.
 
 ## Revisit triggers

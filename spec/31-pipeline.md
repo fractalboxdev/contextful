@@ -32,7 +32,7 @@ carries beside its data.
 
 | Operation | What it governs |
 | --- | --- |
-| `declare` | The specification, its two serializations, manifest discovery, the content hash, the table block, and the lifecycle verbs. |
+| `declare` | The specification, its two serializations, manifest discovery, the content hash, the table entry, and the lifecycle verbs. |
 | `compile` | The plan a specification becomes at build time: its node kinds, its identity, and what a node body holds. |
 | `transform` | The declarative chain that rewrites a batch in place, and the arity it keeps. |
 | `normalize` | Canonical nested form, relational shredding at the sink, injected identity columns, and recursion depth. |
@@ -51,13 +51,12 @@ carries beside its data.
 | `pipeline.declare.shape.source-block` | A `source` is a connector name beside a free-form JSON config object; a `destination` carries the same two fields and defaults to the store. Config is held as JSON rather than a serialization-specific type, so one manifest parses to the same value whichever form it arrived in. | |
 | `pipeline.declare.workflow.manifest-file` | Startup scans `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml` and `pipelines/*.json`. Each file deserializes to one specification, and specifications merge on `id`. | |
 | `pipeline.declare.refusal.pipeline-id` | One `id` declared in two manifest files raises `PipelineDuplicateId`, naming each file with the line the declaration starts on. | `0087` |
-| `pipeline.declare.refusal.pipeline-spec` | A manifest file the canonical type cannot deserialize raises `PipelineSpecInvalid`, naming the file, the key path and the value found. | |
+| `pipeline.declare.refusal.pipeline-spec` | A manifest file the canonical type cannot deserialize raises `PipelineSpecInvalid`, naming the file, the key path and the value found. | `0087` |
 | `pipeline.declare.invariant.content-hash` | A pipeline's `content_hash` is a sha256 over its canonical JSON serialization. Declaring an optional field for the first time is the single edit that moves it, and the hash is the input a replay pin keys on. | |
-| `pipeline.declare.invariant.table-name` | A destination table's name is derived rather than declared: `<pipeline id>_<table name>`, every non-alphanumeric character folded to `_` and every ASCII uppercase letter lowered, so pipeline `meta-ads` and table `insights` bind `meta_ads_insights`. | |
+| `pipeline.declare.invariant.table-name` | A destination table's name is derived rather than declared: `<pipeline id>_<table name>`, every non-alphanumeric character folded to an underscore and every ASCII uppercase letter lowered, so pipeline `meta-ads` and table `insights` bind `meta_ads_insights`. | |
 | `pipeline.declare.refusal.table-name` | A job target or model reference naming a destination table in a spelling the fold does not produce raises `PipelineUnboundTableName` and prints the spelling the fold expected. | `0088` |
 | `pipeline.declare.shape.table-entry` | A `tables` entry is either a bare name — `tables = ["issues", "comments"]` — or an object carrying that table's own configuration. The two forms mix freely inside one array. | |
-| `pipeline.declare.shape.table-block` | A table object declares `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `pii_type`, `policy`, `visibility`, `valid_time`, `view`, and the reader-facing `agent_description`, `agent_hint` and `example_queries`. Each key is optional and drops out of the canonical serialization when unset. | |
-| `pipeline.declare.invariant.primary-key` | A table with no declared `primary_key` reads as the byte-identical union over committed runs and no fold ever collapses it. With a key declared, the fold keeps the latest row per key ordered by `order_by` descending; `order_by` falls back to the injected ingest stamp and is inert where no key is declared. | |
+| `pipeline.declare.invariant.primary-key` | {{store.declare.invariant.primary-key-is-opt-in}} With a key declared, the fold keeps the latest row per key ordered by `order_by` descending; `order_by` falls back to the injected ingest stamp and is inert where no key is declared. | |
 | `pipeline.declare.interface.write-mode` | `write_mode` takes `append` — the default, and the reading when the key is absent — or `replace`. Under `append` a run adds to what the table holds and no key retires when it stops appearing. Under `replace` the landing run is the table's whole current state and every earlier commit stops being read. | |
 | `pipeline.declare.refusal.write-mode` | `replace` declared beside a monotonic or page-token cursor, beside a backfill chunk plan, or beside a seed ceiling raises `PipelineReplaceUnsupported`, naming the table each declaration sits on. A version-id cursor is necessary and insufficient: what `replace` admits is a source re-reading its entire input each pull. | `0089` |
 | `pipeline.declare.invariant.empty-commit` | A run landing no rows leaves a replacing table reading exactly what it read before. Two paths land nothing without the source having emptied — a pull that legitimately finds nothing still commits, and an unchanged-input skip returns no batch — and neither carries a signal separating them from a source that has genuinely gone empty. | |
@@ -69,12 +68,14 @@ carries beside its data.
 | `pipeline.declare.invariant.table-error` | A fire whose every table failed under `continue` lands nothing and still returns success, so the process exit status carries the difference: `run` exits non-zero and names the failed runs, `apply` prints a partial line beside the pipeline's success line, and a scheduled fire appends the failure count to its log line. | |
 | `pipeline.declare.invariant.chunked-load` | `on_table_error` governs the single-pass live pull alone. A table running under a seed or a backfill chunk plan halts the fire on failure under either setting, since a chunked load fails as a plan: no single run id names it, and the chunk position it stopped at is what a resume reads. | |
 | `pipeline.declare.shape.incremental-field` | `incremental = "<field>"` names the stream's clock on the pipeline rather than inside a source's config block, so the field means one thing whichever connector the pipeline points at. Declared, the source reports a lease-free cursor kind and commits `{"field": "<name>", "at": <value>}`; undeclared, the source keeps full-refetch behavior. | |
-| `pipeline.declare.invariant.validation-warning` | Validation warns per table where a `primary_key` is declared and no enabled compaction job covers that table. The warning stops nothing, since an out-of-band cadence is a legitimate way to drive the fold. | |
+| `pipeline.declare.invariant.validation-warning` | {{store.declare.invariant.keyed-table-needs-a-fold}} The warning stops nothing, since an out-of-band cadence is a legitimate way to drive the fold. | |
 
 Cursor kinds and the concurrency each one permits live in `spec/30-run.md` § Clauses —
-cursor; a pipeline's clock declaration selects which kind its source reports. Compaction
-as the pass that materializes last-write-wins lives in `spec/10-store.md` § Clauses —
-compact; a keyed table with no snapshot beneath it reads what its run files hold.
+advance; a pipeline's clock declaration selects which kind its source reports. The
+declaration keys a table object carries live in `spec/10-store.md` § Clauses — declare;
+an unset key drops out of the canonical serialization. Compaction as the pass that
+materializes last-write-wins lives in `spec/10-store.md` § Clauses — fold; a keyed table
+with no snapshot beneath it reads what its run files hold.
 
 unsettled: What retires a key a source stops serving under the append mode — a run declaring itself complete state, or a per-connector delete signal? owner: pipeline affects: pipeline.declare
 
@@ -90,7 +91,7 @@ unsettled: What retires a key a source stops serving under the append mode — a
 | `pipeline.compile.interface.plan-schema` | The plan type is defined once in a schema library, and the JSON Schema derived from it is the contract every language binds to. The run path deserializes plan JSON against that schema, and the same JSON is the authoring floor an agent or a non-native author emits directly. | |
 | `pipeline.compile.refusal.step` | A `step` body that is anything but a connector reference raises `PipelineInlineStepBody`. A raw network call and a clock read therefore have no position in the graph, and the rule binds a sandboxed connector identically, since the host invokes one from inside a recorded step. | `0092` |
 | `pipeline.compile.refusal.predicate` | A data-dependent conditional or loop in a workflow body raises `PipelineUndeclaredControlFlow`. Branching travels as `branch` over a declared predicate, fan-out as `parallel`, and iteration as a map, each of which the compiler reads. | `0093` |
-| `pipeline.compile.refusal.plan-node` | A node id repeated inside one plan raises `PipelineNodeIdCollision`, naming the id and both positions. An id is unique across the whole plan, since edges reach nodes by nothing else. | |
+| `pipeline.compile.refusal.plan-node` | A node id repeated inside one plan raises `PipelineNodeIdCollision`, naming the id and both positions. An id is unique across the whole plan, since edges reach nodes by nothing else. | `0093` |
 | `pipeline.compile.workflow.lowering` | One plan lowers node by node onto a durable substrate: a step onto a durable step call or a recorded connector step, a sleep onto a durable timer or a wait state, an awaitEvent onto a suspension or a task-token wait, a branch onto a choice over the declared predicate, a fan-out onto concurrent steps or a graph fan-out. A diagram lowering renders the same graph for a document. | |
 
 ## Clauses — transform
@@ -99,10 +100,10 @@ unsettled: What retires a key a source stops serving under the append mode — a
 | --- | --- | --- |
 | `pipeline.transform.shape.transform-chain` | The chain is an ordered, declarative list of four operations — select, rename, cast, and a filter over a single column — declared once at pipeline level. | |
 | `pipeline.transform.invariant.transform-chain` | Every operation rewrites a batch in place: the rows leaving the chain are the rows that entered it, modulo the one operation that drops rows by predicate. | |
-| `pipeline.transform.refusal.transform-chain` | A chain operation that would emit more rows than it consumed raises `PipelineTransformArity`. Deferred, vendor-mediated work whose output count exceeds its input count reads landed rows through a separate tier. | `0094` |
+| `pipeline.transform.refusal.transform-chain` | A chain operation emitting more rows than it consumed raises `PipelineTransformArity`. Deferred, vendor-mediated work whose output count exceeds its input count reads landed rows through a separate tier. | `0094` |
 | `pipeline.transform.invariant.root-table` | The chain binds the root table alone. A shredded child passes through untouched, since a child's flattened column set is a different shape and an operation naming a root column finds nothing there. | |
 | `pipeline.transform.invariant.filter` | A filter gating out a root row still lands that row's children, whose parent id then names an id no surviving row carries. | |
-| `pipeline.transform.refusal.filter` | A filter or a cast naming a column the incoming batch does not carry raises `PipelineTransformColumnMissing`, printing the column and the table it was evaluated against. | |
+| `pipeline.transform.refusal.filter` | A filter or a cast naming a column the incoming batch does not carry raises `PipelineTransformColumnMissing`, printing the column and the table it was evaluated against. | `0338` |
 | `pipeline.transform.interface.cast` | A cast rewrites one column's type inside the batch and leaves its name and its position alone, so a downstream projection reading that column by name is unaffected by the change of type. | |
 | `pipeline.transform.interface.projection` | `select` fixes the outgoing column set by name and `rename` maps an incoming name onto an outgoing one; together they decide the column set the normalize stage receives. | |
 
@@ -126,8 +127,11 @@ unsettled: Does the chain grow past these four operations, or does richer work s
 | `pipeline.normalize.invariant.list-index` | Under the relational projection the list index is what keeps the projection reversible: the nested form is reconstructed by aggregating a child's rows in that index's order. | |
 | `pipeline.normalize.refusal.list-index` | A relational projection that emits a child table carrying no list index raises `PipelineListIndexMissing`, naming the parent and the list. | `0095` |
 | `pipeline.normalize.invariant.nesting-depth` | Recursion runs to the declared nesting depth, default 5, and a subtree below that depth lands as one deferred-typing JSON column rather than being descended into without bound. | |
-| `pipeline.normalize.refusal.normalize-mode` | A `normalize` block naming a mode outside the two raises `PipelineNormalizeModeUnknown`, printing both legal spellings. | |
-| `pipeline.normalize.invariant.valid-time-line` | A keyed table carrying a declared valid-time pair holds more than one live row per key by design, and the fold partitions on the key together with the valid-time line rather than on the key alone. | |
+| `pipeline.normalize.refusal.normalize-mode` | A `normalize` block naming a mode outside the two raises `PipelineNormalizeModeUnknown`, printing both legal spellings. | `0095` |
+
+The fold's partitioning over a table that declares a valid-time pair lives in
+`spec/10-store.md` § Clauses — fold; such a table keeps a live row per valid-time line
+rather than per key.
 
 ## Clauses — guard-secrets
 
@@ -139,7 +143,7 @@ unsettled: Does the chain grow past these four operations, or does richer work s
 | `pipeline.guard-secrets.limit.token-tail` | A GitHub prefix matches only where at least 36 chars follow it. | |
 | `pipeline.guard-secrets.limit.assignment` | An assignment matches only where its value runs to at least 16 chars. | |
 | `pipeline.guard-secrets.invariant.mask-span` | Each matcher reports the byte range it matched, and the replacement covers those ranges alone, so a false positive costs the span rather than the whole field and a long document keeps its text around one masked key. | |
-| `pipeline.guard-secrets.invariant.sentinel` | The replacement is the fixed `[REDACTED:secret]` sentinel, never a length-preserving or prefix-preserving transform that would leave the credential's shape readable. | |
+| `pipeline.guard-secrets.invariant.mask-replacement` | The replacement is the fixed `[REDACTED:secret]` marker, never a length-preserving or prefix-preserving transform that leaves the credential's shape readable. | |
 | `pipeline.guard-secrets.invariant.span-label` | Spans come back sorted by start offset and non-overlapping; an overlap merges under the higher-priority pattern, so a PEM block containing a key line reports once. Priority runs private key, AWS key id, GitHub token, Slack token, assignment, and the label a caller reads does not move when a credential is pasted earlier or later in a paragraph. | |
 | `pipeline.guard-secrets.invariant.span-boundary` | A span whose ends fall inside a character widens to the enclosing character boundaries rather than narrowing to them. | |
 | `pipeline.guard-secrets.invariant.assignment` | An assignment masks its value and keeps the `key=` prefix as the signal that something was replaced. A PEM header with no matching end marker masks through to the end of the value, and a cell that is entirely a credential masks whole, since the span covers it. | |
@@ -155,22 +159,23 @@ A landing sequence runs pull, mask, normalize, transform, write, commit, advance
 | --- | --- | --- |
 | `pipeline.land.workflow.batch-write` | A landing table is created on first sight of its schema; each batch is written durably in its own call, so a crash leaves a recoverable partial run rather than a half-written file; and a commit makes that run's rows visible for a table in one step. | |
 | `pipeline.land.shape.batch-write` | A write may carry its batch's ordinal inside the run, which is the join key onto that run's request ledger. | |
-| `pipeline.land.invariant.commit` | Rows and position commit in one order: the position moves after the batch is durable, as its own recorded step, so a process that dies between them re-reads from the position last committed. | |
+| `pipeline.land.invariant.commit-order` | Rows and position commit in one order: the position moves after the batch is durable, as its own recorded step, so a process that dies between them re-reads from the position last committed. | |
 | `pipeline.land.invariant.watermark` | A row lands where its clock value is at or past the committed position. A publication instant is routinely coarser than the row grain, so two rows share a value and the second arrives after a poll committed it; an inclusive bound re-lands one instant's worth of rows per poll rather than dropping that sibling permanently and invisibly. | |
-| `pipeline.land.invariant.frontier` | The frontier counts every row fetched, landed or not, since a row already under the bound still proves the endpoint reached that far. The committed position never moves backwards: a poll returning an empty or older window keeps the bound where it stood. | |
-| `pipeline.land.refusal.watermark` | A row carrying no orderable value in the declared clock field fails the pull permanently and raises `PipelineUnorderableClock`, as does a stream switching between a text position and a numeric one mid-pass. | |
 | `pipeline.land.refusal.clock-field` | A committed cursor carries the field name it was measured on, and opening a pipeline whose `incremental` declaration names a different field raises `PipelineClockFieldChanged` before any request leaves the host. | `0096` |
-| `pipeline.land.workflow.clock-field` | Declaring `incremental` on a pipeline that already holds a cursor starts that cursor fresh, so the source's current window re-lands once rather than being stepped over. | |
 | `pipeline.land.interface.ingest-tally` | A fire reports a machine-readable summary — `fetched`, `kept`, `skipped`, `failed`, `dropped_low_quality`, and a per-source breakdown — where `skipped` covers a quality gate or an unchanged input and `failed` covers a fetch or a parse error. | |
 | `pipeline.land.invariant.ingest-tally` | A non-zero `failed` count exits non-zero, so a cadence driver reads the difference without parsing the summary. | |
 | `pipeline.land.refusal.unreadable-input` | Input a parser cannot read is data rather than a fault: it raises `PipelineUnreadableInput` naming the path and, where the input carries internal structure, the position inside it — the page, the worksheet, the entry. The refusal is permanent against the retry schedule, since the same bytes re-read the same way. The failing unit is one table's pull, so one bad document among five hundred is answerable by name from the run record. | `0097` |
 | `pipeline.land.refusal.partial-parse` | A reader that reads part of a multi-part input and stops raises `PipelinePartialParse` over the whole input rather than landing the parts it managed, since a truncated ingest and a complete one read identically downstream. | `0098` |
 | `pipeline.land.invariant.parse-boundary` | A decode that can die runs off the serving process. That boundary is what bounds a native decode's wall clock and its resident memory, and what makes a parse that never finishes killable from outside. | |
-| `pipeline.land.refusal.parse-boundary` | A non-zero exit or a fatal signal from the decode process raises `PipelineParseCrashed` naming the same input as a clean parse failure would. No input reachable from a watched directory, a bucket prefix or a fetched response body ends the serving process: sibling pipelines keep firing and the read face keeps answering. | `0099` |
+| `pipeline.land.refusal.parse-boundary` | A non-zero exit or a fatal signal from the decode process raises `PipelineParseCrashed` naming the same input a clean parse failure names. No input reachable from a watched directory, a bucket prefix or a fetched response body ends the serving process: sibling pipelines keep firing and the read face keeps answering. | `0099` |
 | `pipeline.land.refusal.table-failure` | A table whose pull fails raises `PipelineTableFailed` carrying the table, the error kind and the run id; what the fire does next follows the declared table-error setting. | `0100` |
 | `pipeline.land.invariant.table-failure` | A failed table's accounting is identical under both settings: a run row bearing the error kind, a step-failure event beside a run-failure event, and a position left where the next attempt resumes. | |
-| `pipeline.land.interface.skip-unchanged` | A snapshot source declaring `skip_unchanged` records its input's content digest in its cursor as `{ sha256, rows }`. A digest equal to the persisted one returns no batch, preserves the cursor and records a zero-row success, which is the skip signal. The option defaults false. | |
-| `pipeline.land.invariant.digest-scope` | The digest covers the input's raw bytes, so it elides a re-read of a byte-identical input alone. A re-fetch rewriting per-row provenance is a genuine byte change and re-lands, and collapsing those overlapping re-fetches falls to the declared key at read time. | |
+
+Cursor movement under a landing pipeline lives in `spec/30-run.md` § Clauses — advance:
+the frontier a pull leaves behind, the bound a poll holds, the fresh start a new clock
+declaration takes, and the digest that elides an unchanged input. A pipeline reads that
+position rather than keeping one of its own. The snapshot-source option recording an
+input digest lives in `spec/32-connector.md` § Clauses — source.
 
 The journal's treatment of a pipeline declaring redaction over a recorded pull lives in
 `spec/30-run.md` § Clauses — journal, which settles whether a recorded mirror and a
@@ -206,19 +211,19 @@ unsettled: Which process carries the parse boundary — a child per input, or on
 | `pipeline.seed.invariant.seed-block` | Seeded rows travel the same tables, the same normalize stage, the same chain, the same guard and the same write path as the live connector, so no second land path exists whose fold or ordering could drift from the first. | |
 | `pipeline.seed.invariant.attribution` | A seeded row is indistinguishable from a live one downstream. Attribution survives in provenance alone, through the injected load id and a run the catalog records under the `seeding` phase. | |
 | `pipeline.seed.refusal.seed-declarations` | A seeded table declaring no `primary_key`, or leaving `order_by` at the injected ingest-time default rather than naming an event-time column, raises `PipelineSeedDeclarationMissing` at plan and at validate time. | `0103` |
-| `pipeline.seed.refusal.ceiling` | A seeded row whose ordering stamp reaches or passes `below` raises `PipelineSeedCeilingBreached` naming the offending value, and its whole chunk lands nothing. The stamp is never clamped, which would fabricate event time, and never dropped. | `0104` |
+| `pipeline.seed.refusal.ceiling` | A seeded row whose ordering stamp reaches or passes `below` raises `PipelineSeedCeilingBreached` naming the offending value, and its whole chunk lands nothing. The stamp is never clamped and never dropped. | `0104` |
 | `pipeline.seed.invariant.ceiling` | The ceiling is evaluated on the landed root batch after normalize and the chain and before the write, so it reads the same column the read view orders by. | |
 | `pipeline.seed.refusal.ceiling-evaluation` | A batch missing the declared ordering column, and a stamp that cannot be ordered against the ceiling at all, each raise `PipelineSeedCeilingUnevaluable`: a ceiling nothing can evaluate is a ceiling nothing enforces. | `0104` |
 | `pipeline.seed.invariant.seed-scope` | Seed chunk and cursor state live under a `<table>#seed` scope apart from the live pipeline's, which keeps an export's file offset or object key out of a live cursor whose scale belongs to the vendor. | |
 | `pipeline.seed.invariant.connector-pin` | A seeding run is excluded from the connector-identity pin that refuses a mid-history connector swap, since a seed deliberately pulls through a different connector. That connector's identity is still recorded on the run as provenance. | |
 | `pipeline.seed.invariant.ceiling-binding` | On seed commit the live position takes the ceiling only for a lease-free clock whose `below` parses as an integer, and only while that position is unset, so a top-up never rewinds a connector that has advanced past the cutover. For a page token or a version id the ceiling does not bind and the position stays unset; the live side then starts from its own beginning and overlaps the seeded window. | |
 | `pipeline.seed.workflow.fingerprint` | Each run probes the seed source for a cheap content fingerprint — a filesystem stat for a local export, a HEAD for an object-store one, never a download — and compares it with the fingerprint recorded at commit. The fingerprint is stamped on commit alone, so a half-loaded export cannot claim its whole contents landed. | |
-| `pipeline.seed.refusal.fingerprint` | A fingerprint differing from the recorded one raises `PipelineSeedSourceChanged`, naming both values and pointing at the reset verb. An equal fingerprint skips the load; an unavailable fingerprint skips and warns each run that a top-up here would go unnoticed. | `0105` |
+| `pipeline.seed.refusal.fingerprint` | A fingerprint differing from the recorded one raises `PipelineSeedSourceChanged`, naming both values and pointing at the reset verb. An equal fingerprint skips the load; an unavailable fingerprint skips and warns each run that a top-up here goes unnoticed. | `0105` |
 | `pipeline.seed.interface.seed-command` | `seed status` prints each seeded table's ceiling, its commit state, and whether its source still matches the recorded fingerprint. `seed reset <pipeline> [--table T]` clears the seed's chunk plan, so the next run re-loads the export. | |
 | `pipeline.seed.invariant.parity` | On a folded table, seeding and then running the live connector across an overlapping window yields the row count and the per-key winners a pure live backfill of that window yields. | |
 | `pipeline.seed.invariant.ordering-guarantee` | Every seeded row's ordering stamp sorts strictly below the earliest live row's, enforced at load by the ceiling. | |
 | `pipeline.seed.workflow.parity-audit` | `validate` audits that ordering over every landed row rather than over the deduped view, so it returns the same verdict with or without a published snapshot beneath the table. | |
-| `pipeline.seed.invariant.compaction-cadence` | A seeded pipeline declares a `compact` job covering each seeded table. Absent a published snapshot the read is a union over committed runs, so the seeded row and the live row for one key both survive and every aggregate over the table is wrong while nothing fails. | |
+| `pipeline.seed.invariant.compaction-cadence` | A seeded pipeline declares a scheduled fold covering each seeded table. Absent a published snapshot the read is a union over committed runs, so the seeded row and the live row for one key both survive and every aggregate over the table is wrong while nothing fails. | |
 | `pipeline.seed.invariant.divergence` | Ingested tables carry no delete semantics, and this is the one place a seed diverges from a live backfill: a key the seed holds that the vendor stops returning survives at its seeded value, where a pure live backfill never produced it. A re-pull refreshes every key the vendor still returns and a rewind preserves originals, so retiring such a row takes the run's files rather than another pull. | |
 
 ## Clauses — publish
@@ -239,7 +244,7 @@ unsettled: Which process carries the parse boundary — a child per input, or on
 | `pipeline.publish.shape.manifest-section` | A published table's manifest section carries `{contract_version, schema_fingerprint, build_id, last_built_at, watermark, max_lag, last_build_status, partitions_failed?, semantics_version?, fingerprint_recipe?}`. Each optional key is absent rather than null where the artifact predates it, and neither optional key is inferred from the other. | |
 | `pipeline.publish.invariant.manifest-section` | The identifiers in that section name the newest publishing entry in the build log and never a refused one. | |
 | `pipeline.publish.refusal.manifest-section` | Artifacts that disagree — a freshness record naming a build the log does not carry, or a contract identity no entry published under — raise `PipelineModelArtifactsTorn`, and the table drops out of the section entirely rather than appearing with a reconstructed value. | `0107` |
-| `pipeline.publish.workflow.semantics-version` | Adding an engine-injected column moves every store's schema fingerprint, and the addition ships with a `semantics_version` bump whose `fingerprint_recipe` names it. | |
+| `pipeline.publish.workflow.semantics-version` | A published table's `semantics_version` advances when the engine adds an injected column, and the `fingerprint_recipe` published beside it names that column. | |
 | `pipeline.publish.invariant.fingerprint-recipe` | `fingerprint_recipe` names the inputs the fingerprint is taken over, so a consumer reads an engine-side column addition as such rather than reading a bare hash difference as a producer's schema change. | |
 | `pipeline.publish.workflow.disclosure-digest` | A build declares the policy its materialization is safe under at write time and records a digest over that policy's declared fields, with the set-valued fields sorted so a manifest reordering is not a policy change. The digest rides both the freshness record and the append-only build log. | |
 | `pipeline.publish.shape.build-status` | A build's status is one of published, refused or partial. A partial build names the partition key values it left unfilled and publishes the rest. | |

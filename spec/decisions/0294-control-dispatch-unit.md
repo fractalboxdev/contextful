@@ -46,7 +46,7 @@ pool's bound or by an exclusion key stays due and is reconsidered on the next ti
 | **One instance per due dispatchable unit, with steps refused as units** *(chosen)* | Independent entries fail independently and hold their own cadences; a dependent run keeps its ordering without needing a trigger the grammar cannot express. | Entries authored as a chain run as one unit even where they are genuinely independent, and the head entry's cadence governs the whole run. |
 | One chain per beat | One orchestrator instance to reason about per beat; ordering is free; concurrency control is trivial. | Lost on blast radius: every entry shares one cadence and one failure, so an unrelated upstream's outage stops entries that have nothing to do with it. |
 | Decomposing a chain so each step dispatches independently | Maximum independence; every step retries and scales on its own. | Lost on expressiveness: it needs an upstream-staged-its-output trigger the schedule grammar does not carry, so each step would fire on a cadence that guesses at its predecessor. |
-| Dispatching steps independently with a cadence chosen to outrun the predecessor | Available today with no grammar change. | Lost on silent double runs: a misread fires a second instance of work already in flight, which produces duplicate landings rather than a refusal, and the padding is a number with no principled value. |
+| Dispatching steps independently with a cadence chosen to outrun the predecessor | Available with no grammar change, on the schedule forms that exist. | Lost on silent double runs: a misread fires a second instance of work already in flight, which produces duplicate landings rather than a refusal, and the padding is a number with no principled value. |
 
 ## Criteria
 

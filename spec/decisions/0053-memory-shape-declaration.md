@@ -64,8 +64,8 @@ behavior — the alternative is a fleet of tables that claim a shape they no lon
 it means shape evolution is a coordinated edit rather than an incremental one.
 
 A table cannot be evolved in place through a state where it declares the new shape and
-carries the old columns. The migration path is to land the columns first and the
-declaration second.
+carries the old columns. The path through lands the columns first and the declaration
+second.
 
 The refusal is per-declaration, not per-deployment-partition, so one malformed table stops
 the load even where every other table is correct. Whether that is too blunt at fleet scale

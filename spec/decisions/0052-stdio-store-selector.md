@@ -17,7 +17,7 @@ the same data.
 
 The walk can find nothing. A consumer spawned from a home directory, a temporary
 directory, or a directory whose project was moved, has a working directory that names no
-store. At that moment the process has not yet written a byte of protocol framing, and the
+store. At that moment the process has written no byte of protocol framing, and the
 client on the other end is waiting for a handshake.
 
 The transport keeps exactly one request in flight and resynchronizes by discarding exactly

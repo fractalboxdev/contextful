@@ -1,7 +1,7 @@
 # 0292 — A job target binds at the manifest or the manifest is refused
 
 **Status:** accepted 2026-09-18
-**Decides:** `control.fire.refusal.compact-target`, `control.fire.refusal.build-target`
+**Decides:** `control.fire.refusal.compact-target`, `control.fire.refusal.model-target`
 
 ## Context
 

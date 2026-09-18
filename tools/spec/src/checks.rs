@@ -17,10 +17,11 @@ pub const MODALS: [&str; 8] = [
     "must", "never", "refuses", "is refused", "at most", "at least", "exactly", "always",
 ];
 
-pub const CHECKS: [&str; 25] = [
+pub const CHECKS: [&str; 26] = [
     "ids", "owns", "anatomy", "titles", "size", "terms", "aliases", "foreign", "literals",
     "limits", "errors", "shingles", "prose", "links", "rationale", "citations", "adr-orphans",
-    "adr-shape", "tense", "unsettled", "banned", "paths", "diagrams", "pins", "roadmap",
+    "adr-shape", "tense", "mood", "unsettled", "banned", "paths", "diagrams", "pins",
+    "roadmap",
 ];
 
 fn word_re(words: &[&str]) -> Regex {
@@ -457,7 +458,9 @@ pub fn aliases(c: &Corpus) -> Vec<Finding> {
         for cl in &d.clauses {
             let plain = without_ticks(&cl.statement);
             for (uni, canon) in &unit_alias_of {
-                let re = Regex::new(&format!(r"(?i)\b\d+(?:\.\d+)?\s*{}\b", regex::escape(uni)))
+                // Case-sensitive: `mib` is a refused alias of `MiB`, and a
+                // case-folding match would read every correct `MiB` as its own alias.
+                let re = Regex::new(&format!(r"\b\d+(?:\.\d+)?\s*{}\b", regex::escape(uni)))
                     .unwrap();
                 if re.is_match(&plain) {
                     out.push(Finding::new(
@@ -578,6 +581,15 @@ pub fn foreign(c: &Corpus) -> Vec<Finding> {
     out
 }
 
+/// The family two unit tokens have to share before their values compare.
+fn family(unit: &str) -> &'static str {
+    match unit {
+        "B" | "KiB" | "MiB" | "GiB" => "bytes",
+        "ms" | "s" | "min" | "h" | "d" => "time",
+        _ => "other",
+    }
+}
+
 /// A value in its unit family's base unit, so "64 KiB" and 65536 B compare equal.
 fn normalize(v: f64, unit: &str) -> Option<f64> {
     let f = match unit {
@@ -645,8 +657,10 @@ pub fn literals(c: &Corpus) -> Vec<Finding> {
                     .filter(|e| {
                         e.owner == cl.id
                             && match (want, normalize(e.value, &e.unit)) {
-                                (Some(a), Some(b)) => (a - b).abs() < 1e-6,
-                                _ => (e.value - num).abs() < f64::EPSILON,
+                                (Some(a), Some(b)) => {
+                                    family(&unit) == family(&e.unit) && (a - b).abs() < 1e-6
+                                }
+                                _ => e.unit == unit && (e.value - num).abs() < f64::EPSILON,
                             }
                     })
                     .collect();
@@ -718,7 +732,10 @@ pub fn limits(c: &Corpus) -> Vec<Finding> {
             if cl.kind != "limit" {
                 continue;
             }
-            let plain = without_ticks(&cl.statement);
+            // A bound written inside a code span (`every 30s`) is still a bound, so the
+            // numeral and unit arms read the whole statement
+            // (`corpus.registry.refusal.limit-without-a-number`).
+            let plain = cl.statement.clone();
             if !has_numeral(&plain) {
                 out.push(Finding::new(
                     "limits", &cl.file, cl.line, "SpecUnmeasuredLimit",
@@ -726,7 +743,12 @@ pub fn limits(c: &Corpus) -> Vec<Finding> {
                 ));
                 continue;
             }
-            if !unit_re.is_match(&plain) {
+            let attached = Regex::new(&format!(
+                r"\d\s*(?:{})\b",
+                unit_tokens.iter().map(|t| regex::escape(t)).collect::<Vec<_>>().join("|")
+            ))
+            .unwrap();
+            if !unit_re.is_match(&plain) && !attached.is_match(&plain) {
                 out.push(Finding::new(
                     "limits", &cl.file, cl.line, "SpecUnmeasuredLimit",
                     format!("`{}` carries a numeral and no unit registered in unit.toml", cl.id),
@@ -1205,8 +1227,13 @@ pub fn adr_shape(c: &Corpus) -> Vec<Finding> {
                     continue;
                 }
                 let cost = cells.last().unwrap().to_ascii_lowercase();
-                let names_criterion =
-                    Regex::new(r"\b(?:lost|loses)\s+(?:\w+\s+)?on\b").unwrap().is_match(&cost);
+                // "Lost on X", "Loses on X", "Lost outright on X" and a cost cell that
+                // opens "Lost as …" all name the criterion the option lost on.
+                let names_criterion = Regex::new(r"\b(?:lost|loses)\s+(?:\w+\s+)?on\b")
+                    .unwrap()
+                    .is_match(&cost)
+                    || cost.trim_start().starts_with("lost")
+                    || cost.trim_start().starts_with("loses");
                 if !names_criterion {
                     out.push(Finding::new(
                         "adr-shape", &d.rel, l.no, "SpecRecordAnatomy",
@@ -1225,12 +1252,17 @@ pub fn adr_shape(c: &Corpus) -> Vec<Finding> {
 // ---------------------------------------------------------------- 19. tense
 
 pub fn tense(c: &Corpus) -> Vec<Finding> {
+    // `corpus.state.refusal.dated-vocabulary` — build-state vocabulary in every
+    // authored file, a record included. The counterfactual mood is the `mood` check.
     let tokens = [
-        "will", "shall", "would", "planned", "not yet", "currently", "today", "shipped",
-        "implemented", "previously", "used to", "legacy", "migration", "TODO", "FIXME", "WIP",
+        "planned", "not yet", "currently", "today", "shipped", "implemented", "previously",
+        "legacy", "migration", "TODO", "FIXME", "WIP",
     ];
     let re = word_re(&tokens);
     let milestone = Regex::new(r"\bM[0-9]\b").unwrap();
+    // "used to" is dated prose only with a subject in front of it; "the scheme used
+    // to verify it" is an infinitive (`corpus.state.refusal.status-word-in-a-contract-file`).
+    let used_to = Regex::new(r"(?i)\b(?:we|it|this|that|they|which)\s+used\s+to\b").unwrap();
     let mut out = Vec::new();
     for d in c.docs_for("tense") {
         for l in &d.lines {
@@ -1244,10 +1276,41 @@ pub fn tense(c: &Corpus) -> Vec<Finding> {
                     format!("\"{}\" in authored text", m.as_str()),
                 ));
             }
+            for m in used_to.find_iter(&plain) {
+                out.push(Finding::new(
+                    "tense", &d.rel, l.no, "SpecDatedProse",
+                    format!("\"{}\" in authored text", m.as_str()),
+                ));
+            }
             for m in milestone.find_iter(&plain) {
                 out.push(Finding::new(
                     "tense", &d.rel, l.no, "SpecDatedProse",
                     format!("milestone token \"{}\"", m.as_str()),
+                ));
+            }
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------- 19b. mood
+
+/// `corpus.state.refusal.counterfactual-mood` — a record's `Options considered` and
+/// `Consequences` describe a path the system does not take, so the mood check reads
+/// contract files alone, as its scope entry says.
+pub fn mood(c: &Corpus) -> Vec<Finding> {
+    let re = word_re(&["will", "shall", "would"]);
+    let mut out = Vec::new();
+    for d in c.docs_for("mood") {
+        for l in &d.lines {
+            if l.authored.is_empty() {
+                continue;
+            }
+            let plain = without_ticks(&l.authored);
+            for m in re.find_iter(&plain) {
+                out.push(Finding::new(
+                    "mood", &d.rel, l.no, "SpecCounterfactualMood",
+                    format!("\"{}\" in a contract file", m.as_str()),
                 ));
             }
         }
@@ -1328,8 +1391,12 @@ pub fn banned(c: &Corpus) -> Vec<Finding> {
     let axis = Regex::new(r"(?i)\baxis\b").unwrap();
     let issue = Regex::new(r"(?:^|[\s(\[])#[0-9]+\b").unwrap();
     let pr = Regex::new(r"(?i)https?://[^\s)]*/(?:pull|pulls)/[0-9]+").unwrap();
-    let leaks = Regex::new(r"(?i)\bhakiri\b|\bhk1\b").unwrap();
-    let proper = Regex::new(r"\bNest\b|\bTrails\b").unwrap();
+    // A name this corpus refuses is held as a digest, never as a spelling —
+    // a plaintext denylist would put the very words it refuses into the tree.
+    // `spec/terms/refused-names.toml` carries them; clause
+    // `corpus.render.refusal.banned-vocabulary` is what this implements.
+    let refused = c.refused_names();
+    let word = Regex::new(r"[A-Za-z][A-Za-z0-9]*").unwrap();
 
     for d in c.docs_for("banned") {
         for l in &d.lines {
@@ -1344,8 +1411,14 @@ pub fn banned(c: &Corpus) -> Vec<Finding> {
                     format!("the noun \"{}\"", m.as_str()),
                 ));
             }
-            // `axis` is legal in a chart caption alone.
-            if axis.is_match(plain) && !plain.to_lowercase().contains("chart") {
+            // A chart's axis is a real thing; the banned noun is the metaphorical
+            // one. Clause `corpus.render.refusal.banned-vocabulary` names the noun,
+            // not the spelling, so a line already carrying chart vocabulary is
+            // talking about a chart and passes.
+            let chartish = ["chart", "plot", "series", "tick", "gridline", "legend", "x-axis", "y-axis",
+                            "scale", "axis label", "axis title", "axis range", "axis bound"];
+            let lower = plain.to_lowercase();
+            if axis.is_match(plain) && !chartish.iter().any(|w| lower.contains(w)) {
                 out.push(Finding::new(
                     "banned", &d.rel, l.no, "SpecBannedNoun",
                     "the noun \"axis\" outside a chart caption".into(),
@@ -1363,16 +1436,19 @@ pub fn banned(c: &Corpus) -> Vec<Finding> {
                     format!("a pull-request link \"{}\"", m.as_str()),
                 ));
             }
-            for m in leaks.find_iter(plain) {
+            for m in word.find_iter(plain) {
+                let tok = m.as_str();
+                let Some(entry) = refused.get(&sha256_lower(tok)) else { continue };
+                // A `proper = true` name is an ordinary English word whose
+                // capitalized use is the leak; lowercase prose passes.
+                let capitalized = tok.chars().next().is_some_and(char::is_uppercase);
+                if entry.proper && !capitalized {
+                    continue;
+                }
+                // The finding names the offence without reprinting the token.
                 out.push(Finding::new(
                     "banned", &d.rel, l.no, "SpecProvenanceLeak",
-                    format!("the token \"{}\"", m.as_str()),
-                ));
-            }
-            for m in proper.find_iter(plain) {
-                out.push(Finding::new(
-                    "banned", &d.rel, l.no, "SpecProvenanceLeak",
-                    format!("the proper noun \"{}\"", m.as_str()),
+                    format!("a refused name at column {} — {}", m.start() + 1, entry.note),
                 ));
             }
         }
@@ -1621,6 +1697,7 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
         "adr-orphans" => adr_orphans(c),
         "adr-shape" => adr_shape(c),
         "tense" => tense(c),
+        "mood" => mood(c),
         "unsettled" => unsettled(c),
         "banned" => banned(c),
         "paths" => paths(c),

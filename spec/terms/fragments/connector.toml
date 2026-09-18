@@ -29,7 +29,7 @@ built-in-registry = { gloss = "The enumerated list of names resolving to a compi
 call-deadline = { gloss = "The wall-clock deadline armed around one guest call.", owner = "connector", resolves = "concept" }
 cell-indexing = { gloss = "The rule landing worksheet cells by declared column reference rather than by position.", owner = "connector", resolves = "concept" }
 cell-out-of-range = { gloss = "A worksheet cell whose column reference lies past the header's width.", owner = "connector", resolves = "concept" }
-cleartext-attachment = { gloss = "A reference-resolved header presented against a cleartext endpoint.", owner = "connector", resolves = "concept" }
+cleartext-attachment = { gloss = "A host-attached header on the mediated outbound path, judged against the endpoint's transport.", owner = "connector", resolves = "concept" }
 client-selection = { gloss = "The choice of outbound client, decided by header presence.", owner = "connector", resolves = "concept" }
 clock-column-spelling = { gloss = "The accepted spellings of a delimited source's clock column.", owner = "connector", resolves = "concept" }
 clock-grant = { gloss = "The declared capability granting a connector the wall clock.", owner = "connector", resolves = "code" }
@@ -49,12 +49,13 @@ default-embedder = { gloss = "The deterministic, I/O-free embedding implementati
 default-embedder-reach = { gloss = "What the default embedding baseline recalls and what it does not.", owner = "connector", resolves = "concept" }
 delimited-cell = { gloss = "How a delimited source lands one cell and one empty field.", owner = "connector", resolves = "concept" }
 dependency-allowlist = { gloss = "The libraries a connector author's crate may depend on.", owner = "connector", resolves = "concept" }
-diagnostic-url = { gloss = "The reduced form a URL takes in an error, a log line or a landed column.", owner = "connector", resolves = "concept" }
+diagnostic-url = { gloss = "The reduced form a URL takes when a connector's diagnostic, log line or landed column receives it.", owner = "connector", resolves = "concept" }
 digest-host-dependence = { gloss = "The dependence of a guest artifact's digest on the build host's triple.", owner = "connector", resolves = "concept" }
 digest-mismatch = { gloss = "A resolved artifact whose re-hash differs from its declared pin.", owner = "connector", resolves = "concept" }
 distribution-form = { gloss = "One of the four ways a connector reference resolves to code or bytes.", owner = "connector", resolves = "concept" }
 document-grain = { gloss = "The row a document source lands: a page, or a heading past a threshold.", owner = "connector", resolves = "concept" }
 document-identity = { gloss = "The slug-plus-ordinal key a document row carries.", owner = "connector", resolves = "concept" }
+document-truncation = { gloss = "A document read that reached part of the content and stopped.", owner = "connector", resolves = "concept" }
 document-unreadable = { gloss = "An encrypted document, or one with no extractable text on any page.", owner = "connector", resolves = "concept" }
 durable-write = { gloss = "The per-batch durability a destination write provides.", owner = "connector", resolves = "concept" }
 empty-context = { gloss = "The instantiation context a guest's broader interfaces link against.", owner = "connector", resolves = "concept" }
@@ -114,7 +115,6 @@ page-loop = { gloss = "A vendor re-serving a paging token or link it already gav
 pagination = { gloss = "The single declared paging shape of a walk.", owner = "connector", resolves = "code" }
 pagination-ambiguity = { gloss = "Two paging shapes declared on one source.", owner = "connector", resolves = "concept" }
 parse-containment = { gloss = "The process boundary a decode that can die runs behind.", owner = "connector", resolves = "concept" }
-partial-parse = { gloss = "A reader that reaches part of a document and stops.", owner = "connector", resolves = "concept" }
 partition-attribution = { gloss = "The optional export naming the partition values a failed read belongs to.", owner = "connector", resolves = "code" }
 partition-isolation = { gloss = "Holding one report partition at its position while others keep their drained pages.", owner = "connector", resolves = "concept" }
 path-remap = { gloss = "The remap over source root and package cache applied to every pinned build.", owner = "connector", resolves = "concept" }
@@ -153,6 +153,7 @@ search-config = { gloss = "The search source's driver, query, freshness window a
 search-degradation = { gloss = "The zero-row outcome of an absent provider key or a provider 5xx.", owner = "connector", resolves = "concept" }
 search-replay = { gloss = "The journaled replay of a search read without re-issuing the billed query.", owner = "connector", resolves = "concept" }
 session-budget = { gloss = "The logging and in-flight-request ceilings on one connector session.", owner = "connector", resolves = "concept" }
+sha256 = { gloss = "The content-digest field a snapshot source's position carries beside its row count.", owner = "connector", resolves = "code" }
 store-blindness = { gloss = "A source's lack of any store handle.", owner = "connector", resolves = "concept" }
 stream-identity = { gloss = "The values that make a report type and grain a stream rather than a parameter.", owner = "connector", resolves = "concept" }
 synthesized-artifact = { gloss = "A derived artifact written back through the same destination as any other row.", owner = "connector", resolves = "concept" }
@@ -163,6 +164,7 @@ target-column-occupied = { gloss = "An expansion target column the index rows al
 template-shape = { gloss = "The legal shape of an expansion pointer template.", owner = "connector", resolves = "concept" }
 test-kit = { gloss = "The conformance, fixture-replay and property tests shipped with the authoring toolkit.", owner = "connector", resolves = "concept" }
 three-imports = { gloss = "Outgoing HTTP, logging and a wall clock, the whole of a guest's inward surface.", owner = "connector", resolves = "code" }
+title = { gloss = "The headline text a search result row lands.", owner = "connector", resolves = "code" }
 transport-downgrade = { gloss = "A redirect hop from TLS to cleartext, or one leaving the configured origin.", owner = "connector", resolves = "concept" }
 type-taxonomy = { gloss = "The flat scalar set the shared types interface carries.", owner = "connector", resolves = "code" }
 unchanged-skip = { gloss = "The `skip_unchanged` digest comparison that returns zero batches.", owner = "connector", resolves = "code" }
@@ -171,6 +173,7 @@ unknown-destination = { gloss = "A destination name other than the local context
 unmetered-request = { gloss = "A vendor request issued without a granted reservation under a declared limiter.", owner = "connector", resolves = "concept" }
 unreadable-answer = { gloss = "A limiter response the engine cannot parse.", owner = "connector", resolves = "concept" }
 unusable-key = { gloss = "A forwarded configuration key or value a guest cannot act on.", owner = "connector", resolves = "concept" }
+url = { gloss = "The result address a search row lands and declares its primary key over.", owner = "connector", resolves = "code" }
 vendor-sdk = { gloss = "A model-vendor client library inside an engine crate.", owner = "connector", resolves = "concept" }
 wait-primitive = { gloss = "The sleep and monotonic clock absent from both guest worlds.", owner = "connector", resolves = "concept" }
 walk-boundary = { gloss = "The configured root that bounds what a directory-walking source reaches.", owner = "connector", resolves = "concept" }
@@ -181,8 +184,8 @@ worksheet-landing = { gloss = "The cell-text and row ceilings on landing one wor
 world-authorship = { gloss = "Host ownership of the interface definition and the author's method bodies.", owner = "connector", resolves = "concept" }
 world-compatibility = { gloss = "Semver compatibility between a guest's world and a host's.", owner = "connector", resolves = "concept" }
 world-drain = { gloss = "The retirement path a major world bump follows.", owner = "connector", resolves = "concept" }
+write = { gloss = "The destination export landing one record batch.", owner = "connector", resolves = "code" }
 write-handle = { gloss = "The destination exports `prepare`, `write`, `commit` and `abort`.", owner = "connector", resolves = "code" }
-zero-row-commit = { gloss = "A commit that adds nothing and replaces nothing.", owner = "connector", resolves = "concept" }
 
 [error]
 ConnectorAllowlistRejected = { gloss = "An outbound host allowlist that is empty, bare-wildcard, or carries a scheme, port or path.", owner = "connector" }
@@ -190,7 +193,6 @@ ConnectorAuthTerminal = { gloss = "An authentication failure on a report read, t
 ConnectorBindingUnbound = { gloss = "An environment binding the connector reads that the environment did not supply, or supplied in the wrong shape.", owner = "connector" }
 ConnectorBindingUnsupported = { gloss = "An environment binding spelled against a key the connector does not read.", owner = "connector" }
 ConnectorCellOutOfRange = { gloss = "A worksheet cell whose column reference lies past the header's width.", owner = "connector" }
-ConnectorCleartextCredential = { gloss = "A reference-resolved header presented against a cleartext endpoint outside loopback.", owner = "connector" }
 ConnectorClockColumnRejected = { gloss = "A delimited clock column that is neither an RFC 3339 instant nor a fixed-width digit stamp.", owner = "connector" }
 ConnectorConfigRejected = { gloss = "A forwarded guest configuration value of the wrong type, above its size bound, or carrying a reference.", owner = "connector" }
 ConnectorConfigUnclaimed = { gloss = "A guest configuration table declared against a guest exporting no configuration interface.", owner = "connector" }

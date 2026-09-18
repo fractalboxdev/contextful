@@ -24,7 +24,7 @@ computed for one reader lands where other people read it.
 | Party | Obligation |
 | --- | --- |
 | **The pack author** | Projects one source's permission model onto the access tables, names the source family and the fidelity level for every table the pack lands, and asserts no audience of their own. |
-| **The operator** | Declares the age budget and the posture past it per table, classifies each table's fidelity against the family, and reads the overshare report as access-governance work. |
+| **The operator** | Declares the age budget and the posture past it per table, classifies each table's fidelity against the family, and reads the audience report as access-governance work. |
 | **The permission sweep** | Writes each observation with its kind, its identifier and its observation instant, and moves the coverage watermark on a run that reached every governed resource. |
 | **The engine** | Resolves a reachable set per request from verified links, the group graph and the grant tables, compiles the semi-join into the caller's view, and turns a read away past the budget. |
 | **The read face** | Consumes the enforced view as its one relation and surfaces nothing the view withheld, whatever the surface, the arm or the embedding. |
@@ -40,7 +40,7 @@ computed for one reader lands where other people read it.
 | `bound-staleness` | The declared age budget on mirrored authorization, the refusal past it, and the one narrowing posture. |
 | `declare-fidelity` | The level a table claims, the source family that bounds the claim, and live federation under a reader's own credential. |
 | `pack` | The reviewed unit that lands a source: its access mapping, its defaults, its allowlist, and what it has no standing to say. |
-| `explain` | The decision endpoint, replay over a window, negative assurance and its coverage, and the overshare report. |
+| `explain` | The decision endpoint, replay over a window, negative assurance and its coverage, and the audience report. |
 | `publish-answer` | An answer computed at one reader's scope reaching a surface with an audience, and what leaves the organization. |
 
 ## Clauses — mirror
@@ -63,7 +63,7 @@ relation carrying all of them.
 | `visibility.mirror.shape.grant-row` | `access_grants` carries `resource_id`, `principal`, `principal_kind` and `level`, one row per distinct triple, with the observation columns alongside. | |
 | `visibility.mirror.shape.principal-row` | `access_principals` carries `principal`, `principal_kind` and the source's own label for it; `access_group_members` carries `group`, `member` and `member_kind`, one row per edge. | |
 | `visibility.mirror.shape.identity-link-row` | `access_identity_links` carries `source_principal`, `subject`, `method` and `confidence`, mapping one source account onto one workspace subject. | |
-| `visibility.mirror.shape.tombstone-row` | `access_tombstones` carries `scope`, `resource_id`, `principal`, `level` and `revoked_at`, each key part a typed column rather than a packed string. | |
+| `visibility.mirror.shape.tombstone-row` | `access_tombstones` carries `scope`, `resource_id`, `principal`, `level` and `revoked_at`, each key part a typed column rather than a packed string. `scope` takes one of `resource`, `grant`, `principal`. | |
 | `visibility.mirror.shape.freshness-row` | `access_freshness` carries one row per source and sweep kind: the enforced `watermark_at` beside the diagnostic `last_full_sweep_at`, `last_incremental_at`, `lag_seconds` and `budget_seconds`. | |
 | `visibility.mirror.invariant.watermark-is-the-enforced-field` | Of the freshness columns, `watermark_at` alone decides a read; the remaining fields inform an operator and decide nothing. | |
 | `visibility.mirror.shape.principal-kind` | `principal_kind` takes one of `user`, `group`, `team`, `channel`, `org`, `public`, and a source vocabulary outside that set is normalized onto it by the mapping. | |
@@ -98,7 +98,7 @@ of the content pull it accompanies.
 | `visibility.sweep.invariant.deny-outranks-allow` | A tombstone suppresses its resource or its grant for every read after `revoked_at`, whatever a later observation says, until an allow arrives on a full run whose observation instant is newer than the revocation. | |
 | `visibility.sweep.invariant.incremental-never-restores` | An observation of the `incremental` or `webhook` kind adds a grant that no tombstone covers and lifts no suppression. Proving one row was seen is not proving the estate was walked. | |
 | `visibility.sweep.invariant.tombstone-match-is-typed` | `scope` decides which of `resource_id`, `principal` and `level` participate, so suppression is an equality over typed columns against the grant table rather than a comparison of opaque keys. | |
-| `visibility.sweep.limit.tombstone-scopes` | The tombstone scope vocabulary holds 3 entries: `resource`, `grant`, `principal`. | |
+| `visibility.sweep.limit.tombstone-scopes` | The tombstone scope vocabulary holds 3 entries. | |
 | `visibility.sweep.invariant.revocation-skips-the-content-pull` | Withdrawing a share takes effect on the first read after its sweep commits, with no re-ingestion and no deletion of content rows. Reachability is a join rather than a property baked into the row. | |
 | `visibility.sweep.invariant.events-tighten-rows` | A webhook or incremental observation narrows the individual rows it touches the moment it lands. | |
 | `visibility.sweep.refusal.ungapped-stream` | Moving `watermark_at` from an event stream that the mapping has not declared gap-detectable — sequenced delivery with reconciliation on a detected gap — raises `VisibilityUngappedStream`. A source without that property lives at its full-run cadence. | `0241` |
@@ -120,7 +120,7 @@ holder, or exchanged per reader by an embedding application.
 | `visibility.reach.workflow.resolution-order` | Per request the engine resolves the credential's verified person to a subject, the subject to source principals through identity links, those principals to a group closure, and principals plus closure plus `public` to resources through grants joined onto resource rows, dropping the unknown class and subtracting tombstones in force. | |
 | `visibility.reach.invariant.verified-methods-authorize` | The join consumes links whose `method` is `scim_email` or `oidc_sub`. A link recorded as `operator_asserted` appears in the diagnostic trace and adds no resource. | |
 | `visibility.reach.refusal.unverified-link-in-the-join` | A link whose method sits outside the verified set reaching the reachable-set computation raises `VisibilityUnverifiedLink`, naming the method and the source. | `0243` |
-| `visibility.reach.invariant.links-come-from-provisioning` | An identity link is written by directory provisioning out of the identity provider, and never derived from a value a source's profile endpoint returned during a request. Where single sign-on is unenforced, a profile field is the account holder's to edit. | |
+| `visibility.reach.invariant.links-come-from-provisioning` | {{authority.identify.invariant.directory-link}} | |
 | `visibility.reach.invariant.confidence-relaxes-nothing` | `confidence` is recorded beside the method and enters no threshold. A link either carries a verified method or contributes nothing. | |
 | `visibility.reach.invariant.unlinked-subject-reads-nothing` | A subject with no resolved principal in a source reads none of that source rather than all of it, so a mapping gap lands as a denial. | |
 | `visibility.reach.limit.principal-kinds` | A reachable set is built from principals of 6 entries in the kind vocabulary, the literal `public` among them. | |
@@ -153,7 +153,7 @@ A budget states how old mirrored authorization is allowed to be while still deci
 | `visibility.bound-staleness.invariant.default-posture-is-refusal` | `on_stale` defaults to `refuse`; the availability posture is opted into per table and disclosed on every answer it touches. | |
 | `visibility.bound-staleness.workflow.public-only` | Past the budget, `public_only` serves rows whose resource had its public status re-read within budget by a single-field probe, marking the envelope and the audit record as degraded. | |
 | `visibility.bound-staleness.refusal.aged-public-probe` | Where the probe itself sits past the budget, the narrowing posture closes and the read raises `VisibilityAccessStale`. The opened path is never wider than the closed one. | `0247` |
-| `visibility.bound-staleness.invariant.narrowing-not-exemption` | The availability posture removes rows from what a fresh read would return and adds none, so a resource made private after the last full run is absent rather than served on an aged allow. | |
+| `visibility.bound-staleness.invariant.narrowing-not-exemption` | The availability posture removes rows from what a fresh read returns and adds none, so a resource made private after the last full run is absent rather than served on an aged allow. | |
 | `visibility.bound-staleness.refusal.budget-below-cadence` | A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures. A per-item permission model under request limits moves its watermark in hours, and the declaration states that. | `0246` |
 | `visibility.bound-staleness.invariant.budget-and-cadence-are-one-contract` | The declared budget and the declared sweep cadence are read together at diagnose, so an operator defends the pair rather than the number alone. | |
 
@@ -205,7 +205,7 @@ which fetch code the sweep and the pull run.
 | `visibility.pack.invariant.allowlist-is-all-of` | A row survives the allowlist when every container in its membership set is listed. An unrecognized identifier drops the row, and an empty or absent membership set drops it too. | |
 | `visibility.pack.refusal.any-of-allowlist` | An allowlist evaluated as any-of raises `VisibilityAllowlistAnyOf` at load. Any-of admits a row also filed under a container nobody listed. | `0253` |
 | `visibility.pack.invariant.no-permission-data-stays-ordinary` | A source returning no permission data at all takes no visibility block, stays off an organization-wide face, lands as an ordinary table whose admission is the credential grant alone, and puts no fidelity claim on the envelope. | |
-| `visibility.pack.refusal.unsupported-coarse` | Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`. The envelope would otherwise carry a grain claim the source never sent. | `0254` |
+| `visibility.pack.refusal.unsupported-coarse` | Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`. Where that signal is absent, the envelope has no grain to carry. | `0254` |
 | `visibility.pack.invariant.defaults-are-overridable` | Fidelity, budget and cadence defaults in a pack are starting values an operator's manifest replaces table by table without forking the pack. | |
 
 ## Clauses — explain
@@ -224,13 +224,13 @@ this diagnostic with nothing to replay for them.
 | `visibility.explain.invariant.unswept-source-is-stated` | For a source with no completed full run, the output states that reads there refuse under every declared budget, rather than reporting a per-resource decision. | |
 | `visibility.explain.workflow.windowed-replay` | Over a window, explain evaluates the decision at every recorded observation inside it and prints each evaluation, then the coverage: observation count, run count, the widest interval between observations, and how many intervals exceeded the table's budget, each flagged. | |
 | `visibility.explain.shape.window-verdict` | A window verdict is `VISIBLE AT SOME OBSERVED POINT` or `NOT VISIBLE AT ANY OBSERVED POINT`, printed beneath the coverage block that qualifies it. | |
-| `visibility.explain.refusal.empty-window` | A window holding no observations raises `VisibilityNoObservations` and states that no claim is available. A negative verdict over nothing observed is a claim about nothing that reads as assurance. | `0256` |
+| `visibility.explain.refusal.unobserved-window` | A window holding no observations raises `VisibilityNoObservations` and states that no claim is available. A negative verdict over nothing observed is a claim about nothing that reads as assurance. | `0256` |
 | `visibility.explain.invariant.assurance-covers-what-was-seen` | Between two runs a source can grant and withdraw without leaving a trace, so an assurance answer carries its observation intervals and marks each one wider than the budget. | |
 | `visibility.explain.refusal.unqualified-negative` | An assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`. A figure such as forty-one observations at a widest interval of eleven minutes against a fifteen-minute budget is weighable; a bare negative is not. | `0256` |
 | `visibility.explain.invariant.groups-not-individuals` | A reader-facing explanation names the groups along the path and not their members. Naming who does reach a resource is a disclosure about those people. | |
 | `visibility.explain.refusal.individual-named` | An explanation rendering member identities of a group on the path raises `VisibilityIndividualNamed`. | `0257` |
 | `visibility.explain.invariant.delivered-privately` | An explanation reaches the person who asked for it and no audience. Stating that a named person does not reach a named resource discloses that the resource exists. | |
-| `visibility.explain.workflow.overshare-report` | Grants are rows, so the question of which resources reach more than a declared share of the organization is one aggregate over `access_grants` joined to the principal and group tables, run on the same tables the read path enforces against. | |
+| `visibility.explain.workflow.audience-report` | Grants are rows, so the question of which resources reach more than a declared share of the organization is one aggregate over `access_grants` joined to the principal and group tables, run on the same tables the read path enforces against. | |
 | `visibility.explain.invariant.report-reads-enforced-tables` | The report and the enforcement path consume identical rows, so a deployment measures its inherited audience without standing up a second account of it. | |
 | `visibility.explain.invariant.audit-carries-visibility-fields` | A read against a bound table records the fidelity level, the resource grain, the lag in seconds, the degraded flag, the closure depth walked, and whether a federated leg was consulted. | |
 | `visibility.explain.invariant.reporting-is-not-remediation` | The engine narrows a read and reports an audience; it repairs no sharing inside the source. The report hands an operator a list, and acting on that list is their access-governance work. | |

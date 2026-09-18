@@ -41,14 +41,14 @@ sibling pipelines keep firing and the read face keeps answering.
 
 | Option | What it buys | What it costs |
 | --- | --- | --- |
-| **A process boundary around the decode** *(chosen)* | Holds in the shipped profile; bounds time and memory as well as unwinding; the killer is outside the thing being killed | Every input pays a boundary crossing, and the process shape stays undecided, so per-input budgets are undefined |
-| An in-process unwind guard | No crossing cost, no extra process to supervise | Lost on effectiveness in the shipped profile: the release build aborts on panic, so the guard protects debug builds alone and bounds neither time nor memory in any build |
+| **A process boundary around the decode** *(chosen)* | Holds in the release profile; bounds time and memory as well as unwinding; the killer is outside the thing being killed | Every input pays a boundary crossing, and the process shape stays undecided, so per-input budgets are undefined |
+| An in-process unwind guard | No crossing cost, no extra process to supervise | Lost on effectiveness in the profile an operator deploys: the release build aborts on panic, so the guard protects debug builds alone and bounds neither time nor memory in any build |
 | Trusting each parser to return errors | Simplest; no supervision, no marshalling | Lost on threat coverage: a native decode has no bound on time or memory, and a parse that never finishes takes the address space with it regardless of what its error type promises |
 | A thread with a watchdog | Cheaper than a process; some time bound | Lost on effectiveness: a thread stuck in a native call is not interruptible, and its allocations are the shared heap's, so neither bound is enforceable |
 
 ## Criteria
 
-1. **Effectiveness in the shipped profile** — whether the containment runs in the build
+1. **Effectiveness in the release profile** — whether the containment runs in the build
    an operator deploys, not only in development. *(decided it)*
 2. **Threat coverage** — whether unbounded time and unbounded memory are contained,
    not unwinding alone.
@@ -56,7 +56,7 @@ sibling pipelines keep firing and the read face keeps answering.
 4. **Diagnosis parity** — whether a contained death reads like an ordinary parse
    failure.
 
-Effectiveness in the shipped profile decided it because it disqualifies the cheap option
+Effectiveness in the release profile decided it because it disqualifies the cheap option
 outright rather than scoring it lower. A guard that is inert in release is not a weaker
 containment; it is the appearance of one, verified green in development and absent in
 production. Threat coverage then eliminates the remaining in-process forms, since
@@ -81,7 +81,7 @@ Uncertainty carries its size here: the process shape is open. A child per input 
 long-lived extractor differ by roughly an order of magnitude in per-input overhead and
 differ in blast radius between inputs, and neither has been measured. Until that
 settles, the per-input wall-clock and memory budgets are undefined rather than
-conservatively set, so the boundary today bounds a decode's reach without bounding its
+conservatively set, so the boundary bounds a decode's reach without bounding its
 appetite by a stated number.
 
 ## Revisit triggers

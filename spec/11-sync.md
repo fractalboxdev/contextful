@@ -82,7 +82,7 @@ A pull is the mirror image with the catalog moved to the end.
 | `sync.pull.workflow.fold-the-catalog-forward` | After a pull the catalog is folded forward by inserting the walked run records with conflicts ignored. | |
 | `sync.pull.refusal.rebuild-inside-a-pull` | A full cache reconstruction invoked as part of a pull raises `SyncCatalogRebuildDuringPull`. A reconstruction drops every cache table, which carries this machine's cursor positions and the lease of whatever sits mid-run on it. | `0029` |
 | `sync.pull.invariant.download-is-content-addressed` | An object is fetched when the index entry's digest differs from the local file's digest, and at no other time, so a pull over an unchanged index transfers the index alone. | |
-| `sync.pull.refusal.digest-mismatch` | A downloaded object whose computed digest differs from the entry that named it raises `SyncObjectDigestMismatch` and the object is discarded rather than written into the tree. | `0030` |
+| `sync.pull.refusal.mismatched-download` | A downloaded object whose computed digest differs from the entry that named it raises `SyncObjectDigestMismatch` and the object is discarded rather than written into the tree. | `0030` |
 | `sync.pull.limit.convergence-rounds` | When a key the index named disappears mid-download, the pull re-fetches the index and retries the shortfall, up to 3 attempts. | |
 | `sync.pull.refusal.unconverged-pull` | Exhausting the convergence rounds raises `SyncPullDidNotConverge`, naming the key that kept moving, and leaves the local catalog untouched. | `0030` |
 | `sync.pull.invariant.pull-is-repeatable` | Running a pull twice against one index produces the same tree as running it once. | |
@@ -144,9 +144,12 @@ commits.
 | `sync.merge.shape.node-id-state-path` | The generated node id persists at `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory for the process owner. | |
 | `sync.merge.invariant.node-id-sits-outside-the-store-root` | The node id is persisted outside the store root, so copying a store onto a second machine carries no identity with it and two machines never present one holder. | |
 | `sync.merge.limit.node-id-length` | A node id spans 64 chars at most. | |
-| `sync.merge.refusal.node-id-shape` | A node id outside `^[A-Za-z0-9._-]{1,64}$` raises `SyncNodeIdInvalid`, the value being interpolated into a directory name and into a filename. | `0034` |
+| `sync.merge.refusal.node-id-shape` | A resolved node id the path-safe pattern rejects raises `SyncNodeIdInvalid` at process start, ahead of a key, a lease object or a run directory carrying that value. | `0034` |
 | `sync.merge.refusal.node-id-under-control-plane-config` | A node id declared in a control-plane configuration raises `SyncNodeIdShared`, a control-plane snapshot being applied to every machine reconciling it. | `0034` |
-| `sync.merge.invariant.node-segment-disjoins-a-run` | The node id segment inside a run path is what keeps two machines writing one logical run from colliding on identical part filenames. | |
+
+The path-safe pattern a resolved node id matches, and the run-path segment that disjoins
+two machines writing one logical run, are [`spec/10-store.md` § On-disk layout](10-store.md);
+the merge keys its run-tier ownership arm on that segment.
 
 ## Clauses — lease
 
@@ -183,7 +186,7 @@ A replica consumes the bucket and answers reads from it.
 
 | Clause | Statement | decided-by |
 | --- | --- | --- |
-| `sync.replicate.invariant.replica-is-read-only` | A replica's catalog is a local materialized cache rather than a source of truth, and every write travels to the canonical store. | |
+| `sync.replicate.invariant.replica-is-read-only` | A replica originates nothing it holds: its catalog comes back from the objects it pulled, the canonical store stays the one authority for every table it serves, and a write travels there rather than landing on the replica. | |
 | `sync.replicate.refusal.write-through-a-replica` | A write verb invoked against a replica raises `ReplicaWriteRefused`, naming the canonical store the deployment configuration points at. | `0037` |
 | `sync.replicate.workflow.refresh-is-a-diff` | A refresh fetches the top-level index, diffs it against local digests, downloads the changed snapshot directories together with their sidecars, and swaps the current-snapshot pointer. | |
 | `sync.replicate.invariant.absence-costs-one-snapshot` | A replica returning after a long absence fetches one current snapshot per affected table rather than the history in between, the refresh being a diff of content digests rather than a replay of commits. | |

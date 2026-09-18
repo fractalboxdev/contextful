@@ -6,7 +6,7 @@ set-mode    = { gloss = "The two deployment settings a derived result is compute
 classify    = { gloss = "Column sensitivity classes, their declaration site, and the digest a class refuses as sole protection.", file = "spec/43-disclosure.md", aliases = ["tag-sensitivity", "label-column"] }
 release     = { gloss = "The ordered derivation pipeline, the write-time disclosure policy, per-unit budgets, and segment activation.", file = "spec/43-disclosure.md", aliases = ["derive-aggregate", "publish-aggregate"] }
 suppress    = { gloss = "The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves behind.", file = "spec/43-disclosure.md", aliases = ["withhold-group", "sentinel-collapse"] }
-template    = { gloss = "Typed strictly-bound relations, the allowlist authorizing them, their tool projection, and the row ceiling.", file = "spec/43-disclosure.md", aliases = ["whitelisted-query", "bound-relation"] }
+template    = { gloss = "Typed strictly-bound relations, their validation, their tool projection, and the truncation flag a capped read carries.", file = "spec/43-disclosure.md", aliases = ["whitelisted-query", "bound-relation"] }
 bound-cohort = { gloss = "The boundary between a per-person table and a cohort table, and what an ownership question resolves to.", file = "spec/43-disclosure.md", aliases = ["cohort-governance", "person-boundary"] }
 
 [term]
@@ -58,7 +58,7 @@ contributor-breakdown  = { gloss = "The one row per group and contributor a gove
 published-shape        = { gloss = "The columns and schema fingerprint a governed model publishes, identical to its ungoverned form.", owner = "disclosure", resolves = "concept" }
 grain-column           = { gloss = "A non-numeric, non-grain column carried in the grouping rather than picked arbitrarily.", owner = "disclosure", resolves = "code" }
 group-key              = { gloss = "The columns a governed model groups by, checked against the permitted grouping allowlist.", owner = "disclosure", resolves = "code" }
-contributor-key        = { gloss = "The model output the disclosure policy counts contributors on, excluded from the published columns.", owner = "disclosure", resolves = "code" }
+contributor-column     = { gloss = "The model output the disclosure policy counts contributors on, excluded from the published columns.", owner = "disclosure", resolves = "code" }
 forbidden-column       = { gloss = "A column a disclosure policy bars from the published output.", owner = "disclosure", resolves = "code" }
 key-exclusion          = { gloss = "The removal of the contributor key from the published column set before the forbidden check runs.", owner = "disclosure", resolves = "concept" }
 policy-hash            = { gloss = "The hash over a disclosure policy's declared fields, recorded on every run.", owner = "disclosure", resolves = "code" }
@@ -92,7 +92,7 @@ empty-policy       = { gloss = "A disclosure policy setting neither threshold, u
 zero-floor         = { gloss = "A declared group-size floor of zero.", owner = "disclosure", resolves = "code" }
 share-range        = { gloss = "The interval a declared contributor share lies in.", owner = "disclosure", resolves = "code" }
 grouping-allowlist = { gloss = "The permitted grouping columns a governed model's group key is a subset of.", owner = "disclosure", resolves = "code" }
-sentinel           = { gloss = "The field-free marker a withheld group collapses into, naming no rule.", owner = "disclosure", resolves = "code" }
+suppression-sentinel = { gloss = "The field-free marker a withheld group collapses into, naming no rule.", owner = "disclosure", resolves = "code" }
 suppression-count  = { gloss = "The number of withheld groups, which reaches no caller.", owner = "disclosure", resolves = "concept" }
 suppression-tally  = { gloss = "The per-rule counts of withheld groups, recorded on the audit record.", owner = "disclosure", resolves = "code" }
 sentinel-bit       = { gloss = "The single boolean on a run's freshness record reporting that suppression occurred.", owner = "disclosure", resolves = "code" }
@@ -108,12 +108,10 @@ statement-count       = { gloss = "The number of statements a template declarati
 template-identifier   = { gloss = "The name a template is called by and projected as.", owner = "disclosure", resolves = "code" }
 plain-identifier      = { gloss = "A store table name written bare, carrying a path separator and no dot, star or leading separator.", owner = "disclosure", resolves = "code" }
 template-enforcement  = { gloss = "The enforcement layers that apply to whatever a template's statement touches.", owner = "disclosure", resolves = "concept" }
-template-allowlist    = { gloss = "The list of template identifiers a grant confers, with a star standing for all.", owner = "disclosure", resolves = "code" }
 attenuation           = { gloss = "The subsetting of a parent's template allowlist by a derived grant.", owner = "disclosure", resolves = "code" }
 template-grant        = { gloss = "The capability authorizing a caller to execute a named template.", owner = "disclosure", resolves = "code" }
 projected-tool        = { gloss = "The tool a manifest template auto-projects into, carrying its typed schema.", owner = "disclosure", resolves = "code" }
 manifest-surface      = { gloss = "The reviewed manifest as the single source of truth for the agent surface.", owner = "disclosure", resolves = "concept" }
-row-ceiling           = { gloss = "The maximum row count a template read returns, resolved as the smallest declared bound.", owner = "disclosure", resolves = "code" }
 overfetch             = { gloss = "The read past the effective ceiling that establishes the truncation flag.", owner = "disclosure", resolves = "code" }
 ceiling-advertisement = { gloss = "The declared ceiling published on a projected tool ahead of the first call.", owner = "disclosure", resolves = "code" }
 
@@ -173,5 +171,6 @@ aggregate-grant-group-ceiling = { value = 1,    unit = "entries",  owner = "disc
 segment-audience-floor        = { value = 1000, unit = "subjects", owner = "disclosure.release.limit.audience-floor",            gloss = "Working minimum audience size a segment build resolves at or above." }
 segment-composition-cell      = { value = 100,  unit = "subjects", owner = "disclosure.release.limit.composition-cell",          gloss = "Working minimum size of a released segment's composition cell." }
 min-group-size-floor          = { value = 2,    unit = "subjects", owner = "disclosure.suppress.limit.min-group-size",           gloss = "Floor on a declared minimum distinct-contributor group size." }
+contributor-share-floor       = { value = 0,    unit = "percent",  owner = "disclosure.suppress.limit.contributor-share",        gloss = "Lower bound a declared maximum single-contributor share of a group's metric mass lies above." }
 contributor-share-range       = { value = 100,  unit = "percent",  owner = "disclosure.suppress.limit.contributor-share",        gloss = "Upper bound of a declared maximum single-contributor share of a group's metric mass." }
 template-overfetch            = { value = 1,    unit = "rows",     owner = "disclosure.template.limit.overfetch",                gloss = "Rows read past the effective ceiling to establish the truncation flag." }

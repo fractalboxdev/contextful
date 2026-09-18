@@ -52,7 +52,7 @@ rather than reads. A `curated` or `derived` claim carries no expiry at all.
 ## Criteria
 
 1. **Availability of the signal** — whether the predicate the rule needs can be evaluated
-   against state the store records today.
+   against state the store records.
 2. **Preservation of the append-only property** — whether a bounded read at a past vantage
    returns what it returned then, and whether an erasure receipt accounts for every row
    that left.

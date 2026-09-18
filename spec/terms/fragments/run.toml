@@ -25,7 +25,7 @@ effect-boundary = { gloss = "The journal as the line every observable side effec
 recorded-batch = { gloss = "The source's own bytes as a journaled pull serialized them, ahead of the land path.", owner = "run", resolves = "concept" }
 replay-lands = { gloss = "A journal hit re-running the land path over the recorded batch without re-pulling.", owner = "run", resolves = "concept" }
 ledger-settles-first = { gloss = "The outbound request ledger committing ahead of the journal entry it belongs to.", owner = "run", resolves = "concept" }
-removable-value = { gloss = "A value a policy would strip, which reaches the journal under no ordering.", owner = "run", resolves = "concept" }
+removable-value = { gloss = "A value a policy strips, which reaches the journal under no ordering.", owner = "run", resolves = "concept" }
 journaling-opt-out = { gloss = "A source's declaration that its pulls are not recorded.", owner = "run", resolves = "code" }
 redacting-source = { gloss = "A pipeline pairing write-path redaction with a source that journals its pulls.", owner = "run", resolves = "concept" }
 escape-hatch = { gloss = "The two greppable ways to skip recording, each carrying an idempotency argument.", owner = "run", resolves = "code" }
@@ -138,9 +138,10 @@ byte-and-row-counts = { gloss = "The landed rows and bytes a run row reports, co
 
 # --- project ---
 best-effort = { gloss = "Live run state as a projection that gates no execution and may lag or drop.", owner = "run", resolves = "concept" }
-snapshot = { gloss = "The wire shape one fold of a run's events produces.", owner = "run", resolves = "code" }
+wire-snapshot = { gloss = "The wire shape one fold of a run's events produces.", owner = "run", resolves = "code" }
 step-view = { gloss = "One step's entry inside a run snapshot.", owner = "run", resolves = "code" }
 wire-status = { gloss = "The run and step status unions the projection serializes.", owner = "run", resolves = "code" }
+failed = { gloss = "The terminal value naming work that ended on an error, on a run, a step, a tally or a unit.", owner = "run", resolves = "concept" }
 cancelled-step-view = { gloss = "A stopped run's executing step reported as failed carrying a cancelled tag.", owner = "run", resolves = "concept" }
 emission-never-blocks = { gloss = "Progress handed to a bounded drop-on-full channel after the durable write.", owner = "run", resolves = "concept" }
 coalescing = { gloss = "The window broadcasts collapse into, with a terminal transition flushing immediately.", owner = "run", resolves = "concept" }

@@ -68,8 +68,8 @@ different surface. Every template edit re-runs both checks, which is a small cos
 authoring time rather than at request time.
 
 Reversing this is cheap to state and expensive to live with: permitting qualified references
-would make every previously reviewed manifest's guarantee weaker than it was when it was
-approved.
+would weaken the guarantee every reviewed manifest carries at the moment a reviewer
+approves it.
 
 ## Revisit triggers
 

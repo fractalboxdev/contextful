@@ -1,7 +1,7 @@
 # 0059 — Revision is scoped to one validity line: two claims revise each other only when both are open-ended or both anchored to one instant
 
 **Status:** accepted 2026-09-18
-**Decides:** `memory.revise.invariant.validity-line`, `memory.recall.invariant.two-clocks`
+**Decides:** `memory.revise.invariant.validity-line`, `memory.recall.invariant.recall-clocks`
 
 ## Context
 

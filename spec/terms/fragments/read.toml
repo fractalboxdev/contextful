@@ -28,7 +28,8 @@ file-preview-target           = { gloss = "The path a file preview resolves to a
 ledger-relation               = { gloss = "The per-table request-ledger child relation registered beside its table.", owner = "read", resolves = "code" }
 scoped-ledger                 = { gloss = "A tenant-scoped caller's attempt to name the request-ledger child relation.", owner = "read", resolves = "concept" }
 lexicon-surface               = { gloss = "The part of a store's declared lexicon that crosses to a rendering client.", owner = "read", resolves = "concept" }
-reserved-namespaces           = { gloss = "Engine-owned table namespaces as they appear through ordinary registration.", owner = "read", resolves = "concept" }
+reserved-relation             = { gloss = "An engine-held table namespace as it appears through ordinary registration.", owner = "read", resolves = "concept" }
+http                          = { gloss = "The HTTP protocol, named as one of a binary's optional faces and as an address scheme.", owner = "read", resolves = "concept" }
 
 # guard
 single-read-only-statement    = { gloss = "The one admitted statement form: a single read-only SELECT.", owner = "read", resolves = "concept" }
@@ -59,6 +60,7 @@ internals-opt-in              = { gloss = "The separate object carrying executed
 operator-metadata             = { gloss = "Table metadata on the operator surface: column count and backing file list.", owner = "read", resolves = "concept" }
 in-band-error                 = { gloss = "A refusal delivered inside a transport success on the tool protocol.", owner = "read", resolves = "concept" }
 paths-stay-inside             = { gloss = "The withholding of store layout from an ordinary read's result.", owner = "read", resolves = "concept" }
+"false"                       = { gloss = "The boolean literal, carried as a response cell and as a settled marker value.", owner = "read", resolves = "concept" }
 
 # retrieve
 ranked-call                   = { gloss = "The prefix-scoped ranked retrieval call spanning both table genres.", owner = "read", resolves = "code" }
@@ -94,6 +96,7 @@ question-window-is-a-tier     = { gloss = "The question's timeframe as a leading
 window-anchor-tolerance       = { gloss = "How far past the anchor a publication instant still counts as in-window.", owner = "read", resolves = "concept" }
 ordering-casts-first          = { gloss = "The cast applied to a publication value ahead of an ordering comparison.", owner = "read", resolves = "concept" }
 retrieval-block               = { gloss = "The per-response confidence block a ranked read carries.", owner = "read", resolves = "code" }
+since                         = { gloss = "The field naming the window start a bounded read reports.", owner = "read", resolves = "code" }
 internal-score-stays-internal = { gloss = "The lexical engine's corpus-relative float, withheld from a caller.", owner = "read", resolves = "concept" }
 absent-block                  = { gloss = "The omission of the retrieval block where no ranker produced a number.", owner = "read", resolves = "concept" }
 degradation-not-error         = { gloss = "A changed ordering, rather than a failed call, where a backend is absent.", owner = "read", resolves = "concept" }

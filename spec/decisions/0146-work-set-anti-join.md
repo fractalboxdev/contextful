@@ -7,7 +7,7 @@
 
 Every tick the tier has to answer one question: which parent rows still lack their derived
 output. The answer is not a position in a stream. Parent rows arrive out of order relative
-to their readiness — an enclosure can land today and be fetchable only next week, a unit can
+to their readiness — an enclosure can land and be fetchable only a week later, a unit can
 fail its attempt budget and later become reachable when an operator fixes a binding, a
 backfill can insert rows whose publication instants are years old. A frontier that only
 moves forward gets all three cases wrong in the same direction: it passes over the gap and
@@ -44,7 +44,7 @@ output raises `DeriveForeignOutputTable`.
 | **Anti-join against the tier's own output, recomputed each tick** *(chosen)* | No row can be stranded: a gap is outstanding until a row exists for it; no second bookkeeping surface; a first run needs no seeding | The scan is linear in the parent table, so cost grows with the whole archive rather than with the outstanding set |
 | A second watermark over the parent table | Constant-time resumption, tiny state | Lost on stranding: a watermark advances past a gap and nothing brings it back — the exact failure the archive shape produces routinely |
 | A watermark plus a backfill window | Bounded scan with a recovery path for recent gaps | Lost on operator effort: the window is a number that has to be computed, and re-computed every time the archive's arrival pattern changes |
-| Applying the row cap before the anti-join | A bounded scan, trivially | Lost outright: under any ordering the run spends its whole budget re-examining rows already derived, and under a stable ordering it never reaches an undone row at all |
+| Applying the row cap before the anti-join | A bounded scan, trivially | Lost on stranding: under any ordering the run spends its whole budget re-examining rows already derived, and under a stable ordering it never reaches an undone row at all |
 | Taking the output table name from a manifest key | An operator can point a pipeline at an existing table | Lost on the two-sided rule: one pipeline would mark another pipeline's work done, and a manifest authored elsewhere decides what this pipeline considers finished |
 
 ## Criteria

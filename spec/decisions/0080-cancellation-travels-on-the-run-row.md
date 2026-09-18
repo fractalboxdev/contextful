@@ -76,4 +76,4 @@ operator is permitted to do.
 - A deploy target arrives where the executing run and the requesting process do not share a
   catalog, which removes the channel this decision rests on.
 - Pulls become incrementally streamed rather than materialized whole, which would make a
-  between-batch check reach the states a poll reaches today.
+  between-batch check reach the states a poll reaches.

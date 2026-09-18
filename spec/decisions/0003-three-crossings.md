@@ -77,7 +77,7 @@ run path.
 
 - Manifest data is repeatedly used as a message channel for run-path signals that have no
   storage meaning.
-- A shipped feature is deferred more than once for lack of a crossing, and the deferral is
+- A feature is deferred more than once for lack of a crossing, and the deferral is
   not resolved by bending it through an existing one.
 - A conformance suite for one of the three grows to cover interactions unrelated to that
   crossing's stated concern, indicating the three have absorbed a fourth.

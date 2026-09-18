@@ -46,7 +46,7 @@ written.
 | **Origin pinning on the link and on the landed URL, TLS upgrade exempt** *(chosen)* | A response body cannot walk the operator's credential off the origin the manifest named, whether by link or by redirect. | A vendor that legitimately moves its apex to a `www` host or to a CDN refuses where it worked before, and the check runs on a live response, so nothing surfaces the affected pipeline ahead of the run. |
 | Following any link the vendor returns, bounded only by the host allowlist | Zero false refusals; every vendor's paging works as documented. | Lost on credential containment: a wildcard allowlist entry, a drifted DNS answer or a compromised endpoint carries an authorization header to a host the manifest never individually named, over a scheme it never named. |
 | Checking the link and not the landed URL | Cheaper — one comparison, no redirect inspection, and redirects follow transparently in the HTTP client. | Lost on credential containment for the same reason in a different position: the check passes and the redirect moves the request afterwards. |
-| Making off-origin expansion configurable | Covers the apex-to-CDN vendor with a manifest key instead of a code change. | Rejected on the same criterion: an escape hatch whose only safe implementation drops the credential on the hop, which then fails at the vendor and reads as a broken pipeline anyway. |
+| Making off-origin expansion configurable | Covers the apex-to-CDN vendor with a manifest key instead of a code change. | Lost on credential containment: an escape hatch whose only safe implementation drops the credential on the hop, which then fails at the vendor and reads as a broken pipeline anyway. |
 | Dropping the credential on an off-origin hop and continuing | The read continues; nothing is exfiltrated. | Lost on distinguishability: the off-origin request returns 401 or an empty page, and a truncated walk reads as a finished one. A refusal names the cause. |
 
 ## Criteria
@@ -69,13 +69,13 @@ still admits the forced-upgrade hop wins.
 
 Every credentialed walk is bounded to one origin, and the bound holds under redirect. An
 operator reading a `ConnectorTransportDowngrade` gets the configured origin and the landed
-URL, which is enough to tell a vendor migration from an attack without a packet capture.
+URL, which is enough to tell a benign vendor move from an attack without a packet capture.
 
-The cost accepted: a vendor migration that is entirely benign — apex to `www`, or paging
+The cost accepted: a vendor move that is entirely benign — apex to `www`, or paging
 links served from a CDN host — refuses, and refuses on a live run rather than at build or at
 validation, because the landed URL exists only once a response has arrived. The size of this
 is unmeasured: how often the vendors in use move paging links off the configured origin is
-not something the system observes today, so the false-refusal rate is unknown rather than
+not something the system observes, so the false-refusal rate is unknown rather than
 known-small. The fix is an operator editing the configured origin, which is a manifest
 change and a redeploy.
 

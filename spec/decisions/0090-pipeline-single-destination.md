@@ -41,8 +41,8 @@ shaped like a source, carrying config for the one destination it resolves.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **The local store, refused at assembly for anything else** *(chosen)* | One commit protocol, one idempotent fold, one place a run's rows can be. | A foreign layout another team's tooling owns has no supported path; something outside the engine reads the landed rows and writes it. |
-| A columnar-file destination | Rows land in a tree other tools already read. | Rejected as redundant: the store's canonical layout is that tree, so this is a copy that drifts from its original with no compensating capability. |
-| An embedded-database destination | A familiar local query surface over the landed rows. | Same redundancy: the engine reads the canonical tree in place, so the import buys a second representation and a second schema to keep in step. |
+| A columnar-file destination | Rows land in a tree other tools already read. | Lost on duplicating a path that already exists: the store's canonical layout is that tree, so this is a copy that drifts from its original with no compensating capability. |
+| An embedded-database destination | A familiar local query surface over the landed rows. | Lost on duplicating a path that already exists, identically: the engine reads the canonical tree in place, so the import buys a second representation and a second schema to keep in step. |
 | A webhook or message destination | Landed rows reach an external system without a second process. | Loses on delivery semantics: external delivery is at-least-once messaging with its own retry and dedupe rules, so an endpoint outage becomes a failed run and a crash-resume becomes a double-send the engine cannot make idempotent. |
 | A general sink plugin interface | Any destination becomes someone else's problem to implement. | Loses on the same criterion, and adds a contract the engine would have to state and cannot: what a sink must guarantee for the commit-then-advance order to remain correct. |
 

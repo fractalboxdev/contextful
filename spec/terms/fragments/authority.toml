@@ -24,6 +24,10 @@ normalization = { gloss = "The single trim-and-drop pass applied to a verified t
 subjectless-credential = { gloss = "A credential carrying no subject member at all.", owner = "authority", resolves = "concept" }
 identity-link = { gloss = "A row mapping a source principal onto a subject over identity-provider-verified fields, carrying `method` and `confidence`.", owner = "authority", resolves = "code" }
 link-method = { gloss = "How an identity link was established: `scim_email`, `oidc_sub` or `operator_asserted`.", owner = "authority", resolves = "code" }
+method = { gloss = "The identity-link field recording how the link was established.", owner = "authority", resolves = "code" }
+scim_email = { gloss = "A link method: the directory-provisioning feed matched the source account on a verified mail address. Authorizes.", owner = "authority", resolves = "code" }
+oidc_sub = { gloss = "A link method: the identity provider's subject claim matched the source account. Authorizes.", owner = "authority", resolves = "code" }
+operator_asserted = { gloss = "A link method: an operator declared the mapping. Carries an explanation trace and authorizes nothing.", owner = "authority", resolves = "code" }
 directory-link = { gloss = "A source-account-to-subject link written by directory provisioning out of the identity provider.", owner = "authority", resolves = "concept" }
 unlinked-principal = { gloss = "A subject whose source principal resolves to no link, and therefore reads nothing from that source.", owner = "authority", resolves = "concept" }
 agent-ceiling = { gloss = "The rule bounding an agent's reach by the reach of the human it acts for.", owner = "authority", resolves = "concept" }
@@ -47,8 +51,9 @@ admission-decides-entry = { gloss = "The boundary between admission and enforcem
 # --- grant ---
 grant = { gloss = "One typed entry of a credential's authority: actions, table patterns, tenant scope, constraints, template allowlist.", owner = "authority", resolves = "code" }
 action = { gloss = "One of `read`, `write`, `execute`, `admin`.", owner = "authority", resolves = "code" }
+admin = { gloss = "The action verb a grant carries to mint; the vocabulary's fourth verb.", owner = "authority", resolves = "code" }
 unknown-action = { gloss = "An action token outside the four-verb vocabulary.", owner = "authority", resolves = "concept" }
-table-pattern = { gloss = "A granted table selector in one of three forms: bare star, prefix star, or exact name.", owner = "authority", resolves = "code" }
+granted-pattern = { gloss = "A granted table selector in one of three forms: bare star, prefix star, or exact name.", owner = "authority", resolves = "code" }
 malformed-pattern = { gloss = "A table pattern carrying a star anywhere but its final position.", owner = "authority", resolves = "concept" }
 star-pattern = { gloss = "The bare-star table pattern covering every table in the project.", owner = "authority", resolves = "code" }
 tenant-scope = { gloss = "An opaque byte string scoping a grant below the table, bound to that table's outermost partition column.", owner = "authority", resolves = "code" }
@@ -57,11 +62,11 @@ unbindable-tenant = { gloss = "A tenant-scoped grant against a table declaring n
 tenant-child-lifetime = { gloss = "The lifetime a per-query tenant-scoped child credential carries.", owner = "authority", resolves = "concept" }
 tenant-child = { gloss = "A tenant-scoped child derived per query from a broader parent held by the consumer's service.", owner = "authority", resolves = "concept" }
 template-allowlist = { gloss = "The deny-by-default list of query-template identifiers a grant authorizes.", owner = "authority", resolves = "code" }
-ungranted-template = { gloss = "A query template the caller's allowlist does not name or cover.", owner = "authority", resolves = "concept" }
+template-not-allowed = { gloss = "A query template the caller's allowlist does not name or cover.", owner = "authority", resolves = "concept" }
 pipeline-resource = { gloss = "A pipeline identifier treated as a read resource in its own right, separate from the tables it lands.", owner = "authority", resolves = "code" }
 ungranted-pipeline = { gloss = "A pipeline identifier no grant of the presented credential covers.", owner = "authority", resolves = "concept" }
 run-trace = { gloss = "The operational read that resolves a run record to its pipeline and returns the run's steps.", owner = "authority", resolves = "code" }
-row-ceiling = { gloss = "The smallest of the grant's, request's, template's and face's row ceilings, applied to a read.", owner = "authority", resolves = "code" }
+effective-row-ceiling = { gloss = "The smallest of the grant's, request's, template's and face's row ceilings, applied to a read.", owner = "authority", resolves = "code" }
 aggregate-constraint = { gloss = "The grant fields bounding a derived-result read: minimum group size, contributor share, permitted functions, group ceiling, row ceiling.", owner = "authority", resolves = "code" }
 
 # --- attenuate ---
@@ -128,7 +133,7 @@ revocation-epoch = { gloss = "A counter scoped on project, tenant and principal 
 revoked-credential = { gloss = "A credential on the denylist, or one whose epoch sits below the current scoped epoch.", owner = "authority", resolves = "concept" }
 denylist-scope = { gloss = "The interval a denylist entry covers, between a withdrawal and the lapse of what it names.", owner = "authority", resolves = "concept" }
 leak-response = { gloss = "The paired response to suspected signing-material compromise: project-wide epoch bump plus immediate key retirement.", owner = "authority", resolves = "concept" }
-two-clocks = { gloss = "The separation between a provider-side sign-out and a minted credential's own lifetime.", owner = "authority", resolves = "concept" }
+provider-sign-out = { gloss = "A sign-out at the identity provider, which ends no credential already minted.", owner = "authority", resolves = "concept" }
 rotation-grace = { gloss = "The declared window during which a retiring key version stays verifiable.", owner = "authority", resolves = "code" }
 short-grace = { gloss = "A declared or overridden grace window shorter than the effective issuance ceiling.", owner = "authority", resolves = "concept" }
 rotation-is-not-revocation = { gloss = "The rule that a retiring key verifies for its whole grace window, and compromise runs on the epoch instead.", owner = "authority", resolves = "concept" }

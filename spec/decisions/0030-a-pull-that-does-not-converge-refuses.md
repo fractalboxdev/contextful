@@ -1,7 +1,7 @@
 # 0030 — A pull that cannot converge on a moving index refuses and names the key
 
 **Status:** accepted 2026-09-18
-**Decides:** `sync.pull.refusal.digest-mismatch`, `sync.pull.refusal.unconverged-pull`
+**Decides:** `sync.pull.refusal.mismatched-download`, `sync.pull.refusal.unconverged-pull`
 
 ## Context
 

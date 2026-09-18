@@ -85,7 +85,7 @@ cleared-environment    = { gloss = "The child environment built from nothing plu
 env-name               = { gloss = "The spelling rule for an environment allowlist entry.", owner = "derive", resolves = "concept" }
 unresolved-reference   = { gloss = "A credential-reference template naming nothing resolvable.", owner = "derive", resolves = "concept" }
 chain-deadline         = { gloss = "`timeout_secs`, the whole-chain kill deadline for one unit.", owner = "derive", resolves = "code" }
-step-output            = { gloss = "`max_output_bytes`, the captured-output bound per step.", owner = "derive", resolves = "code" }
+captured-output        = { gloss = "`max_output_bytes`, the bound on the standard output and standard error one chain step may produce.", owner = "derive", resolves = "code" }
 audit-entries          = { gloss = "The bound on captured step output reaching the run record.", owner = "derive", resolves = "concept" }
 step-error-excerpt     = { gloss = "The bound on a failing step's error text inside the typed error.", owner = "derive", resolves = "concept" }
 scratch-directory      = { gloss = "The per-unit working directory created and removed around a chain.", owner = "derive", resolves = "concept" }
@@ -99,7 +99,7 @@ stderr-on-success      = { gloss = "Capture of a step's error stream regardless 
 command-resolution     = { gloss = "The build-time resolution, executability check, canonicalization and digest of `command[0]`.", owner = "derive", resolves = "concept" }
 missing-binary         = { gloss = "A `command[0]` that is not an executable file on this machine.", owner = "derive", resolves = "concept" }
 unpinned-path          = { gloss = "A path-form command carrying no `sha256`.", owner = "derive", resolves = "code" }
-digest-mismatch        = { gloss = "A pinned file whose bytes differ from its recorded digest.", owner = "derive", resolves = "concept" }
+pinned-file-mismatch   = { gloss = "A pinned command file whose bytes differ from the digest its binding records.", owner = "derive", resolves = "concept" }
 engine-id-is-hashed    = { gloss = "The hash over every step's binary digest and arguments that yields the engine identifier.", owner = "derive", resolves = "concept" }
 engine-id-prefix       = { gloss = "The hexadecimal prefix inside an `exec` engine identifier.", owner = "derive", resolves = "concept" }
 no-endpoint-host       = { gloss = "An `exec` engine's absence of an observable hostname.", owner = "derive", resolves = "concept" }
@@ -254,7 +254,7 @@ derive-attempts-per-unit   = { value = 3,       unit = "attempts", owner = "deri
 derive-seconds-per-run     = { value = 300,     unit = "s",        owner = "derive.select.limit.seconds-per-run",           gloss = "Wall clock the serial unit loop holds for a socket-opening task." }
 derive-upstream-excerpt    = { value = 4,       unit = "KiB",      owner = "derive.bind.limit.upstream-excerpt",            gloss = "Vendor response text an upstream error carries back." }
 derive-chain-deadline      = { value = 1800,    unit = "s",        owner = "derive.exec.limit.chain-deadline",              gloss = "Wall clock one unit's whole subprocess chain runs for." }
-derive-step-output         = { value = 8,       unit = "MiB",      owner = "derive.exec.limit.step-output",                 gloss = "Captured output one chain step may produce." }
+derive-captured-output     = { value = 8,       unit = "MiB",      owner = "derive.exec.limit.captured-output",             gloss = "Captured output one chain step may produce." }
 derive-audit-entries       = { value = 64,      unit = "entries",  owner = "derive.exec.limit.audit-entries",               gloss = "Captured step-output entries one chain contributes to the run record." }
 derive-step-error-excerpt  = { value = 4,       unit = "KiB",      owner = "derive.exec.limit.step-error-excerpt",          gloss = "Error text a failing step carries inside its typed error." }
 derive-engine-id-prefix    = { value = 12,      unit = "chars",    owner = "derive.exec.limit.engine-id-prefix",            gloss = "Hexadecimal characters of digest inside an exec engine identifier." }

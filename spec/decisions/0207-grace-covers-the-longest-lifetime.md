@@ -28,7 +28,7 @@ in separate places by separate acts — the issuance policy and the rotation pol
 the ceiling moves. Lowering it records the previous value and the instant of the
 lowering, and credentials minted under the old, larger value stay live until they can
 have lapsed. The number a grace window has to cover is therefore the effective ceiling,
-not whatever the policy currently reads.
+not the latest value the policy names.
 
 ## Decision
 

@@ -1,7 +1,7 @@
 # 0093 — Control flow is declared, not data-dependent
 
 **Status:** accepted 2026-09-18
-**Decides:** `pipeline.compile.refusal.predicate`
+**Decides:** `pipeline.compile.refusal.predicate`, `pipeline.compile.refusal.plan-node`
 
 ## Context
 

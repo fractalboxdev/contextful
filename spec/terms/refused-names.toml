@@ -1,0 +1,19 @@
+# Names this corpus does not carry, recorded as digests rather than as spellings.
+#
+# A denylist written in plaintext puts the very words it refuses into the tree,
+# where they are then greppable, copyable and indexed — the check would become the
+# leak. Each entry is `sha256(lowercase token)`, so the checker recognizes a word
+# it cannot itself state.
+#
+# `spec lint --banned` lowercases each word of authored text, digests it, and fails
+# on a match, reporting the file and line without printing the token.
+#
+# `proper = true` marks a name whose ordinary-English spelling is fine and whose
+# capitalized use as a proper noun is not; the checker digests the word only when
+# it appears capitalized mid-sentence.
+
+[refused]
+"9c5d8f538fa4a588953d8708d751c13b4a09985425198f6dd7937ab02c8cef19" = { note = "a codename this system does not use" }
+"ff925a738677597ecb5a73e5b245922a7f846823a0aa5b448d94b6695df91e17" = { note = "a credential-format prefix this system does not use" }
+"75ef2e329bdb50d26a4ce73c2aaa567364e4ac5b5f79f7cf6d64b4cd547a863c" = { note = "architecture vocabulary this system does not use; say read path", proper = true }
+"653e37319172d8fc62534e9e7339b8ff9923dbdc1c925e93151994637023c323" = { note = "architecture vocabulary this system does not use; say run path", proper = true }

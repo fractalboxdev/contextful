@@ -45,12 +45,12 @@ auditor.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Forced rewrite plus a one-hop cascade under one declared column** *(chosen)* | No reachable path returns the rows: run files, snapshots, model builds and the memory mirror are all addressed by the one operation, and derived conclusions fall with their evidence. | The cost scales with the table rather than with the erased slice, and superseded objects stay in the bucket until collection. A table that declares no subject column has no subject-erasure path until it does. |
-| Tombstone only, with no rewrite | Cheap, instant, and the read path already honours markers. | The values stay in the bytes on disk, so a credential over the object store reads them. The marker constrains a query, not the disclosure. |
-| Crypto-shredding a per-subject key | Erasure becomes a key deletion, constant time regardless of volume. | The store encrypts per table and per snapshot, not per subject. A per-subject key would have to be introduced into every write path and held for every subject forever, and key custody then becomes the erasure guarantee. |
-| Wait for natural compaction to remove tombstoned rows | No new machinery; the rewrite already exists. | Compaction's cadence is chosen for read performance and carries no deadline. A regime asking when the data left the store gets no answer. |
-| Delete the underlying objects outright | Conceptually the strongest claim. | The object interface has no delete. The claim would be unimplementable on the substrate the store is specified over. |
-| Infer the subject column by name convention | Every table gets an erasure path with no authoring work. | A wrong inference erases a different population and reports success, and the mistake is invisible in the output. Erasure is exactly the operation that cannot be best-effort. |
-| Cascade to full transitive closure rather than one hop | Catches a fact derived from a fact derived from the evidence. | Provenance is recorded one hop deep, so a deeper walk would be reconstructed rather than read, and its termination depends on data the store does not guarantee is acyclic. |
+| Tombstone only, with no rewrite | Cheap, instant, and the read path already honours markers. | Lost on reachability: the values stay in the bytes on disk, so a credential over the object store reads them. The marker constrains a query, not the disclosure. |
+| Crypto-shredding a per-subject key | Erasure becomes a key deletion, constant time regardless of volume. | Lost on reachability: the store encrypts per table and per snapshot, not per subject. A per-subject key would have to be introduced into every write path and held for every subject forever, and key custody then becomes the erasure guarantee. |
+| Wait for natural compaction to remove tombstoned rows | No new machinery; the rewrite already exists. | Lost on reachability: compaction's cadence is chosen for read performance and carries no deadline. A regime asking when the data left the store gets no answer. |
+| Delete the underlying objects outright | Conceptually the strongest claim. | Lost on implementability on the substrate: the object interface has no delete. The claim would be unimplementable on the substrate the store is specified over. |
+| Infer the subject column by name convention | Every table gets an erasure path with no authoring work. | Lost on addressing correctness: a wrong inference erases a different population and reports success, and the mistake is invisible in the output. Erasure is exactly the operation that cannot be best-effort. |
+| Cascade to full transitive closure rather than one hop | Catches a fact derived from a fact derived from the evidence. | Lost on addressing correctness: provenance is recorded one hop deep, so a deeper walk would be reconstructed rather than read, and its termination depends on data the store does not guarantee is acyclic. |
 
 ## Criteria
 
@@ -65,6 +65,8 @@ auditor.
    auditor rather than indistinguishable from a complete one.
 5. **Cost proportionality** — whether erasing one person costs work proportional to that
    person's rows. This is the criterion the chosen option loses on.
+6. **Implementability on the substrate** — whether the claim an option makes can be carried
+   out by the object interface the store is specified over.
 
 Reachability decides it. An erasure that leaves any reachable copy has not erased anything;
 it has added a filter. Proportionality is real and is paid, and addressing correctness is

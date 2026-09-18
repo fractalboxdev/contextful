@@ -41,7 +41,7 @@ at. Each refusal settles one unit permanently, costs no request, and leaves the 
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Four pre-socket guards, each settling the unit, the run continuing** *(chosen)* | No request leaves for a destination the operator did not sanction; one hostile row costs one row | A host the operator genuinely wants is settled on first encounter and adding it does not revive those units |
-| Check after connecting, refuse on the response | Simpler control flow; the client's own redirect and resolution logic does the work | Loses outright: the request has already left, so the loopback and scheme cases have already happened by the time they are detected |
+| Check after connecting, refuse on the response | Simpler control flow; the client's own redirect and resolution logic does the work | Lost on whether the request left: the loopback and scheme cases have already happened by the time the response is read |
 | Mark a guard refusal retryable | One attempt-accounting path; a transient list error self-heals | Loses on permanence: raising an operator-facing attempt ceiling would revive every security refusal at once, silently |
 | Abort the run on a guard refusal | Loud; nothing proceeds under a suspicious condition | Loses on cost: one hostile publisher stops a batch of hundreds, which is a denial of service handed to the least trusted party |
 | Settle, but re-open the unit when the host list changes | Operator-friendly: adding a name fixes the past | Loses on permanence again in a slower form — the list is the operator-facing knob, so editing it becomes a way to revive a refusal, and a bulk edit revives many |

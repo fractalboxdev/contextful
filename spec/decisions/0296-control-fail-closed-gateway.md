@@ -85,8 +85,8 @@ weakening it with a cached or generated fallback.
 ## Revisit triggers
 
 - Key-set fetch failures at startup are observed causing read-path outages disproportionate
-  to the underlying fault, indicating a verified cache of a previously good key set is
-  worth its own decision.
+  to the underlying fault, indicating a verified cache of the last key set that verified
+  is worth its own decision.
 - A deployment shape emerges where store configuration legitimately arrives after the
   gateway starts, making startup refusal the wrong instant for the check.
 - The health route's separation of warming from unconfigured is found insufficient for an

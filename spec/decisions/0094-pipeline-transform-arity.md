@@ -64,7 +64,7 @@ against a vendor with its own rate limits, and a failure that does not fail a pu
 The cost accepted is a visible one. Between a landing run and the derive tier's pass, the table
 holds rows whose derived columns are absent, and any read in that window returns them. An
 operator explaining why a document has no extracted text explains two cadences. Nothing in the
-read path currently marks a row as awaiting derivation, so the window is invisible to a consumer
+read path marks a row as awaiting derivation, so the window is invisible to a consumer
 until the derived values appear.
 
 ## Revisit triggers

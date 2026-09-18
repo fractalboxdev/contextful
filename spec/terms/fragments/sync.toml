@@ -17,6 +17,7 @@ cas                   = { gloss = "The coordination mode in which the bucket ser
 single-writer         = { gloss = "The coordination mode in which one machine is declared the sole writer and no probe runs.", owner = "sync", resolves = "code" }
 push_retries          = { gloss = "The `[sync] push_retries` config key bounding the re-read-and-re-commit loop on a lost index commit.", owner = "sync", resolves = "code" }
 pull_before_run       = { gloss = "The `[sync] pull_before_run` config key reconciling against the bucket ahead of landing rows.", owner = "sync", resolves = "code" }
+mismatched-download   = { gloss = "A pulled object whose recomputed digest differs from the bucket-manifest entry that named it, discarded rather than written into the tree.", owner = "sync", resolves = "concept" }
 commit-point          = { gloss = "The index write after which a consumer observes a tree whose every key is already durable.", owner = "sync", resolves = "concept" }
 scoped-union          = { gloss = "The merge in which the remote contributes an entry where this writer has never written, and nowhere else.", owner = "sync", resolves = "concept" }
 sentinel              = { gloss = "The probe object written under `_contextful/cas-probe/` inside the configured prefix and deleted on success.", owner = "sync", resolves = "code" }

@@ -1,7 +1,7 @@
 # 0277 — A window holding zero observations returns no claim rather than a negative verdict
 
 **Status:** accepted 2026-09-18
-**Decides:** `accountability.attest.refusal.empty-window`
+**Decides:** `accountability.attest.refusal.window-without-observations`
 
 ## Context
 
@@ -40,10 +40,10 @@ no neighbouring observation is borrowed.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Refuse with `AssuranceWindowEmpty` and say no claim can be made** *(chosen)* | The output cannot be read as assurance it does not carry. The absence of evidence appears as an absence. | A caller asking about a quiet period gets no verdict and has to widen the window or wait for a sweep. |
-| Print NOT VISIBLE AT ANY OBSERVED POINT over zero observations | Uniform with the non-empty case; one code path, one verdict vocabulary. | The strongest-looking sentence the surface emits is printed exactly when the surface knows least. A reader quoting it into an audit asserts something the data never said. |
-| Return a generic error | Simple, and it certainly does not over-claim. | The caller cannot separate an unobserved resource from a malformed request, so the one case that wants a retry with a wider window looks like the one that wants a corrected argument. |
-| Widen the window automatically until an observation is found | Always produces a verdict, and the verdict rests on real observations. | It answers a different question from the one asked, and the reader has to notice the changed bounds to see that. Silent scope drift under an assurance surface is the failure this contract is built against. |
-| Print the verdict with a prominent coverage warning | Keeps the uniform shape and flags the gap. | A warning in an output is not a control. The verdict survives the copy-paste; the warning does not. |
+| Print NOT VISIBLE AT ANY OBSERVED POINT over zero observations | Uniform with the non-empty case; one code path, one verdict vocabulary. | Lost on readability as assurance: the strongest-looking sentence the surface emits is printed exactly when the surface knows least. A reader quoting it into an audit asserts something the data never said. |
+| Return a generic error | Simple, and it certainly does not over-claim. | Lost on distinguishability of causes: the caller cannot separate an unobserved resource from a malformed request, so the one case that wants a retry with a wider window looks like the one that wants a corrected argument. |
+| Widen the window automatically until an observation is found | Always produces a verdict, and the verdict rests on real observations. | Lost on scope fidelity: it answers a different question from the one asked, and the reader has to notice the changed bounds to see that. Silent scope drift under an assurance surface is the failure this contract is built against. |
+| Print the verdict with a prominent coverage warning | Keeps the uniform shape and flags the gap. | Lost on readability as assurance: a warning in an output is not a control. The verdict survives the copy-paste; the warning does not. |
 
 ## Criteria
 

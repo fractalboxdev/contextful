@@ -68,7 +68,7 @@ second change, once the column exists — so the manifest cannot express the int
 state up front, and an author tracks the follow-up themselves.
 
 Validation now depends on the reconciled schema being current. A declaration valid against
-today's schema becomes invalid if the source stops emitting the column and the schema is
+the schema as reconciled becomes invalid if the source stops emitting the column and the schema is
 re-reconciled without it, which turns a source-side change into a manifest refusal.
 
 ## Revisit triggers
@@ -77,6 +77,6 @@ re-reconciled without it, which turns a source-side change into a manifest refus
   deferred declaration the norm rather than the exception.
 - A pass gains the ability to publish the data half and retry the sidecar without a partial
   snapshot ever being readable, which changes what discovering the problem mid-build costs.
-- Declarations are commonly authored against a schema the deployment has not yet
+- Declarations are commonly authored against a schema the deployment has never
   reconciled, making the validation check unavailable at the moment the manifest is
   written.

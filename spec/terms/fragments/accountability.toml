@@ -24,8 +24,8 @@ cardinality-band        = { gloss = "Evidence volume reported as one of `0`, `1-
 negative-assurance      = { gloss = "A statement that a subject could not reach a resource, scoped to the observations that back it.", owner = "accountability", resolves = "concept" }
 overshare-report        = { gloss = "A single aggregate over the mirrored grants naming resources readable above a declared organizational share.", owner = "accountability", resolves = "concept" }
 compliance-substrate    = { gloss = "The mechanisms a compliance program attests against — erasure, residency-aware placement, sensitive-column tagging, a tamper-evident chain — as distinct from a certification.", owner = "accountability", resolves = "concept" }
-tombstone               = { gloss = "The marker that removes a subject's row from every read of a subject-keyed shape.", owner = "accountability", resolves = "concept" }
-cascade                 = { gloss = "The one-hop invalidation of derived facts whose provenance references an erased subject or an erased row identifier.", owner = "accountability", resolves = "concept" }
+erasure-tombstone       = { gloss = "The marker that removes a subject's row from every read of a subject-keyed shape.", owner = "accountability", resolves = "concept" }
+erasure-cascade         = { gloss = "The one-hop invalidation of derived facts whose provenance references an erased subject or an erased row identifier.", owner = "accountability", resolves = "concept" }
 staleness-marker        = { gloss = "The row-free `{subject_hash, executed_at}` object at the store root that arms the restaging gate.", owner = "accountability", resolves = "concept" }
 purge                   = { gloss = "The tenant erasure path: a columnar rewrite of every reachable file retaining rows outside the named tenant.", owner = "accountability", resolves = "concept" }
 receipt                 = { gloss = "The signed artifact a purge returns, scoping its claim to rewrite-and-exclude over the canonical store.", owner = "accountability", resolves = "concept" }
@@ -38,7 +38,7 @@ requested_at            = { gloss = "When an erasure request opened.", owner = "
 completed_at            = { gloss = "When an erasure request closed; null while it is in flight.", owner = "accountability", resolves = "code" }
 subject_id              = { gloss = "The manifest key naming a table's subject-identifier column.", owner = "accountability", resolves = "code" }
 receipt_version         = { gloss = "The field whose value fixes the reach of a receipt's claim.", owner = "accountability", resolves = "code" }
-coverage                = { gloss = "The receipt block naming what the claim includes and what it excludes.", owner = "accountability", resolves = "code" }
+receipt-coverage        = { gloss = "The receipt block naming what the claim includes and what it excludes.", owner = "accountability", resolves = "code" }
 payload_hash            = { gloss = "The digest over the canonical payload bytes of a signed artifact.", owner = "accountability", resolves = "code" }
 public_key              = { gloss = "The issuer key in tagged distribution form, carried on a signed artifact.", owner = "accountability", resolves = "code" }
 

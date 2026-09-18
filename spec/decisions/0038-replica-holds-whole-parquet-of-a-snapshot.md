@@ -41,9 +41,9 @@ from what is present.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Whole Parquet per snapshot; refuse on a missing sidecar** *(chosen)* | Every answer a replica gives is complete over the snapshot it names. The two failure modes are both visible at the moment they occur. | A replica of a large table holds it entirely or not at all, and a caller handles a refusal rather than receiving a slower or narrower answer. |
-| Allow a partition subset with a predicate check at query time | A consumer replicates the partitions it cares about and skips the rest. | The check has to know which partitions are absent, and a predicate dropped or rewritten anywhere in the plan turns a subset into what reads as the whole. |
-| Degrade to a scan when a sidecar is missing | A ranked read always answers, at some latency. | A caller asking for a ranked read receives a differently shaped answer with no signal that the ranking came from elsewhere. |
-| Fetch the missing object on demand mid-query | Nothing is unavailable; the first query pays for the fetch. | A replica's answers stop being offline answers, and the read path acquires a network dependency inside the query. |
+| Allow a partition subset with a predicate check at query time | A consumer replicates the partitions it cares about and skips the rest. | Lost on whether an answer can be silently wrong: the check has to know which partitions are absent, and a predicate dropped or rewritten anywhere in the plan turns a subset into what reads as the whole. |
+| Degrade to a scan when a sidecar is missing | A ranked read always answers, at some latency. | Lost on legibility of a degraded mode: a caller asking for a ranked read receives a differently shaped answer with no signal that the ranking came from elsewhere. |
+| Fetch the missing object on demand mid-query | Nothing is unavailable; the first query pays for the fetch. | Lost on the offline guarantee: a replica's answers stop being offline answers, and the read path acquires a network dependency inside the query. |
 
 ## Criteria
 

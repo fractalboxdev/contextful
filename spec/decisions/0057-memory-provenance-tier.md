@@ -99,6 +99,6 @@ under the current rule, and a changed rule applies only to rows written after it
   agrees the lower-standing claim was correct, which says the silence costs more than the
   invariant buys.
 - Curated claims are observed going stale at a rate that argues for an expiry on tiers that
-  currently carry none.
+  carry none.
 - A fourth standing distinction appears that the three levels cannot express without
   overloading one of them.

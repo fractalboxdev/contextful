@@ -49,7 +49,7 @@ the URL; the two file-shaped sources infer it from the extension.
 | --- | --- | --- |
 | **Declare the format and the encoding; refuse a key the format does not read** *(chosen)* | An unchanged manifest decodes the same way tomorrow; a mismatched key is a build diagnostic rather than a silently ignored line. | An operator writes a cast for a date-dense series, and a vendor changing its content type needs a manifest edit. |
 | Infer the format from the URL path | Shorter manifests; the common case needs no key. | Lost on stability of meaning: an extension does not predict a response body, and inference would silently re-decode an unchanged manifest. |
-| Infer the format from the response content type | Tracks what the vendor actually sent. | Lost for the same reason one level out: the vendor, not the manifest, then decides what the pipeline does, and a content-type change becomes a schema change nobody authored. |
+| Infer the format from the response content type | Tracks what the vendor actually sent. | Lost on stability of meaning, one level out: the vendor, not the manifest, then decides what the pipeline does, and a content-type change becomes a schema change nobody authored. |
 | Ignore keys the chosen format does not read | Tolerant manifests; a format switch needs no cleanup. | Lost on diagnosability: a record path left beside a delimited format reads as governing the parse and governs nothing, which is the same failure as an unbound binding. |
 | Decode leniently with replacement characters | No read ever fails on encoding. | Lost on distinguishing a lossy landing from a clean one: a replacement character inside an identifier produces a table that looks landed and joins to nothing. |
 | Infer cell types on delimited input | Numbers arrive as numbers; fewer casts downstream. | Lost on schema stability: a leading-zero identifier reads as a number in one export and as text in the next, so the schema depends on the data. |
@@ -70,7 +70,7 @@ the URL; the two file-shaped sources infer it from the extension.
 
 ## Consequences
 
-A manifest that worked yesterday decodes the same way today. A format switch surfaces every
+A manifest decodes a body one way until an operator edits it. A format switch surfaces every
 key that no longer applies, at build, by name. A delimited source lands every cell as a
 string and an empty unquoted field as null, so an identifier of `07` reads the same across
 two exports and a dimension file's schema does not depend on its contents. The watermark

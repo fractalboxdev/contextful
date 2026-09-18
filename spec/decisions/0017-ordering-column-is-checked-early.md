@@ -48,8 +48,8 @@ it.
 1. **How long a wrong winner survives** — the interval between the defect existing and
    anything being able to show it. *(the one that decided it)* An unresolvable ordering
    column degrades the fold to an arbitrary winner per key, which no count exposes and no
-   artifact records, and the fold is one-way. Ergonomics of declaring a column that does
-   not yet exist was the competing criterion and lost, because it costs an author one
+   artifact records, and the fold is one-way. Ergonomics of declaring a column absent from
+   the source was the competing criterion and lost, because it costs an author one
    ordering change and the alternative costs silently wrong data.
 2. **Recoverability** — whether the outcome can be corrected after the fact.
 3. **Detectability** — whether any observable number differs when the defect is present.
@@ -67,8 +67,8 @@ lands rows under the default ingest stamp and declares the intended column once 
 accepting that the folds in between used write-time order.
 
 The injected set becomes part of the validation contract. Adding an injected column widens
-what an `order_by` may legally name, and removing one turns a previously valid declaration
-into a refusal on an existing table.
+what an `order_by` may legally name, and removing one refuses a declaration an
+existing table already carries.
 
 ## Revisit triggers
 

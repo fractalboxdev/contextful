@@ -1,7 +1,7 @@
 # 0125 — A document that cannot be read whole refuses rather than landing the part that parsed
 
 **Status:** accepted 2026-09-18
-**Decides:** `connector.source.refusal.document-unreadable`, `connector.source.refusal.partial-parse`, `connector.source.refusal.input-unreadable`, `connector.source.refusal.frontmatter-shape`
+**Decides:** `connector.source.refusal.document-unreadable`, `connector.source.refusal.document-truncation`, `connector.source.refusal.input-unreadable`, `connector.source.refusal.frontmatter-shape`
 
 ## Context
 

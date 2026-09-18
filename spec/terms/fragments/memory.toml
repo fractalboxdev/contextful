@@ -20,6 +20,8 @@ entity-columns      = { gloss = "The canonical column set of `memory_entities`."
 edge-columns        = { gloss = "The canonical column set of `memory_edges`.", owner = "memory", resolves = "concept" }
 episode-columns     = { gloss = "The canonical column set of `memory_episodes`.", owner = "memory", resolves = "concept" }
 preference-columns  = { gloss = "The canonical column set of `memory_preferences`.", owner = "memory", resolves = "concept" }
+confidence          = { gloss = "The strength column a claim, a preference and an edge carry on the interval 0..1.", owner = "memory", resolves = "code" }
+value               = { gloss = "The `memory_preferences` column holding what a subject prefers under one key.", owner = "memory", resolves = "code" }
 validity-pair       = { gloss = "A memory shape naming its validity columns through the ordinary table declaration.", owner = "memory", resolves = "concept" }
 tier                = { gloss = "The provenance standing column: curated, derived, researched.", owner = "memory", resolves = "code" }
 scope               = { gloss = "The optional string partitioning one subject's claims by the surface that produced them.", owner = "memory", resolves = "code" }
@@ -71,13 +73,14 @@ edge-revision       = { gloss = "The claim revision rule applied over source, re
 
 # — recall
 present-time        = { gloss = "Recall answering as of now and accepting no time bound of its own.", owner = "memory", resolves = "concept" }
-two-clocks          = { gloss = "The vantage bounding ingestion time while validity columns bound what a row claims.", owner = "memory", resolves = "concept" }
+recall-clocks       = { gloss = "The pair recall bounds: the session's vantage over ingestion time, and the validity columns over what a row claims.", owner = "memory", resolves = "concept" }
 open-interval       = { gloss = "The open-ended validity a present-time recall returns.", owner = "memory", resolves = "concept" }
 fold                = { gloss = "Keeping the latest row per deduplication key before ranking.", owner = "memory", resolves = "concept" }
 tier-order          = { gloss = "Ordering by tier first and by score second.", owner = "memory", resolves = "concept" }
 score               = { gloss = "Confidence multiplied by the rank-position factor `(index + 1) / total`.", owner = "memory", resolves = "concept" }
 scope-filter        = { gloss = "The exact-match scope argument of a recall.", owner = "memory", resolves = "code" }
 evidence            = { gloss = "A reference from a claim to a source table's row identifier.", owner = "memory", resolves = "code" }
+id                  = { gloss = "The row-identifier column an evidence reference reads where a table declares no single-column primary key.", owner = "memory", resolves = "code" }
 evidence-gate       = { gloss = "Serving a synthesized claim when every evidence row reads through the caller's session.", owner = "memory", resolves = "concept" }
 evidence-unresolved = { gloss = "Suppression of a claim whose lineage does not resolve.", owner = "memory", resolves = "concept" }
 evidence-references = { gloss = "The bound on how many evidence rows one claim names.", owner = "memory", resolves = "concept" }
@@ -99,6 +102,7 @@ serving             = { gloss = "Tombstoned and cascade-marked rows dropped ahea
 
 # — identity, place, graph
 entity-id           = { gloss = "The opaque canonical identifier of a resolved thing.", owner = "memory", resolves = "code" }
+entity_id           = { gloss = "The `memory_entities` column carrying that identifier, and the key a row pointing at an entity holds.", owner = "memory", resolves = "code" }
 alias-normalization = { gloss = "Folding script variants and full-width forms of one name onto a single identity.", owner = "memory", resolves = "concept" }
 alias-match-mode    = { gloss = "Containment for an ideographic alias; ASCII word boundaries for a latin or numeric one.", owner = "memory", resolves = "concept" }
 alias-stem          = { gloss = "A trailing `*` holding the left boundary and dropping the right; `\\*` a literal asterisk.", owner = "memory", resolves = "code" }
@@ -134,6 +138,7 @@ unknown-source      = { gloss = "A resolution source outside the declared set.",
 unsourced-verdict   = { gloss = "A verdict carrying no resolution source.", owner = "memory", resolves = "concept" }
 source-mismatch     = { gloss = "An observation whose resolution source contradicts its registration.", owner = "memory", resolves = "concept" }
 settling-citation   = { gloss = "The `http` or `https` reference a judgment verdict carries onto the label view.", owner = "memory", resolves = "code" }
+https               = { gloss = "The transport-secured URL scheme a settling citation is written in.", owner = "memory", resolves = "concept" }
 undeclared-rule     = { gloss = "The null-verdict signal for a verdict against a prediction that declared no source.", owner = "memory", resolves = "code" }
 self-rated          = { gloss = "The null-verdict signal for an outcome derived from the store's own rating.", owner = "memory", resolves = "code" }
 unresolved-signal   = { gloss = "The application-supplied `unresolved:<reason>` signal holding the verdict null.", owner = "memory", resolves = "code" }

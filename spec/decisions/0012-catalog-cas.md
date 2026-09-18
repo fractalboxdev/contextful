@@ -49,7 +49,7 @@ cluster shape is the shared database's availability.
 | **Linearizable compare-and-swap behind the catalog port** *(chosen)* | Every deployment shape supplies the primitive with something it already runs: a file, a database, or a platform primitive. Air-gapped single-node and edge stay air-gapped. | Clustered availability is the shared database's availability, so an operator wanting multi-node without one has no supported path. |
 | An embedded consensus implementation | Multi-node availability with no external database; the engine owns its own coordination. | Lost on operational cost for the request rate involved: a consensus cluster is a system to size, monitor, back up and recover, bought for two low-rate conditional statements. |
 | A bundled external coordination service | A well-understood primitive with strong guarantees and mature tooling. | Lost on air-gappability: single-node and edge deployments would have to run a second process reachable over a network, which contradicts the deployment shape those profiles exist for. |
-| An off-the-shelf consensus-over-SQLite catalog | Multi-node without a separate database, behind the same port. | Deferred on demand rather than on merit — it slots behind this port whenever a deployment needs it. This is the option a reader should expect to revisit first. |
+| An off-the-shelf consensus-over-SQLite catalog | Multi-node without a separate database, behind the same port. | Lost on operational familiarity: an operator already runs a file or a Postgres, and this backend is a third system to learn for a case no current deployment presents. It slots behind this port unchanged whenever one does, which makes it the option a reader should expect to revisit first. |
 
 ## Criteria
 

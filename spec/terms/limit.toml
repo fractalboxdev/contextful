@@ -1,6 +1,8 @@
 # Named bounds — a numeral in a `limit` clause resolves to exactly one entry, and each
 # entry is asserted by exactly one clause. Two independent bounds carrying the same
 # number are two entries; one shared ceiling is one entry reached by reference.
+#
+# Generated from spec/terms/fragments/.
 
 [limit]
 aggregate-grant-group-ceiling = { value = 1, unit = "entries", owner = "disclosure.release.limit.group-ceiling", gloss = "Floor on an aggregate grant's declared groups-per-query ceiling." }
@@ -50,16 +52,17 @@ console-view-points = { value = 200, unit = "entries", owner = "console.render.l
 console-view-rows = { value = 50, unit = "rows", owner = "console.render.limit.view-table", gloss = "Rows a rendered view carries." }
 console-view-series = { value = 6, unit = "entries", owner = "console.render.limit.view-series", gloss = "Series a rendered view carries." }
 contract-file-lines = { value = 900, unit = "rows", owner = "corpus.anatomy.limit.file-length", gloss = "The line ceiling on a file whose role is contract." }
+contributor-share-floor = { value = 0, unit = "percent", owner = "disclosure.suppress.limit.contributor-share", gloss = "Lower bound a declared maximum single-contributor share of a group's metric mass lies above." }
 contributor-share-range = { value = 100, unit = "percent", owner = "disclosure.suppress.limit.contributor-share", gloss = "Upper bound of a declared maximum single-contributor share of a group's metric mass." }
 control-artifact-compressed = { value = 60, unit = "MiB", owner = "topology.package.limit.control-budget", gloss = "Compressed release artifact of the control profile." }
-control-cold-start = { value = 8, unit = "s", owner = "control.serve.limit.cold-start", gloss = "The span within which a retrieval container reaches readiness from cold." }
+control-cold-start = { value = 8, unit = "s", owner = "control.serve.limit.container-readiness", gloss = "The span within which a retrieval container reaches readiness from cold." }
 control-external-beat = { value = 5, unit = "min", owner = "control.arm.limit.external-beat", gloss = "The fixed granularity of the platform heartbeat that wakes a suspending deployment." }
 control-heartbeat-beat = { value = 15, unit = "s", owner = "control.dispatch.limit.heartbeat-beat", gloss = "The interval between worker heartbeats." }
 control-heartbeat-lapse = { value = 60, unit = "s", owner = "control.dispatch.limit.heartbeat-lapse", gloss = "The heartbeat lapse after which in-flight work reschedules onto another worker." }
 control-idle-rss = { value = 80, unit = "MiB", owner = "topology.package.limit.control-budget", gloss = "Idle resident set of the control profile." }
 control-isolate-memory = { value = 128, unit = "MiB", owner = "control.serve.limit.isolate-memory", gloss = "Memory available to the routing isolate that terminates a read request." }
 control-listing-page = { value = 1000, unit = "entries", owner = "control.visualize.limit.listing-page", gloss = "The ceiling on objects one pack listing call answers with." }
-control-poll-interval = { value = 30, unit = "s", owner = "control.reconcile.limit.poll-interval", gloss = "The control poll interval when a control block declares none." }
+control-poll-interval = { value = 30, unit = "s", owner = "control.reconcile.limit.poll-cadence", gloss = "The cadence a control block polls on when it declares none." }
 control-step-cpu-free = { value = 10, unit = "ms", owner = "control.dispatch.limit.step-cpu-free", gloss = "Per-step CPU on a free orchestrator tier." }
 control-step-cpu-paid = { value = 5, unit = "min", owner = "control.dispatch.limit.step-cpu-paid", gloss = "Per-step CPU on a paid orchestrator tier." }
 control-step-result = { value = 1, unit = "MiB", owner = "control.dispatch.limit.step-result", gloss = "The cap on a checkpointed step result, which carries a pointer rather than a payload." }
@@ -68,6 +71,7 @@ control-worker-count = { value = 2, unit = "workers", owner = "topology.package.
 deadline-granularity = { value = 100, unit = "ms", owner = "connector.package.limit.call-deadline", gloss = "Epoch-interruption granularity the deadlines are armed at." }
 derive-attempts-per-unit = { value = 3, unit = "attempts", owner = "derive.select.limit.attempts-per-unit", gloss = "Attempts one unit receives before its marker settles." }
 derive-audit-entries = { value = 64, unit = "entries", owner = "derive.exec.limit.audit-entries", gloss = "Captured step-output entries one chain contributes to the run record." }
+derive-captured-output = { value = 8, unit = "MiB", owner = "derive.exec.limit.captured-output", gloss = "Captured output one chain step may produce." }
 derive-chain-deadline = { value = 1800, unit = "s", owner = "derive.exec.limit.chain-deadline", gloss = "Wall clock one unit's whole subprocess chain runs for." }
 derive-document-prefix = { value = 1, unit = "MiB", owner = "derive.fetch.limit.document-prefix", gloss = "Document prefix the head scanner reads before the remainder is dropped." }
 derive-empty-ceiling = { value = 1, unit = "attempts", owner = "derive.land.limit.empty-attempt-ceiling", gloss = "Attempts a unit in the established-empty status receives in total." }
@@ -83,7 +87,6 @@ derive-retry-after-default = { value = 60, unit = "s", owner = "derive.fetch.lim
 derive-rows-per-run = { value = 25, unit = "rows", owner = "derive.select.limit.rows-per-run", gloss = "Units one derive run attempts, after the anti-join truncates the outstanding list." }
 derive-seconds-per-run = { value = 300, unit = "s", owner = "derive.select.limit.seconds-per-run", gloss = "Wall clock the serial unit loop holds for a socket-opening task." }
 derive-step-error-excerpt = { value = 4, unit = "KiB", owner = "derive.exec.limit.step-error-excerpt", gloss = "Error text a failing step carries inside its typed error." }
-derive-step-output = { value = 8, unit = "MiB", owner = "derive.exec.limit.step-output", gloss = "Captured output one chain step may produce." }
 derive-upstream-excerpt = { value = 4, unit = "KiB", owner = "derive.bind.limit.upstream-excerpt", gloss = "Vendor response text an upstream error carries back." }
 describe-history-ceiling = { value = 500, unit = "rows", owner = "run.record.limit.describe-window", gloss = "Highest ceiling the describe surface honors." }
 describe-history-default = { value = 5, unit = "rows", owner = "run.record.limit.describe-window", gloss = "Runs the describe surface answers with when the caller names no ceiling." }
@@ -120,6 +123,7 @@ github-token-tail = { value = 36, unit = "chars", owner = "pipeline.guard-secret
 guest-config-size = { value = 65536, unit = "B", owner = "connector.import.limit.config-size", gloss = "Serialized guest configuration table, 64 KiB." }
 hash-truncation-width = { value = 32, unit = "chars", owner = "enforcement.mask.limit.hash-truncation-width", gloss = "Output width of a keyed hash; a truncation behind it sits below this." }
 in-flight-requests = { value = 8, unit = "requests", owner = "connector.package.limit.session-budget", gloss = "Outbound requests one connector holds open at once." }
+initial-pin-floor = { value = 0, unit = "entries", owner = "corpus.state.limit.coverage-floor", gloss = "The pinned-clause floor every contract starts at." }
 issuance-lifetime-ceiling = { value = 24, unit = "h", owner = "authority.issue.limit.issuance-ceiling", gloss = "Longest credential lifetime a project's persisted issuance policy permits." }
 issuer-key-rotation-cadence = { value = 90, unit = "d", owner = "authority.issue.limit.key-rotation-cadence", gloss = "Interval at which the credential-signing key rotates." }
 journal-inline-cutoff = { value = 1, unit = "MiB", owner = "run.journal.limit.inline-cutoff", gloss = "Largest journaled value held inline in its own row." }

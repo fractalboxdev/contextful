@@ -1,7 +1,7 @@
 # 0095 — Nested Arrow is canonical and the relational shape is a reversible projection
 
 **Status:** accepted 2026-09-18
-**Decides:** `pipeline.normalize.shape.normalized-form`, `pipeline.normalize.refusal.list-index`
+**Decides:** `pipeline.normalize.shape.normalized-form`, `pipeline.normalize.refusal.list-index`, `pipeline.normalize.refusal.normalize-mode`
 
 ## Context
 

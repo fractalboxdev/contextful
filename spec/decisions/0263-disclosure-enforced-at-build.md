@@ -1,7 +1,7 @@
 # 0263 — Aggregate disclosure is enforced when a derived table is built, not when a query runs
 
 **Status:** accepted 2026-09-18
-**Decides:** `disclosure.release.refusal.grain-column`, `disclosure.release.refusal.group-key`, `disclosure.release.refusal.contributor-key`, `disclosure.release.refusal.forbidden-column`, `disclosure.suppress.refusal.empty-policy`, `disclosure.suppress.refusal.zero-floor`, `disclosure.suppress.refusal.share-range`, `disclosure.suppress.refusal.grouping-allowlist`
+**Decides:** `disclosure.release.refusal.grain-column`, `disclosure.release.refusal.group-key`, `disclosure.release.refusal.contributor-column`, `disclosure.release.refusal.forbidden-column`, `disclosure.suppress.refusal.empty-policy`, `disclosure.suppress.refusal.zero-floor`, `disclosure.suppress.refusal.share-range`, `disclosure.suppress.refusal.grouping-allowlist`
 
 ## Context
 
@@ -78,7 +78,7 @@ materialization pass per model.
 
 The log entry outlives the build. Freshness advances past a materialization and the appended
 entry does not, so a downstream attestation names the exact policy behind the cells it rests
-on rather than the policy currently in the manifest.
+on rather than the policy the manifest holds when the attestation is read.
 
 Reversing to query-time evaluation is not a relocation but a reimplementation, and it starts
 from an output that no longer carries the inputs the rules need.

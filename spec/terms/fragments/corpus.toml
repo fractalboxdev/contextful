@@ -50,7 +50,11 @@ SpecProvenanceLeak     = { gloss = "A bare issue reference or a pull-request lin
 SpecLocalPath          = { gloss = "An absolute path from an author's machine.", owner = "corpus" }
 SpecOperatorTable      = { gloss = "A sign-off or operations action-item table inside the corpus.", owner = "corpus" }
 SpecAsciiDiagram       = { gloss = "Box-drawing or pipe-and-dash art outside a mermaid fence.", owner = "corpus" }
+SpecCounterfactualMood = { gloss = "Counterfactual mood in a contract file.", owner = "corpus" }
+SpecUnregisteredTerm   = { gloss = "A backticked token in two or more contract files with no registry entry.", owner = "corpus" }
+SpecUncitedRefusal     = { gloss = "A refusal row whose direction is a choice with an empty decided-by cell.", owner = "corpus" }
 
 [limit]
 contract-file-lines = { value = 900, unit = "rows", owner = "corpus.anatomy.limit.file-length", gloss = "The line ceiling on a file whose role is contract." }
 restatement-gram    = { value = 8, unit = "tokens", owner = "corpus.reference.refusal.restated-sentence", gloss = "The n-gram width at which two statements count as a restatement." }
+initial-pin-floor   = { value = 0, unit = "entries", owner = "corpus.state.limit.coverage-floor", gloss = "The pinned-clause floor every contract starts at." }

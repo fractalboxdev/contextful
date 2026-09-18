@@ -44,10 +44,10 @@ separate sink.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **The local store, and nothing else** *(chosen)* | One durability and visibility model, which the run model already honors; one place a row can be. | A foreign layout another team's tooling owns has no supported path; something outside the engine reads the landed rows and writes it. |
-| A Parquet file destination | Direct output in a format other tools read. | Rejected as redundant: the canonical layout is already Parquet and a sync push copies that tree, so it duplicates an existing path. |
-| A database-file destination | Output another process can query without the engine. | Rejected as redundant on the same ground: it is a second container for bytes the store already holds. |
-| A webhook destination | Push semantics; downstream systems react as rows land. | Rejected on semantics: delivery is at-least-once messaging with its own retry and dedupe rules, an outage becomes a failed run, a retry becomes a double send, and an egress credential moves inside the engine. |
-| A pluggable destination interface with a host arm | Any destination an operator writes. | Rejected on the same semantics, generalized: the engine would carry a delivery contract it cannot state, and a guest could name a destination the runtime never judged. |
+| A Parquet file destination | Direct output in a format other tools read. | Lost on duplicating an existing path: the canonical layout is already Parquet and a sync push copies that tree, so the bytes are reachable without it. |
+| A database-file destination | Output another process can query without the engine. | Lost on duplicating an existing path, in a second container: the store already holds those bytes. |
+| A webhook destination | Push semantics; downstream systems react as rows land. | Lost on delivery semantics the run model cannot honor: delivery is at-least-once messaging with its own retry and dedupe rules, an outage becomes a failed run, a retry becomes a double send, and an egress credential moves inside the engine. |
+| A pluggable destination interface with a host arm | Any destination an operator writes. | Lost on nameability of the destination set, and on the same delivery semantics generalized: the engine would carry a delivery contract it cannot state, and a guest could name a destination the runtime never judged. |
 
 ## Criteria
 

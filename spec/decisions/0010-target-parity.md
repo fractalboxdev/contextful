@@ -65,8 +65,8 @@ approximately, and a profile that overclaims is refused at the named primitive.
 The cost accepted: the release cadence of any parity-shaped feature is the cadence of its
 slowest target, and the alternative — a portable abstraction — is usually more work than
 the direct implementation on either target. The soak makes the signal slow: a regression
-introduced today is reported a day later at the earliest, so parity failures are found well
-after the change that caused them.
+is reported a day later at the earliest, so parity failures are found well after the change
+that caused it.
 
 Reversing this toward per-target expectations is easy to do incrementally and effectively
 irreversible, since every accepted per-target fixture is a divergence the reference no

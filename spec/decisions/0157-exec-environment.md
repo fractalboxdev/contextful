@@ -39,9 +39,9 @@ engine between units.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Cleared environment plus a named allowlist, references resolved at build** *(chosen)* | No ambient process state reaches a spawned binary; a typo is a build-time refusal naming the entry | The operator enumerates every variable the tool reads, including undocumented ones |
-| Inherit the parent environment, subtract a denylist | Tools work out of the box; no enumeration | Every credential the daemon holds reaches every tool it spawns; a denylist cannot name a variable a future dependency introduces |
-| Inherit, but clear only variables matching credential-shaped names | Cheaper than enumeration, catches the obvious cases | Shape matching is a guess; a vendor naming its token `SETTINGS_B` passes it |
-| Resolve credential references lazily at first use | One fewer build step; unused references cost nothing | A typo surfaces at the first scheduled tick, mid-batch, rather than while the operator is watching |
+| Inherit the parent environment, subtract a denylist | Tools work out of the box; no enumeration | Lost on ambient reach: every credential the daemon holds reaches every tool it spawns, and a denylist cannot name a variable a future dependency introduces |
+| Inherit, but clear only variables matching credential-shaped names | Cheaper than enumeration, catches the obvious cases | Lost on ambient reach: shape matching is a guess, and a vendor naming its token `SETTINGS_B` passes it |
+| Resolve credential references lazily at first use | One fewer build step; unused references cost nothing | Lost on discovery latency: a typo surfaces at the first scheduled tick, mid-batch, rather than while the operator is watching |
 
 ## Criteria
 

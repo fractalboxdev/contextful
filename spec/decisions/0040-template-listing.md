@@ -36,7 +36,7 @@ than the listing already did.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Filter the listing by grants; refuse a guessed identifier** *(chosen)* | The listing is exactly the callable surface. A caller cannot learn that another team's template exists, by listing or by probing. | A caller cannot discover a template in order to request access to it, so widening a grant starts outside the read face. |
-| List every template and refuse on call | A caller sees the whole catalog and knows what to ask for. | The listing enumerates identifiers the caller may not run, which is the disclosure the identifiers themselves carry. |
+| List every template and refuse on call | A caller sees the whole catalog and knows what to ask for. | Lost on non-disclosure: the listing enumerates identifiers the caller may not run, which is the disclosure the identifiers themselves carry. |
 | List every template with a per-entry granted flag | The same discoverability, with the caller's own reach made explicit. | Loses on the same criterion for the same reason: the flag changes the presentation of the disclosure, not the disclosure. |
 
 ## Criteria

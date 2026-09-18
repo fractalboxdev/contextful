@@ -41,7 +41,7 @@ the exact-integer range is emitted as a string.
 | **Refuse the promotion on a key, at the write and at the first fold** *(chosen)* | No two distinct keys ever collapse into one partition | A source that legitimately widens a key column is refused rather than degraded, and its author changes the emitted type |
 | Document it as an operator obligation | No code, no refusal, full flexibility | Lost on irreversibility: the trigger is a single out-of-range number in one batch, invisible at the moment it lands, and the resulting row loss is one-way once the fold runs |
 | Cast each column to the reconciled type in the relation | Makes the widening explicit in the read plan | Lost on where the loss lives: the projection reproduces the same rounding, because the loss sits in the lattice rather than in the projection |
-| Force every key to text | Removes the failure mode entirely, for every table | Lost as over-broad: it changes every existing keyed table's physical type and comparison semantics to prevent a case the refusal already catches, and the guidance to emit a large key as a string stays available to any author who wants it |
+| Force every key to text | Removes the failure mode entirely, for every table | Lost on breadth of the remedy: it changes every existing keyed table's physical type and comparison semantics to prevent a case the refusal already catches, and the guidance to emit a large key as a string stays available to any author who wants it |
 
 ## Criteria
 

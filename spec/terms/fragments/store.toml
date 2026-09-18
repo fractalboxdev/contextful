@@ -18,6 +18,8 @@ encrypt    = { gloss = "At-rest encryption of Parquet and its sidecars, key rota
 # ----------------------------------------------------------------------------
 
 [term]
+pii_type = { gloss = "The optional reserved column naming a row's sensitive-data class, set by a producer that stands behind the value.", owner = "store", resolves = "code" }
+metric = { gloss = "The declared numeric column a table's ordering and fold rules read.", owner = "store", resolves = "code" }
 snapshot            = { gloss = "One immutable fold output for a table, published as a directory under `data/snapshots/`.", owner = "store", resolves = "code" }
 run-directory       = { gloss = "The append-only output of one run for one table, at `data/runs/<run-id>/<node-id>/`.", owner = "store", resolves = "concept" }
 part                = { gloss = "One Parquet file inside a run or snapshot directory, named `part-<ordinal>.parquet`.", owner = "store", resolves = "code" }
@@ -48,6 +50,17 @@ genre               = { gloss = "Item or artifact: connector-landed rows against
 "_prompt_hash"      = { gloss = "Reserved optional producer column, `sha256:<hex>` over a prompt template.", owner = "store", resolves = "code" }
 "contextful.bounds" = { gloss = "The envelope block echoing the resolved bounds a read ran under.", owner = "store", resolves = "code" }
 "contextful.index"  = { gloss = "The span namespace an index build emits under.", owner = "store", resolves = "code" }
+
+# Declaration keys of a table block, and the values a key takes.
+"agent_description" = { gloss = "The declaration key carrying a reader-facing description of what a table holds.", owner = "store", resolves = "code" }
+"agent_hint"        = { gloss = "The declaration key carrying reader-facing guidance on how a table is queried.", owner = "store", resolves = "code" }
+"example_queries"   = { gloss = "The declaration key carrying reader-facing example questions a table answers.", owner = "store", resolves = "code" }
+"policy"            = { gloss = "The declaration key naming a table's row- and column-level policy block, which the enforcement layer reads.", owner = "store", resolves = "code" }
+"view"              = { gloss = "The declaration key naming the relation a table is read through.", owner = "store", resolves = "code" }
+"append"            = { gloss = "The write mode a table takes when the key is absent: a run adds rows and no key retires when it stops appearing.", owner = "store", resolves = "code" }
+"replace"           = { gloss = "The write mode under which a landing run carries the source's whole current state and every earlier commit stops being read.", owner = "store", resolves = "code" }
+"text"              = { gloss = "Character content: the reserved modality value for a row whose payload is characters, and the spelling a field or an event carrying such content takes.", owner = "store", resolves = "code" }
+"m"                 = { gloss = "The vector sidecar's HNSW builder parameter fixing the graph degree — the edge budget a node carries.", owner = "store", resolves = "code" }
 
 # --- subjects: lay-out -------------------------------------------------------
 three-components            = { gloss = "Parquet, JSON manifests and the SQLite catalog, two canonical and one derived.", owner = "store", resolves = "concept" }

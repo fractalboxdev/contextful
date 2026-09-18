@@ -1,7 +1,7 @@
 # 0159 — A path-form command carries a content digest and a bare name on the search path does not
 
 **Status:** accepted 2026-09-18
-**Decides:** `derive.exec.refusal.missing-binary`, `derive.exec.refusal.unpinned-path`, `derive.exec.refusal.digest-mismatch`
+**Decides:** `derive.exec.refusal.missing-binary`, `derive.exec.refusal.unpinned-path`, `derive.exec.refusal.pinned-file-mismatch`
 
 ## Context
 
@@ -41,8 +41,8 @@ search path carries no digest requirement.
 | **Pin path-form commands, leave bare names unpinned** *(chosen)* | The agent-editable surface cannot change without a reviewable configuration edit; system tools stay upgradable | A bare-name binary changes underneath the engine with no configuration change |
 | Require a digest on every step | Complete provenance: the engine identifier is a full statement about the bytes that ran | Loses on runnability — every package-manager upgrade refuses every derive pipeline on the machine until someone re-pins, so the tier is unusable by anyone tracking security updates |
 | Require none | Nothing to maintain; bindings are short | Loses on what the operator's own spelling declares: a project script is rewritten in place with nothing in the manifest to show for it, while the engine identifier still claims sameness |
-| Document the convention, do not enforce it | Same guarantee on paper, no refusals | Loses outright — an unenforced pin is documentation, and the one case it exists for is the one where nobody looked |
-| Pin every step but warn rather than refuse on mismatch | Upgrade-tolerant, full coverage | A warning in a scheduled run reaches nobody; the failure mode is identical to not pinning |
+| Document the convention, do not enforce it | Same guarantee on paper, no refusals | Lost on review locality: an unenforced pin is documentation, so a rewritten script reaches what runs without appearing in any change anybody approves |
+| Pin every step but warn rather than refuse on mismatch | Upgrade-tolerant, full coverage | Lost on review locality: a warning in a scheduled run reaches nobody, so a changed binary surfaces in no change anyone reviews and the failure mode is identical to not pinning |
 
 ## Criteria
 

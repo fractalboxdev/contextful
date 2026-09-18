@@ -1,7 +1,7 @@
 # 0321 — An executable reference model differentially tested against the engine's decision functions is the standing link, with refinement scoped to the pure decision functions
 
 **Status:** accepted 2026-09-18
-**Decides:** `formal.scope-claim.refusal.scope-exceeded`, `formal.differential-test.refusal.disagreement`, `formal.differential-test.refusal.discarded-counterexample`
+**Decides:** `formal.scope-claim.refusal.refinement`, `formal.differential-test.refusal.disagreement`, `formal.differential-test.refusal.discarded-counterexample`
 
 ## Context
 

@@ -1,4 +1,6 @@
 # Error identifiers — every `refusal` clause names one.
+#
+# Generated from spec/terms/fragments/.
 
 [error]
 ApplicationVocabularyInEngine = { gloss = "An application's role name, rating schema or category meaning enters engine code.", owner = "topology" }
@@ -44,7 +46,6 @@ ConnectorAuthTerminal = { gloss = "An authentication failure on a report read, t
 ConnectorBindingUnbound = { gloss = "An environment binding the connector reads that the environment did not supply, or supplied in the wrong shape.", owner = "connector" }
 ConnectorBindingUnsupported = { gloss = "An environment binding spelled against a key the connector does not read.", owner = "connector" }
 ConnectorCellOutOfRange = { gloss = "A worksheet cell whose column reference lies past the header's width.", owner = "connector" }
-ConnectorCleartextCredential = { gloss = "A reference-resolved header presented against a cleartext endpoint outside loopback.", owner = "connector" }
 ConnectorClockColumnRejected = { gloss = "A delimited clock column that is neither an RFC 3339 instant nor a fixed-width digit stamp.", owner = "connector" }
 ConnectorConfigRejected = { gloss = "A forwarded guest configuration value of the wrong type, above its size bound, or carrying a reference.", owner = "connector" }
 ConnectorConfigUnclaimed = { gloss = "A guest configuration table declared against a guest exporting no configuration interface.", owner = "connector" }
@@ -100,10 +101,10 @@ ConsoleFileAccessDirect = { gloss = "A table function resolving a path straight 
 ConsoleLearningUnscoped = { gloss = "A distilled conclusion landing without the reading-session scope.", owner = "console" }
 ConsoleMutatingToolRequested = { gloss = "A client-reachable path naming a write on the visitor-facing endpoint.", owner = "console" }
 ConsolePlannerReachedMemory = { gloss = "Planner scaffolding or a deterministic fallback naming a memory relation.", owner = "console" }
-ConsoleSuggestionUnanswerable = { gloss = "A suggested prompt whose answer under the answer-hygiene contract would be a decline.", owner = "console" }
+ConsoleSuggestionUnanswerable = { gloss = "A suggested prompt whose answer under the answer-hygiene contract is a decline.", owner = "console" }
 ConsoleTokenExchangeRefused = { gloss = "A per-reader mint the store's exchange route refused.", owner = "console" }
 ConsoleToolNotAdmitted = { gloss = "A tool call naming something outside the read subset the turn's packs admit.", owner = "console" }
-ConsoleUngroundedAnswer = { gloss = "A path that would compose an answer from the model's own knowledge rather than from a tool result.", owner = "console" }
+ConsoleUngroundedAnswer = { gloss = "A path composing an answer from the model's own knowledge rather than from a tool result.", owner = "console" }
 ConsoleVantageUnparseable = { gloss = "A vantage that is neither a calendar day nor an instant.", owner = "console" }
 ConsoleViewNotServerBuilt = { gloss = "A view specification arriving from a client or composed by the model rather than inferred from a result.", owner = "console" }
 ConsoleWebBoundUnparseable = { gloss = "A public-web leg whose publication bound could not be parsed.", owner = "console" }
@@ -314,7 +315,6 @@ PipelineUnboundTableName = { gloss = "A destination table named in a spelling th
 PipelineUndeclaredControlFlow = { gloss = "A data-dependent conditional or loop in a workflow body.", owner = "pipeline" }
 PipelineUnknownConfigKey = { gloss = "A source config key outside the set that source enumerates.", owner = "pipeline" }
 PipelineUnknownDestination = { gloss = "A destination naming something other than the local store.", owner = "pipeline" }
-PipelineUnorderableClock = { gloss = "A row with no orderable value in the declared clock field.", owner = "pipeline" }
 PipelineUnreadableInput = { gloss = "Input a parser cannot read, refused permanently by name and position.", owner = "pipeline" }
 PossessionProofInvalid = { gloss = "A request's binding signature does not check against the credential's confirmation thumbprint.", owner = "authority" }
 PossessionProofReplayed = { gloss = "A request's binding nonce repeats inside the checkpoint's replay window.", owner = "authority" }
@@ -392,6 +392,7 @@ SpecAppendixHeading = { gloss = "An Open questions, Out of scope or See also hea
 SpecAsciiDiagram = { gloss = "Box-drawing or pipe-and-dash art outside a mermaid fence.", owner = "corpus" }
 SpecBannedNoun = { gloss = "A banned noun in authored text.", owner = "corpus" }
 SpecBrokenPin = { gloss = "A pin that does not resolve, or whose clause names a code term the tree no longer defines.", owner = "corpus" }
+SpecCounterfactualMood = { gloss = "Counterfactual mood in a contract file.", owner = "corpus" }
 SpecCoverageRegression = { gloss = "A live pinned count below its contract's floor.", owner = "corpus" }
 SpecDanglingReference = { gloss = "A transclusion or term link resolving to nothing.", owner = "corpus" }
 SpecDatedProse = { gloss = "A build-state word, a date or a milestone token in authored text.", owner = "corpus" }
@@ -409,8 +410,10 @@ SpecRetiredId = { gloss = "A clause id reused after retirement.", owner = "corpu
 SpecSpellingCollision = { gloss = "A proposed spelling normalizing onto an existing canonical or alias.", owner = "corpus" }
 SpecStaleRender = { gloss = "A regenerated tree differing from the committed one.", owner = "corpus" }
 SpecStrayModal = { gloss = "A normative modal outside a clause cell.", owner = "corpus" }
+SpecUncitedRefusal = { gloss = "A refusal row whose direction is a choice with an empty decided-by cell.", owner = "corpus" }
 SpecUnmeasuredLimit = { gloss = "A limit clause with no numeral, no registered unit, or a numeral spelled as a word.", owner = "corpus" }
 SpecUnnamedRefusal = { gloss = "A refusal clause naming no registered error identifier.", owner = "corpus" }
+SpecUnregisteredTerm = { gloss = "A backticked token in two or more contract files with no registry entry.", owner = "corpus" }
 StatementNotReadOnly = { gloss = "Admitted text did not parse to exactly one read-only SELECT.", owner = "read" }
 StdioCredentialMissing = { gloss = "A process-transport client presented neither a capability token nor an explicit owner flag.", owner = "read" }
 StepFailed = { gloss = "A step closed on a terminal failure, carrying its label and the underlying tag.", owner = "run" }

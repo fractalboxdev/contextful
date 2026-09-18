@@ -87,6 +87,6 @@ to its data.
   the non-zero exits stop being read.
 - A bounded in-invocation retry is measured against real caller timeouts and shown to
   absorb the common outage without exceeding them.
-- One-shot evaluation gains durable memory of a previously armed set — persisted by a
-  daemon on the same machine and readable by the cycle — at which point fail-static has
-  something to be static about and the premise of this decision no longer holds.
+- One-shot evaluation gains durable memory of an armed set — persisted by a daemon on the
+  same machine and readable by the cycle — at which point fail-static has something to be
+  static about and the premise of this decision no longer holds.

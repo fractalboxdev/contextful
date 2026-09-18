@@ -80,8 +80,8 @@ deployment at once, with no record of which ones were relying on it.
 
 ## Revisit triggers
 
-- An object store family gains per-prefix write policy, which would move deployments
-  currently excluded into range.
+- An object store family gains per-prefix write policy, which would move excluded
+  deployments into range.
 - A protection appears that subsumes another — for example, store-enforced per-writer
   attestation covering both prefix and manifest integrity — which would make three the
   wrong count.

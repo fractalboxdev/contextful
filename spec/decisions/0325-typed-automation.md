@@ -71,9 +71,9 @@ test. A red gate reproduces locally by invoking the identical entry point, so th
 difference between the two runs is the environment rather than the logic.
 
 The cost accepted: a second toolchain sits in the build path. A contributor fixing one line
-of gate logic installs it, which is a real barrier for a drive-by change to something that
-used to be a text file. It is build-time only and links into no build profile, so the cost
-is bounded to the contributor's machine and the container image and never reaches a shipped
+of gate logic installs it, which is a real barrier beside a text file that demands no
+toolchain at all. It is build-time only and links into no build profile, so the cost is
+bounded to the contributor's machine and the container image and never reaches a published
 artifact.
 
 Reversing this is cheap per step and expensive in aggregate: any single subcommand can be

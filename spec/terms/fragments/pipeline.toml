@@ -3,7 +3,7 @@
 # asserted by spec/31-pipeline.md.
 
 [operation]
-declare       = { gloss = "The pipeline specification, its two serializations, manifest discovery and merge, the content hash, the table block, and the lifecycle verbs.", file = "spec/31-pipeline.md", aliases = ["author", "specify"] }
+declare       = { gloss = "The pipeline specification, its two serializations, manifest discovery and merge, the content hash, the table entry, and the lifecycle verbs.", file = "spec/31-pipeline.md", aliases = ["author", "specify"] }
 compile       = { gloss = "The build-time lowering of a specification into a content-hashed plan of declared nodes.", file = "spec/31-pipeline.md", aliases = ["lower", "emit-plan"] }
 transform     = { gloss = "The declarative chain that rewrites a pulled batch in place at pipeline level.", file = "spec/31-pipeline.md", aliases = ["rewrite-batch"] }
 normalize     = { gloss = "Nested canonical form, relational shredding at the sink, injected identity columns and recursion depth.", file = "spec/31-pipeline.md", aliases = ["flatten", "shred"] }
@@ -23,7 +23,6 @@ pipeline-id       = { gloss = "The key specifications merge on and destination t
 content-hash      = { gloss = "The sha256 over a specification's canonical JSON, and the input a replay pin keys on.", owner = "pipeline", resolves = "code" }
 table-name        = { gloss = "The derived destination name, pipeline id and table name folded together.", owner = "pipeline", resolves = "code" }
 table-entry       = { gloss = "One element of the tables array, a bare name or an object.", owner = "pipeline", resolves = "code" }
-table-block       = { gloss = "The declared configuration of one table inside a specification.", owner = "pipeline", resolves = "code" }
 primary-key       = { gloss = "The declared column set a fold keeps one row per.", owner = "pipeline", resolves = "code" }
 write-mode        = { gloss = "Whether a landing run adds to a table or supersedes it.", owner = "pipeline", resolves = "code" }
 empty-commit      = { gloss = "A committed run that landed no rows.", owner = "pipeline", resolves = "concept" }
@@ -31,7 +30,9 @@ destination       = { gloss = "The sink a pipeline's rows land in.", owner = "pi
 config-key        = { gloss = "A key inside a source's config object, measured against the set that source enumerates.", owner = "pipeline", resolves = "code" }
 lifecycle-verb    = { gloss = "One of plan, apply, run and serve.", owner = "pipeline", resolves = "code" }
 table-error       = { gloss = "What one table's failure does to the rest of a fire.", owner = "pipeline", resolves = "code" }
+abort             = { gloss = "The table-error setting halting a fire at the first failing table.", owner = "pipeline", resolves = "code" }
 chunked-load      = { gloss = "A load running under a seed or a backfill chunk plan rather than a single live pass.", owner = "pipeline", resolves = "concept" }
+incremental       = { gloss = "The manifest key naming the stream clock a pipeline reads incrementally.", owner = "pipeline", resolves = "code" }
 incremental-field = { gloss = "The pipeline-level declaration naming a stream's clock column.", owner = "pipeline", resolves = "code" }
 validation-warning = { gloss = "A non-blocking diagnostic a manifest check emits per table.", owner = "pipeline", resolves = "concept" }
 
@@ -70,7 +71,7 @@ matcher           = { gloss = "One linear-time credential-shape recognizer in th
 token-tail        = { gloss = "The run of characters a prefixed token carries after its prefix.", owner = "pipeline", resolves = "concept" }
 assignment        = { gloss = "A keyword-equals-value shape the guard recognizes.", owner = "pipeline", resolves = "concept" }
 mask-span         = { gloss = "The matched byte range the replacement covers.", owner = "pipeline", resolves = "code" }
-sentinel          = { gloss = "The fixed replacement text a masked span carries.", owner = "pipeline", resolves = "code" }
+mask-replacement  = { gloss = "The fixed text a masked span carries in place of the matched bytes.", owner = "pipeline", resolves = "code" }
 span-label        = { gloss = "The pattern name a reported span is attributed to.", owner = "pipeline", resolves = "code" }
 span-boundary     = { gloss = "The character boundaries a reported span widens to.", owner = "pipeline", resolves = "concept" }
 mask-only         = { gloss = "The posture under which a match masks and the pull continues.", owner = "pipeline", resolves = "concept" }
@@ -79,7 +80,7 @@ coverage          = { gloss = "The shapes the guard reaches and the encodings it
 
 # land
 batch-write       = { gloss = "One durable write of one record batch inside a run.", owner = "pipeline", resolves = "code" }
-commit            = { gloss = "The step making a run's rows visible for a table.", owner = "pipeline", resolves = "code" }
+commit-order      = { gloss = "The order rows and a stream position become durable in.", owner = "pipeline", resolves = "concept" }
 watermark         = { gloss = "The committed clock position a pull's inclusive bound is measured against.", owner = "pipeline", resolves = "code" }
 frontier          = { gloss = "The furthest clock value a pull observed, landed or not.", owner = "pipeline", resolves = "code" }
 clock-field       = { gloss = "The field name a committed position was measured on.", owner = "pipeline", resolves = "code" }
@@ -88,8 +89,6 @@ unreadable-input  = { gloss = "Input a parser cannot read, treated as data rathe
 partial-parse     = { gloss = "A read that covered part of a multi-part input and stopped.", owner = "pipeline", resolves = "concept" }
 parse-boundary    = { gloss = "The process boundary a decode that can die runs behind.", owner = "pipeline", resolves = "concept" }
 table-failure     = { gloss = "One table's pull failing inside a fire.", owner = "pipeline", resolves = "concept" }
-skip-unchanged    = { gloss = "The snapshot-source option recording an input digest in the cursor.", owner = "pipeline", resolves = "code" }
-digest-scope      = { gloss = "What the unchanged-input digest is taken over.", owner = "pipeline", resolves = "concept" }
 
 # backfill
 phase             = { gloss = "One of planning, seeding, backfilling and streaming, recorded per pipeline.", owner = "pipeline", resolves = "code" }
@@ -116,6 +115,7 @@ fingerprint       = { gloss = "The cheap content probe of a seed source, stamped
 seed-command      = { gloss = "The status and reset verbs over a seeded table.", owner = "pipeline", resolves = "code" }
 parity            = { gloss = "The equality of a seeded-then-live load with a pure live backfill.", owner = "pipeline", resolves = "concept" }
 parity-audit      = { gloss = "The validate pass reading every landed row to check seed ordering.", owner = "pipeline", resolves = "code" }
+validate          = { gloss = "The command verb auditing a manifest and a seeded table's ordering.", owner = "pipeline", resolves = "code" }
 ordering-guarantee = { gloss = "That every seeded stamp sorts strictly below the earliest live one.", owner = "pipeline", resolves = "concept" }
 compaction-cadence = { gloss = "The fold job a seeded table declares.", owner = "pipeline", resolves = "concept" }
 divergence        = { gloss = "The one behavior where a seed differs from a pure live backfill.", owner = "pipeline", resolves = "concept" }
@@ -148,7 +148,6 @@ PipelineTransformArity         = { gloss = "A chain operation emitting more rows
 PipelineTransformColumnMissing = { gloss = "A chain operation naming a column the batch does not carry.", owner = "pipeline" }
 PipelineListIndexMissing       = { gloss = "A relational child table emitted with no list index.", owner = "pipeline" }
 PipelineNormalizeModeUnknown   = { gloss = "A normalize block naming a mode outside the two.", owner = "pipeline" }
-PipelineUnorderableClock       = { gloss = "A row with no orderable value in the declared clock field.", owner = "pipeline" }
 PipelineClockFieldChanged      = { gloss = "An incremental declaration naming a field the committed position was not measured on.", owner = "pipeline" }
 PipelineUnreadableInput        = { gloss = "Input a parser cannot read, refused permanently by name and position.", owner = "pipeline" }
 PipelinePartialParse           = { gloss = "A read covering part of a multi-part input.", owner = "pipeline" }

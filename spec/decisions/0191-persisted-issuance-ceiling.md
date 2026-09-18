@@ -40,7 +40,7 @@ enforces one number and a change to it is a reviewable diff.
 | A per-mint flag with no persisted ceiling | Maximum flexibility at the moment of minting. | Loses on uniformity: the number becomes whatever each operator typed, differs per host and per path, and no clone can be audited for what it permits. |
 | An environment variable or process flag | Easy to set per deployment; no file to manage. | Loses on uniformity the same way, and on auditability: the value is invisible in the tree, so review sees nothing and a clone carries no evidence of what it enforced. |
 | A compiled-in constant | Impossible to get wrong per deployment. | Loses on operability: deployments legitimately differ below the hard ceiling, lowering has to be recordable with the instant it happened, and a constant supports neither. |
-| A policy service consulted at mint time | Central control; instant fleet-wide change. | Loses on the offline property: minting and verification carry no network dependency today, and adding one puts an availability requirement on the one path that must keep working. |
+| A policy service consulted at mint time | Central control; instant fleet-wide change. | Loses on the offline property: minting and verification carry no network dependency, and adding one puts an availability requirement on the one path that must keep working. |
 
 ## Criteria
 

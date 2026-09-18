@@ -11,7 +11,7 @@ like any other text in the store and can be returned as a passage with a citatio
 diagnostic strings; they are content, and a reader encountering one has no way to tell how it was
 decoded.
 
-That makes lossy decoding a content defect rather than a display defect. A document in a legacy
+That makes lossy decoding a content defect rather than a display defect. A document in a non-UTF-8
 encoding, read as UTF-8 with invalid sequences replaced, produces a title containing replacement
 characters. Nothing downstream marks it as a decoding artifact. It lands in a title column, is
 indexed, is retrieved, and reads as a fact about the publication — as though the publisher titled
@@ -43,8 +43,8 @@ refusals land the unit failed and settled.
 | --- | --- | --- |
 | **Refuse a declared non-UTF-8 set and refuse undeclared bytes that fail validation** *(chosen)* | No wrong value lands in a column a reader trusts; the marker names the declared set | Non-UTF-8 publications are unreadable by this task |
 | Decode lossily, substituting replacement characters | Every document produces a row; no coverage gap | Loses on exactly the deciding criterion: replacement characters in a title column read as a fact about the publication, and nothing distinguishes them from a publisher's own text |
-| Trust the declared character set alone and skip byte validation | One check, no scanning cost, honours the publisher's statement | Loses on coverage: declaring is opt-in, and a publisher declaring a legacy set after several hundred bytes of ASCII passes a header check |
-| Transcode from the declared set into UTF-8 | Full coverage of the declared population, correct text | Loses on effort and on trust: a transcoding table per legacy set, and a mis-declared document transcodes into confident nonsense rather than a refusal |
+| Trust the declared character set alone and skip byte validation | One check, no scanning cost, honours the publisher's statement | Loses on coverage: declaring is opt-in, and a publisher declaring a non-UTF-8 set after several hundred bytes of ASCII passes a header check |
+| Transcode from the declared set into UTF-8 | Full coverage of the declared population, correct text | Loses on effort and on trust: a transcoding table per non-UTF-8 set, and a mis-declared document transcodes into confident nonsense rather than a refusal |
 | Detect the encoding statistically and transcode | Covers the undeclared population too | Loses on the deciding criterion again: a detector's confidence is not a guarantee, and its wrong answers are silent and land as content |
 
 ## Criteria

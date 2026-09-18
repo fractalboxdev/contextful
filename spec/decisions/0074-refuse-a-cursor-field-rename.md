@@ -39,7 +39,7 @@ the first fire after the edit.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Refuse at open, before the request** *(chosen)* | The mistake is bounded to a pipeline that did not run. The operator learns the position and the declaration disagree, naming both. | A legitimate rename needs an explicit second action, and the refusal reads as pedantry until the reason is stated. |
-| Store the value without its field name | Nothing to compare, nothing to refuse, one less serialized field. | Loses outright. A rename then compares new values against the old field's high-water mark, silently, with no artifact anywhere recording that the two came from different columns. |
+| Store the value without its field name | Nothing to compare, nothing to refuse, one less serialized field. | Loses on the size of the mistake and on detectability: a rename then compares new values against the old field's high-water mark, silently, with no artifact anywhere recording that the two came from different columns. |
 | Compare anyway and warn | The pipeline keeps running and the operator has a log line. | Loses on the size of the mistake. The skip is unbounded and permanent; a warning is read after the frontier has already moved past the rows nobody will fetch again. |
 | Silently reset the position on mismatch | Correctness is preserved without operator action — the stream re-reads from nothing. | Loses on cost. A full re-read of a large stream is initiated by an edit that did not ask for one, and the operator learns about it from the bill or the wall clock. |
 

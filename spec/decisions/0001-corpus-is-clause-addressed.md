@@ -71,7 +71,7 @@ The cost accepted: a sentence is not cheap. It costs an address, usually a regis
 and for a refusal a decision record, so a small clarification is not a small change, and an
 author with a five-word correction pays a multi-file price for it. A mechanism spanning
 several contracts has no single place that narrates it — the reader assembles it from rows
-by following ids, and that assembly is work the prose used to do.
+by following ids, and that assembly is work no single prose section does.
 
 Reversing this is expensive in proportion to the corpus: every id is referenced from pins,
 the roadmap, the records and the generated tree, so unwinding the addressing means

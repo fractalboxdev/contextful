@@ -53,7 +53,7 @@ exclusion lives in the view, since the outcomes table is writable by any pipelin
 Criterion 1 decided it, and it eliminates the write-path precondition outright rather than
 on balance: a rule that covers one of several doors is not a weaker version of the rule, it
 is a rule that does not hold. Criterion 3 then rejects the per-reader filter among the
-options that do cover every writer, because a filter re-implemented per consumer fails
+options that do cover every writer, because a filter rewritten per consumer fails
 quietly the first time a new consumer omits it. Criterion 4 loses, and the cost is stated
 below.
 
@@ -80,6 +80,6 @@ whatever population was scored in between cannot be re-verified from the rows al
 - Self-rated rows growing to a share of `outcomes` where their storage or their presence in
   audit queries becomes the complaint rather than the point.
 - A write path onto `outcomes` narrow enough that a precondition covers every writer, which
-  is the condition criterion 1 rests on being false today.
+  is the condition criterion 1 rests on being false.
 - A scorer reading the base table directly appearing in a deployment, which means the view
   is no longer the single point every figure passes through.

@@ -71,8 +71,8 @@ operator can also bind `none` against a real pipeline to rehearse the scan with 
 stake.
 
 What is now expensive to reverse: both vocabularies are closed sets that manifests are written
-against, so a value refused today cannot start being accepted without a version of the
-configuration that distinguishes the two eras.
+against, so a refused value cannot start being accepted without a configuration version that
+separates the two readings.
 
 ## Revisit triggers
 

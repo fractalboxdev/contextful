@@ -52,7 +52,7 @@ and both file tools answer under the reader's grants like any other call.
    per-column rewrites that carry the guarantee.
 2. **Single enforcement path across every surface** — whether one implementation decides what
    a caller sees, or several that can drift.
-3. **Read cost for a large file** — a planned query against a byte range. This points the
+3. **Read cost for a large file** — a query through the planner against a byte range. This points the
    other way.
 4. **Implementation cost of rebuilding both features as tools** — real, one-time, and the
    weakest of the four.
@@ -66,8 +66,8 @@ record every other call carries, with no special case. The console's claim to ho
 privileged path under the tables becomes true without exception, which is what makes it
 safe to expose the surface to a reader whose grants are narrow.
 
-The cost accepted: previewing a large committed file costs a planned query rather than a
-byte range, so the feature is slower and scales with the file rather than with the page.
+The cost accepted: previewing a large committed file costs a query through the planner
+rather than a byte range, so the feature is slower and scales with the file rather than with the page.
 A file that no longer maps to a table — one written by a run whose table was dropped — cannot
 be previewed at all, which is a real gap in a forensic use of the gallery, and the surface
 shows it as a file with no preview rather than inventing a path to its bytes.

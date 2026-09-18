@@ -2,6 +2,9 @@
 # Exactly one file per contract claims each operation, and a contract spans several
 # files, so the key decides the file without forcing a synonym on a second contract
 # that needs the same verb.
+#
+# Generated from spec/terms/fragments/ — edit a fragment, then run
+# `python3 tools/spec/merge-registry.py`.
 
 [operation]
 "accountability.attest" = { gloss = "Turning the record into evidence: chain verification, signed segment roots, lineage and access explanations, and the strength each guarantee carries.", file = "spec/44-accountability.md", owner = "accountability", aliases = ["verify-the-chain", "explain"] }
@@ -33,7 +36,7 @@
 "connector.source" = { gloss = "The declared behavior of each source compiled into the engine.", file = "spec/32-connector.md", owner = "connector", aliases = ["pull", "ingest"] }
 "console.brief" = { gloss = "The proactive card: its derivation, its payload, its matching tiers, the client-side clock, and the absence it earns.", file = "spec/51-console.md", owner = "console", aliases = ["catch-up", "greeting"] }
 "console.browse" = { gloss = "What a store advertises before a question is asked: discovered chips, humanized labels, soft discovery, the file gallery, and the insights panel.", file = "spec/51-console.md", owner = "console", aliases = ["chips", "discover"] }
-"console.ground" = { gloss = "Where an answer's material comes from: the closed tool set, the two trust layers, the per-reader credential, the web supplement, and the sources block.", file = "spec/51-console.md", owner = "console", aliases = ["grounding", "cite"] }
+"console.ground" = { gloss = "Where an answer's material comes from: the closed tool set, the two trust layers, the per-reader credential, the web supplement, and the sources block.", file = "spec/51-console.md", owner = "console", aliases = ["cite"] }
 "console.learn" = { gloss = "The reading loop's memory: recall ahead of planning, the per-turn distillation, an anchored conclusion at a vantage, and the commit a write runs.", file = "spec/51-console.md", owner = "console", aliases = ["learning", "console-memory"] }
 "console.plan-turn" = { gloss = "The shape of one turn: planner scaffolding, the replanning round, the answerability test, the code path under a failed search, and the store's prompt overlay.", file = "spec/51-console.md", owner = "console", aliases = ["turn-loop", "replan"] }
 "console.render" = { gloss = "The render contract: three channels, the component union, deterministic component choice, view hints, and the sanitizer walk.", file = "spec/51-console.md", owner = "console", aliases = ["widget", "view-spec"] }
@@ -67,7 +70,7 @@
 "disclosure.release" = { gloss = "The ordered derivation pipeline, the write-time disclosure policy, per-unit budgets, and segment activation.", file = "spec/43-disclosure.md", owner = "disclosure", aliases = ["derive-aggregate", "publish-aggregate"] }
 "disclosure.set-mode" = { gloss = "The two deployment settings a derived result is computed in, their preconditions, the offline diagnostic, and the cross-owner hashed join.", file = "spec/43-disclosure.md", owner = "disclosure", aliases = ["deployment-setting", "mode-select"] }
 "disclosure.suppress" = { gloss = "The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves behind.", file = "spec/43-disclosure.md", owner = "disclosure", aliases = ["withhold-group", "sentinel-collapse"] }
-"disclosure.template" = { gloss = "Typed strictly-bound relations, the allowlist authorizing them, their tool projection, and the row ceiling.", file = "spec/43-disclosure.md", owner = "disclosure", aliases = ["whitelisted-query", "bound-relation"] }
+"disclosure.template" = { gloss = "Typed strictly-bound relations, their validation, their tool projection, and the truncation flag a capped read carries.", file = "spec/43-disclosure.md", owner = "disclosure", aliases = ["whitelisted-query", "bound-relation"] }
 "enforcement.bound-redistribution" = { gloss = "The per-table licence bound applied at push, the root-object allowlist, and the per-credential filter a serving edge applies.", file = "spec/41-enforcement.md", owner = "enforcement", aliases = ["replication-bound", "withhold"] }
 "enforcement.compose" = { gloss = "The three layers as one reference monitor, the order a registered relation applies, and where the single pass sits in a ranked read.", file = "spec/41-enforcement.md", owner = "enforcement", aliases = ["layer-composition", "stack"] }
 "enforcement.filter-rows" = { gloss = "The typed row-predicate grammar, subject binding, the tenant equality and the project default.", file = "spec/41-enforcement.md", owner = "enforcement", aliases = ["row-level-security", "rls"] }
@@ -92,7 +95,7 @@
 "memory.synthesize" = { gloss = "Extract, Resolve and Consolidate over landed rows; the deduplication key, evidence support, the synthesis audit record, and coverage gaps.", file = "spec/21-memory.md", owner = "memory", aliases = ["distil", "distill"] }
 "pipeline.backfill" = { gloss = "Phases, chunk plans, chunk leases and attempts, and the rewind window over historical range.", file = "spec/31-pipeline.md", owner = "pipeline", aliases = ["catch-up", "chunk-load"] }
 "pipeline.compile" = { gloss = "The build-time lowering of a specification into a content-hashed plan of declared nodes.", file = "spec/31-pipeline.md", owner = "pipeline", aliases = ["lower", "emit-plan"] }
-"pipeline.declare" = { gloss = "The pipeline specification, its two serializations, manifest discovery and merge, the content hash, the table block, and the lifecycle verbs.", file = "spec/31-pipeline.md", owner = "pipeline", aliases = ["author", "specify"] }
+"pipeline.declare" = { gloss = "The pipeline specification, its two serializations, manifest discovery and merge, the content hash, the table entry, and the lifecycle verbs.", file = "spec/31-pipeline.md", owner = "pipeline", aliases = ["author", "specify"] }
 "pipeline.guard-secrets" = { gloss = "The write-time mask over credential-shaped byte spans in a pulled batch.", file = "spec/31-pipeline.md", owner = "pipeline", aliases = ["mask-secrets", "scrub"] }
 "pipeline.land" = { gloss = "Batch write, run commit, stream-position advance, the ingest tally, and containment of input a parser cannot read.", file = "spec/31-pipeline.md", owner = "pipeline", aliases = ["ingest", "write-batch"] }
 "pipeline.normalize" = { gloss = "Nested canonical form, relational shredding at the sink, injected identity columns and recursion depth.", file = "spec/31-pipeline.md", owner = "pipeline", aliases = ["flatten", "shred"] }

@@ -45,7 +45,7 @@ mapping.
 | --- | --- | --- |
 | **Store every method; authorize on the two provider-verified ones** *(chosen)* | The link cannot be selected by the person it maps, and staging and explanation keep their rows | A deployment with no identity provider authorizes by link not at all, so it reads nothing from a source through links |
 | Do not store operator-asserted links at all | One kind of row, no method to check, nothing to misread | Lost on staging and explanation: an operator building a mapping ahead of provisioning has nowhere to put it, and an attribution trace loses the only record of why a row was attributed |
-| Authorize operator-asserted links above a confidence threshold | An operator can unblock a reader today without waiting for provisioning | Lost on the threat: confidence measures agreement between two strings, and the string the match runs against is editable by its own holder, so a high score is an attacker's high score |
+| Authorize operator-asserted links above a confidence threshold | An operator can unblock a reader without waiting for provisioning | Lost on the threat: confidence measures agreement between two strings, and the string the match runs against is editable by its own holder, so a high score is an attacker's high score |
 | Authorize them only for read, never for write | Halves the exposure while keeping the convenience | Lost on where the exposure is: reading another principal's rows is the disclosure the link exists to prevent, so the half retained is the half that matters |
 | Authorize them where an operator countersigns each row | Keeps a human decision in the path with an audit trail | Lost on effort for what it buys: the countersignature attests the operator's belief, which is the fact already in question |
 

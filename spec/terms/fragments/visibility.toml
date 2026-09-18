@@ -31,7 +31,7 @@ watermark_at          = { gloss = "The enforced coverage instant: the completion
 _acl_observed_at      = { gloss = "The instant a permission state was read at its source, held separately from the instant the row landed.", owner = "visibility", resolves = "code" }
 _acl_sweep_kind       = { gloss = "The kind of run that wrote an access row: full, incremental or webhook.", owner = "visibility", resolves = "code" }
 _acl_sweep_id         = { gloss = "The identifier of the run that wrote an access row.", owner = "visibility", resolves = "code" }
-observation           = { gloss = "One dated reading of a source's permission state, carried on an access row by its clock, kind and run identifier.", owner = "visibility", resolves = "concept" }
+acl-observation       = { gloss = "One dated reading of a source's permission state, carried on an access row by its clock, kind and run identifier.", owner = "visibility", resolves = "concept" }
 
 # The binding
 visibility-block      = { gloss = "The `[pipeline.tables.visibility]` declaration binding one content table to a source, a resource key, a grain, a fidelity level, a family, a budget and a stale posture.", owner = "visibility", resolves = "code" }
@@ -46,7 +46,6 @@ max_group_depth       = { gloss = "The declared bound on the recursive walk over
 group-closure         = { gloss = "The set of groups a subject's principals belong to, transitively, within the depth bound.", owner = "visibility", resolves = "concept" }
 source-epoch          = { gloss = "The cache-key component covering committed grants, resources, tombstones and freshness for one source.", owner = "visibility", resolves = "code" }
 directory-epoch       = { gloss = "The cache-key component covering the committed group graph and identity links.", owner = "visibility", resolves = "code" }
-link-method           = { gloss = "How an identity link was established: scim_email, oidc_sub or operator_asserted.", owner = "visibility", resolves = "code" }
 
 # Staleness
 max_acl_staleness     = { gloss = "The declared age budget on mirrored authorization for one table.", owner = "visibility", resolves = "code" }
@@ -68,7 +67,7 @@ container-allowlist   = { gloss = "The default-deny, all-of list of container id
 # Explain and publication
 access-explanation    = { gloss = "The decision plus the path that produced it, returned without a row from the resource under examination.", owner = "visibility", resolves = "concept" }
 window-verdict        = { gloss = "The replayed result over a window, printed beneath the coverage block that qualifies it.", owner = "visibility", resolves = "concept" }
-negative-assurance    = { gloss = "A claim that a subject did not reach a resource, scoped to the observations on record and their intervals.", owner = "visibility", resolves = "concept" }
+unobserved-window     = { gloss = "A replay window holding no observation of the resource under examination, over which no verdict is available.", owner = "visibility", resolves = "concept" }
 audience-report       = { gloss = "The aggregate over the mirror naming resources that reach more than a declared share of the organization.", owner = "visibility", resolves = "concept" }
 provenance-line       = { gloss = "The line a published answer carries, stating it was drawn from the sharer's own access.", owner = "visibility", resolves = "concept" }
 publication           = { gloss = "The asker's deliberate act of posting an answer where other people read it.", owner = "visibility", resolves = "concept" }

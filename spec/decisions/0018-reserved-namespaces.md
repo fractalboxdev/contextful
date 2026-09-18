@@ -66,11 +66,11 @@ The injected provenance set is trustworthy by construction: a column inside the 
 prefix was written by the engine, and a reader needs no per-table knowledge to rely on
 that. A manifest that assembles is a manifest whose table names are the ones on disk.
 
-The cost accepted is migration friction and a growing compatibility surface. An application
+The cost accepted is renaming friction and a growing compatibility surface. An application
 arriving with a schema that already uses a reserved name renames its own table or column
 before it can land a row, and each future engine table or injected column narrows the space
-of legal application names — so a name that is legal today can be refused by a later engine
-version, on a store that already writes.
+of legal application names — so a name one engine version accepts is refused by a later
+one, on a store that already writes.
 
 Adding to the reserved set is therefore a breaking change to declaration, not an additive
 one. The reserved optional column set is the release valve, and expanding it is the cheaper

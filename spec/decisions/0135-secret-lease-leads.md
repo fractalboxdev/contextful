@@ -75,7 +75,7 @@ declared order without noticing what it was for. Both directions need pinning â€
 lease provider leads for a declared name, and that it issues nothing for an undeclared one â€”
 because each half is what makes the other safe to have.
 
-A second cost lands on the operator: a scope typo stops a run that would previously have
+A second cost lands on the operator: a scope typo stops a run that would otherwise have
 worked. That is the intended trade and it is not free; it converts a silent downgrade into
 an outage.
 

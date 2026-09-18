@@ -40,9 +40,9 @@ file handles, and records each read.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Replicate-off by default; read through the proxying face** *(chosen)* | A mistake in configuration withholds data rather than distributing it. The sensitive columns exist on exactly the machines an operator named. | A consumer needing those columns takes a network round trip per read, and an offline machine cannot answer over them at all. |
-| Replicate and filter at the consumer | The consumer answers offline, at full local speed. | The bytes reached the machine before the filter ran, so the filter constrains a query and not the disclosure. |
-| Replicate with the columns masked at the consumer | Masking is uniform with the canonical store's behavior. | The mask is applied by the copy that already holds the unmasked values, which is the same defect wearing the vocabulary of enforcement. |
-| A per-consumer allowlist maintained centrally | One place states who gets what, auditable in one read. | An entry omitted by mistake is fail-open: the table replicates and nobody learns it did. |
+| Replicate and filter at the consumer | The consumer answers offline, at full local speed. | Lost on failure direction of a configuration mistake: the bytes reached the machine before the filter ran, so the filter constrains a query and not the disclosure. |
+| Replicate with the columns masked at the consumer | Masking is uniform with the canonical store's behavior. | Lost on failure direction of a configuration mistake: the mask is applied by the copy that already holds the unmasked values, which is the same defect wearing the vocabulary of enforcement. |
+| A per-consumer allowlist maintained centrally | One place states who gets what, auditable in one read. | Lost on failure direction of a configuration mistake: an entry omitted by mistake is fail-open — the table replicates and nobody learns it did. |
 
 ## Criteria
 
@@ -72,7 +72,7 @@ different per-read costs in one query surface, and an air-gapped consumer is sim
 scope for those columns.
 
 Reversing this is cheap in one direction and expensive in the other: turning replication on
-for a table is one setting, and turning it back off does not recall what already shipped.
+for a table is one setting, and turning it back off does not recall the copies already distributed.
 
 ## Revisit triggers
 

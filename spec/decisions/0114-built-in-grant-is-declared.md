@@ -83,5 +83,5 @@ a vendor while claiming not to — defeats the check, and nothing here detects i
   the property the refusal keys on is not self-enforcing.
 - The number of compiled-in vendor-reaching sources grows to where the per-pipeline
   declaration is a recurring operator error rather than a one-line paste.
-- The mediation point widens to cover a path a native source currently uses directly, which
+- The mediation point widens to cover a path a native source reaches directly, which
   would shrink the set of grants that are unhonorable.

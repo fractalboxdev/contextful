@@ -1,7 +1,7 @@
 # 0139 — A source binding a credential names one non-wildcard host, and an unpermitted guest request fails loudly
 
 **Status:** accepted 2026-09-18
-**Decides:** `secret.attach.refusal.unpermitted-request`, `secret.attach.refusal.wildcard-host`
+**Decides:** `secret.attach.refusal.unpermitted-request`, `secret.attach.refusal.bound-host`
 
 ## Context
 
@@ -72,7 +72,8 @@ declarations, each with its own record entry, and adding a region is an edit rat
 no-op. A connector author who expected one source to cover a vendor meets this at declaration
 time.
 
-A second cost falls on guest code: a call that previously degraded now fails the run. A guest
+A second cost falls on guest code: a call to a destination the declaration does not cover fails the run rather than
+degrading. A guest
 written to tolerate a partial vendor no longer can, when the partiality comes from the
 declaration.
 

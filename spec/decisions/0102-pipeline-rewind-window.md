@@ -19,7 +19,7 @@ cover, or covers with chunks that are already pending.
 
 Rewinds are also driven from cron. A scripted rewind over a rolling range — the last
 three days, the current partition — legitimately matches nothing on most runs, because
-the range has already been rewound or the chunks in it were never planned. If that
+the range has already been rewound or the plan lays down no chunk over it. If that
 exited non-zero, every such driver would treat its normal state as a failure and the
 operator would learn to ignore the signal.
 

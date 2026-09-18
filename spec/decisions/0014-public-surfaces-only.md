@@ -12,7 +12,7 @@ organization identity, who sees what across a team, an editing interface, anythi
 metered.
 
 Two shortcuts present themselves once both halves exist in one repository. The first is a
-private route: the commercial layer needs a capability the public surfaces do not yet
+private route: the commercial layer needs a capability the public surfaces do not
 express, and an internal endpoint or an undocumented header delivers it in an afternoon.
 The second is a license check on a capability the engine already has, which converts an
 existing data-plane feature into revenue with a one-line predicate.

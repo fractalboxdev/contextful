@@ -58,7 +58,7 @@ build and stops at the operator plane, whose vocabulary belongs to an operator.
 | `console.speak.invariant.temporal-humanizer` | Engine debug spellings of an instant are rewritten into readable prose over the grounding channel before the model reads it, and again over the streamed answer. | |
 | `console.speak.invariant.backstops-are-silent` | A backstop corrects in place and emits no notice, so a corrected span reads as ordinary prose rather than as a visible removal. | |
 | `console.speak.invariant.error-copy` | An unreachable store, a refused read and an empty result render as sentences a reader can act on, carrying no status code, no identifier and no vendor name. | |
-| `console.speak.refusal.unanswerable-suggestion` | A suggested prompt whose answer under these rules would be a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built, rather than offering a question the analyst turns away. | `0306` |
+| `console.speak.refusal.unanswerable-suggestion` | A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built, rather than offering a question the analyst turns away. | `0306` |
 | `console.speak.invariant.no-discovery-metadata` | A surface behind an identity perimeter is unreachable by a crawler, human or agent, and publishes no machine-readable index, no sitemap and no crawler policy. Per-page titles and descriptions stay accurate for a reader's own browser tabs, and carry nothing further. | |
 
 ## Clauses — ground
@@ -78,7 +78,7 @@ carries what comes back.
 | Clause | Statement | decided-by |
 | --- | --- | --- |
 | `console.ground.invariant.tool-results-only` | Every sentence of an answer is built from what a tool call returned. The model's own knowledge grounds nothing, and each round-trip renders as a step a reader can open. | |
-| `console.ground.refusal.ungrounded-answer` | A turn holding no tool result answers that the store carries nothing on the question, and any path that would compose prose from the model alone raises `ConsoleUngroundedAnswer`. | `0307` |
+| `console.ground.refusal.ungrounded-answer` | A turn holding no tool result answers that the store carries nothing on the question, and any path composing prose from the model alone raises `ConsoleUngroundedAnswer`. | `0307` |
 | `console.ground.invariant.server-authored-calls` | A tool name and its arguments are chosen on the server from the turn's admitted set, and neither is read out of the request body. | |
 | `console.ground.refusal.unadmitted-tool` | A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing. | `0308` |
 | `console.ground.refusal.mutating-tool` | The visitor-facing endpoint admits a read subset. A client-reachable path naming a write raises `ConsoleMutatingToolRequested`; the single write a turn performs is authored on the server. | `0308` |
@@ -177,7 +177,7 @@ store rather than written into the product.
 | `console.browse.invariant.advertising-tracks-service` | A table a store stops serving loses its chip at the next load, so what a store cannot answer it stops advertising. | |
 | `console.browse.invariant.published-routes-stay-authored` | A store's published output route is absent from its catalogue, so what those routes offer is authored rather than discovered. | |
 | `console.browse.workflow.insights-panel` | Selecting a store loads its published output routes straight away: rows render by their own column kinds like any other result, and a document renders as markdown, so a reader sees what is interesting ahead of asking anything. | |
-| `console.browse.invariant.insights-names-no-columns` | The payload passes through unparsed and the panel names no column of it. A fixed projection would draw one store's vocabulary over every store's output. | |
+| `console.browse.invariant.insights-names-no-columns` | The payload passes through unparsed and the panel names no column of it. A fixed projection draws one store's vocabulary over every store's output. | |
 | `console.browse.interface.file-gallery` | Two tools carry the data-file view: one lists committed files with the run that wrote each and its size, one previews a single file's rows. Both answer under the reader's grants. | |
 
 ## Clauses — learn
@@ -192,7 +192,7 @@ surface hands over a conclusion and reads back what recall serves.
 | Clause | Statement | decided-by |
 | --- | --- | --- |
 | `console.learn.workflow.recall-before-planning` | A turn opens by recalling the store's standing conclusions at the session's vantage, ahead of the planner, so what the workspace already believes shapes the plan the turn produces. | |
-| `console.learn.interface.recall-bounds` | The recall a turn issues carries the session's vantage and no second time argument; the pair of clocks that bound what comes back is {{memory.recall.invariant.two-clocks}} | |
+| `console.learn.interface.recall-bounds` | The recall a turn issues carries the session's vantage and no second time argument; the pair of clocks that bound what comes back is {{memory.recall.invariant.recall-clocks}} | |
 | `console.learn.interface.recalled-block` | Recalled conclusions enter the system text and the synthesis grounding as their own labelled block, and both legs of the loop render as steps a reader can open. | |
 | `console.learn.invariant.recall-is-the-only-door` | A conclusion reaches an answer through the recall step. No free-text path over the conclusion mirror exists on this surface. | |
 | `console.learn.workflow.distillation-pass` | Once the answer has streamed, a second pass distils the exchange into durable, plain-business-language conclusions shaped `{subject, key, learning}`, each carrying the asking question as its evidence. | |

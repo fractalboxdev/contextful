@@ -59,7 +59,7 @@ with application nodes as an overlay.
 ## Criteria
 
 1. **Inheritance** — what a second application receives that it did not choose. *(the one
-   that decided it)* A default is a decision made on behalf of a party not yet in the room,
+   that decided it)* A default is a decision made on behalf of a party absent from the room,
    and its failure mode is a wrong answer rather than an error, so no later party can
    detect it. Every other criterion here trades effort now against effort later;
    inheritance trades a known cost now against an undetectable wrong answer later, which

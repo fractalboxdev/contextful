@@ -41,7 +41,7 @@ failure and cancellation hold it.
 | --- | --- | --- |
 | **Pin while an execution owner is pending** *(chosen)* | The refusal covers exactly the window where recorded work could be replayed into a build that did not produce it, and a healthy pipeline rebuilds freely. | Position publication and owner retirement have to share one catalog transaction, and an operator whose pending work pins a build they no longer hold restores it and resumes, or rewinds explicitly. |
 | Pin on the health of the previous run | One field to read, and no transaction coupling between publishing and retiring. | Loses on rebuildability. A finished fire leaves nothing to replay, so pinning past it refuses every connector rebuild on a pipeline with nothing at risk — a permanent refusal for a state that is safe. |
-| Adopt the new build silently on resume | Rebuilds always work and nothing ever refuses. | Loses outright. Recorded output is replayed into code that never produced it, the run reports success, and the divergence is present only in the data. |
+| Adopt the new build silently on resume | Rebuilds always work and nothing ever refuses. | Loses on what the refusal protects: recorded output is replayed into code that never produced it, the run reports success, and the divergence is present only in the data. |
 | Discard recorded work when the build changes | Correctness without a refusal: the run simply starts over on the new build. | Loses on cost and on effects. Recorded work includes vendor calls already made and batches already pulled; discarding it re-enters effects the ledger already settled. |
 
 ## Criteria

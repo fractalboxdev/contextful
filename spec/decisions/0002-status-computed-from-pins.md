@@ -5,8 +5,8 @@
 
 ## Context
 
-A corpus written before the code says two different things at once: what the system does
-today, and what the design commits the system to doing. A reader who cannot tell which is
+A corpus written before the code says two different things at once: what the tree
+demonstrates, and what the design commits the system to doing. A reader who cannot tell which is
 which reads a plan as a description, and an author who marks the difference by hand marks
 it correctly on the day of writing and never again. The frequent event in a live tree is a
 rename — an error variant changes spelling, a command verb moves, a schema key is

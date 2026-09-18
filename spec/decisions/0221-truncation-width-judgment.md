@@ -74,7 +74,7 @@ operator's, and the size of the resulting exposure is unmeasured — it depends 
 the system never sees.
 
 Reversing this in the direction of a fixed threshold is cheap to implement and expensive to
-live with: every manifest currently passing would be re-judged against a domain size nobody
+live with: every manifest the validator admits would be re-judged against a domain size nobody
 declared.
 
 ## Revisit triggers

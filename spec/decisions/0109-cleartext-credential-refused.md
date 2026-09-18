@@ -26,7 +26,7 @@ the IPv4 one refuses half the fixture servers a modern toolchain starts.
 ## Decision
 
 A header whose value resolves through the reference scheme is marked sensitive. A request
-carrying a sensitive header to a cleartext endpoint raises `ConnectorCleartextCredential`
+carrying a sensitive header to a cleartext endpoint raises `SecretCleartextEndpoint`
 ahead of socket I/O, so the material does not reach the wire. Loopback is exempt in both
 its IPv4 and its IPv6 spelling. Every sensitive header that did travel is recorded in the
 run's list of headers that carried material, so what was attached to which request is

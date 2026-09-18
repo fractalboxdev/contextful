@@ -42,10 +42,10 @@ child is spawned leading its own process group and the deadline signal reaches t
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Three bounds tested during the run, plus a promised-file check, plus group kill** *(chosen)* | Every failure mode reaches a bound that its own shape cannot evade; a wrong-media derivation is impossible | A long but legitimate chain dies at the deadline; a verbose tool's useful output is truncated |
-| Test the output bound after the child exits | One comparison, no per-read accounting | Unreachable by the failure it targets: a tool logging in a loop never exits, so the bound never runs |
-| Buffer all output and truncate at the end | Complete error text when the step is short | The bound stops bounding the machine — memory grows with the tool's chattiness, and the daemon is the thing that dies |
+| Test the output bound after the child exits | One comparison, no per-read accounting | Lost on reachability: a tool logging in a loop never exits, so the bound never runs |
+| Buffer all output and truncate at the end | Complete error text when the step is short | Lost on containment: the bound stops bounding the machine — memory grows with the tool's chattiness, and the daemon is the thing that dies |
 | Continue past a step that wrote no output | Tolerates a tool that writes in place under another name | Loses on correctness: the next step receives the previous file and derives from the wrong media, landing plausible passages about the wrong recording |
-| Kill the child alone, not its process group | Simpler signal handling; no group setup at spawn | A surviving descendant keeps the resolved environment, holds the scratch directory open past removal, and spends the machine on a unit already recorded failed |
+| Kill the child alone, not its process group | Simpler signal handling; no group setup at spawn | Lost on containment: a surviving descendant keeps the resolved environment, holds the scratch directory open past removal, and spends the machine on a unit already recorded failed |
 
 ## Criteria
 

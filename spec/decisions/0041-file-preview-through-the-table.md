@@ -16,7 +16,7 @@ statement, a template body or a ranking arm resolves to that caller's registered
 inherits all of it. Nothing about a filesystem path participates in that composition — a
 path names a set of parts, and parts carry every row and every column the run wrote.
 
-So a preview implemented as a file read has no access to the restriction that governs the
+So a preview that reads the file directly has no access to the restriction that governs the
 same rows read as a table. It would return masked columns unmasked and predicate-excluded
 rows in full, for a caller whose query on that table returns neither.
 
@@ -37,8 +37,8 @@ file resolve to no table and raise `FilePreviewNotATable`.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Resolve the path to a table and read through its relation** *(chosen)* | A preview and a query on the same rows return the same rows, with no restriction stated twice. A later restriction added to the relation reaches the preview with no change here. | A file carrying rows of more than one table, and a file outside a committed run, have no preview at all. |
-| Read the file directly under a grant check on the path | The gallery previews anything on disk, including snapshot parts and ledger files. | Row predicates and column masks live in the relation and not in the path, so a path-level grant check admits rows and columns the same caller's query withholds. |
-| Refuse previews entirely | No second read route exists, so nothing can diverge from the query path. | A reader inspecting a landed file has no route at all, and the file listing becomes a list of paths nothing can open. |
+| Read the file directly under a grant check on the path | The gallery previews anything on disk, including snapshot parts and ledger files. | Lost on equality with the query path: row predicates and column masks live in the relation and not in the path, so a path-level grant check admits rows and columns the same caller's query withholds. |
+| Refuse previews entirely | No second read route exists, so nothing can diverge from the query path. | Lost on usefulness of the gallery: a reader inspecting a landed file has no route at all, and the file listing becomes a list of paths nothing can open. |
 
 ## Criteria
 

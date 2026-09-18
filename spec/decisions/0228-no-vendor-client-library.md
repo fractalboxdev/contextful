@@ -42,7 +42,7 @@ admits.
 | --- | --- | --- |
 | **Refuse any linked vendor client; reach a model through an operator-configured endpoint** *(chosen)* | The placement claim is true of every build, and the endpoint a model is reached through is visible in the deployment's own configuration. | A vendor whose protocol that endpoint does not speak is reached by an adapter the operator supplies. |
 | Allow a vendor client behind a feature flag | Direct vendor support where it is wanted, absent where it is not. | Loses on what the claim can honestly cover: a flag is set by a build, and the property is asserted to a reader who cannot see the build. |
-| Allow one client for the synthesis step | Covers the single legitimate inference call with the least operator work. | Loses in favor of the endpoint capability, which reaches the same model while keeping the endpoint a deployment choice rather than a compiled-in one. |
+| Allow one client for the synthesis step | Covers the single legitimate inference call with the least operator work. | Loses on what the placement contract can honestly claim: one linked client makes the placement statement conditional in every build, and the operator-configured endpoint reaches the same model while keeping the path a deployment choice rather than a compiled-in one. |
 | State the rule in prose and rely on review | No check to maintain; no false positives on transitive dependencies. | Loses on recurrence: the rule is tested by every dependency change, including transitive ones, and a prose rule is enforced only by whoever happens to look. |
 
 ## Criteria

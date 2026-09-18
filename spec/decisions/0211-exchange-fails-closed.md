@@ -49,7 +49,7 @@ verified role matching no entry in the role map, and it is empty.
 | --- | --- | --- |
 | **Refuse on every failed check; no path mints** *(chosen)* | One property to verify: nothing that failed produces authority, and the subject a credential carries was present in a verified assertion | A provider-side claim-template change takes the exchange down until the subject map is updated, rather than degrading to a narrower credential |
 | Mint with the default grants when a mapped claim is missing | Readers keep signing in through a provider-side claim change; the blast radius of a template edit is bounded | Loses on silent grant: a claim-template error becomes a mint carrying an unintended subject, and the default set's emptiness is an implementation detail one policy edit away from not being empty |
-| Retry against a second configured issuer on failure | Survives a provider migration without a policy edit | Loses on declaration: the policy names one expected issuer, and trusting a second is the exchange widening its own trust set |
+| Retry against a second configured issuer on failure | Survives a provider rotating its issuer without a policy edit | Loses on declaration: the policy names one expected issuer, and trusting a second is the exchange widening its own trust set |
 | Mint a credential with the subject member omitted | The reader is admitted with whatever the assertion did supply | Loses on the same silent-grant criterion: tenancy and authorship read that member, and an absent member is not a narrower value, it is an unbound one |
 
 ## Criteria
@@ -89,5 +89,5 @@ entirely, since the guarantee holds only while no path mints on a failure.
   downtime.
 - A subject member appears that is genuinely optional — one no filter, authorship record
   or audit entry reads — at which point its absence stops being an unbound value.
-- A deployment needs two issuers simultaneously during a provider migration, which the
-  single expected issuer cannot express.
+- A deployment needs two issuers simultaneously while a provider rotates its issuer, which
+  the single expected issuer cannot express.

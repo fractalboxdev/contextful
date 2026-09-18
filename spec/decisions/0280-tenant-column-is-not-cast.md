@@ -43,11 +43,11 @@ null-tenant row that a bare inequality would have dropped.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Resolve from the model's outermost partition key; refuse a non-string type** *(chosen)* | One declaration feeds both the grant's filter and the purge's predicate, so the two cannot name different columns or compare at different types. | A deployment whose tenant column is an integer cannot run the purge until the model declares a string key, and a store with no declared partition key has no tenant path at all. |
-| Cast on a guess and proceed | Every deployment gets a purge path with no authoring work. | Implicit-cast direction is precisely where the two predicates part. The divergence surfaces as rows readable after their own erasure, on the ragged values, silently. |
-| Take the column from a flag on the purge command | The operator states it explicitly at the moment of use, with no schema change. | The flag and the grant then name columns independently, and nothing compares them. A purge that ran against the wrong column reports full success. |
-| Default to a conventional column name | Zero configuration, and the convention is usually right. | Same divergence as the flag, with the additional property that nobody typed the wrong name, so there is nothing to review. |
-| Normalize both sides to text at compile time in the grant as well | Keeps the purge working on integer columns by making the filter agree with it. | Changes the read path's hot filter for the benefit of a rare maintenance operation, and text comparison over an integer column defeats any index the filter would otherwise use. |
-| Compare structurally rather than textually, per column type | No cast anywhere; each type compares natively. | Two independent implementations of comparison, one in the grant compiler and one in the rewrite, is the drift this decision exists to prevent — now with more surface. |
+| Cast on a guess and proceed | Every deployment gets a purge path with no authoring work. | Lost on predicate agreement: implicit-cast direction is precisely where the two predicates part. The divergence surfaces as rows readable after their own erasure, on the ragged values, silently. |
+| Take the column from a flag on the purge command | The operator states it explicitly at the moment of use, with no schema change. | Lost on single source for the column: the flag and the grant then name columns independently, and nothing compares them. A purge that ran against the wrong column reports full success. |
+| Default to a conventional column name | Zero configuration, and the convention is usually right. | Lost on failure visibility: same divergence as the flag, with the additional property that nobody typed the wrong name, so there is nothing to review. |
+| Normalize both sides to text at compile time in the grant as well | Keeps the purge working on integer columns by making the filter agree with it. | Lost on read-path cost: it changes the read path's hot filter for the benefit of a rare maintenance operation, and text comparison over an integer column defeats any index the filter would otherwise use. |
+| Compare structurally rather than textually, per column type | No cast anywhere; each type compares natively. | Lost on predicate agreement: two independent implementations of comparison, one in the grant compiler and one in the rewrite, is the drift this decision exists to prevent — now with more surface. |
 
 ## Criteria
 
@@ -90,6 +90,6 @@ would be free to contradict.
 - The grant compiler and the rewrite come to share one predicate builder, making agreement a
   property of the code rather than of two texts that match.
 - A deployment with an integer tenant key is blocked on a live erasure deadline, which prices
-  the refusal against the migration.
+  the refusal against the cost of restating the key column as a string.
 - The store gains tenant-partitioned layout on disk, at which point a purge is a prefix
   operation and the predicate question largely disappears.

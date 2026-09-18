@@ -82,7 +82,7 @@ that passed review and broke afterwards stops the face rather than degrading. Th
 fail-closed on purpose and it is still an outage.
 
 Loosening binding later is cheap to implement and expensive in meaning — every call that
-previously errored begins returning rows, and no consumer can tell which of its historical
+errors under strict binding begins returning rows, and no consumer can tell which of its historical
 calls would now be answered differently.
 
 ## Revisit triggers

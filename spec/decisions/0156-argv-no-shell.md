@@ -71,7 +71,7 @@ special handling anywhere. There is no escaping function to audit, and no machin
 shell behavior in the failure surface.
 
 What is now expensive to reverse: refusing a string `command` is a compatibility boundary.
-Accepting one later would make a configuration that is refused today start executing, on
+Accepting one later would make a refused configuration start executing, on
 machines whose operators wrote it expecting the refusal.
 
 ## Revisit triggers

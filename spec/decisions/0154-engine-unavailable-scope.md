@@ -44,8 +44,8 @@ there settles or retries that unit through the ordinary error path.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Run-scoped variant, forbidden to the link anchor** *(chosen)* | An unreachable binary costs nothing and retries whole; a dead publisher costs one row | The obligation is trait-level and a compiler cannot check it — a link adapter that returns the variant takes down batches it should not |
-| Failing units one at a time on an engine-level failure | One rule for both drivers, no trait-level obligation | Lost for the subprocess path: one unreachable binary marks hundreds of units failed, spends every attempt budget in the table, and leaves marker rows a human deletes |
-| Aborting the run on any transport failure | One rule, maximally cautious | Lost for the link path: the engine there is a different publisher per unit, so one dead name stops every unrelated row in the list |
+| Failing units one at a time on an engine-level failure | One rule for both drivers, no trait-level obligation | Lost on attempt budget spent on a fact unrelated to the row: one unreachable binary marks hundreds of units failed, spends every attempt budget in the table, and leaves marker rows a human deletes |
+| Aborting the run on any transport failure | One rule, maximally cautious | Lost on blast radius of one dead publisher: the engine there is a different publisher per unit, so one dead name stops every unrelated row in the list |
 | A per-unit variant and a per-run variant as separate error cases | Both meanings expressible with no trait-level rule | Lost on adapter judgement: the adapter would classify each failure, and a vendor client cannot distinguish "this host is down" from "our whole API is down" from one refused connection |
 | Making run-scoping a property the driver declares rather than the anchor | One declaration, checkable at build | Lost on precision: the property follows from whether the engine names one thing or a different thing per unit, which is a property of the anchor and not of the mechanism |
 

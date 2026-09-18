@@ -87,7 +87,7 @@ two declarations, with the duplication and the drift risk that implies. There is
 source with two lenses, and keeping the two in step is the operator's work. A second cost lands
 on key stability: a cohort key whose grain narrows over time — a region that empties, an
 industry band that ends up with one member — reds the declaration rather than degrading
-quietly, which is an outage for a table that was previously fine. Refusing widening also costs
+quietly, which is an outage for a table whose declaration held until the grain narrowed. Refusing widening also costs
 real answers: some coarser merges are genuinely safe, and the rule refuses them all rather than
 attempting to distinguish the attributable ones.
 

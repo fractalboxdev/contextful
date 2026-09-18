@@ -69,7 +69,7 @@ oversized set fails the whole call rather than degrading — which is the intend
 also the most likely source of complaints.
 
 Reversing this is cheap mechanically and re-opens the detectability problem in full, since any
-partial mode needs a signal the response format does not currently carry.
+partial mode needs a signal the response format does not carry.
 
 ## Revisit triggers
 

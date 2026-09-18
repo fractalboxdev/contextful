@@ -138,7 +138,7 @@ ordinary query at the session's vantage and returns ranked live rows.
 | Clause | Statement | decided-by |
 | --- | --- | --- |
 | `memory.recall.invariant.present-time` | Recall answers as of now and accepts no time bound of its own. A reader asking what the workspace believed on an earlier day issues a bounded read over the claim mirror instead. | |
-| `memory.recall.invariant.two-clocks` | Recall bounds two clocks that answer different questions: the session's vantage bounds when a row entered the store, and the validity columns bound what the row claims to hold true of. | `0059` |
+| `memory.recall.invariant.recall-clocks` | Recall bounds two clocks that answer different questions: the session's vantage bounds when a row entered the store, and the validity columns bound what the row claims to hold true of. | `0059` |
 | `memory.recall.invariant.open-interval` | A present-time read returns open-ended intervals. A read at a vantage of one day additionally returns the point intervals anchored to that day. | |
 | `memory.recall.invariant.fold` | Recall keeps the latest row per `dedup_key`, and drops a tombstoned row and a superseded row before ranking. | |
 | `memory.recall.invariant.tier-order` | Recall orders by `tier` first and by score second, so standing decides ahead of magnitude. | `0057` |

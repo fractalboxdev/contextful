@@ -1,7 +1,7 @@
 # 0087 — One pipeline id declared twice is a hard error naming both files
 
 **Status:** accepted 2026-09-18
-**Decides:** `pipeline.declare.refusal.pipeline-id`
+**Decides:** `pipeline.declare.refusal.pipeline-id`, `pipeline.declare.refusal.pipeline-spec`
 
 ## Context
 
@@ -36,7 +36,7 @@ than a merge.
 | --- | --- | --- |
 | **Refuse, naming both files and both lines** *(chosen)* | A duplicate is a failure at scan with the two sites printed; a double-fire is impossible. | A project that would split one pipeline across two files for review or ownership reasons has no path; the refusal names the collision but offers no composition. |
 | Last file wins | Every manifest set loads; an override file can shadow a shared declaration. | Loses on diagnosability: the winner is decided by a directory listing rather than by anything the author wrote, so the effective specification differs between two machines holding identical trees. |
-| First file wins | Same as above, with a stable-looking rule. | Same loss, identically: reversing the order does not make the order authored. |
+| First file wins | Same as above, with a stable-looking rule. | Lost on whether the effective specification is authored, identically: reversing the order does not make the order authored, so two machines holding one tree still load different sets. |
 | Merge field by field across both declarations | A base file plus an overlay expresses environment differences. | Loses on shape: a source block and a table set do not merge into a coherent specification — two sources are two pipelines, and two table arrays have no defined union with respect to keys, ordering and write modes. A partial merge produces a specification whose behavior is stated nowhere. |
 
 ## Criteria

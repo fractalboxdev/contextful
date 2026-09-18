@@ -40,8 +40,8 @@ for every table the replica serves.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **A replica refuses writes and names the canonical store** *(chosen)* | One writer per tier, so the merge's ownership arms stay sound. The refusal is immediate and carries the address of the machine that can serve the write. | An offline consumer records nothing of its own. Every write is a network round trip to the canonical store. |
-| Accept local writes and push them back on the next refresh | A consumer writes while disconnected and reconciles later. | Reconciling divergent writes needs conflict resolution the append-only data plane does not supply. |
-| A write-through replica that forwards each write synchronously | A caller uses one address for reads and writes. | The bytes never land locally, so "replica" names something that is a proxy in the write direction and a cache in the read direction. |
+| Accept local writes and push them back on the next refresh | A consumer writes while disconnected and reconciles later. | Lost on soundness of the merge: reconciling divergent writes needs a conflict resolution rule the append-only data plane does not supply, so the merge faces two contents for one tier with nothing to choose between them. |
+| A write-through replica that forwards each write synchronously | A caller uses one address for reads and writes. | Lost on legibility of the surface: the bytes never land locally, so "replica" names something that is a proxy in the write direction and a cache in the read direction. |
 
 ## Criteria
 
@@ -67,7 +67,7 @@ The accepted cost is that an offline consumer cannot record anything of its own.
 that needs local annotations stands up a separate store for them rather than extending the
 replica, and joining the two is the consumer's work, not the sync path's. Reversing this is
 expensive: a local write path would require a conflict resolution model for every writer-owned
-tier, and the ownership arms would have to carry provenance they do not carry today.
+tier, and the ownership arms would have to carry provenance they do not carry.
 
 ## Revisit triggers
 

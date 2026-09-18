@@ -1,0 +1,21 @@
+# Shared protocol vocabulary.
+#
+# A token here names something a standard defines, not something this system
+# decides — an HTTP header, a status code, a media type, an encoding. No contract
+# is its obligor, so no clause is addressed on one and the usage-to-owner join
+# passes over it. Owner is the literal `wire`, which is not a contract and carries
+# no file.
+#
+# A token belongs here when the answer to "whose behavior would be false if this
+# were wrong?" is "the standard's". Everything else has a contract that owes it.
+
+[term]
+"Retry-After"   = { gloss = "The response header an upstream states its own wait in.", owner = "wire", resolves = "concept" }
+"Content-Type"  = { gloss = "The response header naming a payload's media type.", owner = "wire", resolves = "concept" }
+"ETag"          = { gloss = "The response header carrying an opaque identity for a stored object's bytes.", owner = "wire", resolves = "concept" }
+"If-Match"      = { gloss = "The request header making a write conditional on a stored object's identity.", owner = "wire", resolves = "concept" }
+"If-None-Match" = { gloss = "The request header making a read conditional on a stored object's identity.", owner = "wire", resolves = "concept" }
+"Last-Modified" = { gloss = "The response header carrying an object's modification instant.", owner = "wire", resolves = "concept" }
+"Authorization" = { gloss = "The request header carrying a caller's credential.", owner = "wire", resolves = "concept" }
+"User-Agent"    = { gloss = "The request header naming the calling software.", owner = "wire", resolves = "concept" }
+"Link"          = { gloss = "The response header carrying pagination relations.", owner = "wire", resolves = "concept" }

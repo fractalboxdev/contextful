@@ -29,13 +29,13 @@ placed by the verifying deployment, not by the party presenting the credential.
 The pinned key's own scheme is authoritative. A verifier checks a credential's signature
 under the scheme its pinned key carries, and cross-checks the credential's algorithm claim
 against it; a claim naming a different scheme raises `SignatureAlgorithmMismatch`. No
-credential selects the scheme used to verify it, so no downgrade is expressible.
+credential selects the scheme its signature is checked under, so no downgrade is expressible.
 
 ## Options considered
 
 | Option | What it buys | What it costs |
 | --- | --- | --- |
-| **The pinned key decides; the claim is cross-checked** *(chosen)* | Scheme selection is made by the verifying deployment, so the downgrade is not merely refused but unsayable, and the mismatch is named rather than presenting as a bad signature | Two schemes are implemented and tested, and the cross-check is a rule an implementation has to actually run — a verifier that dispatches on the claim is a plausible-looking implementation of the same wire shape |
+| **The pinned key decides; the claim is cross-checked** *(chosen)* | Scheme selection is made by the verifying deployment, so the downgrade is not merely refused but unsayable, and the mismatch is named rather than presenting as a bad signature | Two schemes each carry their own routine and their own tests, and the cross-check is a rule an implementation has to actually run — a verifier that dispatches on the claim is a plausible-looking implementation of the same wire shape |
 | Dispatch verification on the credential's algorithm claim | The standard shape; one verifier serves a mixed key population with no per-key knowledge | Lost outright on downgrade: the presented credential picks its own verifier, so every weaker routine the implementation supports is reachable by asking for it |
 | Carry no algorithm claim at all; infer everything from the key | Nothing to disagree; no cross-check to forget to run | Lost on diagnosability: a credential minted under the wrong scheme fails as an invalid signature, which reads as tampering or corruption rather than as the configuration error it is |
 | Pin one scheme for the whole corpus | One routine, no claim, no cross-check, no mismatch | Lost on custody: hardware modules, platform keychains and several managed key services offer P-256 and not Ed25519, so a single scheme decides which custody postures exist |

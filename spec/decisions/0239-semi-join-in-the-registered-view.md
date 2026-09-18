@@ -74,7 +74,7 @@ read path in this sense, and the boundary between those and a read face is a thi
 implementation has to keep sharp rather than a property the relation enforces.
 
 Reversing toward per-surface filtering is expensive because every surface built since would
-have to acquire a filter it currently inherits, and the surfaces are where the count grows.
+have to acquire a filter it inherits from the relation, and the surfaces are where the count grows.
 
 ## Revisit triggers
 

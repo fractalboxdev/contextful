@@ -32,7 +32,7 @@ on any dimension raises `AttenuationWidens` and names the dimension that widened
 
 | Option | What it buys | What it costs |
 | --- | --- | --- |
-| **The identical comparison at derivation and at admission, over the whole chain** *(chosen)* | An illegal child fails inside the deriving process, where the cause is; and an illegal child that reaches a checkpoint anyway is refused there, where the guarantee lives. | Admission pays chain-depth comparison work on every request, and one comparison is implemented once but executed in two very different environments. |
+| **The identical comparison at derivation and at admission, over the whole chain** *(chosen)* | An illegal child fails inside the deriving process, where the cause is; and an illegal child that reaches a checkpoint anyway is refused there, where the guarantee lives. | Admission pays chain-depth comparison work on every request, and one comparison exists once in source and runs in two very different environments. |
 | Check at admission alone | Minimal work; the check lives where it counts. | Loses on time to discovery: an illegal child fails at its first request, in another process, in another party's logs, with the deriving code long finished and no signal reaching it. |
 | Check at derivation alone | Cheapest possible admission. | Loses outright on trust: the deriving holder is the party under question, so a check it performs on itself is not evidence of anything a checkpoint can rely on. |
 | Route derivation through the issuer, which validates centrally | One authoritative check, and a record of every child. | Loses on offline derivation: a round trip per child is unaffordable at per-query grain, and the whole derivation model exists to keep the issuer off the read path. |

@@ -41,11 +41,11 @@ erasure history as a single traversable line.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **Idempotence derived from ledger state; a freshly signed equivalent artifact each time** *(chosen)* | A caller that timed out retries and holds a valid, current, verifiable artifact, and the line of `prior_request_id` links shows the whole history. | A re-run still walks every reachable file to establish zero matches, so a no-op purge costs a full scan. |
-| A request-deduplication cache keyed by an idempotency token | Cheap: the second call returns immediately with no store work at all. | The entry expires. A retry after the window turns a safe repeat into a second full rewrite, and the caller cannot see which side of the window they are on. |
-| Return the byte-identical earlier artifact | Obviously idempotent, trivially cheap, and the signature is already valid. | The timestamp then claims a check ran at an instant when it did not. A holder presenting it asserts current emptiness on the strength of an old measurement. |
-| Refuse a second purge for an already-purged tenant | Unambiguous: the operation happened, and repeating it is a client error. | A caller that never saw the first response has no path to evidence. The refusal is correct and useless. |
-| Return the equivalent artifact without re-scanning, taking the zero counts from the ledger | Cheap and returns a current, correctly timestamped artifact. | The timestamp then attests a check that was not performed. Nothing rules out a write landing between the purges, so the zeros would be assumed rather than measured. |
-| Skip the artifact on a re-run and return the prior `request_id` | Cheap; the caller can fetch the stored artifact under that identifier. | It hands back a pointer where the caller asked for evidence, and the stored artifact carries the old timestamp anyway. |
+| A request-deduplication cache keyed by an idempotency token | Cheap: the second call returns immediately with no store work at all. | Lost on safety of an unbounded retry: the entry expires, and a retry after the window turns a safe repeat into a second full rewrite, and the caller cannot see which side of the window they are on. |
+| Return the byte-identical earlier artifact | Obviously idempotent, trivially cheap, and the signature is already valid. | Lost on truthfulness of the timestamp: the timestamp then claims a check ran at an instant when it did not. A holder presenting it asserts current emptiness on the strength of an old measurement. |
+| Refuse a second purge for an already-purged tenant | Unambiguous: the operation happened, and repeating it is a client error. | Lost on what the caller holds after a timeout and a retry: a caller that never saw the first response has no path to evidence. The refusal is correct and useless. |
+| Return the equivalent artifact without re-scanning, taking the zero counts from the ledger | Cheap and returns a current, correctly timestamped artifact. | Lost on truthfulness of the counts: the timestamp then attests a check that was not performed. Nothing rules out a write landing between the purges, so the zeros would be assumed rather than measured. |
+| Skip the artifact on a re-run and return the prior `request_id` | Cheap; the caller can fetch the stored artifact under that identifier. | Lost on what the caller holds after a timeout and a retry: it hands back a pointer where the caller asked for evidence, and the stored artifact carries the old timestamp anyway. |
 
 ## Criteria
 
@@ -70,7 +70,7 @@ than the same words unsigned.
 ## Consequences
 
 Retry is unconditionally safe and unconditionally useful: a caller may repeat the purge any
-number of times, at any interval, and each response is a currently-true, freshly signed claim.
+number of times, at any interval, and each response is a freshly signed claim true at the instant it names.
 The chain of `prior_request_id` links reads as one traversable history per tenant, so an
 auditor can see how many times emptiness was confirmed and when.
 

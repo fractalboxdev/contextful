@@ -91,4 +91,4 @@ conformed.
   audit trail, which removes the fabrication objection to clamping by moving it somewhere
   it can be recorded.
 - A source class appears whose ordering column is legitimately absent from some batches
-  and present in others, which the unevaluable arm currently treats as unloadable.
+  and present in others, which the unevaluable arm treats as unloadable.

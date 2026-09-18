@@ -41,7 +41,7 @@ is listed on its own.
 | Pin to a configured origin, as a plain HTTP source does | One name, nothing to maintain, strongest possible bound | Loses on applicability: the task is following a link a publisher wrote, so the manifest cannot name the host in advance and the engine would have no work |
 | Declare hosts in the pipeline manifest | Colocated with the pipeline that needs them; portable | Loses on the binding split: the manifest is authored by the party whose links are followed, so the grant and the grantee are the same party |
 | Allow a bare `*` as "any host" | An operator who trusts the link population can say so in one character | Loses on behavior: the matcher strips a leading `*.` and falls to equality, so a bare star admits a host literally spelled that way — an entry meaning everything admits nothing, which is worse than an error |
-| Treat an empty list as "reach nothing" without refusing | No configuration required to be safe | A binding nobody finished looks identical to one deliberately closed, and the operator learns from an empty output table |
+| Treat an empty list as "reach nothing" without refusing | No configuration required to be safe | Lost on failure direction of an operator mistake: it fails closed but silently, so a binding nobody finished looks identical to one deliberately closed and the operator learns from an empty output table |
 
 ## Criteria
 

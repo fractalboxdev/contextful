@@ -1,7 +1,7 @@
 # 0186 — The query-template allowlist denies by default, against the polarity of every other grant dimension
 
 **Status:** accepted 2026-09-18
-**Decides:** `authority.grant.refusal.ungranted-template`
+**Decides:** `authority.grant.refusal.template-not-allowed`
 
 ## Context
 

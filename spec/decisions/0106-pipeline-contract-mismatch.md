@@ -24,7 +24,7 @@ wrong or the column is missing. Every consumer's derivation breaks at the same i
 and each of them diagnoses it independently against a producer who reported success.
 
 A build materializes into a staging location and renames in on success, so there is a
-point at which the result exists and is not yet serving. That is where the contract is
+point at which the result exists without serving. That is where the contract is
 enforceable without the prior state ever being disturbed.
 
 ## Decision

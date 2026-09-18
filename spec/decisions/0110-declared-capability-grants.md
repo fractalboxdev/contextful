@@ -78,8 +78,8 @@ one-time one.
 
 The wildcard-and-attachment refusal is deliberately conservative and blocks a shape that is
 sometimes benign: a vendor whose API genuinely spans subdomains under one credential now
-needs one entry per subdomain. Whether that becomes onerous is unmeasured, since the shape
-of real vendor subdomain fan-out is not yet observed across a population of connectors.
+needs one entry per subdomain. Whether that becomes onerous is unmeasured: the shape
+of real vendor subdomain fan-out across a population of connectors is unobserved.
 
 ## Revisit triggers
 

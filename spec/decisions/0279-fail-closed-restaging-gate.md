@@ -43,11 +43,11 @@ removal records.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **A root marker that refuses every fact read until an attested re-synthesis** *(chosen)* | No derived fact built over erased evidence is served after the cascade, anywhere, including on replicas. The obligation is visible as an outage rather than as a log line. | Fact reads are down for the whole deployment between the cascade and the operator's attestation, and the gate is released by a human action rather than automatically. |
-| Serve derived facts with a staleness warning attached | Availability is unbroken, and the caller is told. | A warning in a response is not a control. The value is consumed, the warning is dropped by the first program in the chain, and the erasure did not take effect on the read path. |
-| Invalidate silently and serve empty results | No refusal to handle, no new state, no operator action. | An empty answer reads as an absence of data rather than as a gate, so an operator sees a working store with nothing in it and no reason to re-synthesize. Nothing ever clears. |
-| Defer the gate to the next scheduled synthesis | Self-clearing; no human in the loop. | The window is unbounded — it depends on an entry's cadence and on whether that entry is enabled at all — and the period of wrong answers is exactly what the gate exists to close. |
-| Gate only the facts the cascade touched | Availability is preserved for unrelated reads. | The facts the cascade could identify are the ones already removed. The residue is precisely the set that cannot be enumerated, so a targeted gate covers everything except what it is for. |
-| Block the erasure verb until synthesis can run inline | One operation, no intermediate state. | Synthesis is a run-path workload with model calls in it; binding an erasure's completion to it makes the deadline-bearing operation depend on the slowest, least reliable path in the system. |
+| Serve derived facts with a staleness warning attached | Availability is unbroken, and the caller is told. | Lost on whether the gate is a control or a notice: a warning in a response is not a control. The value is consumed, the warning is dropped by the first program in the chain, and the erasure did not take effect on the read path. |
+| Invalidate silently and serve empty results | No refusal to handle, no new state, no operator action. | Lost on boundedness of the window: an empty answer reads as an absence of data rather than as a gate, so an operator sees a working store with nothing in it and no reason to re-synthesize. Nothing ever clears. |
+| Defer the gate to the next scheduled synthesis | Self-clearing; no human in the loop. | Lost on boundedness of the window: the window is unbounded — it depends on an entry's cadence and on whether that entry is enabled at all — and the period of wrong answers is exactly what the gate exists to close. |
+| Gate only the facts the cascade touched | Availability is preserved for unrelated reads. | Lost on whether pre-erasure derived state can still be served: the facts the cascade could identify are the ones already removed. The residue is precisely the set that cannot be enumerated, so a targeted gate covers everything except what it is for. |
+| Block the erasure verb until synthesis can run inline | One operation, no intermediate state. | Lost on independence of the erasure deadline: synthesis is a run-path workload with model calls in it; binding an erasure's completion to it makes the deadline-bearing operation depend on the slowest, least reliable path in the system. |
 
 ## Criteria
 
@@ -61,6 +61,8 @@ removal records.
    operator sets rather than one a cadence sets.
 5. **Read availability** — whether unrelated fact reads keep working. This is the criterion
    the chosen option loses on, and it loses it completely.
+6. **Independence of the erasure deadline** — whether completing an erasure depends on the
+   run path's slowest and least reliable workload.
 
 Fail-closed on derived state decides it over read availability. The two are in direct
 opposition and only one of them can be satisfied; an erasure whose effect is advisory on the

@@ -12,7 +12,7 @@ its own lifetime, so a session exchanges once rather than once per call. A store
 exchange authentication is reached with a shared credential the deployment configured.
 
 A mint can be refused. The exchange route can be unreachable, the store can decline this
-particular assertion, the route can be mid-rollout and not yet answering. Each of those
+particular assertion, the route can be mid-rollout and silent. Each of those
 leaves the turn with no per-reader credential and a reader waiting.
 
 Two properties collide at that point. Attribution says reads should be traceable to the

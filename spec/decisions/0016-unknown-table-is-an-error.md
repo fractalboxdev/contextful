@@ -65,8 +65,7 @@ a declared table.
 
 The cost accepted falls on callers that treat a read as an existence probe: they handle an
 error instead of reading a row count, which is more code at each such site. A pass whose
-manifest names a table that a pipeline has not yet created fails rather than waiting for
-it, so ordering between manifest changes and pipeline deployment becomes something an
+manifest names a table no pipeline has created fails rather than waiting for it, so ordering between manifest changes and pipeline deployment becomes something an
 author sequences rather than something the system absorbs.
 
 Bulk operations become all-or-nothing on name validity. A pass over many tables halts on
@@ -75,8 +74,8 @@ manifest is corrected.
 
 ## Revisit triggers
 
-- A supported deployment pattern creates tables lazily on first write, making a name that
-  does not yet resolve an ordinary intermediate state rather than a defect.
+- A supported deployment pattern creates tables lazily on first write, making an
+  unresolvable name an ordinary intermediate state rather than a defect.
 - An existence-probe surface is introduced that answers the question directly, at which
   point read-time refusal stops being the only way to ask it.
 - The pass acquires a per-table result shape that reports an unknown name distinguishably

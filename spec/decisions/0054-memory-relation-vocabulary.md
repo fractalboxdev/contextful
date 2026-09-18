@@ -37,7 +37,7 @@ row is written under the unknown type, and the rest of the batch lands.
 | --- | --- | --- |
 | **Reserved core plus a declared set, undeclared edges dead-lettered** *(chosen)* | A filter on `rel_type` is total, and the rejected edges are recoverable after a declaration edit. | Adding a relation type is a declaration edit, and edges rejected before that edit need a replay after it. |
 | An open vocabulary | Nothing is ever rejected; a model's judgment about a new relationship is captured immediately. | Loses on filter reliability: no consumer can enumerate the types, so every type filter is silently partial and the column accumulates near-synonyms. |
-| Auto-declare a new type on first use | Same capture as an open vocabulary, plus an enumerable set after the fact. | Loses on filter reliability the same way — the set grows by use, so a filter written today is incomplete tomorrow — and it lets a model mint the deployment's vocabulary. |
+| Auto-declare a new type on first use | Same capture as an open vocabulary, plus an enumerable set after the fact. | Loses on filter reliability the same way — the set grows by use, so any filter is incomplete the moment a later pass mints a type — and it lets a model mint the deployment's vocabulary. |
 | Refuse the whole batch containing an undeclared type | One bad type is loudly visible; nothing lands half-processed. | Loses on throughput: one malformed candidate drops the correct edges beside it, and a model producing one novel type per batch stalls the pass entirely. |
 | Drop the undeclared edge silently | Filters stay total with no dead-letter table to operate. | Loses on recoverability: the edge is unrecoverable after the declaration is fixed, and the operator is never told which type to declare. |
 

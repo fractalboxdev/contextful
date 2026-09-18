@@ -12,8 +12,8 @@ view — and becomes a file read at bind time, when the engine resolves the name
 file rather than a view.
 
 That timing is the whole problem. A guard that inspects the tree for table-function nodes
-looks at a representation in which the dangerous construct has not yet appeared as anything
-dangerous. Rejecting table functions alone sails straight past a bare path, and the resulting
+looks at a representation in which the dangerous construct appears as nothing more than an
+ordinary name. Rejecting table functions alone sails straight past a bare path, and the resulting
 read reaches any file the process can open, which on a store machine includes every table the
 caller has no grant for.
 

@@ -18,9 +18,9 @@ that harm, and masks and the release bound still apply on the way out.
 
 The bound changes character the moment the face carries a write tool. Steering an answer
 affects one reader's session; a write tool turns the same steering into a change of stored
-state, on a face whose audience is the organization. The content a reader ingests tomorrow
-is then content an injected instruction wrote today, which closes a loop that no per-answer
-control reaches.
+state, on a face whose audience is the organization. The content a reader ingests on a later turn
+is then content an injected instruction wrote on an earlier one, which closes a loop that no
+per-answer control reaches.
 
 The enforcement point matters here. Every other control in this contract is applied as a
 transformation in the data plane — predicates compiled into the statement, projections

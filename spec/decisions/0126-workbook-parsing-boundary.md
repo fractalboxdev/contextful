@@ -10,7 +10,7 @@ source the engine reads directly rather than one an operator converts by hand. T
 families carry the same logical content. The modern one is a ZIP archive of XML parts, read
 by naming the parts: four for a workbook, two for a word-processor document, so charts,
 pivot caches, macros and drawings are absent structurally rather than by a filter. The
-legacy one is a compound-binary container — a different format entirely, with its own record
+other is a compound-binary container — a different format entirely, with its own record
 grammar, its own encryption, and a parsing surface that has been a steady source of memory-
 safety findings for thirty years.
 
@@ -80,7 +80,7 @@ input into an unbounded landing.
 
 The cost accepted: cell styles go unread. Every cell lands as a string and a date cell lands
 as its serial number, so a downstream reader converts dates itself and the incremental
-pairing is refused rather than approximated. Operators holding legacy compound-binary files
+pairing is refused rather than approximated. Operators holding compound-binary workbooks
 convert them once, by hand or by their own script, before the engine sees them — which is
 real work for an organization whose archive predates the modern format.
 

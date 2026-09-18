@@ -12,7 +12,7 @@ entries, in produce-before-publish order within a tick.
 
 What a job is permitted to do sets the trust level of every path that can write a job
 block. Jobs live in a daemon's own configuration and enter no control-plane document, so
-today the writer is an operator with filesystem access to the machine. That is not a stable
+the writer is an operator with filesystem access to the machine. That is not a stable
 guarantee. The operator portal writes configuration. A control source can be repointed. A
 deployment's configuration can be templated, mounted, or generated. Any of those becoming
 the writer of a job block turns "what a job can do" into "what that writer can do as the
@@ -44,7 +44,7 @@ arrives as a new kind in a release.
 | Option | What it buys | What it costs |
 | --- | --- | --- |
 | **A closed union of in-process engine operations** *(chosen)* | Whoever can write a job block gains exactly the six operations, and adding a kind is an exhaustive-match obligation the compiler enforces at every dispatch site. | Maintenance work outside the six kinds needs an external scheduler or a new kind and a release, so an operator with a one-off need has no in-product answer. |
-| A job carrying an argument vector | Every maintenance need is expressible today, with no release; the operator is never blocked. | Lost on the trust boundary: it grants anyone who can write the manifest, or repoint a snapshot that reaches it, arbitrary execution as the daemon with the store's credentials and egress. |
+| A job carrying an argument vector | Every maintenance need is expressible without a release; the operator is never blocked. | Lost on the trust boundary: it grants anyone who can write the manifest, or repoint a snapshot that reaches it, arbitrary execution as the daemon with the store's credentials and egress. |
 | A plugin registry of job kinds | Extensibility without a core release; third-party maintenance work becomes possible. | Lost on the same criterion: the same execution surface behind a longer path, now with a loading and trust story to build that does not exist. |
 | An allowlist of host commands | Narrower than a free argument vector; expressible in configuration. | Lost on reviewability: the allowlist is per-deployment data, so no reader of the product can state what a job can do, and argument handling reintroduces the execution surface through the arguments. |
 

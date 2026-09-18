@@ -32,7 +32,7 @@ change lands with its proof report attached.
 | **The model author** | Writes each definition from the specification text rather than from the engine's source, and publishes beside every theorem the statement it leaves unproven. |
 | **The package** | Carries its own toolchain pin and an empty dependency set, elaborating from a bare checkout with nothing fetched. |
 | **The gate** | Decides on the elaborated environment: every required constant present with its expected statement, every transitive axiom inside the allowlist. Reports per constant rather than in aggregate. |
-| **The inventory** | Holds the required constants and their expected statements apart from any declaration that would satisfy them, so weakening a definition moves the inventory too. |
+| **The inventory** | Holds the required constants and their expected statements separately from the declarations satisfying them. Weakening a definition moves the inventory too. |
 | **The claimant** | States the claim as named decisions satisfying named specifications under named assumptions, and names every trusted dependency inside it. |
 | **The differential harness** | Drives the reference model and the engine's decision functions over the same generated case, minimizes a disagreement, and keeps it. |
 | **The reader** | Reads a theorem together with its negative space, and reads the claim's assumption list before relying on any of it. |
@@ -66,7 +66,7 @@ it, from the specification text.
 | `formal.model.shape.layer-predicate` | A [[layer-predicate]] is a total function from a row identifier to `Bool`. Nothing in the type distinguishes a row rule from a placement rule; both inhabit it. | |
 | `formal.model.shape.composed` | `composed : List Layer → RowId → Bool` folds a list by conjunction. A row is admitted by the fold when every member of the list admits it. | |
 | `formal.model.shape.allow-set` | An allow-set is modelled as a decidable predicate over the placement value, and the pattern forms it is built from are parsed outside the model. | |
-| `formal.model.shape.evidence-floor` | `floor : List AllowSet → AllowSet` intersects its argument list pointwise. A caller is admitted by the result when every member admits that caller. | |
+| `formal.model.shape.floor` | `floor : List AllowSet → AllowSet` intersects its argument list pointwise. A caller is admitted by the result when every member admits that caller. | |
 | `formal.model.invariant.empty-evidence-list` | `floor []` admits every caller. That is the unit of the intersection fold, not a permission anybody declared, and the model says so where the definition sits. | |
 | `formal.model.invariant.definitions-are-total` | Every definition in the package is total and computable; nothing is marked `partial`, `noncomputable` or `opaque`. Decidable equality on each finite enumeration derives rather than being assumed. | |
 | `formal.model.shape.placement-inductive` | The caller's declared placement is an inductive type carrying its identifier inside the constructor, with one case per category the manifest admits and one case for an absent declaration. | |
@@ -126,7 +126,7 @@ any verdict.
 | `formal.audit-axioms.refusal.native-evaluation-axiom` | A footprint containing a per-declaration native-evaluation axiom raises `NativeEvaluationAxiom`, naming the declaration that minted it. | `0319` |
 | `formal.audit-axioms.invariant.build-status-is-not-a-verdict` | Elaboration reports a hole as a warning and exits zero. The exit status of a build therefore carries no information about holes, and the gate reads the footprint instead. | |
 | `formal.audit-axioms.shape.inventory` | The [[theorem-inventory]] is a file of rows, one per required constant: its name, the module it elaborates in, its expected statement rendered as text, and the axioms it is admitted to reach. | |
-| `formal.audit-axioms.invariant.inventory-is-independent` | The inventory is maintained apart from any declaration that would satisfy it. Editing a definition edits no inventory row, so weakening a statement to make a proof close is a visible second edit. | |
+| `formal.audit-axioms.invariant.inventory-is-independent` | The inventory is maintained apart from every declaration that satisfies it. Editing a definition edits no inventory row, so weakening a statement to make a proof close is a visible second edit. | |
 | `formal.audit-axioms.refusal.missing-constant` | A required constant absent from the elaborated environment raises `TheoremConstantMissing`. Deleting a theorem removes the proof and keeps the requirement. | `0319` |
 | `formal.audit-axioms.refusal.statement-drift` | A required constant whose elaborated statement differs from its expected text raises `TheoremStatementDrift`, printing both. | `0319` |
 | `formal.audit-axioms.interface.per-constant-report` | The audit's output names each required constant, whether its statement matched, and the axioms it depends on. An operator reads a row rather than a total. | |
@@ -170,7 +170,7 @@ dependency, named inside the claim rather than proved by it.
 | `formal.scope-claim.invariant.translator-is-trusted` | The translator is a trusted dependency and not an object of proof. Its version and its own correctness are assumptions the chain names. | |
 | `formal.scope-claim.limit.refinement-first-functions` | [[refinement]] opens on exactly 2 entries of decision function: inclusion, and grant narrowing. | |
 | `formal.scope-claim.invariant.refinement-scope` | Translation covers the pure decision functions, whose inputs are values and whose outputs are decisions. | |
-| `formal.scope-claim.refusal.scope-exceeded` | Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module. | `0321` |
+| `formal.scope-claim.refusal.refinement` | Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module. | `0321` |
 | `formal.scope-claim.invariant.assumptions-travel-with-the-theorem` | Wherever a theorem appears — a report, a document, an auditor's packet — its assumption list appears with it, and a quotation that drops the list is a quotation of a different statement. | |
 | `formal.scope-claim.invariant.claim-is-checkable` | Every noun in the claim resolves: a decision to a code path, a specification to a constant, an assumption to a named component. A reader checks the claim without asking its author anything. | |
 

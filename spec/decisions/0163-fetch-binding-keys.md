@@ -40,7 +40,7 @@ is what lets it name more than one.
 | --- | --- | --- |
 | **Refuse process-spawning keys on a fetch binding, naming the key** *(chosen)* | A block's `driver` line and its key set cannot disagree; no operator believes a fetch carries a credential | Moving a binding between drivers edits the key set rather than the driver line alone |
 | Ignore unknown keys, as most configuration formats do | Tolerant of copied blocks and of keys a future driver adds; no refusal to maintain | Loses on that criterion: the operator believes a credential travels to hosts it never reaches, and sizes the host list on that belief |
-| Warn on an unrecognized key | Tolerant and still says something | A warning in a scheduled run reaches nobody, so the belief survives; identical outcome to ignoring, with more code |
+| Warn on an unrecognized key | Tolerant and still says something | Lost on whether a silently ignored key leaves a false belief about credential reach: a warning in a scheduled run reaches nobody, so the belief survives; identical outcome to ignoring, with more code |
 | Accept `env` on a fetch binding and attach it as request headers | The operator's evident intent is honoured; authenticated fetches become possible | Loses on the reason a fetch may name many hosts at all: it carries no credential to any of them, so honouring the key means every listed publisher receives the material |
 | Split the two drivers into separate configuration tables entirely | The key sets cannot be confused at all | Loses on effort and on churn: two grammars for one concept, and the shared bounds and `zone` key are duplicated — worth reconsidering if a third driver arrives |
 

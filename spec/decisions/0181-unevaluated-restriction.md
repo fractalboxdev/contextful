@@ -58,7 +58,7 @@ no read path ever has to decide what to do with one.
 
 Minting is now coupled to engine capability: adding a restriction kind means shipping
 its evaluator first, then admitting it to the profile. A deployment cannot prepare
-credentials for an engine version it has not yet deployed.
+credentials for an engine version it does not run.
 
 Derivation gets slightly more expensive, since both the parent and the proposed child
 are examined rather than only the appended block. That catches the case where a parent

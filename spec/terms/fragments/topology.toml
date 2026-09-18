@@ -37,6 +37,9 @@ crate-map            = { gloss = "The thirteen crates of the workspace and their
 domain-crate         = { gloss = "`contextful-core`, the pure domain crate with no I/O.", owner = "topology", resolves = "code" }
 domain-type          = { gloss = "A type the domain crate defines and every adapter consumes.", owner = "topology", resolves = "code" }
 port-set             = { gloss = "The trait set every adapter implements.", owner = "topology", resolves = "code" }
+Deriver              = { gloss = "The port every derive engine implements, owing an engine identity, an endpoint host, a locality and a run audit.", owner = "derive", resolves = "code" }
+Transcriber          = { gloss = "The trait above the derive port carrying capability probing and media transcription.", owner = "derive", resolves = "code" }
+LinkReader           = { gloss = "The trait above the derive port carrying capability probing, link reading and an unmetered-egress claim.", owner = "derive", resolves = "code" }
 dependency-direction = { gloss = "Adapters depend on the domain crate and the domain crate on none of them.", owner = "topology", resolves = "concept" }
 execution-crate      = { gloss = "A crate holding the run path's execution responsibility.", owner = "topology", resolves = "code" }
 data-crate           = { gloss = "A crate holding the read path's storage, memory, sync or evaluation responsibility.", owner = "topology", resolves = "code" }
@@ -49,6 +52,8 @@ edge-eligibility     = { gloss = "The edge profile as the one profile a function
 full-profile         = { gloss = "`contextful-full`, the daemon profile.", owner = "topology", resolves = "code" }
 control-profile      = { gloss = "`contextful-control`, the self-hosted control-plane profile.", owner = "topology", resolves = "code" }
 feature-bundle       = { gloss = "The Cargo feature set a profile selects.", owner = "topology", resolves = "code" }
+duckdb               = { gloss = "The Cargo feature linking the SQL engine with its write path, taken by the full profile.", owner = "topology", resolves = "code" }
+hnsw                 = { gloss = "The Cargo feature linking the vector sidecar, taken by the full profile.", owner = "topology", resolves = "code" }
 dependency-lattice   = { gloss = "Which heavy dependency links into which profiles.", owner = "topology", resolves = "concept" }
 edge-budget          = { gloss = "The edge profile's compressed and idle-resident bound pair.", owner = "topology", resolves = "concept" }
 full-budget          = { gloss = "The full profile's compressed and idle-resident bound pair.", owner = "topology", resolves = "concept" }
@@ -66,7 +71,7 @@ deployment-declaration = { gloss = "`contextful.toml`, the one declaration deplo
 target-profile         = { gloss = "A provider's record of which primitives back which role.", owner = "topology", resolves = "concept" }
 target-shape           = { gloss = "A deployment shape a provider's primitives express or record as absent.", owner = "topology", resolves = "concept" }
 target-adapter         = { gloss = "The per-provider crate sitting behind the domain ports.", owner = "topology", resolves = "code" }
-role                   = { gloss = "Control-plane target or worker target.", owner = "topology", resolves = "concept" }
+deployment-role        = { gloss = "Control-plane target or worker target.", owner = "topology", resolves = "concept" }
 control-plane-target   = { gloss = "The target running the tick, the reconciler, the orchestrator and the single-writer catalog.", owner = "topology", resolves = "concept" }
 worker-target          = { gloss = "The target accepting a job, running it to completion and reporting back.", owner = "topology", resolves = "concept" }
 reference-target       = { gloss = "The single-process deployment every other target is compared against.", owner = "topology", resolves = "concept" }
@@ -82,6 +87,9 @@ descriptor           = { gloss = "The per-hostname artifact naming its worker, h
 descriptor-field     = { gloss = "A key a descriptor models, against which an unmodelled key is refused.", owner = "topology", resolves = "code" }
 descriptor-emission  = { gloss = "The deploy's derivation of a hostname's provider configuration from its descriptor.", owner = "topology", resolves = "concept" }
 gate                 = { gloss = "A descriptor's declared posture: `access`, `adminToken`, or acknowledged `public`.", owner = "topology", resolves = "code" }
+access               = { gloss = "The gate value declaring a hostname answers an anonymous request with a redirect to the owning team's login.", owner = "topology", resolves = "code" }
+adminToken           = { gloss = "The gate value declaring a hostname authenticates its own callers and shows no login in front of them.", owner = "topology", resolves = "code" }
+public               = { gloss = "The literal principal every request carries alongside a subject's own principals, and the descriptor gate value naming a surface open to anyone.", owner = "visibility", resolves = "code" }
 posture-probe        = { gloss = "The anonymous request the deploy judges a hostname's gate by.", owner = "topology", resolves = "concept" }
 probe-table          = { gloss = "The deploy's hostname-and-gate table, derived from the descriptor set.", owner = "topology", resolves = "code" }
 wildcard-application = { gloss = "A domain-wide application carrying a reusable bypass policy, gating no hostname on its own.", owner = "topology", resolves = "concept" }

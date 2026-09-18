@@ -24,7 +24,7 @@ the diagnostic, and reachable by anyone who can phrase a question as a diagnosti
 
 The narrow version fails the same way. An elevated-read mode scoped to operators still
 means one principal holds a ceiling higher than every human the mirror governs, and that
-ceiling exists whether or not anyone is currently debugging.
+ceiling exists whether or not anyone is debugging.
 
 ## Decision
 
@@ -64,7 +64,7 @@ separate query under a credential that genuinely grants it, so a shape problem a
 permission problem are diagnosed in two steps rather than one, and the two-step path is
 slower exactly when someone is escalating.
 
-Reversing is a one-way door in practice. A comparison mode, once shipped, is written into
+Reversing is a one-way door in practice. A comparison mode, once available, is written into
 runbooks and tooling, and withdrawing it later removes a capability operators have come to
 treat as the normal way to debug.
 

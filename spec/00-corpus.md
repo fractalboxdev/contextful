@@ -21,7 +21,7 @@ obeys that grammar itself.
 | Party | Obligation |
 | --- | --- |
 | **The author** | States a fact once, in the file whose contract owns it, as one clause row carrying a four-coordinate address. Cites a decision record for every refusal whose direction is a choice. |
-| **The registry** | Holds the controlled vocabulary. A contract, an operation, a subject, a unit, an error identifier and a named bound exist because `spec/terms/` says so, and nowhere else. |
+| **The registry** | Holds the controlled vocabulary. A contract, an operation, a subject, a unit, an error identifier and a named bound each carry one spelling, recorded in `spec/terms/` and nowhere else. |
 | **The checker** | `contextful spec` is the one implementation of every rule below. It reads authored text as `spec/terms/scope.toml` defines it, and the gate and a local run invoke the identical command. |
 | **The reader** | Reads a contract file for behavior, `spec/decisions/` for why, `spec/status.md` for what the tree demonstrates, and `spec/roadmap.md` for order. |
 
@@ -31,7 +31,7 @@ obeys that grammar itself.
 | --- | --- |
 | `address` | The four coordinates of a clause id and what makes each one legal. |
 | `anatomy` | The heading order every contract file carries, and the binding between an operation and the clauses that constrain it. |
-| `registry` | Registration of a spelling, and the collision test that refuses a near-synonym. |
+| `registry` | Registration of a spelling, and the collision test standing against a near-synonym. |
 | `reference` | The one legal way a file reaches a fact another file owns. |
 | `rationale` | Where an argument lives, and what a specification sentence is forbidden to contain. |
 | `state` | How performed, committed and broken are computed rather than written. |
@@ -44,7 +44,7 @@ obeys that grammar itself.
 | `corpus.address.shape.clause-id` | A clause id is four dot-separated segments of `[a-z0-9-]+`, written in the row's first cell: the contract, the operation, the kind, the subject. | `0001` |
 | `corpus.address.invariant.contract-segment` | The first segment equals the file's front-matter `contract`, one of the twenty entries in `spec/terms/contract.toml`. A contract entry carries an ordered file list, so one contract spans several files. | `0001` |
 | `corpus.address.invariant.operation-segment` | The second segment is an operation registered in `spec/terms/operation.toml` under the key `<contract>.<operation>` and listed in exactly one front-matter `owns` list among its contract's files. The first two segments together decide which file carries the clause, and two contracts needing one verb each register it under their own key. | `0001` |
-| `corpus.address.shape.kind-segment` | The third segment is one of `invariant`, `refusal`, `limit`, `shape`, `interface`, `workflow`, read off the sentence's own form. | `0001` |
+| `corpus.address.shape.kind-segment` | The third segment is one of the six kind spellings — invariant, refusal, limit, shape, interface, workflow — read off the sentence's own form. | `0001` |
 | `corpus.address.invariant.subject-segment` | The fourth segment is a canonical subject in `spec/terms/term.toml` whose owning contract is this clause's contract. | `0001` |
 | `corpus.address.invariant.ids-are-stable` | An id changes when a fact changes obligor and at no other time. Moving an operation between two files of one contract rewrites no id, no reference, no pin, no roadmap row and no record citation. | `0001` |
 | `corpus.address.refusal.duplicate-id` | Extraction refuses a repeated clause id, naming both files and both line numbers, and raises `SpecDuplicateId`. | `0001` |
@@ -57,7 +57,7 @@ obeys that grammar itself.
 | `corpus.anatomy.shape.file-headings` | A contract file carries front matter with `contract` and `owns`, one `# ` title, and top-level headings Parties, Operations, Clauses, Shapes, Unsettled in that order. Clause tables carry the heading `## Clauses — <operation>`. | `0001` |
 | `corpus.anatomy.invariant.operation-is-bound` | Every operation a file lists under Operations is addressed by at least one clause, and every obligation a Parties row states is addressed by an invariant or a refusal. | `0001` |
 | `corpus.anatomy.refusal.unowned-operation` | An operation claimed by two files of one contract, claimed by none, or addressed by a clause whose file does not own it raises `SpecOwnsConflict`. | `0001` |
-| `corpus.anatomy.limit.file-length` | A file whose registry role is `contract` holds at most 900 lines; the checker names the operations whose clauses relieve it. A file whose role is `registry` or `generated` carries no length bound. | `0001` |
+| `corpus.anatomy.limit.file-length` | A file whose registry role is `contract` holds at most 900 rows; the checker names the operations whose clauses relieve it. A file whose role is `registry` or `generated` carries no length bound. | `0001` |
 | `corpus.anatomy.invariant.title-matches-registry` | A file's single `# ` heading equals the title its contract entry declares for that path. | `0001` |
 
 ## Clauses — registry
@@ -71,6 +71,7 @@ obeys that grammar itself.
 | `corpus.registry.invariant.one-named-bound-one-owner` | Every numeral-and-unit pair in a limit statement resolves to one `limit-id` in `spec/terms/limit.toml`, and each `limit-id` is asserted by one clause. Two independent bounds carrying the same number are two `limit-id` entries; one shared ceiling is one entry reached by reference. | `0001` |
 | `corpus.registry.refusal.limit-without-a-number` | A `limit` row carrying no numeral, a unit absent from `spec/terms/unit.toml`, or a numeral spelled as a word raises `SpecUnmeasuredLimit`. | `0001` |
 | `corpus.registry.refusal.refusal-without-an-error` | A `refusal` row naming no identifier present in `spec/terms/error.toml` raises `SpecUnnamedRefusal`. | `0001` |
+| `corpus.registry.invariant.protocol-vocabulary-has-no-obligor` | A token naming something a standard defines — a header, a status code, a media type, an encoding — carries the owner `wire`, which names no contract and no file. No clause is addressed on one, and the usage-to-owner join passes over it. A token some party answers for belongs to that party's contract instead. | `0001` |
 | `corpus.registry.invariant.scan-boundary-is-data` | Every check reads its globs and its exemptions from `spec/terms/scope.toml`. Authored text is `spec/**/*.md` less the generated tree, the registries, `spec/status.md` and `spec/roadmap.md`, less front matter, less every span a reference produced. | `0001` |
 
 ## Clauses — reference
@@ -90,7 +91,7 @@ obeys that grammar itself.
 | --- | --- | --- |
 | `corpus.rationale.invariant.argument-lives-in-a-record` | An argument lives under `spec/decisions/`, one record per decision, named `NNNN-<slug>.md`. A contract file states behavior and names no alternative. | `0002` |
 | `corpus.rationale.refusal.argument-in-a-contract-file` | The tokens `because`, `so that`, `in order to`, `the reason`, `which is why`, `judged on`, `at the cost of` and `trade-off`, and any term in the criteria vocabulary, raise `SpecRationaleLeak` outside `spec/decisions/`. `rather than` and `instead of` stay legal, so a statement names what a behavior is not. | `0002` |
-| `corpus.rationale.refusal.modal-outside-a-clause` | `must`, `never`, `refuses`, `is refused`, `at most`, `at least`, `exactly` and `always` raise `SpecStrayModal` outside a clause cell, an unsettled line and `spec/decisions/`. `only` raises it in a sentence that also carries a registered term. | `0001` |
+| `corpus.rationale.refusal.modal-outside-a-clause` | The words must, never, refuses, is refused, at most, at least, exactly and always raise `SpecStrayModal` outside a clause cell, an unsettled line and `spec/decisions/`. The word only raises it in a sentence that also carries a registered term. | `0001` |
 | `corpus.rationale.invariant.refusal-cites-a-record` | A `refusal` row carries a `decided-by` cell naming a record under `spec/decisions/`. A `limit` row inherits the citation of the clause owning its `limit-id`. | `0002` |
 | `corpus.rationale.shape.record-anatomy` | A record carries a dated Status line, Context, Decision, Options considered, Criteria, Consequences. Every rejected option names the criterion it lost on, and the Decision states the outcome as a standing fact. | `0002` |
 | `corpus.rationale.refusal.orphan-record` | A record no clause cites and no citing record supersedes raises `SpecOrphanRecord`, as does a `decides` entry naming an id that does not extract, and a record whose `decides` list spans more than two contracts. | `0002` |
@@ -107,8 +108,9 @@ obeys that grammar itself.
 | `corpus.state.invariant.performed-needs-resolution` | A clause computes `performed` when its pin resolves against the source tree and every backticked identifier it names that is registered as resolving in code is defined in a definition position — an item, a field name, an error variant, a command verb, a schema key, an environment read — never a comment, a fixture or a string literal. A term registered as naming a concept is excluded from that test. | `0002` |
 | `corpus.state.refusal.broken-pin` | A pin that does not resolve, and a resolving pin whose clause names a code term the tree no longer defines, compute `broken` and raise `SpecBrokenPin`. A rename is what reds the gate. | `0002` |
 | `corpus.state.refusal.presence-pin-on-a-bound` | A `refusal` or `limit` clause accepts a test pin or a theorem pin. A type-path pin on either raises `SpecPresencePinOnBound`. | `0002` |
-| `corpus.state.limit.coverage-floor` | `spec/pins.toml` carries a machine-maintained floor of the pinned clause count per contract. A live count below its floor raises `SpecCoverageRegression`, so deleting a pin clears no verdict. The floor rises by an explicit command after a clean run. | `0002` |
-| `corpus.state.refusal.status-word-in-a-contract-file` | A build-state word, a date, or a milestone token in authored text raises `SpecDatedProse`. Build state is reached by the roadmap and the generated status file, named by path. | `0002` |
+| `corpus.state.limit.coverage-floor` | `spec/pins.toml` carries a machine-maintained floor of the pinned clause count per contract, starting at 0 entries. A live count below its floor raises `SpecCoverageRegression`, and deleting a pin clears no verdict. The floor rises by an explicit command after a clean run. | `0002` |
+| `corpus.state.refusal.dated-vocabulary` | A build-state word — `planned`, `not yet`, `currently`, `today`, `shipped`, `implemented`, `previously`, `used to`, `legacy`, `migration`, `TODO`, `FIXME`, `WIP` — a date, or a milestone token raises `SpecDatedProse` in every authored file, a record included. Build state is reached by the roadmap and the generated status file, named by path. | `0002` |
+| `corpus.state.refusal.counterfactual-mood` | `will`, `would` and `shall` raise `SpecCounterfactualMood` in a contract file. A record's `Options considered` and `Consequences` carry them, which is where the behavior of a path the system does not take is described. | `0002` |
 
 ## Clauses — render
 

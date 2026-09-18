@@ -47,7 +47,7 @@ withdrawn format back.
 | **Withdrawal through revocation, expiry or key rotation under a declared policy** *(chosen)* | One recorded cutover instant; acceptance cannot return without a declaration; outstanding credentials are sequenced out rather than cut off | The cutover instant is bounded by the longest lifetime in flight, so a withdrawal cannot be immediate under the ordinary instruments |
 | A quiet dual-accept window, closed when breakage stops | Simple to operate; no policy to write | Loses on the recorded-end criterion: nothing states when acceptance ends, so no party can answer whether a given credential was honored |
 | A deployment flag controlling old-format acceptance | Fast to flip in both directions during a cutover | Loses on silent restoration: a rollback performed for an unrelated reason restores the old format with no declaration, and the system holds no record that it did |
-| Refuse the old format at a fixed date with no sequencing | An unambiguous instant, trivially implemented | Loses on the holder-visible failure: credentials valid on their own terms stop verifying, which is the failure the rotation grace exists to prevent |
+| Refuse the old format at a fixed date with no sequencing | An unambiguous instant, and the simplest possible admission rule | Loses on the holder-visible failure: credentials valid on their own terms stop verifying, which is the failure the rotation grace exists to prevent |
 
 ## Criteria
 

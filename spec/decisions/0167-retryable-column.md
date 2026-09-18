@@ -7,9 +7,9 @@
 
 A marker row records two facts about a unit that produced nothing: how many times it has been
 tried, and whether trying again could ever help. These read as the same fact because the
-outstanding-set filter consults only one of them — a unit is re-selected when it is not yet
-settled — and the cheapest implementation makes "settled" mean "attempts have reached the
-ceiling".
+outstanding-set filter consults only one of them — a unit is re-selected while it is
+unsettled — and the cheapest implementation makes "settled" mean "attempts have reached
+the ceiling".
 
 That encoding is wrong in a specific and dangerous way. The ceiling is `max_attempts`, an
 operator-facing knob whose purpose is tolerating flaky publishers: a feed host that times out, a

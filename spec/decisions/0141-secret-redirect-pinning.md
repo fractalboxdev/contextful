@@ -81,8 +81,8 @@ query string off a followed hop.
 
 ## Revisit triggers
 
-- A declaration grammar gains an explicit allowed-origin set, so a vendor's own migration
-  targets are stated rather than inferred.
+- A declaration grammar gains an explicit allowed-origin set, so a vendor's own alternate
+  origins are stated rather than inferred.
 - Refused hops are observed dominated by same-vendor canonicalization — trailing slashes,
   case, path normalization — at the configured host, indicating the port or path handling is
   stricter than the criterion requires.

@@ -40,7 +40,7 @@ depends on it rather than after. Each profile's wiring is an explicit list.
 | --- | --- | --- |
 | **Typed refusal at first reach** *(chosen)* | The failure travels the run's own failure path: a run row, an error kind, a settled ledger, an untouched position. The gap names itself and the profile it was found in. | A describe surface a caller has to consult, and a wiring list per profile that reviewers keep honest. |
 | Panic on the missing member | Nothing to carry: no error variant, no describe surface, no wiring list. | Loses on containment. A panic unwinds past the ledger settle and the run-record close, so the run leaves an opening row and nothing else — indistinguishable from a process that died. |
-| Silent no-op returning a default | The run continues, and a profile mismatch never stops anything. | Loses outright. A suspension that never suspends resumes immediately with an empty payload; the run reports success having done none of the work, and the store holds rows produced from a gate nobody passed. |
+| Silent no-op returning a default | The run continues, and a profile mismatch never stops anything. | Lost on honesty of the reported outcome: a suspension that never suspends resumes immediately with an empty payload, so the run reports success over work it never did and the store holds rows produced from a gate nobody passed. |
 | Compile-time capability typing | The mismatch becomes unrepresentable, with no runtime arm at all. | Loses on reach and on cost: the substrate is selected at build configuration and crossed by a guest component boundary, so the capability set is not in the caller's type at the point that matters. |
 
 ## Criteria

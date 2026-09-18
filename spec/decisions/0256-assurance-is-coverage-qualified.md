@@ -1,7 +1,7 @@
 # 0256 — Negative assurance is scoped to observed states and carries its coverage
 
 **Status:** accepted 2026-09-18
-**Decides:** `visibility.explain.refusal.empty-window`, `visibility.explain.refusal.unqualified-negative`
+**Decides:** `visibility.explain.refusal.unobserved-window`, `visibility.explain.refusal.unqualified-negative`
 
 ## Context
 

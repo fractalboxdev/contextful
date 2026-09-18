@@ -43,8 +43,8 @@ Per-unit failure state recorded anywhere other than the output table raises
 | --- | --- | --- |
 | **A marker row in the output table, visible to the anti-join** *(chosen)* | The loop terminates; failure is queryable beside content; one durability path | The output table mixes content rows and failure rows, so every consumer filters |
 | A dead-letter queue | Familiar shape; failures segregated from content | Loses on all three criteria: a second storage shape to restart-proof, unreachable by SQL, and invisible to the anti-join, so the endless re-selection remains |
-| A cursor ring recording attempted units | No new table; small | Loses the same three ways, and adds a bounded structure that silently forgets the oldest failures, which re-opens the loop for exactly the units that failed longest ago |
-| A sibling table of markers | Inspectable by SQL; content table stays clean | Loses because the anti-join would not see them — the scan reads the table the pipeline writes, so a sibling changes nothing about what is outstanding |
+| A cursor ring recording attempted units | No new table; small | Lost on the loop: a bounded structure silently forgets the oldest failures, so the units that failed longest ago are re-selected at every tick, and it is neither queryable beside content nor visible to the anti-join |
+| A sibling table of markers | Inspectable by SQL; content table stays clean | Lost on the loop: the anti-join reads the table the pipeline writes, so a marker in a sibling leaves the unit outstanding and it is re-selected at every tick |
 | Extend the anti-join to read a sibling table | Keeps the content table clean and terminates the loop | Loses on effort and on coupling: two tables to reconcile, two schemas to keep in step, and an anti-join whose correctness depends on a second table existing |
 
 ## Criteria

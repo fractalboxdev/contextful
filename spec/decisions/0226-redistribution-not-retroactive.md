@@ -12,8 +12,8 @@ set, already uploaded.
 
 Those objects are still there, and still fetchable. A manifest indexes objects and authorizes
 nothing — reachability in the bucket is by key. Dropping a table's name from the manifest
-removes it from the index and leaves every previously-uploaded key exactly as reachable as it
-was. The same applies to the verbatim record each pull writes, which is the second envelope
+removes it from the index and leaves every key an earlier push uploaded exactly as reachable as
+it was. The same applies to the verbatim record each pull writes, which is the second envelope
 rows travel in and is keyed the same way.
 
 So an operator who clears the flag has two beliefs available. One is that the bound now applies

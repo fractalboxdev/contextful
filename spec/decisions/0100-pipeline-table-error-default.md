@@ -41,7 +41,7 @@ independent declares the continuing behavior explicitly.
 | **Halt by default, continue by declaration** *(chosen)* | The common one-upstream pipeline reports one error rather than N; the independent case is one declared line away | Every halt costs the healthy tables behind the failing one a tick, until the operator declares otherwise |
 | Continue as the default | No healthy table ever loses a tick to an unrelated failure | Lost on noise: most pipelines are one upstream, so the common case becomes N copies of one error and the run record stops being readable at a glance |
 | No default — every pipeline declares it | Forces the author to think about it once | Lost on cost of authorship: the setting is correct for the common shape, and a mandatory declaration taxes every pipeline to serve the minority |
-| A per-table override, and a cap on failures before a halt | Fine-grained control over mixed pipelines | Deferred rather than rejected: neither has a case yet, and both add declaration surface that nothing currently needs |
+| A per-table override, and a cap on failures before a halt | Fine-grained control over mixed pipelines | Lost on declaration burden: each widens the declaration surface to serve a mixed pipeline shape that the one-upstream distribution weighs below the cost of writing it |
 
 ## Criteria
 
