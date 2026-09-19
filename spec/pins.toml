@@ -34,6 +34,9 @@
 "assurance.test.acceptance-surface" = { test = "contextful_ci::acceptance_surface::an_acceptance_package_linking_a_workspace_package_is_refused" }
 "assurance.test.refactor-trailer"   = { test = "contextful_ci::test_first::a_refactor_trailer_exempts_the_range" }
 "assurance.test.test-first"         = { test = "contextful_ci::test_first::source_change_without_test_is_refused" }
+"assurance.gate.secret-ciphertext"  = { test = "contextful_ci::secrets::a_plaintext_value_in_a_tracked_env_file_is_refused" }
+"assurance.gate.secret-scope"       = { test = "contextful_ci::secrets::a_key_with_no_scope_comment_above_it_is_refused" }
+"assurance.structure-tree.mirror-unresolved" = { test = "contextful_ci::mirrors::an_annotation_naming_no_clause_is_refused" }
 "corpus.state.acceptance"           = { test = "contextful_spec::state::status_reports_each_milestone_acceptance_verdict" }
 "corpus.state.deferred-depth"       = { test = "contextful_spec::state::a_behavior_clause_in_an_operation_depth_milestone_is_refused" }
 "corpus.state.acceptance-first"     = { test = "contextful_spec::state::a_pin_in_a_milestone_with_no_acceptance_test_is_refused_until_one_exists" }
@@ -44,7 +47,7 @@
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 3
+assurance = 6
 authority = 0
 connector = 0
 corpus = 13

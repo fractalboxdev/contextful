@@ -2,6 +2,8 @@
 //! scratch git repositories holding a small cargo workspace.
 
 mod acceptance_surface;
+mod mirrors;
+mod secrets;
 mod test_first;
 mod workflow;
 
