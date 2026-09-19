@@ -86,7 +86,7 @@ The gate measures commits, so commit before running it.
 
 [`.github/workflows/gate.yml`](./.github/workflows/gate.yml) dispatches each stage of
 `contextful-ci gate` to the org's FlareDispatch Dispatcher as a `check` run. Each stage
-reports as its own check-run, and branch protection requires all four:
+reports as its own check-run on the pull request:
 `flare-dispatch/check:schema`, `flare-dispatch/check:test-first`,
 `flare-dispatch/check:workspace` and `flare-dispatch/check:acceptance`. A local run and
 the remote check invoke the identical command; `contextful-ci`'s suite fails when the
