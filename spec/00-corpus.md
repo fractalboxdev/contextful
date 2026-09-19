@@ -95,10 +95,12 @@ tools/spec/             the checker
 | --- | --- | --- |
 | `corpus.state.status-is-computed` | `spec/status.md` is the sole statement of which clauses the tree demonstrates. No authored file says whether something is built. | P8 |
 | `corpus.state.pin` | `spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant or an `item` path. A refusal or a limit takes a test or a theorem. | P8 |
-| `corpus.state.verdict` | An unpinned clause computes `committed`; a pinned clause computes `performed` when its artifact's final path segment is defined as a function, constant or item under `crates/`, and `broken` otherwise. | P8 |
+| `corpus.state.verdict` | An unpinned clause computes `committed`; a pinned clause computes `performed` when its artifact's final path segment is defined under `crates/` or `tools/`, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`. | P8 |
 | `corpus.state.coverage-floor` | `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`. | because deleting a failing pin must not read as progress |
 | `corpus.state.bad-pin` | A pin naming no clause, an item pin on a refusal or limit, and a broken pin raise `SpecBrokenPin`. | P8 |
-| `corpus.state.roadmap` | `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, or an operation claimed by two milestones, raises `SpecRoadmap`. | P8 |
+| `corpus.state.roadmap` | `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`. | P8 |
+| `corpus.state.acceptance` | A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored, and `passing` otherwise. | D54 |
+| `corpus.state.acceptance-first` | A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`. | D54 |
 
 ## render
 

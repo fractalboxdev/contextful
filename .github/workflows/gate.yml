@@ -1,0 +1,45 @@
+# The gate, one FlareDispatch `check` per stage.
+#
+# Each matrix entry dispatches `contextful-ci gate --stage <stage>` to the org's
+# Dispatcher, which clones the PR head into a Rust-equipped sandbox and reports the
+# verdict as the check-run `flare-dispatch/check:<stage>`. This job goes green once
+# the dispatch is accepted; branch protection requires the four check-runs:
+#
+#   flare-dispatch/check:schema      contextful-spec lint
+#   flare-dispatch/check:test-first  a test under tests/ fails against the base source
+#   flare-dispatch/check:workspace   cargo test --workspace, acceptance excluded
+#   flare-dispatch/check:acceptance  the milestone acceptance suite
+#
+# A contributor runs the same stages locally: `cargo run -q -p contextful-ci -- gate`.
+# `contextful-ci`'s integration suite fails when this matrix and its stage list differ.
+name: gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    if: ${{ vars.FLAREDISPATCH_ENDPOINT != '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: [schema, test-first, workspace, acceptance]
+    steps:
+      - uses: fractalboxdev/flare-dispatch/actions/flare-dispatch-action@a5118d6594c8f3e4040bb90afcb02898a6e7b7bd
+        with:
+          run: check
+          endpoint: ${{ vars.FLAREDISPATCH_ENDPOINT }}
+          hmac-secret: ${{ secrets.FLAREDISPATCH_HMAC }}
+          inputs: |
+            {
+              "repo": "${{ github.repository }}",
+              "sha": "${{ github.event.pull_request.head.sha }}",
+              "checkLabel": "${{ matrix.stage }}",
+              "command": "cargo run -q -p contextful-ci -- gate --stage ${{ matrix.stage }} --base ${{ github.event.pull_request.base.sha }}",
+              "failOnNonZeroExit": true,
+              "timeoutSec": 1800
+            }

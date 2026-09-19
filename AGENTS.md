@@ -41,6 +41,47 @@ cargo run -q -p contextful-spec -- extract   # regenerate spec/spec.lock.json
 | A new subject area | A contract entry in [`spec/terms/contract.toml`](./spec/terms/contract.toml), a fragment, then the file in the standard anatomy |
 | Splitting a long file | Add a path to the contract's file list and move an `owns` entry. No clause id changes |
 
+## Test first, acceptance first
+
+Every change to Rust source under `crates/` or `tools/` starts from a failing test.
+[`D54`](./spec/decisions/D54-test-first-and-acceptance-first.md) records the decision;
+the gate enforces it.
+
+1. **Acceptance first.** Before pinning the first clause of a roadmap milestone, add the
+   test its `Acceptance:` line names under `crates/acceptance/tests/integration/`, marked
+   `#[ignore]` while the milestone is open. It drives a built binary through the CLI, MCP
+   or HTTP surface and depends on no workspace package. A pin in a milestone with no
+   acceptance test raises `SpecAcceptanceMissing`.
+2. **Red.** Write the test under the package's `tests/integration/` and commit it with
+   the change. The `test-first` stage runs the change's test files against the base
+   commit's source and requires them to fail; a source change without one raises
+   `TestNotFirst`. Inline `#[cfg(test)]` tests count toward the workspace stage, not
+   toward this check.
+3. **Green.** Implement until `cargo test --workspace` passes, then pin the clause to the
+   test in `spec/pins.toml` and run `contextful-spec pins` to raise the floor. A pin to
+   an `#[ignore]`d test computes `broken`.
+4. **Refactor.** A behavior-preserving change carries the commit trailer
+   `Test-First: refactor` and answers to the existing suite alone.
+5. **Close the milestone** by removing the acceptance test's `#[ignore]`; status reports
+   it `passing`.
+
+```sh
+cargo run -q -p contextful-ci -- gate                          # every stage, against origin/HEAD
+cargo run -q -p contextful-ci -- gate --stage test-first --base <rev>
+```
+
+The gate measures commits, so commit before running it.
+
+## The gate
+
+[`.github/workflows/gate.yml`](./.github/workflows/gate.yml) dispatches each stage of
+`contextful-ci gate` to the org's FlareDispatch Dispatcher as a `check` run. Each stage
+reports as its own check-run, and branch protection requires all four:
+`flare-dispatch/check:schema`, `flare-dispatch/check:test-first`,
+`flare-dispatch/check:workspace` and `flare-dispatch/check:acceptance`. A local run and
+the remote check invoke the identical command; `contextful-ci`'s suite fails when the
+workflow's stage matrix and the subcommand's stage list differ.
+
 ## Engineering conventions
 
 [`spec/81-engineering.md`](./spec/81-engineering.md) is the sole home of how we

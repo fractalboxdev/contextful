@@ -613,31 +613,105 @@ pub fn load_pins(c: &Corpus) -> PinsFile {
         .unwrap_or_default()
 }
 
-/// `performed` when the artifact's final segment is defined under `crates/`.
-pub fn verdict(c: &Corpus, pin: &BTreeMap<String, String>) -> &'static str {
-    let Some((kind, path)) = pin.iter().next() else { return "broken" };
+/// Where a pinned artifact's final segment is defined, if anywhere.
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum Resolution {
+    Absent,
+    Ignored,
+    Defined,
+}
+
+/// Resolve an artifact path under the given roots: `Defined` when its final segment
+/// is defined there, `Ignored` when that definition is a test carrying `#[ignore]`.
+pub fn resolve(c: &Corpus, kind: &str, path: &str, roots: &[&str]) -> Resolution {
     let last = path.rsplit([':', '.']).next().unwrap_or(path);
-    let pat = match kind.as_str() {
+    let pat = match kind {
         "test" => format!(r"\bfn\s+{}\b", regex::escape(last)),
         "theorem" => format!(r"\b(theorem|lemma)\s+{}\b", regex::escape(last)),
         _ => format!(r"\b(fn|struct|enum|trait|type|const|static|mod)\s+{}\b", regex::escape(last)),
     };
     let re = Regex::new(&pat).unwrap();
-    let crates = c.root.join("crates");
-    if !crates.exists() {
-        return "broken";
-    }
-    for e in walkdir::WalkDir::new(crates).into_iter().flatten() {
-        let p = e.path();
-        if p.extension().map(|x| x == "rs" || x == "lean").unwrap_or(false) {
-            if let Ok(s) = std::fs::read_to_string(p) {
-                if re.is_match(&s) {
-                    return "performed";
-                }
+    for root in roots {
+        let dir = c.root.join(root);
+        let walk = walkdir::WalkDir::new(dir).into_iter().filter_entry(|e| {
+            let n = e.file_name().to_string_lossy();
+            n != "target" && n != "node_modules"
+        });
+        for e in walk.flatten() {
+            let p = e.path();
+            if !p.extension().map(|x| x == "rs" || x == "lean").unwrap_or(false) {
+                continue;
+            }
+            let Ok(s) = std::fs::read_to_string(p) else { continue };
+            if let Some(m) = re.find(&s) {
+                return if kind == "test" && ignored(&s[..m.start()]) { Resolution::Ignored } else { Resolution::Defined };
             }
         }
     }
-    "broken"
+    Resolution::Absent
+}
+
+/// Whether the attribute block directly above a definition holds `#[ignore`.
+fn ignored(before: &str) -> bool {
+    for l in before.lines().rev().map(str::trim) {
+        if l.is_empty() || l.starts_with("fn") || l.starts_with("pub") || l.starts_with("async") {
+            continue;
+        }
+        if !(l.starts_with("#[") || l.starts_with("///") || l.starts_with("//")) {
+            return false;
+        }
+        if l.starts_with("#[ignore") {
+            return true;
+        }
+    }
+    false
+}
+
+pub const PIN_ROOTS: [&str; 2] = ["crates", "tools"];
+pub const ACCEPTANCE_ROOT: &str = "crates/acceptance";
+
+/// `performed` when the artifact's final segment is defined under `crates/` or `tools/`
+/// and, for a test, carries no `#[ignore]`; `broken` otherwise.
+pub fn verdict(c: &Corpus, pin: &BTreeMap<String, String>) -> &'static str {
+    let Some((kind, path)) = pin.iter().next() else { return "broken" };
+    match resolve(c, kind, path, &PIN_ROOTS) {
+        Resolution::Defined => "performed",
+        _ => "broken",
+    }
+}
+
+/// A milestone's acceptance test: `absent`, `open` when ignored, `passing` otherwise.
+pub fn acceptance_verdict(c: &Corpus, path: Option<&str>) -> &'static str {
+    match path.map(|p| resolve(c, "test", p, &[ACCEPTANCE_ROOT])) {
+        Some(Resolution::Defined) => "passing",
+        Some(Resolution::Ignored) => "open",
+        _ => "absent",
+    }
+}
+
+/// A milestone's `Reach:` and `Acceptance:` lines: heading, heading line, reach, acceptance test path.
+pub struct MilestoneLines {
+    pub heading: String,
+    pub line: usize,
+    pub reach: bool,
+    pub acceptance: Option<String>,
+}
+
+pub fn milestone_lines(c: &Corpus) -> Vec<MilestoneLines> {
+    let mut out: Vec<MilestoneLines> = Vec::new();
+    let Some(d) = c.docs.iter().find(|d| d.role == Role::Plan) else { return out };
+    for (n, l, k) in d.each() {
+        if k == LineKind::Heading && l.starts_with("## ") {
+            out.push(MilestoneLines { heading: l[3..].trim().to_string(), line: n, reach: false, acceptance: None });
+        } else if let Some(m) = out.last_mut() {
+            if l.starts_with("Reach: ") {
+                m.reach = true;
+            } else if let Some(rest) = l.strip_prefix("Acceptance: ") {
+                m.acceptance = tick_spans(rest).into_iter().next().map(|(_, t)| t);
+            }
+        }
+    }
+    out
 }
 
 /// A roadmap milestone: its heading, its line, and each named operation with its line.
@@ -723,8 +797,12 @@ fn state(c: &Corpus) -> Vec<Finding> {
         if pin.contains_key("item") && cl.kind != "behavior" {
             out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("{} `{id}` takes a test or theorem, not an item", cl.kind)));
         }
-        if verdict(c, pin) == "broken" {
-            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin for `{id}` does not resolve under crates/")));
+        let (kind, path) = pin.iter().next().map(|(k, v)| (k.as_str(), v.as_str())).unwrap_or(("", ""));
+        let res = resolve(c, kind, path, &PIN_ROOTS);
+        if res == Resolution::Ignored {
+            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin for `{id}` names a test carrying `#[ignore]`")));
+        } else if res == Resolution::Absent {
+            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin for `{id}` does not resolve under crates/ or tools/")));
         } else {
             *count.entry(cl.contract.clone()).or_default() += 1;
         }
@@ -738,7 +816,29 @@ fn state(c: &Corpus) -> Vec<Finding> {
             out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("floor names unknown contract `{contract}`")));
         }
     }
-    out.extend(expand_roadmap(c).1);
+    let (claim, found) = expand_roadmap(c);
+    out.extend(found);
+    for m in milestone_lines(c) {
+        if !m.reach {
+            out.push(f("state", "spec/roadmap.md", m.line, "SpecRoadmap", format!("milestone `{}` carries no `Reach:` line", m.heading)));
+        }
+        let Some(test) = m.acceptance.as_deref() else {
+            out.push(f("state", "spec/roadmap.md", m.line, "SpecRoadmap", format!("milestone `{}` carries no `Acceptance:` line", m.heading)));
+            continue;
+        };
+        let pinned = pins.pin.keys().filter_map(|id| clauses.get(id)).any(|cl| {
+            claim.get(&format!("{}.{}", cl.contract, cl.operation)) == Some(&m.heading)
+        });
+        if pinned && acceptance_verdict(c, Some(test)) == "absent" {
+            out.push(f(
+                "state",
+                "spec/roadmap.md",
+                m.line,
+                "SpecAcceptanceMissing",
+                format!("milestone `{}` holds a pinned clause while `{test}` is not defined under {ACCEPTANCE_ROOT}/", m.heading),
+            ));
+        }
+    }
     out
 }
 

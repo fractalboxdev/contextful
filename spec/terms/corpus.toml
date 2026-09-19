@@ -6,7 +6,7 @@ anatomy   = { gloss = "The section order of a contract file, its clause tables, 
 registry  = { gloss = "Where a spelling is registered, the single owner of an error or a bound, and the collision test." }
 reference = { gloss = "The one legal way a statement reaches a fact another clause owns, and the ban on restatement and literature." }
 rationale = { gloss = "Where an argument lives: the Why cell, the record and its anatomy, and the words a contract file cannot carry." }
-state     = { gloss = "Pins, verdicts, the coverage floor and the roadmap's operation claims." }
+state     = { gloss = "Pins, verdicts, the coverage floor, the roadmap's operation claims and each milestone's acceptance test." }
 render    = { gloss = "The generated files, and the vocabulary no authored file carries." }
 
 [error]
@@ -24,7 +24,8 @@ SpecUnsettled          = { clause = "corpus.rationale.unsettled-line", gloss = "
 SpecRecord             = { clause = "corpus.rationale.orphan-record", gloss = "An uncited or missing record, a bad Why cell, or a record out of anatomy." }
 SpecCoverageRegression = { clause = "corpus.state.coverage-floor", gloss = "Fewer performed pins than the floor." }
 SpecBrokenPin          = { clause = "corpus.state.bad-pin", gloss = "A pin that names no clause, mismatches its kind, or does not resolve." }
-SpecRoadmap            = { clause = "corpus.state.roadmap", gloss = "A roadmap name resolving to nothing, or claimed twice." }
+SpecRoadmap            = { clause = "corpus.state.roadmap", gloss = "A roadmap name resolving to nothing, claimed twice, or a milestone missing its reach or acceptance line." }
+SpecAcceptanceMissing  = { clause = "corpus.state.acceptance-first", gloss = "A milestone with a pinned clause and no acceptance test." }
 SpecStaleRender        = { clause = "corpus.render.generated", gloss = "A generated file differing from regeneration." }
 SpecDatedProse         = { clause = "corpus.render.dated-prose", gloss = "Build-state words or a date in authored text." }
 SpecCounterfactual     = { clause = "corpus.render.counterfactual", gloss = "Future or conditional mood in a contract file." }

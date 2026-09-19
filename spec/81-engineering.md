@@ -49,6 +49,9 @@ unsettled: Does a derived artifact prove currency by a schema-hash comparison, b
 | `assurance.test.feature-gated-suite` | A feature-gated suite carries a module-level `cfg` attribute at the head of its module file and compiles to nothing while its feature is off. | |
 | `assurance.test.own-process` | A test needing its own process sits in a top-level file stating why at its site; a thread-scoped log capture is such a test. | |
 | `assurance.test.connector-kit` | The connector authoring toolkit ships a conformance suite — discovery returns valid schemas, an opened table yields a finite stream, a position round-trips — plus recorded-HTTP fixture replay and property tests over position monotonicity. | |
+| `assurance.test.test-first` | A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`. | D54 |
+| `assurance.test.refactor-trailer` | A commit range carrying the trailer `Test-First: refactor` is exempt from {{assurance.test.test-first}}, and the workspace stage alone holds it. | because a behavior-preserving change has no failing test to write, and the existing suite is its specification |
+| `assurance.test.acceptance-surface` | An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`. | D54 |
 
 unsettled: Does a suite contending process-global state declare that state in its module, or acquire a named lock the integration binary owns? owner: build affects: assurance.test
 
@@ -72,7 +75,8 @@ unsettled: Does the edge profile build for `wasm32-wasip2` with the SQL engine i
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `assurance.gate.stage-sequence` | The gate runs its stages in order — pins, toolchain, schema, workspace, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name. | |
+| `assurance.gate.stage-sequence` | The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name. | |
+| `assurance.gate.remote-check` | The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, each as one status check labelled with the stage's name. | D54 |
 | `assurance.gate.stage-reports` | Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code. | because memory exhaustion is silent, and a kill then reads as a number in the log |
 | `assurance.gate.pins-stage` | The pins stage resolves every pinned artifact identity a run depends on before any compilation. | |
 | `assurance.gate.schema-stage` | The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`. | |
@@ -162,6 +166,8 @@ Where the build-time material sits:
 tools/
   ci/                     typed subcommands the gate invokes
   spec/                   the corpus checker
+crates/acceptance/
+  tests/integration/mNN.rs  one milestone's acceptance test, driving a built binary
 evals/
   cases/                  version-controlled JSONL, one case per line
   baselines/              one file per gated configuration

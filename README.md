@@ -50,7 +50,12 @@ reds the gate where a forgotten edit would not.
 ```sh
 cargo run -q -p contextful-spec -- lint    # the corpus rules
 cargo run -q -p contextful-spec -- state   # regenerate spec/status.md from spec/pins.toml
+cargo run -q -p contextful-ci -- gate      # the gate's stages, as the pull-request checks run them
 ```
+
+Code is written test first: every source change carries a test that fails against its
+base commit, and every milestone carries an acceptance test before its first clause is
+pinned. [`AGENTS.md`](./AGENTS.md) describes the loop.
 
 ## License
 

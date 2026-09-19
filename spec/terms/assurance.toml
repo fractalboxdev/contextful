@@ -9,7 +9,7 @@ scope-claim       = { gloss = "The sentence the assurance claim is allowed to be
 differential-test = { gloss = "The executable reference model, the case generator, the minimized counterexample corpus and the command running them." }
 structure-tree    = { gloss = "One home per capability, the one enforcement decision module, adapters and derived-artifact checks." }
 automate          = { gloss = "Typed subcommands over compiled binaries, and the boundary shell keeps." }
-test              = { gloss = "Assertion construction, guard validation, suite placement and the connector test kit." }
+test              = { gloss = "Assertion construction, guard validation, suite placement, test-first and acceptance tests, and the connector test kit." }
 build             = { gloss = "Target directories, the engine-linked invocation, linked query functions, build targets, release artifacts and the dependency allowlist." }
 gate              = { gloss = "Stage order, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks." }
 evaluate          = { gloss = "The read-path quality harness: case format, deterministic metrics and floors, judged dimensions, the reader and the judge." }
@@ -41,6 +41,8 @@ CounterexampleDiscarded          = { clause = "assurance.differential-test.disca
 CapabilityDuplicated             = { clause = "assurance.structure-tree.duplicated-capability", gloss = "A second implementation of an engine capability, or a hand-written copy of an engine constant." }
 ShellCheckFailed                 = { clause = "assurance.automate.unchecked-shell", gloss = "A shell file in the tree that the shell linter rejects." }
 VacuousAssertion                 = { clause = "assurance.test.vacuous-exclusion", gloss = "An exclusion assertion evaluated over an empty collection." }
+TestNotFirst                     = { clause = "assurance.test.test-first", gloss = "A source change carrying no test that fails against the base commit's source." }
+AcceptanceLinksEngine            = { clause = "assurance.test.acceptance-surface", gloss = "The acceptance package depending on a workspace package." }
 ExtensionAutoloadRefused         = { clause = "assurance.build.runtime-extension-load", gloss = "A read path loading a query-engine extension into a statically linked binary." }
 CrateGraphViolation              = { clause = "assurance.gate.crate-graph", gloss = "A run-path crate reaching a read-path crate outside the three crossing crates." }
 EnforceUnmediatedPath            = { clause = "assurance.gate.row-token", gloss = "A row-returning path reaching stored rows outside a registered relation." }
