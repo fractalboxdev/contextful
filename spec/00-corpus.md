@@ -31,6 +31,7 @@ spec/
   spec.lock.json        generated
 references/             literature and practice; points into spec/, never the reverse
 tools/spec/             the checker
+formal/                 Lean 4 models and theorems, pinned like tests
 ```
 
 ## address
@@ -92,14 +93,17 @@ tools/spec/             the checker
 | Clause | Statement | Why |
 | --- | --- | --- |
 | `corpus.state.status-is-computed` | `spec/status.md` is the sole statement of which clauses the tree demonstrates. No authored file says whether something is built. | P8 |
-| `corpus.state.pin` | `spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant or an `item` path. A refusal or a limit takes a test or a theorem. | P8 |
-| `corpus.state.verdict` | An unpinned clause computes `committed`; a pinned clause computes `performed` when its artifact's final path segment is defined under `crates/` or `tools/`, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`. | P8 |
+| `corpus.state.pin` | `spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant under `formal/` or an `item` path. A refusal or a limit takes a test or a theorem. | P8 |
+| `corpus.state.verdict` | An unpinned clause computes `committed`; a pinned clause computes `performed` when its artifact's final path segment is defined under `crates/`, `tools/` or `formal/`, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`. | P8 |
 | `corpus.state.tag-pin` | A line `// spec: <id>@<rev>` among the comments and attributes above a test function under `crates/` or `tools/` pins clause `<id>` to that test; `<rev>` is the first 8 hex digits of the statement's SHA-256. | because a pin written beside its test travels with every move and rename, and the digest records which wording the test demonstrates |
+| `corpus.state.lean-tag` | A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}. | because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale |
+| `corpus.state.theorem-beside-test` | A clause carries at most one theorem pin and one test pin, and computes `performed` when both perform: the theorem proves the model, the test ties the model to the code. | A-assurance |
 | `corpus.state.stale-pin` | A tag whose `<rev>` differs from the digest of its clause's current statement raises `SpecStalePin`, and its clause computes `broken`. | because a reworded clause no longer says what its test was written to demonstrate |
-| `corpus.state.unfinished-test` | A pinned test holding a body line that opens with `todo!` computes `broken`. | because a placeholder panics on every run and demonstrates nothing |
+| `corpus.state.unfinished-test` | A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`. | because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption |
 | `corpus.state.scaffold` | `contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function. | |
+| `corpus.state.scaffold-lean` | `contextful-spec scaffold <contract>.<operation> --lean <file>` appends one tagged theorem per clause of the operation, its statement the docstring and its proposition and proof `sorry`, and rewrites no existing theorem. | |
 | `corpus.state.coverage-floor` | `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`. | because deleting a failing pin must not read as progress |
-| `corpus.state.bad-pin` | A pin naming no clause, a tag above no function, an item pin on a refusal or limit, a broken pin, and one clause pinned to two different tests raise `SpecBrokenPin`. | P8 |
+| `corpus.state.bad-pin` | A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken pin, and one clause pinned to two tests or two theorems raise `SpecBrokenPin`. | P8 |
 | `corpus.state.roadmap` | `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`. | P8 |
 | `corpus.state.acceptance` | A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored, and `passing` otherwise. | A-assurance |
 | `corpus.state.acceptance-first` | A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`. | A-assurance |
@@ -125,4 +129,3 @@ A clause row and an unsettled line read:
 unsettled: Does a replica that has never pulled report an empty store or refuse the read? owner: read-path affects: read.serve
 ```
 
-unsettled: Does a clause pinned to a theorem accept a second pin naming the differential test tying the theorem to code? owner: corpus affects: corpus.state

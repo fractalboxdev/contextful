@@ -70,6 +70,12 @@ the gate enforces it.
    test, to a body still holding `todo!`, or through a tag whose rev no longer matches the
    statement computes `broken`. `contextful-spec scaffold <contract>.<operation> --package
    <path>` writes one tagged `todo!` test per refusal and limit clause to start from.
+   **Proofs.** A clause the Lean models under `formal/` prove carries a theorem pin beside
+   its test: `-- spec: <id>@<rev>` above the `theorem`, or a `theorem` entry in
+   `spec/pins.toml`. `contextful-spec scaffold <contract>.<operation> --lean <file>`
+   appends one tagged `sorry` theorem per clause, its statement as the docstring; a pinned
+   theorem still holding `sorry` computes `broken`. The theorem proves the model; the test
+   ties the model to the code; the clause performs when both do.
 4. **Refactor.** A behavior-preserving commit carries the commit trailer
    `Test-First: refactor` and answers to the existing suite alone.
 5. **Close the milestone** by removing the acceptance test's `#[ignore]`; status reports

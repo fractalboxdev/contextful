@@ -1,5 +1,6 @@
 //! `contextful-spec scaffold`: one failing test per refusal and limit clause of an
-//! operation, each tagged with its clause id and statement revision.
+//! operation, or one `sorry` theorem per clause in a Lean file, each tagged with its
+//! clause id and statement revision.
 
 use crate::corpus::*;
 use crate::util::statement_rev;
@@ -123,4 +124,74 @@ pub fn run(c: &Corpus, target: &str, package: &Path) -> Result<()> {
     }
     eprintln!("{}: wrote {wrote} test(s), kept {kept} existing", path.display());
     Ok(())
+}
+
+/// Lean keywords a subject slug can collide with; those names take a trailing `_`.
+const LEAN_KEYWORDS: &[&str] = &[
+    "at", "by", "do", "else", "end", "fun", "have", "if", "in", "let", "match", "open", "show", "then", "theorem",
+    "def", "where", "with", "from", "import", "namespace", "section", "variable", "instance", "structure",
+];
+
+fn lean_ident(slug: &str) -> String {
+    let name = slug.replace('-', "_");
+    if LEAN_KEYWORDS.contains(&name.as_str()) {
+        format!("{name}_")
+    } else {
+        name
+    }
+}
+
+fn theorem(cl: &Clause) -> String {
+    let mut s = String::new();
+    let _ = writeln!(s, "-- spec: {}@{}", cl.id, statement_rev(&cl.statement));
+    let _ = writeln!(s, "/-- {} -/", cl.statement.replace("-/", "- /"));
+    let _ = writeln!(s, "theorem {} : (sorry : Prop) := by", lean_ident(&cl.subject));
+    s.push_str("  sorry\n");
+    s
+}
+
+/// Append a tagged `sorry` theorem for every clause of `target` the file does not yet
+/// declare, inside the file's closing `end <namespace>` when it has one.
+pub fn run_lean(c: &Corpus, target: &str, file: &Path) -> Result<()> {
+    let Some((contract, operation)) = target.split_once('.') else {
+        bail!("`{target}` is not `<contract>.<operation>`")
+    };
+    let known = c.reg.fragments.get(contract).map(|f| f.operation.contains_key(operation)).unwrap_or(false);
+    if !known {
+        bail!("`{target}` names no registered operation");
+    }
+    let namespace = format!("Contextful.{}", capitalized(contract));
+    let text = std::fs::read_to_string(file).unwrap_or_else(|_| format!("namespace {namespace}\n\nend {namespace}\n"));
+    let (mut body, tail) = match text.rfind("\nend ") {
+        Some(i) => (text[..i + 1].to_string(), text[i + 1..].to_string()),
+        None => (text.clone(), String::new()),
+    };
+    let (mut wrote, mut kept) = (0, 0);
+    for cl in c.clauses().filter(|cl| cl.contract == contract && cl.operation == operation) {
+        let name = lean_ident(&cl.subject);
+        let defined = Regex::new(&format!(r"(?m)^\s*(theorem|lemma)\s+{}\b", regex::escape(&name))).unwrap();
+        if defined.is_match(&text) {
+            kept += 1;
+            continue;
+        }
+        if !body.ends_with("\n\n") {
+            body.push('\n');
+        }
+        body.push_str(&theorem(cl));
+        wrote += 1;
+    }
+    if !tail.is_empty() && !body.ends_with("\n\n") {
+        body.push('\n');
+    }
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(file, body + &tail)?;
+    eprintln!("{}: wrote {wrote} theorem(s), kept {kept} existing", file.display());
+    Ok(())
+}
+
+fn capitalized(s: &str) -> String {
+    let mut ch = s.chars();
+    ch.next().map(|f| f.to_uppercase().collect::<String>() + ch.as_str()).unwrap_or_default()
 }

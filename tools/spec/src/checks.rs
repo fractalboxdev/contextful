@@ -590,7 +590,9 @@ pub fn resolve(c: &Corpus, kind: &str, path: &str, roots: &[&str]) -> Resolution
             }
             let Ok(s) = std::fs::read_to_string(p) else { continue };
             if let Some(m) = re.find(&s) {
-                return if kind != "test" {
+                return if kind == "theorem" && lean_unfinished(&s[m.start()..]) {
+                    Resolution::Unfinished
+                } else if kind != "test" {
                     Resolution::Defined
                 } else if ignored(&s[..m.start()]) {
                     Resolution::Ignored
@@ -621,8 +623,22 @@ fn ignored(before: &str) -> bool {
     false
 }
 
-pub const PIN_ROOTS: [&str; 2] = ["crates", "tools"];
+pub const PIN_ROOTS: [&str; 3] = ["crates", "tools", "formal"];
 pub const ACCEPTANCE_ROOT: &str = "crates/acceptance";
+
+/// Whether the Lean declaration starting `decl` — up to the next line at column zero —
+/// holds `sorry` or `admit`.
+fn lean_unfinished(decl: &str) -> bool {
+    let mut text = String::new();
+    for (i, l) in decl.lines().enumerate() {
+        if i > 0 && !l.is_empty() && !l.starts_with([' ', '\t']) {
+            break;
+        }
+        text.push_str(l);
+        text.push('\n');
+    }
+    SORRY.is_match(&text)
+}
 
 /// Whether the body of the function starting `def` holds a line opening with `todo!`.
 fn unfinished(def: &str) -> bool {
@@ -656,6 +672,11 @@ pub fn acceptance_verdict(c: &Corpus, path: Option<&str>) -> &'static str {
 
 // ---------------------------------------------------------------- pins, both forms
 
+static SORRY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(sorry|admit)\b").unwrap());
+static LEAN_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^--\s*spec:\s*(\S+?)@(\S*)\s*$").unwrap());
+static LEAN_DECL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:(?:private|protected|noncomputable)\s+)*(theorem|lemma|def|abbrev|structure|inductive|instance)\s+([^\s:({\[]+)").unwrap()
+});
 static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^//\s*spec:\s*(\S+?)@(\S*)\s*$").unwrap());
 static FN_LINE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?:r#)?([A-Za-z_][A-Za-z0-9_]*)").unwrap()
@@ -684,7 +705,16 @@ pub struct Pin {
 impl Pin {
     /// The test function this pin names, when it names one.
     pub fn test_name(&self) -> Option<&str> {
-        if self.kind != "test" {
+        self.name_of("test")
+    }
+
+    /// The theorem this pin names, when it names one.
+    pub fn theorem_name(&self) -> Option<&str> {
+        self.name_of("theorem")
+    }
+
+    fn name_of(&self, kind: &str) -> Option<&str> {
+        if self.kind != kind {
             return None;
         }
         match &self.tag {
@@ -723,11 +753,16 @@ pub fn scan_tags(c: &Corpus) -> Vec<Pin> {
         });
         for e in walk.flatten() {
             let p = e.path();
-            if p.extension().map(|x| x != "rs").unwrap_or(true) {
+            let ext = p.extension().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
+            if ext != "rs" && ext != "lean" {
                 continue;
             }
             let Ok(s) = std::fs::read_to_string(p) else { continue };
             let rel = p.strip_prefix(&c.root).unwrap_or(p).to_string_lossy().replace('\\', "/");
+            if ext == "lean" {
+                out.extend(lean_tags(&s, &rel));
+                continue;
+            }
             let mut offsets = Vec::new();
             let mut at = 0;
             for l in s.split_inclusive('\n') {
@@ -761,6 +796,56 @@ pub fn scan_tags(c: &Corpus) -> Vec<Pin> {
                 });
             }
         }
+    }
+    out
+}
+
+/// `-- spec: <id>@<rev>` tags in one Lean file, each attached to the declaration below it
+/// once blank lines, comments, docstrings and attributes are skipped.
+fn lean_tags(s: &str, rel: &str) -> Vec<Pin> {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = s.lines().collect();
+    let mut offsets = Vec::new();
+    let mut at = 0;
+    for l in s.split_inclusive('\n') {
+        offsets.push(at);
+        at += l.len();
+    }
+    for (i, l) in lines.iter().enumerate() {
+        let Some(cap) = LEAN_TAG.captures(l.trim()) else { continue };
+        let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false };
+        let mut kind = "theorem";
+        let mut in_doc = false;
+        for (j, next) in lines.iter().enumerate().skip(i + 1) {
+            let t = next.trim();
+            if in_doc {
+                in_doc = !t.contains("-/");
+                continue;
+            }
+            if t.starts_with("/-") {
+                in_doc = !t.contains("-/");
+                continue;
+            }
+            if t.is_empty() || t.starts_with("--") || t.starts_with("@[") {
+                continue;
+            }
+            if let Some(d) = LEAN_DECL.captures(t) {
+                if !matches!(&d[1], "theorem" | "lemma") {
+                    kind = "item";
+                }
+                tagged.function = Some(d[2].to_string());
+                tagged.unfinished = lean_unfinished(&s[offsets[j]..]);
+            }
+            break;
+        }
+        out.push(Pin {
+            clause: cap[1].to_string(),
+            kind: kind.into(),
+            path: tagged.function.clone().unwrap_or_default(),
+            file: rel.to_string(),
+            line: i + 1,
+            tag: Some(tagged),
+        });
     }
     out
 }
@@ -808,10 +893,16 @@ pub fn pinned_tests(pins: &[Pin]) -> BTreeSet<&str> {
     pins.iter().filter_map(Pin::test_name).collect()
 }
 
-/// `performed` when every pin of the clause performs and at most one test pins it;
-/// `broken` otherwise.
+/// The distinct theorems pinning one clause.
+pub fn pinned_theorems(pins: &[Pin]) -> BTreeSet<&str> {
+    pins.iter().filter_map(Pin::theorem_name).collect()
+}
+
+/// `performed` when every pin of the clause performs and at most one test and one
+/// theorem pin it; `broken` otherwise.
 pub fn clause_verdict(c: &Corpus, pins: &[Pin]) -> &'static str {
-    if pinned_tests(pins).len() <= 1 && pins.iter().all(|p| pin_state(c, p) == PinState::Performed) {
+    let single = pinned_tests(pins).len() <= 1 && pinned_theorems(pins).len() <= 1;
+    if single && pins.iter().all(|p| pin_state(c, p) == PinState::Performed) {
         "performed"
     } else {
         "broken"
@@ -938,8 +1029,9 @@ fn state(c: &Corpus) -> Vec<Finding> {
             let msg = match pin_state(c, p) {
                 PinState::Performed => continue,
                 PinState::Ignored => format!("pin for `{id}` names a test carrying `#[ignore]`"),
-                PinState::Unfinished => format!("pin for `{id}` names a test whose body still opens a line with `todo!`"),
-                PinState::Absent => format!("pin for `{id}` does not resolve under crates/ or tools/"),
+                PinState::Unfinished if p.kind == "test" => format!("pin for `{id}` names a test whose body still opens a line with `todo!`"),
+                PinState::Unfinished => format!("pin for `{id}` names a declaration still holding `sorry`"),
+                PinState::Absent => format!("pin for `{id}` does not resolve under crates/, tools/ or formal/"),
                 PinState::Unattached => format!("tag for `{id}` sits above no function"),
                 PinState::Stale => {
                     let rev = p.tag.as_ref().map(|t| t.rev.as_str()).unwrap_or("");
@@ -949,6 +1041,11 @@ fn state(c: &Corpus) -> Vec<Finding> {
                 }
             };
             out.push(f("state", &p.file, p.line, "SpecBrokenPin", msg));
+        }
+        let theorems = pinned_theorems(group);
+        if theorems.len() > 1 {
+            let names: Vec<&str> = theorems.into_iter().collect();
+            out.push(f("state", &group[0].file, group[0].line, "SpecBrokenPin", format!("`{id}` is pinned to two theorems, {}", names.join(" and "))));
         }
         let tests = pinned_tests(group);
         if tests.len() > 1 {

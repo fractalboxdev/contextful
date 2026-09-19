@@ -9,7 +9,7 @@
       "statement": "A clause id is three dot-separated segments — contract, operation, subject — each matching `[a-z0-9-]+`, written backticked in the first cell of a clause row.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 40
+      "line": 41
     },
     {
       "id": "corpus.address.contract-segment",
@@ -20,7 +20,7 @@
       "statement": "The first segment equals the file's front-matter `contract`, which names an entry of `spec/terms/contract.toml` listing that file.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 41
+      "line": 42
     },
     {
       "id": "corpus.address.operation-segment",
@@ -31,7 +31,7 @@
       "statement": "The second segment is an operation registered in the contract's fragment and listed in the front-matter `owns` of exactly one of the contract's files, the file carrying the row.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 42
+      "line": 43
     },
     {
       "id": "corpus.address.subject-segment",
@@ -42,7 +42,7 @@
       "statement": "The third segment is a slug of at most 40 chars, unique within its operation. It is a name, not a registry entry.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 43
+      "line": 44
     },
     {
       "id": "corpus.address.ids-are-stable",
@@ -53,7 +53,7 @@
       "statement": "An id changes when a fact changes obligor. Moving an operation between two files of one contract rewrites no id.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 44
+      "line": 45
     },
     {
       "id": "corpus.address.malformed-id",
@@ -64,7 +64,7 @@
       "statement": "A clause id violating the shape, naming another contract, or naming an operation its file does not own raises `SpecMalformedId`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 45
+      "line": 46
     },
     {
       "id": "corpus.address.duplicate-id",
@@ -75,7 +75,7 @@
       "statement": "A clause id appearing in two rows raises `SpecDuplicateId`, naming both locations.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 46
+      "line": 47
     },
     {
       "id": "corpus.anatomy.file-headings",
@@ -86,7 +86,7 @@
       "statement": "A contract file carries front matter with `contract` and `owns`, one `# ` title matching its contract entry, one `## <operation>` section per owned operation in `owns` order, then an optional `## Shapes`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 52
+      "line": 53
     },
     {
       "id": "corpus.anatomy.clause-table",
@@ -97,7 +97,7 @@
       "statement": "An operation section holds one table headed `Clause`, `Statement`, `Why`; each row is one clause. Prose, diagrams, scenarios and unsettled lines may follow the table.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 53
+      "line": 54
     },
     {
       "id": "corpus.anatomy.scenario",
@@ -108,7 +108,7 @@
       "statement": "A `#### Scenarios` list under an operation holds items `` - `<clause id>`: WHEN <trigger>, THEN <outcome> `` or a backticked `tests/fixtures/` path; the lock file attaches each to its clause.",
       "why": "because an example is the test an implementer writes first, and a rule without one leaves the agent to invent it",
       "file": "spec/00-corpus.md",
-      "line": 54
+      "line": 55
     },
     {
       "id": "corpus.anatomy.bad-scenario",
@@ -119,7 +119,7 @@
       "statement": "A scenario naming a clause outside its operation, or holding neither a WHEN/THEN sentence nor a fixture path, raises `SpecScenario`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 55
+      "line": 56
     },
     {
       "id": "corpus.anatomy.kind-is-computed",
@@ -130,7 +130,7 @@
       "statement": "A clause is a refusal when its statement names an error its fragment assigns to it, a limit when its fragment assigns it a named bound, and a behavior otherwise. The checker writes the kind into `spec/spec.lock.json`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 56
+      "line": 57
     },
     {
       "id": "corpus.anatomy.statement-words",
@@ -141,7 +141,7 @@
       "statement": "A clause statement holds at most 40 words, a `{{id}}` reference counting as one.",
       "why": "because one row states one obligation; a longer row is two clauses or carries rationale",
       "file": "spec/00-corpus.md",
-      "line": 57
+      "line": 58
     },
     {
       "id": "corpus.anatomy.file-length",
@@ -152,7 +152,7 @@
       "statement": "A contract file holds at most 900 lines.",
       "why": "because a file past that splits by adding a path to its contract entry, which renames nothing",
       "file": "spec/00-corpus.md",
-      "line": 58
+      "line": 59
     },
     {
       "id": "corpus.anatomy.bad-anatomy",
@@ -163,7 +163,7 @@
       "statement": "A missing or extra `##` section, an out-of-order section, a table with other headers, a title differing from the registry, a file over its length or a statement over its word count raises `SpecAnatomy`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 59
+      "line": 60
     },
     {
       "id": "corpus.registry.fragment",
@@ -174,7 +174,7 @@
       "statement": "Each contract owns `spec/terms/<contract>.toml`, holding its operations, errors and named bounds, each with a gloss.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 65
+      "line": 66
     },
     {
       "id": "corpus.registry.one-error-one-clause",
@@ -185,7 +185,7 @@
       "statement": "An error entry names the one clause raising it. That clause's statement names the error, and no other clause statement does; a second site reaches the condition by `{{id}}`.",
       "why": "P2",
       "file": "spec/00-corpus.md",
-      "line": 66
+      "line": 67
     },
     {
       "id": "corpus.registry.bound-entry",
@@ -196,7 +196,7 @@
       "statement": "A named-bound entry carries its owning clause, a value, a unit from `spec/terms/unit.toml` and a basis: `chosen`, `measured:<benchmark>` or `standard:<name>`. The owning statement carries the value followed by the unit.",
       "why": "because an unmeasured number presented as a measurement is a hypothesis stated as fact",
       "file": "spec/00-corpus.md",
-      "line": 67
+      "line": 68
     },
     {
       "id": "corpus.registry.unregistered",
@@ -207,7 +207,7 @@
       "statement": "An unregistered error after `raises`, an entry naming a missing clause, an error absent from its clause or present in another, and a malformed bound raise `SpecRegistry`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 68
+      "line": 69
     },
     {
       "id": "corpus.reference.pointer",
@@ -218,7 +218,7 @@
       "statement": "`{{<clause id>}}` is the one way a statement reaches a fact another clause owns. The lock file records every pointer as an edge.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 74
+      "line": 75
     },
     {
       "id": "corpus.reference.dangling",
@@ -229,7 +229,7 @@
       "statement": "A `{{id}}` naming no clause raises `SpecDanglingReference`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 75
+      "line": 76
     },
     {
       "id": "corpus.reference.no-literature",
@@ -240,7 +240,7 @@
       "statement": "A spec file carries no hyperlink to an external document and no path under `references/`; either raises `SpecExternalLink`. Literature lives in `references/`, which cites clause ids.",
       "why": "because the contract is judged by behavior, and a citation invites arguing from authority",
       "file": "spec/00-corpus.md",
-      "line": 76
+      "line": 77
     },
     {
       "id": "corpus.rationale.why-cell",
@@ -251,7 +251,7 @@
       "statement": "A Why cell is empty, `—`, one or more record ids such as `P3` or `A-store`, or `because` followed by at most 30 words stating the deciding criterion. A refusal row carries a non-empty Why.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 82
+      "line": 83
     },
     {
       "id": "corpus.rationale.record-threshold",
@@ -262,7 +262,7 @@
       "statement": "A decision earns a section in its contract's ADR when two or more clauses depend on it, it spans contracts, or it names a revisit trigger; otherwise it lives in a `because` cell.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 83
+      "line": 84
     },
     {
       "id": "corpus.rationale.record-anatomy",
@@ -273,7 +273,7 @@
       "statement": "A principle `P<n>-<slug>.md` carries `# <id> — <title>`, a `**Status:**` line, then Context (optional), Decision, Options, Consequences, Revisit (optional), in at most 400 words.",
       "why": "because a principle argues one rule every contract obeys, and the length of the argument is part of its quality",
       "file": "spec/00-corpus.md",
-      "line": 84
+      "line": 85
     },
     {
       "id": "corpus.rationale.contract-adr",
@@ -284,7 +284,7 @@
       "statement": "A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <decision>` section per decision, each holding its options table in at most 250 words.",
       "why": "because one file per contract puts every decision beside the clauses it governs, and a fresh corpus has no history to keep apart",
       "file": "spec/00-corpus.md",
-      "line": 85
+      "line": 86
     },
     {
       "id": "corpus.rationale.options-table",
@@ -295,7 +295,7 @@
       "statement": "A principle's Options and each ADR section hold one table headed `Option`, `Lost on`, `Cost` with two to five rows. One row is marked *(chosen)* with `—` as Lost on; every other row names the criterion it lost on.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 86
+      "line": 87
     },
     {
       "id": "corpus.rationale.unsettled-line",
@@ -306,7 +306,7 @@
       "statement": "An unknown is one line where it applies: `unsettled:`, a question ending `?`, `owner:` and a handle, `affects:` and a `<contract>.<operation>`. Another form, or a heading `Open questions`, `Out of scope` or `See also`, raises `SpecUnsettled`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 87
+      "line": 88
     },
     {
       "id": "corpus.rationale.orphan-record",
@@ -317,7 +317,7 @@
       "statement": "A record no Why cell cites, a Why cell naming no record, and a record breaking its anatomy raise `SpecRecord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 88
+      "line": 89
     },
     {
       "id": "corpus.state.status-is-computed",
@@ -328,7 +328,7 @@
       "statement": "`spec/status.md` is the sole statement of which clauses the tree demonstrates. No authored file says whether something is built.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 94
+      "line": 95
     },
     {
       "id": "corpus.state.pin",
@@ -336,10 +336,10 @@
       "operation": "state",
       "subject": "pin",
       "kind": "behavior",
-      "statement": "`spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant or an `item` path. A refusal or a limit takes a test or a theorem.",
+      "statement": "`spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant under `formal/` or an `item` path. A refusal or a limit takes a test or a theorem.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 95
+      "line": 96
     },
     {
       "id": "corpus.state.verdict",
@@ -347,10 +347,10 @@
       "operation": "state",
       "subject": "verdict",
       "kind": "behavior",
-      "statement": "An unpinned clause computes `committed`; a pinned clause computes `performed` when its artifact's final path segment is defined under `crates/` or `tools/`, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`.",
+      "statement": "An unpinned clause computes `committed`; a pinned clause computes `performed` when its artifact's final path segment is defined under `crates/`, `tools/` or `formal/`, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 96
+      "line": 97
     },
     {
       "id": "corpus.state.tag-pin",
@@ -361,7 +361,29 @@
       "statement": "A line `// spec: <id>@<rev>` among the comments and attributes above a test function under `crates/` or `tools/` pins clause `<id>` to that test; `<rev>` is the first 8 hex digits of the statement's SHA-256.",
       "why": "because a pin written beside its test travels with every move and rename, and the digest records which wording the test demonstrates",
       "file": "spec/00-corpus.md",
-      "line": 97
+      "line": 98
+    },
+    {
+      "id": "corpus.state.lean-tag",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "lean-tag",
+      "kind": "behavior",
+      "statement": "A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.",
+      "why": "because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale",
+      "file": "spec/00-corpus.md",
+      "line": 99
+    },
+    {
+      "id": "corpus.state.theorem-beside-test",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "theorem-beside-test",
+      "kind": "behavior",
+      "statement": "A clause carries at most one theorem pin and one test pin, and computes `performed` when both perform: the theorem proves the model, the test ties the model to the code.",
+      "why": "A-assurance",
+      "file": "spec/00-corpus.md",
+      "line": 100
     },
     {
       "id": "corpus.state.stale-pin",
@@ -372,7 +394,7 @@
       "statement": "A tag whose `<rev>` differs from the digest of its clause's current statement raises `SpecStalePin`, and its clause computes `broken`.",
       "why": "because a reworded clause no longer says what its test was written to demonstrate",
       "file": "spec/00-corpus.md",
-      "line": 98
+      "line": 101
     },
     {
       "id": "corpus.state.unfinished-test",
@@ -380,10 +402,10 @@
       "operation": "state",
       "subject": "unfinished-test",
       "kind": "behavior",
-      "statement": "A pinned test holding a body line that opens with `todo!` computes `broken`.",
-      "why": "because a placeholder panics on every run and demonstrates nothing",
+      "statement": "A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.",
+      "why": "because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption",
       "file": "spec/00-corpus.md",
-      "line": 99
+      "line": 102
     },
     {
       "id": "corpus.state.scaffold",
@@ -394,7 +416,18 @@
       "statement": "`contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 100
+      "line": 103
+    },
+    {
+      "id": "corpus.state.scaffold-lean",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "scaffold-lean",
+      "kind": "behavior",
+      "statement": "`contextful-spec scaffold <contract>.<operation> --lean <file>` appends one tagged theorem per clause of the operation, its statement the docstring and its proposition and proof `sorry`, and rewrites no existing theorem.",
+      "why": "",
+      "file": "spec/00-corpus.md",
+      "line": 104
     },
     {
       "id": "corpus.state.coverage-floor",
@@ -405,7 +438,7 @@
       "statement": "`spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.",
       "why": "because deleting a failing pin must not read as progress",
       "file": "spec/00-corpus.md",
-      "line": 101
+      "line": 105
     },
     {
       "id": "corpus.state.bad-pin",
@@ -413,10 +446,10 @@
       "operation": "state",
       "subject": "bad-pin",
       "kind": "refusal",
-      "statement": "A pin naming no clause, a tag above no function, an item pin on a refusal or limit, a broken pin, and one clause pinned to two different tests raise `SpecBrokenPin`.",
+      "statement": "A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken pin, and one clause pinned to two tests or two theorems raise `SpecBrokenPin`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 102
+      "line": 106
     },
     {
       "id": "corpus.state.roadmap",
@@ -427,7 +460,7 @@
       "statement": "`spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 103
+      "line": 107
     },
     {
       "id": "corpus.state.acceptance",
@@ -438,7 +471,7 @@
       "statement": "A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored, and `passing` otherwise.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 104
+      "line": 108
     },
     {
       "id": "corpus.state.acceptance-first",
@@ -449,7 +482,7 @@
       "statement": "A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 105
+      "line": 109
     },
     {
       "id": "corpus.state.deferred-depth",
@@ -460,7 +493,7 @@
       "statement": "A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.",
       "why": "because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it",
       "file": "spec/00-corpus.md",
-      "line": 106
+      "line": 110
     },
     {
       "id": "corpus.render.generated",
@@ -471,7 +504,7 @@
       "statement": "`spec/status.md` and `spec/spec.lock.json` are regenerated by `contextful-spec state` and `contextful-spec extract`. A committed copy differing from regeneration raises `SpecStaleRender`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 112
+      "line": 116
     },
     {
       "id": "corpus.render.lock-file",
@@ -482,7 +515,7 @@
       "statement": "The lock file carries every clause with its segments, computed kind, statement, Why and location, the per-file `owns` map, the registry and the pointer graph.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 113
+      "line": 117
     },
     {
       "id": "corpus.render.dated-prose",
@@ -493,7 +526,7 @@
       "statement": "The words `planned`, `not yet`, `currently`, `today`, `shipped`, `implemented`, `previously`, `used to`, `legacy`, `TODO`, `FIXME` and `WIP`, and an ISO date, raise `SpecDatedProse` in any authored file.",
       "why": "because build state is computed, and a dated sentence is stale the day it lands",
       "file": "spec/00-corpus.md",
-      "line": 114
+      "line": 118
     },
     {
       "id": "corpus.render.counterfactual",
@@ -504,7 +537,7 @@
       "statement": "The words `will`, `would` and `shall` raise `SpecCounterfactual` in a contract file.",
       "why": "because a contract states present behavior, and a record's Options is where a path not taken is described",
       "file": "spec/00-corpus.md",
-      "line": 115
+      "line": 119
     },
     {
       "id": "corpus.render.banned-vocabulary",
@@ -515,7 +548,7 @@
       "statement": "The nouns `seam`, `load-bearing`, `wedge`, `rung` and `land-grab`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 116
+      "line": 120
     },
     {
       "id": "corpus.render.local-path",
@@ -526,7 +559,7 @@
       "statement": "A path beginning `/Users/`, `/home/`, `$HOME/` or `~/` raises `SpecLocalPath`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 117
+      "line": 121
     },
     {
       "id": "corpus.render.diagram",
@@ -537,7 +570,7 @@
       "statement": "A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 118
+      "line": 122
     },
     {
       "id": "topology.compose.workspace",
@@ -15280,6 +15313,10 @@
     [
       "corpus.reference.dangling",
       "id"
+    ],
+    [
+      "corpus.state.lean-tag",
+      "corpus.state.tag-pin"
     ],
     [
       "topology.compose.undeclared-crossing",

@@ -59,7 +59,7 @@ fn a_tag_with_a_stale_rev_raises_spec_stale_pin() {
     assert_eq!(verdict(&s, "corpus.anatomy.statement-words"), "broken");
 }
 
-// spec: corpus.state.unfinished-test@847d331e
+// spec: corpus.state.unfinished-test@349c95a5
 #[test]
 fn a_tag_on_a_todo_body_is_broken() {
     let s = Scratch::copy();

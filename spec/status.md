@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `assurance` | 2 | 13 | 164 | 42 | 18 | 12 | 3 | 0 | 3 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 0 | 0 | 0 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
-| `corpus` | 1 | 7 | 49 | 21 | 6 | 1 | 10 | 0 | 10 |
+| `corpus` | 1 | 7 | 52 | 21 | 6 | 0 | 13 | 0 | 13 |
 | `disclosure` | 3 | 16 | 63 | 54 | 9 | 12 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 13 | 16 | 0 | 0 | 0 |
 | `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 142 | 1371 | 436 | 159 | 100 | 13 | 0 | |
+| **total** | 19 | 142 | 1374 | 436 | 159 | 99 | 16 | 0 | |
 
 Decision records: 17.
 
@@ -52,9 +52,12 @@ Unscheduled operations: 7.
 | `corpus.state.acceptance` | `spec/pins.toml` | performed |
 | `corpus.state.acceptance-first` | `spec/pins.toml` | performed |
 | `corpus.state.deferred-depth` | `spec/pins.toml` | performed |
+| `corpus.state.lean-tag` | `spec/pins.toml` | performed |
 | `corpus.state.roadmap` | `spec/pins.toml` | performed |
 | `corpus.state.scaffold` | `tools/spec/tests/integration/scaffold.rs::scaffold_writes_one_failing_tagged_test_per_refusal_and_limit` | performed |
+| `corpus.state.scaffold-lean` | `spec/pins.toml` | performed |
 | `corpus.state.stale-pin` | `tools/spec/tests/integration/tags.rs::a_tag_with_a_stale_rev_raises_spec_stale_pin` | performed |
 | `corpus.state.tag-pin` | `tools/spec/tests/integration/tags.rs::a_tag_pin_resolves_to_performed` | performed |
+| `corpus.state.theorem-beside-test` | `spec/pins.toml` | performed |
 | `corpus.state.unfinished-test` | `tools/spec/tests/integration/tags.rs::a_tag_on_a_todo_body_is_broken` | performed |
 | `corpus.state.verdict` | `spec/pins.toml` | performed |

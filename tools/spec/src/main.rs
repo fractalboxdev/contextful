@@ -51,8 +51,11 @@ enum Cmd {
         /// `<contract>.<operation>`.
         target: String,
         /// Package directory receiving `tests/integration/<operation>.rs`, relative to `--root`.
+        #[arg(long, conflicts_with = "lean", required_unless_present = "lean")]
+        package: Option<PathBuf>,
+        /// Lean file receiving one `sorry` theorem per clause of the operation, relative to `--root`.
         #[arg(long)]
-        package: PathBuf,
+        lean: Option<PathBuf>,
     },
 }
 
@@ -74,7 +77,11 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Scaffold { target, package } => scaffold::run(&c, &target, &root.join(package)),
+        Cmd::Scaffold { target, package, lean } => match (package, lean) {
+            (_, Some(lean)) => scaffold::run_lean(&c, &target, &root.join(lean)),
+            (Some(package), None) => scaffold::run(&c, &target, &root.join(package)),
+            (None, None) => unreachable!("clap requires one of --package and --lean"),
+        },
     }
 }
 

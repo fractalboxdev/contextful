@@ -2,6 +2,7 @@
 //! scratch root, applies one change, and runs the built `contextful-spec` against it.
 
 mod grammar;
+mod lean;
 mod rationale;
 mod slice;
 mod scaffold;
@@ -70,6 +71,18 @@ impl Scratch {
     pub fn scaffold(&self, target: &str, package: &str) {
         let out = self.cmd(&["scaffold", target, "--package", package]);
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// Every clause id of `<contract>.<operation>`, from the lock file.
+    pub fn clauses_of(&self, operation: &str) -> Vec<String> {
+        let lock: serde_json::Value = serde_json::from_str(&self.read("spec/spec.lock.json")).unwrap();
+        lock["clauses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["id"].as_str().unwrap().to_string())
+            .filter(|id| id.starts_with(&format!("{operation}.")))
+            .collect()
     }
 
     /// How many refusal and limit clauses `<contract>.<operation>` holds, from the lock file.
