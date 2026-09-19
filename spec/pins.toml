@@ -15,6 +15,7 @@
 # `contextful-spec state` reads this file and writes spec/status.md.
 
 [pin]
+"corpus.rationale.contract-adr"     = { test = "contextful_spec::rationale::a_contract_adr_section_over_its_word_limit_is_a_record_finding" }
 "assurance.test.acceptance-surface" = { test = "contextful_ci::acceptance_surface::an_acceptance_package_linking_a_workspace_package_is_refused" }
 "assurance.test.refactor-trailer"   = { test = "contextful_ci::test_first::a_refactor_trailer_exempts_the_range" }
 "assurance.test.test-first"         = { test = "contextful_ci::test_first::source_change_without_test_is_refused" }
@@ -30,7 +31,7 @@
 assurance = 3
 authority = 0
 connector = 0
-corpus = 4
+corpus = 5
 disclosure = 0
 read = 0
 run = 0

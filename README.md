@@ -37,7 +37,7 @@ The design is written first and the implementation is built against it.
 | [`spec/00-corpus.md`](./spec/00-corpus.md) | The grammar the corpus obeys — how a fact is addressed, where it lives, and what a file may not contain |
 | [`spec/01-topology.md`](./spec/01-topology.md) | The system: its parties, its contracts, its build profiles |
 | [`spec/`](./spec/) | Ten contracts across nineteen files, each the sole home of what it owns |
-| [`spec/adr/`](./spec/adr/) | Eight principles and one record per shared decision: options, the criterion that decided it, the cost accepted |
+| [`spec/adr/`](./spec/adr/) | Eight principles and one ADR per contract: options, the criterion that decided each decision, the cost accepted |
 | [`spec/status.md`](./spec/status.md) | Generated. Which clauses the tree demonstrates, and which it commits to |
 | [`spec/roadmap.md`](./spec/roadmap.md) | The milestone order, each naming the operations it closes |
 | [`references/`](./references/) | The literature and practice the design answers to, indexed by operation |

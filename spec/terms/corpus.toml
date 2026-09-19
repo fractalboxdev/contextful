@@ -38,4 +38,5 @@ corpus-subject-length   = { clause = "corpus.address.subject-segment", value = 4
 corpus-statement-words  = { clause = "corpus.anatomy.statement-words", value = 40, unit = "words", basis = "chosen", gloss = "Longest clause statement." }
 corpus-file-lines       = { clause = "corpus.anatomy.file-length", value = 900, unit = "lines", basis = "chosen", gloss = "Longest contract file." }
 corpus-because-words    = { clause = "corpus.rationale.why-cell", value = 30, unit = "words", basis = "chosen", gloss = "Longest `because` cell." }
-corpus-record-words     = { clause = "corpus.rationale.record-anatomy", value = 400, unit = "words", basis = "chosen", gloss = "Longest decision record." }
+corpus-record-words     = { clause = "corpus.rationale.record-anatomy", value = 400, unit = "words", basis = "chosen", gloss = "Longest principle record." }
+corpus-adr-section-words = { clause = "corpus.rationale.contract-adr", value = 250, unit = "words", basis = "chosen", gloss = "Longest section of a contract ADR." }

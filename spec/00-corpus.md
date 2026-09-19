@@ -24,7 +24,7 @@ spec/
   NN-*.md               one or more files per contract, listed in terms/contract.toml
   terms/                contract.toml, unit.toml, wire.toml, refused-names.toml,
                         and one <contract>.toml fragment per contract
-  adr/                  P<n>-<slug>.md principles, D<nn>-<slug>.md decisions
+  adr/                  P<n>-<slug>.md principles, A-<contract>.md decisions
   pins.toml             clause id -> demonstrating artifact, plus the coverage floor
   roadmap.md            milestone -> operation set
   status.md             generated
@@ -80,10 +80,11 @@ tools/spec/             the checker
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `corpus.rationale.why-cell` | A Why cell is empty, `—`, one or more record ids such as `P3` or `D12`, or `because` followed by at most 30 words stating the deciding criterion. A refusal row carries a non-empty Why. | P8 |
-| `corpus.rationale.record-threshold` | A decision earns a record when two or more clauses depend on it, it spans contracts, or it names a revisit trigger; otherwise it lives in a `because` cell. | P8 |
-| `corpus.rationale.record-anatomy` | A record `P<n>-<slug>.md` or `D<nn>-<slug>.md` carries `# <id> — <title>`, a `**Status:**` line, then Context (optional), Decision, Options, Consequences, Revisit (optional), in at most 400 words. | because a record argues one decision, and the length of the argument is part of its quality |
-| `corpus.rationale.options-table` | Options is a table headed `Option`, `Lost on`, `Cost` with two to five rows. One row is marked *(chosen)* with `—` as Lost on; every other row names the criterion it lost on. | P8 |
+| `corpus.rationale.why-cell` | A Why cell is empty, `—`, one or more record ids such as `P3` or `A-store`, or `because` followed by at most 30 words stating the deciding criterion. A refusal row carries a non-empty Why. | P8 |
+| `corpus.rationale.record-threshold` | A decision earns a section in its contract's ADR when two or more clauses depend on it, it spans contracts, or it names a revisit trigger; otherwise it lives in a `because` cell. | P8 |
+| `corpus.rationale.record-anatomy` | A principle `P<n>-<slug>.md` carries `# <id> — <title>`, a `**Status:**` line, then Context (optional), Decision, Options, Consequences, Revisit (optional), in at most 400 words. | because a principle argues one rule every contract obeys, and the length of the argument is part of its quality |
+| `corpus.rationale.contract-adr` | A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <decision>` section per decision, each holding its options table in at most 250 words. | because one file per contract puts every decision beside the clauses it governs, and a fresh corpus has no history to keep apart |
+| `corpus.rationale.options-table` | A principle's Options and each ADR section hold one table headed `Option`, `Lost on`, `Cost` with two to five rows. One row is marked *(chosen)* with `—` as Lost on; every other row names the criterion it lost on. | P8 |
 | `corpus.rationale.leak` | Outside a Why cell and a record, the tokens `because`, `so that`, `in order to`, `the reason`, `which is why`, `judged on`, `at the cost of` and `trade-off` raise `SpecRationaleLeak`. | P8 |
 | `corpus.rationale.stray-modal` | Outside a clause row, an unsettled line, a code block and a record, the words must, never, refuses, is refused, at most, at least and always raise `SpecStrayModal`. | P8 |
 | `corpus.rationale.unsettled-line` | An unknown is one line where it applies: `unsettled:`, a question ending `?`, `owner:` and a handle, `affects:` and a `<contract>.<operation>`. Another form, or a heading `Open questions`, `Out of scope` or `See also`, raises `SpecUnsettled`. | P8 |
@@ -99,8 +100,8 @@ tools/spec/             the checker
 | `corpus.state.coverage-floor` | `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`. | because deleting a failing pin must not read as progress |
 | `corpus.state.bad-pin` | A pin naming no clause, an item pin on a refusal or limit, and a broken pin raise `SpecBrokenPin`. | P8 |
 | `corpus.state.roadmap` | `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`. | P8 |
-| `corpus.state.acceptance` | A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored, and `passing` otherwise. | D54 |
-| `corpus.state.acceptance-first` | A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`. | D54 |
+| `corpus.state.acceptance` | A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored, and `passing` otherwise. | A-assurance |
+| `corpus.state.acceptance-first` | A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`. | A-assurance |
 
 ## render
 

@@ -29,13 +29,13 @@ embeds search and ask in a third-party page.
 | --- | --- | --- |
 | `surface.register-store.registry-variables` | The served store set resolves per request from `CONTEXTFUL_STORES_JSON`, a JSON array of entries, and an optional `CONTEXTFUL_STORE_IDS` allowlist that filters and orders it. A store appears with no rebuild. | — |
 | `surface.register-store.registry-unreadable` | A `CONTEXTFUL_STORES_JSON` value that does not parse raises `StoreRegistryUnreadable` at startup; the built-in stores substitute for no configured set. | P3 |
-| `surface.register-store.malformed-entry` | One entry that does not decode raises `StoreEntryMalformed` naming it, and is dropped while its siblings are served. | D33 |
+| `surface.register-store.malformed-entry` | One entry that does not decode raises `StoreEntryMalformed` naming it, and is dropped while its siblings are served. | A-surface |
 | `surface.register-store.unset-serves-built-ins` | Both variables unset serve the two built-in stores alone. | — |
 | `surface.register-store.built-ins` | Two stores ship in the product: a bundled fixture with no upstream that renders the whole surface with no secrets, and a loopback store marked development-only. The fixture is recognized by its absent upstream, not its id. | — |
 | `surface.register-store.reserved-id` | A configured entry claiming either built-in id raises `StoreIdReserved`. | because the entry otherwise reads the fixture's rows under its own name |
 | `surface.register-store.ids-are-kebab` | A store id is lower kebab-case, mapping injectively onto a legal environment-variable name and onto no object key of its choosing. | — |
 | `surface.register-store.derived-names` | A store's bearer lives in the secret named by its id in upper snake-case suffixed `_QUERY_TOKEN`, and its service binding is the id in upper snake-case. Neither spelling is an entry field. | — |
-| `surface.register-store.authored-name` | An entry carrying its own credential or binding name raises `StoreNameAuthored`. | D34 |
+| `surface.register-store.authored-name` | An entry carrying its own credential or binding name raises `StoreNameAuthored`. | A-surface |
 | `surface.register-store.auth-mode` | An entry authors `auth`: `token`, the default, reads the derived secret; `exchange` mints a credential per visitor at the store's exchange route; `none` sends no bearer. The mode is never inferred from a secret's presence. | — |
 | `surface.register-store.perimeter-binding` | A store whose origin sits behind its own identity perimeter is reached over the service binding the deployment declares, and the target still enforces its bearer. A binding name resolving to no fetcher degrades to a public fetch. | — |
 | `surface.register-store.one-credential-resolver` | Every path needing a store's credential — tool calls, published output routes, the prompt overlay — passes one resolver. | — |
@@ -65,9 +65,9 @@ embeds search and ask in a third-party page.
 | `surface.package.cross-origin` | Cross-origin access is off by default and opt-in. Authentication is a bearer header and not a cookie, and a wildcard origin is non-credentialed. | — |
 | `surface.package.per-viewer-token` | A browser-held credential is minted per viewer: the host exchanges the visitor's verified assertion for a least-privilege token audience-bound to one store, expiring in minutes and verified at both hops over the same bytes. | — |
 | `surface.package.ask-event-stream` | The ask experience streams typed events — `tool`, `tool_result`, text, `citations`, `notice`, `console.render`, `done`, `error` — from a backend running the model. `citations` follows the text; the engine-direct shape serves no ask. | — |
-| `surface.package.stdio-credential` | Over the process transport a credential is mandatory, a capability token or an explicit owner flag; an unset one raises `StdioCredentialMissing` and does not resolve to the owner context. | D10 |
+| `surface.package.stdio-credential` | Over the process transport a credential is mandatory, a capability token or an explicit owner flag; an unset one raises `StdioCredentialMissing` and does not resolve to the owner context. | A-read |
 | `surface.package.child-environment` | An explicit passthrough list, defaulting to the executable search path and the home directory, is all that crosses into the spawned engine's environment. | because the engine's secret resolver reads vendor credentials from its environment |
-| `surface.package.store-selector` | The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing. | D03 |
+| `surface.package.store-selector` | The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing. | A-topology |
 | `surface.package.serial-dispatch` | The process transport keeps exactly one request in flight, and an aborted call resynchronizes by discarding exactly one reply. | — |
 | `surface.package.process-subpath` | The process transport lives on its own import subpath, and the root entry an isolate bundles imports no child-process module. | — |
 
@@ -83,7 +83,7 @@ embeds search and ask in a third-party page.
 | `surface.speak.temporal-humanizer` | Engine spellings of an instant are rewritten into readable prose over the grounding channel before the model reads it, and again over the streamed answer. | — |
 | `surface.speak.silent-backstops` | A backstop corrects in place with no notice to the reader, and the internals channel counts every redaction and rewrite. | — |
 | `surface.speak.error-copy` | An unreachable store, a refused read and an empty result render as sentences a reader can act on, with no status code, identifier or vendor name. | — |
-| `surface.speak.unanswerable-suggestion` | A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built. | D43 |
+| `surface.speak.unanswerable-suggestion` | A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built. | A-surface |
 | `surface.speak.eval-floors` | Identifier leak rate and citation faithfulness are judged evaluation dimensions, gated by the floors the retrieval baseline carries. | — |
 | `surface.speak.no-discovery-metadata` | A surface behind an identity perimeter publishes no machine-readable index, sitemap or crawler policy. Page titles and descriptions stay accurate for the reader's own tabs. | — |
 
@@ -95,8 +95,8 @@ embeds search and ask in a third-party page.
 | `surface.ground.ungrounded-answer` | A path composing answer prose in a turn holding no tool result raises `ConsoleUngroundedAnswer`. | P2 |
 | `surface.ground.steps-are-visible` | Each tool round-trip renders as a transcript step a reader can open. | — |
 | `surface.ground.server-authored-calls` | A tool name and its arguments are chosen on the server from the turn's admitted set; neither is read from the request body. | — |
-| `surface.ground.unadmitted-tool` | A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing. | D43 |
-| `surface.ground.mutating-tool` | The visitor-facing endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server. | D43 |
+| `surface.ground.unadmitted-tool` | A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing. | A-surface |
+| `surface.ground.mutating-tool` | The visitor-facing endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server. | A-surface |
 | `surface.ground.direct-file-read` | A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on this surface. | P5 |
 | `surface.ground.caller-not-owner` | The surface is a caller over a store: it holds no privileged relation, and a file preview returns rows through the same enforced relation an ordinary query reads. | — |
 | `surface.ground.two-trust-layers` | The identity perimeter decides who reaches the page, and the presented capability decides what the engine returns. The browser holds neither, and the page calls same-origin routes only. | — |
@@ -116,7 +116,7 @@ embeds search and ask in a third-party page.
 | --- | --- | --- |
 | `surface.plan-turn.turn-legs` | A turn runs recall, planning, its retrieval rounds, then synthesis, each leg rendering as its own transcript step. | — |
 | `surface.plan-turn.planner-scaffolding` | The planner receives each data table's real columns, prefetched from the schema call, and writes its statements against those names. | — |
-| `surface.plan-turn.planner-reached-memory` | Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises `ConsolePlannerReachedMemory`. | D43 |
+| `surface.plan-turn.planner-reached-memory` | Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises `ConsolePlannerReachedMemory`. | A-surface |
 | `surface.plan-turn.replan` | A first round returning nothing usable earns one further planning round. | — |
 | `surface.plan-turn.answerability` | Code decides whether a round answered: a structured query once it returns rows, a free-text search when a row shares a non-stopword term with its query, a structural listing never. | — |
 | `surface.plan-turn.code-path` | Two rounds producing nothing usable hand the turn to retrieval in code, matching the question's content tokens against each data table's rows through the ranked lexical path, assuming no schema. | — |
@@ -173,7 +173,7 @@ unsettled: Does a store's overlay reach the planner's text as well as the analys
 | `surface.learn.distillation` | After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included. | — |
 | `surface.learn.evidence-rows` | A distilled conclusion's evidence lists the asking question and the ids of every row that grounded the turn, and its zone and row labels are the meet of those rows' labels. | because a conclusion drawn from one reader's rows otherwise reaches a colleague who cannot read them |
 | `surface.learn.label-gated` | The recalled block and the greeting card show a distilled conclusion only to a reader whose grants reach every label it carries. | — |
-| `surface.learn.unscoped` | A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`. | D43 |
+| `surface.learn.unscoped` | A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`. | A-surface |
 | `surface.learn.lands-like-a-row` | A landed conclusion carries an ingested row's ingestion instant and run identity, appears on the timeline at once, and its write renders as a transcript step. | — |
 | `surface.learn.anchored` | A turn at a historical vantage learns with an observation time at the vantage and snapshot-qualified evidence, taking its own deduplication key. | — |
 | `surface.learn.store-subjects` | A distilled subject belongs to the store, not the reader who produced it. | — |
@@ -189,7 +189,7 @@ unsettled: Does a subject normalize during distillation, or resolve through enti
 | `surface.render.internals-on-request` | The trace channel arrives when a call asks for it, with the verbatim protocol round-trip beside it; {{read.respond.internals-opt-in}} | — |
 | `surface.render.component-union` | A rendered output is a component name from a closed, per-component versioned union plus typed properties, and not code, markup or a URL. A name describes the drawn shape and carries no domain word. | — |
 | `surface.render.persisted-union` | A view payload is JSON, persists in saved transcripts, and resolves against the registry the client ships; an unknown name or version draws nothing. | — |
-| `surface.render.client-authored-view` | A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`. | D43 |
+| `surface.render.client-authored-view` | A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`. | A-surface |
 | `surface.render.model-picks-the-tool` | The model's presentational choice is which tool to call. Properties come from the result's shape and the store's declared bindings. | — |
 | `surface.render.component-choice` | One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view. | — |
 | `surface.render.provenance-drops-first` | Provenance columns leave the result before shape inference, and a repeated x value disqualifies a line. | — |
@@ -210,7 +210,7 @@ unsettled: What governs adding a member to the component union once transcripts 
 | Clause | Statement | Why |
 | --- | --- | --- |
 | `surface.brief.one-derivation` | The greeting card is one derivation over two governed reads plus one component, with no storage, engine change or model call on its path. | — |
-| `surface.brief.absence-is-earned` | The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders. | D43 |
+| `surface.brief.absence-is-earned` | The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders. | A-surface |
 | `surface.brief.composer-first` | The card delays no composer input, and a reader typing first wins. | — |
 | `surface.brief.payload` | The route answers `{since, clamped, totalNew, items}`: `since` is the window start used, `clamped` marks a request past the cap, and `totalNew` counts every row entering the window, matched or not. | — |
 | `surface.brief.item` | An item carries a subject slug, a display name, the newest live conclusion for that subject with its standing, matched articles newest-first with title, source, link and day, and a follow-up question. | — |
@@ -237,8 +237,8 @@ unsettled: What governs adding a member to the component union once transcripts 
 | `surface.publish-answer.single-reader-default` | On a surface with an audience, the default reply reaches the asker alone, and an answer of substance lands in a direct message or private thread. | — |
 | `surface.publish-answer.deliberate-act` | Posting an answer where others read it is a separate act the asker takes after reading it, and not a flag, a per-room default or an inferred mode. | — |
 | `surface.publish-answer.provenance-line` | A posted answer carries a line stating that it was drawn from the sharer's own access and may hold material others present do not reach. | — |
-| `surface.publish-answer.share-affordance` | A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`. | D43 |
-| `surface.publish-answer.askerless-audience` | A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches. | D43 |
+| `surface.publish-answer.share-affordance` | A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`. | A-surface |
+| `surface.publish-answer.askerless-audience` | A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches. | A-surface |
 | `surface.publish-answer.outbound-release` | An answer bound outside the organization is assembled from sourced prior answers with their provenance and released by a person; what the reader reaches settles nothing about what an outside recipient may receive. | — |
 | `surface.publish-answer.recency-disclosed` | An answer in the present tense states when the newest row it touched landed. | — |
 

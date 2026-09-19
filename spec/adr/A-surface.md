@@ -1,0 +1,45 @@
+# A-surface — Operator and visitor surfaces decisions
+
+**Status:** accepted
+
+## The control document is CAS-versioned, validated per entry, and fails static
+
+One hand-edited control document arms every scheduled entry unattended. `surface.apply` claims a version by compare-and-swap on an engine-assigned version; a loser raises `ManifestVersionConflict`, reloads and reapplies. The engine owns the control-state model and raises `ConfigOwnerUnconfigured`, `StoreNotInitialized` or `ConditionalWriteUnsupported` rather than substitute a local writer. `surface.arm` holds back an invalid entry alone, by name; an unparsable registry falls back to the built-ins. `surface.reconcile` keeps the armed set unchanged on a failed poll. `surface.dispatch` starts one instance per due unit; a dependent run's step refuses as a unit.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| CAS on an engine version, per-entry validation, fail-static poll *(chosen)* | — | A loser's edits land on a document they never read; an entry can sit unarmed with only a diagnostic; a silent control plane leaves an old cadence running. |
+| Last-write-wins on the pointer | Immutability | An applied version is superseded unobserved by one that never saw it. |
+| A lock or lease in front of the document | Writer count under failure | An expiring lease admits an unordered second writer. |
+| Abort the reconcile on one bad entry | Blast radius | One typo stops every unrelated schedule. |
+| Arm empty, or fall back to local schedules, on a failed poll | Visibility of the failure | A transient error stops ingestion or runs an unapplied cadence while reporting healthy. |
+
+Consequences: entries authored as a chain run as one unit under the head entry's cadence; control-plane staleness is visible only in diagnostics.
+
+## Configuration reaches only engine-named code and secrets
+
+Configuration selects among things the engine names, never code, a host command, a secret or a remote control source. `surface.fire` runs a closed union — `sweep`, `build`, `fold`, `rebuild-catalog`, `sync-push`, `validate` — beside the pipeline-run kind; anything else raises `JobKindUnknown`. `surface.register-store` derives the secret name `<ID>_QUERY_TOKEN` and binding name from the kebab-case id; authoring either raises `StoreNameAuthored`. `surface.arm` polls a control URL only on pinned loopback with no redirect or proxy; any other host raises `ControlSourceNotLoopback`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Closed job union, derived names, loopback control source *(chosen)* | — | Maintenance outside six kinds needs a release; renaming a store rotates its secret name; multi-host control waits on signed snapshots. |
+| A job carrying an argument vector, or a plugin registry of kinds | Trust boundary | A manifest writer gains arbitrary execution with the store's credentials and egress. |
+| Authored credential and binding names per entry | Reachable secrets | A runtime edit names any worker secret and sends it to a chosen host. |
+| A remote control URL over TLS with a bearer | Content authenticity | The server, or anyone who compels or replays it, pins or rolls back the schedule set. |
+
+Consequences: adding a job kind is an exhaustive-match obligation at every dispatch site.
+Revisit: a remote control source carrying a bearer-authenticated read, TLS, and producer-side signing over `(version, content-hash)` verified before arming.
+
+## Answer surfaces read through server-chosen, grounded calls
+
+The server decides every capability a turn exercises. `surface.plan-turn` chooses tools from the turn's admitted read subset; any other raises `ConsoleToolNotAdmitted`, an organization-wide face registers no write tool, and a turn's one write is server-authored. `surface.ground` reaches conclusions only through recall. `surface.render` infers views server-side over a closed component union. `surface.speak` offers only answerable suggestions. `surface.brief` renders a greeting only within budget. `surface.publish-answer` delivers to the asker alone; posting is the asker's separate act.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Server-chosen calls, recall as the one door, server-built views *(chosen)* | — | A caller-initiated write needs another surface; no third-party component ships; a broken greeting shows only in spans. |
+| Client-named tools against an allowlist | The adversarial body | Arguments arrive unvalidated, so the weakest tool sets the boundary. |
+| Writes behind a reader confirmation | Who confirms | The steered reader confirms inside the steered answer. |
+| One generic query tool the model fills in | Enumerability | No audit can say what a turn can do. |
+| Memory exposed to the planner with a documented predicate | The checks | A predicate the model writes is one it can omit. |
+
+Consequences: an injected instruction finds no write tool to reach for.

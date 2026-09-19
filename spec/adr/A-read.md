@@ -1,0 +1,83 @@
+# A-read — Reading and memory decisions
+
+**Status:** accepted
+
+## The read surface admits one read-only statement over registered relations
+
+`read.guard` walks the syntax tree the executor itself serializes and admits exactly one read-only `SELECT` whose base relations are views registered for the caller or declared common table expressions; table functions and catalog reaches refuse, and a refusal never echoes another caller's relation. `read.register` lists only granted templates and binds arguments strictly. A filter's budget applies to the whole filter. `read.respond` reads a preview through its table's relation. The process transport requires a token or an explicit owner flag; the run-stream socket authenticates before upgrade and carries snapshots only.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Executor's own tree plus a relation allowlist *(chosen)* | — | Each statement serializes once before execution; a harmless unregistered relation still refuses. |
+| Token or regex blocklist over the text | Completeness | Every new engine verb or dialect spelling is a bypass until listed. |
+| An independent SQL parser | Parser agreement | What the guard admits is not what the executor runs. |
+| Check only top-level `FROM` items | Coverage | A subquery or common table expression carries the forbidden relation. |
+
+Consequences: a preview and a query apply identical row restriction, masks and zone gate; a socket connection mutates nothing.
+
+## Memory writes validate or dead-letter, and outcomes settle under their source
+
+`read.synthesize` validates every candidate against the declared output schema, retries with the error up to 3 attempts per batch, then dead-letters the response, template hash and drop reason with the cursor held. The relation vocabulary is a reserved core plus declared types; an undeclared edge dead-letters while the batch lands. `read.resolve-entity` dead-letters ambiguous mentions and dangling endpoints. `read.settle` requires one resolution form and one source — `metric`, `adjudicator` or `manual`; metric comparators evaluate outside the engine, verdicts carry an `http`/`https` citation, self-rated outcomes carry a null verdict, and the scored and unresolved views partition the join.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Validate, dead-letter, settle under the registered source *(chosen)* | — | Dead-lettered candidates wait for a human; extraction spends up to 3 model calls per batch. |
+| Parse a non-conforming response best-effort | Provenance | Unvalidated text becomes an untraceable row. |
+| Resolve an ambiguous mention to the highest score | Reversibility | A wrong merge propagates through every claim about both entities. |
+| Evaluate metric rules with an embedded expression engine | Attack surface | Anyone registering a prediction reaches the evaluator. |
+| Exclude self-rated outcomes in each reader | Repetition | The first reader that forgets the filter inflates calibration. |
+
+## Claim standing is one derived tier, and revision is scoped to a validity line
+
+`read.synthesize` stamps `tier` — `curated`, `derived` or `researched` — from the writing grant and the run's source, never the payload; mixed grounding takes the lowest tier. `read.recall` orders by tier, then score. `read.revise` lets a claim retire a prior of equal or higher standing; a lower-standing contradiction lands with a bounded validity end, and two claims revise each other only when both are open-ended or anchor to the same instant. Promotion is a human act, stamped beside the synthesizing agent. A fetched result's contributor key is its registrable domain; a coverage gap closes only on a declared source. Only `researched` claims expire, by stamping a validity end, not deleting.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One derived tier with lexicographic precedence *(chosen)* | — | A high-scoring researched claim ranks below a weak curated one. |
+| A caller-supplied tier | Forgery | Any writer promotes its own output. |
+| A separate store for self-directed conclusions | Recall coherence | Every reader merges two stores under its own rule. |
+| A confidence ceiling per tier | Ordering | Scores across sources are incomparable, so ceilings leak. |
+| Retire on subject, predicate and scope alone | History | A past-anchored belief retires the present one. |
+
+## Memory access follows evidence grants, and forgetting is a separate privilege
+
+`read.recall` serves a claim only when every evidence row resolves through the caller's own enforced session; otherwise the claim is suppressed with `MemoryEvidenceUnresolved`, and a claim naming more than 256 evidence entries with `MemoryEvidenceOverflow`, without failing the recall. `disclosure.erase` sits outside the default grant set and raises `ErasureUngranted` without the forget grant; tombstones and cascade markers commit in one local snapshot before the verb returns.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Per-row resolution at recall, 256 cap, separate forget grant, same-commit markers *(chosen)* | — | A claim whose source table is renamed goes silent; erasure needs a second credential and a heavier commit. |
+| Serve the claim with an unresolved-evidence marker | Containment | The marker discloses the conclusion the gate holds. |
+| Resolve evidence once at write time and cache it | Revocation latency | Later masks, grants and erasures never reach the cached verdict. |
+| Forget inside the write grant | Blast radius | A routine synthesis credential erases curated claims. |
+| Markers on the next ordinary commit | Marker durability | A replica pulling in between resurrects forgotten rows. |
+
+Consequences: revocation takes effect on the next recall with no invalidation sweep; total recall cost of the evidence join is unmeasured.
+Revisit: recall latency dominated by the evidence join; a suppression channel that names a withheld claim without its content; evidence lists clustering at the 256 cap.
+
+## The store holds nothing a user could not see
+
+Query-time enforcement bounds a read, not the stored bytes, so the ceiling sits at the write path. `authority.refuse` rejects a credential-shaped value per value with `EnforceCredentialShapedValue`, landing the surrounding rows; an operator-declared exemption admits a source that legitimately carries such text. `connector.source` refuses every organization-twin API — security, eDiscovery, legal-hold export — with `ConnectorTwinApiSource`; a sanctioned, paid, disclosed organization-wide export path is admitted.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Refuse at the write boundary; refuse twin APIs everywhere *(chosen)* | — | A security corpus needs an explicit exemption; full coverage means per-user ingestion, with more connections and rate-limit budget. |
+| Store and flag the value, or withhold it at query time | Reach | The value sits in every replica, readable with an object-store credential. |
+| Refuse the whole batch containing the value | Proportion | One pasted key stops the pull on every retry. |
+| Ingest through the twin API and restrict at query time | The ceiling | No query-time restriction lowers what the store contains. |
+| Permit the twin API behind an organization-signed disclosure | Consent of the people ingested | The organization's signature is not their consent. |
+
+Consequences: removing a credential never needs a rewrite across replicas, because it never landed.
+
+## Nearness is a parent closure over declared edges, and the engine holds no geospatial type
+
+`read.resolve-entity` answers nearness as the transitive closure over the deployment's declared parent edges: near a place means at it or under it. The closure materializes once and left-joins as an ordinary dimension, so an unmapped place tags null and the row survives. The engine holds no geometry type, distance function or radius.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Parent closure as an ordinary dimension *(chosen)* | — | A radius question is unanswerable; hierarchy gaps show as null tags, not errors; the opaque `place_id` is expensive to reverse. |
+| A geospatial column type with radius search | Scope | A type system, index family and projection question enter for a workload that needs none. |
+| Coordinate pairs with ad-hoc distance in SQL | Correctness | Raw latitude-longitude distance errs by an unstated latitude-dependent margin. |
+| An external spatial service at query time | Consistency | A bounded read mixes two stores' clocks. |
+
+Consequences: the place dimension replicates, reads at a vantage and falls under enforcement like any row; metric answers land as rows computed outside.
+Revisit: a deployment declares artificial parent levels to approximate a radius; closure materialization dominates the dimension's build.

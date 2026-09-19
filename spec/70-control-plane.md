@@ -25,7 +25,7 @@ hostname and the read path's two hops belong to the topology contract.
 | `surface.arm.schedule-grammar` | A schedule string is `every <n><s\|m\|h\|d>` or a five-field cron expression, both evaluated in UTC on the engine clock. The grammar carries no zone field. | — |
 | `surface.arm.cron-dialect` | Cron fields are minute, hour, day-of-month, month and day-of-week, each taking `*`, lists, ranges and steps. When day-of-month and day-of-week are both restricted, a day matching either one matches. | because the OR reading is the one operators carry from Vixie cron; an AND reading silently changes their instants |
 | `surface.arm.one-parser` | One parser evaluates schedules in the engine and, compiled to WASM, in the editor preview. It reproduces the golden next-five table under Shapes. | because two parsers can pass every clause here and still disagree about fire instants |
-| `surface.arm.unreadable-schedule` | A schedule string the grammar cannot read, including `L`, `W`, `?`, `#` and `@` macros, raises `ScheduleUnreadable` for that entry alone, naming the diagnostic; every other entry of the document arms. | D33 |
+| `surface.arm.unreadable-schedule` | A schedule string the grammar cannot read, including `L`, `W`, `?`, `#` and `@` macros, raises `ScheduleUnreadable` for that entry alone, naming the diagnostic; every other entry of the document arms. | A-surface |
 | `surface.arm.validate-before-arm` | An entry revalidates against the manifest guardrails before joining the armed set, and a guardrail refusal holds back that entry alone. | — |
 | `surface.arm.next-fire` | An interval entry fires one interval after its last recorded fire, unanchored to the clock, and is due at the next evaluation when none is recorded. A cron entry fires at the next instant its expression names. | — |
 | `surface.arm.missed-window` | At startup the gap since the last fire is logged and the declared policy applies: `fire-once` closes it with one catch-up fire, `skip` resumes at the next window. Entries default to `fire-once`, jobs to `skip`. | — |
@@ -55,11 +55,11 @@ hostname and the read path's two hops belong to the topology contract.
 | `surface.reconcile.version-gate` | A poll re-parses the named snapshot only when its version exceeds the armed version. | — |
 | `surface.reconcile.diff` | The diff is a pure function over a desired and a running set keyed on pipeline id and schedule string, yielding sorted buckets `added`, `removed`, `retimed` and `unchanged`. An entry with no schedule joins no set. | — |
 | `surface.reconcile.unchanged-keeps-next-fire` | An id in `unchanged` keeps its existing next fire. | — |
-| `surface.reconcile.fail-static` | An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running. | D33 |
+| `surface.reconcile.fail-static` | An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running. | A-surface |
 | `surface.reconcile.apply-fires-nothing` | An id new to a snapshot arms from the current instant without firing, and windows missed between two snapshots collapse into one fire. | — |
 | `surface.reconcile.retime-does-not-interrupt` | A retimed entry's in-flight run completes under its earlier arming, and the new cadence governs its next fire. | — |
 | `surface.reconcile.beat-order` | One beat reads the pointer, fetches that version's document, derives the scheduled set, diffs it against the armed cursor, persists the cursor, then dispatches. The cursor is the reconciler's only state between beats. | — |
-| `surface.reconcile.loopback-only` | A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing. | D34 |
+| `surface.reconcile.loopback-only` | A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing. | A-surface |
 | `surface.reconcile.loopback-connection` | The poll client follows no redirect, ignores proxy environment variables, and pins `localhost` to the loopback addresses; a name merely resolving to loopback is not loopback. | — |
 
 unsettled: Does a daemon reach a non-loopback control source, carrying bearer authentication, TLS and producer signing over version and content hash, and does it learn of a new snapshot by poll or by push? owner: control affects: surface.reconcile
@@ -70,7 +70,7 @@ unsettled: Does a daemon reach a non-loopback control source, carrying bearer au
 | --- | --- | --- |
 | `surface.fire.job-block` | A `[[job]]` block declares a name, a `schedule`, a kind, an optional target, and an enabled flag, true when unstated; a disabled block joins no armed set. Job names occupy a namespace apart from pipeline ids. | — |
 | `surface.fire.job-kinds` | The scheduler fires a closed union of kinds — `sweep`, `build`, `fold`, `rebuild-catalog`, `sync-push`, `validate` — through an exhaustive match, beside the implicit pipeline-run kind. Each runs in process through its command verb's path. | — |
-| `surface.fire.job-kind-unknown` | A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation. | D34 |
+| `surface.fire.job-kind-unknown` | A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation. | A-surface |
 | `surface.fire.jobs-are-operator-local` | Job blocks live in the daemon's own configuration and enter no control document. Under a control source the reconciler governs entry cadence and the daemon's operator governs job cadence. | — |
 | `surface.fire.watermark` | A job persists no run record. Its schedule memory is a `job_fire` watermark, one row per job name overwritten on each successful fire, which survives a restart. | — |
 | `surface.fire.stage-order` | Entries due in one tick fire in the order `validate`, `rebuild-catalog`, `sweep`, pipeline runs, `fold`, `build`, `sync-push`. The order breaks same-tick ties only: nothing not due is pulled forward and nothing waits. | — |
@@ -87,7 +87,7 @@ unsettled: Does a daemon reach a non-loopback control source, carrying bearer au
 | Clause | Statement | Why |
 | --- | --- | --- |
 | `surface.dispatch.one-instance-per-unit` | The reconciler starts one durable orchestrator instance per due dispatchable unit. A unit is dispatchable when it starts from the store alone. | — |
-| `surface.dispatch.not-a-head` | Where entries are landing steps of one dependent run, the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing. | D33 |
+| `surface.dispatch.not-a-head` | Where entries are landing steps of one dependent run, the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing. | A-surface |
 | `surface.dispatch.fire-pool` | Due work enters a pool bounded by a configured count of fires in flight, floored at one. | — |
 | `surface.dispatch.exclusion-keys` | A per-source key serializes fires against one upstream, and two fires of one entry do not overlap. The maintenance kinds hold a store-global key excluding every entry writing the tree. Both keys are catalog leases. | — |
 | `surface.dispatch.deferred-stays-due` | Work deferred by a key or by the pool bound stays due and is reconsidered on the next tick. A due maintenance job defers new entry fires until the pool drains. | — |
@@ -135,13 +135,13 @@ unsettled: Is the fire pool's bound one number per deployment or one per exclusi
 | --- | --- | --- |
 | `surface.apply.claims-a-version` | An apply validates the document through the engine, claims an immutable `<store>/manifest@v{N}.toml`, and advances that store's pointer by compare-and-swap. The version counter is per store. | — |
 | `surface.apply.engine-owns-state` | The engine holds the control-plane state model, assigns every version and materializes every manifest. A surface adapter reaches it through the authenticated store-scoped API and writes it by no other path. | — |
-| `surface.apply.version-race` | An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version. | D33 |
+| `surface.apply.version-race` | An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version. | A-surface |
 | `surface.apply.validation` | A document failing engine validation raises `ApplyValidationRefused` and claims no version. | because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it |
 | `surface.apply.admin-capability` | Every edit and apply carries an admin capability held as a server-side secret, never in the browser; the credential-issuance routes take the same capability. | — |
 | `surface.apply.attributed` | Every apply is attributed to the verified identity that made it and lands in the append-only audit log. | — |
 | `surface.apply.owner-storage` | The hosted configuration owner writes to object storage with strong conditional replacement; filesystem storage serves a single-process local path. | — |
 | `surface.apply.owner-unconfigured` | An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API. | P3 |
-| `surface.apply.weak-conditional-backend` | A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open. | D33 |
+| `surface.apply.weak-conditional-backend` | A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open. | A-surface |
 | `surface.apply.uninitialized-store` | An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`. | P3 |
 | `surface.apply.retention` | The owner collects no superseded version. Retention of applied versions is operator policy, and an older version stays readable at its key. | — |
 

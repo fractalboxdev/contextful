@@ -23,9 +23,9 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
 }
 
 static SEGMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9-]+$").unwrap());
-static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|D[0-9]{2})$").unwrap());
+static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|A-[a-z0-9-]+)$").unwrap());
 static RECORD_FILE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^spec/adr/(P[0-9]+|D[0-9]{2})-[a-z0-9-]+\.md$").unwrap());
+    LazyLock::new(|| Regex::new(r"^spec/adr/(?:(P[0-9]+)-[a-z0-9-]+|(A-[a-z0-9-]+))\.md$").unwrap());
 static RAISES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"raises? `([A-Za-z0-9_]+)`").unwrap());
 static NUM_UNIT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|[^A-Za-z0-9_.])([0-9][0-9_,]*(?:\.[0-9]+)?)\s?([A-Za-z%]+)\b").unwrap());
@@ -439,7 +439,7 @@ fn why_ok(why: &str) -> Result<Vec<String>, String> {
 }
 
 fn record_id(rel: &str) -> Option<String> {
-    RECORD_FILE.captures(rel).map(|c| c[1].to_string())
+    RECORD_FILE.captures(rel).and_then(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()))
 }
 
 fn rationale(c: &Corpus) -> Vec<Finding> {
@@ -464,12 +464,19 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
     let mut records: BTreeSet<String> = BTreeSet::new();
     for d in c.records() {
         match record_id(&d.rel) {
-            None => out.push(f("rationale", &d.rel, 1, "SpecRecord", "record file name is not P<n>-<slug>.md or D<nn>-<slug>.md".into())),
+            None => out.push(f("rationale", &d.rel, 1, "SpecRecord", "record file name is not P<n>-<slug>.md or A-<contract>.md".into())),
             Some(id) => {
                 if !cited.contains_key(&id) {
                     out.push(f("rationale", &d.rel, 1, "SpecRecord", format!("record {id} is cited by no clause")));
                 }
-                record_anatomy(d, &id, &mut out);
+                if let Some(contract) = id.strip_prefix("A-") {
+                    if !c.reg.contracts.contains_key(contract) {
+                        out.push(f("rationale", &d.rel, 1, "SpecRecord", format!("{id} names no contract")));
+                    }
+                    contract_adr_anatomy(d, &id, &mut out);
+                } else {
+                    record_anatomy(d, &id, &mut out);
+                }
                 records.insert(id);
             }
         }
@@ -556,11 +563,50 @@ fn record_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
     if words > 400 {
         out.push(r(1, format!("{words} words, over 400")));
     }
-    // options table
     let Some(start) = sections.iter().find(|s| s.1 == "Options").map(|s| s.0) else { return };
+    options_table(d, start, "Options", out);
+}
+
+fn words_of<'a>(lines: impl Iterator<Item = &'a str>) -> usize {
+    lines.filter(|l| !is_separator(l)).map(|l| l.replace('|', " ").split_whitespace().count()).sum()
+}
+
+/// `A-<contract>.md`: a title, a Status line, then one `## <decision>` section per decision,
+/// each holding one options table within its word limit.
+fn contract_adr_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
+    let r = |line: usize, msg: String| f("rationale", &d.rel, line, "SpecRecord", msg);
+    let first = d.lines.first().cloned().unwrap_or_default();
+    if !first.starts_with(&format!("# {id} — ")) {
+        out.push(r(1, format!("first line is not `# {id} — <title>`")));
+    }
+    if !d.lines.iter().any(|l| l.starts_with("**Status:**")) {
+        out.push(r(1, "no `**Status:**` line".into()));
+    }
+    let heads: Vec<(usize, String)> = d
+        .each()
+        .filter(|(_, _, k)| *k == LineKind::Heading)
+        .filter_map(|(n, l, _)| l.strip_prefix("## ").map(|t| (n, t.trim().to_string())))
+        .collect();
+    if heads.is_empty() {
+        out.push(r(1, "holds no `## <decision>` section".into()));
+    }
+    for (i, (n, title)) in heads.iter().enumerate() {
+        let end = heads.get(i + 1).map(|h| h.0).unwrap_or(usize::MAX);
+        let words = words_of(d.each().filter(|(m, _, _)| *m > *n && *m < end).map(|(_, l, _)| l));
+        if words > 250 {
+            out.push(r(*n, format!("section `{title}` is {words} words, over 250")));
+        }
+        options_table(d, *n, title, out);
+    }
+}
+
+/// The table after line `start` and before the next `## `: `Option | Lost on | Cost`,
+/// two to five rows, one `*(chosen)*` with `—`, every other row naming its criterion.
+fn options_table(d: &Doc, start: usize, section: &str, out: &mut Vec<Finding>) {
+    let r = |line: usize, msg: String| f("rationale", &d.rel, line, "SpecRecord", msg);
     let mut rows = Vec::new();
     let mut header = None;
-    for (n, l, _) in d.each().skip(start) {
+    for (n, l, _) in d.each().filter(|(n, _, _)| *n > start) {
         if l.starts_with("## ") {
             break;
         }
@@ -573,25 +619,28 @@ fn record_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
         }
     }
     match header {
-        Some((n, h)) if h != ["Option", "Lost on", "Cost"] => out.push(r(n, "Options table is not headed Option | Lost on | Cost".into())),
-        None => out.push(r(start, "Options holds no table".into())),
+        Some((n, h)) if h != ["Option", "Lost on", "Cost"] => out.push(r(n, format!("`{section}`: Options table is not headed Option | Lost on | Cost"))),
+        None => {
+            out.push(r(start, format!("`{section}`: holds no Options table")));
+            return;
+        }
         _ => {}
     }
     if !(2..=5).contains(&rows.len()) {
-        out.push(r(start, format!("Options holds {} rows, want 2 to 5", rows.len())));
+        out.push(r(start, format!("`{section}`: Options holds {} rows, want 2 to 5", rows.len())));
     }
-    let chosen: Vec<_> = rows.iter().filter(|(_, c)| c.first().map(|s| s.contains("*(chosen)*")).unwrap_or(false)).collect();
-    if chosen.len() != 1 {
-        out.push(r(start, format!("{} rows marked *(chosen)*, want 1", chosen.len())));
+    let chosen = rows.iter().filter(|(_, c)| c.first().map(|s| s.contains("*(chosen)*")).unwrap_or(false)).count();
+    if chosen != 1 {
+        out.push(r(start, format!("`{section}`: {chosen} rows marked *(chosen)*, want 1")));
     }
     for (n, row) in &rows {
         let is_chosen = row.first().map(|s| s.contains("*(chosen)*")).unwrap_or(false);
         let lost = row.get(1).map(|s| s.trim()).unwrap_or("");
         if is_chosen && lost != "—" {
-            out.push(r(*n, "the chosen row's Lost on is not `—`".into()));
+            out.push(r(*n, format!("`{section}`: the chosen row's Lost on is not `—`")));
         }
         if !is_chosen && (lost.is_empty() || lost == "—") {
-            out.push(r(*n, "a rejected option names no criterion it lost on".into()));
+            out.push(r(*n, format!("`{section}`: a rejected option names no criterion it lost on")));
         }
     }
 }
