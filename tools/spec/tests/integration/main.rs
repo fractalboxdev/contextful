@@ -2,7 +2,9 @@
 //! scratch root, applies one change, and runs the built `contextful-spec` against it.
 
 mod rationale;
+mod scaffold;
 mod state;
+mod tags;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -60,6 +62,12 @@ impl Scratch {
             .args(args)
             .output()
             .unwrap()
+    }
+
+    /// Run `scaffold <target> --package <package>` and require success.
+    pub fn scaffold(&self, target: &str, package: &str) {
+        let out = self.cmd(&["scaffold", target, "--package", package]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     }
 
     /// The first clause id of `<contract>.<operation>` in the lock file.

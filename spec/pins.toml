@@ -6,13 +6,25 @@
 #   "authority.admit.narrowing"    = { theorem = "Contextful.Authority.narrowing_implies_parent" }
 #   "store.declare.table-block"    = { item = "contextful_core::pipeline::TableModel" }
 #
+# A test also pins its clause from its own file, with a tag line above the function:
+#
+#   /// <the clause statement>
+#   // spec: store.fold.partial-snapshot@<first 8 hex of the statement's SHA-256>
+#   #[test]
+#   fn partial_snapshot() { ... }
+#
+# `contextful-spec scaffold <contract>.<operation> --package <path>` writes these tagged
+# tests, one per refusal and limit clause, each holding a `todo!` until it is written.
+#
 # An unpinned clause computes `committed`. A pinned clause computes `performed` when the
-# artifact's final path segment is defined under `crates/` or `tools/` and is no ignored
-# test, and `broken` otherwise, which
-# reds the gate: a rename is what fails, where a forgotten prose edit is silent.
+# artifact's final path segment is defined under `crates/` or `tools/`, is no ignored
+# test, holds no `todo!` body line and, for a tag, matches the statement's current rev;
+# `broken` otherwise, which reds the gate: a rename or a reworded clause is what fails,
+# where a forgotten prose edit is silent. A stale rev raises SpecStalePin; two different
+# tests pinning one clause raise SpecBrokenPin.
 #
 # A refusal or a limit takes a `test` or a `theorem`; an `item` proves presence, not behavior.
-# `contextful-spec state` reads this file and writes spec/status.md.
+# `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
 "corpus.rationale.contract-adr"     = { test = "contextful_spec::rationale::a_contract_adr_section_over_its_word_limit_is_a_record_finding" }
@@ -31,7 +43,7 @@
 assurance = 3
 authority = 0
 connector = 0
-corpus = 5
+corpus = 9
 disclosure = 0
 read = 0
 run = 0
