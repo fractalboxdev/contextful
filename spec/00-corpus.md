@@ -102,6 +102,7 @@ tools/spec/             the checker
 | `corpus.state.roadmap` | `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`. | P8 |
 | `corpus.state.acceptance` | A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored, and `passing` otherwise. | A-assurance |
 | `corpus.state.acceptance-first` | A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`. | A-assurance |
+| `corpus.state.deferred-depth` | A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`. | because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it |
 
 ## render
 

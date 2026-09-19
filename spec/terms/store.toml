@@ -40,7 +40,6 @@ as_of           = { gloss = "The read parameter bounding transaction time." }
 valid_as_of     = { gloss = "The read parameter bounding valid time." }
 includes_runs   = { gloss = "The run ids a snapshot folded." }
 key_version     = { gloss = "The encryption key version a file was written under." }
-fence           = { gloss = "The lease's monotonic token, stamped into what a holder commits." }
 node_id         = { gloss = "A machine's writer identity, used in run paths, ledger filenames and lease holders." }
 pull_before_run = { gloss = "The sync setting pulling from the bucket before a run lands rows." }
 prefix_from     = { gloss = "The sync setting binding the bucket prefix from an environment variable." }
