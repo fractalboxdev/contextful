@@ -13327,7 +13327,7 @@
       "operation": "model",
       "subject": "declared-dependency",
       "kind": "refusal",
-      "statement": "A `require` stanza reaching any external library raises `FormalPackageDependency`, naming the library.",
+      "statement": "A `require` stanza in the policy package's `lakefile.toml` reaching any external library raises `FormalPackageDependency`, naming the library.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
       "line": 49
@@ -13459,7 +13459,7 @@
       "operation": "model",
       "subject": "protocol-package",
       "kind": "behavior",
-      "statement": "The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` and one `lean_exe` target.",
+      "statement": "The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` and one `lean_exe` target; its `lakefile.toml` may `require` a pinned proof-automation library.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
       "line": 61

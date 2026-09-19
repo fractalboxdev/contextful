@@ -46,7 +46,7 @@ flowchart LR
 | Clause | Statement | Why |
 | --- | --- | --- |
 | `assurance.model.package` | The policy model is a Lean package rooted at `formal/`: `lakefile.toml` declares one `lean_lib` target and no `require` stanza, and `lean-toolchain` names one exact release string. | A-assurance |
-| `assurance.model.declared-dependency` | A `require` stanza reaching any external library raises `FormalPackageDependency`, naming the library. | A-assurance |
+| `assurance.model.declared-dependency` | A `require` stanza in the policy package's `lakefile.toml` reaching any external library raises `FormalPackageDependency`, naming the library. | A-assurance |
 | `assurance.model.toolchain-drift` | A build whose resolved toolchain string differs from the pinned one raises `ProofToolchainDrift`, printing both strings. | A-assurance |
 | `assurance.model.build-cost` | A cold elaboration of the package completes within 60 s and writes at most 512 KiB of artifacts. | because the check runs on every change |
 | `assurance.model.build-command` | `lake build` at the package root elaborates every declaration and writes the environment the audit reads. | |
@@ -58,7 +58,7 @@ flowchart LR
 | `assurance.model.total-definitions` | Every definition is total and computable: none is marked `partial`, `noncomputable` or `opaque`, and decidable equality on each finite enumeration is derived. | |
 | `assurance.model.from-the-spec` | Each definition is written from the specification text and derived from no engine source. | because a definition copied from code makes every theorem restate the code instead of checking the specification |
 | `assurance.model.out-of-model` | The policy package defines no credential bytes, signature verification, SQL semantics, journal write, process state or attacker observation, and no theorem reaches one. | |
-| `assurance.model.protocol-package` | The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` and one `lean_exe` target. | A-assurance |
+| `assurance.model.protocol-package` | The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` and one `lean_exe` target; its `lakefile.toml` may `require` a pinned proof-automation library. | A-assurance |
 | `assurance.model.protocol-model` | The protocol model is a total, computable step function over lease acquisition, renewal, expiry and release, the fenced compare-and-swap on the catalog row and the cursor object, holder pause, message delay and crash. | A-assurance |
 | `assurance.model.protocol-safety` | Four invariants are Lean theorems over every reachable state: one lease holder per fence, fences only increase, no commit lands carrying a fence below the highest granted, and release keeps the lease object and its fence. | |
 | `assurance.model.protocol-theorems` | Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-axioms.check-command}} against the same allowlist. | |
