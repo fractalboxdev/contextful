@@ -12,14 +12,11 @@ render    = { gloss = "The generated files, and the vocabulary no authored file 
 [error]
 SpecMalformedId        = { clause = "corpus.address.malformed-id", gloss = "A clause id with the wrong shape, contract or operation." }
 SpecDuplicateId        = { clause = "corpus.address.duplicate-id", gloss = "A clause id in two rows." }
+SpecScenario           = { clause = "corpus.anatomy.bad-scenario", gloss = "A scenario naming a foreign clause, or holding no WHEN/THEN sentence or fixture path." }
 SpecAnatomy            = { clause = "corpus.anatomy.bad-anatomy", gloss = "A contract file out of its section order, title or size." }
 SpecRegistry           = { clause = "corpus.registry.unregistered", gloss = "A spelling, error or bound out of step with its fragment." }
-SpecSpellingCollision  = { clause = "corpus.registry.spelling-collision", gloss = "Two spellings that normalize onto one, or an alias in use." }
 SpecDanglingReference  = { clause = "corpus.reference.dangling", gloss = "A pointer to no clause." }
-SpecRestatement        = { clause = "corpus.reference.restatement", gloss = "Two statements sharing an 8-word sequence." }
 SpecExternalLink       = { clause = "corpus.reference.no-literature", gloss = "A link out of the spec, or into references/." }
-SpecRationaleLeak      = { clause = "corpus.rationale.leak", gloss = "Rationale vocabulary outside a Why cell or record." }
-SpecStrayModal         = { clause = "corpus.rationale.stray-modal", gloss = "A normative modal outside a clause row." }
 SpecUnsettled          = { clause = "corpus.rationale.unsettled-line", gloss = "A malformed unknown, or an appendix heading." }
 SpecRecord             = { clause = "corpus.rationale.orphan-record", gloss = "An uncited or missing record, a bad Why cell, or a record out of anatomy." }
 SpecCoverageRegression = { clause = "corpus.state.coverage-floor", gloss = "Fewer performed pins than the floor." }

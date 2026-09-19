@@ -16,35 +16,6 @@ merge      = { gloss = "Reconciling one bucket manifest between writers: per-ent
 lease      = { gloss = "Single-writer exclusion over a pipeline or a table's compaction: two implementations, the fence, and the commit log carrying the cursor." }
 replicate  = { gloss = "A consuming replica of the bucket: the refresh diff, what it holds whole, what it declines, and what it rebuilds." }
 
-[term]
-class           = { gloss = "The table key naming a column's sensitive-data class." }
-append          = { gloss = "The write mode keeping the last write per key and retiring no key." }
-replace         = { gloss = "The write mode reading the newest complete-state run plus later runs." }
-_ingested_at    = { gloss = "The injected transaction-time stamp, a UTC nanosecond Parquet timestamp on every row." }
-_run_id         = { gloss = "The injected identifier of the run that landed a row." }
-_batch_seq      = { gloss = "The injected batch ordinal within a run, where a batch scope exists." }
-_site_id        = { gloss = "The injected identifier of the writing site." }
-_authored_by    = { gloss = "The injected subject that authorized a write, where one did." }
-_modality       = { gloss = "The reserved optional column naming a row's content modality." }
-_lang           = { gloss = "The reserved optional column carrying a BCP-47 language tag." }
-_provenance     = { gloss = "The reserved optional column carrying the evidence rows a row derives from." }
-_prompt_hash    = { gloss = "The reserved optional column carrying a digest of the prompt template that produced a row." }
-primary_key     = { gloss = "A table's declared key set, which the dedup view partitions on." }
-order_by        = { gloss = "The column picking the surviving row per key." }
-write_mode      = { gloss = "`append` or `replace`: what a read returns for a row the source withdrew." }
-retain_runs     = { gloss = "The window a folded run or superseded snapshot stays readable." }
-cluster_by      = { gloss = "The columns rows are sorted by within a Parquet file." }
-partition_by    = { gloss = "The columns a snapshot's files are partitioned by." }
-valid_time      = { gloss = "A table's declared valid-time column pair, `from` and optional `to`." }
-as_of           = { gloss = "The read parameter bounding transaction time." }
-valid_as_of     = { gloss = "The read parameter bounding valid time." }
-includes_runs   = { gloss = "The run ids a snapshot folded." }
-key_version     = { gloss = "The encryption key version a file was written under." }
-fence           = { gloss = "The lease's monotonic token, stamped into what a holder commits." }
-node_id         = { gloss = "A machine's writer identity, used in run paths, ledger filenames and lease holders." }
-pull_before_run = { gloss = "The sync setting pulling from the bucket before a run lands rows." }
-prefix_from     = { gloss = "The sync setting binding the bucket prefix from an environment variable." }
-push_retries    = { gloss = "The sync setting bounding the bucket manifest re-commit loop." }
 
 [error]
 StoreManifestUnreadable      = { clause = "store.lay-out.manifest-unreadable", gloss = "A run manifest or reachable snapshot manifest fails to parse." }
