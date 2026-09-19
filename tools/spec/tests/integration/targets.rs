@@ -35,7 +35,7 @@ fn a_capped_shape_not_recording_its_exclusions_is_refused() {
     let aws = s.read("spec/targets/aws.toml");
     assert!(aws.contains("wall_clock_cap_min = 15"), "the live AWS file carries a capped shape");
     let line = aws.lines().find(|l| l.trim_start().starts_with("excludes") && l.contains("first-time-backfill")).unwrap().to_string();
-    s.write("spec/targets/aws.toml", &aws.replacen(&line, "excludes = ["first-time-backfill"]", 1));
+    s.write("spec/targets/aws.toml", &aws.replacen(&line, r#"excludes = ["first-time-backfill"]"#, 1));
     let found = codes(&s.lint("targets"), "SpecTargetCapUnrecorded");
     assert_eq!(found.len(), 1, "{found:?}");
 }
