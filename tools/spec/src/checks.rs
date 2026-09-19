@@ -744,6 +744,8 @@ pub struct MilestoneLines {
     pub line: usize,
     pub reach: bool,
     pub acceptance: Option<String>,
+    /// A `Depth: operation` line: the milestone admits only refusal and limit clauses.
+    pub operation_depth: bool,
 }
 
 pub fn milestone_lines(c: &Corpus) -> Vec<MilestoneLines> {
@@ -751,10 +753,12 @@ pub fn milestone_lines(c: &Corpus) -> Vec<MilestoneLines> {
     let Some(d) = c.docs.iter().find(|d| d.role == Role::Plan) else { return out };
     for (n, l, k) in d.each() {
         if k == LineKind::Heading && l.starts_with("## ") {
-            out.push(MilestoneLines { heading: l[3..].trim().to_string(), line: n, reach: false, acceptance: None });
+            out.push(MilestoneLines { heading: l[3..].trim().to_string(), line: n, reach: false, acceptance: None, operation_depth: false });
         } else if let Some(m) = out.last_mut() {
             if l.starts_with("Reach: ") {
                 m.reach = true;
+            } else if l.trim() == "Depth: operation" {
+                m.operation_depth = true;
             } else if let Some(rest) = l.strip_prefix("Acceptance: ") {
                 m.acceptance = tick_spans(rest).into_iter().next().map(|(_, t)| t);
             }
@@ -878,6 +882,19 @@ fn state(c: &Corpus) -> Vec<Finding> {
         let pinned = pins.pin.keys().filter_map(|id| clauses.get(id)).any(|cl| {
             claim.get(&format!("{}.{}", cl.contract, cl.operation)) == Some(&m.heading)
         });
+        if m.operation_depth {
+            for cl in c.clauses().filter(|cl| cl.kind == "behavior") {
+                if claim.get(&format!("{}.{}", cl.contract, cl.operation)) == Some(&m.heading) {
+                    out.push(f(
+                        "state",
+                        &cl.file,
+                        cl.line,
+                        "SpecDeferredBehavior",
+                        format!("behavior clause `{}` in milestone `{}`, which carries `Depth: operation`", cl.id, m.heading),
+                    ));
+                }
+            }
+        }
         if pinned && acceptance_verdict(c, Some(test)) == "absent" {
             out.push(f(
                 "state",

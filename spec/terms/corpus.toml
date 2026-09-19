@@ -26,6 +26,7 @@ SpecCoverageRegression = { clause = "corpus.state.coverage-floor", gloss = "Fewe
 SpecBrokenPin          = { clause = "corpus.state.bad-pin", gloss = "A pin that names no clause, mismatches its kind, or does not resolve." }
 SpecRoadmap            = { clause = "corpus.state.roadmap", gloss = "A roadmap name resolving to nothing, claimed twice, or a milestone missing its reach or acceptance line." }
 SpecAcceptanceMissing  = { clause = "corpus.state.acceptance-first", gloss = "A milestone with a pinned clause and no acceptance test." }
+SpecDeferredBehavior   = { clause = "corpus.state.deferred-depth", gloss = "A behavior clause in a milestone marked `Depth: operation`." }
 SpecStaleRender        = { clause = "corpus.render.generated", gloss = "A generated file differing from regeneration." }
 SpecDatedProse         = { clause = "corpus.render.dated-prose", gloss = "Build-state words or a date in authored text." }
 SpecCounterfactual     = { clause = "corpus.render.counterfactual", gloss = "Future or conditional mood in a contract file." }

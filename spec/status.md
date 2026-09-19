@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its artifact
 | `assurance` | 2 | 13 | 164 | 42 | 18 | 12 | 3 | 0 | 3 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 0 | 0 | 0 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
-| `corpus` | 1 | 7 | 47 | 22 | 6 | 1 | 5 | 0 | 5 |
+| `corpus` | 1 | 7 | 48 | 23 | 6 | 1 | 6 | 0 | 6 |
 | `disclosure` | 3 | 16 | 181 | 54 | 9 | 12 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 192 | 21 | 13 | 16 | 0 | 0 | 0 |
 | `run` | 3 | 24 | 346 | 79 | 34 | 24 | 0 | 0 | 0 |
 | `store` | 1 | 14 | 194 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 252 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 85 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 142 | 1913 | 437 | 159 | 100 | 8 | 0 | |
+| **total** | 19 | 142 | 1914 | 438 | 159 | 100 | 9 | 0 | |
 
 Decision records: 17.
 
@@ -51,5 +51,6 @@ Unscheduled operations: 7.
 | `corpus.rationale.contract-adr` | performed |
 | `corpus.state.acceptance` | performed |
 | `corpus.state.acceptance-first` | performed |
+| `corpus.state.deferred-depth` | performed |
 | `corpus.state.roadmap` | performed |
 | `corpus.state.verdict` | performed |

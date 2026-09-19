@@ -74,3 +74,45 @@ fn status_reports_each_milestone_acceptance_verdict() {
     assert!(row("3 — The run path").ends_with("| passing |"), "{status}");
     assert!(row("4 — Ingest").ends_with("| absent |"), "{status}");
 }
+
+/// Insert `Depth: operation` after the `Reach:` line of the milestone headed `heading`.
+fn mark_operation_depth(s: &Scratch, heading: &str) {
+    let roadmap = s.read("spec/roadmap.md");
+    let at = roadmap.find(&format!("## {heading}\n")).expect("the milestone heading");
+    let reach = at + roadmap[at..].find("\nReach: ").expect("a reach line") + 1;
+    let end = reach + roadmap[reach..].find('\n').unwrap() + 1;
+    s.write("spec/roadmap.md", &format!("{}\nDepth: operation\n{}", &roadmap[..end], &roadmap[end..]));
+}
+
+#[test]
+fn a_behavior_clause_in_an_operation_depth_milestone_is_refused() {
+    let s = Scratch::copy();
+    let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
+    let kind_of = |id: &str| -> String {
+        lock["clauses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["id"] == id)
+            .map(|c| c["kind"].as_str().unwrap().to_string())
+            .unwrap_or_default()
+    };
+    let before = s.read("spec/roadmap.md");
+    mark_operation_depth(&s, "2 — The store");
+    let found = codes(&s.lint("state"), "SpecDeferredBehavior");
+    assert!(!found.is_empty(), "a behavior clause of the store raises nothing");
+    for m in &found {
+        let id = m.split('`').nth(1).expect("a clause id in backticks");
+        assert!(id.starts_with("store."), "{m}");
+        assert_eq!(kind_of(id), "behavior", "{m}");
+    }
+
+    s.write("spec/roadmap.md", &before);
+    assert!(codes(&s.lint("state"), "SpecDeferredBehavior").is_empty());
+}
+
+#[test]
+fn the_live_roadmap_holds_no_deferred_behavior() {
+    let s = Scratch::copy();
+    assert!(codes(&s.lint("state"), "SpecDeferredBehavior").is_empty());
+}
