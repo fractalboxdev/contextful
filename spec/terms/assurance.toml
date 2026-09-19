@@ -1,12 +1,12 @@
 # Registry fragment — contract `assurance`, files spec/80-formal.md and spec/81-engineering.md.
 
 [operation]
-model             = { gloss = "The Lean package and the TLA+ protocol specification, their pins, and the definitions theorems and checks range over." }
+model             = { gloss = "The Lean policy package and the Lean protocol state machine, their pins, and the definitions theorems and checks range over." }
 prove             = { gloss = "The theorem inventory: layer composition, placement, the evidence floor, and the proof targets over the authority mapping." }
 audit-axioms      = { gloss = "The axiom allowlist, the transitive footprint audit over the elaborated environment, the inventory and the report." }
 recheck           = { gloss = "Rebuilding and re-auditing from pinned source in a credential-free environment." }
 scope-claim       = { gloss = "The sentence the assurance claim is allowed to be: named decisions, trusted dependencies, translation chain, refinement reach." }
-differential-test = { gloss = "The executable reference model, the case generator, the minimized counterexample corpus and the command running them." }
+differential-test = { gloss = "The executable reference models, the case generators, the minimized counterexample corpus and the command running them." }
 structure-tree    = { gloss = "One home per capability, the one enforcement decision module, adapters and derived-artifact checks." }
 automate          = { gloss = "Typed subcommands over compiled binaries, and the boundary shell keeps." }
 test              = { gloss = "Assertion construction, guard validation, suite placement, test-first and acceptance tests, and the connector test kit." }
@@ -19,7 +19,8 @@ baseline          = { gloss = "Holding a run against committed baselines and abs
 FormalPackageDependency          = { clause = "assurance.model.declared-dependency", gloss = "The Lean package manifest declares an external library." }
 ProofToolchainDrift              = { clause = "assurance.model.toolchain-drift", gloss = "The resolved toolchain release string differs from the pinned one." }
 UnmodelledConstructor            = { clause = "assurance.model.unmodelled-constructor", gloss = "A placement category the manifest admits has no case in the model's inductive." }
-ProtocolInvariantViolated        = { clause = "assurance.model.protocol-check", gloss = "The protocol model checker found a trace violating a safety property." }
+ProtocolInvariantViolated        = { clause = "assurance.model.protocol-check", gloss = "A state the bounded check reaches breaks a protocol invariant." }
+ProtocolConformanceDrift         = { clause = "assurance.differential-test.protocol-drift", gloss = "The protocol model and the Rust store disagree on the state after a step." }
 CommutationClaimed               = { clause = "assurance.prove.commutation-claim", gloss = "Order-independence asserted over stages whose order the composition theorem fixes." }
 ZoneInclusionSampled             = { clause = "assurance.prove.sampled-inclusion", gloss = "Inclusion decided by evaluating a fixed set of example values." }
 ProofTargetUnbound               = { clause = "assurance.prove.unbound-target", gloss = "A proof target named in the claim with no authenticated query path bound to it." }
