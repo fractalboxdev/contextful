@@ -62,8 +62,6 @@ pub struct Fragment {
     pub error: BTreeMap<String, ErrorEntry>,
     #[serde(default)]
     pub limit: BTreeMap<String, LimitEntry>,
-    #[serde(default)]
-    pub term: BTreeMap<String, Named>,
 }
 
 #[derive(Deserialize, Default)]
@@ -82,7 +80,6 @@ struct UnitFile {
 pub struct Registry {
     pub contracts: BTreeMap<String, ContractEntry>,
     pub units: BTreeMap<String, Named>,
-    pub wire: BTreeMap<String, Named>,
     pub fragments: BTreeMap<String, Fragment>,
     #[serde(skip)]
     pub refused: HashMap<String, RefusedName>,
@@ -98,13 +95,11 @@ impl Registry {
         };
         let contracts: ContractFile = toml::from_str(&read("contract.toml")?).context("contract.toml")?;
         let units: UnitFile = toml::from_str(&read("unit.toml")?).context("unit.toml")?;
-        let wire: Fragment = toml::from_str(&read("wire.toml")?).context("wire.toml")?;
         let refused: RefusedNamesFile =
             toml::from_str(&read("refused-names.toml").unwrap_or_default()).unwrap_or_default();
         let mut r = Registry {
             contracts: contracts.contract,
             units: units.unit,
-            wire: wire.term,
             refused: refused.refused,
             ..Default::default()
         };
@@ -136,18 +131,6 @@ impl Registry {
 
     pub fn error_owner(&self, id: &str) -> Option<&ErrorEntry> {
         self.fragments.values().find_map(|f| f.error.get(id))
-    }
-
-    /// Every registered spelling a backticked identifier may resolve to.
-    pub fn is_registered(&self, token: &str) -> bool {
-        self.wire.contains_key(token)
-            || self.units.contains_key(token)
-            || self.fragments.values().any(|f| {
-                f.term.contains_key(token)
-                    || f.error.contains_key(token)
-                    || f.limit.contains_key(token)
-                    || f.operation.contains_key(token)
-            })
     }
 }
 
@@ -183,6 +166,19 @@ pub struct Clause {
     pub kind: String,
     pub statement: String,
     pub why: String,
+    pub file: String,
+    pub line: usize,
+    /// Examples from the operation's `#### Scenarios` list: a WHEN/THEN sentence or a fixture path.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scenarios: Vec<String>,
+}
+
+/// One item of a `#### Scenarios` list: the clause it names, its text, and where it sits.
+#[derive(Debug, Clone)]
+pub struct Scenario {
+    pub clause: String,
+    pub operation: String,
+    pub text: String,
     pub file: String,
     pub line: usize,
 }
@@ -304,6 +300,7 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
                     why: c.get(2..).map(|s| s.join(" | ")).unwrap_or_default(),
                     file: rel.to_string(),
                     line: i + 1,
+                    scenarios: Vec::new(),
                 });
             } else {
                 kinds[i] = LineKind::TableRow;
@@ -365,7 +362,47 @@ impl Corpus {
         }
         let mut c = Corpus { root: root.to_path_buf(), reg, docs };
         c.compute_kinds();
+        c.attach_scenarios();
         Ok(c)
+    }
+
+    /// Every `- \`<clause id>\`: <text>` item under a `#### Scenarios` heading, with the
+    /// `## <operation>` section it sits in.
+    pub fn scenarios(&self) -> Vec<Scenario> {
+        let mut out = Vec::new();
+        for d in self.contracts() {
+            let (mut op, mut inside) = (String::new(), false);
+            for (n, l, k) in d.each() {
+                if k == LineKind::Heading {
+                    if let Some(t) = l.strip_prefix("## ") {
+                        op = t.trim().to_string();
+                        inside = false;
+                    } else {
+                        inside = l.trim() == "#### Scenarios";
+                    }
+                    continue;
+                }
+                let Some(item) = l.strip_prefix("- `").filter(|_| inside) else { continue };
+                let Some((id, text)) = item.split_once("`:") else { continue };
+                out.push(Scenario {
+                    clause: id.to_string(),
+                    operation: op.clone(),
+                    text: text.trim().to_string(),
+                    file: d.rel.clone(),
+                    line: n,
+                });
+            }
+        }
+        out
+    }
+
+    fn attach_scenarios(&mut self) {
+        let found = self.scenarios();
+        for d in self.docs.iter_mut() {
+            for cl in d.clauses.iter_mut() {
+                cl.scenarios = found.iter().filter(|s| s.clause == cl.id).map(|s| s.text.clone()).collect();
+            }
+        }
     }
 
     fn compute_kinds(&mut self) {

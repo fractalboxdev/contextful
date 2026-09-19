@@ -22,7 +22,7 @@ spec/
   00-corpus.md          this file
   01-topology.md        the system, its contracts, its build profiles
   NN-*.md               one or more files per contract, listed in terms/contract.toml
-  terms/                contract.toml, unit.toml, wire.toml, refused-names.toml,
+  terms/                contract.toml, unit.toml, refused-names.toml,
                         and one <contract>.toml fragment per contract
   adr/                  P<n>-<slug>.md principles, A-<contract>.md decisions
   pins.toml             clause id -> demonstrating artifact, plus the coverage floor
@@ -40,7 +40,7 @@ tools/spec/             the checker
 | `corpus.address.clause-id` | A clause id is three dot-separated segments — contract, operation, subject — each matching `[a-z0-9-]+`, written backticked in the first cell of a clause row. | P8 |
 | `corpus.address.contract-segment` | The first segment equals the file's front-matter `contract`, which names an entry of `spec/terms/contract.toml` listing that file. | P8 |
 | `corpus.address.operation-segment` | The second segment is an operation registered in the contract's fragment and listed in the front-matter `owns` of exactly one of the contract's files, the file carrying the row. | P8 |
-| `corpus.address.subject-segment` | The third segment is a slug of at most 40 chars, unique within its operation. It is a name, not a registered term. | P8 |
+| `corpus.address.subject-segment` | The third segment is a slug of at most 40 chars, unique within its operation. It is a name, not a registry entry. | P8 |
 | `corpus.address.ids-are-stable` | An id changes when a fact changes obligor. Moving an operation between two files of one contract rewrites no id. | P8 |
 | `corpus.address.malformed-id` | A clause id violating the shape, naming another contract, or naming an operation its file does not own raises `SpecMalformedId`. | P8 |
 | `corpus.address.duplicate-id` | A clause id appearing in two rows raises `SpecDuplicateId`, naming both locations. | P8 |
@@ -50,7 +50,9 @@ tools/spec/             the checker
 | Clause | Statement | Why |
 | --- | --- | --- |
 | `corpus.anatomy.file-headings` | A contract file carries front matter with `contract` and `owns`, one `# ` title matching its contract entry, one `## <operation>` section per owned operation in `owns` order, then an optional `## Shapes`. | P8 |
-| `corpus.anatomy.clause-table` | An operation section holds one table headed `Clause`, `Statement`, `Why`; each row is one clause. Prose, diagrams and unsettled lines may follow the table. | P8 |
+| `corpus.anatomy.clause-table` | An operation section holds one table headed `Clause`, `Statement`, `Why`; each row is one clause. Prose, diagrams, scenarios and unsettled lines may follow the table. | P8 |
+| `corpus.anatomy.scenario` | A `#### Scenarios` list under an operation holds items `` - `<clause id>`: WHEN <trigger>, THEN <outcome> `` or a backticked `tests/fixtures/` path; the lock file attaches each to its clause. | because an example is the test an implementer writes first, and a rule without one leaves the agent to invent it |
+| `corpus.anatomy.bad-scenario` | A scenario naming a clause outside its operation, or holding neither a WHEN/THEN sentence nor a fixture path, raises `SpecScenario`. | P8 |
 | `corpus.anatomy.kind-is-computed` | A clause is a refusal when its statement names an error its fragment assigns to it, a limit when its fragment assigns it a named bound, and a behavior otherwise. The checker writes the kind into `spec/spec.lock.json`. | P8 |
 | `corpus.anatomy.statement-words` | A clause statement holds at most 40 words, a `{{id}}` reference counting as one. | because one row states one obligation; a longer row is two clauses or carries rationale |
 | `corpus.anatomy.file-length` | A contract file holds at most 900 lines. | because a file past that splits by adding a path to its contract entry, which renames nothing |
@@ -60,12 +62,10 @@ tools/spec/             the checker
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `corpus.registry.fragment` | Each contract owns `spec/terms/<contract>.toml`, holding its operations, errors, named bounds and shared terms, each with a gloss. Nothing else holds a spelling. | P8 |
+| `corpus.registry.fragment` | Each contract owns `spec/terms/<contract>.toml`, holding its operations, errors and named bounds, each with a gloss. | P8 |
 | `corpus.registry.one-error-one-clause` | An error entry names the one clause raising it. That clause's statement names the error, and no other clause statement does; a second site reaches the condition by `{{id}}`. | P2 |
 | `corpus.registry.bound-entry` | A named-bound entry carries its owning clause, a value, a unit from `spec/terms/unit.toml` and a basis: `chosen`, `measured:<benchmark>` or `standard:<name>`. The owning statement carries the value followed by the unit. | because an unmeasured number presented as a measurement is a hypothesis stated as fact |
-| `corpus.registry.shared-term` | A backticked identifier appearing in clause statements of two or more contracts is registered as a term, an error, a named bound, an operation or a `wire` token. | P8 |
-| `corpus.registry.spelling-collision` | Two errors, bounds or terms whose spellings coincide after case folding, separator stripping, a trailing `s` and a leading `max-`, `min-` or `the-` raise `SpecSpellingCollision`, as does a statement using a registered alias. | because one spelling names one thing, and a near-synonym is where two meanings hide |
-| `corpus.registry.unregistered` | An unregistered error after `raises`, an entry naming a missing clause, an error absent from its clause or present in another, a malformed bound, and an unregistered shared term raise `SpecRegistry`. | P8 |
+| `corpus.registry.unregistered` | An unregistered error after `raises`, an entry naming a missing clause, an error absent from its clause or present in another, and a malformed bound raise `SpecRegistry`. | P8 |
 
 ## reference
 
@@ -73,7 +73,6 @@ tools/spec/             the checker
 | --- | --- | --- |
 | `corpus.reference.pointer` | `{{<clause id>}}` is the one way a statement reaches a fact another clause owns. The lock file records every pointer as an edge. | P8 |
 | `corpus.reference.dangling` | A `{{id}}` naming no clause raises `SpecDanglingReference`. | P8 |
-| `corpus.reference.restatement` | Two clause statements sharing an 8-word sequence, after lowercasing and stripping punctuation and pointers, raise `SpecRestatement`, naming both ids. | because a copy is where two facts drift apart |
 | `corpus.reference.no-literature` | A spec file carries no hyperlink to an external document and no path under `references/`; either raises `SpecExternalLink`. Literature lives in `references/`, which cites clause ids. | because the contract is judged by behavior, and a citation invites arguing from authority |
 
 ## rationale
@@ -85,8 +84,6 @@ tools/spec/             the checker
 | `corpus.rationale.record-anatomy` | A principle `P<n>-<slug>.md` carries `# <id> — <title>`, a `**Status:**` line, then Context (optional), Decision, Options, Consequences, Revisit (optional), in at most 400 words. | because a principle argues one rule every contract obeys, and the length of the argument is part of its quality |
 | `corpus.rationale.contract-adr` | A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <decision>` section per decision, each holding its options table in at most 250 words. | because one file per contract puts every decision beside the clauses it governs, and a fresh corpus has no history to keep apart |
 | `corpus.rationale.options-table` | A principle's Options and each ADR section hold one table headed `Option`, `Lost on`, `Cost` with two to five rows. One row is marked *(chosen)* with `—` as Lost on; every other row names the criterion it lost on. | P8 |
-| `corpus.rationale.leak` | Outside a Why cell and a record, the tokens `because`, `so that`, `in order to`, `the reason`, `which is why`, `judged on`, `at the cost of` and `trade-off` raise `SpecRationaleLeak`. | P8 |
-| `corpus.rationale.stray-modal` | Outside a clause row, an unsettled line, a code block and a record, the words must, never, refuses, is refused, at most, at least and always raise `SpecStrayModal`. | P8 |
 | `corpus.rationale.unsettled-line` | An unknown is one line where it applies: `unsettled:`, a question ending `?`, `owner:` and a handle, `affects:` and a `<contract>.<operation>`. Another form, or a heading `Open questions`, `Out of scope` or `See also`, raises `SpecUnsettled`. | P8 |
 | `corpus.rationale.orphan-record` | A record no Why cell cites, a Why cell naming no record, and a record breaking its anatomy raise `SpecRecord`. | P8 |
 

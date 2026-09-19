@@ -86,7 +86,3 @@ surface-topic-tier-tokens  = { clause = "surface.brief.topic-tier", value = 2, u
 surface-card-subjects      = { clause = "surface.brief.card-subjects", value = 3, unit = "subjects", basis = "chosen", gloss = "Subjects one greeting card carries." }
 surface-articles-per-subject = { clause = "surface.brief.articles-per-subject", value = 3, unit = "entries", basis = "chosen", gloss = "Matched articles one card subject carries." }
 surface-catchup-window     = { clause = "surface.brief.catchup-window", value = 7, unit = "d", basis = "chosen", gloss = "Longest catch-up window the backend serves." }
-
-[term]
-schedule = { gloss = "The field carrying a schedule string in the grammar `surface.arm` owns." }
-validate = { gloss = "The command verb and job kind that validates a manifest without landing rows." }

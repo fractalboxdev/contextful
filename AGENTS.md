@@ -41,7 +41,8 @@ cite, the errors and bounds they own, and a milestone's `Reach:` and `Acceptance
 
 | Change | What it takes |
 | --- | --- |
-| A new fact | One clause row under the owning operation; a fragment entry for a new error, bound or shared term |
+| A new fact | One clause row under the owning operation; a fragment entry for a new error or bound |
+| An example | A `- `<clause id>`: WHEN …, THEN …` item under the operation's `#### Scenarios`, or a `tests/fixtures/` path |
 | A refusal | The clause, its error in the fragment, and a Why: a `because` cell, or a record id when two or more clauses share the decision |
 | A new operation | A fragment entry, a `## <operation>` section, and its name in the file's `owns` |
 | A new subject area | A contract entry in [`spec/terms/contract.toml`](./spec/terms/contract.toml), a fragment, then the file in the standard anatomy |

@@ -29,10 +29,10 @@ static RECORD_FILE: LazyLock<Regex> =
 static RAISES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"raises? `([A-Za-z0-9_]+)`").unwrap());
 static NUM_UNIT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|[^A-Za-z0-9_.])([0-9][0-9_,]*(?:\.[0-9]+)?)\s?([A-Za-z%]+)\b").unwrap());
-static IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_-]*$").unwrap());
 static UNSETTLED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^unsettled: .+\? owner: \S+ affects: ([a-z0-9-]+)\.([a-z0-9-]+)$").unwrap()
 });
+static SCENARIO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^WHEN .+, THEN .+$").unwrap());
 static ISO_DATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b").unwrap());
 static BARE_ISSUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(^|\s)#[0-9]+\b|/pull/[0-9]+").unwrap());
 static EXT_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\]\((https?://|[^)]*references/)").unwrap());
@@ -180,23 +180,22 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    let ids: BTreeSet<String> = c.clauses().map(|cl| cl.id.clone()).collect();
+    for sc in c.scenarios() {
+        let own = ids.contains(&sc.clause) && sc.clause.split('.').nth(1) == Some(sc.operation.as_str());
+        if !own {
+            out.push(f("anatomy", &sc.file, sc.line, "SpecScenario", format!("scenario names `{}`, not a clause of `{}`", sc.clause, sc.operation)));
+        }
+        let when_then = SCENARIO.is_match(&sc.text);
+        let fixture = sc.text.starts_with("`tests/fixtures/") && sc.text.ends_with('`');
+        if !(when_then || fixture) {
+            out.push(f("anatomy", &sc.file, sc.line, "SpecScenario", format!("scenario for `{}` is neither `WHEN … THEN …` nor a `tests/fixtures/` path", sc.clause)));
+        }
+    }
     out
 }
 
 // ---------------------------------------------------------------- registry
-
-fn normalize(s: &str) -> String {
-    let mut t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
-    for p in ["max", "min", "the"] {
-        if s.to_lowercase().starts_with(&format!("{p}-")) || s.to_lowercase().starts_with(&format!("{p}_")) {
-            t = t[p.len()..].to_string();
-        }
-    }
-    if t.len() > 5 && t.ends_with('s') {
-        t.pop();
-    }
-    t
-}
 
 fn registry(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
@@ -293,60 +292,6 @@ fn registry(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
-    // shared identifiers
-    let mut by_token: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    let mut first: BTreeMap<String, (String, usize)> = BTreeMap::new();
-    for cl in c.clauses() {
-        for (_, tok) in tick_spans(&cl.statement) {
-            if !IDENT.is_match(&tok) || tok.len() < 3 {
-                continue;
-            }
-            by_token.entry(tok.clone()).or_default().insert(cl.contract.clone());
-            first.entry(tok).or_insert((cl.file.clone(), cl.line));
-        }
-    }
-    for (tok, cs) in &by_token {
-        if cs.len() >= 2 && !c.reg.is_registered(tok) {
-            let (file, line) = &first[tok];
-            out.push(f("registry", file, *line, "SpecRegistry", format!("`{tok}` appears in {} contracts ({}) and is not registered", cs.len(), cs.iter().cloned().collect::<Vec<_>>().join(", "))));
-        }
-    }
-    // spelling collisions and aliases
-    let mut spell: BTreeMap<String, String> = BTreeMap::new();
-    let mut aliases: BTreeMap<String, String> = BTreeMap::new();
-    let mut add = |kind: &str, owner: &str, name: &str, out: &mut Vec<Finding>| {
-        let key = normalize(name);
-        let label = format!("{kind} `{name}` ({owner})");
-        if let Some(prev) = spell.get(&key) {
-            out.push(f("registry", &format!("spec/terms/{owner}.toml"), 0, "SpecSpellingCollision", format!("{label} collides with {prev}")));
-        } else {
-            spell.insert(key, label);
-        }
-    };
-    for (owner, fr) in &c.reg.fragments {
-        for k in fr.error.keys() {
-            add("error", owner, k, &mut out);
-        }
-        for k in fr.limit.keys() {
-            add("bound", owner, k, &mut out);
-        }
-        for (k, n) in &fr.term {
-            add("term", owner, k, &mut out);
-            for a in &n.aliases {
-                aliases.insert(a.clone(), k.clone());
-            }
-        }
-    }
-    for k in c.reg.wire.keys() {
-        add("wire", "wire", k, &mut out);
-    }
-    for cl in c.clauses() {
-        for (_, tok) in tick_spans(&cl.statement) {
-            if let Some(canon) = aliases.get(&tok) {
-                out.push(f("registry", &cl.file, cl.line, "SpecSpellingCollision", format!("`{}` uses alias `{tok}`; write `{canon}`", cl.id)));
-            }
-        }
-    }
     out
 }
 
@@ -356,22 +301,6 @@ fn without_ticks_keep(s: &str) -> String {
 }
 
 // ---------------------------------------------------------------- reference
-
-fn shingles(s: &str) -> BTreeSet<String> {
-    let clean: String = strip_pointers(s, " ")
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { ' ' })
-        .collect();
-    let w: Vec<&str> = clean.split_whitespace().collect();
-    let mut out = BTreeSet::new();
-    if w.len() >= 8 {
-        for i in 0..=w.len() - 8 {
-            out.insert(w[i..i + 8].join(" "));
-        }
-    }
-    out
-}
 
 fn reference(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
@@ -391,34 +320,11 @@ fn reference(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
-    let mut owner: HashMap<String, String> = HashMap::new();
-    let mut reported: BTreeSet<(String, String)> = BTreeSet::new();
-    for cl in c.clauses() {
-        for s in shingles(&cl.statement) {
-            match owner.get(&s) {
-                Some(other) if *other != cl.id => {
-                    let key = (other.clone(), cl.id.clone());
-                    if reported.insert(key) {
-                        out.push(f("reference", &cl.file, cl.line, "SpecRestatement", format!("`{}` restates `{other}`: \"{s}\"", cl.id)));
-                    }
-                }
-                Some(_) => {}
-                None => {
-                    owner.insert(s, cl.id.clone());
-                }
-            }
-        }
-    }
     out
 }
 
 // ---------------------------------------------------------------- rationale
 
-static LEAK: LazyLock<Regex> = LazyLock::new(|| {
-    word_re(&["because", "so that", "in order to", "the reason", "which is why", "judged on", "at the cost of", "trade-off"])
-});
-static MODAL: LazyLock<Regex> =
-    LazyLock::new(|| word_re(&["must", "never", "refuses", "is refused", "at most", "at least", "always"]));
 static APPENDIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^#+\s*(open questions|out of scope|see also)\s*$").unwrap());
 
 pub fn why_ok(why: &str) -> Result<Vec<String>, String> {
@@ -457,9 +363,6 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
         if cl.kind == "refusal" && matches!(cl.why.trim(), "" | "—") {
             out.push(f("rationale", &cl.file, cl.line, "SpecRecord", format!("refusal `{}` carries no Why", cl.id)));
         }
-        if LEAK.is_match(&without_ticks(&cl.statement)) {
-            out.push(f("rationale", &cl.file, cl.line, "SpecRationaleLeak", format!("`{}` statement carries rationale", cl.id)));
-        }
     }
     let mut records: BTreeSet<String> = BTreeSet::new();
     for d in c.records() {
@@ -494,16 +397,9 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
         .collect();
     for d in c.contracts() {
         for (n, l, k) in d.each() {
-            let plain = without_ticks(l);
             match k {
-                LineKind::Prose | LineKind::TableRow | LineKind::Heading => {
-                    if LEAK.is_match(&plain) {
-                        out.push(f("rationale", &d.rel, n, "SpecRationaleLeak", "rationale outside a Why cell".into()));
-                    }
-                    if MODAL.is_match(&plain) {
-                        out.push(f("rationale", &d.rel, n, "SpecStrayModal", format!("modal `{}` outside a clause row", MODAL.find(&plain).unwrap().as_str())));
-                    }
-                    if k == LineKind::Heading && APPENDIX.is_match(l) {
+                LineKind::Heading => {
+                    if APPENDIX.is_match(l) {
                         out.push(f("rationale", &d.rel, n, "SpecUnsettled", "appendix heading".into()));
                     }
                 }

@@ -152,15 +152,3 @@ derive-passage-chars       = { clause = "run.parse-cues.passage-chars", value = 
 derive-passage-span        = { clause = "run.parse-cues.passage-span", value = 60, unit = "s", basis = "chosen", gloss = "Span at which an open passage closes." }
 derive-passage-bytes       = { clause = "run.parse-cues.passage-bytes", value = 8, unit = "KiB", basis = "chosen", gloss = "Text one passage holds." }
 derive-passages-per-doc    = { clause = "run.parse-cues.passages-per-document", value = 2000, unit = "rows", basis = "chosen", gloss = "Passages one caption document yields." }
-
-[term]
-filter = { gloss = "A predicate over named columns: the single-column transform step, and the caller-bound retrieval restriction." }
-Transient          = { gloss = "Failure tag: a further attempt may clear it." }
-Permanent          = { gloss = "Failure tag: no further attempt clears it." }
-RateLimited        = { gloss = "Failure tag: an upstream throttle, carrying the delay it asked for." }
-AuthExpired        = { gloss = "Failure tag: a credential the upstream rejected as expired." }
-SchemaIncompatible = { gloss = "Failure tag: an incoming schema change neither additive nor a widening promotion." }
-Canceled           = { gloss = "Failure tag: work abandoned on a standing stop." }
-incremental        = { gloss = "Pipeline key naming the stream's clock field." }
-content_hash       = { gloss = "sha256 over a pipeline specification's canonical JSON; the replay pin's input." }
-on_table_error     = { gloss = "Pipeline key choosing whether a failing table aborts or continues a fire." }

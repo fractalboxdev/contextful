@@ -108,6 +108,3 @@ scope-guard-walk               = { clause = "authority.refuse.guard-walk", value
 stale-object-report            = { clause = "authority.bound-redistribution.report", value = 100, unit = "files", basis = "chosen", gloss = "Objects a left-behind report names." }
 zone-allow-set-entries         = { clause = "authority.place.allow-set-entries", value = 32, unit = "entries", basis = "chosen", gloss = "Patterns one zone allow-set holds." }
 zone-identifier-length         = { clause = "authority.place.identifier-length", value = 128, unit = "chars", basis = "chosen", gloss = "Characters in a zone identifier." }
-
-[term]
-write = { gloss = "The action that lands rows, and the destination export that receives them." }

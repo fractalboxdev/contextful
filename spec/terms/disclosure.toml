@@ -90,12 +90,3 @@ telemetry-projection-latency  = { clause = "disclosure.record.projection", value
 audit-root-cadence            = { clause = "disclosure.attest.root-replication", value = 10, unit = "min", basis = "chosen", gloss = "Cadence at which signed roots reach the replication bucket." }
 erasure-cascade-depth         = { clause = "disclosure.erase.cascade", value = 16, unit = "hops", basis = "chosen", gloss = "Deepest provenance chain an erasure cascade follows." }
 erasure-physical-removal      = { clause = "disclosure.erase.physical-removal", value = 24, unit = "h", basis = "chosen", gloss = "Commit of an erasure to rewrite or collection of every file holding an erased row." }
-
-[term]
-access_grants         = { gloss = "Mirror table: one row per resource, principal and level." }
-watermark_at          = { gloss = "Completion instant of the last sweep that read every governed resource of a source." }
-max_acl_staleness     = { gloss = "A table's declared age budget on mirrored authorization." }
-min_group_size        = { gloss = "The declared distinct-contributor count below which a group is withheld." }
-max_contributor_share = { gloss = "The declared share of a group's metric mass above which one contributor withholds it." }
-subject_id            = { gloss = "The manifest key naming a table's subject-identifier column." }
-forget_requests       = { gloss = "The catalog table holding one row per erasure request." }

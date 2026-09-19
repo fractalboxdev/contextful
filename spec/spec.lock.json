@@ -39,7 +39,7 @@
       "operation": "address",
       "subject": "subject-segment",
       "kind": "limit",
-      "statement": "The third segment is a slug of at most 40 chars, unique within its operation. It is a name, not a registered term.",
+      "statement": "The third segment is a slug of at most 40 chars, unique within its operation. It is a name, not a registry entry.",
       "why": "P8",
       "file": "spec/00-corpus.md",
       "line": 43
@@ -94,10 +94,32 @@
       "operation": "anatomy",
       "subject": "clause-table",
       "kind": "behavior",
-      "statement": "An operation section holds one table headed `Clause`, `Statement`, `Why`; each row is one clause. Prose, diagrams and unsettled lines may follow the table.",
+      "statement": "An operation section holds one table headed `Clause`, `Statement`, `Why`; each row is one clause. Prose, diagrams, scenarios and unsettled lines may follow the table.",
       "why": "P8",
       "file": "spec/00-corpus.md",
       "line": 53
+    },
+    {
+      "id": "corpus.anatomy.scenario",
+      "contract": "corpus",
+      "operation": "anatomy",
+      "subject": "scenario",
+      "kind": "behavior",
+      "statement": "A `#### Scenarios` list under an operation holds items `` - `<clause id>`: WHEN <trigger>, THEN <outcome> `` or a backticked `tests/fixtures/` path; the lock file attaches each to its clause.",
+      "why": "because an example is the test an implementer writes first, and a rule without one leaves the agent to invent it",
+      "file": "spec/00-corpus.md",
+      "line": 54
+    },
+    {
+      "id": "corpus.anatomy.bad-scenario",
+      "contract": "corpus",
+      "operation": "anatomy",
+      "subject": "bad-scenario",
+      "kind": "refusal",
+      "statement": "A scenario naming a clause outside its operation, or holding neither a WHEN/THEN sentence nor a fixture path, raises `SpecScenario`.",
+      "why": "P8",
+      "file": "spec/00-corpus.md",
+      "line": 55
     },
     {
       "id": "corpus.anatomy.kind-is-computed",
@@ -108,7 +130,7 @@
       "statement": "A clause is a refusal when its statement names an error its fragment assigns to it, a limit when its fragment assigns it a named bound, and a behavior otherwise. The checker writes the kind into `spec/spec.lock.json`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 54
+      "line": 56
     },
     {
       "id": "corpus.anatomy.statement-words",
@@ -119,7 +141,7 @@
       "statement": "A clause statement holds at most 40 words, a `{{id}}` reference counting as one.",
       "why": "because one row states one obligation; a longer row is two clauses or carries rationale",
       "file": "spec/00-corpus.md",
-      "line": 55
+      "line": 57
     },
     {
       "id": "corpus.anatomy.file-length",
@@ -130,7 +152,7 @@
       "statement": "A contract file holds at most 900 lines.",
       "why": "because a file past that splits by adding a path to its contract entry, which renames nothing",
       "file": "spec/00-corpus.md",
-      "line": 56
+      "line": 58
     },
     {
       "id": "corpus.anatomy.bad-anatomy",
@@ -141,7 +163,7 @@
       "statement": "A missing or extra `##` section, an out-of-order section, a table with other headers, a title differing from the registry, a file over its length or a statement over its word count raises `SpecAnatomy`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 57
+      "line": 59
     },
     {
       "id": "corpus.registry.fragment",
@@ -149,10 +171,10 @@
       "operation": "registry",
       "subject": "fragment",
       "kind": "behavior",
-      "statement": "Each contract owns `spec/terms/<contract>.toml`, holding its operations, errors, named bounds and shared terms, each with a gloss. Nothing else holds a spelling.",
+      "statement": "Each contract owns `spec/terms/<contract>.toml`, holding its operations, errors and named bounds, each with a gloss.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 63
+      "line": 65
     },
     {
       "id": "corpus.registry.one-error-one-clause",
@@ -163,7 +185,7 @@
       "statement": "An error entry names the one clause raising it. That clause's statement names the error, and no other clause statement does; a second site reaches the condition by `{{id}}`.",
       "why": "P2",
       "file": "spec/00-corpus.md",
-      "line": 64
+      "line": 66
     },
     {
       "id": "corpus.registry.bound-entry",
@@ -174,28 +196,6 @@
       "statement": "A named-bound entry carries its owning clause, a value, a unit from `spec/terms/unit.toml` and a basis: `chosen`, `measured:<benchmark>` or `standard:<name>`. The owning statement carries the value followed by the unit.",
       "why": "because an unmeasured number presented as a measurement is a hypothesis stated as fact",
       "file": "spec/00-corpus.md",
-      "line": 65
-    },
-    {
-      "id": "corpus.registry.shared-term",
-      "contract": "corpus",
-      "operation": "registry",
-      "subject": "shared-term",
-      "kind": "behavior",
-      "statement": "A backticked identifier appearing in clause statements of two or more contracts is registered as a term, an error, a named bound, an operation or a `wire` token.",
-      "why": "P8",
-      "file": "spec/00-corpus.md",
-      "line": 66
-    },
-    {
-      "id": "corpus.registry.spelling-collision",
-      "contract": "corpus",
-      "operation": "registry",
-      "subject": "spelling-collision",
-      "kind": "refusal",
-      "statement": "Two errors, bounds or terms whose spellings coincide after case folding, separator stripping, a trailing `s` and a leading `max-`, `min-` or `the-` raise `SpecSpellingCollision`, as does a statement using a registered alias.",
-      "why": "because one spelling names one thing, and a near-synonym is where two meanings hide",
-      "file": "spec/00-corpus.md",
       "line": 67
     },
     {
@@ -204,7 +204,7 @@
       "operation": "registry",
       "subject": "unregistered",
       "kind": "refusal",
-      "statement": "An unregistered error after `raises`, an entry naming a missing clause, an error absent from its clause or present in another, a malformed bound, and an unregistered shared term raise `SpecRegistry`.",
+      "statement": "An unregistered error after `raises`, an entry naming a missing clause, an error absent from its clause or present in another, and a malformed bound raise `SpecRegistry`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
       "line": 68
@@ -232,17 +232,6 @@
       "line": 75
     },
     {
-      "id": "corpus.reference.restatement",
-      "contract": "corpus",
-      "operation": "reference",
-      "subject": "restatement",
-      "kind": "refusal",
-      "statement": "Two clause statements sharing an 8-word sequence, after lowercasing and stripping punctuation and pointers, raise `SpecRestatement`, naming both ids.",
-      "why": "because a copy is where two facts drift apart",
-      "file": "spec/00-corpus.md",
-      "line": 76
-    },
-    {
       "id": "corpus.reference.no-literature",
       "contract": "corpus",
       "operation": "reference",
@@ -251,7 +240,7 @@
       "statement": "A spec file carries no hyperlink to an external document and no path under `references/`; either raises `SpecExternalLink`. Literature lives in `references/`, which cites clause ids.",
       "why": "because the contract is judged by behavior, and a citation invites arguing from authority",
       "file": "spec/00-corpus.md",
-      "line": 77
+      "line": 76
     },
     {
       "id": "corpus.rationale.why-cell",
@@ -262,7 +251,7 @@
       "statement": "A Why cell is empty, `—`, one or more record ids such as `P3` or `A-store`, or `because` followed by at most 30 words stating the deciding criterion. A refusal row carries a non-empty Why.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 83
+      "line": 82
     },
     {
       "id": "corpus.rationale.record-threshold",
@@ -273,7 +262,7 @@
       "statement": "A decision earns a section in its contract's ADR when two or more clauses depend on it, it spans contracts, or it names a revisit trigger; otherwise it lives in a `because` cell.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 84
+      "line": 83
     },
     {
       "id": "corpus.rationale.record-anatomy",
@@ -284,7 +273,7 @@
       "statement": "A principle `P<n>-<slug>.md` carries `# <id> — <title>`, a `**Status:**` line, then Context (optional), Decision, Options, Consequences, Revisit (optional), in at most 400 words.",
       "why": "because a principle argues one rule every contract obeys, and the length of the argument is part of its quality",
       "file": "spec/00-corpus.md",
-      "line": 85
+      "line": 84
     },
     {
       "id": "corpus.rationale.contract-adr",
@@ -295,7 +284,7 @@
       "statement": "A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <decision>` section per decision, each holding its options table in at most 250 words.",
       "why": "because one file per contract puts every decision beside the clauses it governs, and a fresh corpus has no history to keep apart",
       "file": "spec/00-corpus.md",
-      "line": 86
+      "line": 85
     },
     {
       "id": "corpus.rationale.options-table",
@@ -306,29 +295,7 @@
       "statement": "A principle's Options and each ADR section hold one table headed `Option`, `Lost on`, `Cost` with two to five rows. One row is marked *(chosen)* with `—` as Lost on; every other row names the criterion it lost on.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 87
-    },
-    {
-      "id": "corpus.rationale.leak",
-      "contract": "corpus",
-      "operation": "rationale",
-      "subject": "leak",
-      "kind": "refusal",
-      "statement": "Outside a Why cell and a record, the tokens `because`, `so that`, `in order to`, `the reason`, `which is why`, `judged on`, `at the cost of` and `trade-off` raise `SpecRationaleLeak`.",
-      "why": "P8",
-      "file": "spec/00-corpus.md",
-      "line": 88
-    },
-    {
-      "id": "corpus.rationale.stray-modal",
-      "contract": "corpus",
-      "operation": "rationale",
-      "subject": "stray-modal",
-      "kind": "refusal",
-      "statement": "Outside a clause row, an unsettled line, a code block and a record, the words must, never, refuses, is refused, at most, at least and always raise `SpecStrayModal`.",
-      "why": "P8",
-      "file": "spec/00-corpus.md",
-      "line": 89
+      "line": 86
     },
     {
       "id": "corpus.rationale.unsettled-line",
@@ -339,7 +306,7 @@
       "statement": "An unknown is one line where it applies: `unsettled:`, a question ending `?`, `owner:` and a handle, `affects:` and a `<contract>.<operation>`. Another form, or a heading `Open questions`, `Out of scope` or `See also`, raises `SpecUnsettled`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 90
+      "line": 87
     },
     {
       "id": "corpus.rationale.orphan-record",
@@ -350,7 +317,7 @@
       "statement": "A record no Why cell cites, a Why cell naming no record, and a record breaking its anatomy raise `SpecRecord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 91
+      "line": 88
     },
     {
       "id": "corpus.state.status-is-computed",
@@ -361,7 +328,7 @@
       "statement": "`spec/status.md` is the sole statement of which clauses the tree demonstrates. No authored file says whether something is built.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 97
+      "line": 94
     },
     {
       "id": "corpus.state.pin",
@@ -372,7 +339,7 @@
       "statement": "`spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant or an `item` path. A refusal or a limit takes a test or a theorem.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 98
+      "line": 95
     },
     {
       "id": "corpus.state.verdict",
@@ -383,7 +350,7 @@
       "statement": "An unpinned clause computes `committed`; a pinned clause computes `performed` when its artifact's final path segment is defined under `crates/` or `tools/`, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 99
+      "line": 96
     },
     {
       "id": "corpus.state.coverage-floor",
@@ -394,7 +361,7 @@
       "statement": "`spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.",
       "why": "because deleting a failing pin must not read as progress",
       "file": "spec/00-corpus.md",
-      "line": 100
+      "line": 97
     },
     {
       "id": "corpus.state.bad-pin",
@@ -405,7 +372,7 @@
       "statement": "A pin naming no clause, an item pin on a refusal or limit, and a broken pin raise `SpecBrokenPin`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 101
+      "line": 98
     },
     {
       "id": "corpus.state.roadmap",
@@ -416,7 +383,7 @@
       "statement": "`spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 102
+      "line": 99
     },
     {
       "id": "corpus.state.acceptance",
@@ -427,7 +394,7 @@
       "statement": "A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored, and `passing` otherwise.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 103
+      "line": 100
     },
     {
       "id": "corpus.state.acceptance-first",
@@ -438,7 +405,7 @@
       "statement": "A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 104
+      "line": 101
     },
     {
       "id": "corpus.state.deferred-depth",
@@ -449,7 +416,7 @@
       "statement": "A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.",
       "why": "because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it",
       "file": "spec/00-corpus.md",
-      "line": 105
+      "line": 102
     },
     {
       "id": "corpus.render.generated",
@@ -460,7 +427,7 @@
       "statement": "`spec/status.md` and `spec/spec.lock.json` are regenerated by `contextful-spec state` and `contextful-spec extract`. A committed copy differing from regeneration raises `SpecStaleRender`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 111
+      "line": 108
     },
     {
       "id": "corpus.render.lock-file",
@@ -471,7 +438,7 @@
       "statement": "The lock file carries every clause with its segments, computed kind, statement, Why and location, the per-file `owns` map, the registry and the pointer graph.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 112
+      "line": 109
     },
     {
       "id": "corpus.render.dated-prose",
@@ -482,7 +449,7 @@
       "statement": "The words `planned`, `not yet`, `currently`, `today`, `shipped`, `implemented`, `previously`, `used to`, `legacy`, `TODO`, `FIXME` and `WIP`, and an ISO date, raise `SpecDatedProse` in any authored file.",
       "why": "because build state is computed, and a dated sentence is stale the day it lands",
       "file": "spec/00-corpus.md",
-      "line": 113
+      "line": 110
     },
     {
       "id": "corpus.render.counterfactual",
@@ -493,7 +460,7 @@
       "statement": "The words `will`, `would` and `shall` raise `SpecCounterfactual` in a contract file.",
       "why": "because a contract states present behavior, and a record's Options is where a path not taken is described",
       "file": "spec/00-corpus.md",
-      "line": 114
+      "line": 111
     },
     {
       "id": "corpus.render.banned-vocabulary",
@@ -504,7 +471,7 @@
       "statement": "The nouns `seam`, `load-bearing`, `wedge`, `rung` and `land-grab`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 115
+      "line": 112
     },
     {
       "id": "corpus.render.local-path",
@@ -515,7 +482,7 @@
       "statement": "A path beginning `/Users/`, `/home/`, `$HOME/` or `~/` raises `SpecLocalPath`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 116
+      "line": 113
     },
     {
       "id": "corpus.render.diagram",
@@ -526,7 +493,7 @@
       "statement": "A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 117
+      "line": 114
     },
     {
       "id": "topology.compose.workspace",
@@ -15792,52 +15759,6 @@
         "aliases": []
       }
     },
-    "wire": {
-      "Authorization": {
-        "gloss": "The request header carrying a caller's credential.",
-        "aliases": []
-      },
-      "Content-Type": {
-        "gloss": "The response header naming a payload's media type.",
-        "aliases": []
-      },
-      "ETag": {
-        "gloss": "The response header carrying an opaque identity for a stored object's bytes.",
-        "aliases": []
-      },
-      "If-Match": {
-        "gloss": "The request header making a write conditional on a stored object's identity.",
-        "aliases": []
-      },
-      "If-None-Match": {
-        "gloss": "The request header making a read conditional on a stored object's identity.",
-        "aliases": []
-      },
-      "Last-Modified": {
-        "gloss": "The response header carrying an object's modification instant.",
-        "aliases": []
-      },
-      "Link": {
-        "gloss": "The response header carrying pagination relations.",
-        "aliases": []
-      },
-      "Retry-After": {
-        "gloss": "The response header an upstream states its own wait in.",
-        "aliases": []
-      },
-      "User-Agent": {
-        "gloss": "The request header naming the calling software.",
-        "aliases": []
-      },
-      "http": {
-        "gloss": "The URI scheme for plaintext HTTP.",
-        "aliases": []
-      },
-      "https": {
-        "gloss": "The URI scheme for HTTP over TLS.",
-        "aliases": []
-      }
-    },
     "fragments": {
       "assurance": {
         "operation": {
@@ -16254,8 +16175,7 @@
             "basis": "chosen",
             "gloss": "Free disk a stage needs before it begins work."
           }
-        },
-        "term": {}
+        }
       },
       "authority": {
         "operation": {
@@ -16758,12 +16678,6 @@
             "unit": "chars",
             "basis": "chosen",
             "gloss": "Characters in a zone identifier."
-          }
-        },
-        "term": {
-          "write": {
-            "gloss": "The action that lands rows, and the destination export that receives them.",
-            "aliases": []
           }
         }
       },
@@ -17277,8 +17191,7 @@
             "basis": "chosen",
             "gloss": "Resolved cell text landed from one worksheet."
           }
-        },
-        "term": {}
+        }
       },
       "corpus": {
         "operation": {
@@ -17368,10 +17281,6 @@
             "clause": "corpus.address.malformed-id",
             "gloss": "A clause id with the wrong shape, contract or operation."
           },
-          "SpecRationaleLeak": {
-            "clause": "corpus.rationale.leak",
-            "gloss": "Rationale vocabulary outside a Why cell or record."
-          },
           "SpecRecord": {
             "clause": "corpus.rationale.orphan-record",
             "gloss": "An uncited or missing record, a bad Why cell, or a record out of anatomy."
@@ -17380,25 +17289,17 @@
             "clause": "corpus.registry.unregistered",
             "gloss": "A spelling, error or bound out of step with its fragment."
           },
-          "SpecRestatement": {
-            "clause": "corpus.reference.restatement",
-            "gloss": "Two statements sharing an 8-word sequence."
-          },
           "SpecRoadmap": {
             "clause": "corpus.state.roadmap",
             "gloss": "A roadmap name resolving to nothing, claimed twice, or a milestone missing its reach or acceptance line."
           },
-          "SpecSpellingCollision": {
-            "clause": "corpus.registry.spelling-collision",
-            "gloss": "Two spellings that normalize onto one, or an alias in use."
+          "SpecScenario": {
+            "clause": "corpus.anatomy.bad-scenario",
+            "gloss": "A scenario naming a foreign clause, or holding no WHEN/THEN sentence or fixture path."
           },
           "SpecStaleRender": {
             "clause": "corpus.render.generated",
             "gloss": "A generated file differing from regeneration."
-          },
-          "SpecStrayModal": {
-            "clause": "corpus.rationale.stray-modal",
-            "gloss": "A normative modal outside a clause row."
           },
           "SpecUnsettled": {
             "clause": "corpus.rationale.unsettled-line",
@@ -17448,8 +17349,7 @@
             "basis": "chosen",
             "gloss": "Longest subject slug."
           }
-        },
-        "term": {}
+        }
       },
       "disclosure": {
         "operation": {
@@ -17835,36 +17735,6 @@
             "basis": "chosen",
             "gloss": "Capacity of the reachable-set cache."
           }
-        },
-        "term": {
-          "access_grants": {
-            "gloss": "Mirror table: one row per resource, principal and level.",
-            "aliases": []
-          },
-          "forget_requests": {
-            "gloss": "The catalog table holding one row per erasure request.",
-            "aliases": []
-          },
-          "max_acl_staleness": {
-            "gloss": "A table's declared age budget on mirrored authorization.",
-            "aliases": []
-          },
-          "max_contributor_share": {
-            "gloss": "The declared share of a group's metric mass above which one contributor withholds it.",
-            "aliases": []
-          },
-          "min_group_size": {
-            "gloss": "The declared distinct-contributor count below which a group is withheld.",
-            "aliases": []
-          },
-          "subject_id": {
-            "gloss": "The manifest key naming a table's subject-identifier column.",
-            "aliases": []
-          },
-          "watermark_at": {
-            "gloss": "Completion instant of the last sweep that read every governed resource of a source.",
-            "aliases": []
-          }
         }
       },
       "read": {
@@ -18110,12 +17980,6 @@
             "unit": "h",
             "basis": "chosen",
             "gloss": "How far past the anchor a publication instant still counts in-window."
-          }
-        },
-        "term": {
-          "confidence": {
-            "gloss": "A 0-to-1 score a producer attaches to a fact, preference or cue.",
-            "aliases": []
           }
         }
       },
@@ -18845,48 +18709,6 @@
             "basis": "chosen",
             "gloss": "Shortest site id."
           }
-        },
-        "term": {
-          "AuthExpired": {
-            "gloss": "Failure tag: a credential the upstream rejected as expired.",
-            "aliases": []
-          },
-          "Canceled": {
-            "gloss": "Failure tag: work abandoned on a standing stop.",
-            "aliases": []
-          },
-          "Permanent": {
-            "gloss": "Failure tag: no further attempt clears it.",
-            "aliases": []
-          },
-          "RateLimited": {
-            "gloss": "Failure tag: an upstream throttle, carrying the delay it asked for.",
-            "aliases": []
-          },
-          "SchemaIncompatible": {
-            "gloss": "Failure tag: an incoming schema change neither additive nor a widening promotion.",
-            "aliases": []
-          },
-          "Transient": {
-            "gloss": "Failure tag: a further attempt may clear it.",
-            "aliases": []
-          },
-          "content_hash": {
-            "gloss": "sha256 over a pipeline specification's canonical JSON; the replay pin's input.",
-            "aliases": []
-          },
-          "filter": {
-            "gloss": "A predicate over named columns: the single-column transform step, and the caller-bound retrieval restriction.",
-            "aliases": []
-          },
-          "incremental": {
-            "gloss": "Pipeline key naming the stream's clock field.",
-            "aliases": []
-          },
-          "on_table_error": {
-            "gloss": "Pipeline key choosing whether a failing table aborts or continues a fire.",
-            "aliases": []
-          }
         }
       },
       "store": {
@@ -19199,116 +19021,6 @@
             "unit": "d",
             "basis": "chosen",
             "gloss": "Age at which a tombstone leaves the bucket manifest."
-          }
-        },
-        "term": {
-          "_authored_by": {
-            "gloss": "The injected subject that authorized a write, where one did.",
-            "aliases": []
-          },
-          "_batch_seq": {
-            "gloss": "The injected batch ordinal within a run, where a batch scope exists.",
-            "aliases": []
-          },
-          "_ingested_at": {
-            "gloss": "The injected transaction-time stamp, a UTC nanosecond Parquet timestamp on every row.",
-            "aliases": []
-          },
-          "_lang": {
-            "gloss": "The reserved optional column carrying a BCP-47 language tag.",
-            "aliases": []
-          },
-          "_modality": {
-            "gloss": "The reserved optional column naming a row's content modality.",
-            "aliases": []
-          },
-          "_prompt_hash": {
-            "gloss": "The reserved optional column carrying a digest of the prompt template that produced a row.",
-            "aliases": []
-          },
-          "_provenance": {
-            "gloss": "The reserved optional column carrying the evidence rows a row derives from.",
-            "aliases": []
-          },
-          "_run_id": {
-            "gloss": "The injected identifier of the run that landed a row.",
-            "aliases": []
-          },
-          "_site_id": {
-            "gloss": "The injected identifier of the writing site.",
-            "aliases": []
-          },
-          "append": {
-            "gloss": "The write mode keeping the last write per key and retiring no key.",
-            "aliases": []
-          },
-          "as_of": {
-            "gloss": "The read parameter bounding transaction time.",
-            "aliases": []
-          },
-          "class": {
-            "gloss": "The table key naming a column's sensitive-data class.",
-            "aliases": []
-          },
-          "cluster_by": {
-            "gloss": "The columns rows are sorted by within a Parquet file.",
-            "aliases": []
-          },
-          "includes_runs": {
-            "gloss": "The run ids a snapshot folded.",
-            "aliases": []
-          },
-          "key_version": {
-            "gloss": "The encryption key version a file was written under.",
-            "aliases": []
-          },
-          "node_id": {
-            "gloss": "A machine's writer identity, used in run paths, ledger filenames and lease holders.",
-            "aliases": []
-          },
-          "order_by": {
-            "gloss": "The column picking the surviving row per key.",
-            "aliases": []
-          },
-          "partition_by": {
-            "gloss": "The columns a snapshot's files are partitioned by.",
-            "aliases": []
-          },
-          "prefix_from": {
-            "gloss": "The sync setting binding the bucket prefix from an environment variable.",
-            "aliases": []
-          },
-          "primary_key": {
-            "gloss": "A table's declared key set, which the dedup view partitions on.",
-            "aliases": []
-          },
-          "pull_before_run": {
-            "gloss": "The sync setting pulling from the bucket before a run lands rows.",
-            "aliases": []
-          },
-          "push_retries": {
-            "gloss": "The sync setting bounding the bucket manifest re-commit loop.",
-            "aliases": []
-          },
-          "replace": {
-            "gloss": "The write mode reading the newest complete-state run plus later runs.",
-            "aliases": []
-          },
-          "retain_runs": {
-            "gloss": "The window a folded run or superseded snapshot stays readable.",
-            "aliases": []
-          },
-          "valid_as_of": {
-            "gloss": "The read parameter bounding valid time.",
-            "aliases": []
-          },
-          "valid_time": {
-            "gloss": "A table's declared valid-time column pair, `from` and optional `to`.",
-            "aliases": []
-          },
-          "write_mode": {
-            "gloss": "`append` or `replace`: what a read returns for a row the source withdrew.",
-            "aliases": []
           }
         }
       },
@@ -19708,16 +19420,6 @@
             "basis": "chosen",
             "gloss": "Longest a wake holds its request before answering."
           }
-        },
-        "term": {
-          "schedule": {
-            "gloss": "The field carrying a schedule string in the grammar `surface.arm` owns.",
-            "aliases": []
-          },
-          "validate": {
-            "gloss": "The command verb and job kind that validates a manifest without landing rows.",
-            "aliases": []
-          }
         }
       },
       "topology": {
@@ -19837,8 +19539,7 @@
             "basis": "chosen",
             "gloss": "Accumulation period before the parity comparison runs."
           }
-        },
-        "term": {}
+        }
       }
     }
   }
