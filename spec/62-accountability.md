@@ -16,6 +16,25 @@ reach a resource. `attest` turns the record into evidence a third party checks o
 tenant purge hands back. Every digest over a low-entropy identifier here is keyed or salted,
 and the result is pseudonymous.
 
+The chain, what appends to it, and what reads it back:
+
+```mermaid
+flowchart LR
+  READ["read contract: a read"] --> SPAN["span"]
+  SPAN --> ENTRY["audit entry<br/>seq · prev_hash · entry_hash"]
+  SPAN --> TEL["telemetry projection<br/>stderr JSON or OTLP"]
+  ENTRY --> SEG[("segment, 4096 entries<br/>closed by a signed root")]
+  SEG -- "every 10 min" --> BKT[("replication bucket")]
+  SEG --> VER["attest: contextful audit verify"]
+  ACC[("access tables")] --> EXPL["explain: VISIBLE or DENIED"]
+  EXPL --> ENTRY
+  FORGET["erase: contextful context forget"] --> LEDGER[("forget_requests ledger")]
+  FORGET --> STORE[("store contract:<br/>snapshot commit")]
+  FORGET --> ENTRY
+  LEDGER --> RCPT["receipt: signed, per tenant purge"]
+  RCPT --> AUDITOR["verifier, offline"]
+```
+
 ## record
 
 | Clause | Statement | Why |
@@ -36,6 +55,25 @@ and the result is pseudonymous.
 | `disclosure.record.telemetry-config` | The telemetry environment is the endpoint, collector headers as `k=v` pairs, a service name and resource attributes. Filtering applies to both sinks, and exporters flush and shut down on every process return. | |
 | `disclosure.record.index-build-span` | An index build emits `contextful.index.*` spans carrying rows indexed, builder duration and embedding request count. | |
 | `disclosure.record.update-check` | An update check is opt-in through `[update] check = true`, fetches a release manifest, and transmits nothing about the deployment. | |
+
+One read's entry under group commit:
+
+```mermaid
+sequenceDiagram
+    participant R as read
+    participant C as audit chain
+    participant D as local durable storage
+    R->>C: span attributes
+    C->>C: link prev_hash to the tip, compute entry_hash
+    C->>D: one fsync shared by concurrent appends
+    alt persisted
+        D-->>C: durable
+        C-->>R: rows released
+    else persist fails
+        C->>C: pop the in-memory tip
+        C-->>R: AuditEntryUnpersisted, no rows
+    end
+```
 
 unsettled: What append throughput does group commit sustain on the reference target, and at what read rate does the chain become the read path's bottleneck? owner: disclosure affects: disclosure.record
 
@@ -103,6 +141,26 @@ unsettled: Does a lineage attestation over evidence spanning a withheld table na
 | `disclosure.erase.chain-entry` | Each erasure appends a chain entry carrying `contextful.erasure.subject_hash` or `contextful.erasure.tenant_hash`, the request identifier, its stated reason, and the direct and cascaded counts. | |
 | `disclosure.erase.replica-lag` | A replica holds erased rows until its next refresh brings the rewritten files. | |
 
+A subject erasure:
+
+```mermaid
+flowchart TD
+  V["forget --subject"] --> G{"forget grant?"}
+  G -- no --> E1["ErasureUngranted"]
+  G -- yes --> PS["key to HMAC-SHA256 pseudonym"]
+  PS --> L["open the forget_requests row"]
+  L --> T["tombstone direct rows:<br/>facts, preferences, entities"]
+  T --> C{"provenance within 16 hops?"}
+  C -- no --> E2["ErasureCascadeUnbounded<br/>nothing commits"]
+  C -- yes --> M["cascade-mark derived facts"]
+  M --> COMMIT["one local snapshot commit<br/>the verb returns"]
+  COMMIT --> CH["chain entry: request id, reason, counts"]
+  COMMIT --> PHYS["files rewritten or collected within 24 h"]
+  COMMIT -. "best effort" .-> PUSH["bucket push"]
+  COMMIT -- "--fail-closed" --> GATE["restaging marker"]
+  PHYS --> REP["replicas at their next refresh"]
+```
+
 unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an operator objective, given the engine schedules no replica refresh? owner: disclosure affects: disclosure.erase
 
 unsettled: Does the free-form statement face fall under the restaging gate as a fact read does? owner: disclosure affects: disclosure.erase
@@ -121,6 +179,24 @@ unsettled: Does the free-form statement face fall under the restaging gate as a 
 | `disclosure.receipt.replayed` | Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`. | A-disclosure |
 | `disclosure.receipt.delivery` | The artifact returns to the caller and is stored against its ledger row, recoverable by `request_id`; `prior_request_id` links a tenant's receipts into one line. | |
 | `disclosure.receipt.no-rewrite-engine` | A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing. | because a receipt over a rewrite that did not run states a false claim |
+
+A tenant purge, its receipt, and an offline check of it:
+
+```mermaid
+sequenceDiagram
+    participant O as store owner
+    participant P as purge
+    participant L as forget_requests ledger
+    participant V as verifier
+    O->>P: forget --tenant, no capability token
+    P->>P: rewrite run files, compaction snapshots, model builds, memory mirror
+    P->>P: tenant_hash over a fresh salt and the tenant identifier
+    P->>P: sign the canonical payload
+    P->>L: store the receipt against request_id
+    P-->>O: receipt, prior_request_id naming the last completed request
+    O->>V: receipt and the tenant identifier
+    V->>V: recompute payload_hash, check the signature, recompute tenant_hash
+```
 
 unsettled: Does the replication bucket fall inside the receipt claim once the object interface gains a delete? owner: disclosure affects: disclosure.receipt
 

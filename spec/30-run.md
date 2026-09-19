@@ -18,6 +18,24 @@ source through recorded steps, lands rows through the sequence in `31-pipeline.m
 incremental position forward, and closes on a terminal status every surface reads. One
 executor answers for the journal, retry and cancellation across pipelines and the derive tier.
 
+One run, the durable state around it, and the contracts it meets:
+
+```mermaid
+flowchart LR
+  PLAN["plan reference · content-hashed"] --> RUN["runner"]
+  SRC["source · connector contract"] -->|"batches, pulled"| RUN
+  RUN <-->|"record · replay"| J[("journal + blob store")]
+  AW["POST /awake/:token"] -->|"resume payload"| J
+  RUN --> LAND["land path · 31-pipeline"]
+  LAND --> MARK["run commit marker · store contract"]
+  MARK --> CUR[("catalog cursor cache")]
+  STOP["stop mark on the run row"] -->|"polled every 500 ms"| RUN
+  RUN --> REC[("run record · reserved store table")]
+  RUN -. "events after durable change" .-> HUB["live projection · wire snapshot"]
+  REC -->|"terminal status reconciles"| HUB
+  HUB --> SUB["run-stream subscribers"]
+```
+
 ## journal
 
 | Clause | Statement | Why |
@@ -42,6 +60,23 @@ executor answers for the journal, retry and cancellation across pipelines and th
 | `run.journal.plan-pin` | A run resolves the plan reference it started against for its whole life. | — |
 | `run.journal.unwired-capability` | Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work. | A-topology |
 | `run.journal.machine-state` | Journal rows, execution owners and awakeables are machine-local state that a catalog rebuild leaves untouched and the file tree never reconstructs. | — |
+
+```mermaid
+sequenceDiagram
+  participant A as caller A
+  participant B as racing caller B
+  participant J as journal
+  participant V as vendor
+  A->>J: claim (execution_id, step_label, input_hash) as pending
+  B->>J: same key
+  J-->>B: wait for the recorded value
+  A->>V: effect, idempotency key derived from the entry key
+  V-->>A: response
+  A->>J: record value, inline up to 1 MiB, else a sha256-named blob
+  J-->>B: recorded value
+  Note over A,V: a crash before the write re-enters the effect under the same idempotency key
+  Note over A,J: a pending claim whose owner lease expired passes to the next caller
+```
 
 unsettled: Does the inline-versus-blob cutoff stay one number across every step kind? owner: run-path affects: run.journal
 
@@ -84,6 +119,28 @@ unsettled: What bounds allowed lateness for an out-of-order source, and does a l
 | `run.suspend.payload-offload` | A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it. | — |
 | `run.suspend.survives-restart` | The awakeable registry persists beside the journal; a restart drops no pending callback. | — |
 
+```mermaid
+sequenceDiagram
+  participant R as run
+  participant E as engine
+  participant X as external party
+  R->>E: await awakeable, creation instant + time-to-live
+  E->>E: mint single-use token, persist pending row
+  E-->>X: token
+  X->>E: POST /awake/:token with payload
+  alt no row for the token
+    E-->>X: 404 · AwakeableUnknown
+  else past the deadline
+    E-->>X: 410 · AwakeableTimedOut
+  else resolved earlier with another payload
+    E-->>X: 409 · AwakeableAlreadyResolved
+  else first or identical payload
+    E->>E: record payload as the awaited step output
+    E-->>X: 200 · recorded payload
+    E-->>R: resume
+  end
+```
+
 unsettled: Is resuming a suspension bound to a verified caller identity, or is possession of the single-use token the whole authority? owner: run-path affects: run.suspend
 
 ## retry
@@ -125,6 +182,22 @@ unsettled: Where does an in-flight schedule's attempt counter persist, so a cras
 | `run.own.backpressure` | A source yields a stream of batches the runner pulls; the run path holds no unbounded buffer between source and destination. | — |
 | `run.own.one-commit-per-run` | One run produces one atomic commit per table; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step. | — |
 
+```mermaid
+flowchart TD
+  O["run open"] --> M{"commit marker newer than the cached position?"}
+  M -->|yes| RET["retire the pending owner that produced it"]
+  M -->|no| P{"pending owner?"}
+  RET --> FRESH["fresh execution id"]
+  P -->|no| FRESH
+  P -->|yes| PIN{"connector identity, world, content_hash unchanged?"}
+  PIN -->|no| ERR["ExecutionPinMismatch · terminal"]
+  PIN -->|yes| REPLAY["replay recorded steps under the owner"]
+  REPLAY --> CLOSE{"close status"}
+  FRESH --> CLOSE
+  CLOSE -->|"success, or a failure landing zero batches"| REL["release the owner"]
+  CLOSE -->|"any other status"| HOLD["hold the owner"]
+```
+
 ## cancel
 
 | Clause | Statement | Why |
@@ -142,6 +215,25 @@ unsettled: Where does an in-flight schedule's attempt counter persist, so a cras
 | `run.cancel.distinct-terminal-status` | `canceled` is a terminal status apart from `failed`, and upstream health observations skip it. | A-run |
 | `run.cancel.resumable-remains` | A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position. | — |
 | `run.cancel.authority-from-the-record` | A stop authorizes against the pipeline read off the run record, never off the request. | — |
+
+```mermaid
+sequenceDiagram
+  participant O as operator
+  participant C as run row in the catalog
+  participant R as run
+  participant G as subprocess group
+  O->>C: stop · requested-at, scope, reason
+  alt row not pending, running or waiting
+    C-->>O: CancelTargetNotInFlight · 409
+  end
+  loop every 500 ms
+    R->>C: read the stop mark
+  end
+  C-->>R: cancellation token fires on every await
+  R->>G: signal the process group
+  G-->>R: reaped
+  R->>C: record canceled · Canceled tag, ledger settled, position unchanged
+```
 
 ## record
 

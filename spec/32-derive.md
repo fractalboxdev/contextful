@@ -17,6 +17,24 @@ passages; one landed link becomes a document's head facts and the pictures it ad
 The tier reads the store, calls an engine the operator defined, and appends its answer to a
 table of its own through the ordinary write path.
 
+The derive tier between two tables, and the contracts it reaches through:
+
+```mermaid
+flowchart LR
+  PT[("landed parent table")] --> SEL["select · scan, eligibility, anti-join"]
+  OUT[("derive output table")] -.->|"rows and markers"| SEL
+  SEL --> BIND["bind · derive.name block in the local contextful.toml"]
+  BIND -->|transcribe| EXEC["exec driver · preprocess steps + engine step"]
+  BIND -->|link_preview| FETCH["fetch driver · head scan + picture probe"]
+  EXEC --> PC["parse-cues · WebVTT, SubRip"]
+  PC --> EMIT["emit · content rows, markers"]
+  FETCH --> EMIT
+  EMIT --> LAND["land path · 31-pipeline"]
+  LAND --> OUT
+  EXEC -.->|"credential references"| RES["resolver · connector contract"]
+  FETCH -.->|"mediated client"| MED["host mediation · connector contract"]
+```
+
 ## select
 
 | Clause | Statement | Why |
@@ -109,6 +127,23 @@ unsettled: Does a build-time check refuse an engine whose declared locality is w
 | `run.exec.output-formats` | `output_format` is `vtt`, `srt` or `contextful-json`; with no `output_path` the engine step's cues come from its standard output. | — |
 | `run.exec.provenance-sidecar` | An engine step may write a sidecar named from `{output_stem}` stating `transcript_source` and `no_content_reason`; an unparseable sidecar leaves the defaults and is noted on the run record. | — |
 
+```mermaid
+sequenceDiagram
+  participant T as derive tier
+  participant P as preprocess step
+  participant E as engine step
+  T->>T: scratch directory, cleared environment + allowlist
+  loop each preprocess step whose when condition holds
+    T->>P: argument array, no shell, own process group
+    P-->>T: exit 0 and an output file
+  end
+  T->>E: argument array over the last media
+  E-->>T: cues as vtt, srt or contextful-json
+  Note over T,E: non-zero exit raises DeriveStepExit · no output file DeriveStepProducedNothing · past 8 MiB DeriveOutputCap
+  Note over T,E: past 1800 s DeriveStepTimeout · deadline or run stop signals the group, and the unit settles after the reap
+  T->>T: remove the scratch directory
+```
+
 unsettled: Does a vendor engine reached over HTTP need a deadline of its own, separate from the chain deadline? owner: derive affects: run.exec
 
 ## fetch
@@ -144,6 +179,26 @@ unsettled: Does a vendor engine reached over HTTP need a deadline of its own, se
 | `run.fetch.probed-length` | `image_bytes` is the file's full length, not the probed prefix's; dimensions land null when the prefix is too short to read them. | — |
 | `run.fetch.document-host` | A link row's endpoint host is the document's final host after redirects. | — |
 | `run.fetch.media-is-image` | `media_is_image = true` reads the row's column as a picture address: one candidate with `image_field` set to `row`, no document hop, the probe the whole of the work. | — |
+
+```mermaid
+flowchart TD
+  A["address from the row"] --> S{"http or https?"}
+  S -->|no| R1["DeriveSchemeUnsupported"]
+  S -->|yes| L{"address literal?"}
+  L -->|yes| R2["DeriveAddressLiteral"]
+  L -->|no| H{"host in allow_hosts?"}
+  H -->|no| R3["SecretUnpermittedRequest"]
+  H -->|yes| P{"resolves to a public address?"}
+  P -->|no| R4["ConnectorPrivateAddress"]
+  P -->|yes| G["GET · 20 s per hop"]
+  G -->|"redirect, up to 5 hops"| H
+  G --> D["scan the head within a 1 MiB prefix"]
+  D --> C{"UTF-8?"}
+  C -->|no| R5["DeriveCharsetUnsupported or DeriveBytesNotUtf8"]
+  C -->|yes| F["head facts + picture candidates"]
+  F --> PR["probe each picture · 64 KiB range"]
+  PR --> ROW["link rows · probe_status per candidate"]
+```
 
 ## emit
 

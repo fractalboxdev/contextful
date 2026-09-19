@@ -18,6 +18,22 @@ A pipeline declares desired state over one source and the tables it lands. This 
 that declaration, the plan it compiles to, the stages a batch passes between a source and a
 committed run, and what a published table carries. `land` is the one statement of stage order.
 
+From declaration to a published table, and the contracts each step meets:
+
+```mermaid
+flowchart LR
+  MF["contextful.toml, pipelines/*.toml, pipelines/*.json"] -->|declare| SPEC["PipelineSpec · content_hash"]
+  SPEC -->|compile| PLAN["plan · flat node list"]
+  PLAN -->|"lowering"| RUN["run substrate · 30-run"]
+  SPEC -->|"backfill, seed"| CH[("chunk plan · catalog")]
+  CH --> RUN
+  SRC["source · connector contract"] --> RUN
+  RUN --> ST["secret guard, normalize, transform chain"]
+  ST --> LAND["land · batch write, commit"]
+  LAND --> STORE[("context store · store contract")]
+  LAND -->|publish| MAN["snapshot manifest · contract identity, freshness, build"]
+```
+
 ## declare
 
 | Clause | Statement | Why |
@@ -201,6 +217,16 @@ unsettled: What is the per-tick chunk cap, and how long does the retention windo
 | `run.publish.manifest-section` | The manifest section carries `{contract_version, schema_fingerprint, build_id, last_built_at, watermark, max_lag, last_build_status, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build, an absent optional key omitted. | — |
 | `run.publish.semantics-version` | `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included. | — |
 | `run.publish.disclosure-digest` | A build records a digest over its declared disclosure policy, set-valued fields sorted, in the manifest and in the build log. | — |
+
+```mermaid
+flowchart LR
+  B["build"] --> ST["materialize into staging"]
+  ST --> CK{"columns, types, grain match the declared contract?"}
+  CK -->|no| REF["PipelineContractMismatch · last published state keeps serving"]
+  CK -->|yes| MC["snapshot manifest commit · data, contract identity, freshness, build"]
+  MC --> LOGS["contract-history, builds, holds logs · derived from manifests"]
+  HOLD["hold · build id, principal, expiry"] -.->|"collection skips"| MC
+```
 
 ## Shapes
 

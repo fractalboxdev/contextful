@@ -16,6 +16,26 @@ and a TLA+ specification of the store's lease, compare-and-swap and fence protoc
 checks both on every change, and a differential harness ties the Lean model to the decision
 functions the engine runs.
 
+The two models, the checks over them, and where each meets the engine:
+
+```mermaid
+flowchart LR
+  SPEC["specification text"] --> LEAN["Lean package formal/<br/>Layer · Placement · Authority"]
+  SPEC --> TLA["TLA+ model formal/protocol/<br/>lease · compare-and-swap · fence"]
+  LEAN -- "lake build" --> ENV["elaborated environment"]
+  INV["formal/inventory.toml"] --> AUD["audit-axioms:<br/>contextful formal check"]
+  ENV --> AUD
+  AUD --> REC["recheck: rebuild and re-audit"]
+  LEAN --> REF["reference binary"]
+  REF --> DIFF["differential harness"]
+  ENG["authority contract:<br/>engine decision functions"] --> DIFF
+  TLA -- "3 nodes · 4 lease generations" --> MC["protocol model check"]
+  MC -. "pins" .-> STORE["store contract:<br/>stale fence · partial snapshot"]
+  AUD --> GATE["gate: formal stage"]
+  DIFF --> GATE
+  MC --> GATE
+```
+
 ## model
 
 | Clause | Statement | Why |
@@ -83,6 +103,24 @@ unsettled: What discharges the completeness of an evidence list backing a floor,
 | `assurance.audit-axioms.report` | The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the axioms it reaches. | |
 | `assurance.audit-axioms.check-command` | `contextful formal check` elaborates the package, matches every inventory row, audits every footprint, writes the report, and exits non-zero naming the first failing constant. | |
 
+The verdict over one inventory row:
+
+```mermaid
+flowchart TD
+  C["required constant"] --> P{"in the elaborated environment?"}
+  P -- no --> E1["TheoremConstantMissing"]
+  P -- yes --> S{"statement matches the expected text?"}
+  S -- no --> E2["TheoremStatementDrift"]
+  S -- yes --> F["transitive axiom footprint"]
+  F --> H{"hole axiom?"}
+  H -- yes --> E3["ProofHoleAxiom"]
+  H -- no --> N{"native-evaluation axiom?"}
+  N -- yes --> E4["NativeEvaluationAxiom"]
+  N -- no --> A{"within propext, Quot.sound?"}
+  A -- no --> E5["AxiomOutsideAllowlist"]
+  A -- yes --> OK["row passes, written to the report"]
+```
+
 unsettled: Which review admits a new axiom to the allowlist, and where is it recorded beside the constant that draws on it? owner: formal affects: assurance.audit-axioms
 
 ## recheck
@@ -124,6 +162,28 @@ unsettled: Which translation toolchain reaches Lean from the engine's source, an
 | `assurance.differential-test.discarded-counterexample` | A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`. | A-assurance |
 | `assurance.differential-test.seed` | Each run records its generator seed, and re-running with that seed reproduces the same case sequence. | |
 | `assurance.differential-test.command` | `contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement. | |
+
+One differential run:
+
+```mermaid
+sequenceDiagram
+    participant H as harness
+    participant K as counterexample corpus
+    participant R as reference binary
+    participant E as engine decision function
+    H->>K: replay every entry before fresh cases
+    loop each generated case, from the recorded seed
+        H->>R: case on standard input
+        R-->>H: decision
+        H->>E: the same case
+        E-->>H: decision
+        opt decisions differ
+            H->>H: shrink to the minimized case
+            H->>K: record the minimized case
+            H->>H: ReferenceModelDrift, exit non-zero
+        end
+    end
+```
 
 unsettled: What generated case separates a native build of a decision function from its WebAssembly build on malformed input? owner: formal affects: assurance.differential-test
 

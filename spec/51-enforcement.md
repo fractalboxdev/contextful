@@ -18,6 +18,33 @@ redistribution bound at push, and a compiled relation at query time. Together th
 the reference monitor. This file states what each layer does, the order the compiled
 relation applies, column classification and masking, and the grammar of an inference zone.
 
+The three layers of the reference monitor and the contracts feeding each:
+
+```mermaid
+flowchart LR
+  SRC["source values"] --> W["writer"]
+  W -- "credential-shaped value" --> RES["EnforceCredentialShapedValue"]
+  subgraph L1["write-time removal"]
+    W --> RED["redact: rule set per pipeline"]
+  end
+  RED --> PARTS[("store contract:<br/>columnar parts")]
+  subgraph L2["redistribution bound"]
+    PUSH["push"] --> WH{"redistribution flag cleared?"}
+  end
+  PARTS --> PUSH
+  WH -- "yes: withheld, no manifest entry" --> OUT["not in the bucket"]
+  WH -- no --> BKT[("bucket")]
+  BKT --> EDGE["serving edge: filter by<br/>the pulling credential's grants"]
+  subgraph L3["query-time restriction"]
+    REL["registered relation<br/>filter-rows · mask · place"]
+  end
+  PARTS --> REL
+  AA["admitted authority"] --> REL
+  VIS["disclosure contract:<br/>mirrored permission semi-join"] --> REL
+  ZONE["caller zone, per request"] --> REL
+  REL --> READ["read contract:<br/>statements · retrieval arms"]
+```
+
 ## redact
 
 | Clause | Statement | Why |
@@ -126,6 +153,22 @@ relation applies, column classification and masking, and the grammar of an infer
 | `authority.bound-redistribution.two-checks` | The left-behind check runs before and after the upload loop; the guarantee holds for one bucket under one pushing configuration. | A-authority |
 | `authority.bound-redistribution.edge-filter` | A serving edge in front of the bucket filters a materialized replica by the pulling credential's grants. | A-authority |
 
+One push under the bound:
+
+```mermaid
+flowchart TD
+  P["push"] --> C1{"left-behind check"}
+  C1 -- "withheld table has uploaded objects" --> E1["EnforceStaleRedistributedObjects<br/>names each object, deletes none"]
+  C1 -- clean --> X["exclude withheld tables"]
+  X --> D["compute the object diff"]
+  D --> RA{"table withheld: root-level<br/>object on the allowlist?"}
+  RA -- no --> E2["EnforceRootObjectNotAllowlisted"]
+  RA -- yes --> U["upload loop"]
+  U --> C2{"left-behind check"}
+  C2 -- "stale objects" --> E1
+  C2 -- clean --> M["bucket manifest naming<br/>no withheld table"]
+```
+
 ## place
 
 | Clause | Statement | Why |
@@ -156,6 +199,26 @@ relation applies, column classification and masking, and the grammar of an infer
 | `authority.place.proxy-boundary` | A proxy replica resolves zones at the proxy boundary. | A-authority |
 | `authority.place.allow-set-entries` | An allow-set holds at most 32 entries. | A-authority |
 | `authority.place.identifier-length` | A zone identifier holds at most 128 chars. | A-authority |
+
+Resolving one served row against the session's zone:
+
+```mermaid
+flowchart TD
+  CZ["caller zone, declared per request"] --> INC{"incognito?"}
+  INC -- no --> Z["session zone"]
+  INC -- yes --> PIN{"asserted zone wider than<br/>local:device, on-prem:*?"}
+  PIN -- yes --> E1["EnforceIncognitoWidening"]
+  PIN -- no --> Z
+  TS["table allow-set, or the<br/>fail-closed pair when undeclared"] --> FL["phi floor at the fail-closed pair"]
+  FL --> TE{"table set, narrowed by the authoring<br/>principal's set, admits the zone?"}
+  Z --> TE
+  TE -- no --> DROP["row leaves the result"]
+  TE -- yes --> CE{"column set admits the zone?"}
+  CE -- no --> NUL["cell arrives null"]
+  CE -- yes --> SRV["cell served under its mask"]
+  DROP --> ENV["response envelope:<br/>removed counts, masked columns"]
+  NUL --> ENV
+```
 
 unsettled: What fixes the completeness of the evidence list a synthesized row's floor intersects over, given that an empty list intersects to everything? owner: authority affects: authority.place
 

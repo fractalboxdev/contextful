@@ -16,6 +16,24 @@ How the tree is written, built and checked: one home per capability, typed autom
 placement, build targets and artifacts, the gate's stages and ceilings, and the harness that
 turns read-path quality into a red or green verdict.
 
+The tree, the checks over it, and the two verdicts they produce:
+
+```mermaid
+flowchart LR
+  SRC["source tree<br/>one home per capability"] --> BUILD["build: three profiles,<br/>cross-compiled targets"]
+  SRC --> TESTS["tests: one integration binary per crate<br/>acceptance drives a built binary"]
+  AUTO["typed subcommands, tools/ci"] --> GATE["gate: ordered stages"]
+  BUILD --> GATE
+  TESTS --> GATE
+  FORMAL["formal model:<br/>check · differential · protocol"] --> GATE
+  GATE -- "one status check per stage" --> PR["pull request"]
+  BUILD --> ART["release artifacts<br/>archive · checksum · SBOM · image"]
+  CASES["evals/cases JSONL"] --> EVAL["quality harness"]
+  STORE[("real store<br/>read contract: ranked retrieval")] --> EVAL
+  EVAL --> BASE{"in-tree baselines and floors"}
+  BASE --> V["red or green"]
+```
+
 ## structure-tree
 
 | Clause | Statement | Why |
@@ -52,6 +70,20 @@ unsettled: Does a derived artifact prove currency by a schema-hash comparison, b
 | `assurance.test.test-first` | A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`. | A-assurance |
 | `assurance.test.refactor-trailer` | A commit carrying the trailer `Test-First: refactor` exempts the source it alters from {{assurance.test.test-first}}; the rest of the range stays held, and the workspace stage alone holds that commit. | because a behavior-preserving change has no failing test to write, and the existing suite is its specification |
 | `assurance.test.acceptance-surface` | An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`. | A-assurance |
+
+The test-first check over one commit in a change's range:
+
+```mermaid
+flowchart TD
+  CH["commit altering Rust source<br/>under crates/ or tools/"] --> TR{"trailer Test-First: refactor?"}
+  TR -- yes --> WS["workspace stage alone holds it"]
+  TR -- no --> T{"adds or alters a test<br/>under a package's tests/?"}
+  T -- no --> E1["TestNotFirst"]
+  T -- yes --> B{"that test fails against<br/>the base commit's source?"}
+  B -- no --> E1
+  B -- yes --> OK["test-first stage passes"]
+  OK --> WS2["workspace stage"]
+```
 
 unsettled: Does a suite contending process-global state declare that state in its module, or acquire a named lock the integration binary owns? owner: build affects: assurance.test
 
@@ -97,6 +129,23 @@ unsettled: Does the edge profile build for `wasm32-wasip2` with the SQL engine i
 | `assurance.gate.footprint-exceeded` | An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile. | P7 |
 | `assurance.gate.typescript-surfaces` | The TypeScript surfaces run typecheck, unit tests and framework build in one stage, and a surface declaring no script for a check skips that check. | |
 | `assurance.gate.surface-check-failed` | A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script. | P7 |
+
+The stage order, under the container's ceilings:
+
+```mermaid
+flowchart LR
+  LOCAL["contributor: contextful-ci gate"] --> S1
+  WF["pull-request workflow:<br/>one remote check per stage"] --> S1
+  subgraph C["gate container · 12 GiB memory · 18 GiB disk"]
+    S1["pins"] --> S2["toolchain"] --> S3["schema"] --> S4["test-first"]
+    S4 --> S5["workspace"] --> S6["acceptance"] --> S7["features"] --> S8["crate graph"]
+    S8 --> S9["connectors"] --> S10["TypeScript surfaces"] --> S11["formal"] --> S12["budget"]
+  end
+  S3 -.-> LINT["contextful-spec lint"]
+  S8 -.-> DENY["cargo-deny per profile"]
+  S11 -.-> FORM["formal check · differential · protocol"]
+  S12 -.-> SIZE["total build size 12 GiB"]
+```
 
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate
 

@@ -18,6 +18,24 @@ same-tick order, the bounded dispatch pool and its worker adapter, the operator'
 apply path over the control document, and the region a data plane resides in. The published
 hostname and the read path's two hops belong to the topology contract.
 
+The path from an operator's edit to a dispatched unit, and where it meets topology and the run path:
+
+```mermaid
+flowchart LR
+  ED["edit: control document, CRDT"] --> AP["apply: validate, claim manifest@vN, CAS pointer"]
+  AP --> SNAP["snapshot store: manifest@current, manifest@vN"]
+  SNAP -- "poll" --> RC["reconcile: diff, armed cursor"]
+  RC --> ARM["arm: armed set, one due-ness function"]
+  JOBS["operator-local job blocks"] --> ARM
+  TRG["trigger adapter: in-process or external"] --> ARM
+  ARM --> FI["fire: stage order, job_fire watermark"]
+  FI --> DI["dispatch: fire pool, exclusion keys"]
+  DI --> RUN["run contract: durable orchestrator instance"]
+  DI --> WK["worker target"]
+  CAT["topology contract: catalog lease rows"] -.->|"cadence lease, exclusion keys"| DI
+  RS["reside: region allow-set"] -.->|"EnforceRegionMismatch at startup"| RC
+```
+
 ## arm
 
 | Clause | Statement | Why |
@@ -43,6 +61,21 @@ hostname and the read path's two hops belong to the topology contract.
 | `surface.arm.tick-interval` | The in-process adapter evaluates the armed set every 500 ms. | — |
 | `surface.arm.external-resolution` | Under `external`, cadence resolution is bounded below by the platform's wake granularity plus container start, both recorded in {{topology.deploy.target-profile}}. | — |
 
+Both trigger adapters reach one due-ness function:
+
+```mermaid
+flowchart TD
+  SCH["schedule string, UTC"] -- "unreadable" --> E1["ScheduleUnreadable, that entry alone"]
+  SCH -- "guardrails pass" --> SET["armed set"]
+  IP["in-process adapter: tick every 500 ms"] --> DUE["one due-ness function"]
+  EXT["external adapter: platform cron, alarm or crontab"] --> WAKE["POST /schedule/run-due"]
+  WAKE --> Q["one evaluation enqueued on the scheduler task"]
+  Q --> DUE
+  SET --> DUE
+  DUE --> FIRE["fire due entries"]
+  FIRE --> ANS["wake answer within 25 s: fired, failed, pending, next due"]
+```
+
 ## reconcile
 
 | Clause | Statement | Why |
@@ -61,6 +94,30 @@ hostname and the read path's two hops belong to the topology contract.
 | `surface.reconcile.beat-order` | One beat reads the pointer, fetches that version's document, derives the scheduled set, diffs it against the armed cursor, persists the cursor, then dispatches. The cursor is the reconciler's only state between beats. | — |
 | `surface.reconcile.loopback-only` | A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing. | A-surface |
 | `surface.reconcile.loopback-connection` | The poll client follows no redirect, ignores proxy environment variables, and pins `localhost` to the loopback addresses; a name merely resolving to loopback is not loopback. | — |
+
+One reconciler beat, polled every 30 s by default:
+
+```mermaid
+sequenceDiagram
+  participant R as reconciler
+  participant S as snapshot store
+  participant C as armed cursor
+  participant D as dispatch
+  R->>S: read manifest@current
+  alt pointer body not wholly a version
+    S-->>R: ControlPointerMalformed
+  else unreadable, unparseable or 5xx
+    S-->>R: ControlSnapshotUnreadable, armed set stays running
+  else version not above the armed version
+    S-->>R: no re-parse
+  else newer version
+    R->>S: fetch manifest@vN.toml
+    R->>R: derive the scheduled set
+    R->>C: diff into added, removed, retimed, unchanged
+    R->>C: persist the cursor
+    R->>D: dispatch due units
+  end
+```
 
 unsettled: Does a daemon reach a non-loopback control source, carrying bearer authentication, TLS and producer signing over version and content hash, and does it learn of a new snapshot by poll or by push? owner: control affects: surface.reconcile
 
@@ -111,6 +168,31 @@ unsettled: Does a daemon reach a non-loopback control source, carrying bearer au
 | `surface.dispatch.worker-identity` | A worker's own credential is scoped to one tenant and its tags and is revocable from the control plane. Each dispatched job records worker id, tags and outcome in the audit chain. | — |
 | `surface.dispatch.one-progress-writer` | Dispatch gives a delegate no progress channel of its own toward a subscriber; {{run.project.delegated-progress}} | — |
 
+One step on a worker target, from submit to an accepted or rejected callback:
+
+```mermaid
+sequenceDiagram
+  participant RC as reconciler
+  participant W as worker target
+  participant OS as object store
+  participant RL as relay route
+  RC->>W: submit(job, idempotencyKey), attempt n
+  W-->>RC: handle, the existing job on a repeated key
+  loop every 15 s
+    W->>RC: heartbeat
+  end
+  W->>OS: output at an attempt-scoped key
+  W->>RL: callback, HMAC over run id, step, attempt, timestamp
+  alt attempt below current, or skew past 300 s
+    RL-->>W: DispatchCallbackRejected, step unchanged
+  else accepted
+    RL->>RC: result pointer, under the 1 MiB step-result cap
+  end
+  opt heartbeat lapse past 60 s
+    RC->>RC: reschedule onto another matching worker, attempt n+1
+  end
+```
+
 unsettled: Is the fire pool's bound one number per deployment or one per exclusion key? owner: control affects: surface.dispatch
 
 ## edit
@@ -144,6 +226,32 @@ unsettled: Is the fire pool's bound one number per deployment or one per exclusi
 | `surface.apply.weak-conditional-backend` | A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open. | A-surface |
 | `surface.apply.uninitialized-store` | An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`. | P3 |
 | `surface.apply.retention` | The owner collects no superseded version. Retention of applied versions is operator policy, and an older version stays readable at its key. | — |
+
+One apply through the engine's store-scoped API:
+
+```mermaid
+sequenceDiagram
+  participant O as operator surface
+  participant E as engine store-scoped API
+  participant S as snapshot store
+  participant A as audit log
+  O->>E: apply under the admin capability
+  alt store took no guarded import
+    E-->>O: StoreNotInitialized, 409
+  else document fails validation
+    E-->>O: ApplyValidationRefused, no version claimed
+  else valid
+    E->>S: write manifest@vN.toml
+    E->>S: compare-and-swap manifest@current
+    alt swap lost
+      E-->>O: ManifestVersionConflict
+      O->>E: reload the winner, reapply pending edits
+    else swap won
+      E->>A: attributed to the verified identity
+      E-->>O: version N
+    end
+  end
+```
 
 unsettled: Can a local control plane validate and claim a version on its own, or does every apply route through a hosted one? owner: control affects: surface.apply
 

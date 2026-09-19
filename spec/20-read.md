@@ -18,6 +18,26 @@ statement it sends, the candidates a question generates, their order, and the on
 that carries them. A read lands no row and holds no lease. Restriction arrives already
 composed into each registered relation; this face consumes index sidecars and builds none.
 
+The read face's operations, and where it meets the store, authority and memory:
+
+```mermaid
+flowchart LR
+  TOK["capability-token caller"] --> GRD["guard: one read-only SELECT"]
+  OPR["operator text: CLI, templates, engine-composed reads"] -- "raw" --> REG
+  GRD --> REG["register: one view per manifest table"]
+  PIN["resolve-pin: pin map, transaction-time bound"] --> REG
+  STORE["store contract: parts, manifests, sidecars"] --> REG
+  AUTH["authority contract: composed restriction"] --> REG
+  REG --> RET["retrieve: content tokens, per-table arms"]
+  MEM["memory: recall"] -- "composed by corpus.retrieve" --> RET
+  EMB["embed: embedding port"] --> RNK
+  RET --> RNK["rank: cosine, BM25, fusion"]
+  RNK --> RSP["respond: one projection"]
+  REG --> RSP
+  STORE -- "snapshot commit invalidates" --> CCH["cache: opt-in result cache"]
+  CCH -- "hit" --> RSP
+```
+
 ## register
 
 | Clause | Statement | Why |
@@ -59,6 +79,29 @@ unsettled: Is a tenant-scoped projection of the request ledger worth building, g
 | `read.guard.template-relation-shape` | Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier collides with a built-in tool prefix, raising `TemplateNamesForeignRelation`. | A-read |
 | `read.guard.template-binding` | A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders cover exactly the declared parameters. | A-read |
 | `read.guard.startup-time-check` | Template checks are caller-independent and run once at startup; a request pays nothing for them. | — |
+
+Admission of one statement, by provenance, and of one template:
+
+```mermaid
+flowchart TD
+  T["statement text"] --> P{"authored by"}
+  P -- "operator" --> RAW["runs raw, from no network face"]
+  P -- "capability token" --> PARSE["the engine's own parse tree"]
+  PARSE --> ONE{"exactly one read-only SELECT"}
+  ONE -- "no" --> E1["StatementNotReadOnly"]
+  ONE -- "yes" --> WALK["whole-tree walk, CTE names gathered first"]
+  WALK --> TF{"table function or system-catalog reach"}
+  TF -- "yes" --> E2["TableFunctionRefused"]
+  TF -- "no" --> REL{"every base relation registered or a declared CTE"}
+  REL -- "no" --> E3["authority.refuse.ungranted-table"]
+  REL -- "yes" --> EXEC["execute over registered relations"]
+  RAW --> EXEC
+  TPL["template"] --> START{"startup: store tables only, no prefix collision"}
+  START -- "no" --> E4["TemplateNamesForeignRelation"]
+  START -- "yes" --> BIND{"arguments match declared parameters"}
+  BIND -- "no" --> E5["TemplateArgumentRejected"]
+  BIND -- "yes" --> EXEC
+```
 
 ## respond
 
@@ -111,6 +154,28 @@ unsettled: Does partial-result streaming belong on this surface, or does a full 
 | `read.retrieve.sidecar-falls-back` | Any sidecar precondition failure — no snapshot, no matching sidecar, a multi-column or masked key, a dimension or manifest mismatch, an unreadable dump, mixed producers — falls back to the exact scan. | P4 |
 | `read.retrieve.gain-never-loss` | For one reader the accelerated arm returns a superset of the exact path's rows. Two readers with one query on one snapshot can recall different rows. | — |
 
+Candidate generation for one ranked read:
+
+```mermaid
+flowchart TD
+  Q["query text"] --> TOK["content tokens: lowercased, split, stop tokens dropped, cap 12"]
+  F["filter"] --> BUD{"inside the filter budget, 256 entries"}
+  BUD -- "no" --> E1["FilterBudgetExceeded"]
+  BUD -- "yes" --> ARMS["one arm per table under the prefix"]
+  TOK --> ARMS
+  ARMS -- "table lacks a filter column" --> DROP["arm drops"]
+  ARMS --> WIN["recency window: max of 8 x limit and 200"]
+  ARMS --> SC{"sidecar preconditions hold, under 64 MiB"}
+  SC -- "yes" --> PROBE["probe: max of 4 x limit and 64, x4 under restriction"]
+  SC -- "no" --> EXACT["exact scan"]
+  PROBE --> REJ["re-join through authority.compose.vector-arm"]
+  REJ --> WIN
+  EXACT --> WIN
+  WIN --> FLOOR["relevance floor: lexical null or past the floor, or vector above 0"]
+  FLOOR --> DEDUP["one row per table and row key, newest ingestion"]
+  DEDUP --> RANK["rank"]
+```
+
 unsettled: What adaptive over-fetch policy holds where rows a reader cannot see cluster near a query point and the visibility estimate under-fills the requested top-K? owner: read-path affects: read.retrieve
 
 ## rank
@@ -132,6 +197,21 @@ unsettled: What adaptive over-fetch policy holds where rows a reader cannot see 
 | `read.rank.caller-embedding` | A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled. | A-topology |
 | `read.rank.lexical-index-cache` | The full-text index is keyed on a fingerprint over the candidate documents and cached in a FIFO of 64 entries. A changed snapshot, table set or time bound changes the fingerprint. | — |
 | `read.rank.widened-window-statistics` | Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path. | — |
+
+The ranking legs, their fallback, and the ordering they feed:
+
+```mermaid
+flowchart LR
+  C["candidate set"] --> V["cosine leg, clamped 0..1, from query_embedding"]
+  C --> L{"lexical backend linked"}
+  L -- "yes" --> B["BM25 leg, min-max over the window"]
+  L -- "no" --> TF["token fallback over the snippet, recency breaks ties"]
+  V --> FU["fusion: 0.6 vector + 0.4 lexical, ties by identifier"]
+  B --> FU
+  FU --> ORD["order: in-window flag first, then score"]
+  TF --> ORD
+  ORD --> BLK["contextful.retrieval block, integer score per row"]
+```
 
 unsettled: What replaces min-max window normalization as a cross-index score calibration, given one bounded leg and one corpus-relative unbounded leg? owner: read-path affects: read.rank
 

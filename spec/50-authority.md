@@ -18,6 +18,28 @@ credential says, who mints it, what a holder derives from it offline, what a che
 decides about it, and the admitted-authority value that decision hands to every effect.
 The relation a grant compiles into is stated in `spec/51-enforcement.md`.
 
+The path of a credential from issuance to the effects it authorizes:
+
+```mermaid
+flowchart LR
+  IDP["identity provider"] -- "verified assertion" --> EXCH["exchange"]
+  IDP -- "directory provisioning" --> LINK["identity links<br/>scim_email · oidc_sub"]
+  LINK --> DISC["disclosure contract:<br/>reachable set"]
+  ADMIN["holder of an admin grant"] -- "mint" --> PORT["signing port"]
+  EXCH -- "role_grants · default_grants" --> PORT
+  POL["issuance policy<br/>audience · lifetime ceiling"] --> PORT
+  PORT --> CRED["capability credential<br/>subject tuple + grants"]
+  CRED -- "attenuate: append a signed block" --> CHILD["child credential"]
+  CRED --> CP{"checkpoint"}
+  CHILD --> CP
+  KEYS["issuer key set<br/>static pins · published route"] --> CP
+  REV["denylist · revocation epoch"] --> CP
+  CP -- "verify" --> AA["admitted authority"]
+  AA --> ENF["enforcement:<br/>registered relations"]
+  AA --> READ["read contract:<br/>read surfaces"]
+  AA --> RUN["run contract:<br/>row-landing effects"]
+```
+
 ## identify
 
 | Clause | Statement | Why |
@@ -99,6 +121,23 @@ unsettled: When a table declares no partition key, how does a consumer with a pe
 | `authority.attenuate.bearer` | Derivation proves the chain and not the new holder's identity. A hop authenticating its new actor runs through the exchange. | A-authority |
 | `authority.attenuate.per-sub-agent` | An agent derives one child per sub-agent, each bound by its confirmation claim to that sub-agent's own key pair. | A-authority |
 
+A derivation, from the holder's append to the checkpoint's recheck:
+
+```mermaid
+flowchart TD
+  P["parent credential, bytes unchanged"] --> D["holder appends a signed block<br/>no issuer round trip"]
+  D --> W{"broader on actions, tables,<br/>templates or aggregate?"}
+  W -- yes --> R1["AttenuationWidens"]
+  W -- no --> X{"expiry past the parent's?"}
+  X -- yes --> R2["AttenuationExpiryExtended"]
+  X -- no --> T{"tenant scope dropped<br/>or another tenant named?"}
+  T -- yes --> R3["AttenuationTenantDropped"]
+  T -- no --> O{"on_behalf_of differs?"}
+  O -- yes --> R4["AuthoritySubjectRebound"]
+  O -- no --> C["child credential<br/>own revocation identifier"]
+  C -- "admission rechecks the whole chain" --> CP["checkpoint"]
+```
+
 unsettled: What delegation depth does the library format support, and what verification cost does a chain carry at that depth? owner: authority affects: authority.attenuate
 
 ## issue
@@ -167,6 +206,18 @@ unsettled: Does a proof replayed against a sibling checkpoint need a shared nonc
 | `authority.revoke.immediate-retire` | Immediate retirement removes a key version from the published set and every static pin; a checkpoint drops it at its next refresh. | A-authority |
 | `authority.revoke.format-withdrawn` | From a declared cutover instant, every admission path raises `CredentialFormatWithdrawn` for a credential in a withdrawn format. Only an explicit declaration restores acceptance. | A-authority |
 
+The life of one issuer key version:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Current: published set and static pins carry it
+    Current --> Retiring: rotation every 90 d
+    Retiring --> Retired: grace window lapses
+    Retiring --> Retired: immediate retirement
+    Current --> Retired: suspected compromise, with a project-wide epoch bump
+    Retired --> [*]: checkpoints drop it at the next refresh
+```
+
 unsettled: Where does a scoped revocation epoch live, and how does a checkpoint read it without a policy service on the admission path? owner: authority affects: authority.revoke
 
 ## exchange
@@ -185,6 +236,27 @@ unsettled: Where does a scoped revocation epoch live, and how does a checkpoint 
 | `authority.exchange.material-missing` | An exchange configured with no verifying material raises `ExchangeMaterialMissing` and mints nothing. | A-authority |
 | `authority.exchange.per-reader` | An embedding application holds no project-wide credential; per request it exchanges its signed-in reader's assertion for that reader's short-lived credential and reads as them. | A-authority |
 | `authority.exchange.no-cross-reader` | An exchanged credential serves only the reader it was minted for. | A-authority |
+
+An embedding application reading as its signed-in reader:
+
+```mermaid
+sequenceDiagram
+    participant App as embedding application
+    participant IdP as identity provider
+    participant X as exchange
+    participant CP as checkpoint
+    App->>IdP: sign the reader in
+    IdP-->>App: signed assertion
+    App->>X: POST /auth/exchange with the assertion
+    X->>X: verify against operator-injected material, no network call
+    alt bad signature, lapsed, untrusted issuer or audience, mapped claim absent
+        X-->>App: ExchangeAssertionInvalid, nothing minted
+    else verified
+        X->>X: map subject_map, tenant_claim, role_grants or default_grants
+        X-->>App: credential for this reader, 900 s default, clamped to 3600 s
+    end
+    App->>CP: read as the reader
+```
 
 ## Shapes
 

@@ -24,6 +24,45 @@ manifests indexing it, one pointer object per table naming the current snapshot,
 local SQLite catalogs. An S3-compatible bucket mirrors the tree key for key. Every other
 contract reaches rows through the shapes this file fixes.
 
+The store's canonical objects, its two catalogs, the bucket mirror, and the contracts
+writing into it and reading from it.
+
+```mermaid
+flowchart LR
+  RUNC["run · pipeline landing"]
+  READC["read · query face"]
+  ENF["authority · enforcement stack"]
+  COORD["topology · coordinate"]
+
+  subgraph ROOT["store root · .contextful/context/&lt;project&gt;/"]
+    RUNS["run parts + run manifest"]
+    LOG["cursors/ commit log"]
+    FOLD["fold pass"]
+    SNAP["snapshot · parts + sidecars + manifest"]
+    PTR["_pointer.json"]
+    SCHEMA["schema.json"]
+    DERIVED[("derived.sqlite · rebuildable cache")]
+    MACHINE[("machine.sqlite · journal · cursor cache · lease rows")]
+  end
+
+  BUCKET[("bucket · &lt;prefix&gt;/manifest.json")]
+  REPLICA["replica · read-only"]
+
+  RUNC -- "conditional create _manifest.json" --> RUNS
+  RUNC -- "leased pipeline" --> LOG
+  RUNS --> FOLD
+  FOLD -- "staging, then If-Match" --> SNAP
+  FOLD --> PTR
+  PTR -- "names current snapshot + fence" --> SNAP
+  RUNS -. "merged schema" .-> SCHEMA
+  PTR & RUNS & SCHEMA -. "rebuild-catalog" .-> DERIVED
+  MACHINE -. "lease port" .- COORD
+  READC -- "explicit sorted file list" --> PTR
+  READC -- "admission value" --> ENF
+  BUCKET <-- "push · pull by digest" --> ROOT
+  BUCKET -- "refresh" --> REPLICA
+```
+
 ## lay-out
 
 | Clause | Statement | Why |
@@ -128,6 +167,32 @@ unsettled: What retires a key a source stops serving under `append`, given the s
 | `store.fold.non-blocking` | A statement running during a pass reads the snapshot the pointer named when it started; statements starting after the commit read the new one. | — |
 | `store.fold.supersedes` | A new snapshot supersedes the previous one without deleting it, and a bounded read reaches the older one until retention collects it. | — |
 
+A fold pass under the compaction lease, from run selection to the pointer commit.
+
+```mermaid
+sequenceDiagram
+  participant F as fold pass
+  participant L as compaction lease
+  participant S as staging directory
+  participant P as _pointer.json
+  participant R as reader
+
+  F->>L: acquire, fence N
+  alt another node holds it
+    L-->>F: LeaseHeld, pass skipped
+  else acquired
+    F->>P: read ETag
+    F->>F: select omitted runs, dedupe or union, reconcile, sort, partition
+    F->>S: Parquet + every declared sidecar, fence N in manifest
+    F->>P: replace If-Match ETag, fence N
+    alt condition holds
+      P-->>R: new snapshot for statements starting after the commit
+    else condition lost
+      P-->>F: nothing published, staging collected next pass
+    end
+  end
+```
+
 ## index
 
 | Clause | Statement | Why |
@@ -207,6 +272,31 @@ unsettled: How is a set of validity intervals for one key modelled, given one pa
 | `store.push.report-line` | Each push line prints the resolved coordination mode and the counts of objects uploaded and skipped. | — |
 | `store.push.in-flight` | A second push of one store on one machine raises `SyncPushInFlight`, naming the holder of the push guard. | A-store |
 
+A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
+
+```mermaid
+sequenceDiagram
+  participant W as writer
+  participant B as bucket objects
+  participant M as manifest.json
+
+  W->>W: walk store root, digest each file
+  W->>M: read remote manifest + ETag
+  loop each file whose digest differs
+    W->>B: upload under the prefix
+  end
+  loop up to push_retries, default 5
+    W->>W: merge own entries from local tree, others from remote
+    W->>M: replace If-Match ETag
+    alt condition holds
+      M-->>W: push committed
+    else lost the race
+      M-->>W: re-read, re-merge
+    end
+  end
+  Note over W,M: exhausted retries raise SyncManifestRebaseExhausted
+```
+
 ## pull
 
 | Clause | Statement | Why |
@@ -219,6 +309,32 @@ unsettled: How is a set of validity intervals for one key modelled, given one pa
 | `store.pull.digest-mismatch` | A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded. | P4 |
 | `store.pull.convergence` | When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts. | — |
 | `store.pull.unconverged` | Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer. | P4 |
+
+A pull converges on the bucket manifest and writes each table pointer last.
+
+```mermaid
+sequenceDiagram
+  participant P as puller
+  participant M as manifest.json
+  participant B as bucket objects
+  participant C as derived.sqlite
+
+  loop up to 3 attempts
+    P->>M: fetch manifest
+    P->>P: diff entries against local digests
+    par parallel downloads
+      P->>B: fetch differing objects
+    end
+    alt digest differs from entry
+      B-->>P: SyncObjectDigestMismatch, object discarded
+    else a named key disappears
+      B-->>P: re-fetch manifest, retry the shortfall
+    end
+  end
+  Note over P: exhausted retries raise SyncPullDidNotConverge and write no pointer
+  P->>P: write each table pointer after every object it reaches
+  P->>C: insert arrived run and snapshot records, ignoring conflicts
+```
 
 unsettled: What recovers a pull whose retries are exhausted by pushes arriving faster than the re-fetch shrinks the shortfall? owner: store affects: store.pull
 

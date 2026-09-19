@@ -15,6 +15,24 @@ contributor's rows to the party asking. This file fixes the setting a result is 
 in, the ordered release, the suppression signal a consumer sees, the reviewed templates a
 releasing principal executes, and the line between a per-person table and a cohort table.
 
+A derived result, from the deployment's setting to the published rows:
+
+```mermaid
+flowchart LR
+  MODE{"set-mode"} -- "single operator" --> SO["write-time disclosure policy<br/>offline diagnostic"]
+  MODE -- "clean room" --> CR["per-owner subtrees, prefixes, keys<br/>escrow of per-pair peppers"]
+  CALLER["releasing principal"] -- "template id + typed arguments" --> TPL["reviewed template"]
+  AUTH["authority contract:<br/>template allowlist"] --> TPL
+  SO --> REL
+  CR --> REL
+  TPL --> REL["release job<br/>run contract: journaled"]
+  UNITS["contributing units, read through<br/>the replication-edge filter"] --> REL
+  REL --> SUP["suppress: size floor · dominance"]
+  SUP --> PUB[("published derived table<br/>__suppressed__ sentinel")]
+  SUP -. "per-reason tallies" .-> AUD[("audit chain")]
+  PUB --> COH["bound-cohort: floor before the top-K cut"]
+```
+
 ## set-mode
 
 | Clause | Statement | Why |
@@ -70,6 +88,24 @@ unsettled: Does a policy hash sort a grouping allowlist nested inside a sub-tabl
 | `disclosure.suppress.grouping-allowlist` | An empty permitted-grouping list, or a permitted name that is not column-shaped, raises `DisclosureGroupingAllowlistEmpty`. | A-disclosure |
 | `disclosure.suppress.sentinel` | Withheld groups collapse into one field-free sentinel under the group key `__suppressed__`, naming no rule and no count. No other marker rides the published rows. | |
 | `disclosure.suppress.tally` | Per-reason tallies reach the audit chain alone. The run's freshness record carries one boolean stating that suppression occurred, identical for one group or a thousand. | |
+
+The decision over one group:
+
+```mermaid
+flowchart TD
+  G["group"] --> SZ{"distinct contributors clear min_group_size?<br/>noisy threshold when noised"}
+  SZ -- no --> S["__suppressed__ sentinel"]
+  SZ -- yes --> SH{"share constraint declared?"}
+  SH -- no --> P["published row"]
+  SH -- yes --> AV{"per-contributor masses available?"}
+  AV -- no --> DU["DisclosureDominanceUnverifiable"]
+  DU --> S
+  AV -- yes --> DOM{"one contributor's share<br/>above max_contributor_share?"}
+  DOM -- yes --> S
+  DOM -- no --> P
+  S -. "per-reason tally" .-> AUD[("audit chain")]
+  S -. "suppression boolean" .-> FR["run freshness record"]
+```
 
 ## template
 

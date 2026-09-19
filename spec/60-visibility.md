@@ -16,6 +16,25 @@ originating source drew. This file holds the mirrored permission state, its obse
 clock, the resolution of a subject to the resources it reaches, the age budget on that
 state, the fidelity a table claims, and the pack that lands a source.
 
+Mirrored permission state, from the source's permission endpoint to the reader's view:
+
+```mermaid
+flowchart LR
+  PACK["pack: access mapping, fidelity,<br/>budget and cadence defaults"] --> VB["visibility block<br/>per content table"]
+  PACK --> SWEEP
+  SRC["source permission endpoint"] --> SWEEP["acl_sweep<br/>full · incremental · webhook"]
+  SWEEP -- "run contract: journaled run path" --> AT[("access tables<br/>resources · grants · principals ·<br/>group members · identity links ·<br/>tombstones · freshness")]
+  AA["authority contract:<br/>admitted subject"] --> REACH["reach: reachable resource set"]
+  AT --> REACH
+  AT -- "watermark_at" --> STALE{"bound-staleness:<br/>lag within max_acl_staleness?"}
+  VB --> STALE
+  STALE -- no --> DEG["VisibilityAccessStale<br/>or public_only"]
+  STALE -- yes --> SJ["semi-join compiled into<br/>the registered view"]
+  REACH --> SJ
+  SJ --> READ["read contract:<br/>statements · retrieval arms · templates"]
+  FED["federated source, queried live<br/>under the reader's credential"] -.-> READ
+```
+
 ## mirror
 
 | Clause | Statement | Why |
@@ -56,6 +75,19 @@ unsettled: What opens a resource whose access list could not be mirrored, who ma
 | `disclosure.sweep.orphan-grant` | A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set. | P5 |
 | `disclosure.sweep.run-path` | Access rows land through the journaled run path content uses; an observation is replayable and attributable. | |
 
+One grant under deny-outranks-allow, every instant an engine UTC instant:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Granted: a sweep observes the allow
+    Granted --> Suppressed: tombstone lands at revoked_at
+    Suppressed --> Suppressed: incremental or webhook allow
+    Suppressed --> Suppressed: full-run allow at revoked_at exactly
+    Suppressed --> Granted: full-run allow strictly after revoked_at
+    Suppressed --> Retired: full run after revoked_at reads the resource without the grant
+    Retired --> [*]: tombstone removable
+```
+
 ## reach
 
 | Clause | Statement | Why |
@@ -67,6 +99,21 @@ unsettled: What opens a resource whose access list could not be mirrored, who ma
 | `disclosure.reach.cache-key` | The reachable-set cache keys on the subject, a source epoch over grants, resources, tombstones and freshness, and a directory epoch over the group graph and identity links. A revocation rotates the key. | A-disclosure |
 | `disclosure.reach.cache-capacity` | The reachable-set cache holds at most 100000 entries and evicts the least recently used. | |
 | `disclosure.reach.degraded-uncached` | Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`. | A-disclosure |
+
+The per-request resolution of a subject to its reachable set:
+
+```mermaid
+flowchart LR
+  S["subject"] -- "scim_email · oidc_sub links" --> SP["source principals"]
+  SP --> GC["group closure<br/>8 hops · 10000 nodes"]
+  GC -- "bound reached" --> E1["VisibilityClosureDepth · 422"]
+  GC --> PUB["closure + public"]
+  PUB -- "read-conferring grants" --> RES["resources"]
+  RES --> UNK["drop the unknown class"]
+  UNK --> TOMB["subtract tombstones in force"]
+  TOMB --> SET["reachable set"]
+  SET --> CACHE[("cache keyed on subject,<br/>source epoch, directory epoch")]
+```
 
 unsettled: Do the epochs keying the reachable-set cache scope per source rather than per access table, and does a materialized closure live in a rebuildable projection or in files a replica opens offline? owner: disclosure affects: disclosure.reach
 

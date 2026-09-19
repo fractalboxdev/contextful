@@ -15,6 +15,22 @@ An outbound credential is the material reaching a vendor API from a pull, a deri
 a metered call: how a declaration names one, how the resolver finds it, how a lease
 shortens its life, how the host attaches it, how it turns over, and how it is recorded.
 
+A credential from its reference to the vendor, keyed throughout by its logical name:
+
+```mermaid
+flowchart LR
+  DECL["declaration · secret://name, value templates"] -->|reference| RES["resolver · per source, cached"]
+  RES -->|"first hit wins"| CHAIN["provider chain · lease, environment, keychain, manager, tunnel"]
+  MINT["lease endpoint"] -->|"value + expiry"| CHAIN
+  MGR[("customer-operated manager")] --- CHAIN
+  ROT["rotate · OAuth refresh"] -->|"blind versioned put"| MGR
+  CHAIN -->|"material in a redacting wrapper"| ATT["host attach · one mediated path"]
+  EGR["guest, built-in source, limiter call, exec step"] --> ATT
+  ATT -->|"bound header, one host"| VEND["vendor API"]
+  RES -->|"answering adapter per name"| AUD["run audit"]
+  REC["operator record · inventory"] -.->|"logical name"| DECL
+```
+
 ## reference
 
 | Clause | Statement | Why |
@@ -52,6 +68,19 @@ shortens its life, how the host attaches it, how it turns over, and how it is re
 | `connector.resolve.adapter-is-optional` | Each managed backend is one adapter holding opaque versioned ciphertext; a deployment links only the adapters it uses. | — |
 | `connector.resolve.know-how-in-an-adapter` | An adapter exposing a provider-specific exchange, refresh or lifetime entry point raises `SecretProviderKnowHowInBackend` at load. | A-connector |
 
+```mermaid
+flowchart TD
+  REF["secret://name"] --> L["lease provider · declared names"]
+  L -->|miss| E["process environment · a miss for templates unless opted in"]
+  E -->|miss| K["operating-system keychain"]
+  K -->|miss| M["customer-operated manager"]
+  M -->|miss| T["tunnel into the customer trust zone"]
+  T -->|miss| U["SecretUnresolvedReference"]
+  L & E & K & M & T -->|"first hit, at first hydration"| SH{"name also answered behind the serving adapter?"}
+  SH -->|yes| X["SecretNameShadowed"]
+  SH -->|no| W["redacting wrapper · cached up to 300 s"]
+```
+
 ## lease
 
 | Clause | Statement | Why |
@@ -80,6 +109,32 @@ shortens its life, how the host attaches it, how it turns over, and how it is re
 | `connector.lease.bootstrap-backend` | `CONTEXTFUL_LEASE_BOOTSTRAP_BACKEND` composes a customer-operated manager behind the lease provider to hold the mint reference. | — |
 | `connector.lease.mint-transport` | The mint client reaches its endpoint over TLS or loopback and ignores system proxy configuration. | A-connector |
 | `connector.lease.redirect` | A `3xx` from the mint endpoint raises `SecretLeaseRedirect`; the mint credential is not replayed at the target. | A-connector |
+
+```mermaid
+sequenceDiagram
+  participant R as resolver
+  participant B as adapters behind the lease provider
+  participant P as mint endpoint
+  R->>B: hydrate the bootstrap mint reference
+  B-->>R: mint credential
+  R->>P: POST /leases · scope, bearer mint credential, TLS or loopback
+  alt success
+    P-->>R: value + one expiry
+    R->>R: hold in memory, retire 10 percent of the window early, margin capped at 30 s
+  else 404
+    P-->>R: SecretLeaseScopeUnknown
+  else 401 or 403
+    P-->>R: SecretMintRejected · auth_expired
+  else 429
+    P-->>R: Retry-After to the run's retry
+  else 3xx
+    P-->>R: SecretLeaseRedirect · credential not replayed
+  else other 4xx
+    P-->>R: SecretLeaseRequestRejected
+  else 5xx or transport error
+    P-->>R: transient
+  end
+```
 
 unsettled: Does one mint call answer several scopes at once for a run that binds many leased names? owner: connector affects: connector.lease
 

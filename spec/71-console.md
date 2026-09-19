@@ -23,6 +23,36 @@ path under the tables; everything it shows arrives from a governed read, in the 
 language. The same store registry feeds the operator's views and the client library that
 embeds search and ask in a third-party page.
 
+The console between a reader and a store, and where it meets the read contract and the model endpoint:
+
+```mermaid
+flowchart LR
+  RD["reader"] --> PER["identity perimeter"]
+  PER --> PAGE["console page"]
+  PAGE -- "same-origin routes" --> TURN
+  subgraph server["console server"]
+    REGY["store registry"]
+    CRED["one credential resolver"]
+    PACKS["capability packs"]
+    TURN["turn: recall, plan, rounds, synthesis"]
+    CH["render: grounding, view, internals"]
+    RED["redactor, temporal humanizer"]
+  end
+  REGY --> CRED
+  PACKS --> TURN
+  TURN -- "admitted read tools" --> STORE["store engine: read contract"]
+  CRED --> STORE
+  STORE --> CH
+  CH -- "grounding" --> MODEL["model endpoint: topology contract"]
+  MODEL --> RED
+  RED --> PAGE
+  CH -- "view" --> PAGE
+  TURN -- "distilled conclusions" --> MEM["memory tables: read contract"]
+  LIB["client library: four shapes"] --> STORE
+  OPS["operator surface"] --> REGY
+  PAGE -- "deliberate share" --> AUD["surface with an audience"]
+```
+
 ## register-store
 
 | Clause | Statement | Why |
@@ -71,6 +101,25 @@ embeds search and ask in a third-party page.
 | `surface.package.serial-dispatch` | The process transport keeps exactly one request in flight, and an aborted call resynchronizes by discarding exactly one reply. | — |
 | `surface.package.process-subpath` | The process transport lives on its own import subpath, and the root entry an isolate bundles imports no child-process module. | — |
 
+The client library's four shapes, and who holds the credential in each:
+
+```mermaid
+flowchart LR
+  LIB["client library: search, query, retrieve, recall, ask and kin"]
+  LIB --> S1["host backend: same-origin proxy, injects the token"]
+  LIB --> S2["same-account host backend: service binding"]
+  LIB --> S3["engine-direct browser embed: per-viewer scoped token"]
+  LIB --> S4["local consumer: spawned engine, newline-framed JSON-RPC"]
+  S1 --> ENG["engine HTTP face: grants of the presented token"]
+  S2 --> GW["gateway entrypoint: query, mcp, health"]
+  GW -- "injects the container-side credential" --> ENG
+  S3 --> ENG
+  S4 --> CK{"credential set and project manifest found"}
+  CK -- "no credential" --> E1["StdioCredentialMissing"]
+  CK -- "no manifest" --> E2["StoreSelectorAbsent"]
+  CK -- "yes" --> CHILD["engine child: one request in flight"]
+```
+
 ## speak
 
 | Clause | Statement | Why |
@@ -109,6 +158,30 @@ embeds search and ask in a third-party page.
 | `surface.ground.source-dedup` | Candidates fold on the link, a title-only duplicate merging into the entry carrying one, ordered by lexical overlap with the answer, with an aggregator's click-through unwrapped to the publisher. | — |
 | `surface.ground.sources-per-turn` | A source list carries at most 8 entries. | — |
 | `surface.ground.structural-reads-do-not-cite` | A schema listing, a catalogue call and the store's own conclusions contribute no source entry. | — |
+
+The two trust layers on one grounded turn, for a store on `exchange` authentication:
+
+```mermaid
+sequenceDiagram
+  participant B as browser
+  participant P as identity perimeter
+  participant S as console server
+  participant X as store exchange route
+  participant E as store engine
+  B->>P: same-origin request
+  P->>S: request and the perimeter's assertion
+  S->>S: re-verify the assertion, take the reader's address
+  S->>X: post the verified assertion
+  alt mint refused
+    X-->>S: ConsoleTokenExchangeRefused, shared credential or refusal shown
+  else minted
+    X-->>S: per-reader credential, cached within its lifetime
+  end
+  S->>S: pick tool and arguments from the admitted packs
+  S->>E: read tool call under the reader's credential
+  E-->>S: rows through enforced relations
+  S-->>B: grounded prose, then a source list of 8 entries or fewer
+```
 
 ## plan-turn
 
@@ -202,6 +275,27 @@ unsettled: Does a subject normalize during distillation, or resolve through enti
 | `surface.render.fails-soft` | A view failing validation yields no widget. A widget rides its own frame after the prose, and synthesis is told no widget exists. | — |
 | `surface.render.widget-dedup` | A turn shows one widget per tool result yielding one, deduplicated by rendered shape with the last leading, and earlier ones behind a disclosure. | — |
 | `surface.render.capability-packs` | Tools group into packs, each carrying an admission predicate over the request context; one declaration decides what the model is offered, what the server dispatches, and what renders. | — |
+
+A tool return split into three channels, and the view channel's path to a widget:
+
+```mermaid
+flowchart TD
+  TR["tool return"] --> G["grounding channel"]
+  TR --> I["internals channel, on request"]
+  TR --> V["view channel"]
+  G --> M["model"]
+  I --> TP["trace panel"]
+  CV["view from a client or the model"] --> E1["ConsoleViewNotServerBuilt"]
+  V --> PD["provenance columns drop"]
+  PD --> H{"view hint binds only returned columns"}
+  H -- "yes" --> HC["hinted component"]
+  H -- "no" --> INF["inference: metric, line over 3 distinct days, else table"]
+  HC --> VAL{"valid against the props schema"}
+  INF --> VAL
+  VAL -- "no" --> NONE["no widget"]
+  VAL -- "yes" --> WALK["walk: identifier redactor, temporal rewriting"]
+  WALK --> W["widget frame after the prose, one per shape"]
+```
 
 unsettled: What governs adding a member to the component union once transcripts saved under an older client exist? owner: console affects: surface.render
 

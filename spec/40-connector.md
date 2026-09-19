@@ -17,6 +17,22 @@ interface a connector answers, the host access it declares, the quota it reserve
 the model egress it reaches, the bytes it resolves from, and the behavior of the sources
 compiled into the engine. How a credential reaches a request is in `spec/41-secrets.md`.
 
+The two connector forms, the host between them and the outside, and the contracts they meet:
+
+```mermaid
+flowchart LR
+  PKG["package · in-tree, path, https, oci + pin"] --> GUEST["component guest · sandboxed"]
+  NATIVE["compiled-in source"]
+  GUEST -->|"outgoing HTTP, logging, wall clock"| MED["host mediation point"]
+  NATIVE --> MED
+  MED <-->|"acquire, report"| LIM["limiter"]
+  MED -->|"allowlist, attach · 41-secrets"| VEND["vendor API"]
+  MED -->|"infer · fenced data"| MODEL["model endpoint · topology contract"]
+  GUEST -->|"batches + position"| RUN["runner · run contract"]
+  NATIVE -->|"batches + position"| RUN
+  RUN --> LAND["land path · run contract"]
+```
+
 ## export
 
 | Clause | Statement | Why |
@@ -73,6 +89,22 @@ unsettled: How is a source's declared configuration key set enumerated, so an un
 | `connector.declare-capability.binding-unsupported` | A `_from` binding on a key the connector does not read raises `ConnectorBindingUnsupported`. | P3 |
 | `connector.declare-capability.binding-unbound` | A bound key the environment did not supply, or supplied off its declared shape, raises `ConnectorBindingUnbound` at preflight. | P3 |
 
+```mermaid
+flowchart TD
+  M["manifest · allow_hosts, env, clock"] --> A{"allowlist shape valid?"}
+  A -->|no| R1["ConnectorAllowlistRejected"]
+  A -->|yes| U{"code reaches only listed access?"}
+  U -->|no| R2["ConnectorUndeclaredAccess"]
+  U -->|yes| B{"every _from binding supplied, on shape?"}
+  B -->|no| R3["ConnectorBindingUnbound"]
+  B -->|yes| SP{"scope probe declared?"}
+  SP -->|no| OPEN["session opens"]
+  SP -->|yes| CALL["call the identity endpoint with the bound credential"]
+  CALL -->|"no granted-scopes header"| R4["ConnectorScopeUnverified"]
+  CALL -->|"scope outside the expectation"| R5["ConnectorScopeExceeded"]
+  CALL -->|"within the expectation"| OPEN
+```
+
 unsettled: Does a community-distributed connector need a signing and transparency layer above the content pin, and who runs the log? owner: connector affects: connector.declare-capability
 
 ## meter
@@ -98,6 +130,29 @@ unsettled: Does a community-distributed connector need a signing and transparenc
 | `connector.meter.grant-unhonorable` | A declared grant on a compiled-in source that bypasses the mediated client raises `ConnectorGrantUnhonorable` at load. | A-connector |
 | `connector.meter.metered-disclosure` | Where the project binds any quota, every compiled-in read records whether it ran metered, the run record states an unmetered read once, and validation warns per pipeline naming the connector. | — |
 | `connector.meter.counting-not-pricing` | The limiter counts requests and prices none. | — |
+
+```mermaid
+sequenceDiagram
+  participant G as guest or compiled-in source
+  participant H as host mediation point
+  participant L as limiter
+  participant V as vendor
+  G->>H: outbound request
+  H->>H: allowlist check, a refused request spends no permit
+  H->>L: POST acquire · quota, class, permits
+  alt granted
+    L-->>H: permits + TTL
+    H->>V: request, one permit spent
+    V-->>H: response + quota-state headers
+    H-->>G: response
+  else denied, bare 429 with Retry-After, or zero permits
+    L-->>H: retry-after
+    H-->>G: synthesized 429
+  else limiter unreachable or unbound
+    H-->>G: ConnectorUnmetered
+  end
+  H->>L: POST report · granted, spent, responses, run id, at-least-once
+```
 
 ## infer
 

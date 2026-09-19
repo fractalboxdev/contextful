@@ -17,6 +17,62 @@ the crossings, the profiles, where a build is deployed, how a published hostname
 its posture, the single-writer operations and the catalog that serializes them, and where
 the engine ends and an application begins.
 
+The system: the parties outside it, eight runtime contracts placed on the two halves, and
+the three crossings joining them; `corpus` governs this text and appears in no process.
+
+```mermaid
+flowchart LR
+  OPER(["operator"])
+  CALLER(["agent · analyst · application"])
+  SRC[("sources")]
+  MODEL(["inference endpoint · OpenAI-compatible HTTP"])
+  BUCKET[("S3-compatible bucket")]
+
+  subgraph SURF["surface · contextful-control profile"]
+    CADENCE["cadence tick · reconciler · dispatch"]
+    CONSOLE["analyst console"]
+  end
+
+  subgraph RUN["run path · contextful-full"]
+    JOURNAL["run · journal · scheduler · cursor commit"]
+    HOST["connector · component host + native connectors"]
+    ALLOW["authority · capability allowlists"]
+  end
+
+  subgraph CROSS["the three crossings"]
+    X1["1 · connector interface world"]
+    X2["2 · columnar parts + manifest"]
+    X3["3 · capability-token format"]
+  end
+
+  subgraph READ["read path · contextful-edge + contextful-full"]
+    FACE["read · query · ranking · memory"]
+    ENF["authority + disclosure · enforcement stack"]
+    STORE["store · parts · manifests · catalog"]
+  end
+
+  ASSURE["assurance · crate-graph gate"]
+
+  OPER --> CADENCE
+  CADENCE -- "dispatch a unit" --> JOURNAL
+  JOURNAL -- "journaled step" --> HOST
+  HOST -- "pull" --> SRC
+  ALLOW -. "mediates" .- HOST
+  HOST --- X1
+  JOURNAL -- "land" --> X2
+  ALLOW --- X3
+  X1 --- READ
+  X2 --> STORE
+  X3 --- ENF
+  CALLER -- "tool protocol · SQL · HTTP" --> FACE
+  CONSOLE --> FACE
+  FACE -- "admission value" --> ENF
+  ENF -- "row path" --> STORE
+  FACE -- "inference egress" --> MODEL
+  STORE <-- "push · pull" --> BUCKET
+  ASSURE -. "checks every edge" .-> CROSS
+```
+
 ## compose
 
 | Clause | Statement | Why |
@@ -42,19 +98,6 @@ the engine ends and an application begins.
 | `topology.compose.memory-substrate` | Synthesized memory's episode, fact, entity and preference tables are ordinary store tables, and its synthesis pipeline is an ordinary run-path workflow on the same journal, cursor and retry machinery. | — |
 | `topology.compose.two-spines` | The run record answers what happened on the write side and the request ledger on the read side. No third surface merges them. | — |
 
-```mermaid
-flowchart LR
-  subgraph RUN["run path"]
-    SCHED["scheduler + journal"] --> HOST["connector host"]
-  end
-  subgraph READ["read path"]
-    STORE["context store"] --> QUERY["query + ranking"]
-  end
-  HOST -- "1 · connector interface world" --- CONN["connector"]
-  HOST -- "2 · parts + manifest" --> STORE
-  QUERY -- "3 · capability tokens" --> HOST
-```
-
 ## package
 
 | Clause | Statement | Why |
@@ -72,6 +115,34 @@ flowchart LR
 | `topology.package.component-host` | A component connector runs where a component host is linked: the full profile and the container or worker shapes built from it. The edge profile runs native connectors. | A-topology |
 | `topology.package.host-missing` | Dispatching a component connector on a profile with no component host raises `ComponentHostMissing`, naming the connector and the profile, with no fallback to a similarly named native source. | A-topology |
 | `topology.package.crdt-leak` | The CRDT library in the resolved dependency graph of the edge or full profile raises `ProfileDependencyLeak`, naming the profile and the path that pulled it. A daemon or replica reads materialized text. | A-topology |
+
+Profiles, the domain crate they share, and the dependency edges the gates raise on.
+
+```mermaid
+flowchart TD
+  CLI["contextful-cli · the contextful binary · wiring per profile"]
+  EDGE["contextful-edge · read replica"]
+  FULL["contextful-full · daemon"]
+  CTRL["contextful-control · control plane"]
+  CORE["contextful-core · domain types + ports · no I/O"]
+  ADAPT["adapter crates"]
+  NATIVE["native connectors · bucket sync · read-only SQL"]
+  DAEMON["engine · scheduler · component host · sidecars · tool server · pg-catalog"]
+  CRDT["CRDT library"]
+  COMP["component connector"]
+
+  CLI -- "build-time feature bundle" --> EDGE & FULL & CTRL
+  EDGE --> NATIVE
+  FULL --> DAEMON
+  CTRL --> CRDT
+  EDGE & FULL & CTRL --> CORE
+  ADAPT -- "implements ports" --> CORE
+  CORE -. "TopologyDependencyInversion" .-x ADAPT
+  EDGE -. "ProfileDependencyLeak" .-x CRDT
+  FULL -. "ProfileDependencyLeak" .-x CRDT
+  EDGE -. "ComponentHostMissing" .-x COMP
+  DAEMON -- "component host" --> COMP
+```
 
 unsettled: Does the columnar interchange crate stay whole in the edge profile or ship slimmed? owner: topology affects: topology.package
 
@@ -91,6 +162,38 @@ unsettled: Does the columnar interchange crate stay whole in the edge profile or
 | `topology.deploy.wall-clock-cap` | A target capping per-invocation wall clock at 15 min hosts neither a first-time backfill nor a component connector, and its target profile records both exclusions. | — |
 | `topology.deploy.parity` | One declaration run on every control-plane target produces byte-identical table parts, compared against the reference target inside each target's object store after a 24 h soak. | A-topology |
 | `topology.deploy.parity-divergence` | A byte difference from the reference output raises `ParityDivergence`, naming the target, the table and the first differing part. | A-topology |
+
+One declaration, a target profile per provider, the two roles, and the parity check
+against the reference target.
+
+```mermaid
+flowchart LR
+  DECL["engine binary + contextful.toml"]
+  TP["target profile · provider primitives per role"]
+  UNSUP["TargetShapeUnsupported"]
+  CP["control-plane target · cadence tick · reconciler · durable orchestrator · single-writer catalog"]
+  WK["worker target · accept job · run to completion · report"]
+  FN["function-class target · edge profile only"]
+  CAP["15 min wall-clock cap · no first-time backfill · no component connector"]
+  REF["reference target · one process · ./.contextful/"]
+  CMD["stateless command"]
+  DMN["daemon · SIGHUP reload"]
+  CLU["cluster of daemons · one shared catalog"]
+  PAR["ParityDivergence"]
+
+  DECL --> TP
+  TP -. "claims a missing shape" .-> UNSUP
+  TP --> CP
+  TP --> WK
+  CP -- "dispatch" --> WK
+  WK -- "report" --> CP
+  TP --> FN
+  FN -- "execution runs on" --> WK
+  CAP -. "recorded in" .-> TP
+  DECL -- "self-hosted shapes" --> REF & CMD & DMN & CLU
+  CP -- "24 h soak · byte compare of parts" --> REF
+  REF -. "first differing part" .-> PAR
+```
 
 unsettled: Which role hosts heavy compute on a provider exposing neither a container primitive nor a long-running function? owner: topology affects: topology.deploy
 
@@ -116,6 +219,40 @@ unsettled: Which role hosts heavy compute on a provider exposing neither a conta
 | `topology.publish-hostname.container-readiness` | A retrieval container reaches readiness within 8 s of a cold start, before its snapshot-set hydration completes. | — |
 | `topology.publish-hostname.keep-warm` | The reconciler keeps a retrieval container warm for each deployment with active traffic. A deployment declining keep-warm takes a cold first query. | — |
 
+The deploy-time posture probe, then a request through the two hops.
+
+```mermaid
+sequenceDiagram
+  participant D as deploy
+  participant C as caller
+  participant H as routing hop
+  participant R as retrieval container
+  participant O as object storage
+
+  D->>H: anonymous GET /
+  alt answer matches the descriptor gate
+    H-->>D: access 302 · adminToken non-5xx · public 200
+  else outside the gate or unreachable
+    H-->>D: HostnamePostureMismatch, deploy fails
+  end
+
+  C->>H: request + credential
+  alt no store configuration
+    H-->>C: 503 GatewayUnconfigured
+  else configured
+    H->>H: verify credential, route, cache
+    H->>R: same credential bytes, unchanged
+    R->>R: re-verify, enforce grants, run query
+    alt warming
+      R-->>C: 503 + Retry-After, health reports warming
+    else ready
+      R-->>C: rows from the local snapshot set
+    end
+  end
+  Note over R: ready within 8 s of a cold start
+  O-->>R: snapshot-set hydration completes after readiness
+```
+
 unsettled: Does the routing hop hold a short result cache of its own, keyed on the whole enforcement subject? owner: topology affects: topology.publish-hostname
 
 ## coordinate
@@ -137,6 +274,35 @@ unsettled: Does the routing hop hold a short result cache of its own, keyed on t
 | `topology.coordinate.weak-backend` | A catalog backend whose conditional update is not linearizable refuses at open with {{surface.apply.weak-conditional-backend}}. | A-store |
 | `topology.coordinate.cluster-availability` | Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons. | — |
 | `topology.coordinate.air-gap` | Single-node and edge deployments reach no process outside themselves for coordination, and run air-gapped with only their sources reachable. | — |
+
+Every single-writer operation reduces to one linearizable conditional write behind the
+`Catalog` port.
+
+```mermaid
+flowchart LR
+  subgraph OPS["single-writer operations"]
+    LROW["lease row · fence plus one"]
+    CUR["cursor compare-and-swap"]
+    PTR["store · pointer commit"]
+    LA["store · lease acquire"]
+    CL["store · commit log"]
+    MAN["store · bucket manifest CAS"]
+    APPLY["surface · apply claims a version"]
+  end
+  PRIM["linearizable conditional write"]
+  PORT["Catalog port"]
+  LOCAL["local catalog file · single node"]
+  PG["Postgres via pg-catalog · self-hosted cluster"]
+  SQLITE["per-object SQLite · managed edge"]
+  MPG["managed Postgres · managed cloud"]
+  WEAK["ConditionalWriteUnsupported at open"]
+  STALE["LeaseFenced"]
+
+  OPS --> PRIM --> PORT
+  PORT --> LOCAL & PG & SQLITE & MPG
+  PORT -. "update not linearizable" .-> WEAK
+  LROW -. "fenced commit matches nothing" .-> STALE
+```
 
 unsettled: Is a self-contained clustered catalog worth building behind the `Catalog` port for an operator wanting clustered availability without Postgres? owner: topology affects: topology.coordinate
 
