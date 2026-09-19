@@ -20202,7 +20202,7 @@
       "operation": "test",
       "subject": "refactor-trailer",
       "kind": "behavior",
-      "statement": "A commit range carrying the trailer `Test-First: refactor` is exempt from {{assurance.test.test-first}}, and the workspace stage alone holds it.",
+      "statement": "A commit carrying the trailer `Test-First: refactor` exempts the source it alters from {{assurance.test.test-first}}; the rest of the range stays held, and the workspace stage alone holds that commit.",
       "why": "because a behavior-preserving change has no failing test to write, and the existing suite is its specification",
       "file": "spec/81-engineering.md",
       "line": 53

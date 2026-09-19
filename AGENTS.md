@@ -60,7 +60,7 @@ the gate enforces it.
 3. **Green.** Implement until `cargo test --workspace` passes, then pin the clause to the
    test in `spec/pins.toml` and run `contextful-spec pins` to raise the floor. A pin to
    an `#[ignore]`d test computes `broken`.
-4. **Refactor.** A behavior-preserving change carries the commit trailer
+4. **Refactor.** A behavior-preserving commit carries the commit trailer
    `Test-First: refactor` and answers to the existing suite alone.
 5. **Close the milestone** by removing the acceptance test's `#[ignore]`; status reports
    it `passing`.

@@ -64,3 +64,16 @@ fn a_refactor_trailer_exempts_the_range() {
     let o = r.gate(&["--stage", "test-first", "--base", &base]);
     assert!(o.status.success(), "{}", stderr(&o));
 }
+
+#[test]
+fn a_refactor_commit_does_not_exempt_the_rest_of_the_range() {
+    let r = Repo::init();
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 {\n    x + x\n}\n");
+    r.commit("double by addition\n\nTest-First: refactor");
+    r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 {\n    x + x\n}\n\npub fn triple(x: i32) -> i32 {\n    x * 3\n}\n");
+    r.commit("triple, untested");
+    let o = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(!o.status.success(), "an untested commit rode on a refactor trailer");
+    assert!(stderr(&o).contains("TestNotFirst"), "{}", stderr(&o));
+}

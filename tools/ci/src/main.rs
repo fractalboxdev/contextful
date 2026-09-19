@@ -137,15 +137,9 @@ fn workspace_packages(root: &Path) -> Result<Vec<String>> {
 
 fn test_first(root: &Path, base: &str) -> Result<()> {
     let range = format!("{base}...HEAD");
-    let changed = git(&["diff", "--name-only", "--diff-filter=ACDMR", &range])?;
-    let sources: Vec<&str> = changed.lines().filter(|p| is_source(p)).collect();
+    let sources = sources_outside_refactors(base)?;
     if sources.is_empty() {
-        eprintln!("test-first: no Rust source under crates/ or tools/ changed");
-        return Ok(());
-    }
-    let trailers = git(&["log", "--format=%(trailers:key=Test-First,valueonly)", &format!("{base}..HEAD")])?;
-    if trailers.lines().any(|l| l.trim() == REFACTOR_TRAILER) {
-        eprintln!("test-first: `Test-First: {REFACTOR_TRAILER}` — the workspace stage holds this range");
+        eprintln!("test-first: no Rust source under crates/ or tools/ changed outside `Test-First: {REFACTOR_TRAILER}` commits");
         return Ok(());
     }
     let added = git(&["diff", "--name-only", "--diff-filter=ACMR", &range])?;
@@ -207,6 +201,24 @@ fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str]) -> 
         }
     }
     Ok(red)
+}
+
+/// Source files changed by the range's commits that do not carry `Test-First: refactor`.
+fn sources_outside_refactors(base: &str) -> Result<Vec<String>> {
+    let mut sources: Vec<String> = Vec::new();
+    for commit in git(&["rev-list", &format!("{base}..HEAD")])?.lines() {
+        let trailer = git(&["log", "-1", "--format=%(trailers:key=Test-First,valueonly)", commit])?;
+        if trailer.lines().any(|l| l.trim() == REFACTOR_TRAILER) {
+            continue;
+        }
+        let files = git(&["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", commit])?;
+        for p in files.lines().filter(|p| is_source(p)) {
+            if !sources.iter().any(|s| s == p) {
+                sources.push(p.to_string());
+            }
+        }
+    }
+    Ok(sources)
 }
 
 fn merge_base(base: &str) -> Result<String> {
