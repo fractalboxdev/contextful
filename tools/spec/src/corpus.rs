@@ -347,11 +347,11 @@ impl Corpus {
             docs.push(parse(&rel, Role::Contract, &text));
         }
         let mut recs: Vec<String> = Vec::new();
-        if let Ok(rd) = std::fs::read_dir(spec.join("decisions")) {
+        if let Ok(rd) = std::fs::read_dir(spec.join("adr")) {
             for e in rd {
                 let p = e?.path();
                 if p.extension().map(|x| x == "md").unwrap_or(false) {
-                    recs.push(format!("spec/decisions/{}", p.file_name().unwrap().to_string_lossy()));
+                    recs.push(format!("spec/adr/{}", p.file_name().unwrap().to_string_lossy()));
                 }
             }
         }

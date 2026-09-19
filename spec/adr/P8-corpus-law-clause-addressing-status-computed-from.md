@@ -13,7 +13,7 @@ The corpus is data a checker reads, and every rule it states is one the checker 
 - A normative sentence is one clause row addressed `<contract>.<operation>.<subject>`. Contract and operation resolve against the registry; the kind is computed from the error and bound entries the fragment assigns. An id changes only when a fact changes obligor.
 - A fact has one home, and another statement reaches it by `{{id}}`.
 - `spec/status.md` is generated from `spec/pins.toml`: an unpinned clause is committed, a resolving pin is performed, and a pin that resolves to nothing is broken and reds the gate. No authored file states build state.
-- Rationale lives in `P` and `D` records under `spec/decisions/`. A contract row's Why cell cites a record or carries a short deciding criterion; nothing else in a contract argues.
+- Rationale lives in `P` and `D` records under `spec/adr/`. A contract row's Why cell cites a record or carries a short deciding criterion; nothing else in a contract argues.
 - An unknown is one inline line where it applies, naming a question, an owner and an operation.
 - `corpus.rationale` and the other corpus operations are enforced by one command, which the gate and a local run invoke identically.
 

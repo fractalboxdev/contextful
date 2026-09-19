@@ -12,7 +12,7 @@ file before editing anything under `spec/`.
 - A fact has one home. The only second appearance is `{{<clause id>}}`. An error
   identifier and a numeric bound each belong to exactly one clause.
 - A clause's Why cell carries a record id or a `because` of at most 30 words.
-  Records under [`spec/decisions/`](./spec/decisions/) — eight principles (`P1`–`P8`)
+  Records under [`spec/adr/`](./spec/adr/) — eight principles (`P1`–`P8`)
   and one record per decision several clauses share (`D01`…) — hold the options
   and costs, in at most 400 words each.
 - No spec file says whether something is built, and none carries a date. Build
@@ -44,7 +44,7 @@ cargo run -q -p contextful-spec -- extract   # regenerate spec/spec.lock.json
 ## Test first, acceptance first
 
 Every change to Rust source under `crates/` or `tools/` starts from a failing test.
-[`D54`](./spec/decisions/D54-test-first-and-acceptance-first.md) records the decision;
+[`D54`](./spec/adr/D54-test-first-and-acceptance-first.md) records the decision;
 the gate enforces it.
 
 1. **Acceptance first.** Before pinning the first clause of a roadmap milestone, add the

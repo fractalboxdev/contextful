@@ -24,7 +24,7 @@ spec/
   NN-*.md               one or more files per contract, listed in terms/contract.toml
   terms/                contract.toml, unit.toml, wire.toml, refused-names.toml,
                         and one <contract>.toml fragment per contract
-  decisions/            P<n>-<slug>.md principles, D<nn>-<slug>.md decisions
+  adr/                  P<n>-<slug>.md principles, D<nn>-<slug>.md decisions
   pins.toml             clause id -> demonstrating artifact, plus the coverage floor
   roadmap.md            milestone -> operation set
   status.md             generated

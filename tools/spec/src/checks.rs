@@ -25,7 +25,7 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
 static SEGMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9-]+$").unwrap());
 static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|D[0-9]{2})$").unwrap());
 static RECORD_FILE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^spec/decisions/(P[0-9]+|D[0-9]{2})-[a-z0-9-]+\.md$").unwrap());
+    LazyLock::new(|| Regex::new(r"^spec/adr/(P[0-9]+|D[0-9]{2})-[a-z0-9-]+\.md$").unwrap());
 static RAISES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"raises? `([A-Za-z0-9_]+)`").unwrap());
 static NUM_UNIT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|[^A-Za-z0-9_.])([0-9][0-9_,]*(?:\.[0-9]+)?)\s?([A-Za-z%]+)\b").unwrap());
