@@ -98,6 +98,12 @@ reports as its own check-run on the pull request:
 the remote check invoke the identical command; `contextful-ci`'s suite fails when the
 workflow's stage matrix and the subcommand's stage list differ.
 
+The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
+under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays
+untracked. A deliberate restatement of an engine rule carries `mirrors: <clause id>` at
+its site, and `contextful-ci mirrors` resolves each one. The pull-request template asks
+the four boundary questions.
+
 ## Engineering conventions
 
 [`spec/81-engineering.md`](./spec/81-engineering.md) is the sole home of how we

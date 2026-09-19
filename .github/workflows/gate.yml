@@ -5,7 +5,7 @@
 # verdict as the check-run `flare-dispatch/check:<stage>`. This job goes green once
 # the dispatch is accepted; branch protection requires the four check-runs:
 #
-#   flare-dispatch/check:schema      contextful-spec lint
+#   flare-dispatch/check:schema      secrets of record, mirrors: annotations, contextful-spec lint
 #   flare-dispatch/check:test-first  a test under tests/ fails against the base source
 #   flare-dispatch/check:workspace   cargo test --workspace, acceptance excluded
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
