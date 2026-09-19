@@ -36,19 +36,20 @@ The design is written first and the implementation is built against it.
 | --- | --- |
 | [`spec/00-corpus.md`](./spec/00-corpus.md) | The grammar the corpus obeys — how a fact is addressed, where it lives, and what a file may not contain |
 | [`spec/01-topology.md`](./spec/01-topology.md) | The system: its parties, its contracts, its build profiles |
-| [`spec/`](./spec/) | Twenty contract files, one per subject area, each the sole home of what it owns |
-| [`spec/decisions/`](./spec/decisions/) | One record per decision: context, options, the criterion that decided it, the cost accepted |
+| [`spec/`](./spec/) | Ten contracts across nineteen files, each the sole home of what it owns |
+| [`spec/decisions/`](./spec/decisions/) | Eight principles and one record per shared decision: options, the criterion that decided it, the cost accepted |
 | [`spec/status.md`](./spec/status.md) | Generated. Which clauses the tree demonstrates, and which it commits to |
-| [`spec/roadmap.md`](./spec/roadmap.md) | The milestone order, each naming the clauses it closes |
+| [`spec/roadmap.md`](./spec/roadmap.md) | The milestone order, each naming the operations it closes |
+| [`references/`](./references/) | The literature and practice the design answers to, indexed by operation |
 
-A contract file states behavior and never argues for it; an argument lives in a
-decision record. No spec file says whether something is built — that is computed
-from pins that resolve against the source tree, so a rename reds the gate where
-a forgotten edit would not.
+A contract file states behavior and never argues for it; a clause carries its reason
+in one short cell or points at a record. No spec file says whether something is
+built — that is computed from pins that resolve against the source tree, so a rename
+reds the gate where a forgotten edit would not.
 
 ```sh
-contextful spec lint     # the corpus rules
-contextful spec state    # regenerate spec/status.md from spec/pins.toml
+cargo run -q -p contextful-spec -- lint    # the corpus rules
+cargo run -q -p contextful-spec -- state   # regenerate spec/status.md from spec/pins.toml
 ```
 
 ## License

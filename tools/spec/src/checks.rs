@@ -1,1709 +1,816 @@
-//! One function per rule the corpus law states. Each reports
-//! `<file>:<line>  <ErrorIdentifier>  <message>`.
-//!
-//! Where a clause names no error identifier of its own, the code reported is the
-//! nearest registered one, or a `Spec…` name formed from the clause's subject; the
-//! comment above each such check names the clause it implements.
+//! Every rule `spec/00-corpus.md` states, one function per operation of the
+//! `corpus` contract.
 
 use crate::corpus::*;
+use crate::util::*;
 use regex::Regex;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::LazyLock;
 
-pub const KINDS: [&str; 6] = [
-    "invariant", "refusal", "limit", "shape", "interface", "workflow",
-];
-
-pub const MODALS: [&str; 8] = [
-    "must", "never", "refuses", "is refused", "at most", "at least", "exactly", "always",
-];
-
-pub const CHECKS: [&str; 26] = [
-    "ids", "owns", "anatomy", "titles", "size", "terms", "aliases", "foreign", "literals",
-    "limits", "errors", "shingles", "prose", "links", "rationale", "citations", "adr-orphans",
-    "adr-shape", "tense", "mood", "unsettled", "banned", "paths", "diagrams", "pins",
-    "roadmap",
-];
-
-fn word_re(words: &[&str]) -> Regex {
-    let alts: Vec<String> = words.iter().map(|w| regex::escape(w)).collect();
-    Regex::new(&format!(r"(?i)\b(?:{})\b", alts.join("|"))).unwrap()
-}
-
-/// Modal occurrences in a line, ignoring backticked spans.
-fn modal_hits(s: &str) -> Vec<(usize, String)> {
-    let plain = without_ticks(s);
-    let re = word_re(&MODALS);
-    re.find_iter(&plain)
-        .map(|m| (m.start(), m.as_str().to_string()))
-        .collect()
-}
-
-fn has_numeral(s: &str) -> bool {
-    Regex::new(r"\d").unwrap().is_match(s)
-}
-
-// ---------------------------------------------------------------- 1. ids
-
-pub fn ids(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let seg = Regex::new(r"^[a-z0-9-]+$").unwrap();
-    let mut seen: HashMap<String, (String, usize)> = HashMap::new();
-
-    for d in c.docs_for("ids") {
-        let file_contract = d.contract.clone().unwrap_or_default();
-        for cl in &d.clauses {
-            let segs: Vec<&str> = cl.id.split('.').collect();
-            if segs.len() != 4 || segs.iter().any(|s| !seg.is_match(s)) {
-                out.push(Finding::new(
-                    "ids", &cl.file, cl.line, "SpecClauseIdMalformed",
-                    format!("`{}` is not four `[a-z0-9-]+` segments", cl.id),
-                ));
-                continue;
-            }
-            if cl.contract != file_contract {
-                out.push(Finding::new(
-                    "ids", &cl.file, cl.line, "SpecOwnsConflict",
-                    format!(
-                        "first segment `{}` is not the file's contract `{}`",
-                        cl.contract, file_contract
-                    ),
-                ));
-            }
-            if !KINDS.contains(&cl.kind.as_str()) {
-                out.push(Finding::new(
-                    "ids", &cl.file, cl.line, "SpecClauseIdMalformed",
-                    format!("third segment `{}` is not one of {}", cl.kind, KINDS.join("/")),
-                ));
-            }
-            let key = format!("{}.{}", cl.contract, cl.operation);
-            if !c.reg.operations.contains_key(&key) {
-                out.push(Finding::new(
-                    "ids", &cl.file, cl.line, "SpecOwnsConflict",
-                    format!("`{}` is absent from operation.toml", key),
-                ));
-            }
-            if c.reg.retired_ids.contains(&cl.id) {
-                out.push(Finding::new(
-                    "ids", &cl.file, cl.line, "SpecRetiredId",
-                    format!("`{}` is listed under [retired]", cl.id),
-                ));
-            }
-            match seen.get(&cl.id) {
-                Some((f, l)) => out.push(Finding::new(
-                    "ids", &cl.file, cl.line, "SpecDuplicateId",
-                    format!("`{}` also extracts from {}:{}", cl.id, f, l),
-                )),
-                None => {
-                    seen.insert(cl.id.clone(), (cl.file.clone(), cl.line));
-                }
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 2. owns
-
-pub fn owns(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let docs = c.docs_for("owns");
-    // operation key -> the files claiming it
-    let mut claims: BTreeMap<String, Vec<(String, usize)>> = BTreeMap::new();
-
-    for d in &docs {
-        let contract = d.contract.clone().unwrap_or_default();
-        for o in &d.owns {
-            let key = format!("{}.{}", contract, o);
-            let line = d
-                .lines
-                .iter()
-                .find(|l| l.is_front_matter && l.raw.trim() == format!("- {}", o))
-                .map(|l| l.no)
-                .unwrap_or(1);
-            if !c.reg.operations.contains_key(&key) {
-                out.push(Finding::new(
-                    "owns", &d.rel, line, "SpecOwnsConflict",
-                    format!("front-matter `owns` entry `{}` has no operation.toml key", key),
-                ));
-                continue;
-            }
-            claims.entry(key).or_default().push((d.rel.clone(), line));
-        }
-    }
-
-    for (key, who) in &claims {
-        if who.len() > 1 {
-            for (f, l) in who {
-                out.push(Finding::new(
-                    "owns", f, *l, "SpecOwnsConflict",
-                    format!(
-                        "`{}` is claimed by {} files of one contract: {}",
-                        key,
-                        who.len(),
-                        who.iter().map(|(f, _)| f.as_str()).collect::<Vec<_>>().join(", ")
-                    ),
-                ));
-            }
-        }
-    }
-
-    // An operation the registry carries that no file of its contract claims.
-    for (key, op) in &c.reg.operations {
-        if claims.contains_key(key) {
-            continue;
-        }
-        let file = op.file.clone().unwrap_or_else(|| "spec/terms/operation.toml".into());
-        out.push(Finding::new(
-            "owns", &file, 1, "SpecOwnsConflict",
-            format!("operation `{}` is claimed by no file's `owns` list", key),
-        ));
-    }
-
-    // A clause addressing an operation its own file does not own.
-    for d in &docs {
-        for cl in &d.clauses {
-            let key = format!("{}.{}", cl.contract, cl.operation);
-            if !c.reg.operations.contains_key(&key) {
-                continue;
-            }
-            if !d.owns.iter().any(|o| o == &cl.operation) {
-                out.push(Finding::new(
-                    "owns", &cl.file, cl.line, "SpecOwnsConflict",
-                    format!("`{}` addresses `{}`, which this file does not own", cl.id, key),
-                ));
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 3. anatomy
-
-/// `corpus.anatomy.shape.file-headings` names no error identifier, so the heading
-/// arm reports `SpecFileAnatomy`; the unaddressed-operation arm reports the
-/// `SpecOwnsConflict` that `corpus.anatomy.refusal.unowned-operation` names.
-pub fn anatomy(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let expected = ["Parties", "Operations", "Clauses", "Shapes", "Unsettled"];
-    for d in c.docs_for("anatomy") {
-        if d.contract.is_none() {
-            out.push(Finding::new(
-                "anatomy", &d.rel, 1, "SpecFileAnatomy",
-                "front matter carries no `contract`".into(),
-            ));
-        }
-        if d.owns.is_empty() {
-            out.push(Finding::new(
-                "anatomy", &d.rel, 1, "SpecFileAnatomy",
-                "front matter carries no `owns` list".into(),
-            ));
-        }
-        // Collapse the run of `## Clauses — <op>` headings into one Clauses section.
-        let mut seq: Vec<(usize, String)> = Vec::new();
-        for (no, level, text) in &d.headings {
-            if *level != 2 {
-                continue;
-            }
-            let name = if text.starts_with("Clauses") { "Clauses".to_string() } else { text.clone() };
-            if seq.last().map(|(_, n)| n == &name).unwrap_or(false) {
-                continue;
-            }
-            seq.push((*no, name));
-        }
-        let got: Vec<&str> = seq.iter().map(|(_, n)| n.as_str()).collect();
-        if got != expected {
-            let line = seq.first().map(|(n, _)| *n).unwrap_or(1);
-            out.push(Finding::new(
-                "anatomy", &d.rel, line, "SpecFileAnatomy",
-                format!(
-                    "top-level headings are [{}]; the law fixes [{}]",
-                    got.join(", "),
-                    expected.join(", ")
-                ),
-            ));
-        }
-        // Every operation the Operations table lists is addressed by a clause.
-        let listed = operations_table(d);
-        let addressed: HashSet<&str> = d.clauses.iter().map(|cl| cl.operation.as_str()).collect();
-        for (line, op) in listed {
-            if !addressed.contains(op.as_str()) {
-                out.push(Finding::new(
-                    "anatomy", &d.rel, line, "SpecOwnsConflict",
-                    format!("operation `{}` is listed under Operations and addressed by no clause", op),
-                ));
-            }
-        }
-    }
-    out
-}
-
-fn operations_table(d: &Doc) -> Vec<(usize, String)> {
-    let mut out = Vec::new();
-    let start = d
-        .headings
-        .iter()
-        .find(|(_, lvl, t)| *lvl == 2 && t == "Operations")
-        .map(|(n, _, _)| *n);
-    let start = match start {
-        Some(s) => s,
-        None => return out,
-    };
-    for l in d.lines.iter().filter(|l| l.no > start) {
-        if l.raw.starts_with("## ") {
-            break;
-        }
-        if !l.is_table_row {
-            continue;
-        }
-        let cells = split_cells(&l.raw);
-        if cells.is_empty() {
-            continue;
-        }
-        let first = cells[0].trim();
-        if first.starts_with('`') && first.ends_with('`') {
-            out.push((l.no, first.trim_matches('`').to_string()));
-        }
-    }
-    out
-}
-
-fn split_cells(s: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    let mut tick = false;
-    for ch in s.trim().chars() {
-        match ch {
-            '`' => {
-                tick = !tick;
-                cur.push(ch);
-            }
-            '|' if !tick => {
-                out.push(cur.trim().to_string());
-                cur.clear();
-            }
-            _ => cur.push(ch),
-        }
-    }
-    out.push(cur.trim().to_string());
-    out.retain(|x| !x.is_empty());
-    out
-}
-
-// ---------------------------------------------------------------- 4. titles
-
-pub fn titles(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    for d in c.docs_for("titles") {
-        let h1: Vec<&(usize, usize, String)> =
-            d.headings.iter().filter(|(_, lvl, _)| *lvl == 1).collect();
-        if h1.len() != 1 {
-            out.push(Finding::new(
-                "titles", &d.rel, h1.first().map(|h| h.0).unwrap_or(1), "SpecTitleMismatch",
-                format!("the file carries {} `# ` headings; the law fixes one", h1.len()),
-            ));
-            continue;
-        }
-        let (line, _, text) = h1[0];
-        match c.contract_of_path(&d.rel) {
-            None => out.push(Finding::new(
-                "titles", &d.rel, *line, "SpecTitleMismatch",
-                "no contract.toml entry lists this path".into(),
-            )),
-            Some(ce) => {
-                let idx = ce.files.iter().position(|f| f == &d.rel).unwrap();
-                let want = ce.titles.get(idx).unwrap_or(&ce.title);
-                if want != text {
-                    out.push(Finding::new(
-                        "titles", &d.rel, *line, "SpecTitleMismatch",
-                        format!("title is \"{}\"; contract.toml declares \"{}\"", text, want),
-                    ));
-                }
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 5. size
-
-pub fn size(c: &Corpus) -> Vec<Finding> {
-    let limit = c.scope.check_int("size", "limit").unwrap_or(900) as usize;
-    let mut out = Vec::new();
-    for d in c.docs_for("size") {
-        if d.line_count > limit {
-            let ops: Vec<&str> = d.owns.iter().map(|s| s.as_str()).collect();
-            out.push(Finding::new(
-                "size", &d.rel, d.line_count, "SpecFileTooLong",
-                format!(
-                    "{} lines against a {} line ceiling; the operations that would relieve it are {}",
-                    d.line_count, limit, ops.join(", ")
-                ),
-            ));
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 6. terms
-
-/// `corpus.registry.invariant.vocabulary-is-registered`. The narrowest reading that
-/// keeps false positives down: a bare identifier-shaped token, backticked, in two or
-/// more *contract* files, that is not already a registered contract, operation, unit,
-/// error, named bound, clause id, record number or file path.
-pub fn terms(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let mut seen: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
-    let ident = Regex::new(r"^[A-Za-z_][A-Za-z0-9_.\-]*$").unwrap();
-    let numeric = Regex::new(r"^[0-9.]+$").unwrap();
-
-    for d in c.docs_for("terms") {
-        if d.role != "contract" {
-            continue;
-        }
-        for l in &d.lines {
-            if l.authored.is_empty() {
-                continue;
-            }
-            for (_, tok) in tick_spans(&l.authored) {
-                let t = tok.trim();
-                if t.is_empty() || !ident.is_match(t) || numeric.is_match(t) {
-                    continue;
-                }
-                if t.contains('/') || t.ends_with(".md") || t.ends_with(".toml") || t.ends_with(".json") {
-                    continue;
-                }
-                if t.split('.').count() == 4 {
-                    continue; // a clause id
-                }
-                if c.reg.terms.contains_key(t)
-                    || c.reg.errors.contains_key(t)
-                    || c.reg.limits.contains_key(t)
-                    || c.reg.contracts.contains_key(t)
-                    || c.reg.operations.contains_key(t)
-                    || c.reg.unit_of(t).is_some()
-                {
-                    continue;
-                }
-                // `<contract>.<operation>` and bare operation spellings.
-                if c.reg.operations.values().any(|o| o.operation == t) {
-                    continue;
-                }
-                seen.entry(t.to_string())
-                    .or_default()
-                    .entry(d.rel.clone())
-                    .or_insert(l.no);
-            }
-        }
-    }
-
-    for (tok, files) in seen {
-        if files.len() < 2 {
-            continue;
-        }
-        let (file, line) = files.iter().next().map(|(f, l)| (f.clone(), *l)).unwrap();
-        let owner = c
-            .contract_of_path(&file)
-            .map(|x| x.name.clone())
-            .unwrap_or_else(|| "TODO".into());
-        out.push(Finding::new(
-            "terms", &file, line, "SpecUnregisteredTerm",
-            format!(
-                "`{}` appears in {} contract files with no [term] entry — add: {} = {{ gloss = \"TODO\", owner = \"{}\", resolves = \"concept\" }}",
-                tok, files.len(), tok, owner
-            ),
-        ));
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 7. aliases
-
-/// `corpus.registry.refusal.alias-in-a-statement`. A registered alias is often an
-/// ordinary English word (`grant`, `render`, `pin`), so the alias arm fires only where
-/// the alias is used *as a term* — backticked — and is not itself a canonical spelling.
-pub fn aliases(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let mut alias_of: HashMap<String, String> = HashMap::new();
-    for (key, op) in &c.reg.operations {
-        for a in &op.aliases {
-            alias_of.entry(a.to_ascii_lowercase()).or_insert(key.clone());
-        }
-    }
-    for (name, t) in &c.reg.terms {
-        for a in &t.aliases {
-            alias_of.entry(a.to_ascii_lowercase()).or_insert(name.clone());
-        }
-    }
-    // A unit alias (`bytes`, `MB`) is a unit spelling only beside a numeral; standing
-    // alone in a code span it is a type name, so it is held separately.
-    let mut unit_alias_of: HashMap<String, String> = HashMap::new();
-    for (name, u) in &c.reg.units {
-        for a in &u.aliases {
-            unit_alias_of.entry(a.to_ascii_lowercase()).or_insert(name.clone());
-        }
-    }
-    let canonical: HashSet<String> = c
-        .reg
-        .terms
-        .keys()
-        .chain(c.reg.errors.keys())
-        .chain(c.reg.units.keys())
-        .chain(c.reg.limits.keys())
-        .chain(c.reg.contracts.keys())
-        .map(|s| s.to_ascii_lowercase())
-        .chain(c.reg.operations.values().map(|o| o.operation.to_ascii_lowercase()))
-        .collect();
-
-    for d in c.docs_for("aliases") {
-        for cl in &d.clauses {
-            let plain = without_ticks(&cl.statement);
-            for (uni, canon) in &unit_alias_of {
-                // Case-sensitive: `mib` is a refused alias of `MiB`, and a
-                // case-folding match would read every correct `MiB` as its own alias.
-                let re = Regex::new(&format!(r"\b\d+(?:\.\d+)?\s*{}\b", regex::escape(uni)))
-                    .unwrap();
-                if re.is_match(&plain) {
-                    out.push(Finding::new(
-                        "aliases", &cl.file, cl.line, "SpecAliasUsed",
-                        format!("the unit is spelled `{}`; the canonical spelling is `{}`", uni, canon),
-                    ));
-                }
-            }
-            for (_, tok) in tick_spans(&cl.statement) {
-                let low = tok.trim().to_ascii_lowercase();
-                if canonical.contains(&low) {
-                    continue;
-                }
-                if let Some(canon) = alias_of.get(&low) {
-                    out.push(Finding::new(
-                        "aliases", &cl.file, cl.line, "SpecAliasUsed",
-                        format!("`{}` is a registered alias; the canonical spelling is `{}`", tok.trim(), canon),
-                    ));
-                }
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 8. foreign
-
-pub fn foreign(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let contracts: HashSet<&str> = c.reg.contracts.keys().map(|s| s.as_str()).collect();
-    let status = Regex::new(r"\b(?:HTTP\s+)?([45][0-9][0-9])\b").unwrap();
-
-    for d in c.docs_for("foreign") {
-        for cl in &d.clauses {
-            // Arm (a) — the subject segment names a term another contract owns.
-            if let Some(t) = c.reg.terms.get(&cl.subject) {
-                if !t.owner.is_empty() && t.owner != cl.contract && contracts.contains(t.owner.as_str()) {
-                    out.push(Finding::new(
-                        "foreign", &cl.file, cl.line, "SpecForeignAssertion",
-                        format!("subject segment `{}` is a term `{}` owns", cl.subject, t.owner),
-                    ));
-                }
-            }
-
-            let stmt = &cl.statement;
-            let spans = tick_spans(stmt);
-            let foreign_terms: Vec<(usize, String, String)> = spans
-                .iter()
-                .filter_map(|(at, tok)| {
-                    c.reg.terms.get(tok.trim()).and_then(|t| {
-                        if !t.owner.is_empty()
-                            && t.owner != cl.contract
-                            && contracts.contains(t.owner.as_str())
-                        {
-                            Some((*at, tok.trim().to_string(), t.owner.clone()))
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .collect();
-
-            // Arm (b) — the registered term nearest before the statement's modal.
-            if let Some((mpos, modal)) = modal_hits(stmt).into_iter().next() {
-                let nearest = spans
-                    .iter()
-                    .filter(|(at, _)| *at < mpos)
-                    .filter(|(_, tok)| c.reg.terms.contains_key(tok.trim()))
-                    .last();
-                if let Some((_, tok)) = nearest {
-                    let t = &c.reg.terms[tok.trim()];
-                    if !t.owner.is_empty() && t.owner != cl.contract && contracts.contains(t.owner.as_str()) {
-                        out.push(Finding::new(
-                            "foreign", &cl.file, cl.line, "SpecForeignAssertion",
-                            format!(
-                                "the term nearest before \"{}\" is `{}`, which `{}` owns",
-                                modal, tok.trim(), t.owner
-                            ),
-                        ));
-                    }
-                }
-            }
-
-            // Arm (c) — a foreign term sharing the statement with a bound, an error
-            // identifier or a status code this clause does not own.
-            if let Some((_, tok, owner)) = foreign_terms.first() {
-                let mut companion = None;
-                if let Some(u) = numeral_unit_pairs(c, stmt).first() {
-                    companion = Some(format!("the bound {} {}", u.0, u.1));
-                }
-                if companion.is_none() {
-                    for (_, t) in &spans {
-                        if let Some(e) = c.reg.errors.get(t.trim()) {
-                            if e.owner != cl.contract {
-                                companion = Some(format!("the error identifier `{}`", t.trim()));
-                                break;
-                            }
-                        }
-                    }
-                }
-                if companion.is_none() {
-                    for (_, t) in &spans {
-                        if let Some(m) = status.captures(t.trim()) {
-                            companion = Some(format!("the status code {}", &m[1]));
-                            break;
-                        }
-                    }
-                }
-                if let Some(comp) = companion {
-                    out.push(Finding::new(
-                        "foreign", &cl.file, cl.line, "SpecForeignAssertion",
-                        format!("`{}`, which `{}` owns, shares the statement with {}", tok, owner, comp),
-                    ));
-                }
-            }
-        }
-    }
-    out
-}
-
-/// The family two unit tokens have to share before their values compare.
-fn family(unit: &str) -> &'static str {
-    match unit {
-        "B" | "KiB" | "MiB" | "GiB" => "bytes",
-        "ms" | "s" | "min" | "h" | "d" => "time",
-        _ => "other",
-    }
-}
-
-/// A value in its unit family's base unit, so "64 KiB" and 65536 B compare equal.
-fn normalize(v: f64, unit: &str) -> Option<f64> {
-    let f = match unit {
-        "B" => 1.0,
-        "KiB" => 1024.0,
-        "MiB" => 1024.0 * 1024.0,
-        "GiB" => 1024.0 * 1024.0 * 1024.0,
-        "ms" => 1.0,
-        "s" => 1000.0,
-        "min" => 60_000.0,
-        "h" => 3_600_000.0,
-        "d" => 86_400_000.0,
-        _ => return None,
-    };
-    Some(v * f)
-}
-
-/// Numeral-and-unit pairs in a statement, reading past backticked spans.
-fn numeral_unit_pairs(c: &Corpus, stmt: &str) -> Vec<(String, String)> {
-    let plain = without_ticks(stmt);
-    let re = Regex::new(r"(\d+(?:\.\d+)?)\s*(%|[A-Za-z]+)").unwrap();
-    let mut out = Vec::new();
-    for m in re.captures_iter(&plain) {
-        if let Some(u) = c.reg.unit_of(&m[2]) {
-            out.push((m[1].to_string(), u.to_string()));
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 9. literals
-
-/// `corpus.registry.invariant.one-named-bound-one-owner`. Matching is on the numeral
-/// alone — an author writes "900 lines" where the entry records `unit = "rows"`, and
-/// holding the prose to the registry's unit token is the `limits` check's job.
-pub fn literals(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let ids = c.clause_ids();
-    let re = Regex::new(r"(\d+(?:\.\d+)?)\s*(%|[A-Za-z]+)").unwrap();
-
-    for d in c.docs_for("literals") {
-        for cl in &d.clauses {
-            if cl.kind != "limit" {
-                continue;
-            }
-            let plain = without_ticks(&cl.statement);
-            let mut reported: HashSet<String> = HashSet::new();
-            for m in re.captures_iter(&plain) {
-                let num: f64 = match m[1].parse() {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let unit = match c.reg.unit_of(&m[2]) {
-                    Some(u) => u.to_string(),
-                    None => continue, // not a numeral-and-unit pair; `limits` owns that arm
-                };
-                if !reported.insert(format!("{} {}", &m[1], unit)) {
-                    continue;
-                }
-                let want = normalize(num, &unit);
-                let owned: Vec<&LimitEntry> = c
-                    .reg
-                    .limits
-                    .values()
-                    .filter(|e| {
-                        e.owner == cl.id
-                            && match (want, normalize(e.value, &e.unit)) {
-                                (Some(a), Some(b)) => {
-                                    family(&unit) == family(&e.unit) && (a - b).abs() < 1e-6
-                                }
-                                _ => e.unit == unit && (e.value - num).abs() < f64::EPSILON,
-                            }
-                    })
-                    .collect();
-                if owned.is_empty() {
-                    out.push(Finding::new(
-                        "literals", &cl.file, cl.line, "SpecUnmeasuredLimit",
-                        format!(
-                            "the pair \"{} {}\" resolves to no limit.toml entry owned by `{}`",
-                            &m[1], &m[2], cl.id
-                        ),
-                    ));
-                } else if owned.len() > 1 {
-                    out.push(Finding::new(
-                        "literals", &cl.file, cl.line, "SpecUnmeasuredLimit",
-                        format!(
-                            "the pair \"{} {}\" resolves to {} entries owned by `{}`: {}",
-                            &m[1], &m[2], owned.len(), cl.id,
-                            owned.iter().map(|e| e.name.as_str()).collect::<Vec<_>>().join(", ")
-                        ),
-                    ));
-                }
-            }
-        }
-    }
-
-    // Every named bound is asserted by one clause that extracts.
-    for e in c.reg.limits.values() {
-        if e.owner.is_empty() {
-            out.push(Finding::new(
-                "literals", "spec/terms/limit.toml", 1, "SpecUnmeasuredLimit",
-                format!("named bound `{}` carries no owner", e.name),
-            ));
-        } else if !ids.contains(&e.owner) {
-            out.push(Finding::new(
-                "literals", "spec/terms/limit.toml", 1, "SpecUnmeasuredLimit",
-                format!("named bound `{}` names owner `{}`, which extracts from no file", e.name, e.owner),
-            ));
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 10. limits
-
-pub fn limits(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let words = [
-        "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
-        "eleven", "twelve", "twenty", "thirty", "sixty", "hundred", "thousand",
-    ];
-    let unit_tokens: Vec<String> = c
-        .reg
-        .units
-        .iter()
-        .flat_map(|(n, u)| {
-            std::iter::once(n.clone()).chain(u.aliases.iter().cloned())
-        })
-        .collect();
-    let unit_re = word_re(&unit_tokens.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-    let word_num = Regex::new(&format!(
-        r"(?i)\b({})\s+({})\b",
-        words.join("|"),
-        unit_tokens.iter().map(|s| regex::escape(s)).collect::<Vec<_>>().join("|")
-    ))
-    .unwrap();
-
-    for d in c.docs_for("limits") {
-        for cl in &d.clauses {
-            if cl.kind != "limit" {
-                continue;
-            }
-            // A bound written inside a code span (`every 30s`) is still a bound, so the
-            // numeral and unit arms read the whole statement
-            // (`corpus.registry.refusal.limit-without-a-number`).
-            let plain = cl.statement.clone();
-            if !has_numeral(&plain) {
-                out.push(Finding::new(
-                    "limits", &cl.file, cl.line, "SpecUnmeasuredLimit",
-                    format!("`{}` is a limit row carrying no numeral outside a code span", cl.id),
-                ));
-                continue;
-            }
-            let attached = Regex::new(&format!(
-                r"\d\s*(?:{})\b",
-                unit_tokens.iter().map(|t| regex::escape(t)).collect::<Vec<_>>().join("|")
-            ))
-            .unwrap();
-            if !unit_re.is_match(&plain) && !attached.is_match(&plain) {
-                out.push(Finding::new(
-                    "limits", &cl.file, cl.line, "SpecUnmeasuredLimit",
-                    format!("`{}` carries a numeral and no unit registered in unit.toml", cl.id),
-                ));
-            }
-            if let Some(m) = word_num.captures(&plain) {
-                out.push(Finding::new(
-                    "limits", &cl.file, cl.line, "SpecUnmeasuredLimit",
-                    format!("`{}` spells a numeral as a word: \"{}\"", cl.id, &m[0]),
-                ));
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 11. errors
-
-pub fn errors(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let camel = Regex::new(r"\b[A-Z][A-Za-z0-9]{4,}\b").unwrap();
-    for d in c.docs_for("errors") {
-        for cl in &d.clauses {
-            if cl.kind != "refusal" {
-                continue;
-            }
-            let named = tick_spans(&cl.statement)
-                .iter()
-                .any(|(_, t)| c.reg.errors.contains_key(t.trim()))
-                || camel
-                    .find_iter(&cl.statement)
-                    .any(|m| c.reg.errors.contains_key(m.as_str()));
-            if !named {
-                out.push(Finding::new(
-                    "errors", &cl.file, cl.line, "SpecUnnamedRefusal",
-                    format!("`{}` is a refusal row naming no identifier in error.toml", cl.id),
-                ));
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 12. shingles
-
-pub fn shingles(c: &Corpus) -> Vec<Finding> {
-    let n = c.scope.check_int("shingles", "gram").unwrap_or(8) as usize;
-    let mut out = Vec::new();
-    let mut index: HashMap<String, (String, String, usize)> = HashMap::new();
-    let mut reported: HashSet<(String, String)> = HashSet::new();
-
-    for d in c.docs_for("shingles") {
-        for cl in &d.clauses {
-            let toks = normalize_tokens(&cl.statement);
-            if toks.len() < n {
-                continue;
-            }
-            let mut local: HashSet<String> = HashSet::new();
-            for w in toks.windows(n) {
-                let gram = w.join(" ");
-                if !local.insert(gram.clone()) {
-                    continue;
-                }
-                match index.get(&gram) {
-                    Some((other_id, other_file, other_line)) if other_id != &cl.id => {
-                        let pair = if other_id < &cl.id {
-                            (other_id.clone(), cl.id.clone())
-                        } else {
-                            (cl.id.clone(), other_id.clone())
-                        };
-                        if reported.insert(pair) {
-                            out.push(Finding::new(
-                                "shingles", &cl.file, cl.line, "SpecRestatement",
-                                format!(
-                                    "`{}` shares the {}-gram \"{}\" with `{}` ({}:{})",
-                                    cl.id, n, gram, other_id, other_file, other_line
-                                ),
-                            ));
-                        }
-                    }
-                    Some(_) => {}
-                    None => {
-                        index.insert(gram, (cl.id.clone(), cl.file.clone(), cl.line));
-                    }
-                }
-            }
-        }
-    }
-    out
-}
-
-fn normalize_tokens(s: &str) -> Vec<String> {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
-        .collect::<String>()
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect()
-}
-
-// ---------------------------------------------------------------- 13. prose
-
-pub fn prose(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let only_re = Regex::new(r"(?i)\bonly\b").unwrap();
-    for d in c.docs_for("prose") {
-        for l in &d.lines {
-            if l.authored.is_empty() || l.is_clause_row || l.is_unsettled {
-                continue;
-            }
-            let plain = without_ticks(&l.authored);
-            for (_, modal) in modal_hits(&l.authored) {
-                out.push(Finding::new(
-                    "prose", &d.rel, l.no, "SpecStrayModal",
-                    format!("\"{}\" outside a clause cell", modal),
-                ));
-            }
-            if only_re.is_match(&plain) {
-                let carries_term = tick_spans(&l.authored)
-                    .iter()
-                    .any(|(_, t)| c.reg.terms.contains_key(t.trim()));
-                if carries_term {
-                    out.push(Finding::new(
-                        "prose", &d.rel, l.no, "SpecStrayModal",
-                        "\"only\" in a sentence that also carries a registered term".into(),
-                    ));
-                }
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 14. links
-
-pub fn links(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let ids = c.clause_ids();
-    let trans = Regex::new(r"\{\{([^}]+)\}\}").unwrap();
-    let termlink = Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
-    // A pointer sentence is one that names another file's section.
-    let pointer = Regex::new(r"spec/[0-9A-Za-z\-]+\.md\s*§").unwrap();
-
-    for d in c.docs_for("links") {
-        for l in &d.lines {
-            if l.is_front_matter || l.in_fence {
-                continue;
-            }
-            let bare = without_ticks(&l.raw);
-            for m in trans.captures_iter(&bare) {
-                let id = m[1].trim();
-                if !ids.contains(id) {
-                    out.push(Finding::new(
-                        "links", &d.rel, l.no, "SpecDanglingReference",
-                        format!("{{{{{}}}}} names no clause", id),
-                    ));
-                }
-            }
-            for m in termlink.captures_iter(&bare) {
-                let t = m[1].trim();
-                if !c.reg.terms.contains_key(t)
-                    && !c.reg.errors.contains_key(t)
-                    && !c.reg.limits.contains_key(t)
-                    && !c.reg.operations.contains_key(t)
-                    && !c.reg.contracts.contains_key(t)
-                {
-                    out.push(Finding::new(
-                        "links", &d.rel, l.no, "SpecDanglingReference",
-                        format!("[[{}]] names no registry entry", t),
-                    ));
-                }
-            }
-            if l.authored.is_empty() || l.is_clause_row {
-                continue;
-            }
-            if pointer.is_match(&l.authored) {
-                let plain = without_ticks(&l.authored);
-                let mut why: Vec<String> = Vec::new();
-                if has_numeral(&plain) {
-                    why.push("a numeral".into());
-                }
-                if let Some((_, modal)) = modal_hits(&l.authored).into_iter().next() {
-                    why.push(format!("the modal \"{}\"", modal));
-                }
-                if let Some((_, e)) = tick_spans(&l.authored)
-                    .into_iter()
-                    .find(|(_, t)| c.reg.errors.contains_key(t.trim()))
-                {
-                    why.push(format!("the error identifier `{}`", e.trim()));
-                }
-                if !why.is_empty() {
-                    out.push(Finding::new(
-                        "links", &d.rel, l.no, "SpecPointerSentence",
-                        format!("a pointer sentence carrying {}", why.join(" and ")),
-                    ));
-                }
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 15. rationale
-
-pub fn rationale(c: &Corpus) -> Vec<Finding> {
-    let tokens = [
-        "because", "so that", "in order to", "the reason", "which is why", "judged on",
-        "at the cost of", "trade-off",
-    ];
-    let re = word_re(&tokens);
-    let mut out = Vec::new();
-    for d in c.docs_for("rationale") {
-        for l in &d.lines {
-            if l.authored.is_empty() {
-                continue;
-            }
-            let plain = without_ticks(&l.authored);
-            for m in re.find_iter(&plain) {
-                out.push(Finding::new(
-                    "rationale", &d.rel, l.no, "SpecRationaleLeak",
-                    format!("\"{}\" outside spec/decisions/", m.as_str()),
-                ));
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 16. citations
-
-pub fn citations(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let records: HashSet<String> = c
-        .records()
-        .iter()
-        .filter_map(|d| {
-            d.rel
-                .rsplit('/')
-                .next()
-                .and_then(|f| f.split('-').next())
-                .map(|s| s.to_string())
-        })
-        .collect();
-    let four = Regex::new(r"^[0-9]{4}$").unwrap();
-
-    for d in c.docs_for("citations") {
-        for cl in &d.clauses {
-            let cite = cl.decided_by.trim();
-            match cl.kind.as_str() {
-                "refusal" => {
-                    if cite.is_empty() {
-                        out.push(Finding::new(
-                            "citations", &cl.file, cl.line, "SpecUncitedRefusal",
-                            format!("`{}` is a refusal row with an empty `decided-by` cell", cl.id),
-                        ));
-                    } else if !four.is_match(cite) {
-                        out.push(Finding::new(
-                            "citations", &cl.file, cl.line, "SpecUncitedRefusal",
-                            format!("`{}` cites \"{}\", which is not a four-digit record", cl.id, cite),
-                        ));
-                    } else if !records.contains(cite) {
-                        out.push(Finding::new(
-                            "citations", &cl.file, cl.line, "SpecUncitedRefusal",
-                            format!("`{}` cites record {}, which is absent from spec/decisions/", cl.id, cite),
-                        ));
-                    }
-                }
-                "limit" => {
-                    if !cite.is_empty() {
-                        if four.is_match(cite) && !records.contains(cite) {
-                            out.push(Finding::new(
-                                "citations", &cl.file, cl.line, "SpecUncitedRefusal",
-                                format!("`{}` cites record {}, which is absent from spec/decisions/", cl.id, cite),
-                            ));
-                        }
-                        continue;
-                    }
-                    // Transitive: the citation is inherited through the named bound.
-                    let owned: Vec<&LimitEntry> =
-                        c.reg.limits.values().filter(|e| e.owner == cl.id).collect();
-                    if owned.is_empty() {
-                        out.push(Finding::new(
-                            "citations", &cl.file, cl.line, "SpecUncitedRefusal",
-                            format!(
-                                "`{}` carries no citation and owns no limit.toml entry to inherit one through",
-                                cl.id
-                            ),
-                        ));
-                    }
-                }
-                _ => {
-                    if !cite.is_empty() && four.is_match(cite) && !records.contains(cite) {
-                        out.push(Finding::new(
-                            "citations", &cl.file, cl.line, "SpecUncitedRefusal",
-                            format!("`{}` cites record {}, which is absent from spec/decisions/", cl.id, cite),
-                        ));
-                    }
-                }
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- record parsing
-
-pub struct Record {
-    pub rel: String,
-    pub number: String,
-    pub decides: Vec<String>,
-    pub decides_line: usize,
-    pub status_line: Option<(usize, String)>,
-    pub headings: Vec<String>,
-    pub superseded_by: Option<String>,
-}
-
-pub fn records(c: &Corpus) -> Vec<Record> {
-    let cite = Regex::new(r"`([a-z0-9\-]+(?:\.[a-z0-9\-]+){3})`").unwrap();
-    let sup = Regex::new(r"(?i)superseded by\s+`?([0-9]{4})").unwrap();
-    c.records()
-        .iter()
-        .map(|d| {
-            let number = d
-                .rel
-                .rsplit('/')
-                .next()
-                .and_then(|f| f.split('-').next())
-                .unwrap_or("")
-                .to_string();
-            let mut decides = Vec::new();
-            let mut decides_line = 1;
-            let mut status_line = None;
-            let mut superseded_by = None;
-            for l in &d.lines {
-                let t = l.raw.trim();
-                if t.starts_with("**Decides:**") {
-                    decides_line = l.no;
-                    for m in cite.captures_iter(t) {
-                        decides.push(m[1].to_string());
-                    }
-                }
-                if t.starts_with("**Status:**") {
-                    status_line = Some((l.no, t.to_string()));
-                    if let Some(m) = sup.captures(t) {
-                        superseded_by = Some(m[1].to_string());
-                    }
-                }
-            }
-            Record {
-                rel: d.rel.clone(),
-                number,
-                decides,
-                decides_line,
-                status_line,
-                headings: d.headings.iter().map(|(_, _, t)| t.clone()).collect(),
-                superseded_by,
-            }
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------- 17. adr-orphans
-
-pub fn adr_orphans(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let ids = c.clause_ids();
-    let cited: HashSet<String> = c
-        .all_clauses()
-        .iter()
-        .map(|cl| cl.decided_by.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    let recs = records(c);
-    let superseding: HashSet<String> = recs
-        .iter()
-        .filter(|r| cited.contains(&r.number))
-        .filter_map(|r| r.superseded_by.clone())
-        .collect();
-
-    for r in &recs {
-        if !cited.contains(&r.number) && !superseding.contains(&r.number) {
-            out.push(Finding::new(
-                "adr-orphans", &r.rel, 1, "SpecOrphanRecord",
-                format!("record {} is cited by no clause and superseded by no citing record", r.number),
-            ));
-        }
-        for id in &r.decides {
-            if !ids.contains(id) {
-                out.push(Finding::new(
-                    "adr-orphans", &r.rel, r.decides_line, "SpecOrphanRecord",
-                    format!("`Decides:` names `{}`, which extracts from no file", id),
-                ));
-            }
-        }
-        let spans: BTreeSet<&str> = r
-            .decides
-            .iter()
-            .filter_map(|id| id.split('.').next())
-            .collect();
-        if spans.len() > 2 {
-            out.push(Finding::new(
-                "adr-orphans", &r.rel, r.decides_line, "SpecOrphanRecord",
-                format!(
-                    "`Decides:` spans {} contracts: {}",
-                    spans.len(),
-                    spans.into_iter().collect::<Vec<_>>().join(", ")
-                ),
-            ));
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 18. adr-shape
-
-pub fn adr_shape(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let dated = Regex::new(r"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b").unwrap();
-    let want = ["Context", "Decision", "Options considered", "Criteria", "Consequences"];
-    for d in c.docs_for("adr-shape") {
-        let r = records(c).into_iter().find(|r| r.rel == d.rel);
-        let r = match r {
-            Some(r) => r,
-            None => continue,
-        };
-        match &r.status_line {
-            None => out.push(Finding::new(
-                "adr-shape", &d.rel, 1, "SpecRecordAnatomy",
-                "no `**Status:**` line".into(),
-            )),
-            Some((no, text)) => {
-                if !dated.is_match(text) {
-                    out.push(Finding::new(
-                        "adr-shape", &d.rel, *no, "SpecRecordAnatomy",
-                        "the Status line carries no date".into(),
-                    ));
-                }
-            }
-        }
-        for w in want {
-            if !r.headings.iter().any(|h| h.eq_ignore_ascii_case(w)) {
-                out.push(Finding::new(
-                    "adr-shape", &d.rel, 1, "SpecRecordAnatomy",
-                    format!("no `{}` section", w),
-                ));
-            }
-        }
-        // Every rejected option names the criterion it lost on.
-        let start = d
-            .headings
-            .iter()
-            .find(|(_, _, t)| t.eq_ignore_ascii_case("Options considered"))
-            .map(|(n, _, _)| *n);
-        if let Some(start) = start {
-            let mut seen_header = false;
-            for l in d.lines.iter().filter(|l| l.no > start) {
-                if l.raw.starts_with("## ") {
-                    break;
-                }
-                if !l.is_table_row {
-                    continue;
-                }
-                if !seen_header {
-                    seen_header = true;
-                    continue;
-                }
-                if l.raw.contains("---") {
-                    continue;
-                }
-                let cells = split_cells(&l.raw);
-                if cells.len() < 3 {
-                    continue;
-                }
-                if cells[0].contains("(chosen)") || cells[1].contains("(chosen)") {
-                    continue;
-                }
-                let cost = cells.last().unwrap().to_ascii_lowercase();
-                // "Lost on X", "Loses on X", "Lost outright on X" and a cost cell that
-                // opens "Lost as …" all name the criterion the option lost on.
-                let names_criterion = Regex::new(r"\b(?:lost|loses)\s+(?:\w+\s+)?on\b")
-                    .unwrap()
-                    .is_match(&cost)
-                    || cost.trim_start().starts_with("lost")
-                    || cost.trim_start().starts_with("loses");
-                if !names_criterion {
-                    out.push(Finding::new(
-                        "adr-shape", &d.rel, l.no, "SpecRecordAnatomy",
-                        format!(
-                            "rejected option {} names no criterion it lost on",
-                            cells[0].trim()
-                        ),
-                    ));
-                }
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 19. tense
-
-pub fn tense(c: &Corpus) -> Vec<Finding> {
-    // `corpus.state.refusal.dated-vocabulary` — build-state vocabulary in every
-    // authored file, a record included. The counterfactual mood is the `mood` check.
-    let tokens = [
-        "planned", "not yet", "currently", "today", "shipped", "implemented", "previously",
-        "legacy", "migration", "TODO", "FIXME", "WIP",
-    ];
-    let re = word_re(&tokens);
-    let milestone = Regex::new(r"\bM[0-9]\b").unwrap();
-    // "used to" is dated prose only with a subject in front of it; "the scheme used
-    // to verify it" is an infinitive (`corpus.state.refusal.status-word-in-a-contract-file`).
-    let used_to = Regex::new(r"(?i)\b(?:we|it|this|that|they|which)\s+used\s+to\b").unwrap();
-    let mut out = Vec::new();
-    for d in c.docs_for("tense") {
-        for l in &d.lines {
-            if l.authored.is_empty() {
-                continue;
-            }
-            let plain = without_ticks(&l.authored);
-            for m in re.find_iter(&plain) {
-                out.push(Finding::new(
-                    "tense", &d.rel, l.no, "SpecDatedProse",
-                    format!("\"{}\" in authored text", m.as_str()),
-                ));
-            }
-            for m in used_to.find_iter(&plain) {
-                out.push(Finding::new(
-                    "tense", &d.rel, l.no, "SpecDatedProse",
-                    format!("\"{}\" in authored text", m.as_str()),
-                ));
-            }
-            for m in milestone.find_iter(&plain) {
-                out.push(Finding::new(
-                    "tense", &d.rel, l.no, "SpecDatedProse",
-                    format!("milestone token \"{}\"", m.as_str()),
-                ));
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 19b. mood
-
-/// `corpus.state.refusal.counterfactual-mood` — a record's `Options considered` and
-/// `Consequences` describe a path the system does not take, so the mood check reads
-/// contract files alone, as its scope entry says.
-pub fn mood(c: &Corpus) -> Vec<Finding> {
-    let re = word_re(&["will", "shall", "would"]);
-    let mut out = Vec::new();
-    for d in c.docs_for("mood") {
-        for l in &d.lines {
-            if l.authored.is_empty() {
-                continue;
-            }
-            let plain = without_ticks(&l.authored);
-            for m in re.find_iter(&plain) {
-                out.push(Finding::new(
-                    "mood", &d.rel, l.no, "SpecCounterfactualMood",
-                    format!("\"{}\" in a contract file", m.as_str()),
-                ));
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 20. unsettled
-
-pub fn unsettled(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let headings = ["Open questions", "Out of scope", "See also"];
-    for d in c.docs_for("unsettled") {
-        for (no, _, text) in &d.headings {
-            if headings.iter().any(|h| text.eq_ignore_ascii_case(h)) {
-                out.push(Finding::new(
-                    "unsettled", &d.rel, *no, "SpecAppendixHeading",
-                    format!("the heading \"{}\" is refused; an unknown lives where it applies", text),
-                ));
-            }
-        }
-        for (no, text) in &d.unsettled {
-            let plain = without_ticks(text);
-            let body = plain.trim_start_matches("unsettled:");
-            let question = body.split("owner:").next().unwrap_or("").trim();
-            if !question.contains('?') {
-                out.push(Finding::new(
-                    "unsettled", &d.rel, *no, "SpecUnsettledLine",
-                    "the unsettled line carries no question ending in a question mark".into(),
-                ));
-            }
-            if !plain.contains("owner:") {
-                out.push(Finding::new(
-                    "unsettled", &d.rel, *no, "SpecUnsettledLine",
-                    "the unsettled line names no `owner:`".into(),
-                ));
-            }
-            if has_numeral(&plain) {
-                out.push(Finding::new(
-                    "unsettled", &d.rel, *no, "SpecUnsettledLine",
-                    "the unsettled line carries a numeral".into(),
-                ));
-            }
-            if let Some((_, modal)) = modal_hits(text).into_iter().next() {
-                out.push(Finding::new(
-                    "unsettled", &d.rel, *no, "SpecUnsettledLine",
-                    format!("the unsettled line carries the modal \"{}\"", modal),
-                ));
-            }
-            match plain.split("affects:").nth(1) {
-                None => out.push(Finding::new(
-                    "unsettled", &d.rel, *no, "SpecUnsettledLine",
-                    "the unsettled line names no `affects:` operation".into(),
-                )),
-                Some(rest) => {
-                    let op = rest.split_whitespace().next().unwrap_or("").trim_matches('`');
-                    // `affects: land` inside the derive file names `derive.land`
-                    // (`corpus.rationale.shape.unsettled-line` fixes no qualification).
-                    let qualified = format!("{}.{}", d.contract.clone().unwrap_or_default(), op);
-                    if !c.reg.operations.contains_key(op) && !c.reg.operations.contains_key(&qualified) {
-                        out.push(Finding::new(
-                            "unsettled", &d.rel, *no, "SpecUnsettledLine",
-                            format!("`affects: {}` names no operation.toml key", op),
-                        ));
-                    }
-                }
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 21. banned
-
-pub fn banned(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let nouns = word_re(&["seam", "seams", "load-bearing", "wedge", "rung", "land-grab"]);
-    let axis = Regex::new(r"(?i)\baxis\b").unwrap();
-    let issue = Regex::new(r"(?:^|[\s(\[])#[0-9]+\b").unwrap();
-    let pr = Regex::new(r"(?i)https?://[^\s)]*/(?:pull|pulls)/[0-9]+").unwrap();
-    // A name this corpus refuses is held as a digest, never as a spelling —
-    // a plaintext denylist would put the very words it refuses into the tree.
-    // `spec/terms/refused-names.toml` carries them; clause
-    // `corpus.render.refusal.banned-vocabulary` is what this implements.
-    let refused = c.refused_names();
-    let word = Regex::new(r"[A-Za-z][A-Za-z0-9]*").unwrap();
-
-    for d in c.docs_for("banned") {
-        for l in &d.lines {
-            if l.authored.is_empty() {
-                continue;
-            }
-            // The law quotes every banned spelling backticked; a real use is prose.
-            let plain = &without_ticks(&l.authored);
-            for m in nouns.find_iter(plain) {
-                out.push(Finding::new(
-                    "banned", &d.rel, l.no, "SpecBannedNoun",
-                    format!("the noun \"{}\"", m.as_str()),
-                ));
-            }
-            // A chart's axis is a real thing; the banned noun is the metaphorical
-            // one. Clause `corpus.render.refusal.banned-vocabulary` names the noun,
-            // not the spelling, so a line already carrying chart vocabulary is
-            // talking about a chart and passes.
-            let chartish = ["chart", "plot", "series", "tick", "gridline", "legend", "x-axis", "y-axis",
-                            "scale", "axis label", "axis title", "axis range", "axis bound"];
-            let lower = plain.to_lowercase();
-            if axis.is_match(plain) && !chartish.iter().any(|w| lower.contains(w)) {
-                out.push(Finding::new(
-                    "banned", &d.rel, l.no, "SpecBannedNoun",
-                    "the noun \"axis\" outside a chart caption".into(),
-                ));
-            }
-            if let Some(m) = issue.find(plain) {
-                out.push(Finding::new(
-                    "banned", &d.rel, l.no, "SpecProvenanceLeak",
-                    format!("a bare issue reference \"{}\"", m.as_str().trim()),
-                ));
-            }
-            if let Some(m) = pr.find(plain) {
-                out.push(Finding::new(
-                    "banned", &d.rel, l.no, "SpecProvenanceLeak",
-                    format!("a pull-request link \"{}\"", m.as_str()),
-                ));
-            }
-            for m in word.find_iter(plain) {
-                let tok = m.as_str();
-                let Some(entry) = refused.get(&sha256_lower(tok)) else { continue };
-                // A `proper = true` name is an ordinary English word whose
-                // capitalized use is the leak; lowercase prose passes.
-                let capitalized = tok.chars().next().is_some_and(char::is_uppercase);
-                if entry.proper && !capitalized {
-                    continue;
-                }
-                // The finding names the offence without reprinting the token.
-                out.push(Finding::new(
-                    "banned", &d.rel, l.no, "SpecProvenanceLeak",
-                    format!("a refused name at column {} — {}", m.start() + 1, entry.note),
-                ));
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 22. paths
-
-pub fn paths(c: &Corpus) -> Vec<Finding> {
-    // A bare prefix inside a code span is the law quoting its own pattern; a real
-    // local path carries a component after it (`corpus.render.refusal.absolute-local-path`).
-    let re = Regex::new(r"(/Users/|/home/|\$HOME/|~/)[A-Za-z0-9._-]").unwrap();
-    let mut out = Vec::new();
-    for d in c.docs_for("paths") {
-        for l in &d.lines {
-            if l.is_front_matter {
-                continue;
-            }
-            if let Some(m) = re.find(&l.raw) {
-                out.push(Finding::new(
-                    "paths", &d.rel, l.no, "SpecLocalPath",
-                    format!("an absolute local path beginning \"{}\"", m.as_str()),
-                ));
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 23. diagrams
-
-pub fn diagrams(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let box_drawing = |s: &str| s.chars().any(|ch| ('\u{2500}'..='\u{257F}').contains(&ch));
-    for d in c.docs_for("diagrams") {
-        for l in &d.lines {
-            if l.is_front_matter {
-                continue;
-            }
-            let is_mermaid = l.in_fence && l.fence_info.starts_with("mermaid");
-            if is_mermaid {
-                continue;
-            }
-            if box_drawing(&l.raw) {
-                out.push(Finding::new(
-                    "diagrams", &d.rel, l.no, "SpecAsciiDiagram",
-                    "box-drawing characters outside a mermaid fence".into(),
-                ));
-                continue;
-            }
-            // Pipe-and-dash art is refused only inside a non-mermaid fence — a
-            // markdown table is not ASCII art (`corpus.render.shape.diagram`).
-            if l.in_fence && !l.raw.trim_start().starts_with("```") {
-                let t = l.raw.trim();
-                let art = t.len() >= 3
-                    && t.contains('|')
-                    && t.chars().all(|ch| matches!(ch, '|' | '-' | '+' | ' ' | '='));
-                if art {
-                    out.push(Finding::new(
-                        "diagrams", &d.rel, l.no, "SpecAsciiDiagram",
-                        "pipe-and-dash art inside a fence that is not `mermaid`".into(),
-                    ));
-                }
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- 24. pins
-
-pub fn pins(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let path = c.root.join("spec/pins.toml");
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(r) => r,
-        Err(_) => return out, // no pins file: every clause computes `committed`.
-    };
-    let v: toml::Value = match raw.parse() {
-        Ok(v) => v,
-        Err(e) => {
-            out.push(Finding::new("pins", "spec/pins.toml", 1, "SpecBrokenPin", format!("{}", e)));
-            return out;
-        }
-    };
-    let ids = c.clause_ids();
-    let kind_of: HashMap<&str, &str> = c
-        .all_clauses()
-        .iter()
-        .map(|cl| (cl.id.as_str(), cl.kind.as_str()))
-        .collect::<HashMap<_, _>>();
-    let mut per_contract: BTreeMap<String, usize> = BTreeMap::new();
-
-    if let Some(t) = v.get("pin").and_then(|x| x.as_table()) {
-        for (id, entry) in t {
-            let line = raw
-                .lines()
-                .position(|l| l.contains(id))
-                .map(|i| i + 1)
-                .unwrap_or(1);
-            if !ids.contains(id) {
-                out.push(Finding::new(
-                    "pins", "spec/pins.toml", line, "SpecBrokenPin",
-                    format!("pin names `{}`, which extracts from no file", id),
-                ));
-                continue;
-            }
-            let (kind, target) = pin_target(entry);
-            if let Some(target) = &target {
-                if !pin_resolves(&c.root, kind.as_deref(), target) {
-                    out.push(Finding::new(
-                        "pins", "spec/pins.toml", line, "SpecBrokenPin",
-                        format!("`{}` pins `{}`, which is absent from the tree", id, target),
-                    ));
-                }
-            }
-            if kind.as_deref() == Some("type") {
-                if let Some(k) = kind_of.get(id.as_str()) {
-                    if *k == "refusal" || *k == "limit" {
-                        out.push(Finding::new(
-                            "pins", "spec/pins.toml", line, "SpecPresencePinOnBound",
-                            format!("`{}` is a {} clause carrying a type-path pin", id, k),
-                        ));
-                    }
-                }
-            }
-            if let Some(cn) = id.split('.').next() {
-                *per_contract.entry(cn.to_string()).or_default() += 1;
-            }
-        }
-    }
-
-    if let Some(f) = v.get("floor").and_then(|x| x.as_table()) {
-        for (contract, want) in f {
-            let want = want.as_integer().unwrap_or(0) as usize;
-            let live = per_contract.get(contract).copied().unwrap_or(0);
-            if live < want {
-                out.push(Finding::new(
-                    "pins", "spec/pins.toml", 1, "SpecCoverageRegression",
-                    format!("`{}` pins {} clauses against a floor of {}", contract, live, want),
-                ));
-            }
-        }
-    }
-    out
-}
-
-fn pin_target(v: &toml::Value) -> (Option<String>, Option<String>) {
-    if let Some(s) = v.as_str() {
-        return (None, Some(s.to_string()));
-    }
-    let kind = v.get("kind").and_then(|x| x.as_str()).map(|s| s.to_string());
-    for key in ["test", "theorem", "type", "path"] {
-        if let Some(s) = v.get(key).and_then(|x| x.as_str()) {
-            return (kind.or(Some(key.to_string())), Some(s.to_string()));
-        }
-    }
-    (kind, None)
-}
-
-fn pin_resolves(root: &std::path::Path, _kind: Option<&str>, target: &str) -> bool {
-    // A pin resolves when its leading path component exists, or when its final
-    // identifier is defined somewhere in the tree.
-    let file = target.split("::").next().unwrap_or(target);
-    if root.join(file).exists() {
-        return true;
-    }
-    let ident = target.rsplit("::").next().unwrap_or(target);
-    if ident.is_empty() {
-        return false;
-    }
-    let out = std::process::Command::new("grep")
-        .arg("-rqI")
-        .arg("--")
-        .arg(ident)
-        .arg(root)
-        .output();
-    matches!(out, Ok(o) if o.status.success())
-}
-
-// ---------------------------------------------------------------- 25. roadmap
-
-pub fn roadmap(c: &Corpus) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let doc = match c.docs.iter().find(|d| d.role == "plan") {
-        Some(d) => d,
-        None => return out,
-    };
-    let ids = c.clause_ids();
-    let id_re = Regex::new(r"`([a-z0-9\-]+(?:\.[a-z0-9\-]+){3})`").unwrap();
-    let mut milestone = String::new();
-    let mut placed: HashMap<String, (String, usize)> = HashMap::new();
-
-    for l in &doc.lines {
-        if let Some(h) = l.raw.strip_prefix("## ") {
-            milestone = h.trim().to_string();
-        }
-        for m in id_re.captures_iter(&l.raw) {
-            let id = m[1].to_string();
-            if !ids.contains(&id) {
-                out.push(Finding::new(
-                    "roadmap", &doc.rel, l.no, "SpecRoadmapUnknownClause",
-                    format!("milestone \"{}\" names `{}`, which extracts from no file", milestone, id),
-                ));
-                continue;
-            }
-            if let Some((other, other_line)) = placed.get(&id) {
-                if other != &milestone {
-                    out.push(Finding::new(
-                        "roadmap", &doc.rel, l.no, "SpecRoadmapDoubleSchedule",
-                        format!(
-                            "`{}` sits under \"{}\" and under \"{}\" ({}:{})",
-                            id, milestone, other, doc.rel, other_line
-                        ),
-                    ));
-                }
-            } else {
-                placed.insert(id, (milestone.clone(), l.no));
-            }
-        }
-    }
-    out
-}
-
-// ---------------------------------------------------------------- driver
+pub const CHECKS: [&str; 7] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render"];
 
 pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
     match name {
-        "ids" => ids(c),
-        "owns" => owns(c),
+        "address" => address(c),
         "anatomy" => anatomy(c),
-        "titles" => titles(c),
-        "size" => size(c),
-        "terms" => terms(c),
-        "aliases" => aliases(c),
-        "foreign" => foreign(c),
-        "literals" => literals(c),
-        "limits" => limits(c),
-        "errors" => errors(c),
-        "shingles" => shingles(c),
-        "prose" => prose(c),
-        "links" => links(c),
+        "registry" => registry(c),
+        "reference" => reference(c),
         "rationale" => rationale(c),
-        "citations" => citations(c),
-        "adr-orphans" => adr_orphans(c),
-        "adr-shape" => adr_shape(c),
-        "tense" => tense(c),
-        "mood" => mood(c),
-        "unsettled" => unsettled(c),
-        "banned" => banned(c),
-        "paths" => paths(c),
-        "diagrams" => diagrams(c),
-        "pins" => pins(c),
-        "roadmap" => roadmap(c),
-        _ => Vec::new(),
+        "state" => state(c),
+        "render" => render(c),
+        other => vec![Finding::new("lint", "", 0, "SpecUnknownCheck", format!("no check named `{other}`"))],
     }
+}
+
+static SEGMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9-]+$").unwrap());
+static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|D[0-9]{2})$").unwrap());
+static RECORD_FILE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^spec/decisions/(P[0-9]+|D[0-9]{2})-[a-z0-9-]+\.md$").unwrap());
+static RAISES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"raises? `([A-Za-z0-9_]+)`").unwrap());
+static NUM_UNIT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|[^A-Za-z0-9_.])([0-9][0-9_,]*(?:\.[0-9]+)?)\s?([A-Za-z%]+)\b").unwrap());
+static IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_-]*$").unwrap());
+static UNSETTLED: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^unsettled: .+\? owner: \S+ affects: ([a-z0-9-]+)\.([a-z0-9-]+)$").unwrap()
+});
+static ISO_DATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b").unwrap());
+static BARE_ISSUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(^|\s)#[0-9]+\b|/pull/[0-9]+").unwrap());
+static EXT_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\]\((https?://|[^)]*references/)").unwrap());
+
+fn f(check: &str, file: &str, line: usize, code: &str, msg: String) -> Finding {
+    Finding::new(check, file, line, code, msg)
+}
+
+fn word_re(words: &[&str]) -> Regex {
+    let alts: Vec<String> = words.iter().map(|w| regex::escape(w)).collect();
+    Regex::new(&format!(r"(?i)\b({})\b", alts.join("|"))).unwrap()
+}
+
+// ---------------------------------------------------------------- address
+
+fn address(c: &Corpus) -> Vec<Finding> {
+    let mut out = Vec::new();
+    let mut seen: HashMap<String, (String, usize)> = HashMap::new();
+    for d in c.contracts() {
+        let contract = d.contract.clone().unwrap_or_default();
+        for cl in &d.clauses {
+            let segs: Vec<&str> = cl.id.split('.').collect();
+            let bad = if segs.len() != 3 || !segs.iter().all(|s| SEGMENT.is_match(s)) {
+                Some("is not three `[a-z0-9-]+` segments".to_string())
+            } else if segs[0] != contract {
+                Some(format!("names contract `{}` in a `{}` file", segs[0], contract))
+            } else if !d.owns.iter().any(|o| o == segs[1]) {
+                Some(format!("names operation `{}` this file does not own", segs[1]))
+            } else if segs[2].len() > 40 {
+                Some("subject exceeds 40 chars".into())
+            } else {
+                None
+            };
+            if let Some(why) = bad {
+                out.push(f("address", &d.rel, cl.line, "SpecMalformedId", format!("`{}` {}", cl.id, why)));
+            }
+            if let Some((file, line)) = seen.get(&cl.id) {
+                out.push(f(
+                    "address",
+                    &d.rel,
+                    cl.line,
+                    "SpecDuplicateId",
+                    format!("`{}` also at {}:{}", cl.id, file, line),
+                ));
+            } else {
+                seen.insert(cl.id.clone(), (d.rel.clone(), cl.line));
+            }
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------- anatomy
+
+fn anatomy(c: &Corpus) -> Vec<Finding> {
+    let mut out = Vec::new();
+    let mut listed: BTreeMap<String, (String, String)> = BTreeMap::new();
+    for (name, e) in &c.reg.contracts {
+        if e.files.len() != e.titles.len() {
+            out.push(f("anatomy", "spec/terms/contract.toml", 0, "SpecAnatomy", format!("`{name}` lists {} files and {} titles", e.files.len(), e.titles.len())));
+        }
+        for (i, file) in e.files.iter().enumerate() {
+            listed.insert(file.clone(), (name.clone(), e.titles.get(i).cloned().unwrap_or_default()));
+            if !c.root.join(file).exists() {
+                out.push(f("anatomy", "spec/terms/contract.toml", 0, "SpecAnatomy", format!("`{name}` lists missing file {file}")));
+            }
+        }
+    }
+    for d in c.contracts() {
+        let a = |line: usize, msg: String| f("anatomy", &d.rel, line, "SpecAnatomy", msg);
+        let Some(contract) = d.contract.clone() else {
+            out.push(a(1, "no front-matter `contract`".into()));
+            continue;
+        };
+        match listed.get(&d.rel) {
+            None => out.push(a(1, "file is listed by no contract in spec/terms/contract.toml".into())),
+            Some((owner, _)) if *owner != contract => {
+                out.push(a(1, format!("front matter says `{contract}`, contract.toml lists it under `{owner}`")))
+            }
+            _ => {}
+        }
+        if d.lines.len() > 900 {
+            out.push(a(d.lines.len(), format!("{} lines exceed 900", d.lines.len())));
+        }
+        let mut titles = Vec::new();
+        let mut sections = Vec::new();
+        for (n, l, k) in d.each() {
+            if k != LineKind::Heading {
+                continue;
+            }
+            if let Some(t) = l.strip_prefix("# ") {
+                titles.push((n, t.trim().to_string()));
+            } else if let Some(t) = l.strip_prefix("## ") {
+                sections.push((n, t.trim().to_string()));
+            }
+        }
+        match titles.as_slice() {
+            [(n, t)] => {
+                if let Some((_, want)) = listed.get(&d.rel) {
+                    if t != want {
+                        out.push(a(*n, format!("title `{t}` differs from registry `{want}`")));
+                    }
+                }
+            }
+            _ => out.push(a(1, format!("{} `# ` titles, want 1", titles.len()))),
+        }
+        let mut want: Vec<String> = d.owns.clone();
+        let names: Vec<String> = sections.iter().map(|s| s.1.clone()).collect();
+        if names.last().map(|s| s == "Shapes").unwrap_or(false) {
+            want.push("Shapes".into());
+        }
+        if names != want {
+            out.push(a(
+                sections.first().map(|s| s.0).unwrap_or(1),
+                format!("sections [{}] differ from owns order [{}]", names.join(", "), want.join(", ")),
+            ));
+        }
+        // every owned section carries one clause table
+        let mut tables: BTreeMap<String, usize> = BTreeMap::new();
+        let mut cur = String::new();
+        for (_, l, k) in d.each() {
+            if k == LineKind::Heading {
+                if let Some(t) = l.strip_prefix("## ") {
+                    cur = t.trim().to_string();
+                }
+            }
+            if k == LineKind::ClauseHeader && !is_separator(l) {
+                *tables.entry(cur.clone()).or_default() += 1;
+            }
+        }
+        for op in &d.owns {
+            let n = tables.get(op).copied().unwrap_or(0);
+            if n != 1 {
+                let line = sections.iter().find(|s| &s.1 == op).map(|s| s.0).unwrap_or(1);
+                out.push(a(line, format!("section `{op}` holds {n} clause tables, want 1")));
+            }
+        }
+        if tables.contains_key("Shapes") {
+            out.push(a(1, "`Shapes` holds a clause table".into()));
+        }
+        for cl in &d.clauses {
+            let w = word_count(&cl.statement);
+            if w > 40 {
+                out.push(a(cl.line, format!("`{}` statement is {w} words, over 40", cl.id)));
+            }
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------- registry
+
+fn normalize(s: &str) -> String {
+    let mut t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+    for p in ["max", "min", "the"] {
+        if s.to_lowercase().starts_with(&format!("{p}-")) || s.to_lowercase().starts_with(&format!("{p}_")) {
+            t = t[p.len()..].to_string();
+        }
+    }
+    if t.len() > 5 && t.ends_with('s') {
+        t.pop();
+    }
+    t
+}
+
+fn registry(c: &Corpus) -> Vec<Finding> {
+    let mut out = Vec::new();
+    for (file, e) in &c.reg.load_errors {
+        out.push(f("registry", file, 0, "SpecRegistry", e.clone()));
+    }
+    let clauses = c.clause_map();
+    // operations: registered <-> owned by exactly one file of the contract
+    let mut owned: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    for d in c.contracts() {
+        let contract = d.contract.clone().unwrap_or_default();
+        for o in &d.owns {
+            owned.entry((contract.clone(), o.clone())).or_default().push(d.rel.clone());
+            let reg = c.reg.fragments.get(&contract).map(|fr| fr.operation.contains_key(o)).unwrap_or(false);
+            if !reg {
+                out.push(f("registry", &d.rel, 1, "SpecRegistry", format!("owned operation `{contract}.{o}` is not registered")));
+            }
+        }
+    }
+    for (contract, fr) in &c.reg.fragments {
+        let frel = format!("spec/terms/{contract}.toml");
+        for (op, n) in &fr.operation {
+            let files = owned.get(&(contract.clone(), op.clone())).cloned().unwrap_or_default();
+            if files.len() != 1 {
+                out.push(f("registry", &frel, 0, "SpecRegistry", format!("operation `{contract}.{op}` is owned by {} files", files.len())));
+            }
+            if n.gloss.trim().is_empty() {
+                out.push(f("registry", &frel, 0, "SpecRegistry", format!("operation `{op}` has no gloss")));
+            }
+        }
+        for (id, e) in &fr.error {
+            match clauses.get(&e.clause) {
+                None => out.push(f("registry", &frel, 0, "SpecRegistry", format!("error `{id}` names missing clause `{}`", e.clause))),
+                Some(cl) => {
+                    if cl.contract != *contract {
+                        out.push(f("registry", &frel, 0, "SpecRegistry", format!("error `{id}` names clause `{}` of another contract", e.clause)));
+                    }
+                    if !cl.statement.contains(&format!("`{id}`")) {
+                        out.push(f("registry", &cl.file, cl.line, "SpecRegistry", format!("`{}` does not name its error `{id}`", cl.id)));
+                    }
+                }
+            }
+        }
+        for (id, l) in &fr.limit {
+            match clauses.get(&l.clause) {
+                None => out.push(f("registry", &frel, 0, "SpecRegistry", format!("bound `{id}` names missing clause `{}`", l.clause))),
+                Some(cl) => {
+                    let v = l.value_text();
+                    let st = without_ticks_keep(&cl.statement);
+                    let re = Regex::new(&format!(r"(^|[^0-9.]){}\s?{}\b", regex::escape(&v), regex::escape(&l.unit))).unwrap();
+                    if !re.is_match(&st) {
+                        out.push(f("registry", &cl.file, cl.line, "SpecRegistry", format!("`{}` does not carry its bound `{id}` as `{v} {}`", cl.id, l.unit)));
+                    }
+                }
+            }
+            if !c.reg.units.contains_key(&l.unit) {
+                out.push(f("registry", &frel, 0, "SpecRegistry", format!("bound `{id}` unit `{}` is not a canonical unit", l.unit)));
+            }
+            let basis_ok = l.basis == "chosen" || l.basis.starts_with("measured:") || l.basis.starts_with("standard:");
+            if !basis_ok {
+                out.push(f("registry", &frel, 0, "SpecRegistry", format!("bound `{id}` basis `{}` is not chosen, measured:<b> or standard:<n>", l.basis)));
+            }
+        }
+    }
+    // each statement: errors it names are its own; numerals with units are its bounds
+    let mut limit_by_clause: BTreeMap<&str, Vec<&LimitEntry>> = BTreeMap::new();
+    for fr in c.reg.fragments.values() {
+        for l in fr.limit.values() {
+            limit_by_clause.entry(l.clause.as_str()).or_default().push(l);
+        }
+    }
+    for cl in c.clauses() {
+        for cap in RAISES.captures_iter(&cl.statement) {
+            let id = &cap[1];
+            if c.reg.error_owner(id).is_none() {
+                out.push(f("registry", &cl.file, cl.line, "SpecRegistry", format!("`{}` raises unregistered error `{id}`", cl.id)));
+            }
+        }
+        for (_, tok) in tick_spans(&cl.statement) {
+            if let Some(e) = c.reg.error_owner(&tok) {
+                if e.clause != cl.id {
+                    out.push(f("registry", &cl.file, cl.line, "SpecRegistry", format!("`{}` names error `{tok}` owned by `{}`; point with {{{{{}}}}}", cl.id, e.clause, e.clause)));
+                }
+            }
+        }
+        let text = strip_pointers(&without_ticks(&cl.statement), " ");
+        let mine = limit_by_clause.get(cl.id.as_str()).cloned().unwrap_or_default();
+        for cap in NUM_UNIT.captures_iter(&text) {
+            let num = cap[1].replace([',', '_'], "");
+            let Some(unit) = c.reg.unit_of(&cap[2]) else { continue };
+            let ok = mine.iter().any(|l| l.value_text().replace([',', '_'], "") == num && l.unit == unit);
+            if !ok {
+                out.push(f("registry", &cl.file, cl.line, "SpecRegistry", format!("`{}` states `{} {}` with no named bound", cl.id, &cap[1], &cap[2])));
+            }
+        }
+    }
+    // shared identifiers
+    let mut by_token: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut first: BTreeMap<String, (String, usize)> = BTreeMap::new();
+    for cl in c.clauses() {
+        for (_, tok) in tick_spans(&cl.statement) {
+            if !IDENT.is_match(&tok) || tok.len() < 3 {
+                continue;
+            }
+            by_token.entry(tok.clone()).or_default().insert(cl.contract.clone());
+            first.entry(tok).or_insert((cl.file.clone(), cl.line));
+        }
+    }
+    for (tok, cs) in &by_token {
+        if cs.len() >= 2 && !c.reg.is_registered(tok) {
+            let (file, line) = &first[tok];
+            out.push(f("registry", file, *line, "SpecRegistry", format!("`{tok}` appears in {} contracts ({}) and is not registered", cs.len(), cs.iter().cloned().collect::<Vec<_>>().join(", "))));
+        }
+    }
+    // spelling collisions and aliases
+    let mut spell: BTreeMap<String, String> = BTreeMap::new();
+    let mut aliases: BTreeMap<String, String> = BTreeMap::new();
+    let mut add = |kind: &str, owner: &str, name: &str, out: &mut Vec<Finding>| {
+        let key = normalize(name);
+        let label = format!("{kind} `{name}` ({owner})");
+        if let Some(prev) = spell.get(&key) {
+            out.push(f("registry", &format!("spec/terms/{owner}.toml"), 0, "SpecSpellingCollision", format!("{label} collides with {prev}")));
+        } else {
+            spell.insert(key, label);
+        }
+    };
+    for (owner, fr) in &c.reg.fragments {
+        for k in fr.error.keys() {
+            add("error", owner, k, &mut out);
+        }
+        for k in fr.limit.keys() {
+            add("bound", owner, k, &mut out);
+        }
+        for (k, n) in &fr.term {
+            add("term", owner, k, &mut out);
+            for a in &n.aliases {
+                aliases.insert(a.clone(), k.clone());
+            }
+        }
+    }
+    for k in c.reg.wire.keys() {
+        add("wire", "wire", k, &mut out);
+    }
+    for cl in c.clauses() {
+        for (_, tok) in tick_spans(&cl.statement) {
+            if let Some(canon) = aliases.get(&tok) {
+                out.push(f("registry", &cl.file, cl.line, "SpecSpellingCollision", format!("`{}` uses alias `{tok}`; write `{canon}`", cl.id)));
+            }
+        }
+    }
+    out
+}
+
+/// Blank backticks but keep their content (a bound inside ticks still counts).
+fn without_ticks_keep(s: &str) -> String {
+    s.replace('`', " ")
+}
+
+// ---------------------------------------------------------------- reference
+
+fn shingles(s: &str) -> BTreeSet<String> {
+    let clean: String = strip_pointers(s, " ")
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { ' ' })
+        .collect();
+    let w: Vec<&str> = clean.split_whitespace().collect();
+    let mut out = BTreeSet::new();
+    if w.len() >= 8 {
+        for i in 0..=w.len() - 8 {
+            out.insert(w[i..i + 8].join(" "));
+        }
+    }
+    out
+}
+
+fn reference(c: &Corpus) -> Vec<Finding> {
+    let mut out = Vec::new();
+    let ids: BTreeSet<String> = c.clauses().map(|cl| cl.id.clone()).collect();
+    for d in &c.docs {
+        for (n, l, k) in d.each() {
+            if k == LineKind::Code || k == LineKind::Fence {
+                continue;
+            }
+            for p in pointers(&without_ticks(l)) {
+                if !ids.contains(&p) {
+                    out.push(f("reference", &d.rel, n, "SpecDanglingReference", format!("{{{{{p}}}}} names no clause")));
+                }
+            }
+            if EXT_LINK.is_match(l) {
+                out.push(f("reference", &d.rel, n, "SpecExternalLink", "link to an external document or references/".into()));
+            }
+        }
+    }
+    let mut owner: HashMap<String, String> = HashMap::new();
+    let mut reported: BTreeSet<(String, String)> = BTreeSet::new();
+    for cl in c.clauses() {
+        for s in shingles(&cl.statement) {
+            match owner.get(&s) {
+                Some(other) if *other != cl.id => {
+                    let key = (other.clone(), cl.id.clone());
+                    if reported.insert(key) {
+                        out.push(f("reference", &cl.file, cl.line, "SpecRestatement", format!("`{}` restates `{other}`: \"{s}\"", cl.id)));
+                    }
+                }
+                Some(_) => {}
+                None => {
+                    owner.insert(s, cl.id.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------- rationale
+
+static LEAK: LazyLock<Regex> = LazyLock::new(|| {
+    word_re(&["because", "so that", "in order to", "the reason", "which is why", "judged on", "at the cost of", "trade-off"])
+});
+static MODAL: LazyLock<Regex> =
+    LazyLock::new(|| word_re(&["must", "never", "refuses", "is refused", "at most", "at least", "always"]));
+static APPENDIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^#+\s*(open questions|out of scope|see also)\s*$").unwrap());
+
+fn why_ok(why: &str) -> Result<Vec<String>, String> {
+    let w = why.trim();
+    if w.is_empty() || w == "—" {
+        return Ok(vec![]);
+    }
+    if let Some(rest) = w.strip_prefix("because ") {
+        let n = rest.split_whitespace().count();
+        return if n <= 30 { Ok(vec![]) } else { Err(format!("`because` cell is {n} words, over 30")) };
+    }
+    let ids: Vec<String> = w.split(',').map(|s| s.trim().to_string()).collect();
+    if ids.iter().all(|i| RECORD_ID.is_match(i)) {
+        Ok(ids)
+    } else {
+        Err(format!("Why cell `{w}` is neither record ids nor a `because` clause"))
+    }
+}
+
+fn record_id(rel: &str) -> Option<String> {
+    RECORD_FILE.captures(rel).map(|c| c[1].to_string())
+}
+
+fn rationale(c: &Corpus) -> Vec<Finding> {
+    let mut out = Vec::new();
+    let mut cited: BTreeMap<String, (String, usize)> = BTreeMap::new();
+    for cl in c.clauses() {
+        match why_ok(&cl.why) {
+            Ok(ids) => {
+                for i in ids {
+                    cited.entry(i).or_insert((cl.file.clone(), cl.line));
+                }
+            }
+            Err(e) => out.push(f("rationale", &cl.file, cl.line, "SpecRecord", format!("`{}`: {e}", cl.id))),
+        }
+        if cl.kind == "refusal" && matches!(cl.why.trim(), "" | "—") {
+            out.push(f("rationale", &cl.file, cl.line, "SpecRecord", format!("refusal `{}` carries no Why", cl.id)));
+        }
+        if LEAK.is_match(&without_ticks(&cl.statement)) {
+            out.push(f("rationale", &cl.file, cl.line, "SpecRationaleLeak", format!("`{}` statement carries rationale", cl.id)));
+        }
+    }
+    let mut records: BTreeSet<String> = BTreeSet::new();
+    for d in c.records() {
+        match record_id(&d.rel) {
+            None => out.push(f("rationale", &d.rel, 1, "SpecRecord", "record file name is not P<n>-<slug>.md or D<nn>-<slug>.md".into())),
+            Some(id) => {
+                if !cited.contains_key(&id) {
+                    out.push(f("rationale", &d.rel, 1, "SpecRecord", format!("record {id} is cited by no clause")));
+                }
+                record_anatomy(d, &id, &mut out);
+                records.insert(id);
+            }
+        }
+    }
+    for (id, (file, line)) in &cited {
+        if !records.contains(id) {
+            out.push(f("rationale", file, *line, "SpecRecord", format!("Why cites missing record {id}")));
+        }
+    }
+    let ops: BTreeSet<(String, String)> = c
+        .reg
+        .fragments
+        .iter()
+        .flat_map(|(k, fr)| fr.operation.keys().map(move |o| (k.clone(), o.clone())))
+        .collect();
+    for d in c.contracts() {
+        for (n, l, k) in d.each() {
+            let plain = without_ticks(l);
+            match k {
+                LineKind::Prose | LineKind::TableRow | LineKind::Heading => {
+                    if LEAK.is_match(&plain) {
+                        out.push(f("rationale", &d.rel, n, "SpecRationaleLeak", "rationale outside a Why cell".into()));
+                    }
+                    if MODAL.is_match(&plain) {
+                        out.push(f("rationale", &d.rel, n, "SpecStrayModal", format!("modal `{}` outside a clause row", MODAL.find(&plain).unwrap().as_str())));
+                    }
+                    if k == LineKind::Heading && APPENDIX.is_match(l) {
+                        out.push(f("rationale", &d.rel, n, "SpecUnsettled", "appendix heading".into()));
+                    }
+                }
+                LineKind::Unsettled => match UNSETTLED.captures(l.trim()) {
+                    None => out.push(f("rationale", &d.rel, n, "SpecUnsettled", "unsettled line is not `unsettled: <q>? owner: <h> affects: <c>.<op>`".into())),
+                    Some(cap) => {
+                        if !ops.contains(&(cap[1].to_string(), cap[2].to_string())) {
+                            out.push(f("rationale", &d.rel, n, "SpecUnsettled", format!("affects `{}.{}` names no operation", &cap[1], &cap[2])));
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+fn record_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
+    let r = |line: usize, msg: String| f("rationale", &d.rel, line, "SpecRecord", msg);
+    let first = d.lines.first().cloned().unwrap_or_default();
+    if !first.starts_with(&format!("# {id} — ")) {
+        out.push(r(1, format!("first line is not `# {id} — <title>`")));
+    }
+    if !d.lines.iter().any(|l| l.starts_with("**Status:**")) {
+        out.push(r(1, "no `**Status:**` line".into()));
+    }
+    let sections: Vec<(usize, String)> = d
+        .each()
+        .filter(|(_, _, k)| *k == LineKind::Heading)
+        .filter_map(|(n, l, _)| l.strip_prefix("## ").map(|t| (n, t.trim().to_string())))
+        .collect();
+    let order = ["Context", "Decision", "Options", "Consequences", "Revisit"];
+    let names: Vec<&str> = sections.iter().map(|s| s.1.as_str()).collect();
+    let mut last = 0usize;
+    let mut ok = true;
+    for n in &names {
+        match order.iter().position(|o| o == n) {
+            Some(p) if p >= last => last = p + 1,
+            _ => ok = false,
+        }
+    }
+    for req in ["Decision", "Options", "Consequences"] {
+        if !names.contains(&req) {
+            ok = false;
+        }
+    }
+    if !ok {
+        out.push(r(1, format!("sections [{}] are not Context?, Decision, Options, Consequences, Revisit?", names.join(", "))));
+    }
+    let words: usize = d
+        .lines
+        .iter()
+        .filter(|l| !is_separator(l))
+        .map(|l| l.replace('|', " ").split_whitespace().count())
+        .sum();
+    if words > 400 {
+        out.push(r(1, format!("{words} words, over 400")));
+    }
+    // options table
+    let Some(start) = sections.iter().find(|s| s.1 == "Options").map(|s| s.0) else { return };
+    let mut rows = Vec::new();
+    let mut header = None;
+    for (n, l, _) in d.each().skip(start) {
+        if l.starts_with("## ") {
+            break;
+        }
+        if l.trim_start().starts_with('|') {
+            if header.is_none() {
+                header = Some((n, cells(l)));
+            } else if !is_separator(l) {
+                rows.push((n, cells(l)));
+            }
+        }
+    }
+    match header {
+        Some((n, h)) if h != ["Option", "Lost on", "Cost"] => out.push(r(n, "Options table is not headed Option | Lost on | Cost".into())),
+        None => out.push(r(start, "Options holds no table".into())),
+        _ => {}
+    }
+    if !(2..=5).contains(&rows.len()) {
+        out.push(r(start, format!("Options holds {} rows, want 2 to 5", rows.len())));
+    }
+    let chosen: Vec<_> = rows.iter().filter(|(_, c)| c.first().map(|s| s.contains("*(chosen)*")).unwrap_or(false)).collect();
+    if chosen.len() != 1 {
+        out.push(r(start, format!("{} rows marked *(chosen)*, want 1", chosen.len())));
+    }
+    for (n, row) in &rows {
+        let is_chosen = row.first().map(|s| s.contains("*(chosen)*")).unwrap_or(false);
+        let lost = row.get(1).map(|s| s.trim()).unwrap_or("");
+        if is_chosen && lost != "—" {
+            out.push(r(*n, "the chosen row's Lost on is not `—`".into()));
+        }
+        if !is_chosen && (lost.is_empty() || lost == "—") {
+            out.push(r(*n, "a rejected option names no criterion it lost on".into()));
+        }
+    }
+}
+
+// ---------------------------------------------------------------- state
+
+#[derive(serde::Deserialize, Default)]
+pub struct PinsFile {
+    #[serde(default)]
+    pub pin: BTreeMap<String, BTreeMap<String, String>>,
+    #[serde(default)]
+    pub floor: BTreeMap<String, i64>,
+}
+
+pub fn load_pins(c: &Corpus) -> PinsFile {
+    std::fs::read_to_string(c.root.join("spec/pins.toml"))
+        .ok()
+        .and_then(|s| toml::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// `performed` when the artifact's final segment is defined under `crates/`.
+pub fn verdict(c: &Corpus, pin: &BTreeMap<String, String>) -> &'static str {
+    let Some((kind, path)) = pin.iter().next() else { return "broken" };
+    let last = path.rsplit([':', '.']).next().unwrap_or(path);
+    let pat = match kind.as_str() {
+        "test" => format!(r"\bfn\s+{}\b", regex::escape(last)),
+        "theorem" => format!(r"\b(theorem|lemma)\s+{}\b", regex::escape(last)),
+        _ => format!(r"\b(fn|struct|enum|trait|type|const|static|mod)\s+{}\b", regex::escape(last)),
+    };
+    let re = Regex::new(&pat).unwrap();
+    let crates = c.root.join("crates");
+    if !crates.exists() {
+        return "broken";
+    }
+    for e in walkdir::WalkDir::new(crates).into_iter().flatten() {
+        let p = e.path();
+        if p.extension().map(|x| x == "rs" || x == "lean").unwrap_or(false) {
+            if let Ok(s) = std::fs::read_to_string(p) {
+                if re.is_match(&s) {
+                    return "performed";
+                }
+            }
+        }
+    }
+    "broken"
+}
+
+/// A roadmap milestone: its heading, its line, and each named operation with its line.
+pub type Milestone = (String, usize, Vec<(usize, String)>);
+
+pub fn roadmap(c: &Corpus) -> Vec<Milestone> {
+    let mut out: Vec<Milestone> = Vec::new();
+    let Some(d) = c.docs.iter().find(|d| d.role == Role::Plan) else { return out };
+    let re = Regex::new(r"^[a-z0-9-]+\.([a-z0-9-]+|\*)$").unwrap();
+    for (n, l, k) in d.each() {
+        if k == LineKind::Heading && l.starts_with("## ") {
+            out.push((l[3..].trim().to_string(), n, vec![]));
+        } else if k == LineKind::TableRow && !is_separator(l) {
+            if let Some(m) = out.last_mut() {
+                let first = cells(l).into_iter().next().unwrap_or_default();
+                for (_, t) in tick_spans(&first) {
+                    if re.is_match(&t) {
+                        m.2.push((n, t));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+pub fn expand_roadmap(c: &Corpus) -> (BTreeMap<String, String>, Vec<Finding>) {
+    let mut claim: BTreeMap<String, String> = BTreeMap::new();
+    let mut out = Vec::new();
+    let ms = roadmap(c);
+    let ops = |contract: &str| -> Vec<String> {
+        c.reg.fragments.get(contract).map(|f| f.operation.keys().cloned().collect()).unwrap_or_default()
+    };
+    let mut explicit = BTreeSet::new();
+    for (_, _, names) in &ms {
+        for (_, t) in names {
+            if !t.ends_with(".*") {
+                explicit.insert(t.clone());
+            }
+        }
+    }
+    let mut stars = BTreeSet::new();
+    for (m, _, names) in &ms {
+        for (n, t) in names {
+            let (contract, op) = t.split_once('.').unwrap();
+            if op == "*" {
+                if ops(contract).is_empty() {
+                    out.push(f("state", "spec/roadmap.md", *n, "SpecRoadmap", format!("`{t}` names no contract")));
+                }
+                if !stars.insert(contract.to_string()) {
+                    out.push(f("state", "spec/roadmap.md", *n, "SpecRoadmap", format!("`{t}` scheduled twice")));
+                }
+                for o in ops(contract) {
+                    let full = format!("{contract}.{o}");
+                    if !explicit.contains(&full) {
+                        claim.insert(full, m.clone());
+                    }
+                }
+            } else if !ops(contract).contains(&op.to_string()) {
+                out.push(f("state", "spec/roadmap.md", *n, "SpecRoadmap", format!("`{t}` names no operation")));
+            } else if let Some(prev) = claim.get(t) {
+                if prev != m {
+                    out.push(f("state", "spec/roadmap.md", *n, "SpecRoadmap", format!("`{t}` claimed by two milestones")));
+                }
+            } else {
+                claim.insert(t.clone(), m.clone());
+            }
+        }
+    }
+    (claim, out)
+}
+
+fn state(c: &Corpus) -> Vec<Finding> {
+    let mut out = Vec::new();
+    let pins = load_pins(c);
+    let clauses = c.clause_map();
+    let mut count: BTreeMap<String, i64> = BTreeMap::new();
+    for (id, pin) in &pins.pin {
+        let Some(cl) = clauses.get(id) else {
+            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin `{id}` names no clause")));
+            continue;
+        };
+        if pin.contains_key("item") && cl.kind != "behavior" {
+            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("{} `{id}` takes a test or theorem, not an item", cl.kind)));
+        }
+        if verdict(c, pin) == "broken" {
+            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin for `{id}` does not resolve under crates/")));
+        } else {
+            *count.entry(cl.contract.clone()).or_default() += 1;
+        }
+    }
+    for (contract, floor) in &pins.floor {
+        let live = count.get(contract).copied().unwrap_or(0);
+        if live < *floor {
+            out.push(f("state", "spec/pins.toml", 0, "SpecCoverageRegression", format!("`{contract}` holds {live} performed pins under floor {floor}")));
+        }
+        if !c.reg.contracts.contains_key(contract) {
+            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("floor names unknown contract `{contract}`")));
+        }
+    }
+    out.extend(expand_roadmap(c).1);
+    out
+}
+
+// ---------------------------------------------------------------- render
+
+static DATED: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(planned|not yet|currently|today|shipped|implemented|previously|used to|legacy)\b|\b(TODO|FIXME|WIP)\b").unwrap()
+});
+static COUNTERFACTUAL: LazyLock<Regex> = LazyLock::new(|| word_re(&["will", "would", "shall"]));
+static BANNED: LazyLock<Regex> = LazyLock::new(|| word_re(&["seam", "seams", "load-bearing", "wedge", "rung", "rungs", "land-grab"]));
+
+fn render(c: &Corpus) -> Vec<Finding> {
+    let mut out = Vec::new();
+    for (rel, want) in [("spec/status.md", crate::status_text(c)), ("spec/spec.lock.json", crate::lock_text(c))] {
+        let have = std::fs::read_to_string(c.root.join(rel)).unwrap_or_default();
+        if have != want {
+            out.push(f("render", rel, 0, "SpecStaleRender", "differs from regeneration; run `contextful-spec state` and `extract`".into()));
+        }
+    }
+    let local = Regex::new(r"(/Users/|/home/|\$HOME/|(^|[\s(`])~/)").unwrap();
+    let boxes = |s: &str| s.chars().any(|ch| ('\u{2500}'..='\u{257F}').contains(&ch));
+    for d in &c.docs {
+        let mut fence_lang_mermaid = false;
+        for (n, l, k) in d.each() {
+            if k == LineKind::Fence {
+                fence_lang_mermaid = l.trim().starts_with("```mermaid");
+            }
+            if local.is_match(&without_ticks(l)) {
+                out.push(f("render", &d.rel, n, "SpecLocalPath", "absolute local path".into()));
+            }
+            if matches!(k, LineKind::Code | LineKind::Fence | LineKind::Front) {
+                let _ = fence_lang_mermaid;
+                continue;
+            }
+            if boxes(l) {
+                out.push(f("render", &d.rel, n, "SpecAsciiDiagram", "box-drawing outside a mermaid fence".into()));
+            }
+            let plain = without_ticks(l);
+            if d.role != Role::Plan && (DATED.is_match(&plain) || ISO_DATE.is_match(&plain)) {
+                out.push(f("render", &d.rel, n, "SpecDatedProse", "build-state or dated vocabulary".into()));
+            }
+            if d.role == Role::Contract && COUNTERFACTUAL.is_match(&plain) {
+                out.push(f("render", &d.rel, n, "SpecCounterfactual", format!("`{}` in a contract file", COUNTERFACTUAL.find(&plain).unwrap().as_str())));
+            }
+            if BANNED.is_match(&plain) || BARE_ISSUE.is_match(&plain) {
+                out.push(f("render", &d.rel, n, "SpecBannedWord", "banned noun or provenance link".into()));
+            }
+            for (i, w) in plain.split(|ch: char| !ch.is_alphanumeric() && ch != '-').enumerate() {
+                if w.is_empty() {
+                    continue;
+                }
+                if let Some(r) = c.reg.refused.get(&sha256_lower(w)) {
+                    let capital = w.chars().next().map(|ch| ch.is_uppercase()).unwrap_or(false);
+                    if !r.proper || (capital && i > 0) {
+                        out.push(f("render", &d.rel, n, "SpecBannedWord", format!("refused name ({})", r.note)));
+                    }
+                }
+            }
+        }
+    }
+    let terms = c.root.join("spec/terms");
+    if let Ok(rd) = std::fs::read_dir(&terms) {
+        for e in rd.flatten() {
+            let rel = format!("spec/terms/{}", e.file_name().to_string_lossy());
+            if let Ok(s) = std::fs::read_to_string(e.path()) {
+                for (i, l) in s.lines().enumerate() {
+                    if local.is_match(l) {
+                        out.push(f("render", &rel, i + 1, "SpecLocalPath", "absolute local path".into()));
+                    }
+                }
+            }
+        }
+    }
+    out
 }

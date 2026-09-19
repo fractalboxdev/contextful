@@ -1,0 +1,92 @@
+# Registry fragment — contract `surface`, files spec/70-control-plane.md and spec/71-console.md.
+
+[operation]
+arm            = { gloss = "The schedule grammar and cron dialect, the trigger adapter and its durability, the wake route, and how an entry computes its next fire." }
+reconcile      = { gloss = "The control source, the snapshot pointer and its versions, the pure schedule diff, and what a failed poll leaves running." }
+fire           = { gloss = "Job declaration, the closed kind union, same-tick order, the fire watermark, and one-shot evaluation." }
+dispatch       = { gloss = "The bounded fire pool and its exclusion keys, the reconciler's hold on the cadence lease, step results, and the worker adapter with its attempt-fenced callback." }
+edit           = { gloss = "The configuration document, the records it presents read-only, the structured schedule specification, and connector configuration." }
+apply          = { gloss = "Validation, the immutable version claim, the pointer advance, the owner's storage, and the authority an apply carries." }
+reside         = { gloss = "Where the data plane runs, the region allow-set gating placement, and operation with no external reach." }
+register-store = { gloss = "Which stores a deployment serves, how each store's credential and binding names derive, and how a request reaches a store's origin." }
+visualize      = { gloss = "The operations canvas, the pack file surface, and the learnings record a store publishes about itself." }
+package        = { gloss = "The client library, its four deployment shapes and transports, and the credential each shape carries." }
+speak          = { gloss = "The language every visitor-visible string carries, the audience contract, and the deterministic backstops beneath it." }
+ground         = { gloss = "Where an answer's material comes from: the closed tool set, the two trust layers, the per-reader credential, the web supplement and the sources block." }
+plan-turn      = { gloss = "The shape of one turn: planner scaffolding, the replanning round, the answerability test, the code path, and the store's prompt overlay." }
+set-vantage    = { gloss = "A session's time basis: its vantage, the bound each leg carries, the snapshot timeline and the arrivals strip." }
+browse         = { gloss = "What a store advertises before a question: discovered chips, humanized labels, the insights panel and the file gallery." }
+learn          = { gloss = "The reading loop's memory: recall ahead of planning, the per-turn distillation and the labels its conclusions inherit." }
+render         = { gloss = "The three channels, the component union, deterministic component choice, view hints and the sanitizer walk." }
+brief          = { gloss = "The proactive greeting card: its derivation, payload, matching tiers, client-side clock and the absence it earns." }
+publish-answer = { gloss = "The moment an answer computed for one reader reaches a place other people read." }
+
+[error]
+ScheduleUnreadable            = { clause = "surface.arm.unreadable-schedule", gloss = "A schedule string the grammar or cron dialect cannot read." }
+TriggerAdapterUnknown         = { clause = "surface.arm.unknown-trigger", gloss = "A trigger value naming no adapter." }
+TriggerFaceMissing            = { clause = "surface.arm.trigger-face-missing", gloss = "The external trigger on a deployment serving no route for the wake." }
+ControlPointerMalformed       = { clause = "surface.reconcile.pointer-malformed", gloss = "A snapshot pointer body that is not wholly a version." }
+ControlSnapshotUnreadable     = { clause = "surface.reconcile.fail-static", gloss = "A poll that could not read its pointer or parse the named document." }
+ControlSourceNotLoopback      = { clause = "surface.reconcile.loopback-only", gloss = "A control URL whose host is not a loopback address." }
+JobKindUnknown                = { clause = "surface.fire.job-kind-unknown", gloss = "A job block naming a kind outside the union, or carrying a command." }
+JobTargetUnbound              = { clause = "surface.fire.target-unbound", gloss = "A job target binding to no produced table or declared model." }
+CycleControlSourceUnresolved  = { clause = "surface.fire.cycle-control-source", gloss = "A control source that does not resolve under one-shot evaluation." }
+DispatchUnitNotAHead          = { clause = "surface.dispatch.not-a-head", gloss = "A due id that is a step of a dependent run rather than its head." }
+StepToolError                 = { clause = "surface.dispatch.in-band-tool-error", gloss = "An in-band tool error on a step driving the engine over the tool protocol." }
+DispatchCallbackRejected      = { clause = "surface.dispatch.callback-rejected", gloss = "A completion callback carrying a superseded attempt or a skewed timestamp." }
+SecretMaterialInDocument      = { clause = "surface.edit.secret-in-document", gloss = "A credential value written into the configuration document." }
+ConnectorUploadRefused        = { clause = "surface.edit.connector-upload", gloss = "A connector artifact offered through the operator surface." }
+ManifestVersionConflict       = { clause = "surface.apply.version-race", gloss = "An apply whose pointer compare-and-swap lost to a concurrent apply." }
+ApplyValidationRefused        = { clause = "surface.apply.validation", gloss = "A document engine validation refused; no version was claimed." }
+ConfigOwnerUnconfigured       = { clause = "surface.apply.owner-unconfigured", gloss = "A configuration owner with no storage or no credential behind it." }
+ConditionalWriteUnsupported   = { clause = "surface.apply.weak-conditional-backend", gloss = "A configuration owner or catalog backend lacking linearizable conditional replacement." }
+StoreNotInitialized           = { clause = "surface.apply.uninitialized-store", gloss = "An edit or apply against a store that has taken no guarded import." }
+EnforceRegionMismatch         = { clause = "surface.reside.region-mismatch", gloss = "A configured resource resolving outside the residency allow-set." }
+StoreRegistryUnreadable       = { clause = "surface.register-store.registry-unreadable", gloss = "A store registry payload that does not parse." }
+StoreEntryMalformed           = { clause = "surface.register-store.malformed-entry", gloss = "One registry entry that does not decode." }
+StoreIdReserved               = { clause = "surface.register-store.reserved-id", gloss = "A configured store claiming a built-in id." }
+StoreNameAuthored             = { clause = "surface.register-store.authored-name", gloss = "A store entry carrying its own credential or binding name." }
+StdioCredentialMissing        = { clause = "surface.package.stdio-credential", gloss = "A process-transport client with no credential." }
+StoreSelectorAbsent           = { clause = "surface.package.store-selector", gloss = "A spawned engine finding no project manifest above its working directory." }
+ConsoleSuggestionUnanswerable = { clause = "surface.speak.unanswerable-suggestion", gloss = "A suggested prompt whose answer is a decline." }
+ConsoleUngroundedAnswer       = { clause = "surface.ground.ungrounded-answer", gloss = "Answer prose composed in a turn holding no tool result." }
+ConsoleToolNotAdmitted        = { clause = "surface.ground.unadmitted-tool", gloss = "A tool call outside the turn's admitted packs." }
+ConsoleMutatingToolRequested  = { clause = "surface.ground.mutating-tool", gloss = "A client-reachable path naming a write." }
+ConsoleFileAccessDirect       = { clause = "surface.ground.direct-file-read", gloss = "A table function reading stored bytes by path on the caller surface." }
+ConsoleTokenExchangeRefused   = { clause = "surface.ground.mint-refused", gloss = "A per-reader mint the store's exchange route refused." }
+ConsolePlannerReachedMemory   = { clause = "surface.plan-turn.planner-reached-memory", gloss = "Planner scaffolding naming a memory relation." }
+ConsoleVantageUnparseable     = { clause = "surface.set-vantage.unparseable", gloss = "A vantage that is neither a calendar day nor an instant." }
+ConsoleWebBoundUnparseable    = { clause = "surface.set-vantage.web-bound-unparseable", gloss = "A web leg whose publication bound does not parse." }
+ConsoleLearningUnscoped       = { clause = "surface.learn.unscoped", gloss = "A distilled conclusion landing without the reading-session scope." }
+ConsoleViewNotServerBuilt     = { clause = "surface.render.client-authored-view", gloss = "A view from a client or the model rather than inferred from a result." }
+ConsoleBriefUnavailable       = { clause = "surface.brief.absence-is-earned", gloss = "A greeting derivation that errored or overran its budget." }
+VisibilityShareAffordance     = { clause = "surface.publish-answer.share-affordance", gloss = "A share control offered on access-explanation output." }
+VisibilityAskerlessAudience   = { clause = "surface.publish-answer.askerless-audience", gloss = "A scheduled post to an audience under a service identity." }
+
+[limit]
+surface-wake-answer        = { clause = "surface.arm.wake-answer", value = 25, unit = "s", basis = "chosen", gloss = "Longest a wake holds its request before answering." }
+surface-tick-interval      = { clause = "surface.arm.tick-interval", value = 500, unit = "ms", basis = "chosen", gloss = "In-process evaluation interval." }
+surface-poll-interval      = { clause = "surface.reconcile.poll-cadence", value = 30, unit = "s", basis = "chosen", gloss = "Default control poll cadence." }
+surface-step-result        = { clause = "surface.dispatch.step-result", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest checkpointed step result." }
+surface-callback-skew      = { clause = "surface.dispatch.callback-skew", value = 300, unit = "s", basis = "chosen", gloss = "Largest callback timestamp skew the relay accepts." }
+surface-heartbeat-beat     = { clause = "surface.dispatch.heartbeat-beat", value = 15, unit = "s", basis = "chosen", gloss = "Interval between worker heartbeats." }
+surface-heartbeat-lapse    = { clause = "surface.dispatch.heartbeat-lapse", value = 60, unit = "s", basis = "chosen", gloss = "Heartbeat lapse that reschedules in-flight work." }
+surface-region-entries     = { clause = "surface.reside.region-entries", value = 16, unit = "entries", basis = "chosen", gloss = "Largest residency allow-set." }
+surface-listing-page       = { clause = "surface.visualize.listing-page", value = 1000, unit = "entries", basis = "chosen", gloss = "Entries one pack listing call answers." }
+surface-redactor-lookahead = { clause = "surface.speak.redactor-lookahead", value = 128, unit = "chars", basis = "chosen", gloss = "Characters the streaming redactor holds across a chunk boundary." }
+surface-sources-per-turn   = { clause = "surface.ground.sources-per-turn", value = 8, unit = "entries", basis = "chosen", gloss = "Entries in a turn's source list." }
+surface-code-path-rows     = { clause = "surface.plan-turn.code-path-bounds", value = 5000, unit = "rows", basis = "chosen", gloss = "Rows the code path reads per data table." }
+surface-code-path-time     = { clause = "surface.plan-turn.code-path-bounds", value = 10, unit = "s", basis = "chosen", gloss = "Wall time of the code path." }
+surface-overlay-cache      = { clause = "surface.plan-turn.overlay-cache", value = 5, unit = "min", basis = "chosen", gloss = "Cache lifetime of a store's persona overlay." }
+surface-overlay-length     = { clause = "surface.plan-turn.overlay-length", value = 8000, unit = "chars", basis = "chosen", gloss = "Truncation point of a persona overlay." }
+surface-sample-labels      = { clause = "surface.set-vantage.sample-labels", value = 3, unit = "entries", basis = "chosen", gloss = "Sampled labels one table contributes to the arrivals strip." }
+surface-learnings-per-turn = { clause = "surface.learn.distillation", value = 3, unit = "entries", basis = "chosen", gloss = "Conclusions one distillation writes." }
+surface-line-chart-floor   = { clause = "surface.render.component-choice", value = 3, unit = "rows", basis = "chosen", gloss = "Rows on distinct days a line needs." }
+surface-topic-tier-tokens  = { clause = "surface.brief.topic-tier", value = 2, unit = "tokens", basis = "chosen", gloss = "Shared tokens the topic tier needs." }
+surface-card-subjects      = { clause = "surface.brief.card-subjects", value = 3, unit = "subjects", basis = "chosen", gloss = "Subjects one greeting card carries." }
+surface-articles-per-subject = { clause = "surface.brief.articles-per-subject", value = 3, unit = "entries", basis = "chosen", gloss = "Matched articles one card subject carries." }
+surface-catchup-window     = { clause = "surface.brief.catchup-window", value = 7, unit = "d", basis = "chosen", gloss = "Longest catch-up window the backend serves." }
+
+[term]
+schedule = { gloss = "The field carrying a schedule string in the grammar `surface.arm` owns." }
+validate = { gloss = "The command verb and job kind that validates a manifest without landing rows." }

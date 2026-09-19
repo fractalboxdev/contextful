@@ -1,0 +1,109 @@
+# Registry fragment — contract `disclosure`, files spec/60-visibility.md,
+# spec/61-disclosure.md and spec/62-accountability.md.
+
+[operation]
+mirror           = { gloss = "The three-way conjunction, the access tables as store data, and the binding that compiles a table's semi-join." }
+sweep            = { gloss = "Observation of one source's permission state: sweep kinds, the observation clock, the coverage watermark, tombstones and revocation." }
+reach            = { gloss = "Per-request resolution of a subject to the resources it reaches, the bounded group closure, and the reachable-set cache." }
+bound-staleness  = { gloss = "The declared age budget on mirrored authorization, the refusal past it, and the one narrowing posture." }
+declare-fidelity = { gloss = "The fidelity level a table claims, the source family bounding the claim, and live federation under a reader's delegated credential." }
+pack             = { gloss = "The reviewed unit landing one source: a manifest fragment plus a connector pin, its access mapping, defaults and container allowlist." }
+set-mode         = { gloss = "The two deployment settings a derived result is computed in, the offline diagnostic, and the cross-owner hashed join." }
+release          = { gloss = "The ordered statistics release, the write-time disclosure policy, and the per-unit budget reservation." }
+suppress         = { gloss = "The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves." }
+template         = { gloss = "Query templates a releasing principal calls by name: the single-statement rule, the checks they pass, and the truncation flag a capped read carries." }
+bound-cohort     = { gloss = "The line between a per-person table and a cohort table, and the floor a cohort read carries." }
+record           = { gloss = "What a read leaves behind: the span, the hash-linked audit entry, and where telemetry lands." }
+explain          = { gloss = "The access decision and its path, replay over a window with its coverage, and the audience report." }
+attest           = { gloss = "Chain verification, signed segment roots, lineage attestations, and the reach of each guarantee." }
+erase            = { gloss = "The one erasure verb: subject tombstones, the bounded provenance cascade, the restaging gate, and the tenant rewrite." }
+receipt          = { gloss = "The signed artifact a tenant purge returns: its claim, its coverage block, its pseudonym and its idempotence." }
+
+[error]
+VisibilityUnboundTable           = { clause = "disclosure.mirror.unbound-table", gloss = "A table on an organization-wide face carries no visibility block." }
+VisibilityBindingIncomplete      = { clause = "disclosure.mirror.incomplete-binding", gloss = "A servable binding lacks a declared sweep or a staleness budget." }
+VisibilityUngappedStream         = { clause = "disclosure.sweep.ungapped-stream", gloss = "The watermark advanced from an event stream not declared gap-detectable." }
+VisibilityOrphanGrant            = { clause = "disclosure.sweep.orphan-grant", gloss = "A grant landed with no resource row, or on an unknown-class resource." }
+VisibilityClosureDepth           = { clause = "disclosure.reach.closure-overflow", gloss = "The group closure reached its depth or node bound; no set is returned." }
+VisibilityDegradedCached         = { clause = "disclosure.reach.degraded-uncached", gloss = "A result produced past a budget or under the narrowing posture was retained." }
+VisibilityBudgetMalformed        = { clause = "disclosure.bound-staleness.budget-grammar", gloss = "A staleness budget is compound, bare, or carries an unknown suffix." }
+VisibilityAccessStale            = { clause = "disclosure.bound-staleness.access-stale", gloss = "Source lag exceeds a touched table's budget, or the source was never fully swept." }
+VisibilityBudgetUnreachable      = { clause = "disclosure.bound-staleness.budget-below-cadence", gloss = "A budget is tighter than the sweep cadence its source sustains." }
+VisibilityFamilyBound            = { clause = "disclosure.declare-fidelity.family-bound", gloss = "A table declared a level its source family does not permit." }
+VisibilityFamilyUndeclared       = { clause = "disclosure.declare-fidelity.family-undeclared", gloss = "A mapping landed a table without naming its family." }
+VisibilityFederatedRegistered    = { clause = "disclosure.declare-fidelity.federated-registered", gloss = "A federated table was registered on a read face." }
+VisibilityFederatedCacheShared   = { clause = "disclosure.declare-fidelity.federated-cache", gloss = "A federated result was retained under a key omitting the subject." }
+VisibilityComputedInputsMirrored = { clause = "disclosure.declare-fidelity.computed-inputs", gloss = "A mapping projected a sharing engine's inputs into the grant table." }
+VisibilityRosterFromPayload      = { clause = "disclosure.declare-fidelity.roster-from-payload", gloss = "A mapping derived grants from a people list inside content." }
+VisibilityMappingAbsent          = { clause = "disclosure.pack.mapping-absent", gloss = "A pack landed a table with neither a mapping nor an exclusion." }
+VisibilityPackAssertsAccess      = { clause = "disclosure.pack.asserts-access", gloss = "A pack carries an access-shaped key the mapping schema lacks." }
+VisibilityAllowlistAnyOf         = { clause = "disclosure.pack.any-of-allowlist", gloss = "A container allowlist is evaluated as any-of." }
+VisibilityUnsupportedCoarse      = { clause = "disclosure.pack.unsupported-coarse", gloss = "A table declared coarse where its source emits no container signal." }
+DisclosurePolicyAbsent               = { clause = "disclosure.set-mode.policy-absent", gloss = "A published aggregate-shaped model carries no policy and no opt-out." }
+DisclosureModelUnreadable            = { clause = "disclosure.set-mode.model-unreadable", gloss = "A published model's statement text does not read." }
+DisclosureCleanRoomPreconditionUnmet = { clause = "disclosure.set-mode.clean-room-preconditions", gloss = "A shared store lacks a clean-room requirement." }
+DisclosureStaticPepper               = { clause = "disclosure.set-mode.hashed-join", gloss = "A cross-owner hashed join is keyed on a static pepper." }
+DisclosureUnitBudgetExhausted        = { clause = "disclosure.release.budget-reservation", gloss = "A contributing unit's budget reservation failed; nothing is published." }
+DisclosureDuplicateGrain             = { clause = "disclosure.release.duplicate-grain", gloss = "A carried non-grain column is not constant within its group." }
+DisclosureGroupKeyNotPermitted       = { clause = "disclosure.release.group-key", gloss = "A group key is not a subset of the permitted grouping columns." }
+DisclosureContributorKeyAbsent       = { clause = "disclosure.release.contributor-key", gloss = "A governed statement omits the contributor key." }
+DisclosureForbiddenColumnPublished   = { clause = "disclosure.release.forbidden-column", gloss = "A contract declares, or a materialization produces, a forbidden column." }
+DisclosureMinGroupSizeBelowFloor     = { clause = "disclosure.suppress.min-group-size", gloss = "A declared group-size floor is below its minimum." }
+DisclosureShareOutOfRange            = { clause = "disclosure.suppress.contributor-share", gloss = "A declared contributor share lies outside its interval." }
+DisclosureDominanceUnverifiable      = { clause = "disclosure.suppress.dominance-unverifiable", gloss = "Per-contributor masses are unavailable where a share constraint applies." }
+DisclosurePolicySuppressesNothing    = { clause = "disclosure.suppress.empty-policy", gloss = "A policy sets neither threshold." }
+DisclosureGroupingAllowlistEmpty     = { clause = "disclosure.suppress.grouping-allowlist", gloss = "A grouping allowlist is empty or names a non-column." }
+DisclosureTemplateMultiStatement     = { clause = "disclosure.template.single-statement", gloss = "A template declaration holds more than one statement." }
+DisclosureCohortWidening             = { clause = "disclosure.bound-cohort.cohort-widening", gloss = "A read merged an under-floor group into a coarser key." }
+DisclosurePerIndividualUngranted     = { clause = "disclosure.bound-cohort.per-individual-row", gloss = "A per-individual row was read without an explicit grant." }
+DisclosureSingletonCohort            = { clause = "disclosure.bound-cohort.singleton-cohort", gloss = "A cohort key's grain resolves to one person." }
+AuditEntryUnpersisted    = { clause = "disclosure.record.unpersisted-entry", gloss = "A read's audit entry did not persist; no rows are returned." }
+VisibilityDiagnosticRow        = { clause = "disclosure.explain.no-row", gloss = "An explanation returned content from the resource it decides about." }
+VisibilityNoObservations       = { clause = "disclosure.explain.empty-window", gloss = "A replay window holds no observations; no claim is available." }
+VisibilityUnqualifiedAssurance = { clause = "disclosure.explain.unqualified-assurance", gloss = "A negative assurance answer lacks its coverage block." }
+VisibilityIndividualNamed      = { clause = "disclosure.explain.groups-not-members", gloss = "An explanation rendered the members of a group on the path." }
+AuditChainBroken         = { clause = "disclosure.attest.broken-chain", gloss = "A digest mismatch, sequence gap or vanished chain, with the earliest failing index." }
+ErasureUngranted         = { clause = "disclosure.erase.privilege", gloss = "A caller erased without the forget grant." }
+ErasureSubjectUndeclared = { clause = "disclosure.erase.subject-column", gloss = "A subject erasure names a table with no subject column." }
+ErasureCascadeUnbounded  = { clause = "disclosure.erase.cascade-unbounded", gloss = "A provenance chain exceeds the cascade bound; nothing commits." }
+ErasureRestagingRequired = { clause = "disclosure.erase.restaging-gate", gloss = "A fact read arrived while the restaging gate stands." }
+PurgeTenantColumnType    = { clause = "disclosure.erase.tenant-column-type", gloss = "The tenant column is not a string type." }
+PurgeTenantUndeclared    = { clause = "disclosure.erase.tenant-undeclared", gloss = "No model declares an outermost partition key." }
+PurgeRequiresOwner       = { clause = "disclosure.erase.owner-only", gloss = "A purge was presented with a capability token." }
+ReceiptIdentifierLeak    = { clause = "disclosure.receipt.pseudonym", gloss = "A receipt carries a tenant identifier in cleartext." }
+ReceiptClaimWidened      = { clause = "disclosure.receipt.widened-claim", gloss = "A coverage block exceeds its receipt version." }
+ReceiptReplayed          = { clause = "disclosure.receipt.replayed", gloss = "An earlier artifact was returned in place of a fresh signature." }
+ReceiptWithoutRewrite    = { clause = "disclosure.receipt.no-rewrite-engine", gloss = "The rewrite engine is unavailable; nothing is signed." }
+
+[limit]
+visibility-group-depth        = { clause = "disclosure.reach.closure-walk", value = 8, unit = "hops", basis = "chosen", gloss = "Default depth of the group-closure walk." }
+visibility-closure-nodes      = { clause = "disclosure.reach.closure-walk", value = 10000, unit = "nodes", basis = "chosen", gloss = "Largest group closure one request walks." }
+visibility-reach-cache        = { clause = "disclosure.reach.cache-capacity", value = 100000, unit = "entries", basis = "chosen", gloss = "Capacity of the reachable-set cache." }
+diagnostic-store-requests     = { clause = "disclosure.set-mode.offline-diagnostic", value = 0, unit = "requests", basis = "chosen", gloss = "Object-store calls the single-operator diagnostic issues." }
+min-group-size-floor          = { clause = "disclosure.suppress.min-group-size", value = 2, unit = "subjects", basis = "chosen", gloss = "Smallest legal group-size floor." }
+contributor-share-floor       = { clause = "disclosure.suppress.contributor-share", value = 0, unit = "percent", basis = "chosen", gloss = "Exclusive lower bound of a declared contributor share." }
+contributor-share-ceiling     = { clause = "disclosure.suppress.contributor-share", value = 100, unit = "percent", basis = "chosen", gloss = "Inclusive upper bound of a declared contributor share." }
+template-overfetch            = { clause = "disclosure.template.overfetch", value = 1, unit = "rows", basis = "chosen", gloss = "Rows read past the effective ceiling to set the truncation flag." }
+audit-segment-entries         = { clause = "disclosure.record.segment", value = 4096, unit = "entries", basis = "chosen", gloss = "Entries a segment holds before its signed root closes it." }
+telemetry-projection-window   = { clause = "disclosure.record.projection", value = 24, unit = "h", basis = "chosen", gloss = "Rolling window the telemetry projection answers over." }
+telemetry-projection-latency  = { clause = "disclosure.record.projection", value = 1, unit = "s", basis = "chosen", gloss = "Response time of a projection lookup." }
+audit-root-cadence            = { clause = "disclosure.attest.root-replication", value = 10, unit = "min", basis = "chosen", gloss = "Cadence at which signed roots reach the replication bucket." }
+erasure-cascade-depth         = { clause = "disclosure.erase.cascade", value = 16, unit = "hops", basis = "chosen", gloss = "Deepest provenance chain an erasure cascade follows." }
+erasure-physical-removal      = { clause = "disclosure.erase.physical-removal", value = 24, unit = "h", basis = "chosen", gloss = "Commit of an erasure to rewrite or collection of every file holding an erased row." }
+
+[term]
+public = { gloss = "The principal every request carries beside its own, and the hostname gate that admits anonymous visitors." }
+access_resources      = { gloss = "Mirror table: one row per governed object with its observed visibility class." }
+access_grants         = { gloss = "Mirror table: one row per resource, principal and level." }
+access_principals     = { gloss = "Mirror table: one row per source principal." }
+access_group_members  = { gloss = "Mirror table: one row per edge of the source group graph." }
+access_identity_links = { gloss = "Mirror table: one row linking a source principal to a subject, with its method." }
+access_tombstones     = { gloss = "Mirror table: one row per observed revocation." }
+access_freshness      = { gloss = "Mirror table: one row per source and sweep kind, carrying the enforced watermark." }
+visibility_class      = { gloss = "Per-resource observed class: mirrored, coarse, federated or unknown." }
+watermark_at          = { gloss = "Completion instant of the last sweep that read every governed resource of a source." }
+max_acl_staleness     = { gloss = "A table's declared age budget on mirrored authorization." }
+min_group_size        = { gloss = "The declared distinct-contributor count below which a group is withheld." }
+max_contributor_share = { gloss = "The declared share of a group's metric mass above which one contributor withholds it." }
+subject_id            = { gloss = "The manifest key naming a table's subject-identifier column." }
+forget_requests       = { gloss = "The catalog table holding one row per erasure request." }

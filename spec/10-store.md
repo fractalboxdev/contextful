@@ -9,286 +9,338 @@ owns:
   - index
   - bound-time
   - encrypt
+  - push
+  - pull
+  - probe
+  - merge
+  - lease
+  - replicate
 ---
 
-# The context store
+# The store and its sync
 
-The store is the canonical corpus: Parquet files a reader opens without the engine, JSON
-manifests that index them, and a catalog derived from both. Every other contract reaches
-rows through the shapes this file fixes.
+The store is the canonical corpus: Parquet a reader opens without the engine, JSON
+manifests indexing it, one pointer object per table naming the current snapshot, and two
+local SQLite catalogs. An S3-compatible bucket mirrors the tree key for key. Every other
+contract reaches rows through the shapes this file fixes.
 
-## Parties
+## lay-out
 
-| Party | Obligation |
-| --- | --- |
-| **The store** | Keeps each landed row as Parquet under its table directory, indexes each run and each snapshot with a JSON manifest, and keeps the catalog reconstructible from the file tree alone. |
-| **The producer** | Declares a table's key set before its first batch, sets a reserved optional column where it can stand behind the value, and keeps its own names outside the namespaces the engine holds. |
-| **The scan** | Resolves a table's file list from the manifests, unifies column types across that list, and places a time bound on the inner source beneath enforcement. |
-| **The compactor** | Folds committed runs into one immutable snapshot per table, materializes last-write-wins per key, and makes a snapshot and its sidecars visible in one step. |
-| **The operator** | Turns at-rest encryption on per project, rotates its key by snapshot, and points compaction at one owning site. |
-| **The reader** | Reads behavior in the clause tables, artifacts in Shapes, and the argument behind a refusal in `spec/decisions/`. |
-
-## Operations
-
-| Operation | What it governs |
-| --- | --- |
-| `lay-out` | The directory tree, snapshot and run naming, the commit markers, the manifests, and the catalog derived from them. |
-| `declare` | A table's declaration block: its key, its ordering column, its write mode, and what a read returns for a row the source stopped serving. |
-| `reserve` | The column and table namespaces the engine holds for itself, and the provenance columns it injects into every row. |
-| `reconcile` | Schema evolution across a table's file set: the type lattice, additive columns, and what a scan is permitted to invent. |
-| `fold` | Compaction: its pass order, its triggers, its retention window, its owner, and the moment a snapshot becomes readable. |
-| `index` | Sidecar index kinds and their identity, the physical layout that makes zone maps effective, and partitioning. |
-| `bound-time` | The two clocks a row carries, the parameters that bound each, and what a bounded read resolves to. |
-| `encrypt` | At-rest encryption of Parquet and its sidecars, key rotation by snapshot, and the column an index is withheld from. |
-
-## Clauses — lay-out
-
-A store is a file tree first and a database second. These clauses fix what is on disk, what
-marks a write finished, and which half of the tree survives losing the catalog.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `store.lay-out.invariant.three-components` | A store has three components: Parquet files holding table data, JSON manifests indexing each run and each snapshot, and a SQLite catalog at `meta.sqlite`. The Parquet and the manifests are canonical; the catalog is the one stateful component and derives from them. | |
-| `store.lay-out.shape.store-root` | A project's store sits at `.contextful/context/<project>/` and holds `meta.sqlite`, `config.toml` and one `tables/<t>/` directory per table. | |
-| `store.lay-out.shape.table-directory` | A table directory holds `schema.json`, `data/snapshots/<id>/`, `data/runs/<run-id>/<node-id>/` and `requests/<run-id>.<node-id>.parquet`. | |
-| `store.lay-out.limit.snapshot-id-width` | A snapshot directory is named `snapshot-<nanos>`, the commit instant in nanoseconds left-padded with zeros to 20 chars, so lexical order equals chronological order and the id carries no path-unsafe character. | |
-| `store.lay-out.invariant.writer-node-segment` | The `<node-id>` segment inside a run path disjoins the parts two machines write under one logical run id: each lands its own `part-00000.parquet` under its own segment rather than colliding on one name. | |
-| `store.lay-out.refusal.unsafe-node-segment` | A resolved node id outside `^[A-Za-z0-9._-]{1,64}$` raises `StoreUnsafeNodeSegment` before a directory is created, since the value is interpolated into a path segment and into a ledger filename. | `0015` |
-| `store.lay-out.shape.part-name` | A data file inside a run or snapshot directory is `part-<ordinal>.parquet`, the ordinal left-padded with zeros to five digits and unique inside the directory that holds it. | |
-| `store.lay-out.shape.staging-directory` | A pass in flight occupies `data/snapshots/<id>.staging/`, mirroring the published shape of the snapshot it builds, and no file list resolves inside it. | |
-| `store.lay-out.shape.run-commit-marker` | A run is committed by writing `_manifest.json` into its node directory carrying `{run_id, table, node_id, parts, committed_at}`, where `node_id` equals the segment the file sits under. | |
-| `store.lay-out.invariant.uncommitted-run-is-invisible` | The read path treats a node directory holding no `_manifest.json` as in flight and leaves its parts out of every file list. Presence of Parquet is not a commit signal. | |
-| `store.lay-out.shape.snapshot-manifest` | A snapshot's `_manifest.json` carries `{snapshot_id, table, created_at, includes_runs[], primary_key[], order_by, row_count}`, plus `indexes[]` for committed sidecars and the valid-time pair the fold ran under. | |
-| `store.lay-out.invariant.manifest-fields-are-additive` | Every field added to a manifest carries a default, and a manifest that fails to parse is skipped. A skipped snapshot manifest demotes its table to an unfolded union over run files. | |
-| `store.lay-out.shape.table-schema-file` | A table's schema is `tables/<t>/schema.json` in Arrow JSON form rather than a catalog row. Each incoming batch's schema merges into the stored one and overwrites it in place, so the file holds the current reconciled shape. | |
-| `store.lay-out.invariant.runs-append-snapshots-freeze` | Files under `data/runs/` are the raw output of one run, appended and never edited afterwards. Files under `data/snapshots/` are immutable: a fold writes a new snapshot rather than mutating one that exists. | |
-| `store.lay-out.workflow.catalog-rebuild` | `contextful context rebuild-catalog` reconstructs `meta.sqlite` by walking every run `_manifest.json`, every snapshot `_manifest.json` and every `schema.json`. A corrupt or deleted catalog is a cache to rebuild. | |
-| `store.lay-out.invariant.rebuild-drops-machine-state` | The catalog's derived half comes back from the tree; its bookkeeping half — the tables the run path keys on this machine — does not, so a rebuild is an operator action rather than a per-tick repair. | |
-| `store.lay-out.refusal.unknown-table` | A name no `schema.json` in the tree declares raises `StoreUnknownTable` rather than resolving to an empty result, so "landed nothing" and "no such table" stay distinguishable at every surface. | `0016` |
+| `store.lay-out.components` | A store holds Parquet table data, JSON run and snapshot manifests, one pointer object per table, and two SQLite catalogs, `derived.sqlite` and `machine.sqlite`. Parquet, manifests and pointers are canonical. | because a catalog that is both a rebuildable cache and a commit point resurrects half-published snapshots on rebuild |
+| `store.lay-out.store-root` | A project's store sits at `.contextful/context/<project>/`, holding both catalogs, `config.toml`, `cursors/` and one `tables/<t>/` directory per table. | — |
+| `store.lay-out.table-directory` | A table directory holds `schema.json`, `_pointer.json`, `data/snapshots/<id>/`, `data/runs/<run-id>/<node-id>/` and `requests/`. | — |
+| `store.lay-out.snapshot-id` | A snapshot id is `snapshot-` followed by a nanosecond value zero-padded to 20 chars, equal to the greater of the commit instant and the previous id plus one. | because a wall clock that steps backwards breaks lexical order equalling commit order |
+| `store.lay-out.part-name` | A data file is `part-<ordinal>.parquet`, the ordinal zero-padded to five digits and unique within its directory. | — |
+| `store.lay-out.staging` | A fold in flight writes under `data/snapshots/<id>.staging/`, and no file list resolves inside it. | — |
+| `store.lay-out.run-manifest` | A run commits by conditionally creating `_manifest.json` in its node directory, carrying `{run_id, table, node_id, parts, committed_at, pipeline_id?, cursor?, fence?}`, where `node_id` equals the enclosing segment. | — |
+| `store.lay-out.uncommitted-run` | A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry ({{store.lease.commit-log}}). | P4 |
+| `store.lay-out.cursor-in-commit` | A pipeline's committed position is the cursor inside its newest commit: the newest commit-log entry for a leased pipeline, the highest run-manifest cursor otherwise. `machine.sqlite` caches it. | because a position committed apart from its rows re-lands the batch after a crash between the two writes |
+| `store.lay-out.snapshot-manifest` | A snapshot's `_manifest.json` carries `{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence}`, and each entry of `parts` and `indexes` carries its `key_version`. | — |
+| `store.lay-out.table-pointer` | `tables/<t>/_pointer.json` names the table's current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of `parent` links from it reaches it. | D07 |
+| `store.lay-out.manifest-default` | A field added to a manifest carries a default value. | — |
+| `store.lay-out.manifest-unreadable` | A run manifest or a reachable snapshot manifest that fails to parse raises `StoreManifestUnreadable`, naming the table and the file, and the table answers no read until it parses. | P4 |
+| `store.lay-out.schema-file` | A table's schema is `schema.json` in Arrow JSON form; each arriving batch's schema merges into it and the merged result replaces it. | — |
+| `store.lay-out.immutable-files` | A run file is written once and never edited, a snapshot directory is immutable, and a fold writes a new snapshot. | — |
+| `store.lay-out.derived-catalog` | `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from the pointers, the manifests they reach, every committed run manifest and every `schema.json`. It is never synced and commits nothing. | D07 |
+| `store.lay-out.machine-catalog` | `machine.sqlite` holds one machine's journal, cursor cache and lease rows. It is never synced, never rebuilt and never replaced by a pull. | D07 |
+| `store.lay-out.unknown-table` | A table name no `schema.json` in the tree declares raises `StoreUnknownTable`, never an empty result. | P1 |
+| `store.lay-out.node-segment` | The `<node-id>` run-path segment and the node id in a ledger filename keep two machines writing one logical run id in disjoint files. | — |
+| `store.lay-out.node-id-order` | A process resolves its node id once: `CONTEXTFUL_NODE_ID`, then `[node] id`, then a random `node-<8 hex>` generated once and persisted. | — |
+| `store.lay-out.node-id-state-path` | A generated node id persists under `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory, outside the store root. | because a copied store carrying its identity makes two machines one holder |
+| `store.lay-out.node-id-shape` | A node id longer than 64 chars or outside `^[A-Za-z0-9._-]+$` raises `StoreNodeIdInvalid` at process start, before any path, key or lease carries it. | P3 |
+| `store.lay-out.node-id-shared` | A node id declared in a control-plane configuration raises `StoreNodeIdShared`. | because a control-plane snapshot applies to every machine reconciling it, making one id many holders |
+| `store.lay-out.node-id-local` | A machine with no writable state directory takes the reserved node id `local`. | — |
 
-The bucket wire format mirrors this tree key for key, in `spec/11-sync.md` § Wire format;
-a replica pulls a table's ledger alongside its table. Node identity resolves in
-`spec/11-sync.md` § Node identity; a machine with no writable state directory takes a
-reserved name the bucket lease declines. Published-model artifacts sit beneath the table
-they publish, in `spec/31-pipeline.md` § Published models; the manifest hashes them as it
-hashes any other file.
+unsettled: How does a consumer discover the manifest format version a store or bucket carries, and what does it do with a version newer than it parses? owner: store affects: store.lay-out
 
-unsettled: How does a consumer discover which manifest format version a bucket carries, and what does it do with one newer than it reads? owner: store affects: store.lay-out
+## declare
 
-## Clauses — declare
-
-A table declaration decides the identity of a row, the order that breaks a tie, and what a
-read shows once the source stops serving a row.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `store.declare.shape.table-block` | A table block declares `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `pii_type`, `policy`, `visibility`, `valid_time`, `view`, `agent_description`, `agent_hint` and `example_queries`. Each key is optional and is omitted from the canonical serialization when unset. | |
-| `store.declare.shape.two-genres` | One substrate carries two genres: items, which are connector-landed rows, and artifacts, which are synthesized outputs tagged by an open `kind` string the producer sets. The engine enumerates no `kind` value. Both genres append, dedupe on content and carry a timestamp. | |
-| `store.declare.invariant.primary-key-is-opt-in` | A table declaring no `primary_key` reads as the byte-identical union over its committed runs and is deduplicated nowhere. Declaring one is what gives the fold an identity to collapse. | |
-| `store.declare.shape.dedup-view` | With a key declared and a snapshot committed, a table reads as `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC) = 1` over that snapshot unioned with the runs the snapshot does not include. | |
-| `store.declare.interface.order-by-default` | `order_by` names the column the fold reads to pick the surviving row per key and defaults to the injected ingest stamp, which every row carries. Absent a declared key the value is inert. | |
-| `store.declare.refusal.order-by-unknown-column` | An `order_by` naming a column neither the declaration nor the engine's injected set carries raises `StoreOrderByUnknownColumn` at validation, ahead of the first batch. | `0017` |
-| `store.declare.interface.withdrawn-row` | `write_mode` takes `append` or `replace` and governs what a read returns for a row the source withdrew. `append` is the value taken when the key is absent: last-write-wins inside a key, with nothing retiring a key that stops appearing. | |
-| `store.declare.invariant.replace-reads-a-frontier` | Under `replace` a read covers the run that landed the source's complete current state plus everything committed after it, so a withdrawn row leaves every read surface at once. | |
-| `store.declare.invariant.replacement-supersedes` | A replacing run leaves the runs it displaced on disk for the table's retention window, so a transaction-time read positioned before the replacing run still returns them and the fold drops them physically at its next pass. | |
-| `store.declare.invariant.replacement-writes-no-receipt` | Replacement supersedes rather than erases: it emits no erasure receipt and walks no lineage. A compliance claim rests on erasure rather than on a write mode. | |
-| `store.declare.invariant.empty-commit-replaces-nothing` | A run landing zero rows leaves a replacing table reading what it read before. A source that has genuinely emptied keeps serving its last non-empty state, since no pull carries a signal separating the two. | |
-| `store.declare.invariant.empty-table-is-a-zero-row-relation` | A run that pulls no rows still commits, so a quiet stream leaves a schema, a committed run and no Parquet. That table registers as a zero-row relation over its declared columns plus the injected provenance set. | |
-| `store.declare.invariant.keyed-table-needs-a-fold` | Until a keyed table has one committed snapshot it reads as a plain union, counting a re-landed row once per run that landed it. Validation warns per table where a key is declared and no enabled compaction job covers it, naming the table. | |
-| `store.declare.invariant.declaration-precedes-the-batch` | A declaration key changes what a read returns rather than what a write accepts, so a key added after rows land takes effect from the next fold onward and rewrites no committed part. | |
+| `store.declare.table-block` | A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization. | — |
+| `store.declare.two-genres` | A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the engine does not enumerate. Both append, dedupe on content and carry a timestamp. | — |
+| `store.declare.unkeyed-union` | A table declaring no `primary_key` reads as the byte-identical union of its committed runs. | — |
+| `store.declare.dedup-view` | A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits. | because a keyed table read as a union before its first fold inflates every aggregate silently |
+| `store.declare.order-by-default` | `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`. | — |
+| `store.declare.order-by-unknown` | An `order_by` naming a column neither declared nor injected raises `StoreOrderByUnknownColumn` at validation, before the first batch. | because an ordering column absent from every file reads as null and picks survivors arbitrarily |
+| `store.declare.write-mode` | `write_mode` is `append`, the default, keeping the last write per key and retiring no key, or `replace`. | — |
+| `store.declare.replace-frontier` | Under `replace`, a read covers the newest run carrying the source's complete state plus every run committed after it. | — |
+| `store.declare.replace-retains` | A replacing run leaves the runs it displaced on disk until `retain_runs` passes, writes no erasure receipt and walks no lineage. | — |
+| `store.declare.empty-run` | A run landing zero rows commits a manifest with no parts and replaces nothing; a table with no rows registers as a zero-row relation over its declared and injected columns. | — |
+| `store.declare.fold-coverage` | Validation warns, naming the table, where a key is declared and no enabled compaction job covers the table. | — |
+| `store.declare.read-side-keys` | A declaration key changes what a read returns and rewrites no committed part; a key added after rows land applies from the next read. | — |
 
-Where the declaration block sits inside a pipeline's serialization, and how a destination
-table's name derives, are `spec/31-pipeline.md` § Table models; one folded spelling reaches
-this contract. Row- and column-level policy keys bind in `spec/41-enforcement.md` § Binding;
-a declaration names them and the enforcement layer reads them.
+unsettled: What retires a key a source stops serving under `append`, given the source-side deletion is invisible in the tree? owner: store affects: store.declare
 
-unsettled: What retires a key a source stops serving under the append mode, given the source-side deletion is invisible in the tree? owner: store affects: store.declare
+## reserve
 
-## Clauses — reserve
-
-The engine writes columns of its own onto every row and holds a small set of names against
-an application's vocabulary.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `store.reserve.invariant.underscore-namespace` | The leading-underscore column namespace belongs to the engine. A producer's own columns live outside it, and the injected and reserved-optional sets below are its whole content. | |
-| `store.reserve.shape.injected-columns` | The engine injects `_ingested_at` as an RFC3339 instant, non-null on every row; `_run_id`; `_batch_seq` as an int32 where a batch scope exists; `_site_id` for the writing site; and `_authored_by` where an authenticated subject authorized the write. | |
-| `store.reserve.invariant.injection-is-correct-by-construction` | The engine wrote the row, so the stamped instant and the run identifier are engine knowledge rather than a claim carried in from a source. A producer setting either sees its value replaced. | |
-| `store.reserve.invariant.no-null-placeholder-column` | A path holding no batch scope and no authenticated subject carries no null column standing in for one. Absence of the column and a null in the column stay distinguishable under schema union. | |
-| `store.reserve.limit.optional-producer-columns` | Four reserved optional columns travel with any row and surface in the provenance envelope where present: `_modality`, `_lang`, `_provenance` and `_prompt_hash`. Nothing outside those 4 entries is accepted in the reserved namespace. | |
-| `store.reserve.limit.modality-values` | `_modality` takes one of 5 entries — `text`, `image`, `audio`, `structured`, `mixed` — and a value outside that set fails validation of the batch that carries it. | |
-| `store.reserve.shape.language-and-lineage` | `_lang` carries a BCP-47 tag. `_provenance` carries the evidence rows the row derives from, addressed by the same identity the source table keys on. | |
-| `store.reserve.invariant.prompt-hash-is-over-the-template` | `_prompt_hash` is `sha256:<hex>` over the prompt template rather than the rendered prompt, so two rows produced from one template over different evidence share a value and a template edit separates them. | |
-| `store.reserve.refusal.reserved-column-name` | A producer column spelled inside the reserved namespace and outside the reserved optional set raises `StoreReservedColumnName` at schema reconciliation, ahead of any Parquet. | `0018` |
-| `store.reserve.shape.reserved-namespaces` | The engine reserves two table namespaces: the durable run record, and the whole prefix the visibility engine mirrors access data under. | |
-| `store.reserve.refusal.reserved-table-name` | A pipeline declaring a table inside a reserved namespace raises `StoreReservedTableName` when the manifest is assembled, naming the reservation it collided with. | `0018` |
-| `store.reserve.shape.request-ledger-path` | A run's request ledger is one Parquet file at `tables/<t>/requests/<run-id>.<node-id>.parquet`, disjoint per run and per writing node by its filename. | |
-| `store.reserve.invariant.ledger-outlives-its-run` | The ledger is appended, folded by no compaction pass and collected with no run directory, so it outlives the parts it describes and a replica carries it with its table. | |
-| `store.reserve.invariant.layout-is-withheld` | A data file's path reaches no query result: paths are relative by construction and the caller-facing surface answers provenance with columns rather than with where the bytes sit. | |
+| `store.reserve.underscore-namespace` | Column names beginning `_` belong to the engine; the injected set and the reserved optional set are its whole content. | — |
+| `store.reserve.injected` | The engine injects `_ingested_at` as a non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_batch_seq` as int32 where a batch scope exists, `_site_id`, and `_authored_by` where an authenticated subject authorized the write, replacing any producer value. | because a string instant does not sort by time once fractions or offsets appear |
+| `store.reserve.no-placeholder` | A path with no batch scope or no authenticated subject omits that column instead of writing nulls. | — |
+| `store.reserve.optional` | A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present. | — |
+| `store.reserve.modality` | `_modality` takes one of text, image, audio, structured or mixed; another value fails validation of its batch. | — |
+| `store.reserve.lang-and-provenance` | `_lang` carries a BCP-47 tag; `_provenance` carries the evidence rows the row derives from, addressed by the identity the source table keys on. | — |
+| `store.reserve.prompt-hash` | `_prompt_hash` is `sha256:<hex>` over the prompt template, not the rendered prompt. | — |
+| `store.reserve.column-name` | A producer column inside the `_` namespace and outside the optional set raises `StoreReservedColumnName` at reconciliation, before any Parquet. | P1 |
+| `store.reserve.table-namespaces` | The engine reserves two table namespaces: the durable run record, and the prefix the visibility engine mirrors access data under. | — |
+| `store.reserve.table-name` | A pipeline declaring a table inside a reserved namespace raises `StoreReservedTableName` when its manifest is assembled, naming the reservation. | P1 |
+| `store.reserve.ledger-path` | A run's request ledger is `requests/<run-id>.<node-id>.parquet`, disjoint per run and per writing node. | — |
+| `store.reserve.ledger-fold` | Each fold pass merges a table's committed ledger files into `requests/folded-<snapshot-id>.parquet`, and a replica carries ledgers with their table. | because one ledger file per run per node per table grows listing and diff cost without bound |
+| `store.reserve.ledger-retention` | A ledger row is collected 365 d after its run committed. | — |
 
-Row authorship is `spec/40-authority.md` § Admission; a run a timer fired lands rows with
-no author. The ledger's columns and its child relation are `spec/20-read.md` § Provenance;
-a table with no ledger contributes no entry. The run record occupies one reserved name, in
-`spec/30-run.md` § Run record; its rows time-travel with every other table.
+## reconcile
 
-## Clauses — reconcile
-
-A table's file set spans schemas written months apart. Reconciliation decides what a scan
-sees across that set, and which widening stops at the write instead of being absorbed.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `store.reconcile.invariant.explicit-file-list` | Every read hands `read_parquet([...])` an explicit, sorted list of files rather than a glob, so the manifests decide what a table reads and a stray file in the tree joins nothing. | |
-| `store.reconcile.invariant.type-unification` | Every read passes `union_by_name=true`. A column resolves across the whole file set to the common supertype of the files that carry it, and a column that widened mid-life reads at the widened type on every row, including rows in files physically written narrower. | |
-| `store.reconcile.invariant.no-per-column-cast` | The generated relation carries no per-column cast: the widening happens in the scan's own type resolution, and a projection adding one reproduces the same arithmetic a second time. | |
-| `store.reconcile.shape.type-lattice` | The lattice models one promotion, `Int64` with `Float64` to `Float64`, and it is the one pairing that produces physically mixed Parquet. A JSON type absorbs its partner, since both sides land as UTF-8. | |
-| `store.reconcile.refusal.incompatible-pair` | Any other pair of observed types for one column raises `StoreSchemaIncompatible` at the write, naming the column, the stored type and the arriving one. | `0019` |
-| `store.reconcile.invariant.float-promotion-is-lossy` | Above 9007199254740992 the promotion loses precision: an integer of 9007199254740993 reads back exactly until a `Float64` batch lands on that column, after which it reads 9007199254740992. The loss sits in the lattice rather than in a projection. | |
-| `store.reconcile.refusal.key-widening` | A primary-key column takes no `Float64` promotion. Reconciliation raises `StoreKeyWidened` on the widening batch ahead of any Parquet for a key a snapshot declares, and the first fold raises it again on a column already reconciled to `Float64`. A key holding values past that range is emitted as a string. | `0020` |
-| `store.reconcile.invariant.columns-are-additive` | A row is a field map rather than a fixed struct, so an unseen column joins the merged schema and files written before it read it as null. A predicate over a column added this way is null-safe. | |
-| `store.reconcile.invariant.scan-invents-no-column` | Union by name widens a column some file carries and invents none no file carries. An ordering column absent from every file enters the scan through a zero-row branch, and a column introduced after a table's first rows is projected as a literal null rather than referenced by name. | |
-| `store.reconcile.workflow.first-sight-creates` | A destination reconciles an arriving schema against the stored one, creating the table on first sight and merging afterwards. The merged result overwrites `schema.json` in place. | |
-| `store.reconcile.invariant.fold-never-narrows` | Reconciliation inside a fold backfills nulls and widens types. It narrows no type and drops no column, so a snapshot's schema is a superset of every run schema it includes. | |
-| `store.reconcile.invariant.no-schema-history` | What survives reconciliation is the current reconciled shape rather than the sequence of merges that produced it, so attribution of a past widening comes from the run files themselves. | |
-| `store.reconcile.invariant.reserved-set-widens-together` | Adding an injected column moves every store's schema fingerprint, so the addition travels with a semantics version whose recipe names it and a consumer reads a column addition rather than a bare hash mismatch. | |
+| `store.reconcile.explicit-file-list` | Every read hands `read_parquet` an explicit sorted file list resolved from the pointer and the manifests, never a glob; a stray file joins nothing. | — |
+| `store.reconcile.union-by-name` | Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation adds no per-column cast. | — |
+| `store.reconcile.lattice` | The type lattice holds one promotion, `Int64` with `Float64` to `Float64`; a JSON type absorbs `Utf8`. | D06 |
+| `store.reconcile.incompatible` | Any other pair of types observed for one column raises `StoreSchemaIncompatible` at the write, naming the column, the stored type and the arriving type. | D06 |
+| `store.reconcile.float-loss` | An `Int64` value above 9007199254740992 loses precision once a `Float64` batch lands on its column. | — |
+| `store.reconcile.key-widening` | A primary-key column takes no `Float64` promotion: the widening batch raises `StoreKeyWidened` before any Parquet, as does a fold meeting a key already reconciled to `Float64`. | D06 |
+| `store.reconcile.additive` | An unseen column joins the merged schema, and files written before it read it as null. | — |
+| `store.reconcile.no-invented-column` | A scan invents no column: an ordering column absent from every file enters through a zero-row branch, and a column added after a table's first rows projects as a literal null. | — |
+| `store.reconcile.first-sight` | A destination creates a table on the first schema it sees and merges each later schema into `schema.json`. | — |
+| `store.reconcile.fold-never-narrows` | A fold backfills nulls and widens types; it narrows no type and drops no column. | — |
+| `store.reconcile.no-history` | Reconciliation keeps the current shape alone; a past widening is attributed from the run files. | — |
+| `store.reconcile.reserved-set-versioned` | Adding an injected column advances the semantics version, whose fingerprint recipe names the column. | — |
 
-Relation registration happens per connection, in `spec/20-read.md` § Registration; the
-source a relation resolves to comes from the manifests at the moment it is built.
+## fold
 
-unsettled: Does a schema evolution need to be attributable after the fact, given nothing records the decision a merge made? owner: store affects: store.reconcile
-
-## Clauses — fold
-
-Compaction is the one operation that rewrites what a table reads. It collapses runs into a
-snapshot, materializes the winner per key, and publishes data and sidecars together.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `store.fold.workflow.pass-order` | One pass selects the runs newer than the latest snapshot, deduplicates by key or unions for an append table, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet into staging, builds every declared sidecar into staging, fsyncs and finalizes the manifest, renames, records `includes_runs` and `indexes[]` in the catalog, and collects the folded runs once retention passes. | |
-| `store.fold.invariant.last-write-wins-materialized` | The fold is where last-write-wins per key becomes a fact on disk. The deduplicating relation registers over a table holding a committed snapshot, and a keyed table without one reads as a union whose observable defect is an inflated `SUM()`. | |
-| `store.fold.invariant.partition-on-the-valid-time-line` | A keyed table carrying a declared valid-time pair holds more than one live row per key by design, so the fold partitions on the key together with the valid-time line and keeps one row per line rather than one per key. | |
-| `store.fold.invariant.includes-runs-is-the-boundary` | A snapshot's `includes_runs` decides which run files the deduplicating relation unions beside it: a run named there is folded, and a run committed afterwards reads on top of the snapshot. | |
-| `store.fold.interface.triggers` | Three triggers fire a pass: 50 committed runs on a table, the elapsed interval, or an operator running `contextful context compact <table>`. The run count tracks small-file accumulation and the interval bounds staleness of zone maps and sidecars. | |
-| `store.fold.limit.compaction-interval` | The interval trigger fires 6 h after the previous pass on a table. | |
-| `store.fold.limit.run-retention` | A table's `retain_runs` window defaults to 7 d, and a folded run directory is collected once it falls outside that window. | |
-| `store.fold.refusal.nothing-landed` | Folding a table that has landed nothing raises `StoreNothingLanded` for that table and the pass continues to the next one, so a quiet stream does not turn a scheduled pass into a failed command. | `0021` |
-| `store.fold.refusal.unknown-table-in-a-pass` | A table name in a pass that resolves to no schema raises `StoreUnknownTable` and halts the command, keeping a misspelled target distinguishable from a stream with no rows yet. | `0016` |
-| `store.fold.invariant.atomic-publication` | A pass stages Parquet and every declared sidecar under `snapshots/<id>.staging/` and publishes both with one rename, so a snapshot becomes visible once its data and its indexes are durable. | |
-| `store.fold.refusal.partial-snapshot` | Publishing data whose declared sidecars are absent, or sidecars whose data is absent, raises `StorePartialSnapshot`; no half-indexed snapshot is readable at any moment. | `0022` |
-| `store.fold.invariant.catalog-row-is-the-commit-point` | On a local filesystem publication is a rename. On an object store, where no rename is atomic, it is a content-hash-keyed copy followed by a delete, and the catalog row decides visibility: a snapshot directory with no matching row is ignored by every reader. | |
-| `store.fold.invariant.staging-is-collected` | A crash mid-pass leaves a staging directory the catalog collects on its next sweep, and no reader resolves a file beneath one. | |
-| `store.fold.invariant.reads-are-non-blocking` | A statement running while a pass builds continues against the prior snapshot and picks up the new one after publication. No window exists in which a snapshot is current and its indexes are still building. | |
-| `store.fold.invariant.one-owning-site` | The fold is the one operation that is not append-only, so exactly one site owns compaction for a store. Two sites folding one table concurrently is the single way committed rows leave the tree. | |
-| `store.fold.invariant.network-cost-is-twice-the-table` | A pass reads the table's unfolded run files and writes one snapshot, so a bucket-resident store moves roughly twice the table's bytes per pass. Folding inside the bucket's own region, raising the run-count trigger, or leaving a small table unpartitioned each reduce it. | |
-| `store.fold.invariant.snapshot-supersedes-rather-than-deletes` | A new snapshot supersedes the previous one and the runs it includes; both stay readable until retention collects them, so a pass is reversible by reading the prior snapshot until that moment. | |
+| `store.fold.pass` | A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}. | — |
+| `store.fold.valid-time-line` | A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line. | — |
+| `store.fold.includes-runs` | A snapshot's `includes_runs` names the runs it folded; a run committed afterwards reads on top of it. | — |
+| `store.fold.triggers` | A pass fires at 50 committed runs on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`. | — |
+| `store.fold.retention` | `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window. | — |
+| `store.fold.result` | A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass. | — |
+| `store.fold.unknown-table` | A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}. | P1 |
+| `store.fold.compaction-lease` | A pass holds the table's compaction lease ({{store.lease.compaction}}) and stamps its fence into the snapshot manifest and the pointer. | D07 |
+| `store.fold.pointer-commit` | A pass publishes by replacing `_pointer.json` conditioned on the ETag it read at pass start, with `If-Match` on an object store and a version-checked rename on a filesystem. | D07 |
+| `store.fold.partial-snapshot` | A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises `StorePartialSnapshot`. | P4 |
+| `store.fold.lost-pointer` | A pass whose pointer replace loses its condition publishes nothing, and its staged snapshot is collected. | — |
+| `store.fold.staging-collected` | A staging directory, and a snapshot directory no pointer chain reaches, are collected by the next pass and read by nobody. | — |
+| `store.fold.non-blocking` | A statement running during a pass reads the snapshot the pointer named when it started; statements starting after the commit read the new one. | — |
+| `store.fold.supersedes` | A new snapshot supersedes the previous one without deleting it, and a bounded read reaches the older one until retention collects it. | — |
 
-unsettled: How does a deployment needing transaction-time reconstruction coexist with the fold, given the collapse drops the earlier-stamped rows? owner: store affects: store.fold
+## index
 
-## Clauses — index
-
-A sidecar is a derived artifact next to the Parquet it indexes. Clustering and partitioning
-are the physical arrangement that makes the cheapest index — the zone map — effective.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `store.index.shape.five-kinds` | Five index kinds exist: zone maps carried inline in Parquet footers, a sorted-Parquet plus sparse-map primary-key lookup, an in-process HNSW vector graph, a Tantivy full-text index, and opt-in per-column bloom filters. | |
-| `store.index.shape.declaration` | Each sidecar is declared per table in the manifest with `kind`, `column` and its builder parameters — `model`, `dim`, `metric`, `m` and `ef_construction` for the vector kind. | |
-| `store.index.shape.sidecar-paths` | A vector sidecar sits at `snapshots/<id>/indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `snapshots/<id>/indexes/fts-<col>/`. | |
-| `store.index.invariant.identity-is-column-builder-version` | A sidecar's identity is `(column, builder, builder-version)`, so an index over one column built by a different model is a different directory. Both coexist, the caller picks at query time, and the catalog records each builder id. | |
-| `store.index.invariant.rebuild-never-touches-parquet` | Swapping a builder is a rebuild of the sidecar; the canonical Parquet is untouched and callers on the existing identity keep reading through a cutover. | |
-| `store.index.invariant.sidecar-lives-inside-its-snapshot` | Path-based sidecars live under `indexes/` inside the snapshot directory they index, staged and published by the same rename as the data. | |
-| `store.index.invariant.indexes-are-not-in-the-file-set` | `indexes/` never joins a table's file set: a snapshot reader enumerates the top-level `*.parquet` under the snapshot directory, and operator SQL globbing recursively excludes that subtree. | |
-| `store.index.invariant.index-dies-with-its-snapshot` | Collecting a snapshot collects its sidecars in the same step, so no index ever points at Parquet that is gone. | |
-| `store.index.invariant.candidate-ids-only` | A sidecar sits outside SQL and inherits nothing from a scanned relation, so it yields candidate identifiers rather than rows. Those identifiers re-join through the enforced relation, and enforcement runs before a top-K is finalized. | |
-| `store.index.invariant.vector-sidecar-is-a-fold-output` | The fold builds a vector sidecar for a table carrying an embedding column under a single-column primary key, and the same rename publishes that sidecar with the data it indexes. | |
-| `store.index.interface.build-telemetry` | An index build emits `contextful.index.*` spans carrying rows indexed, builder duration and embedding request count, so the cost of an index is answerable from the trace. | |
-| `store.index.refusal.index-column-absent` | Declaring an index over a column the table's reconciled schema does not carry raises `StoreIndexColumnAbsent` at manifest validation, ahead of the pass that builds it. | `0023` |
-| `store.index.interface.clustering` | `cluster_by` sets row order inside a Parquet file so zone maps skip row groups with no explicit index. The sort is lexicographic over the declared columns in their declared order. | |
-| `store.index.invariant.zone-maps-need-no-declaration` | Zone maps ride the Parquet footer of every file, so a declared `cluster_by` buys row-group skipping with no index entry in the manifest and no sidecar on disk. | |
-| `store.index.interface.partitioning` | Partitioning is opt-in and off when undeclared: a single snapshot serves a table small enough that a partitioned scan adds directories without removing bytes. | |
-| `store.index.invariant.partition-count-warning` | Planning warns where a partition specification projects more than 1000 partitions, naming the column that fans out. | |
-| `store.index.limit.partition-median-size` | Planning warns where the projected median partition falls below 16 MiB. | |
-| `store.index.invariant.tenant-partition-is-the-boundary` | A multi-tenant table carries the tenant identifier as the outermost partition column, written byte for byte as the consumer supplied it, so a dropped predicate reads nothing rather than everyone. | |
-| `store.index.invariant.tenant-value-is-never-rewritten` | The build trims no whitespace, folds no case and applies no Unicode normalization to a tenant value. A percent-escaped directory name is representation, and the read-time filter compares the raw value. | |
+| `store.index.kinds` | Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW vector graph, a Tantivy full-text index, and opt-in per-column bloom filters. | — |
+| `store.index.declaration` | A sidecar is declared per table with a kind, a `column` and builder parameters; the vector kind takes model, dimension, metric, `m` and `ef_construction`. | — |
+| `store.index.paths` | A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>/`, inside the snapshot directory it indexes. | — |
+| `store.index.identity` | A sidecar's identity is `(column, builder, builder-version)`; two builders over one column coexist, the caller picks at query time, and `derived.sqlite` records each builder. | — |
+| `store.index.rebuild` | Swapping a builder rebuilds the sidecar, leaves the Parquet untouched, and callers on the existing identity read through the cutover. | — |
+| `store.index.not-in-file-set` | `indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names. | — |
+| `store.index.dies-with-snapshot` | Collecting a snapshot collects its sidecars in the same step. | — |
+| `store.index.candidate-ids` | A sidecar yields candidate identifiers, not rows; they re-join through the enforced relation before a top-K is final. | P5 |
+| `store.index.vector-by-fold` | The fold builds a vector sidecar for a table carrying an embedding column under a single-column primary key. | — |
+| `store.index.column-absent` | An index over a column the reconciled schema lacks raises `StoreIndexColumnAbsent` at manifest validation, before the pass that builds it. | because an index over a missing column builds empty and reads as no match |
+| `store.index.clustering` | `cluster_by` sorts rows within a file lexicographically over its columns in declared order; zone maps then skip row groups with no manifest entry and no sidecar. | — |
+| `store.index.partitioning` | Partitioning is off unless `partition_by` declares it. | — |
+| `store.index.partition-warnings` | Planning warns, naming the column, where a partition specification projects more than 1000 partitions or a median partition below 16 MiB. | — |
+| `store.index.tenant-outermost` | A multi-tenant table carries the tenant identifier as its outermost partition column. | because a dropped tenant predicate then reads nothing instead of every tenant |
+| `store.index.tenant-verbatim` | A tenant value is written and compared byte for byte, with no trimming, case folding or Unicode normalization; a percent-escaped directory name is representation alone. | — |
 
 unsettled: Is the on-disk vector graph format stable enough to commit to, and how many incremental extensions precede a full rebuild? owner: store affects: store.index
 
-unsettled: Should clustering carry a space-filling curve ordering beside the lexicographic sort, and which filter distributions justify it? owner: store affects: store.index
+unsettled: Is a tenant partition value validated against a canonical form, given the build rewrites nothing? owner: store affects: store.index
 
-## Clauses — bound-time
+## bound-time
 
-A row carries two clocks. One the engine wrote and one the source declared. Each has its own
-parameter, and both land on the inner source of a scan.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `store.bound-time.invariant.two-clocks` | Transaction time is the injected ingest stamp, which the engine wrote and therefore knows. Valid time is a pair of the table's own columns, in the source's vocabulary. The engine infers neither pair nor stamps a second column claiming to be the first. | |
-| `store.bound-time.interface.valid-time-declaration` | A table declares its clock columns as `[pipeline.tables.valid_time]` with `from` and an optional `to`. A table declaring `from` alone treats every row as valid from that instant onward. | |
-| `store.bound-time.invariant.as-of-wraps-the-source` | `as_of` bounds transaction time by wrapping each table's FROM-source in `_ingested_at <= as_of`, so arbitrary caller SQL rewinds with no predicate the caller writes. | |
-| `store.bound-time.invariant.valid-as-of-wraps-the-source` | `valid_as_of` applies at the same inner position as its sibling, expanding to `from <= valid_as_of AND (to IS NULL OR to > valid_as_of)` over the declared pair. | |
-| `store.bound-time.refusal.undeclared-valid-time` | A `valid_as_of` read against a table carrying no declared pair raises `StoreValidTimeUndeclared` and names the table, rather than answering the transaction-time question in its place. | `0024` |
-| `store.bound-time.invariant.unbounded-read-is-latest` | A read carrying neither parameter resolves every named table to its latest state, so bounding is an act a caller takes rather than a posture a store holds. | |
-| `store.bound-time.invariant.bounds-sit-beneath-enforcement` | Both bounds compose underneath the row predicate, the column mask and the tenant filter rather than beside them, so a bound narrows what enforcement already narrowed and widens nothing. | |
-| `store.bound-time.invariant.comparison-is-lexicographic` | The ingest stamp is stored as UTF-8 and a declared valid-time column is text, so each bound is a string comparison over an RFC3339 spelling rather than an instant comparison. | |
-| `store.bound-time.invariant.date-only-resolution` | A date-only literal resolves to the exclusive next date, which is the one literal separating two days for every timestamp spelling either side may use, so `2026-03-01` covers the whole of that day. | |
-| `store.bound-time.invariant.normalization-happens-once` | Resolution of a date-only literal happens where the literal is built, so every caller and every table read the same resolved string and two resolutions cannot disagree. | |
-| `store.bound-time.invariant.earlier-of-two-upper-bounds` | A named build pin and `as_of` are both upper bounds on transaction time. Where a read carries both, each named table resolves to the earlier of the two. | |
-| `store.bound-time.invariant.a-bound-filters` | Over an append-only table a valid-time bound returns every version whose interval covers the instant, since nothing has decided which of two covering rows supersedes the other. Declaring a key and folding is what picks between them. | |
-| `store.bound-time.invariant.fold-is-a-one-way-door` | A folded table reads no earlier than its own fold: the rows carrying the earlier ingest stamps are the ones last-write-wins dropped. A deployment reconstructing transaction time leaves the table unfolded. | |
-| `store.bound-time.interface.bounds-echo` | Every read echoes the bounds it ran under as `contextful.bounds` carrying `{as_of?, valid_as_of?, inclusive}` in the engine's normalized spelling, and the block is omitted on an unbounded read. | |
-| `store.bound-time.invariant.echo-is-a-string-comparison` | A consumer writing derived rows records the echoed instants verbatim, so a later comparison of two derivations is a string comparison rather than a re-parse of each side's literal. | |
+| `store.bound-time.two-clocks` | Transaction time is `_ingested_at`; valid time is a declared pair of the table's own columns. The engine infers no pair and stamps no second transaction clock. | — |
+| `store.bound-time.valid-time-declaration` | `[pipeline.tables.valid_time]` declares `from` and an optional `to`; a table declaring `from` alone treats each row as valid from that instant onward. | — |
+| `store.bound-time.valid-time-type` | A declared valid-time column whose type is not a timestamp raises `StoreValidTimeNotTimestamp` at declaration. | P1 |
+| `store.bound-time.instant-comparison` | Every bound compares instants as timestamps, never as strings; a date-only literal resolves, where it is built, to the start of the next day, exclusive. | — |
+| `store.bound-time.as-of` | `as_of` resolves each table to the newest reachable snapshot created at or before it, plus the committed runs at or before it that snapshot omits, inside the table's FROM-source. | because filtering the current files by ingest stamp returns different rows before and after a fold |
+| `store.bound-time.as-of-unretained` | An `as_of` earlier than the oldest retained snapshot of a table whose history has been collected raises `StoreAsOfUnretained`, naming the oldest answerable instant. | P4 |
+| `store.bound-time.valid-as-of` | `valid_as_of` wraps the same inner source with `from <= valid_as_of AND (to IS NULL OR to > valid_as_of)` over the declared pair. | — |
+| `store.bound-time.valid-time-undeclared` | A `valid_as_of` read against a table declaring no pair raises `StoreValidTimeUndeclared`, naming the table. | P1 |
+| `store.bound-time.pin-bound` | A read carrying `as_of` and a build pin resolves each table named by both by {{read.resolve-pin.earlier-bound-wins}}. | — |
+| `store.bound-time.unbounded-latest` | A read carrying neither bound resolves each table to its current snapshot plus the committed runs it omits. | — |
+| `store.bound-time.beneath-enforcement` | Both bounds apply beneath the row predicate, the column mask and the tenant filter, narrowing what enforcement admits and widening nothing. | P5 |
+| `store.bound-time.covering-versions` | Over an unkeyed table a valid-time bound returns every version whose interval covers the instant. | — |
+| `store.bound-time.echo` | A bounded read echoes `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`, each instant in RFC 3339 UTC with nine fractional digits and a `Z` suffix; an unbounded read omits it. | — |
 
-Enforcement wraps each scan's FROM-source, in `spec/41-enforcement.md` § Layers; a bound
-takes the position inside that wrapper. The pair the memory tables declare is
-`spec/21-memory.md` § Fact shape; recall and a bounded read consult one declaration. A row's
-own publication date is a ranking tier in `spec/20-read.md` § Ordering; the store injects no
-third clock.
+unsettled: How is a set of validity intervals for one key modelled, given one pair of columns holds one interval? owner: store affects: store.bound-time
 
-unsettled: How is a validity interval set modelled — overlapping endorsements on one policy — given one pair of columns holds one interval? owner: store affects: store.bound-time
+## encrypt
 
-unsettled: What does the valid-time predicate cost over a wide table, and does a declared pair need a zone map to match the transaction-time bound? owner: store affects: store.bound-time
-
-## Clauses — encrypt
-
-Encryption covers the canonical bytes and everything derived from them. The qualifier is
-the column an index is withheld from.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `store.encrypt.interface.key-binding` | At-rest encryption is per project and off when undeclared, enabled with `[encryption] key_source = "env:CONTEXTFUL_KEY"`. The key derives from a password or from an external key-management service, and Parquet is written through native modular encryption. | |
-| `store.encrypt.refusal.key-source-unbound` | A `key_source` naming an environment variable the process does not hold raises `StoreEncryptionKeyUnbound` at startup rather than falling back to writing cleartext. | `0025` |
-| `store.encrypt.invariant.transport-is-separate` | At-rest encryption covers files; transport to a bucket endpoint is TLS. Neither substitutes for the other, and a cleartext endpoint carries no encrypted-at-rest claim. | |
-| `store.encrypt.invariant.sidecars-share-the-key` | With encryption on, every sidecar — vector graph, identifier map, full-text segments, bloom filters, zone maps — is encrypted under the same key as the Parquet it indexes. A cleartext vector graph alone admits approximate-nearest-neighbour search over the embedding space. | |
-| `store.encrypt.refusal.index-over-a-redacted-column` | The manifest validator raises `StoreIndexOverRedactedColumn` for an index declared over a column redacted at write time, so no structure over that column exists on disk in any form. | `0026` |
-| `store.encrypt.invariant.at-rest-scope` | A stolen bucket credential reveals encrypted Parquet and encrypted sidecars, and reveals no write-time-redacted content through index structure. It reveals key material nowhere in the tree. | |
-| `store.encrypt.workflow.key-rotation` | Keys rotate per snapshot: a new snapshot is written under the new key version, snapshots written earlier stay readable under theirs until collection, and the catalog records the key version each snapshot carries. | |
-| `store.encrypt.invariant.rotation-rewrites-nothing` | Rotation writes forward rather than rewriting: no published snapshot changes key version in place, so rotation costs one fold per table rather than a rewrite of the tree. | |
+| `store.encrypt.key-binding` | At-rest encryption is per project, off unless `[encryption] key_source` names `env:<NAME>` or a key-management service. | — |
+| `store.encrypt.key-unbound` | A `key_source` naming a binding the process lacks raises `StoreEncryptionKeyUnbound` at startup, with no cleartext fallback. | P3 |
+| `store.encrypt.cipher` | Parquet, footers included, encrypts through Parquet modular encryption; every sidecar and ledger file encrypts with AES-256-GCM under a per-file data key wrapped by the project key. | because a cleartext vector graph admits nearest-neighbour search over the embedding space |
+| `store.encrypt.password-kdf` | A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes. | — |
+| `store.encrypt.transport-separate` | At-rest encryption covers files and TLS covers bucket transport; a cleartext endpoint carries no encrypted-at-rest claim. | — |
+| `store.encrypt.redacted-index` | An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation. | D17 |
+| `store.encrypt.at-rest-scope` | A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material. | — |
+| `store.encrypt.rotation` | Rotation writes forward: new files take the new key version, published files keep theirs until collected, and a key version retires once no retained file names it. | — |
 
-The erasure rewrite reaches a file in place, in `spec/44-accountability.md` § Erasure;
-replacement leaves the displaced file readable until retention collects it.
+## push
+
+| Clause | Statement | Why |
+| --- | --- | --- |
+| `store.push.wire-format` | A bucket key beneath the prefix equals the file's path beneath the store root, forward-slash separated, with no leading separator and no parent reference; the two catalogs have no key. | — |
+| `store.push.bucket-manifest` | A reserved `manifest.json` at the prefix root maps each key to `{sha256, size, owner}`, `owner` being the node id that wrote the object. | D48 |
+| `store.push.local-contribution` | A writer's own entries in the bucket manifest are a pure function of its local tree. | — |
+| `store.push.sequence` | A push walks the store, digests each file, uploads each file whose digest differs from its remote entry, then commits the bucket manifest by {{store.merge.cas-commit}}. | — |
+| `store.push.digest-decides` | An object transfers, in either direction, when its digest differs from the entry naming it and at no other time; repeating a push or pull over an unchanged index transfers the index alone. | — |
+| `store.push.commit-point` | Writing the bucket manifest commits a push: its reader finds every named key durable, and an interrupted push leaves the previous manifest intact. | P4 |
+| `store.push.prefix` | `[sync] prefix` confines every key a deployment reads and writes to `<prefix>/`; unset, the store lands at the bucket root. | — |
+| `store.push.prefix-one-wrapper` | Prefix confinement lives in the object-store wrapper alone, and every backend inherits it. | P5 |
+| `store.push.prefix-escape` | A key resolving outside the prefix raises `SyncPrefixEscape`, naming the key and the prefix. | P3 |
+| `store.push.prefix-from` | `prefix_from = "env:<NAME>"` binds the prefix from the environment at start. | — |
+| `store.push.prefix-unbound` | An unset variable named by `prefix_from` raises `SyncPrefixUnbound` at startup, with no bucket-root fallback. | P3 |
+| `store.push.prefix-overspecified` | Declaring `prefix` and `prefix_from` together raises `SyncPrefixOverspecified`. | P3 |
+| `store.push.shared-root` | Deployments sharing a bucket without distinct prefixes overwrite one root manifest, and the last writer's manifest hides the others' tables. | — |
+| `store.push.bookkeeping-prefixes` | `leases/` and `cursors/` hold no rows, and writing them leaves a withheld table's push unaffected. | — |
+| `store.push.offline-commands` | `contextful sync diagnose` and `contextful sync manifest` read a tree and an index, land no row and verify no credential. | — |
+| `store.push.report-line` | Each push line prints the resolved coordination mode and the counts of objects uploaded and skipped. | — |
+| `store.push.in-flight` | A second push of one store on one machine raises `SyncPushInFlight`, naming the holder of the push guard. | D07 |
+
+## pull
+
+| Clause | Statement | Why |
+| --- | --- | --- |
+| `store.pull.sequence` | A pull fetches the bucket manifest, diffs its entries against local digests and downloads the differing objects in parallel. | — |
+| `store.pull.pointer-last` | A pull writes a table's pointer after every object that pointer reaches has landed. | P4 |
+| `store.pull.catalog-forward` | After a pull, `derived.sqlite` folds forward by inserting the arrived run and snapshot records, ignoring conflicts. | — |
+| `store.pull.before-run` | `[sync] pull_before_run` pulls before a run lands rows, and defaults on where the resolved mode is `cas`. | — |
+| `store.pull.runs-visible` | An arrived run is queryable once it is committed ({{store.lay-out.uncommitted-run}}), found by walking the tree. | — |
+| `store.pull.digest-mismatch` | A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded. | P4 |
+| `store.pull.convergence` | When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts. | — |
+| `store.pull.unconverged` | Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer. | P4 |
+
+unsettled: What recovers a pull whose retries are exhausted by pushes arriving faster than the re-fetch shrinks the shortfall? owner: store affects: store.pull
+
+## probe
+
+| Clause | Statement | Why |
+| --- | --- | --- |
+| `store.probe.measured` | A live probe of the configured endpoint decides whether a backend performs atomic conditional writes; no configuration table, product name or client dialect does. | D07 |
+| `store.probe.sentinel` | The probe writes its sentinel under `_contextful/cas-probe/` inside the configured prefix, with the push credential. | — |
+| `store.probe.sequence` | The probe creates the sentinel with `If-None-Match`, repeats that create, replaces it with `If-Match` on a fabricated ETag, reads it back and deletes it; both repeats lose. | — |
+| `store.probe.read-back` | The read-back compares the sentinel's bytes with the winning create's, catching a backend that reports success while ignoring the precondition. | — |
+| `store.probe.inconclusive` | An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated. | D07 |
+| `store.probe.setting` | `[sync] coordination` takes `cas` or `single-writer`; unset, the probe outcome decides. | — |
+| `store.probe.unproven` | Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push. | D07 |
+| `store.probe.single-writer` | `single-writer` skips the probe and needs no write permission on its path. | — |
+| `store.probe.inconclusive-mode` | A deployment whose probe is inconclusive coordinates through the machine lease, not the bucket lease. | — |
+| `store.probe.once` | The probe runs once per process at startup, and its outcome holds for the process's life. | — |
+| `store.probe.sentinel-ephemeral` | A sentinel an interrupted probe left behind is overwritten by the next probe and read as no state. | — |
+| `store.probe.reported` | `contextful sync diagnose` reports the resolved mode, the probe outcome, and whether the setting or the measurement decided. | — |
+
+## merge
+
+| Clause | Statement | Why |
+| --- | --- | --- |
+| `store.merge.cas-commit` | The bucket manifest commits by `If-Match` replace over a merge with the remote manifest; a writer losing the race re-reads, re-merges and re-commits. | D48 |
+| `store.merge.ownership` | A merge takes the writer's own entries from its local tree and every other owner's entries from the remote manifest. | D48 |
+| `store.merge.tombstone` | A writer deleting an object it owns replaces its entry with an owner-signed tombstone `{owner, deleted_at}`, and the merge drops the entry the tombstone names. | because a key absent from one writer's index is otherwise indistinguishable from another writer's, and collected objects resurrect |
+| `store.merge.tombstone-owner` | A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry. | D48 |
+| `store.merge.tombstone-ttl` | A tombstone leaves the manifest 30 d after its `deleted_at`. | — |
+| `store.merge.retries` | `[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts. | — |
+| `store.merge.exhausted` | Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run. | D48 |
+| `store.merge.both-modes` | The merge runs under both coordination modes; the compare-and-set makes a concurrent commit safe, and the merge makes it complete. | — |
+| `store.merge.pointer-by-cas` | A table pointer resolves by its own conditional replace ({{store.fold.pointer-commit}}), never by recency or by the local side. | D07 |
+| `store.merge.schemas` | `schema.json` carries no merge rule; two writers' schemas reconcile at the next write. | — |
+| `store.merge.cursor-recency` | Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit. | D09 |
+| `store.merge.grant-projection` | The sync edge projects the bucket manifest's per-table section by the table grants that project the file list. | P5 |
+| `store.merge.consumer-offline` | A bucket consumer asserts contract identity and derives staleness from the bucket manifest and its own clock, with no engine in the loop. | — |
+| `store.merge.emit` | `contextful sync manifest --emit <path>` writes the per-table section offline. | — |
+
+unsettled: Which key signs a tombstone, given a node id carries no key material? owner: store affects: store.merge
+
+## lease
+
+| Clause | Statement | Why |
+| --- | --- | --- |
+| `store.lease.port` | Leasing sits behind one port with two implementations, a lease row in `machine.sqlite` and a bucket lease object, chosen by the resolved coordination mode and whether a bucket is configured. | D07 |
+| `store.lease.machine-scope` | The machine lease serializes processes on one machine and nothing beyond it. | — |
+| `store.lease.object` | A bucket lease is `leases/<pipeline_id>.json` or `leases/compact/<table>.json`, carrying `{holder, acquired_at, expires_at, fence}`. | — |
+| `store.lease.acquire` | Acquisition creates the object with `If-None-Match`, or replaces an expired or released one with `If-Match` on the ETag it read, incrementing `fence`. | D07 |
+| `store.lease.release` | Release sets `holder` to null and keeps `fence`, on a lease object and a catalog lease row alike; neither is deleted. | because a deleted object restarts the fence and a successor's token no longer outranks its predecessor's |
+| `store.lease.ttl` | A lease is granted for 10 min. | — |
+| `store.lease.renewal` | A holder renews every 200 s by `If-Match` replace on the ETag it holds. | — |
+| `store.lease.clock-skew` | Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock. | because correctness rests on the fence, and the skew bound only sets how early a holder stops committing |
+| `store.lease.holder-deadline` | A holder stops committing once its monotonic clock passes acquisition plus the grant minus {{store.lease.clock-skew}}. | — |
+| `store.lease.acquirer-wait` | An acquirer treats a lease as expired once the grant plus {{store.lease.clock-skew}} has passed on its monotonic clock since it last observed a renewal. | — |
+| `store.lease.held` | A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick. | D07 |
+| `store.lease.commit-log` | A leased pipeline commits each run by conditionally creating `cursors/<pipeline_id>/<seq>.json`, the next zero-padded sequence number, carrying `{run_id, cursor, fence}`. | D07 |
+| `store.lease.acquire-entry` | Acquisition appends a commit-log entry carrying the new fence and no run, and the holder resumes from the cursor of the newest entry. | D09 |
+| `store.lease.stale-fence` | A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable. | D07 |
+| `store.lease.not-held` | Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched. | D07 |
+| `store.lease.compaction` | A fold takes the table's compaction lease; a pass started while another node holds it is skipped by {{store.lease.held}}. | D07 |
+| `store.lease.cursor-kind` | A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`. | D09 |
+| `store.lease.local-node` | A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease. | P3 |
+| `store.lease.holder-identity` | A lease holder is identified by node id alone, and re-entrancy is scoped to one machine. | — |
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unheld
+    Unheld --> Held: If-None-Match create, fence 1
+    Released --> Held: If-Match replace, fence plus one, commit-log entry
+    Expired --> Held: If-Match replace after grant plus skew, fence plus one
+    Held --> Held: If-Match renew every 200 s
+    Held --> Released: holder null, fence kept
+    Held --> Expired: no renewal within the grant
+```
+
+## replicate
+
+| Clause | Statement | Why |
+| --- | --- | --- |
+| `store.replicate.read-only` | A replica originates nothing: its catalogs derive from pulled objects, and the canonical store stays the authority for every table it serves. | D08 |
+| `store.replicate.write-refused` | A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store. | D08 |
+| `store.replicate.refresh` | A refresh diffs the bucket manifest against local digests, downloads changed snapshot directories with their sidecars, and swaps the table pointer in one step. | — |
+| `store.replicate.pointer-swap` | A query running across a refresh finishes on the pointer it started on. | — |
+| `store.replicate.absence` | A replica returning after an absence fetches one current snapshot per changed table, not the history between. | — |
+| `store.replicate.partial-parquet` | A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished. | D08 |
+| `store.replicate.sidecar-subset` | A replica may hold a subset of a snapshot's sidecars and partitions. | — |
+| `store.replicate.missing-index` | A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it. | D08 |
+| `store.replicate.sensitive-default` | A table declaring sensitive columns defaults to `replicate = false`. | — |
+| `store.replicate.sensitive-refused` | A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face. | D08 |
+| `store.replicate.proxying-face` | The proxying face verifies the presented credential, answers projected rows over the canonical store, never file handles, and records each read. | — |
+| `store.replicate.rebuild` | A replica rebuilds `derived.sqlite` from its tree with `contextful context rebuild-catalog`; what it does not receive derives from what it does. | — |
+| `store.replicate.grant-selection` | A replica selects objects by the table patterns its pulling credential carries, through the matcher that registers relations for a caller. | P5 |
+
+unsettled: Where does a replica advertise the sidecars and partitions it holds, a descriptor beside its catalog or a queryable central row? owner: store affects: store.replicate
 
 ## Shapes
 
-The tree a project's store occupies:
+The store tree and its bucket mirror:
 
 ```
-.contextful/context/<project>/
-  meta.sqlite                                  derived catalog
+.contextful/context/<project>/          bucket: <prefix>/<project>/
+  derived.sqlite                         not synced
+  machine.sqlite                         not synced
   config.toml
+  cursors/<pipeline-id>/<seq>.json       commit log of a leased pipeline
   tables/<t>/
-    schema.json                                Arrow JSON, current reconciled shape
-    data/
-      runs/<run-id>/<node-id>/
-        part-00000.parquet
-        _manifest.json                         the run commit marker
-      snapshots/snapshot-00000000000000000000/
-        part-00000.parquet
-        _manifest.json
-        indexes/
-          vec-<col>-<model>/zone=<label>/
-          fts-<col>/
-      snapshots/<id>.staging/                  present mid-pass
-    requests/<run-id>.<node-id>.parquet         the request ledger
+    schema.json
+    _pointer.json
+    data/runs/<run-id>/<node-id>/part-00000.parquet
+    data/runs/<run-id>/<node-id>/_manifest.json
+    data/snapshots/snapshot-01742054400000000000/part-00000.parquet
+    data/snapshots/snapshot-01742054400000000000/_manifest.json
+    data/snapshots/snapshot-01742054400000000000/indexes/vec-<col>-<model>/zone=<label>/
+    data/snapshots/<id>.staging/
+    requests/<run-id>.<node-id>.parquet
+    requests/folded-<snapshot-id>.parquet
+
+<prefix>/manifest.json                   key -> { sha256, size, owner }
+<prefix>/_contextful/cas-probe/<uuid>
+<prefix>/leases/<pipeline-id>.json
+<prefix>/leases/compact/<table>.json
 ```
 
 A table declaration:
@@ -308,164 +360,47 @@ from = "effective_from"
 to   = "effective_to"
 ```
 
-A snapshot manifest:
+A run manifest, a snapshot manifest and a table pointer:
 
 ```json
-{
-  "snapshot_id": "snapshot-00001742054400000000000",
-  "table": "filings",
-  "created_at": "2026-03-15T12:00:00Z",
+{ "run_id": "run-4815", "table": "filings", "node_id": "ingest-a",
+  "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
+  "committed_at": "<instant>", "pipeline_id": "filings-sync",
+  "cursor": { "field": "revised_at", "at": "<instant>" }, "fence": null }
+
+{ "snapshot_id": "snapshot-01742054400000000000", "parent": "snapshot-01741968000000000000",
+  "table": "filings", "created_at": "<instant>",
   "includes_runs": ["run-4812", "run-4813", "run-4814"],
-  "primary_key": ["document_id", "page"],
-  "order_by": "revised_at",
-  "row_count": 128400,
-  "valid_time": { "from": "effective_from", "to": "effective_to" },
-  "indexes": [
-    { "kind": "vector", "column": "embedding", "model": "e5-small", "dim": 384,
-      "metric": "cosine", "m": 16, "ef_construction": 200 },
-    { "kind": "fulltext", "column": "body" }
-  ]
-}
+  "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
+  "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,
+  "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
+  "indexes": [{ "kind": "vector", "column": "embedding", "model": "e5-small", "dim": 384,
+                "metric": "cosine", "m": 16, "ef_construction": 200, "key_version": 3 }] }
+
+{ "snapshot_id": "snapshot-01742054400000000000", "fence": 12 }
 ```
 
-The bounds a read echoes:
+A lease object and a commit-log entry:
 
 ```json
-{
-  "contextful.bounds": {
-    "as_of": "2026-03-02",
-    "valid_as_of": "2026-01-01T00:00:00Z",
-    "inclusive": false
-  }
-}
+{ "holder": "ingest-a", "acquired_at": "<instant>", "expires_at": "<instant>", "fence": 418 }
+{ "run_id": "run-4816", "cursor": { "kind": "opaque-token", "value": "eyJwYWdlIjo0Mn0" }, "fence": 418 }
 ```
 
-A row as the scan assembles it:
-
-```
-document_id  page  body  revised_at  effective_from  effective_to
-_ingested_at  _run_id  _batch_seq  _site_id  _authored_by
-_modality  _lang  _provenance  _prompt_hash
-```
-
-A run commit marker:
-
-```json
-{
-  "run_id": "run-4814",
-  "table": "filings",
-  "node_id": "node-9f2c41ab",
-  "parts": ["part-00000.parquet", "part-00001.parquet"],
-  "committed_at": "2026-03-15T11:58:12Z"
-}
-```
-
-The relation a keyed table resolves to:
-
-```sql
-SELECT * EXCLUDE (_rn) FROM (
-  SELECT *,
-         ROW_NUMBER() OVER (
-           PARTITION BY document_id, page
-           ORDER BY revised_at DESC, _ingested_at DESC
-         ) AS _rn
-  FROM read_parquet(
-    [ 'tables/filings/data/snapshots/snapshot-00001742054400000000000/part-00000.parquet',
-      'tables/filings/data/runs/run-4815/node-9f2c41ab/part-00000.parquet' ],
-    union_by_name = true
-  )
-) WHERE _rn = 1
-```
-
-An unkeyed table resolves to the same scan with no window wrapper.
-
-The catalog, as the tree derives it:
-
-```
-meta.sqlite
-  tables            name, schema path, declaration digest
-  runs              run id, table, node id, parts, committed_at
-  snapshots         snapshot id, table, includes_runs, row_count, key_version
-  snapshot_indexes  snapshot id, kind, column, builder, builder_version
-  partitions        table, column, value, statistics refreshed by the fold
-```
-
-Encryption, as a project declares it:
+Sync configuration:
 
 ```toml
+[sync]
+bucket          = "context-prod"
+endpoint        = "https://s3.example-region.internal"
+prefix_from     = "env:CONTEXTFUL_SYNC_PREFIX"
+coordination    = "cas"
+push_retries    = 5
+pull_before_run = true
+
+[node]
+id = "ingest-a"
+
 [encryption]
 key_source = "env:CONTEXTFUL_KEY"
 ```
-
-A partitioned tenant table on disk, with the tenant column outermost:
-
-```
-tables/filings/data/snapshots/snapshot-00001742054400000000000/
-  tenant=acme%2Feu/region=eu-west/part-00000.parquet
-  tenant=acme/region=eu-west/part-00000.parquet
-```
-
-`acme%2Feu` and `acme` are two tenants: the directory name is an escaped rendering and the
-read-time filter compares the value the consumer supplied.
-
-Retention, from a committed run to a collected directory:
-
-```mermaid
-sequenceDiagram
-  participant R as run directory
-  participant S as snapshot
-  participant C as catalog
-  R->>C: _manifest.json written, run row recorded
-  R->>S: fold selects the run, writes it into staging
-  S->>C: rename, then snapshot row with includes_runs
-  Note over R: readable beside the snapshot for retain_runs
-  C->>R: past the window, the folded directory is collected
-  Note over S: the prior snapshot and its sidecars go the same way
-```
-
-The fold, from selection to visibility:
-
-```mermaid
-flowchart TD
-  A["runs newer than the latest snapshot"] --> B["dedupe by key, or union"]
-  B --> C["reconcile schema: backfill nulls, widen types"]
-  C --> D["sort by cluster_by"]
-  D --> E["partition"]
-  E --> F["write parquet into snapshots/&lt;id&gt;.staging/"]
-  F --> G["build every declared sidecar into staging"]
-  G --> H["fsync and finalize _manifest.json"]
-  H --> I{"backing store"}
-  I -->|filesystem| J["rename staging to snapshots/&lt;id&gt;/"]
-  I -->|object store| K["content-hash copy, then delete"]
-  J --> L["catalog row: includes_runs, indexes"]
-  K --> L
-  L --> M["snapshot and sidecars visible together"]
-  M --> N["collect folded runs past retention"]
-```
-
-Where a bound sits relative to enforcement:
-
-```mermaid
-flowchart TB
-  Q["caller SQL"] --> V["registered relation"]
-  V --> E["enforcement: row predicate, column mask, tenant filter"]
-  E --> B["time bounds: _ingested_at and the declared pair"]
-  B --> S["scan: read_parquet, explicit sorted list, union_by_name"]
-  S --> P["snapshot parts + unfolded run parts"]
-```
-
-Type resolution across one column's files:
-
-```
-file A: Int64        file B: Int64        ->  Int64
-file A: Int64        file B: Float64      ->  Float64   (lossy past 9007199254740992)
-file A: Json         file B: Utf8         ->  Json
-file A: Utf8         file B: Int64        ->  StoreSchemaIncompatible
-primary key column, Int64 then Float64    ->  StoreKeyWidened
-```
-
-## Unsettled
-
-unsettled: Does a replica hold a subset of a snapshot's sidecars and a subset of its partitions, and what does a read needing a missing one resolve to? owner: store affects: store.index
-
-unsettled: Is the tenant partition value validated against a canonical form, given the build rewrites nothing and a path-encoded name is representation? owner: store affects: store.index

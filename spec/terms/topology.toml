@@ -1,0 +1,31 @@
+# Registry fragment — contract `topology`, file spec/01-topology.md.
+
+[operation]
+compose           = { gloss = "The two halves of the engine, the three crossings between them, complete mediation, and the properties holding across both halves." }
+package           = { gloss = "The domain crate, dependency direction, and the three build profiles with what each links." }
+deploy            = { gloss = "One declaration across providers, deployment roles, self-hosted shapes, the reference target and output parity." }
+publish-hostname  = { gloss = "A published hostname's descriptor, gate and posture probe, and the two hops a published store answers through." }
+coordinate        = { gloss = "The conditional-write primitive, every single-writer operation, lease rows with their fence, and the catalog backends." }
+bound-application = { gloss = "Where the engine's contracts end, what an application owns, and the surfaces the commercial layer reaches." }
+
+[error]
+VendorSdkLinked             = { clause = "topology.compose.vendor-sdk", gloss = "A crate declares a model-vendor SDK, or a second outbound path to a model exists." }
+ScriptRuntimeLinked         = { clause = "topology.compose.script-runtime", gloss = "A script-language runtime links into a profile." }
+DomainCrateImpurity         = { clause = "topology.package.domain-impurity", gloss = "The domain crate declares an async runtime, component host, HTTP client or columnar-format implementation." }
+TopologyDependencyInversion = { clause = "topology.package.dependency-direction", gloss = "A dependency edge runs from the domain crate toward an adapter crate." }
+ComponentHostMissing        = { clause = "topology.package.host-missing", gloss = "A component connector is dispatched on a profile linking no component host." }
+ProfileDependencyLeak       = { clause = "topology.package.crdt-leak", gloss = "The CRDT library appears in the edge or full profile's dependency graph." }
+TargetShapeUnsupported      = { clause = "topology.deploy.unsupported-shape", gloss = "A target profile claims a shape its provider's primitives do not express." }
+ParityDivergence            = { clause = "topology.deploy.parity-divergence", gloss = "A target's table parts differ byte-wise from the reference target's." }
+HostnamePostureMismatch     = { clause = "topology.publish-hostname.posture-mismatch", gloss = "An anonymous probe's answer disagrees with the hostname's declared gate, or the hostname is unreachable." }
+ProbeTableDrift             = { clause = "topology.publish-hostname.probe-table", gloss = "The probe table and the descriptor set name different hostname-and-gate pairs." }
+DescriptorUnknownField      = { clause = "topology.publish-hostname.unknown-field", gloss = "A descriptor carries a key its contract version does not model." }
+GatewayUnconfigured         = { clause = "topology.publish-hostname.unconfigured-gateway", gloss = "A routing hop holding no store configuration." }
+IssuerKeyUnusable           = { clause = "topology.publish-hostname.issuer-key", gloss = "A verification key that does not resolve or does not parse at engine start." }
+
+[limit]
+topology-function-wall-clock = { clause = "topology.deploy.wall-clock-cap", value = 15, unit = "min", basis = "chosen", gloss = "Per-invocation wall clock at or below which a target hosts neither a backfill nor a component connector." }
+topology-parity-soak         = { clause = "topology.deploy.parity", value = 24, unit = "h", basis = "chosen", gloss = "Accumulation period before the parity comparison runs." }
+topology-container-readiness = { clause = "topology.publish-hostname.container-readiness", value = 8, unit = "s", basis = "chosen", gloss = "Cold start to readiness for a retrieval container; no workload is measured." }
+topology-cadence-lease-ttl   = { clause = "topology.coordinate.cadence-lease-ttl", value = 90, unit = "s", basis = "chosen", gloss = "Granted life of a cadence lease, three renewal intervals." }
+topology-cadence-renewal     = { clause = "topology.coordinate.cadence-lease-renewal", value = 30, unit = "s", basis = "chosen", gloss = "Interval at which the reconciler renews a cadence lease." }

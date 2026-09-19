@@ -1,0 +1,113 @@
+# Registry fragment — contract `authority`, files spec/50-authority.md and spec/51-enforcement.md.
+
+[operation]
+identify             = { gloss = "The subject tuple, its per-member attestation, hygiene at the mint, and the identity links connecting a subject to a source's principals." }
+profile              = { gloss = "The versioned delegation profile over the attenuable-credential library: admitted elements, reserved facts, the bounded evaluator, the scoped session." }
+grant                = { gloss = "What a credential says a holder does: actions, table patterns, tenant scope, the template allowlist, ceilings, and resources answering by name." }
+attenuate            = { gloss = "Deriving a narrower child offline, and the narrowing legality of each grant dimension." }
+issue                = { gloss = "Minting: the persisted lifetime ceiling, the principal a row-landing grant needs, signing custody, and the authoring posture." }
+verify               = { gloss = "Admission at a checkpoint: signatures, audience, timestamps, possession proof, key sets, and the admitted-authority value." }
+revoke               = { gloss = "Ending a credential's usefulness ahead of expiry: short lifetimes, the denylist, the scoped epoch, key rotation, format withdrawal." }
+exchange             = { gloss = "Trading a verified external assertion for a scoped credential under injected verifying material and a declared policy." }
+redact               = { gloss = "Removal and transformation inside the writer, ahead of columnar bytes and the run path's durable record." }
+compose              = { gloss = "The three layers as one reference monitor, and the order a registered relation applies." }
+filter-rows          = { gloss = "The typed row-predicate grammar, subject binding, the tenant equality and the project default." }
+mask                 = { gloss = "Column classes, strategies and combines, guardrails over an exhaustible value space, the pepper, and masked behavior under caller SQL." }
+refuse               = { gloss = "The two shapes an unauthorized read takes, the scope guard, and what a refusal discloses." }
+bound-redistribution = { gloss = "The per-table licence bound applied at push, the root-object allowlist, and the per-credential edge filter." }
+place                = { gloss = "Inference zones: grammar, composition across grains, floors, incognito, and the serve-time outcome." }
+resist               = { gloss = "The paths that stay closed to an injected instruction." }
+
+[error]
+AuthoritySubjectMalformed            = { clause = "authority.identify.malformed-value", gloss = "A subject value fails mint hygiene, or arrives padded on the exchange." }
+AuthoritySubjectMissing              = { clause = "authority.identify.subject-missing", gloss = "A credential carries no subject member." }
+AuthorityLinkUnverified              = { clause = "authority.identify.unverified-link", gloss = "An authorization join consumed a link whose method does not authorize." }
+AuthoritySubjectRebound              = { clause = "authority.identify.subject-rebound", gloss = "A derivation names a different on-behalf-of principal." }
+ProfileElementUnrecognized           = { clause = "authority.profile.unrecognized-element", gloss = "A credential element the profile does not name." }
+ProfileReservedFact                  = { clause = "authority.profile.reserved-fact", gloss = "A token block introduces an engine-reserved fact." }
+ProfileEvaluationBudget              = { clause = "authority.profile.evaluator-bound", gloss = "Evaluator input past the fact or iteration ceiling." }
+ProfileRestrictionUnevaluated        = { clause = "authority.profile.unevaluated-restriction", gloss = "A restriction no read evaluator exists for." }
+ProfileVersionUnsupported            = { clause = "authority.profile.version-unsupported", gloss = "A profile version outside the checkpoint's supported set." }
+GrantActionUnknown                   = { clause = "authority.grant.unknown-action", gloss = "An action outside the four-verb vocabulary." }
+GrantPatternMalformed                = { clause = "authority.grant.malformed-pattern", gloss = "A table pattern with a star before its final position." }
+GrantTenantUnbindable                = { clause = "authority.grant.tenant-unbindable", gloss = "A tenant scope on a table with no bare outermost partition column." }
+GrantTemplateNotAllowed              = { clause = "authority.grant.template-not-allowed", gloss = "A query template outside the credential's allowlist." }
+GrantPipelineNotCovered              = { clause = "authority.grant.pipeline-not-covered", gloss = "A pipeline identifier no grant covers." }
+GrantRunTraceDenied                  = { clause = "authority.grant.run-trace-denied", gloss = "A run trace whose pipeline no grant covers; names no pipeline." }
+AttenuationWidens                    = { clause = "authority.attenuate.widens", gloss = "A child broader than its parent on a grant dimension." }
+AttenuationExpiryExtended            = { clause = "authority.attenuate.expiry-extended", gloss = "A child expiry past its parent's." }
+AttenuationTenantDropped             = { clause = "authority.attenuate.tenant-dropped", gloss = "A child dropping or changing its parent's tenant scope." }
+IssuanceLifetimeAboveCeiling         = { clause = "authority.issue.above-ceiling", gloss = "A requested lifetime above the persisted ceiling." }
+IssuancePrincipalRequired            = { clause = "authority.issue.principal-required", gloss = "A write or execute grant naming no on-behalf-of principal." }
+IssuerKeyMissing                     = { clause = "authority.issue.missing-key", gloss = "A face configured with no issuer key." }
+IssuerKeyUnresolvable                = { clause = "authority.issue.unresolvable-key", gloss = "An issuer key reference resolving to no material." }
+SignatureAlgorithmMismatch           = { clause = "authority.issue.algorithm-mismatch", gloss = "A named scheme differing from the pinned key's." }
+IssuanceUnauthorized                 = { clause = "authority.issue.unauthorized-mint", gloss = "A mint request without an admin grant." }
+ReplicaCannotIssue                   = { clause = "authority.issue.replica-mint", gloss = "A mint attempted on a replica." }
+IssuanceZoneWildcard                 = { clause = "authority.issue.zone-wildcard", gloss = "A subject declaring a wildcard inference zone at the mint." }
+SignatureInvalid                     = { clause = "authority.verify.bad-signature", gloss = "A block signature failing against every pinned key." }
+AudienceMismatch                     = { clause = "authority.verify.audience-mismatch", gloss = "A credential audience differing from, or absent against, the declared one." }
+TimestampMalformed                   = { clause = "authority.verify.malformed-timestamp", gloss = "A credential timestamp outside the timestamp grammar." }
+AuthorityExpired                     = { clause = "authority.verify.expired", gloss = "A credential past its expiry at admission or an effect boundary." }
+PossessionProofInvalid               = { clause = "authority.verify.possession-invalid", gloss = "A request proof failing against the confirmation thumbprint." }
+PossessionProofReplayed              = { clause = "authority.verify.replayed-nonce", gloss = "A proof nonce repeated inside the replay window." }
+KeySetUnavailable                    = { clause = "authority.verify.key-set-unavailable", gloss = "An opted-into published key set that could not be obtained, or a malformed pin." }
+KeySetStale                          = { clause = "authority.verify.key-set-stale", gloss = "A last-known-good key set past its staleness bound." }
+AuthorityRevoked                     = { clause = "authority.revoke.revoked", gloss = "A denylisted credential, or one below the current scoped epoch." }
+RotationGraceTooShort                = { clause = "authority.revoke.short-grace", gloss = "A rotation grace window shorter than the issuance ceiling." }
+CredentialFormatWithdrawn            = { clause = "authority.revoke.format-withdrawn", gloss = "A credential in a withdrawn format." }
+ExchangeAssertionInvalid             = { clause = "authority.exchange.assertion-invalid", gloss = "An external assertion failing any exchange check." }
+ExchangeMaterialMissing              = { clause = "authority.exchange.material-missing", gloss = "An exchange configured with no verifying material." }
+EnforcePredicateOutsideGrammar       = { clause = "authority.filter-rows.outside-grammar", gloss = "A row predicate node outside the typed subset." }
+EnforceUnknownClass                  = { clause = "authority.mask.unknown-class", gloss = "A column class outside the class registry." }
+EnforceDigestAloneOnExhaustibleClass = { clause = "authority.mask.digest-alone", gloss = "A keyed hash standing alone over an exhaustible class." }
+EnforceCombineWithoutGeneralization  = { clause = "authority.mask.combine-generalizes", gloss = "A combine leaving its primary's digest output unchanged." }
+EnforceTruncationCutsNothing         = { clause = "authority.mask.cuts-nothing", gloss = "A truncation width at or past the primary's output width." }
+EnforceTruncationTooWide             = { clause = "authority.mask.truncation-ceiling", gloss = "A digest truncation wider than the class domain and crowd admit." }
+EnforceKeyMaterialInRelation         = { clause = "authority.mask.key-material", gloss = "Pepper-derived key state in relation text, a plan or the session catalog." }
+EnforceMaskOnAbsentColumn            = { clause = "authority.mask.absent-column", gloss = "A mask naming a column the schema omits." }
+EnforceScopeDenied                   = { clause = "authority.refuse.scope-denied", gloss = "A read of another tenant's rows on a granted table." }
+EnforceUnknownRelation               = { clause = "authority.refuse.ungranted-table", gloss = "A read naming a table the caller holds no grant on." }
+EnforceRootObjectNotAllowlisted      = { clause = "authority.bound-redistribution.root-not-allowlisted", gloss = "A root-level object pushed outside the allowlist while a table is withheld." }
+EnforceStaleRedistributedObjects     = { clause = "authority.bound-redistribution.left-behind", gloss = "Objects an earlier push left addressable for a now-withheld table." }
+EnforceZonePatternUnparsed           = { clause = "authority.place.unparsed-pattern", gloss = "An allow-set entry matching no entry form." }
+EnforcePermissiveZoneDefault         = { clause = "authority.place.permissive-default", gloss = "A wildcard zone default in a store with several principals." }
+EnforceProtectedFloorWidened         = { clause = "authority.place.floor-widened", gloss = "A protected-class surface widened past its floor with no override." }
+EnforceRemovalWithPublicCloud        = { clause = "authority.place.removal-with-public-cloud", gloss = "Write-time removal and a public-cloud allow-set on one surface." }
+EnforceEvidenceFloorExceeded         = { clause = "authority.place.evidence-floor", gloss = "A synthesized row declaring a set wider than its evidence intersection." }
+EnforceIncognitoWidening             = { clause = "authority.place.incognito-widening", gloss = "A session asserting a zone wider than the incognito pin." }
+EnforceCredentialShapedValue         = { clause = "authority.resist.credential-shaped-value", gloss = "A credential-shaped value on the write path." }
+EnforceWriteOnReadOnlyFace           = { clause = "authority.resist.write-tool", gloss = "A write tool registered on an organization-wide face." }
+
+[limit]
+subject-value-bytes            = { clause = "authority.identify.value-hygiene", value = 256, unit = "B", basis = "chosen", gloss = "Longest subject value the mint accepts." }
+evaluator-fact-ceiling         = { clause = "authority.profile.fact-ceiling", value = 1000, unit = "entries", basis = "chosen", gloss = "Facts one authorization holds." }
+evaluator-iteration-ceiling    = { clause = "authority.profile.iteration-ceiling", value = 100, unit = "iterations", basis = "chosen", gloss = "Evaluator iterations per authorization." }
+aggregate-group-ceiling-floor  = { clause = "authority.grant.group-ceiling", value = 1, unit = "entries", basis = "chosen", gloss = "Least groups-per-query ceiling an aggregate grant declares." }
+tenant-child-lifetime          = { clause = "authority.grant.tenant-child-lifetime", value = 15, unit = "min", basis = "chosen", gloss = "Lifetime of a per-query tenant-scoped child." }
+issuance-lifetime-ceiling      = { clause = "authority.issue.ceiling", value = 24, unit = "h", basis = "chosen", gloss = "Longest lifetime a persisted issuance policy permits." }
+issuer-key-rotation-cadence    = { clause = "authority.issue.key-rotation", value = 90, unit = "d", basis = "chosen", gloss = "Rotation interval of the issuer signing key." }
+proof-replay-window            = { clause = "authority.verify.replay-window", value = 300, unit = "s", basis = "chosen", gloss = "Oldest proof issue instant a checkpoint admits, and nonce retention." }
+proof-clock-skew               = { clause = "authority.verify.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Furthest a proof issue instant runs ahead of the checkpoint clock." }
+nonce-cache-entries            = { clause = "authority.verify.nonce-cache", value = 100000, unit = "entries", basis = "chosen", gloss = "Nonces one checkpoint retains." }
+key-set-refresh-interval       = { clause = "authority.verify.key-set-refresh", value = 300, unit = "s", basis = "chosen", gloss = "Lifetime of a fetched published key set." }
+key-set-stale-ceiling          = { clause = "authority.verify.key-set-stale", value = 1, unit = "h", basis = "chosen", gloss = "Age past which a last-known-good key set stops serving." }
+exchange-lifetime-default      = { clause = "authority.exchange.lifetime-default", value = 900, unit = "s", basis = "chosen", gloss = "Minted lifetime where the policy declares none." }
+exchange-lifetime-ceiling      = { clause = "authority.exchange.lifetime-ceiling", value = 3600, unit = "s", basis = "chosen", gloss = "Ceiling a configured minted lifetime clamps to." }
+redaction-rules-per-pipeline   = { clause = "authority.redact.rules-per-pipeline", value = 256, unit = "entries", basis = "chosen", gloss = "Removal rules one pipeline declares." }
+relations-per-session          = { clause = "authority.compose.relations-per-session", value = 1024, unit = "entries", basis = "chosen", gloss = "Registered relations one session holds." }
+row-predicate-size             = { clause = "authority.filter-rows.predicate-size", value = 4, unit = "KiB", basis = "chosen", gloss = "Source text of one row predicate." }
+membership-list-entries        = { clause = "authority.filter-rows.membership-list", value = 512, unit = "entries", basis = "chosen", gloss = "Literals in one membership list." }
+hash-output-width              = { clause = "authority.mask.hash-width", value = 32, unit = "chars", basis = "chosen", gloss = "Output width of a keyed hash." }
+token-output-width             = { clause = "authority.mask.token-width", value = 20, unit = "chars", basis = "chosen", gloss = "Output width of a tokenization." }
+mask-crowd-floor               = { clause = "authority.mask.crowd", value = 1000, unit = "values", basis = "chosen", gloss = "Fewest inputs one masked output covers." }
+summarize-only-quote           = { clause = "authority.mask.verbatim-quote", value = 280, unit = "chars", basis = "chosen", gloss = "Verbatim release from a summarize-only value per citation." }
+masks-per-table                = { clause = "authority.mask.masks-per-table", value = 128, unit = "entries", basis = "chosen", gloss = "Column masks one table declares." }
+refusal-payload                = { clause = "authority.refuse.payload", value = 512, unit = "B", basis = "chosen", gloss = "Bytes one refusal payload carries." }
+scope-guard-walk               = { clause = "authority.refuse.guard-walk", value = 4096, unit = "entries", basis = "chosen", gloss = "Parse-tree nodes the scope guard visits." }
+stale-object-report            = { clause = "authority.bound-redistribution.report", value = 100, unit = "files", basis = "chosen", gloss = "Objects a left-behind report names." }
+zone-allow-set-entries         = { clause = "authority.place.allow-set-entries", value = 32, unit = "entries", basis = "chosen", gloss = "Patterns one zone allow-set holds." }
+zone-identifier-length         = { clause = "authority.place.identifier-length", value = 128, unit = "chars", basis = "chosen", gloss = "Characters in a zone identifier." }
+
+[term]
+write = { gloss = "The action that lands rows, and the destination export that receives them." }

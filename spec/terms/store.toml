@@ -1,0 +1,102 @@
+# Registry fragment — contract `store`, file spec/10-store.md.
+
+[operation]
+lay-out    = { gloss = "The directory tree, run and snapshot manifests, the table pointer, the two catalogs, and node identity." }
+declare    = { gloss = "A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row." }
+reserve    = { gloss = "The column and table namespaces the engine holds, the provenance columns it injects, and the request ledger." }
+reconcile  = { gloss = "Schema evolution across a table's file set: the type lattice, additive columns, and what a scan may invent." }
+fold       = { gloss = "Compaction: pass order, triggers, retention, the compaction lease, and the pointer commit that makes a snapshot readable." }
+index      = { gloss = "Sidecar index kinds and identity, clustering, partitioning and the tenant partition." }
+bound-time = { gloss = "The two clocks a row carries, the parameter bounding each, and what a bounded read resolves to." }
+encrypt    = { gloss = "At-rest encryption of Parquet, sidecars and ledgers, the key derivation, and forward key rotation." }
+push       = { gloss = "Uploading the store to a bucket: the wire format, the bucket manifest, prefix confinement and the manifest write that commits it." }
+pull       = { gloss = "Fetching a bucket into a store: the digest diff, the parallel download, and the pointer written last." }
+probe      = { gloss = "Measuring a backend's conditional-write behavior with a live sentinel, and the coordination mode that outcome resolves." }
+merge      = { gloss = "Reconciling one bucket manifest between writers: per-entry ownership, tombstones, the rebase loop and the consumer-facing section." }
+lease      = { gloss = "Single-writer exclusion over a pipeline or a table's compaction: two implementations, the fence, and the commit log carrying the cursor." }
+replicate  = { gloss = "A consuming replica of the bucket: the refresh diff, what it holds whole, what it declines, and what it rebuilds." }
+
+[term]
+class           = { gloss = "The table key naming a column's sensitive-data class." }
+append          = { gloss = "The write mode keeping the last write per key and retiring no key." }
+replace         = { gloss = "The write mode reading the newest complete-state run plus later runs." }
+_ingested_at    = { gloss = "The injected transaction-time stamp, a UTC nanosecond Parquet timestamp on every row." }
+_run_id         = { gloss = "The injected identifier of the run that landed a row." }
+_batch_seq      = { gloss = "The injected batch ordinal within a run, where a batch scope exists." }
+_site_id        = { gloss = "The injected identifier of the writing site." }
+_authored_by    = { gloss = "The injected subject that authorized a write, where one did." }
+_modality       = { gloss = "The reserved optional column naming a row's content modality." }
+_lang           = { gloss = "The reserved optional column carrying a BCP-47 language tag." }
+_provenance     = { gloss = "The reserved optional column carrying the evidence rows a row derives from." }
+_prompt_hash    = { gloss = "The reserved optional column carrying a digest of the prompt template that produced a row." }
+primary_key     = { gloss = "A table's declared key set, which the dedup view partitions on." }
+order_by        = { gloss = "The column picking the surviving row per key." }
+write_mode      = { gloss = "`append` or `replace`: what a read returns for a row the source withdrew." }
+retain_runs     = { gloss = "The window a folded run or superseded snapshot stays readable." }
+cluster_by      = { gloss = "The columns rows are sorted by within a Parquet file." }
+partition_by    = { gloss = "The columns a snapshot's files are partitioned by." }
+valid_time      = { gloss = "A table's declared valid-time column pair, `from` and optional `to`." }
+as_of           = { gloss = "The read parameter bounding transaction time." }
+valid_as_of     = { gloss = "The read parameter bounding valid time." }
+includes_runs   = { gloss = "The run ids a snapshot folded." }
+key_version     = { gloss = "The encryption key version a file was written under." }
+fence           = { gloss = "The lease's monotonic token, stamped into what a holder commits." }
+node_id         = { gloss = "A machine's writer identity, used in run paths, ledger filenames and lease holders." }
+pull_before_run = { gloss = "The sync setting pulling from the bucket before a run lands rows." }
+prefix_from     = { gloss = "The sync setting binding the bucket prefix from an environment variable." }
+push_retries    = { gloss = "The sync setting bounding the bucket manifest re-commit loop." }
+
+[error]
+StoreManifestUnreadable      = { clause = "store.lay-out.manifest-unreadable", gloss = "A run manifest or reachable snapshot manifest fails to parse." }
+StoreUnknownTable            = { clause = "store.lay-out.unknown-table", gloss = "A table name resolves to no `schema.json` in the tree." }
+StoreNodeIdInvalid           = { clause = "store.lay-out.node-id-shape", gloss = "A resolved node id is too long or outside the path-safe pattern." }
+StoreNodeIdShared            = { clause = "store.lay-out.node-id-shared", gloss = "A node id is declared in a control-plane configuration applied to many machines." }
+StoreOrderByUnknownColumn    = { clause = "store.declare.order-by-unknown", gloss = "An `order_by` names a column neither declared nor injected." }
+StoreReservedColumnName      = { clause = "store.reserve.column-name", gloss = "A producer column is spelled inside the reserved namespace and outside the optional set." }
+StoreReservedTableName       = { clause = "store.reserve.table-name", gloss = "A declared table collides with a reserved table namespace." }
+StoreSchemaIncompatible      = { clause = "store.reconcile.incompatible", gloss = "Two observed types for one column have no supertype in the lattice." }
+StoreKeyWidened              = { clause = "store.reconcile.key-widening", gloss = "A primary-key column takes the float promotion." }
+StorePartialSnapshot         = { clause = "store.fold.partial-snapshot", gloss = "A commit would expose snapshot data without its declared sidecars, or the reverse." }
+StoreIndexColumnAbsent       = { clause = "store.index.column-absent", gloss = "An index is declared over a column the reconciled schema lacks." }
+StoreValidTimeNotTimestamp   = { clause = "store.bound-time.valid-time-type", gloss = "A declared valid-time column is not timestamp-typed." }
+StoreAsOfUnretained          = { clause = "store.bound-time.as-of-unretained", gloss = "An `as_of` precedes the oldest retained snapshot of a table whose history was collected." }
+StoreValidTimeUndeclared     = { clause = "store.bound-time.valid-time-undeclared", gloss = "A valid-time-bounded read names a table declaring no pair." }
+StoreEncryptionKeyUnbound    = { clause = "store.encrypt.key-unbound", gloss = "A declared key source names a binding the process lacks." }
+StoreIndexOverRedactedColumn = { clause = "store.encrypt.redacted-index", gloss = "An index is declared over a column redacted at write time." }
+SyncPrefixEscape             = { clause = "store.push.prefix-escape", gloss = "A key resolved outside the configured prefix." }
+SyncPrefixUnbound            = { clause = "store.push.prefix-unbound", gloss = "The variable named by `prefix_from` is unset at startup." }
+SyncPrefixOverspecified      = { clause = "store.push.prefix-overspecified", gloss = "`prefix` and `prefix_from` are declared together." }
+SyncPushInFlight             = { clause = "store.push.in-flight", gloss = "A second push of one store started on a machine already pushing it." }
+SyncObjectDigestMismatch     = { clause = "store.pull.digest-mismatch", gloss = "A downloaded object's digest differs from its entry." }
+SyncPullDidNotConverge       = { clause = "store.pull.unconverged", gloss = "A pull exhausted its retries against keys moving beneath it." }
+SyncProbeInconclusive        = { clause = "store.probe.inconclusive", gloss = "The conditional-write probe met an unsupported method, a forbidden response or a transport error." }
+SyncCoordinationUnproven     = { clause = "store.probe.unproven", gloss = "`cas` is declared against a backend the probe did not demonstrate." }
+SyncTombstoneForeign         = { clause = "store.merge.tombstone-owner", gloss = "A tombstone names an entry another node owns." }
+SyncManifestRebaseExhausted  = { clause = "store.merge.exhausted", gloss = "The bucket manifest commit lost its race past the retry bound." }
+SyncCursorConflict           = { clause = "store.merge.cursor-recency", gloss = "A cursor was resolved by recency instead of through its commit." }
+LeaseHeld                    = { clause = "store.lease.held", gloss = "A run or pass found an unexpired lease another node holds." }
+LeaseFenced                  = { clause = "store.lease.stale-fence", gloss = "A conditional commit lost to a higher fence." }
+LeaseNotHeld                 = { clause = "store.lease.not-held", gloss = "A release was attempted against a lease another node holds." }
+LeaseCursorKindMismatch      = { clause = "store.lease.cursor-kind", gloss = "A cursor whose kind takes no lease reached `cursors/`." }
+LeaseNodeIdLocal             = { clause = "store.lease.local-node", gloss = "A bucket lease was attempted under the reserved node id `local`." }
+ReplicaWriteRefused          = { clause = "store.replicate.write-refused", gloss = "A write verb was invoked against a replica." }
+ReplicaPartialParquet        = { clause = "store.replicate.partial-parquet", gloss = "A replica holds a strict subset of a snapshot's data files." }
+ReplicaMissingIndex          = { clause = "store.replicate.missing-index", gloss = "A query needs a sidecar or partition the replica lacks." }
+ReplicaSensitiveTable        = { clause = "store.replicate.sensitive-refused", gloss = "A refresh requested a replicate-off table." }
+
+[limit]
+store-snapshot-id-width     = { clause = "store.lay-out.snapshot-id", value = 20, unit = "chars", basis = "chosen", gloss = "Width of the zero-padded nanosecond field of a snapshot id." }
+store-node-id-length        = { clause = "store.lay-out.node-id-shape", value = 64, unit = "chars", basis = "chosen", gloss = "Longest node id, which is interpolated into paths and keys." }
+store-ledger-retention      = { clause = "store.reserve.ledger-retention", value = 365, unit = "d", basis = "chosen", gloss = "Age at which a request-ledger row is collected." }
+store-compaction-interval   = { clause = "store.fold.triggers", value = 6, unit = "h", basis = "chosen", gloss = "Elapsed time after a table's previous pass that fires the next." }
+store-run-retention         = { clause = "store.fold.retention", value = 7, unit = "d", basis = "chosen", gloss = "Default `retain_runs` window, past which a folded run or a snapshot superseded by ordinary writes is collected." }
+store-partition-median      = { clause = "store.index.partition-warnings", value = 16, unit = "MiB", basis = "chosen", gloss = "Projected median partition size below which planning warns." }
+store-kdf-memory            = { clause = "store.encrypt.password-kdf", value = 64, unit = "MiB", basis = "standard:rfc9106", gloss = "Argon2id memory cost." }
+store-kdf-iterations        = { clause = "store.encrypt.password-kdf", value = 3, unit = "iterations", basis = "standard:rfc9106", gloss = "Argon2id time cost." }
+store-kdf-lanes             = { clause = "store.encrypt.password-kdf", value = 4, unit = "lanes", basis = "standard:rfc9106", gloss = "Argon2id parallelism." }
+store-clock-skew            = { clause = "store.lease.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Largest clock difference between two machines coordination assumes." }
+store-pull-convergence      = { clause = "store.pull.convergence", value = 3, unit = "attempts", basis = "chosen", gloss = "Manifest re-fetches a pull performs against keys moving beneath it." }
+store-tombstone-ttl         = { clause = "store.merge.tombstone-ttl", value = 30, unit = "d", basis = "chosen", gloss = "Age at which a tombstone leaves the bucket manifest." }
+store-push-retries          = { clause = "store.merge.retries", value = 5, unit = "attempts", basis = "chosen", gloss = "Default re-commit rounds on a lost bucket manifest compare-and-set." }
+store-lease-ttl             = { clause = "store.lease.ttl", value = 10, unit = "min", basis = "chosen", gloss = "Granted life of a lease." }
+store-lease-renewal         = { clause = "store.lease.renewal", value = 200, unit = "s", basis = "chosen", gloss = "Interval at which a holder renews, a third of the grant." }

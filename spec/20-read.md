@@ -13,244 +13,164 @@ owns:
 
 # The read face
 
-Everything a caller can ask of a store arrives through this contract: the relations a
-connection sees, the statement it may send, the candidates a question generates, the order
-they come back in, and the one envelope that carries them. A read lands no row and holds no
-lease.
+Every question a caller asks of a store arrives here: the relations a connection sees, the
+statement it sends, the candidates a question generates, their order, and the one envelope
+that carries them. A read lands no row and holds no lease. Restriction arrives already
+composed into each registered relation; this face consumes index sidecars and builds none.
 
-## Parties
+## register
 
-| Party | Obligation |
-| --- | --- |
-| **The engine** | Registers one relation per readable table for each connection, admits a single read-only statement against those relations, and serializes one projection on every transport. |
-| **The caller** | Sends one statement or one tool call per read, and takes truncation, match counts and resolved build state from the response rather than deriving them from the row count. |
-| **The operator** | Declares the templates, the per-table row ceiling, the publication column and the lexicon a store publishes. The reviewed manifest is the whole callable surface. |
-| **The serving container** | Holds the current snapshot set on local disk, keys a cached result on the full policy subject, and drops the entries a newer snapshot supersedes. |
-| **The embedding host** | Injects a store's credential on the server side and exchanges a visitor's verified assertion for a per-viewer token. A page holds no store bearer and no cookie. |
-
-## Operations
-
-| Operation | What it governs |
-| --- | --- |
-| `register` | The relations, tools and templates one connection sees, and the engine that executes against them. |
-| `guard` | Admission of caller-written SQL: what parses, what a base relation names, and whose text runs raw. |
-| `respond` | The single response projection: cell encoding, the row ceiling, truncation, counts, and operator-facing metadata. |
-| `retrieve` | Candidate generation for a ranked read: content tokens, the relevance floor, per-table arms, dedup, and the snippet. |
-| `rank` | Ordering of a candidate set: the three legs, their fusion, the question's timeframe, and the confidence a caller reads. |
-| `cache` | Locality of the bytes a read touches, and reuse of a result across requests. |
-| `resolve-pin` | Resolution of a named published-model build at read time, and the state each response echoes. |
-| `embed` | The client library, its four transports, the handshake's build identity, and the credential each shape carries. |
-
-## Clauses — register
-
-A connection's relations are built, not stored. Registration is where a table name, a
-template identifier and a tool listing acquire their meaning for one caller.
-
-A relation arrives carrying its restriction. The layer composition, and the single pass that
-runs ahead of the top-K cut, live in [`spec/41-enforcement.md` § Composition](41-enforcement.md);
-a source-mirrored permission set joins into that same relation ahead of the tenant filter
-under [`spec/42-visibility.md` § Mirrored permissions](42-visibility.md). Grant actions, the
-grants a template carries, and the composition of two ceilings live in
-[`spec/40-authority.md` § Grants](40-authority.md), and an effective ceiling reaches this
-face already resolved. Index identity, an index's placement beside the snapshot it indexes,
-and the build that produces a sidecar live in [`spec/10-store.md` § Indexes](10-store.md);
-this face consumes a sidecar and builds none.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `read.register.invariant.connection-views` | Ahead of a statement the engine opens a connection and issues one create-or-replace view per table directory the manifests name, each source resolved at that moment. No view directory exists on disk, so nothing regenerates and no fingerprint drifts. | |
-| `read.register.invariant.file-list` | A registered relation receives an explicit, sorted list of part files rather than a glob pattern. What a relation reads is decided by the manifests, never by whatever happens to sit in the directory when the scan starts. | |
-| `read.register.interface.engine` | The executor is an embedded columnar SQL engine linked into every binary target, reading Parquet natively and speaking standard SQL with no dialect of its own. An external process opened against the same files reads the same bytes with the engine uninstalled. | |
-| `read.register.invariant.quiet-table` | The relation a quiet table registers as is {{store.declare.invariant.empty-table-is-a-zero-row-relation}} A caller reading it receives an empty result instead of a missing-relation fault. | |
-| `read.register.invariant.bare-name` | A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to that caller's registered relation. Restriction lives in the relation rather than in a clause each surface has to remember, which is what makes a later arm safe to add. | |
-| `read.register.interface.tool-set` | The read face exposes a closed set: `context.describe` for what is queryable, `context.query` as the one call crossing structured and semantic retrieval, `context.execute_query` for pre-approved templates, `context.files` and `context.file` over committed data files, and `corpus.retrieve` for ranked reads across a prefix. A caller restricted to templates emits no SQL at all. | |
-| `read.register.shape.describe-payload` | `context.describe` answers with the row count, the stored schema fingerprint over injected and declared columns, a table-level description, per-column hints, the declared index inventory, the partition scheme, `limits.max_rows`, the zone label, the store's lexicon, and worked example queries — enough to write a working query with no round trip. | |
-| `read.register.invariant.advertised-is-enforced` | A bound appears in a table's published `limits` block exactly when the engine applies it. An unenforceable bound is absent from the block rather than advertised, so a published number and a delivered guarantee cannot disagree. | |
-| `read.register.interface.template-projection` | Every manifest template projects into a tool: the template identifier becomes the tool name and its declared positional parameters become a typed schema whose fields are all required. Adding a metric is adding a template, with no deploy of the calling application. | |
-| `read.register.refusal.ungranted-template` | Tool listing is filtered by the caller's grants, and a template absent from that listing is also unreachable by a guessed identifier, raising `TemplateNotGranted`. A listing therefore discloses no identifier the caller cannot run. | `0040` |
-| `read.register.invariant.file-listing` | `context.files` answers with paths relative to the store root for the tables the caller reads, and a table outside that set contributes no path — a listing cannot reveal that a table exists. | |
-| `read.register.refusal.file-preview-target` | `context.file` resolves a path to its `(table, run_id)` pair and reads the rows back through that table's registered relation, so row restriction, masks and the zone gate apply to a preview identically. A snapshot part, a traversal, an absolute path and a ledger file resolve to no table and raise `FilePreviewNotATable`. | `0041` |
-| `read.register.interface.ledger-relation` | Each table's per-run request ledger registers as the child relation `<table>__requests`, holding identifiers, connector, method, host, status and timing for mediated outbound calls. | |
-| `read.register.refusal.scoped-ledger` | The child relation registers on the owner read alone — no grant allowlist, no row predicate, no column mask, no tenant scope. A tenant-scoped token naming it raises `LedgerNotTenantScoped` stating what closed the relation, rather than an empty result reading as no vendor traffic. | `0042` |
-| `read.register.shape.lexicon-surface` | A store's declared lexicon reaches a caller through the describe payload. Numeric-identifier and badge vocabulary crosses to a rendering client; aliases, time-window phrases and distillation examples stay on the serving side, where interpretation happens. | |
-| `read.register.invariant.reserved-relation` | The engine's own reserved table namespaces register like any other relation and carry no privileged path underneath: a surface reading them reads through the same registration a caller gets. | |
+| `read.register.connection-views` | Ahead of a statement the engine opens a connection and issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}} No view directory exists on disk. | — |
+| `read.register.engine` | The executor is an embedded columnar SQL engine, linked into every profile that serves reads, reading Parquet natively in standard SQL. An external process reads the same files with the engine uninstalled. | D47 |
+| `read.register.quiet-table` | A quiet table registers as {{store.declare.empty-run}} A read of it returns an empty result, never a missing-relation fault. | P4 |
+| `read.register.bare-name` | A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to the caller's registered relation, which carries the caller's restriction. | P5 |
+| `read.register.tool-set` | The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, and `corpus.retrieve` for ranked reads across a prefix. | D10 |
+| `read.register.describe-payload` | `context.describe` returns row count, schema fingerprint, description, per-column hints, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries. | — |
+| `read.register.advertised-is-enforced` | A table's published `limits` block lists a bound exactly when the engine applies it. | because a published number and a delivered guarantee cannot disagree when one derives from the other |
+| `read.register.template-projection` | Every manifest template projects into a tool named by its identifier, whose declared positional parameters form a typed schema with every field required. | — |
+| `read.register.file-listing` | `context.files` returns store-root-relative paths for the tables the caller reads, and a table outside that set contributes no path. | P5 |
+| `read.register.file-preview-target` | `context.file` resolves a path to its `(table, run_id)` and reads it through that table's registered relation. A snapshot part, a traversal, an absolute path or a ledger file raises `FilePreviewNotATable`. | D10 |
+| `read.register.ledger-relation` | Each table's per-run request ledger registers as the child relation `<table>__requests`, holding identifiers, connector, method, host, status and timing of mediated outbound calls. | — |
+| `read.register.scoped-ledger` | The child relation registers on the owner read alone. A tenant-scoped token naming it raises `LedgerNotTenantScoped`, stating what closed the relation. | D10 |
+| `read.register.lexicon-surface` | The describe payload carries the store's numeric-identifier and badge vocabulary. Aliases, time-window phrases and distillation examples stay on the serving side. | — |
+| `read.register.reserved-relation` | The engine's reserved table namespaces register like any other relation, with no privileged path underneath. | P5 |
 
 unsettled: Is a cross-table join worth a first-class retrieval call, or does an operator-defined view plus the describe payload stay the route? owner: read-path affects: read.register
 
-## Clauses — guard
+unsettled: What corpus-size and token metadata does the describe payload expose, so a client can choose between a full-context read and a ranked one? owner: read-path affects: read.register
 
-Caller-written SQL is untrusted input with one admission point. What that point reads, and
-whose text it lets through raw, is fixed here.
+unsettled: Is a tenant-scoped projection of the request ledger worth building, given the tenant dimension has to reach ledger rows first? owner: read-path affects: read.register
 
-| Clause | Statement | decided-by |
+## guard
+
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `read.guard.refusal.single-read-only-statement` | Admitted text parses to exactly one read-only SELECT. Attach, copy, install, load, pragma, set, every schema change and every data modification, and a piggybacked second statement all raise `StatementNotReadOnly`. | `0043` |
-| `read.guard.invariant.engine-own-parse` | The guard walks the abstract syntax tree the engine itself executes, obtained by asking the engine to serialize the statement, so guard and executor cannot disagree about what a text means. Queries alone serialize; read-only-ness is a property of that representation rather than a blocklist someone maintains. | |
-| `read.guard.invariant.relation-allowlist` | The decisive half is the relation-name allowlist: every base relation names either a view registered for this caller or a common table expression the statement itself declares. A bare path is an ordinary base relation at parse time and becomes a file read at bind time, so rejecting table-function nodes alone sails past it. | |
-| `read.guard.invariant.whole-tree-walk` | The walk covers the entire tree — a scalar subquery inside the select list, a union arm, a pivot source — and gathers common-table-expression names across the tree before checking any base relation, as a relation may reference a name an ancestor node bound. | |
-| `read.guard.refusal.unregistered-relation` | A base relation naming nothing this connection registered raises `RelationNotRegistered`. The message names what the statement asked for and echoes no relation belonging to another caller. | `0044` |
-| `read.guard.refusal.table-function` | A table function anywhere in the tree, and a schema-qualified reach into a system catalog, raise `TableFunctionRefused`. | `0044` |
-| `read.guard.invariant.statement-provenance` | Admission binds on who authored the text, not on how privileged the caller is. Operator-authored text — the local command line, a template body whose caller supplies an identifier and typed arguments, and reads the engine composes for itself — executes raw with table functions available; text a capability-token caller wrote is gated. The raw surface is reachable from nowhere on the network. | |
-| `read.guard.invariant.quoted-identifiers` | Every schema- or manifest-derived identifier is double-quoted where it is rendered. A connector copies each vendor key into a column name verbatim, and an unquoted name parses as an expression and executes ungated. Quoting is not a character rule: a quoted identifier expresses any UTF-8 name, so a legitimate vendor field is admitted however it is spelled. | |
-| `read.guard.shape.template-declaration` | A template declares an identifier, one SQL statement, positional typed parameters written `name:type` over integer, float, string, timestamp and boolean, and an optional row ceiling. | |
-| `read.guard.refusal.template-relation-shape` | Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, raising `TemplateNamesForeignRelation`. A plain identifier carries a path separator where a prefixed table name needs one, and carries no dot, no star and no leading separator. | `0045` |
-| `read.guard.refusal.template-binding` | Argument binding is strict: a missing, unknown or type-mismatched value raises `TemplateArgumentRejected` ahead of any execution, with no silent coercion. Placeholders cover exactly the declared parameters, and an identifier colliding with a built-in tool prefix is refused at the same two points. | `0046` |
-| `read.guard.invariant.startup-time-check` | Template checks are caller-independent and run once at startup, so a reviewer who approves a template approves what it reads and a request pays nothing for the check. | |
-| `read.guard.invariant.subject-values-are-parameters` | Values describing the caller reach a statement through parameter slots joined against a session-scoped relation. A principal value containing SQL syntax stays inert, as a parameter slot cannot become syntax. | |
+| `read.guard.single-read-only-statement` | Admitted text parses to exactly one read-only SELECT. Attach, copy, install, load, pragma, set, any schema change, any data modification and a piggybacked second statement raise `StatementNotReadOnly`. | D10 |
+| `read.guard.engine-own-parse` | The guard walks the syntax tree the engine itself serializes for the statement; read-only-ness is a property of that tree, not a keyword blocklist. | because guard and executor cannot disagree about what a text means when they share one parse |
+| `read.guard.relation-allowlist` | Every base relation names a view registered for this caller or a common table expression the statement declares. A bare file path is a base relation and falls under this rule. | D10 |
+| `read.guard.whole-tree-walk` | The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and gathers common-table-expression names across the tree before checking any base relation. | — |
+| `read.guard.unregistered-relation` | A base relation naming nothing this connection registered is refused by {{authority.refuse.ungranted-table}}, echoing what the statement asked for and no relation of another caller. | D10 |
+| `read.guard.table-function` | A table function anywhere in the tree, and a schema-qualified reach into a system catalog, raise `TableFunctionRefused`. | D10 |
+| `read.guard.statement-provenance` | Admission binds on who authored the text. Operator text — the local command line, template bodies, engine-composed reads — runs raw; capability-token caller text is gated. The raw surface is reachable from no network face. | D10 |
+| `read.guard.quoted-identifiers` | Every schema- or manifest-derived identifier is double-quoted where rendered, admitting any UTF-8 vendor field name as an identifier and never as an expression. | — |
+| `read.guard.template-declaration` | A template declares an identifier, one SQL statement, positional parameters written `name:type` over integer, float, string, timestamp and boolean, and an optional row ceiling. | — |
+| `read.guard.template-relation-shape` | Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier collides with a built-in tool prefix, raising `TemplateNamesForeignRelation`. | D10 |
+| `read.guard.template-binding` | A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders cover exactly the declared parameters. | D10 |
+| `read.guard.startup-time-check` | Template checks are caller-independent and run once at startup; a request pays nothing for them. | — |
 
-## Clauses — respond
+## respond
 
-One projection carries every read. A caller reads the ceiling, the flag and the counts from
-it rather than inferring any of the three.
-
-The two clocks a read bounds, and where a bound sits relative to the restriction wrapped
-around a table, live in [`spec/10-store.md` § Time and bitemporality](10-store.md); the
-projection echoes back whichever bounds a read resolved.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `read.respond.interface.one-projection` | The command line's JSON output, the HTTP face and the tool protocol serialize one canonical projection: `columns`, `rows`, `truncated`, and the optional restriction, resolved-build, provenance, retrieval and time-bound blocks. A guarantee cannot land on one transport and be omitted by another. | |
-| `read.respond.limit.row-ceiling` | A per-table row ceiling published as `limits.max_rows` bounds a result, applied at execution with an over-fetch of 1 rows. The ceiling bounds rows delivered rather than work performed, so a bounded read over an expensive join still performs the join. | |
-| `read.respond.invariant.truncation-is-exact` | `truncated` is set by the presence of the over-fetched probe row, which proves rows exist past the ceiling. It is mandatory and never derived by comparing a returned count against a requested limit, so a deliberately sized read and a capped one stay distinguishable. | |
-| `read.respond.shape.cell-encoding` | A cell carries its SQL value exactly. SQL NULL is JSON `null` and nothing else is; booleans are `true` and `false`; integers within ±(2^53−1) are numbers and wider ones exact decimal strings; finite floats are numbers and non-finite ones `"NaN"`, `"inf"` and `"-inf"`; decimals of 15 digits or fewer are numbers and wider ones exact text; dates, times and timestamps are ISO-8601 strings; intervals are ISO-8601 durations; binary is `\xAA`-form hex; an enum is its label; a container renders as its text form. | |
-| `read.respond.invariant.wide-number-shape` | Whether an integer column serializes as JSON numbers or as strings is decided once for the whole column from the values one response carries, never cell by cell. The guarantee's scope is that single response, so two pages of one statement can disagree, and a caller wanting a value-independent wire shape casts the column to text in its query. | |
-| `read.respond.invariant.type-is-the-cell` | No separate type list rides the envelope: a cell's JSON type is the declaration. A second, independently derived list contradicts it wherever the engine reports two distinct renderings under one physical type. | |
-| `read.respond.invariant.zero-rows-is-success` | Returning fewer rows than the requested limit, zero included, is a success rather than an error. That is what lets a caller say the store holds nothing on a subject instead of serving unrelated rows. | |
-| `read.respond.interface.match-count` | Match counts ride outside any internals opt-in, so a caller learns how many rows the ranker scored as matching without asking for engine detail and without a second call. | |
-| `read.respond.invariant.coverage-is-a-count` | A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback. A ranked result's top score cannot serve it: min-max normalization pins the best row at 1.0, and inverse-document-frequency weighting lifts a single incidental mention of a rare term. | |
-| `read.respond.interface.internals-opt-in` | Executed SQL, the engine name, the applied limit, the row count and elapsed milliseconds ride a separate object returned when a call sets `internals: true`. With the flag unset the response echoes none of them, and the split holds across every read tool and the HTTP face. | |
-| `read.respond.interface.operator-metadata` | Table metadata on the operator surface carries the column count and the backing file list; a description carries neither. A row count is an ordinary count query rather than a metadata field, as a maintained count is a second source of truth over one set of files. | |
-| `read.respond.shape.in-band-error` | On the tool protocol a refusal arrives in-band: a transport success carrying a protocol error object or a result flagged as an error. A caller judges an outcome by the result rather than by transport status. | |
-| `read.respond.invariant.paths-stay-inside` | A result of an ordinary read carries no store path. Provenance is answered with columns naming table, run, connector version, ingestion instant and authoring subject, and where bytes sit is withheld deliberately. | |
+| `read.respond.one-projection` | The command line's JSON output, the HTTP face and the tool protocol serialize one projection: `columns`, `rows`, `truncated`, and the optional restriction, resolved-build, provenance, retrieval and time-bound blocks. | because a guarantee landing on one transport and missing on another is worse than a guarantee on none |
+| `read.respond.row-ceiling` | A per-table row ceiling published as `limits.max_rows` bounds rows delivered, applied at execution with an over-fetch of 1 rows. It bounds no work performed. | — |
+| `read.respond.truncation-is-exact` | `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit. | P4 |
+| `read.respond.cell-encoding` | SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; binary is `\xAA` hex; an enum is its label; a container is its text form. | — |
+| `read.respond.wide-number-shape` | A column's JSON encoding follows its SQL type alone: integers of 32 bits or fewer, finite floats and decimals of 15 digits or fewer are numbers; wider integers and decimals are exact decimal strings. | because a wire type that varies with the values on one page breaks a typed client on the next |
+| `read.respond.type-is-the-cell` | No separate type list rides the envelope; a cell's JSON type is the declaration. | — |
+| `read.respond.zero-rows-is-success` | Fewer rows than the requested limit, zero included, is a success. | P2 |
+| `read.respond.match-count` | Match counts ride outside the internals opt-in, reporting how many rows the ranker scored as matching in the same call. | — |
+| `read.respond.coverage-is-a-count` | A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score. | because min-max normalization pins the best row at 1.0 and IDF lifts one incidental rare-term mention |
+| `read.respond.internals-opt-in` | Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face. | — |
+| `read.respond.operator-metadata` | Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field. | P3 |
+| `read.respond.in-band-error` | On the tool protocol a refusal arrives in-band, as a protocol error object or a result flagged as an error under transport success. | P2 |
+| `read.respond.paths-stay-inside` | An ordinary read's result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject. | D37 |
 
 unsettled: When does a duration ceiling become enforceable, and publishable in the per-table limits block beside the row ceiling? owner: read-path affects: read.respond
 
-## Clauses — retrieve
+unsettled: Does partial-result streaming belong on this surface, or does a full result set stay the one response shape? owner: read-path affects: read.respond
 
-A ranked read generates its candidates from the question's own content, not from a window
-chosen on recency alone. Everything below bounds that generation.
+## retrieve
 
-Ordering over recalled memory facts lives in [`spec/21-memory.md` § Recall](21-memory.md);
-a ranked read composes that path beneath its own union and re-ranks what comes back.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `read.retrieve.interface.ranked-call` | `corpus.retrieve({prefix, query, kinds, limit, as_of})` answers with the top rows across the item and artifact genres under one prefix, each row carrying a snippet and full provenance. It composes the query surface and the memory recall path beneath itself and adds no storage of its own. | |
-| `read.retrieve.invariant.relevance-floor` | A row reaches a caller when its lexical score is null, or is at least the floor, or its vector score exceeds zero. The floor is 2 for a content-token set of three or more members and 1 otherwise; a caller-supplied minimum overrides it, and a minimum of zero restores an unfiltered window. | |
-| `read.retrieve.shape.content-tokens` | The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters are kept, and what survives is deduplicated with its order preserved. | |
-| `read.retrieve.limit.token-length-floor` | An ASCII run shorter than 2 chars is discarded from the content-token set. | |
-| `read.retrieve.limit.token-cap` | The content-token set holds at most 12 tokens. An empty set omits the relevance predicate entirely, leaving a browse-shaped read unaffected. | |
-| `read.retrieve.invariant.script-split-matching` | An all-lowercase-alphanumeric token matches on an ASCII word boundary with an optional plural suffix; a token carrying any non-ASCII character matches by containment. An ASCII word boundary cannot occur beside an ideograph, and a single anchoring rule for both scripts silently deletes rows that literally carry the term. | |
-| `read.retrieve.limit.plural-suffix-floor` | The optional plural suffix is dropped for a token under 4 chars, so a short term cannot match a longer unrelated word that merely starts with it. | |
-| `read.retrieve.invariant.text-free-table-scores-null` | The lexical score is null rather than zero for a table carrying no snippet-worthy text column, so the floor cannot delete an entire table from a search; such a table's rows are admitted by the vector score alone. | |
-| `read.retrieve.limit.candidate-window` | The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the question's terms matched more rows than the window holds and the ranking saw a recency-ordered slice; a larger requested limit widens it. This is the one truncation a caller cannot otherwise detect. | |
-| `read.retrieve.invariant.reserved-columns-project-null` | Reserved projected columns — modality, language, prompt hash, kind — render as null for a table that does not carry them, so a table missing one contributes its rows to the union instead of dropping out of the search. | |
-| `read.retrieve.invariant.unsatisfiable-arm-drops` | `filter` binds caller-named columns. A table lacking a named column makes its arm unsatisfiable, and that arm is dropped rather than emitted unfiltered, so an equality predicate cannot come back with every row of a table that has no such column. | |
-| `read.retrieve.invariant.engine-resolved-date` | The publication column is resolved by the engine per table rather than routed through the caller's filter, so a store spelling its date column differently keeps its rows inside time-framed handling instead of losing them to one name. | |
-| `read.retrieve.limit.filter-budget` | A filter carries at most 256 entries in a membership list, with its condition count and total byte size bounded alongside. | |
-| `read.retrieve.refusal.filter-budget` | The budget is checked once over the whole filter ahead of building any arm, and an oversized or malformed condition raises `FilterBudgetExceeded` for the whole read rather than quietly dropping the table the condition appeared under. | `0047` |
-| `read.retrieve.invariant.row-key-dedup` | A ranked read keeps one row per `(table, row key)`, newest ingestion first. The row key is the table's declared content-hash column and null otherwise — never a digest computed by concatenating projected values, as concatenation skips nulls and folds a text-free table into a single row. | |
-| `read.retrieve.invariant.row-key-stays-internal` | The row key is absent from the outer projection, so a content hash never reaches a snippet or a rendered cell. | |
-| `read.retrieve.invariant.dedup-is-gated` | The deduplicating window function is gated on the same condition as the relevance floor, as on a browse-shaped read it defeats top-N pushdown and costs measurable milliseconds for nothing. | |
-| `read.retrieve.shape.snippet` | A row's snippet is built from label-priority text columns — title, summary, description, thesis and their kin — then the remaining prose-worthy text columns in schema order, at most three, concatenated with a separator. | |
-| `read.retrieve.invariant.identifiers-never-snippet` | Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet. Landed schemas are alphabetized, and without the exclusion the first text column becomes every snippet and blinds both the ranker and the reader. | |
-| `read.retrieve.invariant.sidecar-generates-candidates` | The vector sidecar arm performs candidate generation rather than rescoring: it admits the recency window the exact scan considers plus the sidecar's own top results, and every candidate is re-scored through the caller's registration. Per-row scores are identical to the exact path; which rows enter the window is what changes. | |
-| `read.retrieve.limit.sidecar-oversampling` | One probe requests 4 times the requested limit or 64 rows, whichever is larger, multiplied by 4 where the request carries restriction context, so slots spent on rows a reader cannot see are compensated proportionally. | |
-| `read.retrieve.limit.sidecar-size-cap` | A sidecar holding more than 64 MiB of stored vectors is left unloaded and the arm takes the exact scan. | |
-| `read.retrieve.invariant.sidecar-falls-back` | Every sidecar precondition failure falls back to the exact scan: no snapshot, no matching sidecar, a multi-column or masked key, a dimension or manifest mismatch, an unreadable dump, or mixed producers on one table. An identifier surviving in a sidecar after its row was purged resolves to no row through the registration and filters away. | |
-| `read.retrieve.invariant.gain-never-loss` | The accelerated arm is a strict superset of the exact path for one reader: rows are gained, none is lost. Two readers issuing one query against one snapshot can nonetheless recall different rows, as the probe ranges over rows neither of them sees. | |
+| `read.retrieve.ranked-call` | `corpus.retrieve({prefix, query, query_embedding?, kinds, limit, as_of})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall and stores nothing of its own. | — |
+| `read.retrieve.relevance-floor` | A row reaches a caller when its lexical score is null, at least the floor, or its vector score exceeds zero. The floor is 2 for three or more content tokens, else 1; a caller minimum overrides it. | — |
+| `read.retrieve.content-tokens` | The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters stay, and survivors deduplicate in order. | — |
+| `read.retrieve.token-length-floor` | An ASCII run shorter than 2 chars leaves the content-token set. | — |
+| `read.retrieve.token-cap` | The content-token set holds at most 12 tokens. An empty set omits the relevance predicate. | — |
+| `read.retrieve.script-split-matching` | An all-lowercase-alphanumeric token matches on an ASCII word boundary with an optional plural suffix; a token with any non-ASCII character matches by containment. | because no ASCII word boundary occurs beside an ideograph |
+| `read.retrieve.plural-suffix-floor` | A token under 4 chars takes no optional plural suffix. | — |
+| `read.retrieve.text-free-table-scores-null` | A table with no snippet-worthy text column scores lexically null, never zero, and its rows enter by vector score alone. | P4 |
+| `read.retrieve.candidate-window` | The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice. | P4 |
+| `read.retrieve.reserved-columns-project-null` | Reserved projected columns — modality, language, prompt hash, kind — render null for a table lacking them, and its rows stay in the union. | — |
+| `read.retrieve.unsatisfiable-arm-drops` | `filter` binds caller-named columns. A table lacking a named column drops its arm, never emitting it unfiltered. | P4 |
+| `read.retrieve.engine-resolved-date` | The engine resolves each table's publication column itself, outside the caller's filter. | — |
+| `read.retrieve.filter-budget` | A filter's membership list holds at most 256 entries, with its condition count and total byte size bounded alongside. | — |
+| `read.retrieve.filter-budget-refusal` | The budget is checked over the whole filter ahead of building any arm; an oversized or malformed condition raises `FilterBudgetExceeded` for the whole read. | D10 |
+| `read.retrieve.row-key-dedup` | A ranked read keeps one row per `(table, row key)`, newest ingestion first. The row key is the declared content-hash column, else null, never a digest over projected values. | — |
+| `read.retrieve.row-key-stays-internal` | The row key is absent from the outer projection. | — |
+| `read.retrieve.dedup-is-gated` | The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it. | — |
+| `read.retrieve.snippet` | A snippet concatenates up to three text columns: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order. | — |
+| `read.retrieve.identifiers-never-snippet` | Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet. | — |
+| `read.retrieve.sidecar-generates-candidates` | The vector sidecar arm adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's. | P5 |
+| `read.retrieve.sidecar-oversampling` | One probe requests 4 times the limit or 64 rows, whichever is larger, times 4 again where the request carries restriction context. | — |
+| `read.retrieve.sidecar-size-cap` | A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan. | — |
+| `read.retrieve.sidecar-falls-back` | Any sidecar precondition failure — no snapshot, no matching sidecar, a multi-column or masked key, a dimension or manifest mismatch, an unreadable dump, mixed producers — falls back to the exact scan. | P4 |
+| `read.retrieve.gain-never-loss` | For one reader the accelerated arm returns a superset of the exact path's rows. Two readers with one query on one snapshot can recall different rows. | — |
 
 unsettled: What adaptive over-fetch policy holds where rows a reader cannot see cluster near a query point and the visibility estimate under-fills the requested top-K? owner: read-path affects: read.retrieve
 
-## Clauses — rank
+## rank
 
-Ordering runs over the candidate set and reports its own confidence. A missing backend
-changes the order a caller receives, not whether the call answers.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `read.rank.invariant.three-legs` | Ranking runs three legs: exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two. | |
-| `read.rank.shape.fusion` | Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights of 0.6 for the vector leg and 0.4 for the lexical one. A document present in one leg contributes zero for the other, so fusion degrades into a single-signal ranking, and ties break by identifier for a deterministic order. | |
-| `read.rank.invariant.lexical-leg-matches-only` | The BM25 leg ranks over a disjunction of should-clauses, so a document matching no query term is absent from the ranking rather than merely last. An empty query, an empty candidate set or a zero result count yields an empty ranking that falls back to recency ordering. | |
-| `read.rank.invariant.flat-window-full-credit` | A lexical window whose scores carry no spread awards every present document full credit, leaving the fused order to the other leg and the tie-break. | |
-| `read.rank.invariant.question-window-is-a-tier` | A question's timeframe projects a per-row in-window flag against the resolved publication column, and that flag leads the ordering. A row outside the timeframe sorts down and is never dropped, so a store with nothing fresh answers with its most recent picture instead of presenting old rows as current. | |
-| `read.rank.limit.window-anchor-tolerance` | A publication instant more than 24 h past the question's anchor resolves the in-window flag to false. A null date and unparseable text resolve it the same way, rather than raising an error or removing the row, and a basis field names which case applied. | |
-| `read.rank.invariant.ordering-casts-first` | Ordering casts a publication value before comparing it, as a text comparison of two date spellings is a comparison of strings and not of instants. | |
-| `read.rank.interface.retrieval-block` | The retrieval block reports `window`, `candidates_prefloor`, `candidates`, `matched`, `returned`, `in_window`, `deduped`, `padded`, `floor` and `since`. Per row a caller receives an integer score bounded by the content-token count, a boolean in-window flag, and the basis label. | |
-| `read.rank.invariant.internal-score-stays-internal` | The lexical engine's own float never crosses to a caller. It is corpus-relative, and a consumer thresholding on it drifts silently as the corpus changes underneath the number. | |
-| `read.rank.interface.absent-block` | The retrieval block is omitted from every statement that is not a ranked read, and from a build carrying no ranker, where no honest number exists to report. A consumer distinguishes an absent block from a present block reporting zero matches. | |
-| `read.rank.invariant.degradation-not-error` | Without the lexical backend linked, ranking substitutes a token fallback that scores each query token over the snippet, with recency breaking ties and ordering the empty-query case. The result is a different order, not a failed call. | |
-| `read.rank.invariant.fallback-counts-tokens` | Under the fallback every matching token contributes, so hyphenated, spaced and possessive phrasings of one phrase rank equivalently, and a row carrying terms outranks a row that is merely newer. | |
-| `read.rank.interface.caller-embedding` | Supplying a query embedding turns on per-row cosine and fuses it with the lexical leg; omitting one leaves every projected column identical to the lexical-only path. The vectors a caller supplies come from the model the stored rows record. | |
-| `read.rank.limit.lexical-index-cache` | The full-text index is keyed on a fingerprint over the candidate documents, which is query-independent while the window is recency-selected, and cached in a FIFO of 64 entries. A changed snapshot, table set or time bound changes the fingerprint, so a stale index cannot serve a changed corpus. | |
-| `read.rank.invariant.statistics-over-the-widened-window` | Lexical term statistics are computed over the widened candidate window, so an accelerated arm can order rows differently from the exact path even where the per-row scores agree exactly. | |
-| `read.rank.invariant.transports-are-byte-identical` | The two calls exposing ranked retrieval assemble identical response bodies and change together. A guarantee reaching one of them and missing the other is worse than one reaching neither. | |
+| `read.rank.three-legs` | Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two. | — |
+| `read.rank.fusion` | Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 0.6 and 0.4. A document absent from one leg scores zero there; ties break by identifier. | — |
+| `read.rank.lexical-leg-matches-only` | The BM25 leg ranks a disjunction of should-clauses; a document matching no term is absent. An empty query, candidate set or result yields an empty ranking that falls back to recency order. | — |
+| `read.rank.flat-window-full-credit` | A lexical window with no score spread awards every present document full credit. | — |
+| `read.rank.question-window-is-a-tier` | A question's timeframe projects a per-row in-window flag against the resolved publication column, and the flag leads the ordering. An out-of-window row sorts down and stays. | P4 |
+| `read.rank.window-anchor-tolerance` | A publication instant more than 24 h past the question's anchor sets the in-window flag false. A null or uncastable value sets it false too, and a basis field names which case applied. | — |
+| `read.rank.ordering-casts-first` | Ordering compares publication values as `TIMESTAMPTZ` instants, casting a text value before any comparison. | because a text comparison of two date spellings orders strings, not instants |
+| `read.rank.retrieval-block` | The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries an integer score bounded by the content-token count, the in-window flag and the basis label. | — |
+| `read.rank.internal-score-stays-internal` | The lexical engine's own float score never crosses to a caller. | because a corpus-relative number drifts under a consumer's threshold as the corpus changes |
+| `read.rank.absent-block` | The retrieval block is omitted from every non-ranked statement and from a build with no ranker, and an absent block differs from one reporting zero matches. | P2 |
+| `read.rank.degradation-not-error` | Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the snippet, recency breaking ties. The result differs in order and still answers. | D03 |
+| `read.rank.fallback-counts-tokens` | Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently. | — |
+| `read.rank.caller-embedding` | A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled. | D03 |
+| `read.rank.lexical-index-cache` | The full-text index is keyed on a fingerprint over the candidate documents and cached in a FIFO of 64 entries. A changed snapshot, table set or time bound changes the fingerprint. | — |
+| `read.rank.widened-window-statistics` | Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path. | — |
 
-## Clauses — cache
+unsettled: What replaces min-max window normalization as a cross-index score calibration, given one bounded leg and one corpus-relative unbounded leg? owner: read-path affects: read.rank
 
-Bytes a read touches sit next to the process reading them, and a reused result carries the
-subject it was computed for.
+## cache
 
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `read.cache.invariant.hot-local-parquet` | The retrieval container syncs the current snapshot set to local disk and memory-maps it. Object storage is the durable source and stays out of the per-query path, and clustering zone maps prune the scan to the relevant row groups. | |
-| `read.cache.limit.cold-start` | A cold retrieval container reaches readiness within 8 s, and a container holding no snapshot pays a whole-store pull on top of that before its first answer. | |
-| `read.cache.invariant.result-key` | A result cache keys on the full policy subject — the token's scope, the inference zone, and incognito state — combined with the hash of the statement, so a hit cannot cross a restriction boundary. | |
-| `read.cache.invariant.cache-is-opt-in` | The result cache is opt-in per table at a short time to live, and off for a table tagged private. A deployment that enables nothing caches nothing. | |
-| `read.cache.invariant.snapshot-invalidates` | A newly committed snapshot invalidates every cached entry keyed against the tables it folds, and an entry keyed against a superseded snapshot serves no later read. What a statement already in flight during a fold reads is {{store.fold.invariant.reads-are-non-blocking}} | |
-| `read.cache.invariant.keep-warm-is-per-deployment` | A deployment carrying active traffic keeps its retrieval container warm. Sub-second latency is a property of the warm path, and a deployment that declines keep-warm accepts a cold first read in exchange for no cost at rest. | |
+| `read.cache.hot-local-parquet` | The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path. | — |
+| `read.cache.cold-start` | A cold retrieval container reaches readiness within 8 s; a container holding no snapshot adds a whole-store pull before its first answer. | — |
+| `read.cache.result-key` | A cached result keys on the policy subject (token scope, inference zone, incognito state), the token id and revocation epoch, the resolved snapshot ids, the bounds echo, the pin map and the statement hash. | because a hit crossing a restriction, snapshot, bound or revocation serves rows the caller is not owed |
+| `read.cache.cache-is-opt-in` | The result cache is opt-in per table at a short time to live and off for a table tagged private. | — |
+| `read.cache.snapshot-invalidates` | A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}} | P4 |
+| `read.cache.keep-warm-is-per-deployment` | A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read. | — |
 
-## Clauses — resolve-pin
+## resolve-pin
 
-A read names a published build, or takes the latest one, and either way says which it got.
-The build that produced an identifier, and the artifacts it wrote, live in
-[`spec/31-pipeline.md` § Published models](31-pipeline.md); a read resolves against those
-artifacts and writes none of them.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `read.resolve-pin.interface.pin-parameter` | `pin` maps a table name to a build identifier and resolves each named table to the state that build published and to no other. An unnamed table resolves to the latest published state. | |
-| `read.resolve-pin.refusal.unknown-build` | An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin is never quietly widened to the latest state. | `0048` |
-| `read.resolve-pin.invariant.earlier-bound-wins` | A pin and the store's transaction-time bound are both upper bounds on one clock, and a table named by both resolves to whichever of the two is earlier. | |
-| `read.resolve-pin.workflow.resolved-echo` | A response touching a published model carries `contextful.resolved`, mapping each such table to its `{build_id, watermark}`, whether or not the request passed a pin. A consumer records which state produced the rows it writes. | |
-| `read.resolve-pin.invariant.absent-watermark` | The watermark is null for a materialization that carries none, and its absence is distinct from a watermark of zero. | |
-| `read.resolve-pin.workflow.consumer-comparison` | The check the echo exists for: a consumer compares resolved build identifiers across every query of one derivation and fails that derivation where two differ, rather than writing rows stitched from two states. | |
+| `read.resolve-pin.pin-parameter` | `pin` maps a table name to a build identifier and resolves that table to the state the build published. An unnamed table resolves to the latest published state. | — |
+| `read.resolve-pin.unknown-build` | An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state. | because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states |
+| `read.resolve-pin.earlier-bound-wins` | A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier. | — |
+| `read.resolve-pin.resolved-echo` | A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not. | — |
+| `read.resolve-pin.absent-watermark` | The watermark is null for a materialization carrying none, distinct from a watermark of zero. | P4 |
+| `read.resolve-pin.consumer-comparison` | A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ. | P4 |
 
-## Clauses — embed
+## embed
 
-The client library is packaging over the same contract the container serves. Four transports
-share one shape, and each carries its credential differently.
-
-The readiness states a client distinguishes live in
-[`spec/50-control-plane.md` § Deployment posture](50-control-plane.md); a store warming its
-local snapshot answers a data route differently from one holding no configuration to open
-with.
-
-| Clause | Statement | decided-by |
+| Clause | Statement | Why |
 | --- | --- | --- |
-| `read.embed.invariant.client-packaging` | Putting search and an ask experience inside a third-party page is client packaging rather than an engine extension: the engine stays a service a caller talks to, and the kit is a thin layer over the tool protocol and query contract the container already serves. | |
-| `read.embed.interface.headless-client` | The library is a headless, zero-dependency, zero-build ES module over a transport, exposing `search()`, `query()`, `tables()`, `describe()`, `retrieve()`, `recall()`, `remember()`, `predict()` and `ask()`. | |
-| `read.embed.invariant.one-call-per-read` | Every read is one tool call, so one body of code runs unchanged on every transport — a browser, a server runtime, an edge isolate. | |
-| `read.embed.shape.search-tool` | The free-text search tool takes `{query, query_embedding?, tables?, limit}` and reuses the ranked path underneath. Omitting the embedding preserves the lexical-only behavior; supplying one fuses cosine similarity into the ordering. | |
-| `read.embed.interface.four-shapes` | Four deployment shapes share the one client: a host backend proxying same-origin and injecting the token server-side; a host backend on the same account collapsing that hop into a service binding; an engine-direct browser embed holding a scoped token itself; and a local consumer spawning the engine as a child process over newline-framed JSON-RPC with no listener and no issuer key. | |
-| `read.embed.interface.typed-entrypoint` | The gateway exports a typed entrypoint with `query(sql)`, `mcp(message)` and `health()`, bound account-internally by a host backend. The binding is the perimeter, with no public hop, and the entrypoint injects the container-side credential so the host holds no secret. | |
-| `read.embed.invariant.per-request-token` | A per-request capability token runs the read under that token's own grants inside the engine, identically to the HTTP face. A transport changes who injects the credential and never what the credential is worth. | |
-| `read.embed.invariant.wildcard-origin` | Cross-origin access is off by default and opt-in. Authentication is a bearer header and never a cookie, so a wildcard origin is non-credentialed, which is what lets the face be embedded in an application with no backend at all. | |
-| `read.embed.invariant.per-viewer-token` | A browser-held credential is minted per viewer: the host exchanges the visitor's verified assertion at the engine's exchange route for a least-privilege token audience-bound to one store, scoped and audited under that identity. It expires in minutes and is verified at both hops over the same transmitted bytes, and absent holder binding a leaked token is replayable for its remaining lifetime. | |
-| `read.embed.shape.build-identity` | The handshake reports what a binary linked under one rule with no per-face argument: retrieval backends `duckdb`, `fts` and `hnsw`; connector families `m365`, `s3` and `wasm`; and the binary's own faces `http`, `eval` and `otlp`. The set composes by asking each crate declaring those features, and the same composition backs the version output, so the two faces cannot disagree about one binary. | |
-| `read.embed.refusal.required-face` | A client passing `require: [...]` has each name matched against the reported set and is refused ahead of its first read with `RequiredFaceAbsent`; an engine reporting no set satisfies no requirement. Reporting is itself never a refusal, as most absences are degradations the engine serves through. | `0049` |
-| `read.embed.invariant.two-absence-shapes` | Two absences are distinguishable at the call. Without the lexical backend, retrieval swaps BM25 for the token fallback — a different ranking. Without the vector backend, a supplied embedding still scores, over the rows the recency window already recalled, as the approximate arm contributes no candidates. | |
-| `read.embed.refusal.absent-read-backend` | Without the embedded SQL engine linked, both read tools refuse outright with `ReadBackendAbsent` rather than answering from a narrower path. | `0050` |
-| `read.embed.interface.ask-event-stream` | The ask experience streams typed events from a backend running the model: `tool`, `tool_result`, `text`, `citations`, `notice`, `console.render`, `done` and `error`. The citations event follows the answer text and carries the numbered sources — title, link, publication day, and whether a source is data or web. The model lives outside the engine, so the engine-direct shape serves no ask and its client points at a separate streaming endpoint. | |
-| `read.embed.refusal.stdio-credential` | Over the process transport a credential is mandatory — a capability token string, or an explicit owner flag. An unset token resolves to the owner context, which is the ungated branch for every tool including run execution and memory writes, so the client raises `StdioCredentialMissing` rather than escalating in silence. | `0051` |
-| `read.embed.invariant.child-environment` | An explicit passthrough list is all that crosses into the spawned engine, defaulting to the executable search path and the home directory. The engine's secret resolver reads vendor credentials straight out of its environment, and an inherited environment hands a child every key its parent holds. | |
-| `read.embed.refusal.store-selector` | The child's working directory selects the store: the process walks up for the project manifest and, finding none, raises `StoreSelectorAbsent` and exits ahead of writing one byte of protocol framing. The executable path and the working directory are trusted inputs, executed and read as given. | `0052` |
-| `read.embed.invariant.serial-dispatch` | The process transport keeps exactly one request in flight: the engine reads a line, answers it, and only then reads the next, so an aborted call resynchronizes by discarding exactly one reply. | |
-| `read.embed.invariant.process-subpath` | The process transport lives on its own import subpath, so a child-process import never reaches the root entry an isolate bundles. | |
+| `read.embed.default-embedder` | The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call. | — |
+| `read.embed.default-embedder-reach` | The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding. | — |
+| `read.embed.model-identifier` | Every stored vector travels beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone. | — |
+| `read.embed.build-identity` | The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads. | P3 |
+| `read.embed.required-face` | A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement. | D03 |
+| `read.embed.absent-read-backend` | Without the embedded SQL engine linked, both read tools raise `ReadBackendAbsent` rather than answering from a narrower path. | D03 |
 
 ## Shapes
 
-The registered relation for one table, as the connection builds it:
+The registered relation for one table:
 
 ```sql
 CREATE OR REPLACE VIEW orders AS
@@ -260,19 +180,19 @@ SELECT * FROM (
     ORDER BY updated_at DESC, _ingested_at DESC
   ) AS _rn
   FROM read_parquet(
-    [ 'tables/orders/data/snapshots/snapshot-00000001773100800000000000/part-00000.parquet',
+    [ 'tables/orders/data/snapshots/snapshot-01773100800000000000/part-00000.parquet',
       'tables/orders/data/runs/run-0192/node-9f2c/part-00000.parquet' ],
     union_by_name = true
   )
 ) WHERE _rn = 1;
 ```
 
-The response projection, one shape on every transport:
+The response projection, with `total_cents` a `BIGINT` column:
 
 ```json
 {
   "columns": ["order_id", "total_cents", "placed_at"],
-  "rows": [["A-8812", 1299, "2026-02-14T09:31:00Z"], ["A-8813", "9007199254740993", "2026-02-14T09:44:12Z"]],
+  "rows": [["A-8812", "1299", "2026-02-14T09:31:00Z"], ["A-8813", "9007199254740993", "2026-02-14T09:44:12Z"]],
   "truncated": true,
   "contextful.bounds": { "as_of": "2026-03-01T00:00:00Z", "inclusive": false },
   "contextful.resolved": { "orders": { "build_id": "b-0f31a7", "watermark": "2026-02-14T10:00:00Z" } },
@@ -285,29 +205,7 @@ The response projection, one shape on every transport:
 }
 ```
 
-Per-row ranking fields on a ranked read:
-
-```json
-{ "_score": 2, "_vscore": 0.71, "_in_window": true, "_date_basis": "published_at" }
-```
-
-The describe payload:
-
-```json
-{
-  "table": "orders",
-  "row_count": 184203,
-  "schema_fingerprint": "sha256:7c1f…",
-  "description": "One row per placed order.",
-  "columns": [{ "name": "total_cents", "type": "BIGINT", "hint": "minor units" }],
-  "indexes": [{ "kind": "vector", "column": "summary", "model": "e5-small", "dim": 384, "metric": "cosine" }],
-  "partitions": ["tenant"],
-  "limits": { "max_rows": 10000 },
-  "zone": "local",
-  "lexicon": { "badges": ["sku"], "identifiers": ["order_id"] },
-  "examples": ["SELECT placed_at, total_cents FROM orders ORDER BY placed_at DESC LIMIT 20"]
-}
-```
+Per-row ranking fields: `{ "_score": 2, "_vscore": 0.71, "_in_window": true, "_date_basis": "published_at" }`.
 
 A template, and the tool it projects as:
 
@@ -332,10 +230,9 @@ The path one ranked read takes:
 ```mermaid
 flowchart TD
   A[tool call or SQL text] --> B{authored by whom}
-  B -- capability token --> C[statement guard]
+  B -- capability token --> C[statement guard over the whole tree]
   B -- operator --> D[raw execution]
-  C --> E[relation-name allowlist over the whole tree]
-  E --> F[registered relations for this connection]
+  C --> F[registered relations for this connection]
   D --> F
   F --> G[candidate generation: content tokens, floor, per-table arms]
   G --> H[sidecar probe widens the window]
@@ -344,46 +241,3 @@ flowchart TD
   J --> K[row-key dedup, in-window tier, top-K]
   K --> L[one response projection]
 ```
-
-The four embed shapes:
-
-```mermaid
-flowchart LR
-  subgraph proxied[host backend, same origin]
-    P1[page] --> P2[host route] --> P3[engine]
-  end
-  subgraph bound[same account]
-    B1[page] --> B2[host worker] -. typed entrypoint .-> B3[engine]
-  end
-  subgraph direct[engine-direct]
-    D1[page with per-viewer token] --> D2[engine]
-  end
-  subgraph process[local child process]
-    S1[consumer] -- newline-framed JSON-RPC --> S2[spawned engine]
-  end
-```
-
-Process-transport framing, one request in flight:
-
-```text
---> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"context.query","arguments":{"sql":"SELECT 1"}}}
-<-- {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"columns\":[\"1\"],\"rows\":[[1]],\"truncated\":false}"}]}}
---> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"context.describe","arguments":{"table":"orders"}}}
-```
-
-Handshake build identity:
-
-```json
-{ "serverInfo": { "name": "contextful", "version": "1.4.0",
-  "backends": ["duckdb", "fts", "hnsw", "s3", "http", "otlp"] } }
-```
-
-## Unsettled
-
-unsettled: Does partial-result streaming belong on this surface, or does a full result set stay the one response shape? owner: read-path affects: read.respond
-
-unsettled: What replaces min-max window normalization as a cross-index score calibration, given one bounded leg and one corpus-relative unbounded leg? owner: read-path affects: read.rank
-
-unsettled: Is a tenant-scoped projection of the request ledger worth building, which requires the tenant dimension to reach ledger rows first? owner: read-path affects: read.register
-
-unsettled: What corpus-size and token metadata does the describe payload expose, so a client can choose between a full-context read and a ranked one? owner: read-path affects: read.register
