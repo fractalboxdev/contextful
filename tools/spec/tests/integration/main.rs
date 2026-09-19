@@ -2,6 +2,7 @@
 //! scratch root, applies one change, and runs the built `contextful-spec` against it.
 
 mod rationale;
+mod slice;
 mod state;
 
 use std::path::{Path, PathBuf};

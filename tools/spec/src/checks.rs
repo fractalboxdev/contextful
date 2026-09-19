@@ -421,7 +421,7 @@ static MODAL: LazyLock<Regex> =
     LazyLock::new(|| word_re(&["must", "never", "refuses", "is refused", "at most", "at least", "always"]));
 static APPENDIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^#+\s*(open questions|out of scope|see also)\s*$").unwrap());
 
-fn why_ok(why: &str) -> Result<Vec<String>, String> {
+pub fn why_ok(why: &str) -> Result<Vec<String>, String> {
     let w = why.trim();
     if w.is_empty() || w == "—" {
         return Ok(vec![]);
@@ -438,7 +438,7 @@ fn why_ok(why: &str) -> Result<Vec<String>, String> {
     }
 }
 
-fn record_id(rel: &str) -> Option<String> {
+pub fn record_id(rel: &str) -> Option<String> {
     RECORD_FILE.captures(rel).and_then(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()))
 }
 
@@ -738,11 +738,11 @@ pub fn acceptance_verdict(c: &Corpus, path: Option<&str>) -> &'static str {
     }
 }
 
-/// A milestone's `Reach:` and `Acceptance:` lines: heading, heading line, reach, acceptance test path.
+/// A milestone's `Reach:` and `Acceptance:` lines: heading, heading line, reach text, acceptance test path.
 pub struct MilestoneLines {
     pub heading: String,
     pub line: usize,
-    pub reach: bool,
+    pub reach: Option<String>,
     pub acceptance: Option<String>,
 }
 
@@ -751,10 +751,10 @@ pub fn milestone_lines(c: &Corpus) -> Vec<MilestoneLines> {
     let Some(d) = c.docs.iter().find(|d| d.role == Role::Plan) else { return out };
     for (n, l, k) in d.each() {
         if k == LineKind::Heading && l.starts_with("## ") {
-            out.push(MilestoneLines { heading: l[3..].trim().to_string(), line: n, reach: false, acceptance: None });
+            out.push(MilestoneLines { heading: l[3..].trim().to_string(), line: n, reach: None, acceptance: None });
         } else if let Some(m) = out.last_mut() {
-            if l.starts_with("Reach: ") {
-                m.reach = true;
+            if let Some(rest) = l.strip_prefix("Reach: ") {
+                m.reach = Some(rest.trim().to_string());
             } else if let Some(rest) = l.strip_prefix("Acceptance: ") {
                 m.acceptance = tick_spans(rest).into_iter().next().map(|(_, t)| t);
             }
@@ -868,7 +868,7 @@ fn state(c: &Corpus) -> Vec<Finding> {
     let (claim, found) = expand_roadmap(c);
     out.extend(found);
     for m in milestone_lines(c) {
-        if !m.reach {
+        if m.reach.is_none() {
             out.push(f("state", "spec/roadmap.md", m.line, "SpecRoadmap", format!("milestone `{}` carries no `Reach:` line", m.heading)));
         }
         let Some(test) = m.acceptance.as_deref() else {

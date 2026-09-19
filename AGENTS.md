@@ -29,7 +29,13 @@ identical command. A rule the checker cannot enforce is not a rule.
 cargo run -q -p contextful-spec -- lint      # every rule
 cargo run -q -p contextful-spec -- state     # regenerate spec/status.md
 cargo run -q -p contextful-spec -- extract   # regenerate spec/spec.lock.json
+cargo run -q -p contextful-spec -- slice <target> [--json]
 ```
+
+To hand one piece of work to an agent, give it `contextful-spec slice <target>`, where the
+target is `<contract>.<operation>`, `<contract>.*` or a milestone number. The pack holds the
+target's clause rows, every row their `{{id}}` pointers reach, the records their Why cells
+cite, the errors and bounds they own, and a milestone's `Reach:` and `Acceptance:` lines.
 
 ## Adding to the corpus
 

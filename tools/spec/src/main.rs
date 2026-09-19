@@ -3,6 +3,7 @@
 
 mod checks;
 mod corpus;
+mod slice;
 mod util;
 
 use anyhow::Result;
@@ -36,6 +37,12 @@ enum Cmd {
     Extract,
     /// Write `spec/status.md` from `spec/pins.toml`.
     State,
+    /// Print the context pack for `<contract>.<operation>`, `<contract>.*` or a milestone number.
+    Slice {
+        target: String,
+        #[arg(long)]
+        json: bool,
+    },
     /// Set every contract's coverage floor to its live performed count.
     Pins,
 }
@@ -49,6 +56,15 @@ fn main() -> Result<()> {
         Cmd::Extract => Ok(std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?),
         Cmd::State => Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?),
         Cmd::Pins => raise_floor(&c),
+        Cmd::Slice { target, json } => {
+            let sl = slice::build(&c, &target)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&sl)?);
+            } else {
+                print!("{}", slice::markdown(&sl));
+            }
+            Ok(())
+        }
     }
 }
 
