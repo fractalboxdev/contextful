@@ -8,6 +8,7 @@ mod slice;
 mod scaffold;
 mod state;
 mod tags;
+mod targets;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

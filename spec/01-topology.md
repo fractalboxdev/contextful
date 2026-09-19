@@ -156,7 +156,8 @@ unsettled: Does the columnar interchange crate stay whole in the edge profile or
 | `topology.deploy.parity-divergence` | A byte difference from the reference output raises `ParityDivergence`, naming the target, the table and the first differing part. | A-topology |
 
 One declaration, a target profile per provider, the two roles, and the parity check
-against the reference target.
+against the reference target. Each provider's shapes are data under `spec/targets/`, checked by
+`corpus.targets`; [`targets.md`](./targets.md) renders each as a role table and a diagram.
 
 ```mermaid
 flowchart LR

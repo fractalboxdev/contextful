@@ -7,7 +7,7 @@ use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::LazyLock;
 
-pub const CHECKS: [&str; 7] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render"];
+pub const CHECKS: [&str; 8] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render", "targets"];
 
 pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
     match name {
@@ -18,6 +18,7 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
         "rationale" => rationale(c),
         "state" => state(c),
         "render" => render(c),
+        "targets" => crate::targets::check(c),
         other => vec![Finding::new("lint", "", 0, "SpecUnknownCheck", format!("no check named `{other}`"))],
     }
 }
@@ -1121,10 +1122,14 @@ static BANNED: LazyLock<Regex> = LazyLock::new(|| word_re(&["seam", "seams", "lo
 
 fn render(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
-    for (rel, want) in [("spec/status.md", crate::status_text(c)), ("spec/spec.lock.json", crate::lock_text(c))] {
+    for (rel, want) in [
+        ("spec/status.md", crate::status_text(c)),
+        ("spec/spec.lock.json", crate::lock_text(c)),
+        ("spec/targets.md", crate::targets::page(c)),
+    ] {
         let have = std::fs::read_to_string(c.root.join(rel)).unwrap_or_default();
         if have != want {
-            out.push(f("render", rel, 0, "SpecStaleRender", "differs from regeneration; run `contextful-spec state` and `extract`".into()));
+            out.push(f("render", rel, 0, "SpecStaleRender", format!("{rel} differs from regeneration; run `contextful-spec state` and `extract`")));
         }
     }
     let local = Regex::new(r"(/Users/|/home/|\$HOME/|(^|[\s(`])~/)").unwrap();

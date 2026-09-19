@@ -4,6 +4,7 @@
 mod checks;
 mod corpus;
 mod slice;
+mod targets;
 mod scaffold;
 mod util;
 
@@ -66,7 +67,10 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Lint { check, json } => lint(&c, check.as_deref(), json),
         Cmd::Extract => Ok(std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?),
-        Cmd::State => Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?),
+        Cmd::State => {
+            std::fs::write(root.join("spec/targets.md"), targets::page(&c))?;
+            Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?)
+        }
         Cmd::Pins => raise_floor(&c),
         Cmd::Slice { target, json } => {
             let sl = slice::build(&c, &target)?;

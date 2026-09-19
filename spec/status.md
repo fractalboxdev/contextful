@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `assurance` | 2 | 13 | 169 | 43 | 18 | 13 | 3 | 0 | 3 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 0 | 0 | 0 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
-| `corpus` | 1 | 7 | 52 | 21 | 6 | 0 | 13 | 0 | 13 |
+| `corpus` | 1 | 8 | 58 | 24 | 6 | 0 | 17 | 0 | 17 |
 | `disclosure` | 3 | 16 | 63 | 54 | 9 | 12 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 13 | 16 | 0 | 0 | 0 |
 | `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 142 | 1379 | 437 | 159 | 100 | 16 | 0 | |
+| **total** | 19 | 143 | 1385 | 440 | 159 | 100 | 20 | 0 | |
 
 Decision records: 17.
 
@@ -39,7 +39,7 @@ Decision records: 17.
 | 13 — Disclosure | 5 | 20 | 0 | absent |
 | 14 — Assurance | 5 | 80 | 0 | absent |
 
-Unscheduled operations: 7.
+Unscheduled operations: 8.
 
 ## Pins
 
@@ -61,3 +61,7 @@ Unscheduled operations: 7.
 | `corpus.state.theorem-beside-test` | `spec/pins.toml` | performed |
 | `corpus.state.unfinished-test` | `tools/spec/tests/integration/tags.rs::a_tag_on_a_todo_body_is_broken` | performed |
 | `corpus.state.verdict` | `spec/pins.toml` | performed |
+| `corpus.targets.cap-unrecorded` | `spec/pins.toml` | performed |
+| `corpus.targets.function-profile` | `spec/pins.toml` | performed |
+| `corpus.targets.incomplete` | `spec/pins.toml` | performed |
+| `corpus.targets.page` | `spec/pins.toml` | performed |
