@@ -4,7 +4,9 @@
 mod grammar;
 mod rationale;
 mod slice;
+mod scaffold;
 mod state;
+mod tags;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -62,6 +64,24 @@ impl Scratch {
             .args(args)
             .output()
             .unwrap()
+    }
+
+    /// Run `scaffold <target> --package <package>` and require success.
+    pub fn scaffold(&self, target: &str, package: &str) {
+        let out = self.cmd(&["scaffold", target, "--package", package]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// How many refusal and limit clauses `<contract>.<operation>` holds, from the lock file.
+    pub fn targets(&self, operation: &str) -> usize {
+        let lock: serde_json::Value = serde_json::from_str(&self.read("spec/spec.lock.json")).unwrap();
+        lock["clauses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["id"].as_str().unwrap().starts_with(&format!("{operation}.")))
+            .filter(|c| c["kind"] == "refusal" || c["kind"] == "limit")
+            .count()
     }
 
     /// The first clause id of `<contract>.<operation>` in the lock file.

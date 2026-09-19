@@ -563,6 +563,7 @@ pub fn load_pins(c: &Corpus) -> PinsFile {
 pub enum Resolution {
     Absent,
     Ignored,
+    Unfinished,
     Defined,
 }
 
@@ -589,7 +590,15 @@ pub fn resolve(c: &Corpus, kind: &str, path: &str, roots: &[&str]) -> Resolution
             }
             let Ok(s) = std::fs::read_to_string(p) else { continue };
             if let Some(m) = re.find(&s) {
-                return if kind == "test" && ignored(&s[..m.start()]) { Resolution::Ignored } else { Resolution::Defined };
+                return if kind != "test" {
+                    Resolution::Defined
+                } else if ignored(&s[..m.start()]) {
+                    Resolution::Ignored
+                } else if unfinished(&s[m.start()..]) {
+                    Resolution::Unfinished
+                } else {
+                    Resolution::Defined
+                };
             }
         }
     }
@@ -615,22 +624,197 @@ fn ignored(before: &str) -> bool {
 pub const PIN_ROOTS: [&str; 2] = ["crates", "tools"];
 pub const ACCEPTANCE_ROOT: &str = "crates/acceptance";
 
-/// `performed` when the artifact's final segment is defined under `crates/` or `tools/`
-/// and, for a test, carries no `#[ignore]`; `broken` otherwise.
-pub fn verdict(c: &Corpus, pin: &BTreeMap<String, String>) -> &'static str {
-    let Some((kind, path)) = pin.iter().next() else { return "broken" };
-    match resolve(c, kind, path, &PIN_ROOTS) {
-        Resolution::Defined => "performed",
-        _ => "broken",
+/// Whether the body of the function starting `def` holds a line opening with `todo!`.
+fn unfinished(def: &str) -> bool {
+    let Some(open) = def.find('{') else { return false };
+    let mut depth = 0usize;
+    let mut end = def.len();
+    for (i, ch) in def[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = open + i;
+                    break;
+                }
+            }
+            _ => {}
+        }
     }
+    def[open + 1..end].lines().any(|l| l.trim_start().starts_with("todo!"))
 }
 
 /// A milestone's acceptance test: `absent`, `open` when ignored, `passing` otherwise.
 pub fn acceptance_verdict(c: &Corpus, path: Option<&str>) -> &'static str {
     match path.map(|p| resolve(c, "test", p, &[ACCEPTANCE_ROOT])) {
-        Some(Resolution::Defined) => "passing",
+        Some(Resolution::Defined | Resolution::Unfinished) => "passing",
         Some(Resolution::Ignored) => "open",
         _ => "absent",
+    }
+}
+
+// ---------------------------------------------------------------- pins, both forms
+
+static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^//\s*spec:\s*(\S+?)@(\S*)\s*$").unwrap());
+static FN_LINE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?:r#)?([A-Za-z_][A-Za-z0-9_]*)").unwrap()
+});
+
+/// A tag's view of the function it sits above.
+#[derive(Clone, Debug)]
+pub struct Tagged {
+    pub rev: String,
+    pub function: Option<String>,
+    pub ignored: bool,
+    pub unfinished: bool,
+}
+
+/// One pin: a `spec/pins.toml` entry, or a `// spec: <id>@<rev>` tag above a test.
+#[derive(Clone, Debug)]
+pub struct Pin {
+    pub clause: String,
+    pub kind: String,
+    pub path: String,
+    pub file: String,
+    pub line: usize,
+    pub tag: Option<Tagged>,
+}
+
+impl Pin {
+    /// The test function this pin names, when it names one.
+    pub fn test_name(&self) -> Option<&str> {
+        if self.kind != "test" {
+            return None;
+        }
+        match &self.tag {
+            Some(t) => t.function.as_deref(),
+            None => self.path.rsplit([':', '.']).next(),
+        }
+    }
+
+    /// Where the pin is written: `spec/pins.toml`, or the tagged file and function.
+    /// No line number, so a render survives edits above the test.
+    pub fn site(&self) -> String {
+        match &self.tag {
+            Some(t) => format!("{}::{}", self.file, t.function.as_deref().unwrap_or("?")),
+            None => self.file.clone(),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum PinState {
+    Performed,
+    Absent,
+    Ignored,
+    Unfinished,
+    Unattached,
+    Stale,
+}
+
+/// Every `// spec:` tag under `crates/` and `tools/`, in path and line order.
+pub fn scan_tags(c: &Corpus) -> Vec<Pin> {
+    let mut out = Vec::new();
+    for root in PIN_ROOTS {
+        let walk = walkdir::WalkDir::new(c.root.join(root)).sort_by_file_name().into_iter().filter_entry(|e| {
+            let n = e.file_name().to_string_lossy();
+            n != "target" && n != "node_modules"
+        });
+        for e in walk.flatten() {
+            let p = e.path();
+            if p.extension().map(|x| x != "rs").unwrap_or(true) {
+                continue;
+            }
+            let Ok(s) = std::fs::read_to_string(p) else { continue };
+            let rel = p.strip_prefix(&c.root).unwrap_or(p).to_string_lossy().replace('\\', "/");
+            let mut offsets = Vec::new();
+            let mut at = 0;
+            for l in s.split_inclusive('\n') {
+                offsets.push(at);
+                at += l.len();
+            }
+            let lines: Vec<&str> = s.lines().collect();
+            for (i, l) in lines.iter().enumerate() {
+                let Some(cap) = TAG.captures(l.trim()) else { continue };
+                let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false };
+                for (j, next) in lines.iter().enumerate().skip(i + 1) {
+                    let t = next.trim();
+                    if t.is_empty() || t.starts_with("//") || t.starts_with("#[") {
+                        continue;
+                    }
+                    if let Some(f) = FN_LINE.captures(t) {
+                        let def = offsets[j];
+                        tagged.function = Some(f[1].to_string());
+                        tagged.ignored = ignored(&s[..def]);
+                        tagged.unfinished = unfinished(&s[def..]);
+                    }
+                    break;
+                }
+                out.push(Pin {
+                    clause: cap[1].to_string(),
+                    kind: "test".into(),
+                    path: tagged.function.clone().unwrap_or_default(),
+                    file: rel.clone(),
+                    line: i + 1,
+                    tag: Some(tagged),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Every pin, `spec/pins.toml` entries first, grouped by the clause id each names.
+pub fn pins_by_clause(c: &Corpus) -> BTreeMap<String, Vec<Pin>> {
+    let mut out: BTreeMap<String, Vec<Pin>> = BTreeMap::new();
+    for (id, pin) in load_pins(c).pin {
+        let (kind, path) = pin.into_iter().next().unwrap_or_default();
+        out.entry(id.clone()).or_default().push(Pin { clause: id, kind, path, file: "spec/pins.toml".into(), line: 0, tag: None });
+    }
+    for pin in scan_tags(c) {
+        out.entry(pin.clause.clone()).or_default().push(pin);
+    }
+    out
+}
+
+pub fn pin_state(c: &Corpus, pin: &Pin) -> PinState {
+    match &pin.tag {
+        None => match resolve(c, &pin.kind, &pin.path, &PIN_ROOTS) {
+            Resolution::Defined => PinState::Performed,
+            Resolution::Ignored => PinState::Ignored,
+            Resolution::Unfinished => PinState::Unfinished,
+            Resolution::Absent => PinState::Absent,
+        },
+        Some(t) => {
+            let current = c.clauses().find(|cl| cl.id == pin.clause).map(|cl| statement_rev(&cl.statement));
+            if t.function.is_none() {
+                PinState::Unattached
+            } else if current.as_deref() != Some(t.rev.as_str()) {
+                PinState::Stale
+            } else if t.ignored {
+                PinState::Ignored
+            } else if t.unfinished {
+                PinState::Unfinished
+            } else {
+                PinState::Performed
+            }
+        }
+    }
+}
+
+/// The distinct test functions pinning one clause.
+pub fn pinned_tests(pins: &[Pin]) -> BTreeSet<&str> {
+    pins.iter().filter_map(Pin::test_name).collect()
+}
+
+/// `performed` when every pin of the clause performs and at most one test pins it;
+/// `broken` otherwise.
+pub fn clause_verdict(c: &Corpus, pins: &[Pin]) -> &'static str {
+    if pinned_tests(pins).len() <= 1 && pins.iter().all(|p| pin_state(c, p) == PinState::Performed) {
+        "performed"
+    } else {
+        "broken"
     }
 }
 
@@ -736,23 +920,49 @@ pub fn expand_roadmap(c: &Corpus) -> (BTreeMap<String, String>, Vec<Finding>) {
 fn state(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
     let pins = load_pins(c);
+    let all = pins_by_clause(c);
     let clauses = c.clause_map();
     let mut count: BTreeMap<String, i64> = BTreeMap::new();
-    for (id, pin) in &pins.pin {
+    for (id, group) in &all {
         let Some(cl) = clauses.get(id) else {
-            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin `{id}` names no clause")));
+            for p in group {
+                let what = if p.tag.is_some() { "tag" } else { "pin" };
+                out.push(f("state", &p.file, p.line, "SpecBrokenPin", format!("{what} `{id}` names no clause")));
+            }
             continue;
         };
-        if pin.contains_key("item") && cl.kind != "behavior" {
-            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("{} `{id}` takes a test or theorem, not an item", cl.kind)));
+        for p in group {
+            if p.kind == "item" && cl.kind != "behavior" {
+                out.push(f("state", &p.file, p.line, "SpecBrokenPin", format!("{} `{id}` takes a test or theorem, not an item", cl.kind)));
+            }
+            let msg = match pin_state(c, p) {
+                PinState::Performed => continue,
+                PinState::Ignored => format!("pin for `{id}` names a test carrying `#[ignore]`"),
+                PinState::Unfinished => format!("pin for `{id}` names a test whose body still opens a line with `todo!`"),
+                PinState::Absent => format!("pin for `{id}` does not resolve under crates/ or tools/"),
+                PinState::Unattached => format!("tag for `{id}` sits above no function"),
+                PinState::Stale => {
+                    let rev = p.tag.as_ref().map(|t| t.rev.as_str()).unwrap_or("");
+                    let msg = format!("tag for `{id}` records rev `{rev}`; the statement's rev is `{}`", statement_rev(&cl.statement));
+                    out.push(f("state", &p.file, p.line, "SpecStalePin", msg));
+                    continue;
+                }
+            };
+            out.push(f("state", &p.file, p.line, "SpecBrokenPin", msg));
         }
-        let (kind, path) = pin.iter().next().map(|(k, v)| (k.as_str(), v.as_str())).unwrap_or(("", ""));
-        let res = resolve(c, kind, path, &PIN_ROOTS);
-        if res == Resolution::Ignored {
-            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin for `{id}` names a test carrying `#[ignore]`")));
-        } else if res == Resolution::Absent {
-            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin for `{id}` does not resolve under crates/ or tools/")));
-        } else {
+        let tests = pinned_tests(group);
+        if tests.len() > 1 {
+            let names: Vec<&str> = tests.into_iter().collect();
+            let sites: Vec<String> = group.iter().map(Pin::site).collect();
+            out.push(f(
+                "state",
+                &group[0].file,
+                group[0].line,
+                "SpecBrokenPin",
+                format!("`{id}` is pinned to two tests, {} ({})", names.join(" and "), sites.join(", ")),
+            ));
+        }
+        if clause_verdict(c, group) == "performed" {
             *count.entry(cl.contract.clone()).or_default() += 1;
         }
     }
@@ -775,7 +985,7 @@ fn state(c: &Corpus) -> Vec<Finding> {
             out.push(f("state", "spec/roadmap.md", m.line, "SpecRoadmap", format!("milestone `{}` carries no `Acceptance:` line", m.heading)));
             continue;
         };
-        let pinned = pins.pin.keys().filter_map(|id| clauses.get(id)).any(|cl| {
+        let pinned = all.keys().filter_map(|id| clauses.get(id)).any(|cl| {
             claim.get(&format!("{}.{}", cl.contract, cl.operation)) == Some(&m.heading)
         });
         if m.operation_depth {

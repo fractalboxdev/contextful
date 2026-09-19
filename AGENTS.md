@@ -65,8 +65,11 @@ the gate enforces it.
    `TestNotFirst`. Inline `#[cfg(test)]` tests count toward the workspace stage, not
    toward this check.
 3. **Green.** Implement until `cargo test --workspace` passes, then pin the clause to the
-   test in `spec/pins.toml` and run `contextful-spec pins` to raise the floor. A pin to
-   an `#[ignore]`d test computes `broken`.
+   test — an entry in `spec/pins.toml`, or a `// spec: <id>@<rev>` tag above the test
+   function — and run `contextful-spec pins` to raise the floor. A pin to an `#[ignore]`d
+   test, to a body still holding `todo!`, or through a tag whose rev no longer matches the
+   statement computes `broken`. `contextful-spec scaffold <contract>.<operation> --package
+   <path>` writes one tagged `todo!` test per refusal and limit clause to start from.
 4. **Refactor.** A behavior-preserving commit carries the commit trailer
    `Test-First: refactor` and answers to the existing suite alone.
 5. **Close the milestone** by removing the acceptance test's `#[ignore]`; status reports
