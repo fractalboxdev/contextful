@@ -150,15 +150,7 @@ unsettled: Does the columnar interchange crate stay whole in the edge profile or
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `topology.deploy.one-declaration` | The same engine binary and the same `contextful.toml` deploy to every provider. A provider-specific artifact carries configuration only. | A-topology |
-| `topology.deploy.target-profile` | A target profile records which provider primitives back the control loop, the read path and heavy compute, and records each shape the provider cannot express. | A-topology |
 | `topology.deploy.unsupported-shape` | A target profile claiming a shape its provider does not provide raises `TargetShapeUnsupported`, naming the shape and the missing primitive. | A-topology |
-| `topology.deploy.two-roles` | A control-plane target runs the cadence tick, the reconciler, the durable orchestrator and the single-writer catalog. A worker target accepts a job, runs it to completion and reports to its dispatcher. Either role runs on any provider. | — |
-| `topology.deploy.reference-target` | One process is the reference target: an in-process scheduler fires each due pipeline, a crash resumes from the catalog's journal, and state lives under `./.contextful/`. | — |
-| `topology.deploy.self-hosted-shapes` | The binary runs as a stateless command exiting per invocation; a daemon with scheduler, HTTP and tool-protocol faces, a component pool and reload on `SIGHUP`; or a cluster of daemons sharing one catalog. | — |
-| `topology.deploy.add-a-node` | A cluster node joins by starting the binary against the shared catalog. No membership protocol exists. | — |
-| `topology.deploy.control-plane-daemon` | The self-hosted control plane speaks the same HTTP, socket and sync protocol as its managed form, with an in-process tick, an embedded catalog, an embedded checkpointed queue, and a bucket or local directory for snapshots. | — |
-| `topology.deploy.target-adapter` | Each provider integration is an adapter crate behind the domain ports. Code outside those crates names no provider. | A-topology |
 | `topology.deploy.wall-clock-cap` | A target capping per-invocation wall clock at 15 min hosts neither a first-time backfill nor a component connector, and its target profile records both exclusions. | — |
 | `topology.deploy.parity` | One declaration run on every control-plane target produces byte-identical table parts, compared against the reference target inside each target's object store after a 24 h soak. | A-topology |
 | `topology.deploy.parity-divergence` | A byte difference from the reference output raises `ParityDivergence`, naming the target, the table and the first differing part. | A-topology |
@@ -201,23 +193,12 @@ unsettled: Which role hosts heavy compute on a provider exposing neither a conta
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `topology.publish-hostname.descriptor` | Each published hostname carries a descriptor naming its worker, hostname, contract version and a gate: `access`, `adminToken`, or `public` with `acknowledged: true`. | A-topology |
-| `topology.publish-hostname.emitted-from-descriptor` | The deploy emits a hostname's provider configuration, route and gate from its descriptor. A hostname without a descriptor is not published. | A-topology |
-| `topology.publish-hostname.posture-probe` | The deploy sends each hostname an anonymous `GET /`. `access` passes on a `302` to the owning team's login prefix, compared literally; `adminToken` on any non-`5xx` without a login; `public` on a `200` without a login. | A-topology |
 | `topology.publish-hostname.posture-mismatch` | A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and fails the deploy. | A-topology |
 | `topology.publish-hostname.probe-table` | A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before the deploy runs, naming the hostname and the side missing it. | A-topology |
-| `topology.publish-hostname.wildcard-gates-nothing` | A wildcard access application over a domain protects no hostname. Its bypass policy for token-authenticated hostnames wins over any allow policy regardless of precedence. Only an application bound to a hostname protects it. | — |
 | `topology.publish-hostname.unknown-field` | A descriptor decodes with excess properties refused; an unmodelled key raises `DescriptorUnknownField`, naming the key and the contract version. | P1 |
-| `topology.publish-hostname.reserved-key` | The escape hatch for an unmodelled provider key is checked against a fixed reserved set, and admits no custom domain. | P1 |
-| `topology.publish-hostname.two-hops` | A published store answers through a routing hop that verifies the presented credential, routes and caches but runs no query, and a warm retrieval container that runs the query with enforcement inside it. | — |
-| `topology.publish-hostname.verify-both-hops` | The routing hop forwards the presented credential unchanged, and the engine re-verifies the same bytes before enforcing grants. The deployment holds no authentication secret. | — |
-| `topology.publish-hostname.hop-adds-no-authority` | The routing hop translates no credential and issues nothing of its own. | — |
 | `topology.publish-hostname.unconfigured-gateway` | A routing hop with no store configuration answers `503` on every route and raises `GatewayUnconfigured`. | P3 |
 | `topology.publish-hostname.issuer-key` | The engine's HTTP face refuses to start without a verification key that resolves and parses, raising `IssuerKeyUnusable` and naming the input; no generated key substitutes. | P3 |
-| `topology.publish-hostname.warming` | While a store warms, a data route answers `503` with `Retry-After` and the health route reports `warming`. Warming resolves to ready without intervention; the unconfigured state never does. | — |
-| `topology.publish-hostname.hot-set-local` | The retrieval container keeps the current snapshot set on local disk and maps it in place. Object storage is the durable source, not the per-query read path. | — |
 | `topology.publish-hostname.container-readiness` | A retrieval container reaches readiness within 8 s of a cold start, before its snapshot-set hydration completes. | — |
-| `topology.publish-hostname.keep-warm` | The reconciler keeps a retrieval container warm for each deployment with active traffic. A deployment declining keep-warm takes a cold first query. | — |
 
 The deploy-time posture probe, then a request through the two hops.
 
@@ -260,10 +241,10 @@ unsettled: Does the routing hop hold a short result cache of its own, keyed on t
 | Clause | Statement | Why |
 | --- | --- | --- |
 | `topology.coordinate.primitive` | Coordination rests on one property: a linearizable conditional write. No component depends on a stronger one, and the tree ships no consensus implementation or external coordination service. | A-store |
-| `topology.coordinate.inventory` | The single-writer operations are the lease row, the cursor compare-and-swap, {{store.fold.pointer-commit}}, {{store.lease.acquire}}, {{store.lease.commit-log}}, {{store.merge.cas-commit}} and {{surface.apply.claims-a-version}}. No other operation needs a single writer. | A-store |
+| `topology.coordinate.inventory` | The single-writer operations are the lease row, the cursor compare-and-swap, {{store.fold.pointer-commit}}, a lease acquisition, a leased pipeline's commit-log entry, the bucket manifest commit and a configuration apply's version claim. No other operation needs a single writer. | A-store |
 | `topology.coordinate.lease-row` | A lease row is keyed by a pipeline, a source partition, a table's compaction or a deployment's cadence, and carries a holder, an expiry instant and a fence taken by one conditional update. | A-store |
 | `topology.coordinate.catalog-clock` | The catalog evaluates a lease row's expiry against its own clock, never a caller-supplied instant. | A-store |
-| `topology.coordinate.fence-advances` | Each acquisition of a lease row increments its fence, and release follows {{store.lease.release}}, so the fence never repeats for a key. | A-store |
+| `topology.coordinate.fence-advances` | Each acquisition of a lease row increments its fence, and release keeps the fence, so the fence never repeats for a key. | A-store |
 | `topology.coordinate.fenced-commit` | A commit under a lease is a conditional write predicated on the holder's fence; a predicate matching nothing is {{store.lease.stale-fence}}. | A-store |
 | `topology.coordinate.cursor-cas` | A cursor compare-and-swap is one conditional update predicated on the stored version, read back by its affected-row count. | A-store |
 | `topology.coordinate.cadence-lease-ttl` | A cadence lease is granted for 90 s. | A-store |
@@ -310,14 +291,6 @@ unsettled: Is a self-contained clustered catalog worth building behind the `Cata
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `topology.bound-application.engine-scope` | The engine owns reusable ingestion, storage, memory, query and policy contracts, with temporal history, provenance and governed access built in. | A-topology |
-| `topology.bound-application.application-scope` | An application owns domain schemas, prompts, workflows, rating policies, column bindings, entity aliases and deployment configuration. Engine code carries no application role name, rating schema or category meaning. | A-topology |
-| `topology.bound-application.lexicon` | An application names its vocabulary in a per-store lexicon. Engine defaults carry structural conventions with no domain meaning, and a category the lexicon leaves undeclared renders neutral. | A-topology |
-| `topology.bound-application.reference-surface` | The reference console and operator surface configure no application store; the store registry arrives as runtime configuration. The console has one implementation, with no per-application fork. | A-topology |
-| `topology.bound-application.prediction-shape` | The engine keeps predictions, observations and outcome labels as generic shapes. It prescribes no domain rating schema and no tool that registers a prediction during an ordinary question. | A-topology |
-| `topology.bound-application.operator-graph` | The operator view derives its pipeline graph from the pipelines a deployment configures. An application adds nodes and annotations as an overlay. | A-topology |
-| `topology.bound-application.second-consumer` | A behavior becomes an engine abstraction when a second application requires it under the same invariants. Name or output-shape agreement alone does not qualify. | A-topology |
-| `topology.bound-application.public-surface` | The commercial layer reaches the engine only through the tool protocol, the manifest and plan format, the capability-token format and the sync protocol. | A-topology |
 
 unsettled: Where does the boundary sit between a surface adapter and a restated contract when a case has neither a generated artifact nor a callable route? owner: topology affects: topology.bound-application
 

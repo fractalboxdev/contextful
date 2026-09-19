@@ -208,7 +208,7 @@ flowchart TD
 | `run.cancel.poll-interval` | The token is fed by one catalog read before the run's first await and then one every 500 ms, the cancellation arm evaluated ahead of the work arm. | — |
 | `run.cancel.land-path-uncut` | The land path carries no stop check; a run whose bytes are home finishes landing and records the stop it did not fulfill. | — |
 | `run.cancel.abandoned-work` | Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone. | A-run |
-| `run.cancel.child-reaped` | A stop reaches a running subprocess chain through {{run.exec.process-group-kill}}, and the record is written `canceled` only after the group is reaped. | because a record reading canceled while a child still runs misstates what the machine is doing |
+| `run.cancel.child-reaped` | A stop signals a running subprocess chain's process group, and the record is written `canceled` only after the group is reaped. | because a record reading canceled while a child still runs misstates what the machine is doing |
 | `run.cancel.storage-blip` | A failed poll read warns and keeps polling. | — |
 | `run.cancel.not-in-flight` | Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal. | A-run |
 | `run.cancel.re-mark` | Marking an already-marked row overwrites it with the newer request. | — |

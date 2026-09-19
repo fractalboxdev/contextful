@@ -92,15 +92,7 @@ erasure-cascade-depth         = { clause = "disclosure.erase.cascade", value = 1
 erasure-physical-removal      = { clause = "disclosure.erase.physical-removal", value = 24, unit = "h", basis = "chosen", gloss = "Commit of an erasure to rewrite or collection of every file holding an erased row." }
 
 [term]
-public = { gloss = "The principal every request carries beside its own, and the hostname gate that admits anonymous visitors." }
-access_resources      = { gloss = "Mirror table: one row per governed object with its observed visibility class." }
 access_grants         = { gloss = "Mirror table: one row per resource, principal and level." }
-access_principals     = { gloss = "Mirror table: one row per source principal." }
-access_group_members  = { gloss = "Mirror table: one row per edge of the source group graph." }
-access_identity_links = { gloss = "Mirror table: one row linking a source principal to a subject, with its method." }
-access_tombstones     = { gloss = "Mirror table: one row per observed revocation." }
-access_freshness      = { gloss = "Mirror table: one row per source and sweep kind, carrying the enforced watermark." }
-visibility_class      = { gloss = "Per-resource observed class: mirrored, coarse, federated or unknown." }
 watermark_at          = { gloss = "Completion instant of the last sweep that read every governed resource of a source." }
 max_acl_staleness     = { gloss = "A table's declared age budget on mirrored authorization." }
 min_group_size        = { gloss = "The declared distinct-contributor count below which a group is withheld." }

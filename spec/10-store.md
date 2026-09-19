@@ -74,7 +74,7 @@ flowchart LR
 | `store.lay-out.part-name` | A data file is `part-<ordinal>.parquet`, the ordinal zero-padded to five digits and unique within its directory. | — |
 | `store.lay-out.staging` | A fold in flight writes under `data/snapshots/<id>.staging/`, and no file list resolves inside it. | — |
 | `store.lay-out.run-manifest` | A run commits by conditionally creating `_manifest.json` in its node directory, carrying `{run_id, table, node_id, parts, committed_at, pipeline_id?, cursor?, fence?}`, where `node_id` equals the enclosing segment. | — |
-| `store.lay-out.uncommitted-run` | A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry ({{store.lease.commit-log}}). | P4 |
+| `store.lay-out.uncommitted-run` | A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry. | P4 |
 | `store.lay-out.cursor-in-commit` | A pipeline's committed position is the cursor inside its newest commit: the newest commit-log entry for a leased pipeline, the highest run-manifest cursor otherwise. `machine.sqlite` caches it. | because a position committed apart from its rows re-lands the batch after a crash between the two writes |
 | `store.lay-out.snapshot-manifest` | A snapshot's `_manifest.json` carries `{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence}`, and each entry of `parts` and `indexes` carries its `key_version`. | — |
 | `store.lay-out.table-pointer` | `tables/<t>/_pointer.json` names the table's current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of `parent` links from it reaches it. | A-store |
@@ -159,7 +159,7 @@ unsettled: What retires a key a source stops serving under `append`, given the s
 | `store.fold.retention` | `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window. | — |
 | `store.fold.result` | A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass. | — |
 | `store.fold.unknown-table` | A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}. | P1 |
-| `store.fold.compaction-lease` | A pass holds the table's compaction lease ({{store.lease.compaction}}) and stamps its fence into the snapshot manifest and the pointer. | A-store |
+| `store.fold.compaction-lease` | A pass holds the table's compaction lease and stamps its fence into the snapshot manifest and the pointer. | A-store |
 | `store.fold.pointer-commit` | A pass publishes by replacing `_pointer.json` conditioned on the ETag it read at pass start, with `If-Match` on an object store and a version-checked rename on a filesystem. | A-store |
 | `store.fold.partial-snapshot` | A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises `StorePartialSnapshot`. | P4 |
 | `store.fold.lost-pointer` | A pass whose pointer replace loses its condition publishes nothing, and its staged snapshot is collected. | — |
@@ -254,22 +254,9 @@ unsettled: How is a set of validity intervals for one key modelled, given one pa
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `store.push.wire-format` | A bucket key beneath the prefix equals the file's path beneath the store root, forward-slash separated, with no leading separator and no parent reference; the two catalogs have no key. | — |
-| `store.push.bucket-manifest` | A reserved `manifest.json` at the prefix root maps each key to `{sha256, size, owner}`, `owner` being the node id that wrote the object. | A-store |
-| `store.push.local-contribution` | A writer's own entries in the bucket manifest are a pure function of its local tree. | — |
-| `store.push.sequence` | A push walks the store, digests each file, uploads each file whose digest differs from its remote entry, then commits the bucket manifest by {{store.merge.cas-commit}}. | — |
-| `store.push.digest-decides` | An object transfers, in either direction, when its digest differs from the entry naming it and at no other time; repeating a push or pull over an unchanged index transfers the index alone. | — |
-| `store.push.commit-point` | Writing the bucket manifest commits a push: its reader finds every named key durable, and an interrupted push leaves the previous manifest intact. | P4 |
-| `store.push.prefix` | `[sync] prefix` confines every key a deployment reads and writes to `<prefix>/`; unset, the store lands at the bucket root. | — |
-| `store.push.prefix-one-wrapper` | Prefix confinement lives in the object-store wrapper alone, and every backend inherits it. | P5 |
 | `store.push.prefix-escape` | A key resolving outside the prefix raises `SyncPrefixEscape`, naming the key and the prefix. | P3 |
-| `store.push.prefix-from` | `prefix_from = "env:<NAME>"` binds the prefix from the environment at start. | — |
 | `store.push.prefix-unbound` | An unset variable named by `prefix_from` raises `SyncPrefixUnbound` at startup, with no bucket-root fallback. | P3 |
 | `store.push.prefix-overspecified` | Declaring `prefix` and `prefix_from` together raises `SyncPrefixOverspecified`. | P3 |
-| `store.push.shared-root` | Deployments sharing a bucket without distinct prefixes overwrite one root manifest, and the last writer's manifest hides the others' tables. | — |
-| `store.push.bookkeeping-prefixes` | `leases/` and `cursors/` hold no rows, and writing them leaves a withheld table's push unaffected. | — |
-| `store.push.offline-commands` | `contextful sync diagnose` and `contextful sync manifest` read a tree and an index, land no row and verify no credential. | — |
-| `store.push.report-line` | Each push line prints the resolved coordination mode and the counts of objects uploaded and skipped. | — |
 | `store.push.in-flight` | A second push of one store on one machine raises `SyncPushInFlight`, naming the holder of the push guard. | A-store |
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
@@ -301,11 +288,6 @@ sequenceDiagram
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `store.pull.sequence` | A pull fetches the bucket manifest, diffs its entries against local digests and downloads the differing objects in parallel. | — |
-| `store.pull.pointer-last` | A pull writes a table's pointer after every object that pointer reaches has landed. | P4 |
-| `store.pull.catalog-forward` | After a pull, `derived.sqlite` folds forward by inserting the arrived run and snapshot records, ignoring conflicts. | — |
-| `store.pull.before-run` | `[sync] pull_before_run` pulls before a run lands rows, and defaults on where the resolved mode is `cas`. | — |
-| `store.pull.runs-visible` | An arrived run is queryable once it is committed ({{store.lay-out.uncommitted-run}}), found by walking the tree. | — |
 | `store.pull.digest-mismatch` | A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded. | P4 |
 | `store.pull.convergence` | When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts. | — |
 | `store.pull.unconverged` | Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer. | P4 |
@@ -342,37 +324,18 @@ unsettled: What recovers a pull whose retries are exhausted by pushes arriving f
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `store.probe.measured` | A live probe of the configured endpoint decides whether a backend performs atomic conditional writes; no configuration table, product name or client dialect does. | A-store |
-| `store.probe.sentinel` | The probe writes its sentinel under `_contextful/cas-probe/` inside the configured prefix, with the push credential. | — |
-| `store.probe.sequence` | The probe creates the sentinel with `If-None-Match`, repeats that create, replaces it with `If-Match` on a fabricated ETag, reads it back and deletes it; both repeats lose. | — |
-| `store.probe.read-back` | The read-back compares the sentinel's bytes with the winning create's, catching a backend that reports success while ignoring the precondition. | — |
 | `store.probe.inconclusive` | An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated. | A-store |
-| `store.probe.setting` | `[sync] coordination` takes `cas` or `single-writer`; unset, the probe outcome decides. | — |
 | `store.probe.unproven` | Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push. | A-store |
-| `store.probe.single-writer` | `single-writer` skips the probe and needs no write permission on its path. | — |
-| `store.probe.inconclusive-mode` | A deployment whose probe is inconclusive coordinates through the machine lease, not the bucket lease. | — |
-| `store.probe.once` | The probe runs once per process at startup, and its outcome holds for the process's life. | — |
-| `store.probe.sentinel-ephemeral` | A sentinel an interrupted probe left behind is overwritten by the next probe and read as no state. | — |
-| `store.probe.reported` | `contextful sync diagnose` reports the resolved mode, the probe outcome, and whether the setting or the measurement decided. | — |
 
 ## merge
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `store.merge.cas-commit` | The bucket manifest commits by `If-Match` replace over a merge with the remote manifest; a writer losing the race re-reads, re-merges and re-commits. | A-store |
-| `store.merge.ownership` | A merge takes the writer's own entries from its local tree and every other owner's entries from the remote manifest. | A-store |
-| `store.merge.tombstone` | A writer deleting an object it owns replaces its entry with an owner-signed tombstone `{owner, deleted_at}`, and the merge drops the entry the tombstone names. | because a key absent from one writer's index is otherwise indistinguishable from another writer's, and collected objects resurrect |
 | `store.merge.tombstone-owner` | A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry. | A-store |
 | `store.merge.tombstone-ttl` | A tombstone leaves the manifest 30 d after its `deleted_at`. | — |
 | `store.merge.retries` | `[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts. | — |
 | `store.merge.exhausted` | Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run. | A-store |
-| `store.merge.both-modes` | The merge runs under both coordination modes; the compare-and-set makes a concurrent commit safe, and the merge makes it complete. | — |
-| `store.merge.pointer-by-cas` | A table pointer resolves by its own conditional replace ({{store.fold.pointer-commit}}), never by recency or by the local side. | A-store |
-| `store.merge.schemas` | `schema.json` carries no merge rule; two writers' schemas reconcile at the next write. | — |
 | `store.merge.cursor-recency` | Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit. | A-run |
-| `store.merge.grant-projection` | The sync edge projects the bucket manifest's per-table section by the table grants that project the file list. | P5 |
-| `store.merge.consumer-offline` | A bucket consumer asserts contract identity and derives staleness from the bucket manifest and its own clock, with no engine in the loop. | — |
-| `store.merge.emit` | `contextful sync manifest --emit <path>` writes the per-table section offline. | — |
 
 unsettled: Which key signs a tombstone, given a node id carries no key material? owner: store affects: store.merge
 
@@ -380,25 +343,14 @@ unsettled: Which key signs a tombstone, given a node id carries no key material?
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `store.lease.port` | Leasing sits behind one port with two implementations, a lease row in `machine.sqlite` and a bucket lease object, chosen by the resolved coordination mode and whether a bucket is configured. | A-store |
-| `store.lease.machine-scope` | The machine lease serializes processes on one machine and nothing beyond it. | — |
-| `store.lease.object` | A bucket lease is `leases/<pipeline_id>.json` or `leases/compact/<table>.json`, carrying `{holder, acquired_at, expires_at, fence}`. | — |
-| `store.lease.acquire` | Acquisition creates the object with `If-None-Match`, or replaces an expired or released one with `If-Match` on the ETag it read, incrementing `fence`. | A-store |
-| `store.lease.release` | Release sets `holder` to null and keeps `fence`, on a lease object and a catalog lease row alike; neither is deleted. | because a deleted object restarts the fence and a successor's token no longer outranks its predecessor's |
 | `store.lease.ttl` | A lease is granted for 10 min. | — |
 | `store.lease.renewal` | A holder renews every 200 s by `If-Match` replace on the ETag it holds. | — |
 | `store.lease.clock-skew` | Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock. | because correctness rests on the fence, and the skew bound only sets how early a holder stops committing |
-| `store.lease.holder-deadline` | A holder stops committing once its monotonic clock passes acquisition plus the grant minus {{store.lease.clock-skew}}. | — |
-| `store.lease.acquirer-wait` | An acquirer treats a lease as expired once the grant plus {{store.lease.clock-skew}} has passed on its monotonic clock since it last observed a renewal. | — |
 | `store.lease.held` | A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick. | A-store |
-| `store.lease.commit-log` | A leased pipeline commits each run by conditionally creating `cursors/<pipeline_id>/<seq>.json`, the next zero-padded sequence number, carrying `{run_id, cursor, fence}`. | A-store |
-| `store.lease.acquire-entry` | Acquisition appends a commit-log entry carrying the new fence and no run, and the holder resumes from the cursor of the newest entry. | A-run |
 | `store.lease.stale-fence` | A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable. | A-store |
 | `store.lease.not-held` | Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched. | A-store |
-| `store.lease.compaction` | A fold takes the table's compaction lease; a pass started while another node holds it is skipped by {{store.lease.held}}. | A-store |
 | `store.lease.cursor-kind` | A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`. | A-run |
 | `store.lease.local-node` | A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease. | P3 |
-| `store.lease.holder-identity` | A lease holder is identified by node id alone, and re-entrancy is scoped to one machine. | — |
 
 ```mermaid
 stateDiagram-v2
@@ -415,19 +367,10 @@ stateDiagram-v2
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `store.replicate.read-only` | A replica originates nothing: its catalogs derive from pulled objects, and the canonical store stays the authority for every table it serves. | A-store |
 | `store.replicate.write-refused` | A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store. | A-store |
-| `store.replicate.refresh` | A refresh diffs the bucket manifest against local digests, downloads changed snapshot directories with their sidecars, and swaps the table pointer in one step. | — |
-| `store.replicate.pointer-swap` | A query running across a refresh finishes on the pointer it started on. | — |
-| `store.replicate.absence` | A replica returning after an absence fetches one current snapshot per changed table, not the history between. | — |
 | `store.replicate.partial-parquet` | A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished. | A-store |
-| `store.replicate.sidecar-subset` | A replica may hold a subset of a snapshot's sidecars and partitions. | — |
 | `store.replicate.missing-index` | A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it. | A-store |
-| `store.replicate.sensitive-default` | A table declaring sensitive columns defaults to `replicate = false`. | — |
 | `store.replicate.sensitive-refused` | A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face. | A-store |
-| `store.replicate.proxying-face` | The proxying face verifies the presented credential, answers projected rows over the canonical store, never file handles, and records each read. | — |
-| `store.replicate.rebuild` | A replica rebuilds `derived.sqlite` from its tree with `contextful context rebuild-catalog`; what it does not receive derives from what it does. | — |
-| `store.replicate.grant-selection` | A replica selects objects by the table patterns its pulling credential carries, through the matcher that registers relations for a caller. | P5 |
 
 unsettled: Where does a replica advertise the sidecars and partitions it holds, a descriptor beside its catalog or a queryable central row? owner: store affects: store.replicate
 

@@ -10,6 +10,10 @@ The acceptance test lands before the first clause of its milestone is pinned, ig
 while the milestone is open; the milestone closes when the ignore comes off and the
 test passes.
 
+A `Depth: operation` line specifies a milestone at operation level: its operations carry
+refusal and limit clauses, unsettled lines and diagrams, and no behavior clause. Removing
+the line when the milestone opens admits behavior clauses again.
+
 ```mermaid
 flowchart LR
   Z[0 Test-first gate] --> A
@@ -101,6 +105,8 @@ Acceptance: `contextful_acceptance::m05::m05_read_face`
 
 Reach: Two nodes share one bucket and converge without a coordinator.
 
+Depth: operation
+
 Acceptance: `contextful_acceptance::m06::m06_sync`
 
 ## 7 — Memory
@@ -110,6 +116,8 @@ Acceptance: `contextful_acceptance::m06::m06_sync`
 | `read.declare`, `read.synthesize`, `read.revise`, `read.recall`, `read.resolve-entity`, `read.settle` | Memory tables, synthesis, revision on one valid-time line, recall, entity resolution and settled outcomes. |
 
 Reach: A synthesized belief supersedes its predecessor on new evidence, and a reader sees which grant produced it.
+
+Depth: operation
 
 Acceptance: `contextful_acceptance::m07::m07_memory`
 
@@ -121,6 +129,8 @@ Acceptance: `contextful_acceptance::m07::m07_memory`
 
 Reach: An operator answers what a named person could have seen over a past window, from the store, in SQL.
 
+Depth: operation
+
 Acceptance: `contextful_acceptance::m08::m08_accountability`
 
 ## 9 — Visibility
@@ -130,6 +140,8 @@ Acceptance: `contextful_acceptance::m08::m08_accountability`
 | `disclosure.mirror`, `disclosure.sweep`, `disclosure.reach`, `disclosure.bound-staleness`, `disclosure.declare-fidelity`, `disclosure.pack` | Source permissions mirrored as data, the sweep, reachability, the staleness budget and fidelity. |
 
 Reach: A revoked grant at the source stops answering within a declared bound.
+
+Depth: operation
 
 Acceptance: `contextful_acceptance::m09::m09_visibility`
 
@@ -142,6 +154,8 @@ Acceptance: `contextful_acceptance::m09::m09_visibility`
 
 Reach: Due work dispatches into a bounded pool, and a published hostname is probed for the posture it declares.
 
+Depth: operation
+
 Acceptance: `contextful_acceptance::m10::m10_cadence`
 
 ## 11 — The derive tier
@@ -151,6 +165,8 @@ Acceptance: `contextful_acceptance::m10::m10_cadence`
 | `run.select`, `run.bind`, `run.exec`, `run.fetch`, `run.emit`, `run.parse-cues`, `run.test-engine` | Deferred per-row work over landed rows. |
 
 Reach: A pipeline reads the words inside a landed document and fills them into the parent row.
+
+Depth: operation
 
 Acceptance: `contextful_acceptance::m11::m11_derive`
 
@@ -162,6 +178,8 @@ Acceptance: `contextful_acceptance::m11::m11_derive`
 
 Reach: A visitor asks in their own words and gets an answer citing the rows behind it.
 
+Depth: operation
+
 Acceptance: `contextful_acceptance::m12::m12_console`
 
 ## 13 — Disclosure
@@ -171,6 +189,8 @@ Acceptance: `contextful_acceptance::m12::m12_console`
 | `disclosure.set-mode`, `disclosure.release`, `disclosure.suppress`, `disclosure.template`, `disclosure.bound-cohort` | Aggregate release under a disclosure budget. |
 
 Reach: Two parties compare against a benchmark neither can invert.
+
+Depth: operation
 
 Acceptance: `contextful_acceptance::m13::m13_disclosure`
 

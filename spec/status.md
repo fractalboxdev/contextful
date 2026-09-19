@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its artifact
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 0 | 0 | 0 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
 | `corpus` | 1 | 7 | 48 | 23 | 6 | 1 | 6 | 0 | 6 |
-| `disclosure` | 3 | 16 | 181 | 54 | 9 | 12 | 0 | 0 | 0 |
-| `read` | 2 | 14 | 192 | 21 | 13 | 16 | 0 | 0 | 0 |
-| `run` | 3 | 24 | 346 | 79 | 34 | 24 | 0 | 0 | 0 |
-| `store` | 1 | 14 | 194 | 36 | 12 | 8 | 0 | 0 | 0 |
-| `surface` | 2 | 19 | 252 | 40 | 21 | 8 | 0 | 0 | 0 |
-| `topology` | 1 | 6 | 85 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 142 | 1914 | 438 | 159 | 100 | 9 | 0 | |
+| `disclosure` | 3 | 16 | 63 | 54 | 9 | 12 | 0 | 0 | 0 |
+| `read` | 2 | 14 | 109 | 21 | 13 | 16 | 0 | 0 | 0 |
+| `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |
+| `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
+| `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
+| `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
+| **total** | 19 | 142 | 1370 | 438 | 159 | 100 | 9 | 0 | |
 
 Decision records: 17.
 
@@ -29,14 +29,14 @@ Decision records: 17.
 | 3 — The run path | 11 | 169 | 0 | absent |
 | 4 — Ingest | 22 | 328 | 0 | absent |
 | 5 — The read face under enforcement | 16 | 203 | 0 | absent |
-| 6 — Sync and replicas | 6 | 83 | 0 | absent |
-| 7 — Memory | 6 | 96 | 0 | absent |
-| 8 — Accountability | 5 | 71 | 0 | absent |
-| 9 — Visibility | 6 | 64 | 0 | absent |
-| 10 — Cadence and the operator plane | 11 | 151 | 0 | absent |
-| 11 — The derive tier | 7 | 126 | 0 | absent |
-| 12 — The console | 11 | 138 | 0 | absent |
-| 13 — Disclosure | 5 | 46 | 0 | absent |
+| 6 — Sync and replicas | 6 | 26 | 0 | absent |
+| 7 — Memory | 6 | 13 | 0 | absent |
+| 8 — Accountability | 5 | 22 | 0 | absent |
+| 9 — Visibility | 6 | 21 | 0 | absent |
+| 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
+| 11 — The derive tier | 7 | 58 | 0 | absent |
+| 12 — The console | 11 | 29 | 0 | absent |
+| 13 — Disclosure | 5 | 20 | 0 | absent |
 | 14 — Assurance | 5 | 80 | 0 | absent |
 
 Unscheduled operations: 7.
