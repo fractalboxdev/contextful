@@ -11,17 +11,18 @@ owns:
 
 # The formal model
 
-Two mechanized models stand beside the engine: a Lean 4 package specifying the policy core,
-and a TLA+ specification of the store's lease, compare-and-swap and fence protocol. The gate
-checks both on every change, and a differential harness ties the Lean model to the decision
-functions the engine runs.
+Two Lean 4 packages stand beside the engine: one specifying the policy core, and one holding
+an executable state machine of the store's lease, compare-and-swap and fence protocol, its
+invariants stated as theorems. The gate checks both on every change, and one differential
+harness ties each model to the code it describes: the policy model to the engine's decision
+functions, the protocol model to the Rust store.
 
 The two models, the checks over them, and where each meets the engine:
 
 ```mermaid
 flowchart LR
   SPEC["specification text"] --> LEAN["Lean package formal/<br/>Layer · Placement · Authority"]
-  SPEC --> TLA["TLA+ model formal/protocol/<br/>lease · compare-and-swap · fence"]
+  SPEC --> PROT["Lean protocol package formal/protocol/<br/>lease · compare-and-swap · fence"]
   LEAN -- "lake build" --> ENV["elaborated environment"]
   INV["formal/inventory.toml"] --> AUD["audit-axioms:<br/>contextful formal check"]
   ENV --> AUD
@@ -29,8 +30,12 @@ flowchart LR
   LEAN --> REF["reference binary"]
   REF --> DIFF["differential harness"]
   ENG["authority contract:<br/>engine decision functions"] --> DIFF
-  TLA -- "3 nodes · 4 lease generations" --> MC["protocol model check"]
-  MC -. "pins" .-> STORE["store contract:<br/>stale fence · partial snapshot"]
+  PROT -- "3 nodes · 4 lease generations" --> MC["bounded invariant check"]
+  PROT -- "invariant theorems" --> AUD
+  PROT -- "lean_exe" --> PEXE["protocol executable"]
+  PEXE --> DIFF
+  RUST["Rust store"] --> DIFF
+  AUD -. "pins" .-> STORE["store contract:<br/>stale fence · partial snapshot"]
   AUD --> GATE["gate: formal stage"]
   DIFF --> GATE
   MC --> GATE
@@ -40,7 +45,7 @@ flowchart LR
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `assurance.model.package` | The Lean model is a package rooted at `formal/`: `lakefile.toml` declares one `lean_lib` target and no `require` stanza, and `lean-toolchain` names one exact release string. | A-assurance |
+| `assurance.model.package` | The policy model is a Lean package rooted at `formal/`: `lakefile.toml` declares one `lean_lib` target and no `require` stanza, and `lean-toolchain` names one exact release string. | A-assurance |
 | `assurance.model.declared-dependency` | A `require` stanza reaching any external library raises `FormalPackageDependency`, naming the library. | A-assurance |
 | `assurance.model.toolchain-drift` | A build whose resolved toolchain string differs from the pinned one raises `ProofToolchainDrift`, printing both strings. | A-assurance |
 | `assurance.model.build-cost` | A cold elaboration of the package completes within 60 s and writes at most 512 KiB of artifacts. | because the check runs on every change |
@@ -52,11 +57,15 @@ flowchart LR
 | `assurance.model.unmodelled-constructor` | A category the manifest admits with no case in the placement inductive raises `UnmodelledConstructor` at elaboration, naming the category. | A-assurance |
 | `assurance.model.total-definitions` | Every definition is total and computable: none is marked `partial`, `noncomputable` or `opaque`, and decidable equality on each finite enumeration is derived. | |
 | `assurance.model.from-the-spec` | Each definition is written from the specification text and derived from no engine source. | because a definition copied from code makes every theorem restate the code instead of checking the specification |
-| `assurance.model.out-of-model` | The package defines no credential bytes, signature verification, SQL semantics, journal write, process state or attacker observation, and no theorem reaches one. | |
-| `assurance.model.protocol-model` | A TLA+ specification under `formal/protocol/` models lease acquisition, renewal, expiry and release, the fenced compare-and-swap on the catalog row and the cursor object, holder pause, message delay and crash at every step. | because the store's concurrency protocol carries the highest-severity defects, and the Lean package does not reach it |
-| `assurance.model.protocol-safety` | The protocol model checks two safety properties: no commit lands carrying a fence below the highest fence granted, and release keeps the lease object and its fence. | |
-| `assurance.model.protocol-check` | The gate model-checks the protocol with three nodes and four lease generations; a violating trace raises `ProtocolInvariantViolated`, printing the shortest trace. | P7 |
-| `assurance.model.protocol-pins` | {{store.lease.stale-fence}} and {{store.fold.partial-snapshot}} pin to the protocol model's safety properties. | |
+| `assurance.model.out-of-model` | The policy package defines no credential bytes, signature verification, SQL semantics, journal write, process state or attacker observation, and no theorem reaches one. | |
+| `assurance.model.protocol-package` | The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` and one `lean_exe` target. | A-assurance |
+| `assurance.model.protocol-model` | The protocol model is a total, computable step function over lease acquisition, renewal, expiry and release, the fenced compare-and-swap on the catalog row and the cursor object, holder pause, message delay and crash. | A-assurance |
+| `assurance.model.protocol-safety` | Four invariants are Lean theorems over every reachable state: one lease holder per fence, fences only increase, no commit lands carrying a fence below the highest granted, and release keeps the lease object and its fence. | |
+| `assurance.model.protocol-theorems` | Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-axioms.check-command}} against the same allowlist. | |
+| `assurance.model.protocol-check` | The gate evaluates every invariant on each state reached by every step sequence over three nodes and four lease generations; a breaking state raises `ProtocolInvariantViolated`, printing the shortest sequence reaching it. | P7 |
+| `assurance.model.protocol-pins` | {{store.lease.stale-fence}} and {{store.fold.partial-snapshot}} pin to the protocol model's invariant theorems. | |
+
+unsettled: Is the Veil framework mature enough for its bounded and SMT checking to discharge the protocol invariant theorems within the formal stage's budget? owner: build affects: assurance.model
 
 ## prove
 
@@ -161,6 +170,9 @@ unsettled: Which translation toolchain reaches Lean from the engine's source, an
 | `assurance.differential-test.disagreement` | A case on which the two decisions differ raises `ReferenceModelDrift`, printing the minimized case and both decisions. | A-assurance |
 | `assurance.differential-test.discarded-counterexample` | A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`. | A-assurance |
 | `assurance.differential-test.seed` | Each run records its generator seed, and re-running with that seed reproduces the same case sequence. | |
+| `assurance.differential-test.protocol-cases` | Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over acquire, renew, release, expire, commit, pause, delay and crash steps across three nodes. | |
+| `assurance.differential-test.protocol-harness` | The harness drives the protocol package's compiled executable and the Rust store through each protocol case, comparing lease holder, fence, pointer ETag and commit outcome after every step. | A-assurance |
+| `assurance.differential-test.protocol-drift` | A step after which the model's state and the store's projected state differ raises `ProtocolConformanceDrift`, printing the minimized operation sequence and both states. | A-assurance |
 | `assurance.differential-test.command` | `contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement. | |
 
 One differential run:
@@ -202,7 +214,14 @@ formal/
     Authority.lean         profile elements, effective authority, narrowing
   inventory.toml           required constants and their expected statements
   reference/               the executable model the differential harness drives
-  protocol/                the TLA+ lease, compare-and-swap and fence specification
+  protocol/                second Lean package: lease, compare-and-swap and fence
+    lakefile.toml          one lean_lib, one lean_exe
+    lean-toolchain         the release string the policy package pins
+    Protocol/
+      Step.lean            state, steps, the total step function
+      Invariants.lean      the four invariant theorems
+    Main.lean              executable: one step sequence in, one state per step out
+    inventory.toml         the invariant theorems and their expected statements
 ```
 
 One inventory row:

@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 13 | 164 | 42 | 18 | 12 | 3 | 0 | 3 |
+| `assurance` | 2 | 13 | 169 | 43 | 18 | 13 | 3 | 0 | 3 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 0 | 0 | 0 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
 | `corpus` | 1 | 7 | 52 | 21 | 6 | 0 | 13 | 0 | 13 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 142 | 1374 | 436 | 159 | 99 | 16 | 0 | |
+| **total** | 19 | 142 | 1379 | 437 | 159 | 100 | 16 | 0 | |
 
 Decision records: 17.
 
@@ -24,7 +24,7 @@ Decision records: 17.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 15 | 3 | passing |
-| 1 — The authority core | 14 | 185 | 0 | absent |
+| 1 — The authority core | 14 | 190 | 0 | absent |
 | 2 — The store | 8 | 111 | 0 | absent |
 | 3 — The run path | 11 | 169 | 0 | absent |
 | 4 — Ingest | 22 | 328 | 0 | absent |

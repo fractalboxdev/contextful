@@ -61,6 +61,20 @@ Revisit: the profile's maintainer changes the mapping's domain; an execution rel
 Consequences: the report names its case classes — malformed, boundary, well-formed.
 Revisit: a pinned, reproducible translation toolchain exists; a production divergence falls outside all three classes; keeping the artifacts in step costs more than the divergences caught.
 
+## The store protocol is modelled in Lean 4
+
+`assurance.model` holds the lease, compare-and-swap and fence protocol as an executable Lean 4 state machine in a second package; its four invariants are audited theorems, and a bounded check over three nodes and four lease generations raises `ProtocolInvariantViolated`. `assurance.differential-test` drives the model's compiled executable and the Rust store through generated operation sequences and interleavings; a disagreement raises `ProtocolConformanceDrift`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Lean 4 executable model, conformance through the differential harness *(chosen)* | — | Invariant proofs are hand-written until SMT automation is proven; generated interleavings are samples, and exhaustiveness holds only inside the bounded check. |
+| Quint with quint-connect | One formal language | A second specification language, and a v0.1 bridge crate from one young vendor. |
+| TLA+ with a harness over ITF traces | Maintained Rust bridge | We build and keep action dispatch, state projection and comparison, in a second language. |
+| TLA+ trace validation of an instrumented store | Java-only instrumentation | A Rust logging API is built from scratch, and a run checks only the interleavings it provokes. |
+
+Consequences: one toolchain, one axiom audit and one differential harness cover both models; a theorem proves the invariant for every generation, where a model checker bounds it.
+Revisit: the bounded check exceeds the formal stage's wall clock; a maintained Rust bridge to a model checker reaches the protocol's step vocabulary.
+
 ## The columnar-read and statement-serialization functions link into every engine-linked build
 
 `assurance.build` links both SQL-engine function sets into each engine-linked build, because an autoloaded extension brings a second copy of the engine's type information: a cast between copies aborts, and on Apple platforms corrupts reads. Reaching for an extension while serving raises `ExtensionAutoloadRefused`.
