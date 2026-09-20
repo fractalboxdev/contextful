@@ -3,3 +3,11 @@ node_modules/
 .DS_Store
 *.wasm
 .tmp/
+
+# Agent worktrees and session state.
+.claude/
+
+# Secrets. A dotenvx-encrypted file is tracked deliberately and force-added;
+# an unencrypted one never reaches a remote.
+.env
+.env.*
