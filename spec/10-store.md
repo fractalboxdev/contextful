@@ -299,7 +299,6 @@ sequenceDiagram
   participant P as puller
   participant M as manifest.json
   participant B as bucket objects
-  participant C as derived.sqlite
 
   loop up to 3 attempts
     P->>M: fetch manifest
@@ -315,7 +314,6 @@ sequenceDiagram
   end
   Note over P: exhausted retries raise SyncPullDidNotConverge and write no pointer
   P->>P: write each table pointer after every object it reaches
-  P->>C: insert arrived run and snapshot records, ignoring conflicts
 ```
 
 unsettled: What recovers a pull whose retries are exhausted by pushes arriving faster than the re-fetch shrinks the shortfall? owner: store affects: store.pull

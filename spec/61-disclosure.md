@@ -20,17 +20,16 @@ A derived result, from the deployment's setting to the published rows:
 ```mermaid
 flowchart LR
   MODE{"set-mode"} -- "single operator" --> SO["write-time disclosure policy<br/>offline diagnostic"]
-  MODE -- "clean room" --> CR["per-owner subtrees, prefixes, keys<br/>escrow of per-pair peppers"]
+  MODE -- "clean room" --> CR["per-owner subtrees, prefixes, keys<br/>per-pair peppers"]
   CALLER["releasing principal"] -- "template id + typed arguments" --> TPL["reviewed template"]
   AUTH["authority contract:<br/>template allowlist"] --> TPL
   SO --> REL
   CR --> REL
   TPL --> REL["release job<br/>run contract: journaled"]
-  UNITS["contributing units, read through<br/>the replication-edge filter"] --> REL
+  UNITS["contributing units"] --> REL
   REL --> SUP["suppress: size floor · dominance"]
   SUP --> PUB[("published derived table<br/>__suppressed__ sentinel")]
-  SUP -. "per-reason tallies" .-> AUD[("audit chain")]
-  PUB --> COH["bound-cohort: floor before the top-K cut"]
+  PUB --> COH["bound-cohort: per-individual row, singleton cohort"]
 ```
 
 ## set-mode
@@ -73,7 +72,7 @@ The decision over one group:
 
 ```mermaid
 flowchart TD
-  G["group"] --> SZ{"distinct contributors clear min_group_size?<br/>noisy threshold when noised"}
+  G["group"] --> SZ{"distinct contributors clear min_group_size?"}
   SZ -- no --> S["__suppressed__ sentinel"]
   SZ -- yes --> SH{"share constraint declared?"}
   SH -- no --> P["published row"]
@@ -83,8 +82,6 @@ flowchart TD
   AV -- yes --> DOM{"one contributor's share<br/>above max_contributor_share?"}
   DOM -- yes --> S
   DOM -- no --> P
-  S -. "per-reason tally" .-> AUD[("audit chain")]
-  S -. "suppression boolean" .-> FR["run freshness record"]
 ```
 
 ## template
@@ -142,17 +139,4 @@ The envelope a capped template read returns:
   "suppression_present": true,
   "disclosure_policy_hash": "sha256:4f1c…"
 }
-```
-
-The release order:
-
-```mermaid
-flowchart LR
-  A[contributing units] --> B[cap rows per unit<br/>clamp values]
-  B --> R[reserve per-unit budget<br/>one transaction]
-  R --> C[suppress<br/>noisy threshold when noised<br/>share ceiling]
-  C --> D[add calibrated noise]
-  D --> F[publish derived table]
-  C -. per-reason tallies .-> G[(audit chain)]
-  R -. units and spend .-> G
 ```

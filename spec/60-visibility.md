@@ -28,7 +28,7 @@ flowchart LR
   AT --> REACH
   AT -- "watermark_at" --> STALE{"bound-staleness:<br/>lag within max_acl_staleness?"}
   VB --> STALE
-  STALE -- no --> DEG["VisibilityAccessStale<br/>or public_only"]
+  STALE -- no --> DEG["VisibilityAccessStale"]
   STALE -- yes --> SJ["semi-join compiled into<br/>the registered view"]
   REACH --> SJ
   SJ --> READ["read contract:<br/>statements · retrieval arms · templates"]
@@ -50,19 +50,6 @@ unsettled: What opens a resource whose access list could not be mirrored, who ma
 | --- | --- | --- |
 | `disclosure.sweep.ungapped-stream` | Advancing `watermark_at` from an event stream the mapping has not declared gap-detectable raises `VisibilityUngappedStream`. | A-disclosure |
 | `disclosure.sweep.orphan-grant` | A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set. | P5 |
-
-One grant under deny-outranks-allow, every instant an engine UTC instant:
-
-```mermaid
-stateDiagram-v2
-    [*] --> Granted: a sweep observes the allow
-    Granted --> Suppressed: tombstone lands at revoked_at
-    Suppressed --> Suppressed: incremental or webhook allow
-    Suppressed --> Suppressed: full-run allow at revoked_at exactly
-    Suppressed --> Granted: full-run allow strictly after revoked_at
-    Suppressed --> Retired: full run after revoked_at reads the resource without the grant
-    Retired --> [*]: tombstone removable
-```
 
 ## reach
 

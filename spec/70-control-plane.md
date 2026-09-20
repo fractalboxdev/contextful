@@ -13,10 +13,10 @@ owns:
 # Cadence, dispatch and the operator plane
 
 The control plane decides when work runs and where. It holds the schedule grammar and its
-trigger, the reconciler that turns an applied snapshot into an armed set, the scheduler's
-same-tick order, the bounded dispatch pool and its worker adapter, the operator's edit and
-apply path over the control document, and the region a data plane resides in. The published
-hostname and the read path's two hops belong to the topology contract.
+trigger, the reconciler that turns an applied snapshot into an armed set, the fire stage,
+the bounded dispatch pool and its worker adapter, the operator's edit and apply path over
+the control document, and the region a data plane resides in. The published hostname and
+the read path's two hops belong to the topology contract.
 
 The path from an operator's edit to a dispatched unit, and where it meets topology and the run path:
 
@@ -28,7 +28,7 @@ flowchart LR
   RC --> ARM["arm: armed set, one due-ness function"]
   JOBS["operator-local job blocks"] --> ARM
   TRG["trigger adapter: in-process or external"] --> ARM
-  ARM --> FI["fire: stage order, job_fire watermark"]
+  ARM --> FI["fire: job kind, target"]
   FI --> DI["dispatch: fire pool, exclusion keys"]
   DI --> RUN["run contract: durable orchestrator instance"]
   DI --> WK["worker target"]
@@ -51,11 +51,10 @@ Both trigger adapters reach one due-ness function:
 ```mermaid
 flowchart TD
   SCH["schedule string, UTC"] -- "unreadable" --> E1["ScheduleUnreadable, that entry alone"]
-  SCH -- "guardrails pass" --> SET["armed set"]
+  SCH -- "readable" --> SET["armed set"]
   IP["in-process adapter: tick every 500 ms"] --> DUE["one due-ness function"]
-  EXT["external adapter: platform cron, alarm or crontab"] --> WAKE["POST /schedule/run-due"]
-  WAKE --> Q["one evaluation enqueued on the scheduler task"]
-  Q --> DUE
+  EXT["external adapter: platform cron, alarm or crontab"] --> WAKE["wake over the HTTP face"]
+  WAKE --> DUE
   SET --> DUE
   DUE --> FIRE["fire due entries"]
   FIRE --> ANS["wake answer within 25 s: fired, failed, pending, next due"]
@@ -83,8 +82,6 @@ sequenceDiagram
     S-->>R: ControlPointerMalformed
   else unreadable, unparseable or 5xx
     S-->>R: ControlSnapshotUnreadable, armed set stays running
-  else version not above the armed version
-    S-->>R: no re-parse
   else newer version
     R->>S: fetch manifest@vN.toml
     R->>R: derive the scheduled set
@@ -229,14 +226,3 @@ The wake route's answer:
   "next_due": "<instant, RFC 3339 UTC>"
 }
 ```
-
-The golden next-five table the one schedule parser reproduces, from Mon 01 Jun 2026 00:00 UTC,
-counting instants strictly after it:
-
-| Expression | Next five instants (UTC) |
-| --- | --- |
-| `0 3 * * *` | Mon 01 Jun 03:00, Tue 02 Jun 03:00, Wed 03 Jun 03:00, Thu 04 Jun 03:00, Fri 05 Jun 03:00 |
-| `*/15 * * * *` | Mon 01 Jun 00:15, 00:30, 00:45, 01:00, 01:15 |
-| `30 4 * * 1-5` | Mon 01 Jun 04:30, Tue 02 Jun 04:30, Wed 03 Jun 04:30, Thu 04 Jun 04:30, Fri 05 Jun 04:30 |
-| `0 12 13 * 5` | Fri 05 Jun 12:00, Fri 12 Jun 12:00, Sat 13 Jun 12:00, Fri 19 Jun 12:00, Fri 26 Jun 12:00 |
-| `0 0 29 2 *` | Tue 29 Feb 2028, Sun 29 Feb 2032, Fri 29 Feb 2036, Wed 29 Feb 2040, Mon 29 Feb 2044, each 00:00 |

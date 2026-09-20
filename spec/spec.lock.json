@@ -2583,7 +2583,7 @@
       "statement": "An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 327
+      "line": 325
     },
     {
       "id": "store.probe.unproven",
@@ -2594,7 +2594,7 @@
       "statement": "Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 328
+      "line": 326
     },
     {
       "id": "store.merge.tombstone-owner",
@@ -2605,7 +2605,7 @@
       "statement": "A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 334
+      "line": 332
     },
     {
       "id": "store.merge.tombstone-ttl",
@@ -2616,7 +2616,7 @@
       "statement": "A tombstone leaves the manifest 30 d after its `deleted_at`.",
       "why": "—",
       "file": "spec/10-store.md",
-      "line": 335
+      "line": 333
     },
     {
       "id": "store.merge.retries",
@@ -2627,7 +2627,7 @@
       "statement": "`[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.",
       "why": "—",
       "file": "spec/10-store.md",
-      "line": 336
+      "line": 334
     },
     {
       "id": "store.merge.exhausted",
@@ -2638,7 +2638,7 @@
       "statement": "Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 337
+      "line": 335
     },
     {
       "id": "store.merge.cursor-recency",
@@ -2649,7 +2649,7 @@
       "statement": "Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 338
+      "line": 336
     },
     {
       "id": "store.lease.ttl",
@@ -2660,7 +2660,7 @@
       "statement": "A lease is granted for 10 min.",
       "why": "—",
       "file": "spec/10-store.md",
-      "line": 346
+      "line": 344
     },
     {
       "id": "store.lease.renewal",
@@ -2671,7 +2671,7 @@
       "statement": "A holder renews every 200 s by `If-Match` replace on the ETag it holds.",
       "why": "—",
       "file": "spec/10-store.md",
-      "line": 347
+      "line": 345
     },
     {
       "id": "store.lease.clock-skew",
@@ -2682,7 +2682,7 @@
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
       "why": "because correctness rests on the fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
-      "line": 348
+      "line": 346
     },
     {
       "id": "store.lease.held",
@@ -2693,7 +2693,7 @@
       "statement": "A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 349
+      "line": 347
     },
     {
       "id": "store.lease.stale-fence",
@@ -2704,7 +2704,7 @@
       "statement": "A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 350
+      "line": 348
     },
     {
       "id": "store.lease.not-held",
@@ -2715,7 +2715,7 @@
       "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 351
+      "line": 349
     },
     {
       "id": "store.lease.cursor-kind",
@@ -2726,7 +2726,7 @@
       "statement": "A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 352
+      "line": 350
     },
     {
       "id": "store.lease.local-node",
@@ -2737,7 +2737,7 @@
       "statement": "A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 353
+      "line": 351
     },
     {
       "id": "store.replicate.write-refused",
@@ -2748,7 +2748,7 @@
       "statement": "A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 370
+      "line": 368
     },
     {
       "id": "store.replicate.partial-parquet",
@@ -2759,7 +2759,7 @@
       "statement": "A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 371
+      "line": 369
     },
     {
       "id": "store.replicate.missing-index",
@@ -2770,7 +2770,7 @@
       "statement": "A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 372
+      "line": 370
     },
     {
       "id": "store.replicate.sensitive-refused",
@@ -2781,7 +2781,7 @@
       "statement": "A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 373
+      "line": 371
     },
     {
       "id": "read.register.connection-views",
@@ -3903,7 +3903,7 @@
       "statement": "An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 105
+      "line": 88
     },
     {
       "id": "read.recall.evidence-references",
@@ -3914,7 +3914,7 @@
       "statement": "A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 106
+      "line": 89
     },
     {
       "id": "read.resolve-entity.ambiguous-mention",
@@ -3925,7 +3925,7 @@
       "statement": "A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 129
+      "line": 107
     },
     {
       "id": "read.resolve-entity.edge-endpoint",
@@ -3936,7 +3936,7 @@
       "statement": "A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 130
+      "line": 108
     },
     {
       "id": "read.settle.registration",
@@ -3947,7 +3947,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 140
+      "line": 118
     },
     {
       "id": "read.settle.source-mismatch",
@@ -3958,7 +3958,7 @@
       "statement": "An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 141
+      "line": 119
     },
     {
       "id": "read.settle.settling-citation",
@@ -3969,7 +3969,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 142
+      "line": 120
     },
     {
       "id": "read.settle.grace-window",
@@ -3980,7 +3980,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "—",
       "file": "spec/21-memory.md",
-      "line": 143
+      "line": 121
     },
     {
       "id": "run.journal.step-output",
@@ -6796,7 +6796,7 @@
       "statement": "An address whose scheme is neither `http` nor `https` raises `DeriveSchemeUnsupported` before any socket opens.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 117
+      "line": 116
     },
     {
       "id": "run.fetch.address-literal",
@@ -6807,7 +6807,7 @@
       "statement": "A host written as an address literal raises `DeriveAddressLiteral`.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 118
+      "line": 117
     },
     {
       "id": "run.fetch.redirect-chain",
@@ -6818,7 +6818,7 @@
       "statement": "A redirect chain runs to at most 5 hops.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 119
+      "line": 118
     },
     {
       "id": "run.fetch.binding-key",
@@ -6829,7 +6829,7 @@
       "statement": "`env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key.",
       "why": "because a silently ignored key leaves an operator believing a fetch carries a credential or runs a process",
       "file": "spec/32-derive.md",
-      "line": 120
+      "line": 119
     },
     {
       "id": "run.fetch.document-prefix",
@@ -6840,7 +6840,7 @@
       "statement": "`max_document_bytes` bounds the scanned document prefix at 1 MiB by default, dropping the remainder.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 121
+      "line": 120
     },
     {
       "id": "run.fetch.probe-prefix",
@@ -6851,7 +6851,7 @@
       "statement": "`max_probe_bytes` bounds one picture range request at 64 KiB by default.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 122
+      "line": 121
     },
     {
       "id": "run.fetch.hop-timeout",
@@ -6862,7 +6862,7 @@
       "statement": "`request_timeout_secs` bounds one hop at 20 s by default.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 123
+      "line": 122
     },
     {
       "id": "run.fetch.retry-after-default",
@@ -6873,7 +6873,7 @@
       "statement": "A `429` without a usable `Retry-After` maps to `RateLimited` carrying 60 s.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 124
+      "line": 123
     },
     {
       "id": "run.fetch.charset",
@@ -6884,7 +6884,7 @@
       "statement": "A declared character set other than UTF-8 raises `DeriveCharsetUnsupported`, naming the value.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 125
+      "line": 124
     },
     {
       "id": "run.fetch.not-utf8",
@@ -6895,7 +6895,7 @@
       "statement": "A document declaring no character set and failing UTF-8 validation raises `DeriveBytesNotUtf8`; a character split at the byte bound is tolerated.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 126
+      "line": 125
     },
     {
       "id": "run.emit.failure-off-table",
@@ -6906,7 +6906,7 @@
       "statement": "Per-unit failure state recorded outside the output table raises `DeriveFailureOffTable`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 152
+      "line": 151
     },
     {
       "id": "run.emit.unit-status",
@@ -6917,7 +6917,7 @@
       "statement": "`unit_status` is `ok`, `empty` where the engine established nothing to derive, `unavailable` where it returned nothing and stated no reason, or `failed` on a typed error; any other value raises `DeriveUnitStatusUnknown`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 153
+      "line": 152
     },
     {
       "id": "run.emit.reserved-discriminator",
@@ -6928,7 +6928,7 @@
       "statement": "A derive table declaring a column named `kind` raises `DeriveReservedDiscriminator`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 154
+      "line": 153
     },
     {
       "id": "run.emit.settled-revived",
@@ -6939,7 +6939,7 @@
       "statement": "A settled unit re-entering the outstanding set raises `DeriveSettledUnitRevived`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 155
+      "line": 154
     },
     {
       "id": "run.emit.attempts",
@@ -6950,7 +6950,7 @@
       "statement": "`attempts` is the prior count plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 156
+      "line": 155
     },
     {
       "id": "run.emit.unredacted-error",
@@ -6961,7 +6961,7 @@
       "statement": "A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.",
       "why": "A-authority",
       "file": "spec/32-derive.md",
-      "line": 157
+      "line": 156
     },
     {
       "id": "run.emit.primary-key",
@@ -6972,7 +6972,7 @@
       "statement": "A derive output table without `primary_key` `[\"unit_ref\", \"cue_seq\"]` raises `DerivePrimaryKeyMissing`.",
       "why": "because a re-derived unit otherwise lands duplicate passages beside the originals",
       "file": "spec/32-derive.md",
-      "line": 158
+      "line": 157
     },
     {
       "id": "run.parse-cues.backward-cue",
@@ -6983,7 +6983,7 @@
       "statement": "A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.",
       "why": "P4",
       "file": "spec/32-derive.md",
-      "line": 170
+      "line": 169
     },
     {
       "id": "run.parse-cues.passage-chars",
@@ -6994,7 +6994,7 @@
       "statement": "A passage stays open while it holds fewer than 600 chars.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 171
+      "line": 170
     },
     {
       "id": "run.parse-cues.passage-span",
@@ -7005,7 +7005,7 @@
       "statement": "A passage stays open while it spans less than 60 s.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 172
+      "line": 171
     },
     {
       "id": "run.parse-cues.passage-bytes",
@@ -7016,7 +7016,7 @@
       "statement": "One passage's text holds at most 8 KiB.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 173
+      "line": 172
     },
     {
       "id": "run.parse-cues.passages-per-document",
@@ -7027,7 +7027,7 @@
       "statement": "One document yields at most 2000 rows of passages.",
       "why": "—",
       "file": "spec/32-derive.md",
-      "line": 174
+      "line": 173
     },
     {
       "id": "run.test-engine.unsupported-driver",
@@ -7038,7 +7038,7 @@
       "statement": "A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.",
       "why": "because the verb drives a transcriber over media, and a link engine takes no media",
       "file": "spec/32-derive.md",
-      "line": 180
+      "line": 179
     },
     {
       "id": "connector.export.authoring-path",
@@ -12065,7 +12065,7 @@
       "statement": "The closure walks the group graph with a visited set, ending any cycle, to a depth of `max_group_depth`, default 8 hops, and a breadth of 10000 nodes.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 71
+      "line": 58
     },
     {
       "id": "disclosure.reach.closure-overflow",
@@ -12076,7 +12076,7 @@
       "statement": "A closure reaching its depth or node bound raises `VisibilityClosureDepth` with the non-retryable HTTP status 422 and returns no set.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 72
+      "line": 59
     },
     {
       "id": "disclosure.reach.cache-capacity",
@@ -12087,7 +12087,7 @@
       "statement": "The reachable-set cache holds at most 100000 entries and evicts the least recently used.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 73
+      "line": 60
     },
     {
       "id": "disclosure.reach.degraded-uncached",
@@ -12098,7 +12098,7 @@
       "statement": "Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 74
+      "line": 61
     },
     {
       "id": "disclosure.bound-staleness.budget-grammar",
@@ -12109,7 +12109,7 @@
       "statement": "`max_acl_staleness` is a positive integer with one suffix from `s`, `m`, `h`, `d`. A compound form, a bare number or another suffix raises `VisibilityBudgetMalformed`, naming the table and the text read.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 97
+      "line": 84
     },
     {
       "id": "disclosure.bound-staleness.access-stale",
@@ -12120,7 +12120,7 @@
       "statement": "A read raises `VisibilityAccessStale` (HTTP 503, carrying source, lag, budget and last observation) when a touched table's source lag exceeds its budget, the source has no completed full run, or the public-status watermark is past budget.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 98
+      "line": 85
     },
     {
       "id": "disclosure.bound-staleness.budget-below-cadence",
@@ -12131,7 +12131,7 @@
       "statement": "A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 99
+      "line": 86
     },
     {
       "id": "disclosure.declare-fidelity.family-bound",
@@ -12142,7 +12142,7 @@
       "statement": "A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound` and the table does not load.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 105
+      "line": 92
     },
     {
       "id": "disclosure.declare-fidelity.family-undeclared",
@@ -12153,7 +12153,7 @@
       "statement": "A mapping landing a table without naming its `family` raises `VisibilityFamilyUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 106
+      "line": 93
     },
     {
       "id": "disclosure.declare-fidelity.federated-registered",
@@ -12164,7 +12164,7 @@
       "statement": "Registering a `federated` table on a read face raises `VisibilityFederatedRegistered`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 107
+      "line": 94
     },
     {
       "id": "disclosure.declare-fidelity.federated-cache",
@@ -12175,7 +12175,7 @@
       "statement": "Retaining a federated result under a key omitting the subject raises `VisibilityFederatedCacheShared`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 108
+      "line": 95
     },
     {
       "id": "disclosure.declare-fidelity.computed-inputs",
@@ -12186,7 +12186,7 @@
       "statement": "A source that computes access with a sharing engine is queried live. A mapping projecting that engine's inputs into `access_grants` raises `VisibilityComputedInputsMirrored`, naming the source.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 109
+      "line": 96
     },
     {
       "id": "disclosure.declare-fidelity.roster-from-payload",
@@ -12197,7 +12197,7 @@
       "statement": "A mapping deriving grants from a people list inside content — attendees, invitees, recipients, contacts — rather than from the source's permission endpoint raises `VisibilityRosterFromPayload`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 110
+      "line": 97
     },
     {
       "id": "disclosure.pack.mapping-absent",
@@ -12208,7 +12208,7 @@
       "statement": "A pack landing a table with neither an access mapping nor `excluded` raises `VisibilityMappingAbsent` at diagnose, naming the pack and the table.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 118
+      "line": 105
     },
     {
       "id": "disclosure.pack.asserts-access",
@@ -12219,7 +12219,7 @@
       "statement": "An access-shaped key the mapping schema does not define raises `VisibilityPackAssertsAccess` by name. Fields outside the mapping are fetch inputs and reach no authorization decision.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 119
+      "line": 106
     },
     {
       "id": "disclosure.pack.any-of-allowlist",
@@ -12230,7 +12230,7 @@
       "statement": "An allowlist evaluated as any-of raises `VisibilityAllowlistAnyOf` at load.",
       "why": "P1",
       "file": "spec/60-visibility.md",
-      "line": 120
+      "line": 107
     },
     {
       "id": "disclosure.pack.unsupported-coarse",
@@ -12241,7 +12241,7 @@
       "statement": "Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 121
+      "line": 108
     },
     {
       "id": "disclosure.set-mode.offline-diagnostic",
@@ -12252,7 +12252,7 @@
       "statement": "The single-operator diagnostic reads the manifest and each published model's statement text from local disk and issues 0 requests to the object store.",
       "why": "",
       "file": "spec/61-disclosure.md",
-      "line": 40
+      "line": 39
     },
     {
       "id": "disclosure.set-mode.policy-absent",
@@ -12263,7 +12263,7 @@
       "statement": "A published aggregate-shaped model carrying neither a disclosure policy nor a recorded opt-out fails the diagnostic with `DisclosurePolicyAbsent`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 41
+      "line": 40
     },
     {
       "id": "disclosure.set-mode.model-unreadable",
@@ -12274,7 +12274,7 @@
       "statement": "A published model whose referenced statement text does not read raises `DisclosureModelUnreadable`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 42
+      "line": 41
     },
     {
       "id": "disclosure.set-mode.clean-room-preconditions",
@@ -12285,7 +12285,7 @@
       "statement": "A cross-owner store carries per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys; one missing, checked before any cross-prefix write, raises `DisclosureCleanRoomPreconditionUnmet`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 43
+      "line": 42
     },
     {
       "id": "disclosure.set-mode.hashed-join",
@@ -12296,7 +12296,7 @@
       "statement": "Two owners match on a key each hashes at write time under a per-pair pepper re-randomized per join; matched rows leave as an aggregate under a group-size floor. A static pepper raises `DisclosureStaticPepper`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 44
+      "line": 43
     },
     {
       "id": "disclosure.release.budget-reservation",
@@ -12307,7 +12307,7 @@
       "statement": "Before computing, a release reserves each contributing unit's declared per-run spend against its lifetime cap in one catalog transaction. A failed reservation raises `DisclosureUnitBudgetExhausted`, and the release publishes nothing.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 52
+      "line": 51
     },
     {
       "id": "disclosure.release.duplicate-grain",
@@ -12318,7 +12318,7 @@
       "statement": "A non-numeric, non-grain column rides the grouping, and one not constant within its group raises `DisclosureDuplicateGrain`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 53
+      "line": 52
     },
     {
       "id": "disclosure.release.group-key",
@@ -12329,7 +12329,7 @@
       "statement": "A group key not a subset of the permitted grouping columns raises `DisclosureGroupKeyNotPermitted`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 54
+      "line": 53
     },
     {
       "id": "disclosure.release.contributor-key",
@@ -12340,7 +12340,7 @@
       "statement": "A governed statement omitting the contributor key raises `DisclosureContributorKeyAbsent`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 55
+      "line": 54
     },
     {
       "id": "disclosure.release.forbidden-column",
@@ -12351,7 +12351,7 @@
       "statement": "A contract declaring a forbidden column, or a materialization producing one, raises `DisclosureForbiddenColumnPublished`. The check runs after the contributor key leaves the published columns.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 56
+      "line": 55
     },
     {
       "id": "disclosure.suppress.min-group-size",
@@ -12362,7 +12362,7 @@
       "statement": "`min_group_size` counts distinct contributors and is at least 2 subjects. A group under it is suppressed, and a smaller declared value raises `DisclosureMinGroupSizeBelowFloor`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 66
+      "line": 65
     },
     {
       "id": "disclosure.suppress.contributor-share",
@@ -12373,7 +12373,7 @@
       "statement": "`max_contributor_share` lies above 0 percent and at most 100 percent of a group's sign-insensitive metric mass; a value outside raises `DisclosureShareOutOfRange`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 67
+      "line": 66
     },
     {
       "id": "disclosure.suppress.dominance-unverifiable",
@@ -12384,7 +12384,7 @@
       "statement": "A group under a share constraint whose per-contributor masses are unavailable raises `DisclosureDominanceUnverifiable` and is suppressed.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 68
+      "line": 67
     },
     {
       "id": "disclosure.suppress.empty-policy",
@@ -12395,7 +12395,7 @@
       "statement": "A policy setting neither threshold raises `DisclosurePolicySuppressesNothing`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 69
+      "line": 68
     },
     {
       "id": "disclosure.suppress.grouping-allowlist",
@@ -12406,7 +12406,7 @@
       "statement": "An empty permitted-grouping list, or a permitted name that is not column-shaped, raises `DisclosureGroupingAllowlistEmpty`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 70
+      "line": 69
     },
     {
       "id": "disclosure.template.single-statement",
@@ -12417,7 +12417,7 @@
       "statement": "A declaration holding more than one statement raises `DisclosureTemplateMultiStatement`.",
       "why": "A-authority",
       "file": "spec/61-disclosure.md",
-      "line": 94
+      "line": 91
     },
     {
       "id": "disclosure.template.overfetch",
@@ -12428,7 +12428,7 @@
       "statement": "A capped result sets the envelope's truncation flag by reading exactly 1 rows past the effective ceiling.",
       "why": "",
       "file": "spec/61-disclosure.md",
-      "line": 95
+      "line": 92
     },
     {
       "id": "disclosure.bound-cohort.cohort-widening",
@@ -12439,7 +12439,7 @@
       "statement": "A read recovering an under-floor group by merging it into a coarser key raises `DisclosureCohortWidening`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 101
+      "line": 98
     },
     {
       "id": "disclosure.bound-cohort.per-individual-row",
@@ -12450,7 +12450,7 @@
       "statement": "Reading a per-individual row from a cohort table without an explicit grant on the reader's token raises `DisclosurePerIndividualUngranted`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 102
+      "line": 99
     },
     {
       "id": "disclosure.bound-cohort.singleton-cohort",
@@ -12461,7 +12461,7 @@
       "statement": "A cohort key whose grain resolves to one person raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 103
+      "line": 100
     },
     {
       "id": "disclosure.record.segment",
@@ -12769,7 +12769,7 @@
       "statement": "`poll` takes a schedule string, and a `[control]` block declaring none polls every 30 s.",
       "why": "—",
       "file": "spec/70-control-plane.md",
-      "line": 68
+      "line": 67
     },
     {
       "id": "surface.reconcile.pointer-malformed",
@@ -12780,7 +12780,7 @@
       "statement": "A pointer body that is not wholly a version raises `ControlPointerMalformed`.",
       "why": "because an integer read out of leading bytes arms a version nobody applied",
       "file": "spec/70-control-plane.md",
-      "line": 69
+      "line": 68
     },
     {
       "id": "surface.reconcile.fail-static",
@@ -12791,7 +12791,7 @@
       "statement": "An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 70
+      "line": 69
     },
     {
       "id": "surface.reconcile.loopback-only",
@@ -12802,7 +12802,7 @@
       "statement": "A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 71
+      "line": 70
     },
     {
       "id": "surface.fire.job-kind-unknown",
@@ -12813,7 +12813,7 @@
       "statement": "A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 103
+      "line": 100
     },
     {
       "id": "surface.fire.target-unbound",
@@ -12824,7 +12824,7 @@
       "statement": "A `fold` target naming no produced table, or a `build` target naming no declared model, raises `JobTargetUnbound` at validation.",
       "why": "P1",
       "file": "spec/70-control-plane.md",
-      "line": 104
+      "line": 101
     },
     {
       "id": "surface.fire.cycle-control-source",
@@ -12835,7 +12835,7 @@
       "statement": "A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 105
+      "line": 102
     },
     {
       "id": "surface.dispatch.not-a-head",
@@ -12846,7 +12846,7 @@
       "statement": "Where entries are landing steps of one dependent run, the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 111
+      "line": 108
     },
     {
       "id": "surface.dispatch.step-result",
@@ -12857,7 +12857,7 @@
       "statement": "A checkpointed step returns a pointer, an object-store key or a catalog row id, under a 1 MiB step-result cap.",
       "why": "—",
       "file": "spec/70-control-plane.md",
-      "line": 112
+      "line": 109
     },
     {
       "id": "surface.dispatch.in-band-tool-error",
@@ -12868,7 +12868,7 @@
       "statement": "A step driving the engine over the tool protocol judges the tool result, not transport status: a `200` carrying a protocol error or a result flagged `isError` raises `StepToolError`.",
       "why": "P2",
       "file": "spec/70-control-plane.md",
-      "line": 113
+      "line": 110
     },
     {
       "id": "surface.dispatch.callback-skew",
@@ -12879,7 +12879,7 @@
       "statement": "The relay accepts a callback timestamp within 300 s of its own clock.",
       "why": "—",
       "file": "spec/70-control-plane.md",
-      "line": 114
+      "line": 111
     },
     {
       "id": "surface.dispatch.callback-rejected",
@@ -12890,7 +12890,7 @@
       "statement": "A callback whose attempt is below the step's current attempt, or whose timestamp falls outside {{surface.dispatch.callback-skew}}, raises `DispatchCallbackRejected` and changes no step.",
       "why": "because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely",
       "file": "spec/70-control-plane.md",
-      "line": 115
+      "line": 112
     },
     {
       "id": "surface.dispatch.heartbeat-beat",
@@ -12901,7 +12901,7 @@
       "statement": "A worker heartbeat runs every 15 s.",
       "why": "—",
       "file": "spec/70-control-plane.md",
-      "line": 116
+      "line": 113
     },
     {
       "id": "surface.dispatch.heartbeat-lapse",
@@ -12912,7 +12912,7 @@
       "statement": "A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.",
       "why": "—",
       "file": "spec/70-control-plane.md",
-      "line": 117
+      "line": 114
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -12923,7 +12923,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 150
+      "line": 147
     },
     {
       "id": "surface.edit.connector-upload",
@@ -12934,7 +12934,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 151
+      "line": 148
     },
     {
       "id": "surface.apply.version-race",
@@ -12945,7 +12945,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 157
+      "line": 154
     },
     {
       "id": "surface.apply.validation",
@@ -12956,7 +12956,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 158
+      "line": 155
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -12967,7 +12967,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 159
+      "line": 156
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -12978,7 +12978,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 160
+      "line": 157
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -12989,7 +12989,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 161
+      "line": 158
     },
     {
       "id": "surface.reside.region-entries",
@@ -13000,7 +13000,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "—",
       "file": "spec/70-control-plane.md",
-      "line": 195
+      "line": 192
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -13011,7 +13011,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 196
+      "line": 193
     },
     {
       "id": "surface.register-store.registry-unreadable",
@@ -13308,7 +13308,7 @@
       "statement": "The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 206
+      "line": 205
     },
     {
       "id": "surface.brief.topic-tier",
@@ -13319,7 +13319,7 @@
       "statement": "The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject.",
       "why": "—",
       "file": "spec/71-console.md",
-      "line": 207
+      "line": 206
     },
     {
       "id": "surface.brief.card-subjects",
@@ -13330,7 +13330,7 @@
       "statement": "A card carries at most 3 subjects.",
       "why": "—",
       "file": "spec/71-console.md",
-      "line": 208
+      "line": 207
     },
     {
       "id": "surface.brief.articles-per-subject",
@@ -13341,7 +13341,7 @@
       "statement": "A subject carries at most 3 entries of matched article.",
       "why": "—",
       "file": "spec/71-console.md",
-      "line": 209
+      "line": 208
     },
     {
       "id": "surface.brief.catchup-window",
@@ -13352,7 +13352,7 @@
       "statement": "The backend caps the requested window at 7 d.",
       "why": "—",
       "file": "spec/71-console.md",
-      "line": 210
+      "line": 209
     },
     {
       "id": "surface.publish-answer.share-affordance",
@@ -13363,7 +13363,7 @@
       "statement": "A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 216
+      "line": 215
     },
     {
       "id": "surface.publish-answer.askerless-audience",
@@ -13374,7 +13374,7 @@
       "statement": "A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 217
+      "line": 216
     },
     {
       "id": "assurance.model.package",

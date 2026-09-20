@@ -22,10 +22,10 @@ Memory's operations over the five tables, and where they meet the run path, the 
 flowchart LR
   ROWS["run contract: rows landed since the pass cursor"] --> SYN["synthesize: Extract, Resolve, Consolidate"]
   SYN <--> RES["resolve-entity: entity_id, place_id, edges"]
-  SYN --> REV["revise: supersession, tier precedence"]
+  SYN --> REV["revise"]
   DW["direct write: claims alone"] --> REV
   REV --> COMMIT["run contract: post-run commit"]
-  DECL["declare: shapes, relation types, cardinality"] --> TBL
+  DECL["declare: shapes, relation types"] --> TBL
   COMMIT --> TBL["memory_episodes, memory_facts, memory_entities, memory_edges, memory_preferences"]
   ERASE["disclosure contract: erase"] -- "tombstones" --> TBL
   TBL --> REC["recall"]
@@ -54,7 +54,7 @@ One synthesis pass and its dead-letter exits:
 
 ```mermaid
 flowchart TD
-  CUR["pass cursor"] --> EX["Extract: model at temperature 0"]
+  CUR["pass cursor"] --> EX["Extract"]
   EX --> VAL{"valid against the output schema"}
   VAL -- "no, attempts left of 3" --> EX
   VAL -- "no, 3 attempts spent" --> DL1["dead-letter: MemoryExtractExhausted, cursor unadvanced"]
@@ -62,7 +62,7 @@ flowchart TD
   RS -- "two identities, no separating key" --> DL2["dead-letter: MemoryEntityAmbiguous"]
   RS -- "edge endpoint unresolved" --> DL3["dead-letter: MemoryEdgeEndpointUnresolved"]
   RS -- "rel_type outside the union" --> DL4["dead-letter: MemoryUndeclaredRelation"]
-  RS --> CO["Consolidate: upsert on dedup_key, support, tier"]
+  RS --> CO["Consolidate"]
   CO --> RV["revise"]
   RV --> CM["write path post-run commit"]
 ```
@@ -77,23 +77,6 @@ unsettled: How is a model-emitted confidence rescaled into a comparable number, 
 | --- | --- | --- |
 | `read.revise.direct-write` | The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert | A-read |
 
-How a landing claim resolves against the live claims on its line:
-
-```mermaid
-flowchart TD
-  C["candidate claim"] --> K{"dedup_key exists"}
-  K -- "yes" --> UP["upsert, no revision"]
-  K -- "no" --> CARD{"predicate cardinality"}
-  CARD -- "functional" --> LF["line: subject_id, predicate, scope"]
-  CARD -- "multi" --> LM["line: subject_id, predicate, object, scope"]
-  LF --> VL{"same validity line: both open, or same start"}
-  LM --> VL
-  VL -- "no" --> CO["both coexist"]
-  VL -- "yes" --> TP{"standing against the live prior"}
-  TP -- "equal or higher" --> RET["prior retired: superseded_by, validity end, confidence x 0.5 on a changed object"]
-  TP -- "lower" --> BND["lands with a bounded validity end"]
-```
-
 unsettled: How are two unscoped writers colliding on one subject, predicate and scope surfaced to a human, rather than the later one landing not live? owner: memory affects: read.revise
 
 unsettled: What decay half-life applies to a claim nothing reinforces, and is fading or hard retention the default? owner: memory affects: read.revise
@@ -105,19 +88,14 @@ unsettled: What decay half-life applies to a claim nothing reinforces, and is fa
 | `read.recall.evidence-unresolved` | An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`. | A-read |
 | `read.recall.evidence-references` | A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`. | A-read |
 
-The filters a claim passes on its way to a grounded turn:
+The evidence check a claim passes on its way to a grounded turn:
 
 ```mermaid
 flowchart TD
-  M["memory tables at present time"] --> FO["latest row per dedup_key, superseded rows dropped"]
-  FO --> TS["tombstoned and cascade-marked rows dropped"]
-  TS --> SC["scope filter, exact scope"]
-  SC --> ZN["inference-zone check per row"]
-  ZN --> EV{"every evidence row reads through the caller's session"}
+  M["memory tables"] --> EV{"every evidence row reads through the caller's session"}
   EV -- "over 256 references" --> E1["MemoryEvidenceOverflow"]
   EV -- "unreadable, masked, unknown or malformed" --> E2["MemoryEvidenceUnresolved"]
-  EV -- "yes" --> OR["order: tier, then confidence x (index + 1) / total"]
-  OR --> INJ["explicit block in the grounded turn"]
+  EV -- "yes" --> INJ["explicit block in the grounded turn"]
 ```
 
 unsettled: What supplies a read-side usage ledger, so retention can ask whether a claim was ever recalled rather than whether something cited it? owner: memory affects: read.recall
@@ -142,27 +120,25 @@ unsettled: Does an ownership answer over an artifact with several attached princ
 | `read.settle.settling-citation` | An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view. | A-read |
 | `read.settle.grace-window` | The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s. | — |
 
-Registration, observation and the two label views:
+Registration, observation and the label view:
 
 ```mermaid
 flowchart LR
   REG["registration: one form, one source"] -- "invalid" --> E1["OutcomeRegistrationInvalid"]
   REG --> P["predictions"]
-  CMP["metric comparator, evaluated outside the engine"] --> OBS
   OBS["observation"] -- "source differs" --> E2["OutcomeSourceMismatch"]
   OBS -- "adjudicator or manual, no citation" --> E3["OutcomeCitationMissing"]
   OBS --> O["outcomes"]
   P --> J["join on prediction id, grace 86400 s"]
   O --> J
-  J -- "scored predicate" --> L["outcome_labels"]
-  J -- "negated predicate" --> U["outcome_labels_unresolved"]
+  J --> L["outcome_labels"]
 ```
 
 unsettled: At what grain are calibration and confidence reported to a consumer, and which figures derive from the scored view? owner: memory affects: read.settle
 
 ## Shapes
 
-A declaration naming a shape and its predicate cardinality:
+A declaration naming a shape and its declared relation types:
 
 ```toml
 [[table]]
@@ -170,11 +146,10 @@ name  = "team_memory"
 shape = "memory_facts"
 
 [relation]
-declared   = ["reports_to", "owns_service"]
-functional = ["reports_to"]
+declared = ["reports_to", "owns_service"]
 ```
 
-The scored label view:
+The label view:
 
 ```sql
 CREATE VIEW outcome_labels AS

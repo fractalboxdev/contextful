@@ -186,8 +186,7 @@ flowchart TD
   G --> M["model"]
   I --> TP["trace panel"]
   CV["view from a client or the model"] --> E1["ConsoleViewNotServerBuilt"]
-  V --> PD["provenance columns drop"]
-  PD --> H{"view hint binds only returned columns"}
+  V --> H{"view hint binds only returned columns"}
   H -- "yes" --> HC["hinted component"]
   H -- "no" --> INF["inference: metric, line over 3 distinct days, else table"]
   HC --> VAL{"valid against the props schema"}
@@ -252,20 +251,6 @@ A tool return, split three ways:
   "internals": { "tool": "context.query", "rows": 3, "elapsed_ms": 41, "redactions": 0 }
 }
 ```
-
-The caps the generated props schema carries:
-
-| Property | Cap |
-| --- | --- |
-| rows per view | 50 |
-| columns per view | 12 |
-| characters per cell | 300 |
-| characters per axis label | 40 |
-| series per view | 6 |
-| points across series | 200 |
-| characters in a hint unit | 12 |
-| result rows the resolver scans | 1000 |
-| earlier widgets behind the disclosure | 2 |
 
 A table's view hint:
 

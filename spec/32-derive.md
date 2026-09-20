@@ -96,7 +96,7 @@ sequenceDiagram
   participant T as derive tier
   participant P as preprocess step
   participant E as engine step
-  T->>T: scratch directory, cleared environment + allowlist
+  T->>T: cleared environment + allowlist
   loop each preprocess step whose when condition holds
     T->>P: argument array, no shell, own process group
     P-->>T: exit 0 and an output file
@@ -105,7 +105,6 @@ sequenceDiagram
   E-->>T: cues as vtt, srt or contextful-json
   Note over T,E: non-zero exit raises DeriveStepExit · no output file DeriveStepProducedNothing · past 8 MiB DeriveOutputCap
   Note over T,E: past 1800 s DeriveStepTimeout · deadline or run stop signals the group, and the unit settles after the reap
-  T->>T: remove the scratch directory
 ```
 
 unsettled: Does a vendor engine reached over HTTP need a deadline of its own, separate from the chain deadline? owner: derive affects: run.exec
@@ -214,8 +213,7 @@ One tick:
 
 ```mermaid
 flowchart TD
-  A["scan parent table, newest-wins"] --> B["eligibility: select, require_absent"]
-  B --> C["anti-join own output, markers included"]
+  A["scan the parent table"] --> C["anti-join own output, markers included"]
   C --> D["truncate to max_rows_per_run"]
   D --> E{"per unit"}
   E --> F["engine call"]
