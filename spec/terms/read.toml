@@ -1,0 +1,56 @@
+# Registry fragment — contract `read`, files spec/20-read.md and spec/21-memory.md.
+
+[operation]
+register       = { gloss = "The relations, tools and templates one connection sees, and the engine executing against them." }
+guard          = { gloss = "Admission of caller-written SQL: what parses, what a base relation names, whose text runs raw." }
+respond        = { gloss = "The one response projection: cell encoding, the row ceiling, truncation, counts and operator metadata." }
+retrieve       = { gloss = "Candidate generation for a ranked read: content tokens, the relevance floor, per-table arms, dedup, snippet." }
+rank           = { gloss = "Ordering of a candidate set: the three legs, their fusion, the question's timeframe, reported confidence." }
+cache          = { gloss = "Locality of the bytes a read touches, and reuse of a result across requests." }
+resolve-pin    = { gloss = "Resolution of a named published-model build at read time, and the state each response echoes." }
+embed          = { gloss = "The embedding port and its default, the model identifier beside each vector, the linked-backend identity a handshake reports, and refusals on an absent backend." }
+declare        = { gloss = "The five memory table shapes, their canonical columns, tier and scope, and the relation vocabulary with its cardinality." }
+synthesize     = { gloss = "Extract, Resolve and Consolidate; the dedup key, evidence support, the audit record and coverage gaps." }
+revise         = { gloss = "Supersession within one validity line, confidence decay, the direct write and its anchor, expiry, retention, promotion." }
+recall         = { gloss = "Serving live memory at present time: the two clocks, tier-first ordering, the scope filter, the tombstone filter, the evidence gate." }
+resolve-entity = { gloss = "Mention-to-entity matching, aliases, the knowledge card, place identity and nearness, edges, and ownership answers." }
+settle         = { gloss = "Predictions, observations, the registration, the citation a verdict owes, and the label views." }
+
+[error]
+FilePreviewNotATable          = { clause = "read.register.file-preview-target", gloss = "A previewed path resolved to no table." }
+LedgerNotTenantScoped         = { clause = "read.register.scoped-ledger", gloss = "A tenant-scoped token named the request-ledger child relation." }
+StatementNotReadOnly          = { clause = "read.guard.single-read-only-statement", gloss = "Admitted text did not parse to exactly one read-only SELECT." }
+TableFunctionRefused          = { clause = "read.guard.table-function", gloss = "A table function or a schema-qualified catalog reach appeared in caller text." }
+TemplateNamesForeignRelation  = { clause = "read.guard.template-relation-shape", gloss = "A template named a non-store relation or collided with a built-in tool prefix." }
+TemplateArgumentRejected      = { clause = "read.guard.template-binding", gloss = "A template argument was missing, unknown or mistyped." }
+FilterBudgetExceeded          = { clause = "read.retrieve.filter-budget-refusal", gloss = "A ranked read's filter exceeded its value, condition or byte budget." }
+PinnedBuildUnavailable        = { clause = "read.resolve-pin.unknown-build", gloss = "A pinned build identifier is unknown or collected." }
+RequiredFaceAbsent            = { clause = "read.embed.required-face", gloss = "A client required a face this binary did not link." }
+ReadBackendAbsent             = { clause = "read.embed.absent-read-backend", gloss = "A read tool was called on a binary without the embedded SQL engine." }
+MemoryShapeColumnMissing      = { clause = "read.declare.canonical-column", gloss = "A table naming a memory shape omits a canonical column." }
+MemoryUndeclaredRelation      = { clause = "read.declare.undeclared-relation", gloss = "A candidate edge carries an undeclared relation type." }
+MemoryExtractExhausted        = { clause = "read.synthesize.dead-letter", gloss = "An extract batch exhausted its attempts and was dead-lettered." }
+MemoryDirectWriteShapeRefused = { clause = "read.revise.direct-write", gloss = "A direct write targeted a memory shape other than claims." }
+MemoryEvidenceUnresolved      = { clause = "read.recall.evidence-unresolved", gloss = "A claim's evidence does not resolve through the caller's session." }
+MemoryEvidenceOverflow        = { clause = "read.recall.evidence-references", gloss = "A claim names more evidence references than the bound." }
+MemoryEntityAmbiguous         = { clause = "read.resolve-entity.ambiguous-mention", gloss = "A mention resolves onto two identities with no separating key." }
+MemoryEdgeEndpointUnresolved  = { clause = "read.resolve-entity.edge-endpoint", gloss = "A candidate edge endpoint resolves to no identity." }
+OutcomeRegistrationInvalid    = { clause = "read.settle.registration", gloss = "A prediction registration breaks the one-form, one-source, comparator-iff-metric rule." }
+OutcomeSourceMismatch         = { clause = "read.settle.source-mismatch", gloss = "An observation's verdict carries no source or a source other than the registration's." }
+OutcomeCitationMissing        = { clause = "read.settle.settling-citation", gloss = "A judgment verdict carries no http or https settling citation." }
+
+[limit]
+read-row-ceiling-overfetch   = { clause = "read.respond.row-ceiling", value = 1, unit = "rows", basis = "chosen", gloss = "Rows fetched past the row ceiling, whose presence sets `truncated`." }
+read-token-length-floor      = { clause = "read.retrieve.token-length-floor", value = 2, unit = "chars", basis = "chosen", gloss = "Shortest ASCII run kept in the content-token set." }
+read-content-token-cap       = { clause = "read.retrieve.token-cap", value = 12, unit = "tokens", basis = "chosen", gloss = "Largest content-token set from one query." }
+read-plural-suffix-floor     = { clause = "read.retrieve.plural-suffix-floor", value = 4, unit = "chars", basis = "chosen", gloss = "Token length below which no plural suffix is matched." }
+read-candidate-window-floor  = { clause = "read.retrieve.candidate-window", value = 200, unit = "rows", basis = "chosen", gloss = "Smallest candidate window of a ranked read." }
+read-filter-values           = { clause = "read.retrieve.filter-budget", value = 256, unit = "entries", basis = "chosen", gloss = "Values in one filter membership list." }
+read-sidecar-probe-floor     = { clause = "read.retrieve.sidecar-oversampling", value = 64, unit = "rows", basis = "chosen", gloss = "Smallest candidate count one sidecar probe requests." }
+read-sidecar-size-cap        = { clause = "read.retrieve.sidecar-size-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Stored-vector size past which a sidecar stays unloaded." }
+read-window-anchor-tolerance = { clause = "read.rank.window-anchor-tolerance", value = 24, unit = "h", basis = "chosen", gloss = "How far past the anchor a publication instant still counts in-window." }
+read-lexical-index-cache     = { clause = "read.rank.lexical-index-cache", value = 64, unit = "entries", basis = "chosen", gloss = "FIFO capacity of cached full-text indexes." }
+read-cold-start-ceiling      = { clause = "read.cache.cold-start", value = 8, unit = "s", basis = "chosen", gloss = "Readiness interval of a cold retrieval container; unmeasured." }
+memory-extract-attempts      = { clause = "read.synthesize.extract-attempts", value = 3, unit = "attempts", basis = "chosen", gloss = "Extract attempts per batch, feedback included." }
+memory-evidence-references   = { clause = "read.recall.evidence-references", value = 256, unit = "entries", basis = "chosen", gloss = "Evidence references one claim names before recall suppresses it." }
+outcome-grace-window         = { clause = "read.settle.grace-window", value = 86400, unit = "s", basis = "chosen", gloss = "Inclusive window past a deadline within which an observation is scored." }

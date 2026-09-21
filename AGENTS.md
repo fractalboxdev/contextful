@@ -6,39 +6,53 @@ file before editing anything under `spec/`.
 
 ## The corpus rules, in short
 
-- A normative sentence is one clause row addressed `<contract>.<operation>.<kind>.<subject>`.
-  Three of those four coordinates are looked up in [`spec/terms/`](./spec/terms/),
-  so where a sentence belongs is a lookup rather than a judgment.
-- A fact has one home. The only second appearance is `{{<clause id>}}`, which the
-  renderer inlines — the copy is generated, so it cannot drift.
-- Rationale lives under [`spec/decisions/`](./spec/decisions/), one record per
-  decision, and nowhere else. A contract file states behavior and names no
-  alternative.
+- A normative sentence is one clause row, at most 40 words, addressed
+  `<contract>.<operation>.<subject>`. The contract and operation are registered in
+  [`spec/terms/`](./spec/terms/); the kind — refusal, limit, behavior — is computed.
+- A fact has one home. The only second appearance is `{{<clause id>}}`. An error
+  identifier and a numeric bound each belong to exactly one clause.
+- A clause's Why cell carries a record id or a `because` of at most 30 words.
+  Records under [`spec/adr/`](./spec/adr/) — eight principles (`P1`–`P8`, at most
+  400 words each) and one ADR per contract (`A-store`, `A-run`, …), one section of at
+  most 250 words per decision — hold the options and costs.
 - No spec file says whether something is built, and none carries a date. Build
   state is computed into [`spec/status.md`](./spec/status.md) from
   [`spec/pins.toml`](./spec/pins.toml).
-- An unknown is an inline `unsettled:` line in the section it affects, carrying a
-  question, an owner and the operation it affects. There is no appendix for them.
+- An unknown is an inline `unsettled:` line in the section it affects.
+- Literature and practice live in [`references/`](./references/), which points into
+  the spec by operation. The spec never cites.
 
-`contextful spec lint` implements every rule; the gate and a local run invoke the
+`contextful-spec lint` implements every rule; the gate and a local run invoke the
 identical command. A rule the checker cannot enforce is not a rule.
+
+```sh
+cargo run -q -p contextful-spec -- lint      # every rule
+cargo run -q -p contextful-spec -- state     # regenerate spec/status.md
+cargo run -q -p contextful-spec -- extract   # regenerate spec/spec.lock.json
+cargo run -q -p contextful-spec -- slice <target> [--json]
+```
+
+To hand one piece of work to an agent, give it `contextful-spec slice <target>`, where the
+target is `<contract>.<operation>`, `<contract>.*` or a milestone number. The pack holds the
+target's clause rows, every row their `{{id}}` pointers reach, the records their Why cells
+cite, the errors and bounds they own, and a milestone's `Reach:` and `Acceptance:` lines.
 
 ## Adding to the corpus
 
 | Change | What it takes |
 | --- | --- |
-| A new fact in an existing subject | One clause row under the owning operation, plus a registry entry for any new backticked token, unit or error identifier |
-| A new subject area | A contract entry in [`spec/terms/contract.toml`](./spec/terms/contract.toml) with its file list and title, then the file itself in the standard anatomy |
-| A new operation | A registry entry plus a decision record citing it — minting a verb is recorded, never silent |
-| A refusal whose direction is a choice | The clause, plus the record its `decided-by` cell names |
-| Splitting a file that got long | Add a second path to the contract's file list and move an `owns` entry. No clause id changes |
+| A new fact | One clause row under the owning operation; a fragment entry for a new error or bound |
+| An example | A `- `<clause id>`: WHEN …, THEN …` item under the operation's `#### Scenarios`, or a `tests/fixtures/` path |
+| A refusal | The clause, its error in the fragment, and a Why: a `because` cell, or a record id when two or more clauses share the decision |
+| A new operation | A fragment entry, a `## <operation>` section, and its name in the file's `owns` |
+| A new subject area | A contract entry in [`spec/terms/contract.toml`](./spec/terms/contract.toml), a fragment, then the file in the standard anatomy |
+| Splitting a long file | Add a path to the contract's file list and move an `owns` entry. No clause id changes |
 
 ## Engineering conventions
 
-[`spec/61-engineering.md`](./spec/61-engineering.md) is the sole home of how we
+[`spec/81-engineering.md`](./spec/81-engineering.md) is the sole home of how we
 build: one home per capability, adapters rather than restatements, typed
-automation over compiled binaries, test placement, and the gate's resource
-budget.
+automation, test placement, and the gate's resource budget.
 
 ## Writing
 

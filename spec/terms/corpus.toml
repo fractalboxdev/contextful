@@ -1,0 +1,45 @@
+# Registry fragment — contract `corpus`, file spec/00-corpus.md.
+
+[operation]
+address   = { gloss = "The three segments of a clause id and what makes each legal." }
+anatomy   = { gloss = "The section order of a contract file, its clause tables, and the computed kind of a clause." }
+registry  = { gloss = "Where a spelling is registered, the single owner of an error or a bound, and the collision test." }
+reference = { gloss = "The one legal way a statement reaches a fact another clause owns, and the ban on restatement and literature." }
+rationale = { gloss = "Where an argument lives: the Why cell, the record and its anatomy, and the words a contract file cannot carry." }
+state     = { gloss = "Pins, verdicts, the coverage floor, the roadmap's operation claims and each milestone's acceptance test." }
+targets   = { gloss = "Per-provider deployment target files, the roles each shape fills, and the page rendered from them." }
+render    = { gloss = "The generated files, and the vocabulary no authored file carries." }
+
+[error]
+SpecMalformedId        = { clause = "corpus.address.malformed-id", gloss = "A clause id with the wrong shape, contract or operation." }
+SpecDuplicateId        = { clause = "corpus.address.duplicate-id", gloss = "A clause id in two rows." }
+SpecScenario           = { clause = "corpus.anatomy.bad-scenario", gloss = "A scenario naming a foreign clause, or holding no WHEN/THEN sentence or fixture path." }
+SpecTargetIncomplete   = { clause = "corpus.targets.incomplete", gloss = "A target shape leaving a role unfilled, or a target file without exactly one default shape." }
+SpecTargetCapUnrecorded = { clause = "corpus.targets.cap-unrecorded", gloss = "A capped target shape not recording its backfill and component-connector exclusions." }
+SpecTargetFunctionProfile = { clause = "corpus.targets.function-profile", gloss = "A function-class target shape listing a profile other than edge." }
+SpecAnatomy            = { clause = "corpus.anatomy.bad-anatomy", gloss = "A contract file out of its section order, title or size." }
+SpecRegistry           = { clause = "corpus.registry.unregistered", gloss = "A spelling, error or bound out of step with its fragment." }
+SpecDanglingReference  = { clause = "corpus.reference.dangling", gloss = "A pointer to no clause." }
+SpecExternalLink       = { clause = "corpus.reference.no-literature", gloss = "A link out of the spec, or into references/." }
+SpecUnsettled          = { clause = "corpus.rationale.unsettled-line", gloss = "A malformed unknown, or an appendix heading." }
+SpecRecord             = { clause = "corpus.rationale.orphan-record", gloss = "An uncited or missing record, a bad Why cell, or a record out of anatomy." }
+SpecCoverageRegression = { clause = "corpus.state.coverage-floor", gloss = "Fewer performed pins than the floor." }
+SpecBrokenPin          = { clause = "corpus.state.bad-pin", gloss = "A pin that names no clause, mismatches its kind, does not resolve, or competes with a second test." }
+SpecStalePin           = { clause = "corpus.state.stale-pin", gloss = "A tag recording a statement revision the clause no longer carries." }
+SpecRoadmap            = { clause = "corpus.state.roadmap", gloss = "A roadmap name resolving to nothing, claimed twice, or a milestone missing its reach or acceptance line." }
+SpecAcceptanceMissing  = { clause = "corpus.state.acceptance-first", gloss = "A milestone with a pinned clause and no acceptance test." }
+SpecDeferredBehavior   = { clause = "corpus.state.deferred-depth", gloss = "A behavior clause in a milestone marked `Depth: operation`." }
+SpecStaleRender        = { clause = "corpus.render.generated", gloss = "A generated file differing from regeneration." }
+SpecDatedProse         = { clause = "corpus.render.dated-prose", gloss = "Build-state words or a date in authored text." }
+SpecCounterfactual     = { clause = "corpus.render.counterfactual", gloss = "Future or conditional mood in a contract file." }
+SpecBannedWord         = { clause = "corpus.render.banned-vocabulary", gloss = "A banned noun, refused name or provenance link." }
+SpecLocalPath          = { clause = "corpus.render.local-path", gloss = "An absolute path from a local machine." }
+SpecAsciiDiagram       = { clause = "corpus.render.diagram", gloss = "Box-drawing outside a mermaid fence." }
+
+[limit]
+corpus-subject-length   = { clause = "corpus.address.subject-segment", value = 40, unit = "chars", basis = "chosen", gloss = "Longest subject slug." }
+corpus-statement-words  = { clause = "corpus.anatomy.statement-words", value = 40, unit = "words", basis = "chosen", gloss = "Longest clause statement." }
+corpus-file-lines       = { clause = "corpus.anatomy.file-length", value = 900, unit = "lines", basis = "chosen", gloss = "Longest contract file." }
+corpus-because-words    = { clause = "corpus.rationale.why-cell", value = 30, unit = "words", basis = "chosen", gloss = "Longest `because` cell." }
+corpus-record-words     = { clause = "corpus.rationale.record-anatomy", value = 400, unit = "words", basis = "chosen", gloss = "Longest principle record." }
+corpus-adr-section-words = { clause = "corpus.rationale.contract-adr", value = 250, unit = "words", basis = "chosen", gloss = "Longest section of a contract ADR." }

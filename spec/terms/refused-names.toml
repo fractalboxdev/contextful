@@ -5,7 +5,7 @@
 # leak. Each entry is `sha256(lowercase token)`, so the checker recognizes a word
 # it cannot itself state.
 #
-# `spec lint --banned` lowercases each word of authored text, digests it, and fails
+# `contextful-spec lint --check render` lowercases each word of authored text, digests it, and fails
 # on a match, reporting the file and line without printing the token.
 #
 # `proper = true` marks a name whose ordinary-English spelling is fine and whose

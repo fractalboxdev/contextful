@@ -1,0 +1,93 @@
+# Registry fragment — contract `assurance`, files spec/80-formal.md and spec/81-engineering.md.
+
+[operation]
+model             = { gloss = "The Lean policy package and the Lean protocol state machine, their pins, and the definitions theorems and checks range over." }
+prove             = { gloss = "The theorem inventory: layer composition, placement, the evidence floor, and the proof targets over the authority mapping." }
+audit-axioms      = { gloss = "The axiom allowlist, the transitive footprint audit over the elaborated environment, the inventory and the report." }
+recheck           = { gloss = "Rebuilding and re-auditing from pinned source in a credential-free environment." }
+scope-claim       = { gloss = "The sentence the assurance claim is allowed to be: named decisions, trusted dependencies, translation chain, refinement reach." }
+differential-test = { gloss = "The executable reference models, the case generators, the minimized counterexample corpus and the command running them." }
+structure-tree    = { gloss = "One home per capability, the one enforcement decision module, adapters, mirror annotations and derived-artifact checks." }
+automate          = { gloss = "Typed subcommands over compiled binaries, and the boundary shell keeps." }
+test              = { gloss = "Assertion construction, guard validation, suite placement, test-first and acceptance tests, and the connector test kit." }
+build             = { gloss = "Target directories, the engine-linked invocation, linked query functions, build targets, release artifacts and the dependency allowlist." }
+gate              = { gloss = "Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks." }
+evaluate          = { gloss = "The read-path quality harness: case format, deterministic metrics and floors, judged dimensions, the reader and the judge." }
+baseline          = { gloss = "Holding a run against committed baselines and absolute floors, intervals, golden custody and case generation." }
+
+[error]
+FormalPackageDependency          = { clause = "assurance.model.declared-dependency", gloss = "The Lean package manifest declares an external library." }
+ProofToolchainDrift              = { clause = "assurance.model.toolchain-drift", gloss = "The resolved toolchain release string differs from the pinned one." }
+UnmodelledConstructor            = { clause = "assurance.model.unmodelled-constructor", gloss = "A placement category the manifest admits has no case in the model's inductive." }
+ProtocolInvariantViolated        = { clause = "assurance.model.protocol-check", gloss = "A state the bounded check reaches breaks a protocol invariant." }
+ProtocolConformanceDrift         = { clause = "assurance.differential-test.protocol-drift", gloss = "The protocol model and the Rust store disagree on the state after a step." }
+CommutationClaimed               = { clause = "assurance.prove.commutation-claim", gloss = "Order-independence asserted over stages whose order the composition theorem fixes." }
+ZoneInclusionSampled             = { clause = "assurance.prove.sampled-inclusion", gloss = "Inclusion decided by evaluating a fixed set of example values." }
+ProofTargetUnbound               = { clause = "assurance.prove.unbound-target", gloss = "A proof target named in the claim with no authenticated query path bound to it." }
+TheoremWithoutNegativeSpace      = { clause = "assurance.prove.no-negative-space", gloss = "A theorem published with no statement of what it leaves open." }
+MediationClaimedFromComposition  = { clause = "assurance.prove.mediation-from-composition", gloss = "A filter-composition theorem offered as a mediation theorem." }
+AxiomOutsideAllowlist            = { clause = "assurance.audit-axioms.axiom-outside-allowlist", gloss = "A constant's footprint reaches an axiom absent from the allowlist." }
+ProofHoleAxiom                   = { clause = "assurance.audit-axioms.hole-axiom", gloss = "A footprint contains the hole axiom." }
+NativeEvaluationAxiom            = { clause = "assurance.audit-axioms.native-evaluation-axiom", gloss = "A footprint contains a per-declaration native-evaluation axiom." }
+TheoremConstantMissing           = { clause = "assurance.audit-axioms.missing-constant", gloss = "A required constant is absent from the elaborated environment." }
+TheoremStatementDrift            = { clause = "assurance.audit-axioms.statement-drift", gloss = "A required constant's elaborated statement differs from its expected text." }
+RecheckEnvironmentCredentialed   = { clause = "assurance.recheck.credential-free", gloss = "The recheck environment exposes a credential." }
+RecheckReportMismatch            = { clause = "assurance.recheck.report-mismatch", gloss = "The recheck's per-constant statement or axiom set differs from the first phase's." }
+ClaimBeyondNamedDecisions        = { clause = "assurance.scope-claim.beyond-named-decisions", gloss = "The assurance claim asserts an object wider than its named decisions." }
+TrustedDependencyUnnamed         = { clause = "assurance.scope-claim.unnamed-dependency", gloss = "The claim rests on a component absent from its trusted-dependency list." }
+TranslationChainUnstated         = { clause = "assurance.scope-claim.unstated-chain", gloss = "A theorem over translated code claimed without its translation chain." }
+RefinementScopeExceeded          = { clause = "assurance.scope-claim.refinement-exceeded", gloss = "Translation reaches cryptography, a parsing adapter, a database call or concurrency." }
+ReferenceModelDrift              = { clause = "assurance.differential-test.disagreement", gloss = "The reference model and the engine's decision function disagree on a case." }
+CounterexampleDiscarded          = { clause = "assurance.differential-test.discarded-counterexample", gloss = "A run reported a disagreement and wrote no corpus entry." }
+CapabilityDuplicated             = { clause = "assurance.structure-tree.duplicated-capability", gloss = "A second implementation of an engine capability, or a hand-written copy of an engine constant." }
+MirrorUnresolved                 = { clause = "assurance.structure-tree.mirror-unresolved", gloss = "A mirrors annotation naming no clause of the lock file." }
+ShellCheckFailed                 = { clause = "assurance.automate.unchecked-shell", gloss = "A shell file in the tree that the shell linter rejects." }
+VacuousAssertion                 = { clause = "assurance.test.vacuous-exclusion", gloss = "An exclusion assertion evaluated over an empty collection." }
+TestNotFirst                     = { clause = "assurance.test.test-first", gloss = "A source change carrying no test that fails against the base commit's source." }
+AcceptanceLinksEngine            = { clause = "assurance.test.acceptance-surface", gloss = "The acceptance package depending on a workspace package." }
+ExtensionAutoloadRefused         = { clause = "assurance.build.runtime-extension-load", gloss = "A read path loading a query-engine extension into a statically linked binary." }
+SecretPlaintext                  = { clause = "assurance.gate.secret-ciphertext", gloss = "A tracked dotenv key holding a value other than dotenvx ciphertext, or a tracked private-key file." }
+SecretScopeMissing               = { clause = "assurance.gate.secret-scope", gloss = "A tracked dotenv key with no comment above it stating what it grants." }
+CrateGraphViolation           = { clause = "assurance.gate.crate-graph", gloss = "A run-path crate reaching a read-path crate outside the three crossing crates." }
+EnforceUnmediatedPath            = { clause = "assurance.gate.row-token", gloss = "A row-returning path reaching stored rows outside a registered relation." }
+UnconfiguredEgress               = { clause = "assurance.gate.unconfigured-egress", gloss = "An outbound call a default configuration reaches without operator configuration." }
+EnforceInterpolatedSubjectClaim  = { clause = "assurance.gate.interpolated-claim", gloss = "A subject claim formatted into SQL text in a runtime crate." }
+BuildDiskPrecondition            = { clause = "assurance.gate.free-disk", gloss = "A gate stage beginning below the free-disk floor." }
+BuildSizeCeilingExceeded         = { clause = "assurance.gate.build-size", gloss = "Total build size past the gate's ceiling." }
+FootprintBudgetExceeded          = { clause = "assurance.gate.footprint-exceeded", gloss = "A profile artifact over its budget, or carrying an extra dynamic dependency." }
+SurfaceCheckFailed               = { clause = "assurance.gate.surface-check-failed", gloss = "A TypeScript surface whose typecheck, unit tests or framework build failed." }
+EvalCorpusUnlabeled              = { clause = "assurance.evaluate.unlabeled-corpus", gloss = "An evaluation corpus with no policy labels and no explicit local zone." }
+BaselinePathUnresolved           = { clause = "assurance.baseline.unresolvable-path", gloss = "A baseline entry naming no report field, under-sampled, or malformed." }
+BaselineRunStampMismatch         = { clause = "assurance.baseline.run-stamp-drift", gloss = "A baseline run block differing from the run's configuration." }
+GoldenSetIngested                = { clause = "assurance.baseline.answer-key-in-the-store", gloss = "A golden set reaching the store it measures." }
+GoldenRedactionFailed            = { clause = "assurance.baseline.generated-redaction", gloss = "A generated golden the write-time redaction pass cannot clear." }
+TraceExportOutOfPerimeter        = { clause = "assurance.baseline.trace-export", gloss = "A hosted trace endpoint configured for a run touching a deployed store." }
+
+[limit]
+assurance-formal-build-time      = { clause = "assurance.model.build-cost", value = 60, unit = "s", basis = "chosen", gloss = "Cold elaboration of the Lean package." }
+assurance-formal-build-artifacts = { clause = "assurance.model.build-cost", value = 512, unit = "KiB", basis = "chosen", gloss = "Artifacts a full elaboration writes." }
+assurance-axiom-allowlist        = { clause = "assurance.audit-axioms.allowlist", value = 2, unit = "entries", basis = "chosen", gloss = "Axioms a required constant's footprint may reach." }
+assurance-recheck-wall-time      = { clause = "assurance.recheck.wall-time", value = 600, unit = "s", basis = "chosen", gloss = "One recheck from an empty artifact directory." }
+assurance-counterexample-corpus  = { clause = "assurance.differential-test.corpus-entries", value = 256, unit = "entries", basis = "chosen", gloss = "Minimized disagreements the corpus retains." }
+assurance-differential-budget    = { clause = "assurance.differential-test.run-budget", value = 300, unit = "s", basis = "chosen", gloss = "One differential invocation, corpus replay included." }
+assurance-shell-lines            = { clause = "assurance.automate.typed-subcommand", value = 5, unit = "lines", basis = "chosen", gloss = "Longest straight-line shell step before it becomes a subcommand." }
+assurance-container-memory       = { clause = "assurance.gate.container", value = 12, unit = "GiB", basis = "chosen", gloss = "Memory available to the gate container." }
+assurance-container-disk         = { clause = "assurance.gate.container", value = 18, unit = "GiB", basis = "chosen", gloss = "Usable disk available to the gate container." }
+assurance-job-memory             = { clause = "assurance.gate.parallel-jobs", value = 3, unit = "GiB", basis = "chosen", gloss = "Memory budgeted per parallel build job." }
+assurance-stage-free-disk        = { clause = "assurance.gate.free-disk", value = 2, unit = "GiB", basis = "chosen", gloss = "Free disk a stage needs before it begins work." }
+assurance-build-size-ceiling     = { clause = "assurance.gate.build-size", value = 12, unit = "GiB", basis = "chosen", gloss = "Total build size the budget stage allows." }
+assurance-edge-compressed        = { clause = "assurance.gate.edge-budget", value = 50, unit = "MiB", basis = "chosen", gloss = "Compressed edge-profile artifact." }
+assurance-edge-resident          = { clause = "assurance.gate.edge-budget", value = 60, unit = "MiB", basis = "chosen", gloss = "Idle resident set of the edge profile." }
+assurance-full-compressed        = { clause = "assurance.gate.full-budget", value = 150, unit = "MiB", basis = "chosen", gloss = "Compressed full-profile artifact." }
+assurance-full-resident          = { clause = "assurance.gate.full-budget", value = 180, unit = "MiB", basis = "chosen", gloss = "Idle resident set of the full profile." }
+assurance-control-compressed     = { clause = "assurance.gate.control-budget", value = 60, unit = "MiB", basis = "chosen", gloss = "Compressed control-profile artifact." }
+assurance-control-resident       = { clause = "assurance.gate.control-budget", value = 80, unit = "MiB", basis = "chosen", gloss = "Idle resident set of the control profile." }
+assurance-precision-floor        = { clause = "assurance.evaluate.precision-floor", value = 60, unit = "percent", basis = "chosen", gloss = "Precision at rank min(k, R) a ranked run holds." }
+assurance-forbidden-row-rate     = { clause = "assurance.evaluate.forbidden-row-rate", value = 0, unit = "percent", basis = "chosen", gloss = "Returned rows named in a must-not-retrieve set." }
+assurance-duplicate-row-rate     = { clause = "assurance.evaluate.duplicate-row-rate", value = 0, unit = "percent", basis = "chosen", gloss = "Ranking entries repeating a table-and-row-key pair." }
+assurance-in-window-rate         = { clause = "assurance.evaluate.in-window-rate", value = 95, unit = "percent", basis = "chosen", gloss = "In-window rate floor on a case declaring a recency bound." }
+assurance-default-dead-band      = { clause = "assurance.baseline.default-dead-band", value = 2, unit = "percent", basis = "chosen", gloss = "Dead band of a rate entry with no override." }
+assurance-rank-dead-band         = { clause = "assurance.baseline.rank-quality-dead-band", value = 3, unit = "percent", basis = "chosen", gloss = "Dead band of the ranked-quality entry." }
+assurance-gated-mean-cases       = { clause = "assurance.baseline.unresolvable-path", value = 30, unit = "cases", basis = "chosen", gloss = "Fewest cases behind a gated mean." }
+assurance-interval-level         = { clause = "assurance.baseline.interval", value = 95, unit = "percent", basis = "chosen", gloss = "Confidence level of a judged figure's interval." }
+assurance-bootstrap-resamples    = { clause = "assurance.baseline.interval", value = 1000, unit = "resamples", basis = "chosen", gloss = "Bootstrap resamples behind a judged figure's interval." }

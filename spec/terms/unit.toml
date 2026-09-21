@@ -1,6 +1,5 @@
 # Units — every numeral in a `limit` clause carries one of these tokens.
-# `spec register` refuses a spelling that normalizes onto a canonical or an
-# alias here, after expanding SI prefixes and byte multiples.
+# Two spellings that coincide after normalization raise `SpecSpellingCollision`.
 
 [unit]
 B        = { gloss = "byte", aliases = ["byte", "bytes"] }
@@ -26,3 +25,11 @@ hops     = { gloss = "delegation hops" }
 attempts = { gloss = "retry attempts" }
 workers  = { gloss = "runtime worker threads" }
 percent  = { gloss = "percent", aliases = ["%", "pct"] }
+words    = { gloss = "whitespace-separated words" }
+lines    = { gloss = "text lines" }
+iterations = { gloss = "evaluator fixpoint iterations" }
+values   = { gloss = "distinct input values" }
+lanes    = { gloss = "Argon2id parallelism lanes" }
+cases     = { gloss = "evaluation cases" }
+resamples = { gloss = "bootstrap resamples" }
+nodes    = { gloss = "graph nodes" }

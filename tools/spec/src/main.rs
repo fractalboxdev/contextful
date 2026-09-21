@@ -3,12 +3,17 @@
 
 mod checks;
 mod corpus;
+mod slice;
+mod targets;
+mod scaffold;
+mod util;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use corpus::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -31,16 +36,27 @@ enum Cmd {
         json: bool,
     },
     /// Write `spec/spec.lock.json`.
-    Extract {
-        #[arg(long)]
-        stdout: bool,
-    },
-    /// Read `spec/pins.toml` and write `spec/status.md`.
+    Extract,
+    /// Write `spec/status.md` from `spec/pins.toml`.
     State,
-    /// Validate pin entries; `--raise` lifts the coverage floor after a clean run.
-    Pins {
+    /// Print the context pack for `<contract>.<operation>`, `<contract>.*` or a milestone number.
+    Slice {
+        target: String,
         #[arg(long)]
-        raise: bool,
+        json: bool,
+    },
+    /// Set every contract's coverage floor to its live performed count.
+    Pins,
+    /// Write one failing, tagged test per refusal and limit clause of an operation.
+    Scaffold {
+        /// `<contract>.<operation>`.
+        target: String,
+        /// Package directory receiving `tests/integration/<operation>.rs`, relative to `--root`.
+        #[arg(long, conflicts_with = "lean", required_unless_present = "lean")]
+        package: Option<PathBuf>,
+        /// Lean file receiving one `sorry` theorem per clause of the operation, relative to `--root`.
+        #[arg(long)]
+        lean: Option<PathBuf>,
     },
 }
 
@@ -48,37 +64,44 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let root = cli.root.canonicalize().unwrap_or(cli.root.clone());
     let c = Corpus::load(&root)?;
-
     match cli.cmd {
         Cmd::Lint { check, json } => lint(&c, check.as_deref(), json),
-        Cmd::Extract { stdout } => extract(&c, stdout),
-        Cmd::State => state(&c),
-        Cmd::Pins { raise } => pins_cmd(&c, raise),
+        Cmd::Extract => Ok(std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?),
+        Cmd::State => {
+            std::fs::write(root.join("spec/targets.md"), targets::page(&c))?;
+            Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?)
+        }
+        Cmd::Pins => raise_floor(&c),
+        Cmd::Slice { target, json } => {
+            let sl = slice::build(&c, &target)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&sl)?);
+            } else {
+                print!("{}", slice::markdown(&sl));
+            }
+            Ok(())
+        }
+        Cmd::Scaffold { target, package, lean } => match (package, lean) {
+            (_, Some(lean)) => scaffold::run_lean(&c, &target, &root.join(lean)),
+            (Some(package), None) => scaffold::run(&c, &target, &root.join(package)),
+            (None, None) => unreachable!("clap requires one of --package and --lean"),
+        },
     }
 }
 
-// ---------------------------------------------------------------- lint
-
 fn lint(c: &Corpus, one: Option<&str>, json: bool) -> Result<()> {
     let names: Vec<&str> = match one {
-        Some(n) => {
-            if !checks::CHECKS.contains(&n) {
-                anyhow::bail!("no check named `{}`; known: {}", n, checks::CHECKS.join(", "));
-            }
-            vec![n]
-        }
+        Some(n) => vec![n],
         None => checks::CHECKS.to_vec(),
     };
-
     let mut all: Vec<Finding> = Vec::new();
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     for n in &names {
         let mut f = checks::run(c, n);
-        f.sort_by(|a, b| (a.file.clone(), a.line).cmp(&(b.file.clone(), b.line)));
+        f.sort_by_key(|a| (a.file.clone(), a.line));
         counts.insert(n, f.len());
         all.append(&mut f);
     }
-
     if json {
         #[derive(Serialize)]
         struct Report<'a> {
@@ -86,23 +109,16 @@ fn lint(c: &Corpus, one: Option<&str>, json: bool) -> Result<()> {
             counts: &'a BTreeMap<&'a str, usize>,
             findings: &'a [Finding],
         }
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&Report {
-                total: all.len(),
-                counts: &counts,
-                findings: &all,
-            })?
-        );
+        println!("{}", serde_json::to_string_pretty(&Report { total: all.len(), counts: &counts, findings: &all })?);
     } else {
         for f in &all {
             println!("{}:{}  {}  {}", f.file, f.line, f.code, f.message);
         }
         eprintln!("\n--- counts ---");
         for (n, k) in &counts {
-            eprintln!("{:<14} {}", n, k);
+            eprintln!("{:<10} {}", n, k);
         }
-        eprintln!("{:<14} {}", "TOTAL", all.len());
+        eprintln!("{:<10} {}", "TOTAL", all.len());
     }
     if all.is_empty() {
         Ok(())
@@ -111,227 +127,129 @@ fn lint(c: &Corpus, one: Option<&str>, json: bool) -> Result<()> {
     }
 }
 
-// ---------------------------------------------------------------- extract
+// ---------------------------------------------------------------- lock
 
-#[derive(Serialize)]
-struct Lock<'a> {
-    clauses: Vec<&'a Clause>,
-    owns: BTreeMap<String, Vec<String>>,
-    registry: &'a Registry,
-    named_bounds: BTreeMap<String, BoundRow>,
-    references: BTreeMap<String, Vec<String>>,
+pub fn lock_text(c: &Corpus) -> String {
+    #[derive(Serialize)]
+    struct Lock<'a> {
+        clauses: Vec<&'a Clause>,
+        owns: BTreeMap<&'a str, &'a Vec<String>>,
+        pointers: Vec<(&'a str, String)>,
+        registry: &'a Registry,
+    }
+    let clauses: Vec<&Clause> = c.clauses().collect();
+    let pointers = clauses
+        .iter()
+        .flat_map(|cl| pointers(&cl.statement).into_iter().map(move |p| (cl.id.as_str(), p)))
+        .collect();
+    let owns = c.contracts().map(|d| (d.rel.as_str(), &d.owns)).collect();
+    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, pointers, registry: &c.reg }).unwrap();
+    s.push('\n');
+    s
 }
 
-#[derive(Serialize)]
-struct BoundRow {
-    value: f64,
-    unit: String,
-    owner: String,
-}
+// ---------------------------------------------------------------- status
 
-fn extract(c: &Corpus, to_stdout: bool) -> Result<()> {
-    let clauses = c.all_clauses();
-    let owns: BTreeMap<String, Vec<String>> = c
-        .docs
-        .iter()
-        .filter(|d| d.role == "contract")
-        .map(|d| (d.rel.clone(), d.owns.clone()))
-        .collect();
-    let named_bounds: BTreeMap<String, BoundRow> = c
-        .reg
-        .limits
-        .iter()
-        .map(|(k, v)| {
-            (
-                k.clone(),
-                BoundRow { value: v.value, unit: v.unit.clone(), owner: v.owner.clone() },
-            )
-        })
-        .collect();
-
-    let trans = regex::Regex::new(r"\{\{([^}]+)\}\}").unwrap();
-    let mut references: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for d in &c.docs {
-        for l in &d.lines {
-            if l.is_front_matter || l.in_fence {
-                continue;
+pub fn status_text(c: &Corpus) -> String {
+    let pins = checks::load_pins(c);
+    let all = checks::pins_by_clause(c);
+    let verdicts: BTreeMap<&String, &str> = all.iter().map(|(id, g)| (id, checks::clause_verdict(c, g))).collect();
+    let clauses = c.clause_map();
+    let mut s = String::new();
+    s.push_str("# Status\n\nGenerated by `contextful-spec state` from `spec/pins.toml` and `// spec:` tags; not authored.\n");
+    s.push_str("An unpinned clause is `committed`; a pinned one is `performed` when its test resolves under `crates/` or `tools/`, runs, and matches its tag's rev, else `broken`.\n\n");
+    s.push_str("| Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |\n");
+    s.push_str("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
+    let mut totals = [0usize; 8];
+    for (name, e) in &c.reg.contracts {
+        let docs: Vec<&Doc> = c.contracts().filter(|d| d.contract.as_deref() == Some(name)).collect();
+        let cls: Vec<&Clause> = docs.iter().flat_map(|d| d.clauses.iter()).collect();
+        let ops = c.reg.fragments.get(name).map(|f| f.operation.len()).unwrap_or(0);
+        let refusals = cls.iter().filter(|x| x.kind == "refusal").count();
+        let limits = cls.iter().filter(|x| x.kind == "limit").count();
+        let unsettled = docs.iter().flat_map(|d| d.kinds.iter()).filter(|k| **k == LineKind::Unsettled).count();
+        let (mut perf, mut broken) = (0, 0);
+        for (id, verdict) in &verdicts {
+            if clauses.get(*id).map(|x| &x.contract == name).unwrap_or(false) {
+                if *verdict == "performed" {
+                    perf += 1
+                } else {
+                    broken += 1
+                }
             }
-            for m in trans.captures_iter(&l.raw) {
-                references
-                    .entry(d.rel.clone())
-                    .or_default()
-                    .push(m[1].trim().to_string());
-            }
+        }
+        let floor = pins.floor.get(name).copied().unwrap_or(0);
+        let row = [e.files.len(), ops, cls.len(), refusals, limits, unsettled, perf, broken];
+        for (i, v) in row.iter().enumerate() {
+            totals[i] += v;
+        }
+        let _ = writeln!(
+            s,
+            "| `{name}` | {} | {} | {} | {} | {} | {} | {} | {} | {floor} |",
+            row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]
+        );
+    }
+    let _ = writeln!(
+        s,
+        "| **total** | {} | {} | {} | {} | {} | {} | {} | {} | |",
+        totals[0], totals[1], totals[2], totals[3], totals[4], totals[5], totals[6], totals[7]
+    );
+    let records = c.records().count();
+    let _ = writeln!(s, "\nDecision records: {records}.\n");
+    let (claim, _) = checks::expand_roadmap(c);
+    if !claim.is_empty() {
+        s.push_str("## Milestones\n\n| Milestone | Operations | Clauses | Performed | Acceptance |\n| --- | --- | --- | --- | --- |\n");
+        for ml in checks::milestone_lines(c) {
+            let m = ml.heading.clone();
+            let ops: Vec<&String> = claim.iter().filter(|(_, v)| **v == m).map(|(k, _)| k).collect();
+            let cls: Vec<&Clause> = c
+                .clauses()
+                .filter(|cl| ops.iter().any(|o| **o == format!("{}.{}", cl.contract, cl.operation)))
+                .collect();
+            let perf = cls
+                .iter()
+                .filter(|cl| verdicts.get(&cl.id) == Some(&"performed"))
+                .count();
+            let acc = checks::acceptance_verdict(c, ml.acceptance.as_deref());
+            let _ = writeln!(s, "| {m} | {} | {} | {perf} | {acc} |", ops.len(), cls.len());
+        }
+        let unscheduled = c
+            .reg
+            .fragments
+            .iter()
+            .flat_map(|(k, f)| f.operation.keys().map(move |o| format!("{k}.{o}")))
+            .filter(|o| !claim.contains_key(o))
+            .count();
+        let _ = writeln!(s, "\nUnscheduled operations: {unscheduled}.");
+    }
+    if !all.is_empty() {
+        s.push_str("\n## Pins\n\n| Clause | Pinned by | Verdict |\n| --- | --- | --- |\n");
+        for (id, group) in &all {
+            let sites: Vec<String> = group.iter().map(|p| format!("`{}`", p.site())).collect();
+            let _ = writeln!(s, "| `{id}` | {} | {} |", sites.join(", "), verdicts[id]);
         }
     }
-
-    let lock = Lock { clauses, owns, registry: &c.reg, named_bounds, references };
-    let text = serde_json::to_string_pretty(&lock)?;
-    if to_stdout {
-        println!("{}", text);
-    } else {
-        std::fs::write(c.root.join("spec/spec.lock.json"), text + "\n")?;
-        eprintln!("wrote spec/spec.lock.json");
-    }
-    Ok(())
+    s
 }
 
-// ---------------------------------------------------------------- state
-
-fn state(c: &Corpus) -> Result<()> {
-    let pins_path = c.root.join("spec/pins.toml");
-    let pins: toml::Value = std::fs::read_to_string(&pins_path)
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(toml::Value::Table(Default::default()));
-    let pinned: BTreeMap<String, String> = pins
-        .get("pin")
-        .and_then(|x| x.as_table())
-        .map(|t| {
-            t.iter()
-                .map(|(k, v)| {
-                    let shown = v
-                        .as_str()
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| v.to_string());
-                    (k.clone(), shown)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let broken: Vec<&Finding> = Vec::new();
-    let _ = broken;
-    let pin_findings = checks::pins(c);
-    let broken_ids: std::collections::HashSet<String> = pin_findings
-        .iter()
-        .filter(|f| f.code == "SpecBrokenPin")
-        .filter_map(|f| {
-            f.message
-                .split('`')
-                .nth(1)
-                .map(|s| s.to_string())
-        })
-        .collect();
-
-    let mut per_contract: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-    let mut per_file: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-    let mut rows = String::new();
-    for cl in c.all_clauses() {
-        let verdict = if broken_ids.contains(&cl.id) {
-            "broken"
-        } else if pinned.contains_key(&cl.id) {
-            "performed"
-        } else {
-            "committed"
-        };
-        let pin = pinned.get(&cl.id).cloned().unwrap_or_default();
-        rows.push_str(&format!(
-            "| `{}` | {} | {} |\n",
-            cl.id,
-            verdict,
-            if pin.is_empty() { "—".to_string() } else { format!("`{}`", pin) }
-        ));
-        let e = per_contract.entry(cl.contract.clone()).or_insert((0, 0));
-        e.1 += 1;
-        if verdict == "performed" {
-            e.0 += 1;
-        }
-        let e = per_file.entry(cl.file.clone()).or_insert((0, 0));
-        e.1 += 1;
-        if verdict == "performed" {
-            e.0 += 1;
-        }
-    }
-
-    let floors: BTreeMap<String, i64> = pins
-        .get("floor")
-        .and_then(|x| x.as_table())
-        .map(|t| t.iter().filter_map(|(k, v)| v.as_integer().map(|i| (k.clone(), i))).collect())
-        .unwrap_or_default();
-
-    let ops_per_contract: BTreeMap<&str, usize> =
-        c.reg.operations.values().fold(BTreeMap::new(), |mut m, o| {
-            *m.entry(o.contract.as_str()).or_default() += 1;
-            m
-        });
-
-    let mut unsettled_per_file: BTreeMap<&str, usize> = BTreeMap::new();
-    for d in &c.docs {
-        if d.role == "contract" {
-            unsettled_per_file.insert(d.rel.as_str(), d.unsettled.len());
-        }
-    }
-
-    let mut out = String::new();
-    out.push_str("# Corpus state\n\nGenerated by `contextful-spec state`.\n\n");
-    out.push_str("## Per contract\n\n| Contract | Pinned | Clauses | Floor | Operations |\n| --- | --- | --- | --- | --- |\n");
-    for (k, (p, t)) in &per_contract {
-        out.push_str(&format!(
-            "| `{}` | {} | {} | {} | {} |\n",
-            k,
-            p,
-            t,
-            floors.get(k).copied().unwrap_or(0),
-            ops_per_contract.get(k.as_str()).copied().unwrap_or(0)
-        ));
-    }
-    out.push_str("\n## Per file\n\n| File | Pinned | Clauses | Unsettled |\n| --- | --- | --- | --- |\n");
-    for (k, (p, t)) in &per_file {
-        out.push_str(&format!(
-            "| `{}` | {} | {} | {} |\n",
-            k,
-            p,
-            t,
-            unsettled_per_file.get(k.as_str()).copied().unwrap_or(0)
-        ));
-    }
-    out.push_str("\n## Per clause\n\n| Clause | Verdict | Pin |\n| --- | --- | --- |\n");
-    out.push_str(&rows);
-
-    std::fs::write(c.root.join("spec/status.md"), out)?;
-    eprintln!("wrote spec/status.md");
-    Ok(())
-}
-
-// ---------------------------------------------------------------- pins
-
-fn pins_cmd(c: &Corpus, raise: bool) -> Result<()> {
-    let findings = checks::pins(c);
-    for f in &findings {
-        println!("{}:{}  {}  {}", f.file, f.line, f.code, f.message);
-    }
-    if !raise {
-        if findings.is_empty() {
-            eprintln!("pins clean");
-            return Ok(());
-        }
-        std::process::exit(1);
-    }
-    if !findings.is_empty() {
-        anyhow::bail!("the floor rises after a clean run; {} findings stand", findings.len());
-    }
+fn raise_floor(c: &Corpus) -> Result<()> {
     let path = c.root.join("spec/pins.toml");
-    let raw = std::fs::read_to_string(&path)?;
-    let v: toml::Value = raw.parse()?;
-    let mut live: BTreeMap<String, i64> = BTreeMap::new();
-    if let Some(t) = v.get("pin").and_then(|x| x.as_table()) {
-        for id in t.keys() {
-            if let Some(contract) = id.split('.').next() {
-                *live.entry(contract.to_string()).or_default() += 1;
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let clauses = c.clause_map();
+    let mut live: BTreeMap<String, i64> = c.reg.contracts.keys().map(|k| (k.clone(), 0)).collect();
+    for (id, group) in &checks::pins_by_clause(c) {
+        if let Some(cl) = clauses.get(id) {
+            if checks::clause_verdict(c, group) == "performed" {
+                *live.entry(cl.contract.clone()).or_default() += 1;
             }
         }
     }
-    let mut doc = v.clone();
-    let table = doc.as_table_mut().unwrap();
-    let floor = table
-        .entry("floor".to_string())
-        .or_insert_with(|| toml::Value::Table(Default::default()));
-    let floor = floor.as_table_mut().unwrap();
-    for (k, n) in &live {
-        floor.insert(k.clone(), toml::Value::Integer(*n));
+    let head = text.split("\n[floor]").next().unwrap_or("").trim_end().to_string();
+    let mut out = head;
+    out.push_str("\n\n[floor]\n");
+    for (k, v) in live {
+        let _ = writeln!(out, "{k} = {v}");
     }
-    std::fs::write(&path, toml::to_string_pretty(&doc)?)?;
-    eprintln!("floor raised to the live pinned count per contract");
+    std::fs::write(path, out)?;
     Ok(())
 }

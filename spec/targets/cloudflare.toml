@@ -1,0 +1,25 @@
+# Target profile — Cloudflare. `corpus.targets` states the rules this file obeys;
+# `contextful-spec lint --check targets` enforces them and `contextful-spec state`
+# renders spec/targets.md from it.
+
+provider = "cloudflare"
+title    = "Cloudflare"
+serves   = "Edge-first deployments on native object storage with near-zero idle cost."
+
+[[shape]]
+name     = "worker-container"
+default  = true
+kind     = "orchestrated"
+profiles = ["full"]
+excludes = []
+
+[shape.roles]
+cron_tick    = "Cron Trigger"
+reconciler   = "Worker"
+orchestrator = "Workflows"
+catalog      = "Durable Object SQLite, one object per store"
+object_store = "R2"
+query_face   = "Worker router → warm contextful-full Container"
+compute      = "Container"
+secrets      = "Workers Secrets"
+realtime     = "Durable Object with a hibernating WebSocket"

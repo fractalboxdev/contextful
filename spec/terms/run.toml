@@ -1,0 +1,154 @@
+# Registry fragment — contract `run`, files spec/30-run.md, spec/31-pipeline.md, spec/32-derive.md.
+
+[operation]
+journal       = { gloss = "Recording a step's value once, resolving it on replay, and collecting what a replay can no longer reach." }
+advance       = { gloss = "Committing an incremental read position under its declared kind, and the boundary a poll re-reads." }
+suspend       = { gloss = "Durable suspension on an external callback, its deadline and its resumption." }
+retry         = { gloss = "Classifying a failure, the single retry layer, and the delay before the next attempt." }
+own           = { gloss = "The execution owner a scope holds and the connector build it pins while pending." }
+cancel        = { gloss = "Stopping work in flight at either grain, the one token every await observes, and what a stop leaves behind." }
+record        = { gloss = "The durable run record, its statuses, its owner lease and windowed history over it." }
+project       = { gloss = "The best-effort live view of a run and the subscription that carries it off the machine." }
+declare       = { gloss = "The pipeline specification, its serializations, manifest discovery, the content hash, table entries and lifecycle verbs." }
+compile       = { gloss = "The plan a specification becomes at build time: node kinds, version and schema." }
+transform     = { gloss = "The declarative chain that rewrites a batch in place." }
+normalize     = { gloss = "Canonical nested form, late relational shredding, injected identity columns and recursion depth." }
+guard-secrets = { gloss = "The write-time mask over credential-shaped spans in a pulled batch." }
+land          = { gloss = "The stage order from pull to commit, the one destination, the ingest tally and containment of unreadable input." }
+backfill      = { gloss = "Phases, chunk plans, fenced chunk leases and the rewind window." }
+seed          = { gloss = "The bulk-load source mode, its ceiling, its scope and the parity it guarantees." }
+publish       = { gloss = "A published table's contract identity, build, freshness and holds, committed with its snapshot manifest." }
+select        = { gloss = "The derive source: its configuration, the outstanding set recomputed each tick, eligibility and a run's budget." }
+bind          = { gloss = "Where a derive engine's definition lives, the port every engine implements, and the values an engine returns." }
+exec          = { gloss = "Operator-declared argv chains against local binaries: resolution, pinning, environment, bounds and identity." }
+fetch         = { gloss = "Following a link a third party wrote: host and address guards, redirects, the head scanner and the picture probe." }
+emit          = { gloss = "The derived row and marker, the unit status, attempt accounting, citation keys and row provenance." }
+parse-cues    = { gloss = "Reading a caption document into passages: one grammar, defect accounting, coalescing and rolling display." }
+test-engine   = { gloss = "Building one derive engine outside a pipeline and running it against one file." }
+
+[error]
+BlobMissing                    = { clause = "run.journal.missing-blob", gloss = "A journal row's blob reference resolves to no file." }
+JournalRedactionConflict       = { clause = "run.journal.redacting-source", gloss = "Write-path redaction declared over a source whose pulls are journaled." }
+CapabilityUnwired              = { clause = "run.journal.unwired-capability", gloss = "A capability the running profile links no implementation for." }
+CursorFieldMismatch            = { clause = "run.advance.field-rename", gloss = "A stored position's field differs from the declared incremental field." }
+CursorPositionUnorderable      = { clause = "run.advance.unorderable-position", gloss = "A clock value with no ordering, or a position type changing mid-pass." }
+AwakeableAlreadyResolved       = { clause = "run.suspend.conflicting-resolution", gloss = "A second resolution carrying a different payload." }
+AwakeableTimedOut              = { clause = "run.suspend.expired-token", gloss = "A resolution past the suspension's deadline." }
+AwakeableUnknown               = { clause = "run.suspend.unknown-token", gloss = "A resume token with no registry row." }
+RunRetryTagUnretryable         = { clause = "run.retry.unretryable-tag", gloss = "A `retry_on` naming a tag outside the two retryable ones." }
+StepFailed                     = { clause = "run.retry.step-failed", gloss = "A step closed on a terminal failure, carrying its label and tag." }
+ExecutionPinMismatch           = { clause = "run.own.pinned-plan-changed", gloss = "A connector identity, component world or plan hash moved under a pending owner." }
+CancelTargetNotInFlight        = { clause = "run.cancel.not-in-flight", gloss = "A stop matching no pending, running or waiting run." }
+SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", gloss = "A site id with no bound source, or two." }
+HistoryBoundSpelling           = { clause = "run.record.bound-spelling", gloss = "A history window bound outside the two accepted spellings." }
+RunMetadataTooLarge            = { clause = "run.project.metadata-too-large", gloss = "A snapshot metadata write past its serialized bound." }
+RunStreamUnauthorized          = { clause = "run.project.unauthenticated-upgrade", gloss = "A run-stream request with no valid credential before the upgrade." }
+PipelineDuplicateId            = { clause = "run.declare.duplicate-id", gloss = "One pipeline id declared twice." }
+PipelineSpecInvalid            = { clause = "run.declare.spec-invalid", gloss = "A manifest file the canonical type cannot deserialize." }
+PipelineUnboundTableName       = { clause = "run.declare.unbound-table-name", gloss = "A destination table named in a spelling the fold does not produce." }
+PipelineReplaceUnsupported     = { clause = "run.declare.replace-unsupported", gloss = "The replacing write mode beside a windowed or chunked load." }
+PipelineUnknownConfigKey       = { clause = "run.declare.config-key", gloss = "A source config key outside the set the source enumerates." }
+PipelineInlineStepBody         = { clause = "run.compile.inline-step-body", gloss = "A plan step whose body is not a connector reference." }
+PipelineUndeclaredControlFlow  = { clause = "run.compile.control-flow", gloss = "A data-dependent conditional or loop in a workflow body." }
+PipelineNodeIdCollision        = { clause = "run.compile.node-id-collision", gloss = "One node id repeated in a plan." }
+PipelineTransformArity         = { clause = "run.transform.arity", gloss = "A chain operation emitting more rows than it consumed." }
+PipelineTransformColumnMissing = { clause = "run.transform.column-missing", gloss = "A chain operation naming a column the batch lacks." }
+PipelineNormalizeModeUnknown   = { clause = "run.normalize.mode-unknown", gloss = "A normalize mode outside the two." }
+PipelineListIndexMissing       = { clause = "run.normalize.list-index-missing", gloss = "A relational child table without a list index." }
+PipelineUnknownDestination     = { clause = "run.land.unknown-destination", gloss = "A destination other than the local store." }
+PipelineUnreadableInput        = { clause = "run.land.unreadable-input", gloss = "Input a parser cannot read, named by path and position." }
+PipelinePartialParse           = { clause = "run.land.partial-parse", gloss = "A read covering part of a multi-part input." }
+PipelineParseCrashed           = { clause = "run.land.parse-crashed", gloss = "A non-zero exit or fatal signal from the decode process." }
+PipelineTableFailed            = { clause = "run.land.table-failed", gloss = "One table's pull failing inside a fire." }
+PipelineChunkParallelism       = { clause = "run.backfill.chunk-parallelism", gloss = "A sequential chunk plan beside a parallelism above one." }
+PipelineRewindWindowInvalid    = { clause = "run.backfill.rewind-invalid", gloss = "An inverted, empty or scale-incomparable rewind window." }
+PipelineSeedDeclarationMissing = { clause = "run.seed.declaration-missing", gloss = "A seeded table lacking a key or an event-time ordering." }
+PipelineSeedCeilingBreached    = { clause = "run.seed.ceiling-breached", gloss = "A seeded row stamped at or past the ceiling." }
+PipelineSeedCeilingUnevaluable = { clause = "run.seed.ceiling-unevaluable", gloss = "A batch whose stamp cannot be compared with the ceiling." }
+PipelineSeedSourceChanged      = { clause = "run.seed.source-changed", gloss = "A seed source whose fingerprint differs from the committed one." }
+PipelineContractMismatch       = { clause = "run.publish.contract-mismatch", gloss = "A materialization failing its declared contract." }
+DeriveConfigKeyMissing         = { clause = "run.select.required-key", gloss = "A required derive config key absent or blank." }
+DeriveNoStoreRoot              = { clause = "run.select.no-store-root", gloss = "A derive source built without a store root or pipeline id." }
+DeriveForeignOutputTable       = { clause = "run.select.foreign-output-table", gloss = "Configuration naming another pipeline's output table." }
+DeriveUnitIncomplete           = { clause = "run.select.incomplete-unit", gloss = "A parent row without a key or media value." }
+DeriveJournaledPull            = { clause = "run.select.journaled-pull", gloss = "A derive pipeline configured to journal its pulls." }
+DeriveUnmeteredGrant           = { clause = "run.select.unmetered-grant", gloss = "A transcribe pipeline declaring a shared-quota grant." }
+DeriveMeteredClient            = { clause = "run.select.metered-client", gloss = "A link pipeline opening a socket outside the mediated client." }
+DeriveEngineUnbound            = { clause = "run.bind.unbound-engine", gloss = "A pipeline naming an engine the machine has not defined." }
+DeriveCommandInManifest        = { clause = "run.bind.command-in-manifest", gloss = "An executable key on the request side of the binding split." }
+DeriveUnknownTask              = { clause = "run.bind.unknown-task", gloss = "A `task` outside the supported pair." }
+DeriveDriverMismatch           = { clause = "run.bind.driver-mismatch", gloss = "A driver and task pairing the tier does not serve." }
+DeriveEndpointHostNotBare      = { clause = "run.bind.endpoint-host-bare", gloss = "An engine host carrying more than a host." }
+DeriveRemoteUrlUnsupported     = { clause = "run.bind.remote-url-unsupported", gloss = "A remote address handed to an engine that declines them." }
+DeriveMediaUnreadable          = { clause = "run.bind.media-unreadable", gloss = "A media value neither an address nor a readable local file." }
+DeriveConfidenceOutOfRange     = { clause = "run.bind.confidence-range", gloss = "A confidence outside the normalized interval." }
+DeriveLinkEngineUnavailable    = { clause = "run.bind.engine-unavailable", gloss = "A link engine returning the engine-unavailable variant." }
+DeriveAdvisoryZone             = { clause = "run.bind.advisory-zone", gloss = "A row zone taken from the operator's advisory key." }
+DeriveShellCommand             = { clause = "run.exec.shell-command", gloss = "A step command given as a string, not an argument array." }
+DeriveEnvNameInvalid           = { clause = "run.exec.env-name", gloss = "An environment allowlist name outside the permitted characters." }
+DeriveStepExit                 = { clause = "run.exec.non-zero-exit", gloss = "A chain step ending non-zero." }
+DeriveStepTimeout              = { clause = "run.exec.deadline-elapsed", gloss = "A chain outrunning its deadline." }
+DeriveOutputCap                = { clause = "run.exec.output-cap", gloss = "A step's captured output crossing its bound." }
+DeriveStepProducedNothing      = { clause = "run.exec.silent-step", gloss = "A preprocess step exiting zero without its output file." }
+DeriveBinaryMissing            = { clause = "run.exec.missing-binary", gloss = "A declared command that is not an executable file." }
+DeriveUnpinnedPath             = { clause = "run.exec.unpinned-path", gloss = "A path-form command with no content digest." }
+DeriveDigestMismatch           = { clause = "run.exec.digest-mismatch", gloss = "A pinned file whose bytes differ from its digest." }
+DeriveSchemeUnsupported        = { clause = "run.fetch.scheme", gloss = "A followed address with a scheme other than http or https." }
+DeriveAddressLiteral           = { clause = "run.fetch.address-literal", gloss = "A followed host written as an address literal." }
+DeriveFetchBindingKey          = { clause = "run.fetch.binding-key", gloss = "A process-spawning key on a fetch binding." }
+DeriveCharsetUnsupported       = { clause = "run.fetch.charset", gloss = "A document declaring a character set other than UTF-8." }
+DeriveBytesNotUtf8             = { clause = "run.fetch.not-utf8", gloss = "An undeclared document failing UTF-8 validation." }
+DeriveFailureOffTable          = { clause = "run.emit.failure-off-table", gloss = "Per-unit failure state recorded outside the output table." }
+DeriveUnitStatusUnknown        = { clause = "run.emit.unit-status", gloss = "A unit status outside the four." }
+DeriveReservedDiscriminator    = { clause = "run.emit.reserved-discriminator", gloss = "A derive table declaring the reserved genre column." }
+DeriveSettledUnitRevived       = { clause = "run.emit.settled-revived", gloss = "A settled unit re-entering the outstanding set." }
+DeriveUnredactedError          = { clause = "run.emit.unredacted-error", gloss = "A `last_error` written without address redaction." }
+DerivePrimaryKeyMissing        = { clause = "run.emit.primary-key", gloss = "A derive output table without the unit-and-sequence key." }
+DeriveCueOutOfOrder            = { clause = "run.parse-cues.backward-cue", gloss = "A caption block starting before the one already accepted." }
+DeriveTestEngineUnsupported    = { clause = "run.test-engine.unsupported-driver", gloss = "The single-file verb handed a fetch engine." }
+
+[limit]
+journal-inline-cutoff      = { clause = "run.journal.inline-cutoff", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest journaled value held inline in its row." }
+blob-sweep-interval        = { clause = "run.journal.blob-sweep", value = 24, unit = "h", basis = "chosen", gloss = "Cadence of the blob mark-and-sweep pass." }
+blob-sweep-grace           = { clause = "run.journal.blob-sweep", value = 1, unit = "h", basis = "chosen", gloss = "Age below which an unreferenced blob survives a sweep." }
+retry-base-delay           = { clause = "run.retry.default-policy", value = 100, unit = "ms", basis = "chosen", gloss = "First delay of the default schedule." }
+retry-max-delay            = { clause = "run.retry.default-policy", value = 30, unit = "s", basis = "chosen", gloss = "Clamp on one computed delay." }
+retry-default-attempts     = { clause = "run.retry.default-policy", value = 5, unit = "attempts", basis = "chosen", gloss = "Total attempts of the default schedule." }
+retry-jitter-ceiling       = { clause = "run.retry.default-policy", value = 250, unit = "ms", basis = "chosen", gloss = "Upper bound of the seeded additive jitter." }
+retry-single-attempt       = { clause = "run.retry.single-attempt", value = 1, unit = "attempts", basis = "chosen", gloss = "Total attempts of the no-retry schedule." }
+retry-after-ceiling        = { clause = "run.retry.retry-after", value = 300, unit = "s", basis = "chosen", gloss = "Longest server-requested delay a step sleeps before closing." }
+cancel-poll-interval       = { clause = "run.cancel.poll-interval", value = 500, unit = "ms", basis = "chosen", gloss = "Cadence of the catalog read feeding the cancellation token." }
+owner-lease-renewal        = { clause = "run.record.owner-lease", value = 10, unit = "s", basis = "chosen", gloss = "Renewal cadence of a run row's owner lease." }
+owner-lease-ttl            = { clause = "run.record.owner-lease", value = 30, unit = "s", basis = "chosen", gloss = "Life of an unrenewed run owner lease." }
+site-id-min-length         = { clause = "run.record.site-id-length", value = 1, unit = "chars", basis = "chosen", gloss = "Shortest site id." }
+site-id-max-length         = { clause = "run.record.site-id-length", value = 64, unit = "chars", basis = "chosen", gloss = "Longest site id." }
+describe-history-default   = { clause = "run.record.describe-window", value = 5, unit = "rows", basis = "chosen", gloss = "Runs the describe surface returns unasked." }
+describe-history-ceiling   = { clause = "run.record.describe-window", value = 500, unit = "rows", basis = "chosen", gloss = "Highest ceiling the describe surface honors." }
+export-history-default     = { clause = "run.record.export-ceiling", value = 500, unit = "rows", basis = "chosen", gloss = "Runs the export returns unasked." }
+export-history-ceiling     = { clause = "run.record.export-ceiling", value = 5000, unit = "rows", basis = "chosen", gloss = "Highest ceiling the export honors, per pipeline." }
+run-error-cap              = { clause = "run.record.error-cap", value = 2, unit = "KiB", basis = "chosen", gloss = "Size a recorded run error is clipped to." }
+projection-coalesce-window = { clause = "run.project.coalescing", value = 100, unit = "ms", basis = "chosen", gloss = "Window snapshot broadcasts collapse into." }
+run-metadata-bytes         = { clause = "run.project.metadata-too-large", value = 16384, unit = "B", basis = "chosen", gloss = "Serialized bound on snapshot application metadata." }
+broadcast-ring-entries     = { clause = "run.project.broadcast-ring", value = 256, unit = "entries", basis = "chosen", gloss = "Snapshots the per-run broadcast holds." }
+plan-version-prefix        = { clause = "run.compile.plan-version", value = 16, unit = "chars", basis = "chosen", gloss = "Hash characters forming a plan's version." }
+chunk-lease-ttl            = { clause = "run.backfill.chunk-lease", value = 300, unit = "s", basis = "chosen", gloss = "Life of an unrenewed chunk lease." }
+chunk-lease-renewal        = { clause = "run.backfill.chunk-lease", value = 60, unit = "s", basis = "chosen", gloss = "Renewal cadence of a held chunk lease." }
+derive-rows-per-run        = { clause = "run.select.rows-per-run", value = 25, unit = "rows", basis = "chosen", gloss = "Units one derive run attempts." }
+derive-attempts-per-unit   = { clause = "run.select.attempts-per-unit", value = 3, unit = "attempts", basis = "chosen", gloss = "Attempts one unit receives before its marker settles." }
+derive-seconds-per-run     = { clause = "run.select.seconds-per-run", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock the unit loop holds for a socket-opening task." }
+derive-upstream-excerpt    = { clause = "run.bind.upstream-excerpt", value = 4, unit = "KiB", basis = "chosen", gloss = "Vendor response text an upstream error carries." }
+derive-chain-deadline      = { clause = "run.exec.chain-deadline", value = 1800, unit = "s", basis = "chosen", gloss = "Wall clock one unit's chain runs for." }
+derive-captured-output     = { clause = "run.exec.captured-output", value = 8, unit = "MiB", basis = "chosen", gloss = "Captured output one step may produce." }
+derive-audit-entries       = { clause = "run.exec.audit-entries", value = 64, unit = "entries", basis = "chosen", gloss = "Captured-output entries one chain adds to the run record." }
+derive-step-error-excerpt  = { clause = "run.exec.step-error-excerpt", value = 4, unit = "KiB", basis = "chosen", gloss = "Standard error a failing step's error carries." }
+derive-engine-id-prefix    = { clause = "run.exec.engine-id", value = 12, unit = "chars", basis = "chosen", gloss = "Digest characters in an exec engine id." }
+derive-redirect-chain      = { clause = "run.fetch.redirect-chain", value = 5, unit = "hops", basis = "chosen", gloss = "Redirect hops one fetch follows." }
+derive-document-prefix     = { clause = "run.fetch.document-prefix", value = 1, unit = "MiB", basis = "chosen", gloss = "Document prefix the head scanner reads." }
+derive-probe-prefix        = { clause = "run.fetch.probe-prefix", value = 64, unit = "KiB", basis = "chosen", gloss = "Bytes one picture range request reads." }
+derive-hop-timeout         = { clause = "run.fetch.hop-timeout", value = 20, unit = "s", basis = "chosen", gloss = "Wall clock one fetch hop holds." }
+derive-retry-after-default = { clause = "run.fetch.retry-after-default", value = 60, unit = "s", basis = "chosen", gloss = "Rate-limit wait when a response gives no usable header." }
+derive-empty-ceiling       = { clause = "run.emit.attempts", value = 1, unit = "attempts", basis = "chosen", gloss = "Attempts an established-empty unit receives." }
+derive-passage-chars       = { clause = "run.parse-cues.passage-chars", value = 600, unit = "chars", basis = "chosen", gloss = "Length at which an open passage closes." }
+derive-passage-span        = { clause = "run.parse-cues.passage-span", value = 60, unit = "s", basis = "chosen", gloss = "Span at which an open passage closes." }
+derive-passage-bytes       = { clause = "run.parse-cues.passage-bytes", value = 8, unit = "KiB", basis = "chosen", gloss = "Text one passage holds." }
+derive-passages-per-doc    = { clause = "run.parse-cues.passages-per-document", value = 2000, unit = "rows", basis = "chosen", gloss = "Passages one caption document yields." }
