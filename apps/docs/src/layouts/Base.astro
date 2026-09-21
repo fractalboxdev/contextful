@@ -13,7 +13,7 @@ const { title, description, headings = [] } = Astro.props;
 const groups = await navigation();
 const here = Astro.url.pathname;
 const toc = headings.filter((h) => h.depth === 2);
-const pageTitle = here === "/" ? title : `${title} · contextful spec`;
+const pageTitle = here === "/" ? title : `${title} · Contextful spec`;
 ---
 
 <!doctype html>
@@ -29,7 +29,7 @@ const pageTitle = here === "/" ? title : `${title} · contextful spec`;
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/">contextful <span>spec</span></a>
+      <a class="brand" href="/"><strong>Contextful</strong> <span>spec</span></a>
     </header>
     <div class="shell">
       <nav class="sidebar" aria-label="Spec files">

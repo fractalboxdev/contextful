@@ -13,7 +13,7 @@ owns:
 
 # Admission and authority
 
-A caller reaches contextful holding a capability credential. This file states what the
+A caller reaches **Contextful** holding a capability credential. This file states what the
 credential says, who mints it, what a holder derives from it offline, what a checkpoint
 decides about it, and the admitted-authority value that decision hands to every effect.
 The relation a grant compiles into is stated in `spec/51-enforcement.md`.

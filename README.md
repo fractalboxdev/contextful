@@ -1,4 +1,4 @@
-# contextful
+# **Contextful**
 
 A local-first context engine for agents and small teams. It ingests through
 sandboxed component connectors, lands versioned Parquet beside a JSON manifest
