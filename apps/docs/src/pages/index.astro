@@ -1,0 +1,68 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../layouts/Base.astro";
+import { contractsByFile, navigation, titleOf } from "../lib/nav";
+
+const spec = (await getCollection("spec")).sort((a, b) => a.id.localeCompare(b.id));
+const contracts = contractsByFile();
+const groups = (await navigation()).filter((g) => g.label !== "Contracts");
+const contractFiles = spec
+  .filter((e) => e.data.contract || contracts.has(e.id))
+  .map((e) => {
+    const meta = contracts.get(e.id);
+    return {
+      href: `/spec/${e.id}/`,
+      file: `${e.id}.md`,
+      contract: meta?.contract ?? e.data.contract,
+      title: titleOf(e),
+      gloss: meta?.gloss,
+    };
+  });
+---
+
+<Base
+  title="contextful specification"
+  description="The contextful specification: contract files, principles, per-contract decision records, the milestone roadmap and computed build status."
+>
+  <h1>contextful specification</h1>
+  <p>
+    Each contract file is a table of clauses addressed <code>&lt;contract&gt;.&lt;operation&gt;.&lt;subject&gt;</code>.
+    A clause row carries an anchor at its id, so <code>/spec/10-store/#store.fold.partial-snapshot</code> lands on the row.
+  </p>
+
+  <h2 id="contracts">Contracts</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Contract</th><th>Title</th><th>Covers</th></tr></thead>
+      <tbody>
+        {
+          contractFiles.map((c) => (
+            <tr>
+              <td><a href={c.href}><code>{c.file}</code></a></td>
+              <td>{c.contract && <code>{c.contract}</code>}</td>
+              <td><a href={c.href}>{c.title}</a></td>
+              <td>{c.gloss}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  {
+    groups.map((g) => (
+      <>
+        <h2>{g.label}</h2>
+        <ul class="index-list">
+          {g.items.map((i) => (
+            <li>
+              <a href={i.href}>
+                {i.hint && <code>{i.hint}</code>} {i.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </>
+    ))
+  }
+</Base>
