@@ -1,5 +1,5 @@
 // The docs site is static: the Worker serves `dist/` through Workers Static Assets
-// and runs no script. `pnpm build` renders every page and diagram before deploy.
+// and runs no script. Diagrams draw in the reader's browser, so the build is plain Node.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "contextful-docs",
