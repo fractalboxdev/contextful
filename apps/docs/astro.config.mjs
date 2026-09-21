@@ -1,5 +1,4 @@
 import { defineConfig } from "astro/config";
-import rehypeMermaid from "rehype-mermaid";
 import { remarkCorpus, rehypeCorpus } from "./src/lib/markdown.mjs";
 
 // The dev server answers localhost alone. DOCS_ALLOWED_HOSTS names the exact
@@ -13,11 +12,11 @@ export default defineConfig({
     syntaxHighlight: { type: "shiki", excludeLangs: ["mermaid"] },
     shikiConfig: { themes: { light: "github-light", dark: "github-dark" } },
     remarkPlugins: [remarkCorpus],
-    // Diagrams render to SVG at build time, a light and a dark variant each; a diagram
-    // that fails to parse fails the build.
-    rehypePlugins: [[rehypeMermaid, { strategy: "img-svg", dark: true }], rehypeCorpus],
+    rehypePlugins: [rehypeCorpus],
   },
   vite: {
     server: { allowedHosts, fs: { allow: ["../.."] } },
+    // mermaid is loaded on demand, only on pages that carry a diagram.
+    build: { chunkSizeWarningLimit: 3000 },
   },
 });

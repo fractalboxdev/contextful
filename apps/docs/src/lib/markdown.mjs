@@ -7,14 +7,30 @@ const CLAUSE_ID = /^[a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9.-]+$/;
 // `{{clause.id}}` references and bare record ids (P4, D07, A-store).
 const INLINE_REF = /\{\{([a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9.-]+)\}\}|\b(P[1-9]|D\d{2}|A-[a-z]+)\b/g;
 
+const escapeHtml = (s) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 const sourcePath = (file) => file.path ?? file.history?.[0];
 
-/** Rewrites `.md` links to routes and links `{{id}}` and record ids. */
+/**
+ * Rewrites `.md` links to routes, links `{{id}}` and record ids, and hands each mermaid
+ * fence to the client inside a figure whose button opens it full size.
+ */
 export function remarkCorpus() {
   return (tree, file) => {
     const { clauses, operations, records } = corpusIndex();
     const from = sourcePath(file);
     const self = from ? routeFor(from) : undefined;
+
+    visit(tree, "code", (node, index, parent) => {
+      if (node.lang !== "mermaid" || !parent) return;
+      parent.children[index] = {
+        type: "html",
+        value:
+          `<figure class="diagram"><pre class="mermaid">${escapeHtml(node.value)}</pre>` +
+          `<button type="button" class="diagram-open" aria-label="Enlarge diagram" title="Enlarge diagram">⤢</button></figure>`,
+      };
+    });
 
     visit(tree, "link", (node) => {
       const m = /^([^:#?]+\.md)(#.*)?$/.exec(node.url);
@@ -67,30 +83,12 @@ export function remarkCorpus() {
   };
 }
 
-const isDiagram = (node) =>
-  (node.tagName === "img" && String(node.properties?.id ?? "").startsWith("mermaid-")) ||
-  (node.tagName === "picture" && node.children.some((c) => c.type === "element" && isDiagram(c)));
-
-/**
- * Wraps each table so a wide one scrolls horizontally instead of the page, and each
- * rendered diagram in a button that opens it full size.
- */
+/** Wraps each table so a wide one scrolls horizontally instead of the page. */
 export function rehypeCorpus() {
   return (tree) => {
     visit(tree, "element", (node, index, parent) => {
-      if (!parent || index === undefined) return;
-      if (node.tagName === "table") {
-        parent.children[index] = { type: "element", tagName: "div", properties: { className: ["table-wrap"] }, children: [node] };
-        return SKIP;
-      }
-      if (!isDiagram(node)) return;
-      const button = {
-        type: "element",
-        tagName: "button",
-        properties: { type: "button", className: ["diagram-open"], ariaLabel: "Enlarge diagram", title: "Enlarge diagram" },
-        children: [node],
-      };
-      parent.children[index] = { type: "element", tagName: "figure", properties: { className: ["diagram"] }, children: [button] };
+      if (node.tagName !== "table" || !parent || index === undefined) return;
+      parent.children[index] = { type: "element", tagName: "div", properties: { className: ["table-wrap"] }, children: [node] };
       return SKIP;
     });
   };

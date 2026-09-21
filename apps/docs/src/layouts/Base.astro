@@ -103,34 +103,57 @@ const pageTitle = here === "/" ? title : `${title} · Contextful spec`;
         <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
         <button value="close" aria-label="Close">Close</button>
       </form>
-      <div class="diagram-stage"><img alt="" /></div>
+      <div class="diagram-stage"></div>
     </dialog>
     <script>
+      const blocks = [...document.querySelectorAll<HTMLElement>("pre.mermaid")];
+      const drawDiagrams = async () => {
+        for (const b of blocks) b.dataset.source = b.textContent ?? "";
+        const { default: mermaid } = await import("mermaid");
+        const dark = window.matchMedia("(prefers-color-scheme: dark)");
+        const draw = async () => {
+          mermaid.initialize({ startOnLoad: false, theme: dark.matches ? "dark" : "default", securityLevel: "strict" });
+          for (const b of blocks) {
+            b.removeAttribute("data-processed");
+            b.textContent = b.dataset.source ?? "";
+          }
+          await mermaid.run({ nodes: blocks });
+        };
+        await draw();
+        dark.addEventListener("change", () => void draw());
+      };
+      if (blocks.length) void drawDiagrams();
+
       // A diagram opens in a dialog scaled to the viewport width, at most 2x its drawn
       // size. Zoom steps by 1.25x between 0.1x and 4x; wider than the viewport, it scrolls.
       // Escape, Close or a click on the backdrop dismisses it.
       const dialog = document.getElementById("diagram-dialog") as HTMLDialogElement;
       const stage = dialog.querySelector<HTMLElement>(".diagram-stage")!;
-      const view = stage.querySelector("img")!;
+      let view: SVGSVGElement | undefined;
       let natural = 0;
       let scale = 1;
 
       const fitScale = () => Math.min(2, (stage.clientWidth - 32) / natural);
       const apply = (next: number) => {
         scale = Math.min(4, Math.max(0.1, next));
-        view.style.width = `${Math.round(natural * scale)}px`;
+        if (view) view.style.width = `${Math.round(natural * scale)}px`;
+      };
+      const open = (figure: HTMLElement) => {
+        const svg = figure.querySelector<SVGSVGElement>("pre.mermaid svg");
+        if (!svg) return;
+        view = svg.cloneNode(true) as SVGSVGElement;
+        // Mermaid sizes its SVG to 100% with a max-width; the viewBox carries the drawn size.
+        view.removeAttribute("width");
+        view.style.maxWidth = "none";
+        view.style.height = "auto";
+        natural = svg.viewBox.baseVal.width || svg.getBoundingClientRect().width;
+        stage.replaceChildren(view);
+        dialog.showModal();
+        apply(fitScale());
       };
 
-      for (const opener of document.querySelectorAll<HTMLButtonElement>(".diagram-open")) {
-        opener.addEventListener("click", () => {
-          const img = opener.querySelector("img")!;
-          view.src = img.currentSrc || img.src;
-          // Mermaid's SVG sizes itself to 100%, so its intrinsic width is the 300px default;
-          // the width attribute carries the drawn size.
-          natural = Number(img.getAttribute("width")) || img.naturalWidth;
-          dialog.showModal();
-          apply(fitScale());
-        });
+      for (const figure of document.querySelectorAll<HTMLElement>("figure.diagram")) {
+        figure.addEventListener("click", () => open(figure));
       }
       dialog.querySelector(".diagram-bar")!.addEventListener("click", (e) => {
         const zoom = (e.target as HTMLElement).dataset.zoom;
