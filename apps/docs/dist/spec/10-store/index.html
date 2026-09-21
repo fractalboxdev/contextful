@@ -1,0 +1,1044 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>The store and its sync · contextful spec</title><meta name="description" content="The store is the canonical corpus: Parquet a reader opens without the engine, JSON manifests indexing it, one pointer object per table naming the current…"><meta property="og:title" content="The store and its sync · contextful spec"><meta property="og:description" content="The store is the canonical corpus: Parquet a reader opens without the engine, JSON manifests indexing it, one pointer object per table naming the current…"><link rel="stylesheet" href="/_astro/Base.B8j-F8YW.css"></head><body><header class="topbar"><a class="brand" href="/">contextful <span>spec</span></a></header><div class="shell"><nav class="sidebar" aria-label="Spec files"><details class="sidebar-toggle" id="sidebar-toggle"><summary>Contents</summary><section><h2 class="group-label">Contracts</h2><ul><li><a href="/spec/00-corpus/"><span class="hint">00</span>Corpus law</a></li><li><a href="/spec/01-topology/"><span class="hint">01</span>System topology</a></li><li><a href="/spec/10-store/" aria-current="page"><span class="hint">10</span>The store and its sync</a></li><li><a href="/spec/20-read/"><span class="hint">20</span>The read face</a></li><li><a href="/spec/21-memory/"><span class="hint">21</span>Synthesized memory</a></li><li><a href="/spec/30-run/"><span class="hint">30</span>Durable runs</a></li><li><a href="/spec/31-pipeline/"><span class="hint">31</span>Pipelines and the write path</a></li><li><a href="/spec/32-derive/"><span class="hint">32</span>The derive tier</a></li><li><a href="/spec/40-connector/"><span class="hint">40</span>Connectors and the built-in sources</a></li><li><a href="/spec/41-secrets/"><span class="hint">41</span>Outbound credentials</a></li><li><a href="/spec/50-authority/"><span class="hint">50</span>Admission and authority</a></li><li><a href="/spec/51-enforcement/"><span class="hint">51</span>Enforcement and inference placement</a></li><li><a href="/spec/60-visibility/"><span class="hint">60</span>Source-faithful visibility</a></li><li><a href="/spec/61-disclosure/"><span class="hint">61</span>Aggregate disclosure</a></li><li><a href="/spec/62-accountability/"><span class="hint">62</span>Audit, erasure and the receipt</a></li><li><a href="/spec/70-control-plane/"><span class="hint">70</span>Cadence, dispatch and the operator plane</a></li><li><a href="/spec/71-console/"><span class="hint">71</span>The analyst console</a></li><li><a href="/spec/80-formal/"><span class="hint">80</span>The formal model</a></li><li><a href="/spec/81-engineering/"><span class="hint">81</span>Engineering gates and the quality harness</a></li></ul></section><section><h2 class="group-label">Plan</h2><ul><li><a href="/spec/roadmap/">Milestones</a></li><li><a href="/spec/status/">Status</a></li><li><a href="/spec/targets/">Deployment targets</a></li></ul></section><section><h2 class="group-label">Principles</h2><ul><li><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/"><span class="hint">P1</span>An unknown or ineffective name refuses by name at the earliest knowable point</a></li><li><a href="/adr/P2-a-refusal-is-typed-never-reads-as/"><span class="hint">P2</span>A refusal is typed, never reads as an empty result, and echoes only caller input</a></li><li><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/"><span class="hint">P3</span>A misconfigured process refuses to start; one value has one source</a></li><li><a href="/adr/P4-no-partial-empty-or-torn-state-reads/"><span class="hint">P4</span>No partial, empty or torn state reads as complete</a></li><li><a href="/adr/P5-rows-are-reached-only-through-the-caller/"><span class="hint">P5</span>Rows are reached only through the caller&#39;s registered relation; one implementation per capability</a></li><li><a href="/adr/P6-retry-only-what-a-retry-can-change/"><span class="hint">P6</span>Retry only what a retry can change</a></li><li><a href="/adr/P7-gates-fail-the-run-rather-than-skip/"><span class="hint">P7</span>Gates fail the run rather than skip</a></li><li><a href="/adr/P8-corpus-law-clause-addressing-status-computed-from/"><span class="hint">P8</span>Clauses are addressed, status is computed from pins, and rationale lives in records</a></li></ul></section><section><h2 class="group-label">Contract ADRs</h2><ul><li><a href="/adr/A-assurance/"><span class="hint">A-assurance</span>Assurance decisions</a></li><li><a href="/adr/A-authority/"><span class="hint">A-authority</span>Authority and enforcement decisions</a></li><li><a href="/adr/A-connector/"><span class="hint">A-connector</span>Connectors and credentials decisions</a></li><li><a href="/adr/A-disclosure/"><span class="hint">A-disclosure</span>Visibility, disclosure and accountability decisions</a></li><li><a href="/adr/A-read/"><span class="hint">A-read</span>Reading and memory decisions</a></li><li><a href="/adr/A-run/"><span class="hint">A-run</span>Runs, pipelines and derive decisions</a></li><li><a href="/adr/A-store/"><span class="hint">A-store</span>The store and its sync decisions</a></li><li><a href="/adr/A-surface/"><span class="hint">A-surface</span>Operator and visitor surfaces decisions</a></li><li><a href="/adr/A-topology/"><span class="hint">A-topology</span>System topology decisions</a></li></ul></section></details><script>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script></nav><main class="content"><article class="prose"><p class="eyebrow">contract <code>store</code></p><h1 id="the-store-and-its-sync">The store and its sync</h1>
+<p>The store is the canonical corpus: Parquet a reader opens without the engine, JSON
+manifests indexing it, one pointer object per table naming the current snapshot, and two
+local SQLite catalogs. An S3-compatible bucket mirrors the tree key for key. Every other
+contract reaches rows through the shapes this file fixes.</p>
+<p>The store’s canonical objects, its two catalogs, the bucket mirror, and the contracts
+writing into it and reading from it.</p>
+<pre class="mermaid">flowchart LR
+  RUNC["run · pipeline landing"]
+  READC["read · query face"]
+  ENF["authority · enforcement stack"]
+  COORD["topology · coordinate"]
+
+  subgraph ROOT["store root · .contextful/context/&#x26;lt;project&#x26;gt;/"]
+    RUNS["run parts + run manifest"]
+    LOG["cursors/ commit log"]
+    FOLD["fold pass"]
+    SNAP["snapshot · parts + sidecars + manifest"]
+    PTR["_pointer.json"]
+    SCHEMA["schema.json"]
+    DERIVED[("derived.sqlite · rebuildable cache")]
+    MACHINE[("machine.sqlite · journal · cursor cache · lease rows")]
+  end
+
+  BUCKET[("bucket · &#x26;lt;prefix&#x26;gt;/manifest.json")]
+  REPLICA["replica · read-only"]
+
+  RUNC -- "conditional create _manifest.json" --> RUNS
+  RUNC -- "leased pipeline" --> LOG
+  RUNS --> FOLD
+  FOLD -- "staging, then If-Match" --> SNAP
+  FOLD --> PTR
+  PTR -- "names current snapshot + fence" --> SNAP
+  RUNS -. "merged schema" .-> SCHEMA
+  PTR &#x26; RUNS &#x26; SCHEMA -. "rebuild-catalog" .-> DERIVED
+  MACHINE -. "lease port" .- COORD
+  READC -- "explicit sorted file list" --> PTR
+  READC -- "admission value" --> ENF
+  BUCKET &#x3C;-- "push · pull by digest" --> ROOT
+  BUCKET -- "refresh" --> REPLICA</pre>
+<h2 id="lay-out">lay-out</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.lay-out.components"><td><a href="#store.lay-out.components" class="clause-anchor"><code>store.lay-out.components</code></a></td><td>A store holds Parquet table data, JSON run and snapshot manifests, one pointer object per table, and two SQLite catalogs, <code>derived.sqlite</code> and <code>machine.sqlite</code>. Parquet, manifests and pointers are canonical.</td><td>because a catalog that is both a rebuildable cache and a commit point resurrects half-published snapshots on rebuild</td></tr><tr id="store.lay-out.store-root"><td><a href="#store.lay-out.store-root" class="clause-anchor"><code>store.lay-out.store-root</code></a></td><td>A project’s store sits at <code>.contextful/context/&#x3C;project>/</code>, holding both catalogs, <code>config.toml</code>, <code>cursors/</code> and one <code>tables/&#x3C;t>/</code> directory per table.</td><td>—</td></tr><tr id="store.lay-out.table-directory"><td><a href="#store.lay-out.table-directory" class="clause-anchor"><code>store.lay-out.table-directory</code></a></td><td>A table directory holds <code>schema.json</code>, <code>_pointer.json</code>, <code>data/snapshots/&#x3C;id>/</code>, <code>data/runs/&#x3C;run-id>/&#x3C;node-id>/</code> and <code>requests/</code>.</td><td>—</td></tr><tr id="store.lay-out.snapshot-id"><td><a href="#store.lay-out.snapshot-id" class="clause-anchor"><code>store.lay-out.snapshot-id</code></a></td><td>A snapshot id is <code>snapshot-</code> followed by a nanosecond value zero-padded to 20 chars, equal to the greater of the commit instant and the previous id plus one.</td><td>because a wall clock that steps backwards breaks lexical order equalling commit order</td></tr><tr id="store.lay-out.part-name"><td><a href="#store.lay-out.part-name" class="clause-anchor"><code>store.lay-out.part-name</code></a></td><td>A data file is <code>part-&#x3C;ordinal>.parquet</code>, the ordinal zero-padded to five digits and unique within its directory.</td><td>—</td></tr><tr id="store.lay-out.staging"><td><a href="#store.lay-out.staging" class="clause-anchor"><code>store.lay-out.staging</code></a></td><td>A fold in flight writes under <code>data/snapshots/&#x3C;id>.staging/</code>, and no file list resolves inside it.</td><td>—</td></tr><tr id="store.lay-out.run-manifest"><td><a href="#store.lay-out.run-manifest" class="clause-anchor"><code>store.lay-out.run-manifest</code></a></td><td>A run commits by conditionally creating <code>_manifest.json</code> in its node directory, carrying <code>{run_id, table, node_id, parts, committed_at, pipeline_id?, cursor?, fence?}</code>, where <code>node_id</code> equals the enclosing segment.</td><td>—</td></tr><tr id="store.lay-out.uncommitted-run"><td><a href="#store.lay-out.uncommitted-run" class="clause-anchor"><code>store.lay-out.uncommitted-run</code></a></td><td>A node directory holding no <code>_manifest.json</code> is in flight and its parts join no file list; a leased pipeline’s run also waits for its commit-log entry.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="store.lay-out.cursor-in-commit"><td><a href="#store.lay-out.cursor-in-commit" class="clause-anchor"><code>store.lay-out.cursor-in-commit</code></a></td><td>A pipeline’s committed position is the cursor inside its newest commit: the newest commit-log entry for a leased pipeline, the highest run-manifest cursor otherwise. <code>machine.sqlite</code> caches it.</td><td>because a position committed apart from its rows re-lands the batch after a crash between the two writes</td></tr><tr id="store.lay-out.snapshot-manifest"><td><a href="#store.lay-out.snapshot-manifest" class="clause-anchor"><code>store.lay-out.snapshot-manifest</code></a></td><td>A snapshot’s <code>_manifest.json</code> carries <code>{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence}</code>, and each entry of <code>parts</code> and <code>indexes</code> carries its <code>key_version</code>.</td><td>—</td></tr><tr id="store.lay-out.table-pointer"><td><a href="#store.lay-out.table-pointer" class="clause-anchor"><code>store.lay-out.table-pointer</code></a></td><td><code>tables/&#x3C;t>/_pointer.json</code> names the table’s current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of <code>parent</code> links from it reaches it.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.lay-out.manifest-default"><td><a href="#store.lay-out.manifest-default" class="clause-anchor"><code>store.lay-out.manifest-default</code></a></td><td>A field added to a manifest carries a default value.</td><td>—</td></tr><tr id="store.lay-out.manifest-unreadable"><td><a href="#store.lay-out.manifest-unreadable" class="clause-anchor"><code>store.lay-out.manifest-unreadable</code></a></td><td>A run manifest or a reachable snapshot manifest that fails to parse raises <code>StoreManifestUnreadable</code>, naming the table and the file, and the table answers no read until it parses.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="store.lay-out.schema-file"><td><a href="#store.lay-out.schema-file" class="clause-anchor"><code>store.lay-out.schema-file</code></a></td><td>A table’s schema is <code>schema.json</code> in Arrow JSON form; each arriving batch’s schema merges into it and the merged result replaces it.</td><td>—</td></tr><tr id="store.lay-out.immutable-files"><td><a href="#store.lay-out.immutable-files" class="clause-anchor"><code>store.lay-out.immutable-files</code></a></td><td>A run file is written once and never edited, a snapshot directory is immutable, and a fold writes a new snapshot.</td><td>—</td></tr><tr id="store.lay-out.derived-catalog"><td><a href="#store.lay-out.derived-catalog" class="clause-anchor"><code>store.lay-out.derived-catalog</code></a></td><td><code>derived.sqlite</code> is a cache: <code>contextful context rebuild-catalog</code> reconstructs it from the pointers, the manifests they reach, every committed run manifest and every <code>schema.json</code>. It is never synced and commits nothing.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.lay-out.machine-catalog"><td><a href="#store.lay-out.machine-catalog" class="clause-anchor"><code>store.lay-out.machine-catalog</code></a></td><td><code>machine.sqlite</code> holds one machine’s journal, cursor cache and lease rows. It is never synced, never rebuilt and never replaced by a pull.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.lay-out.unknown-table"><td><a href="#store.lay-out.unknown-table" class="clause-anchor"><code>store.lay-out.unknown-table</code></a></td><td>A table name no <code>schema.json</code> in the tree declares raises <code>StoreUnknownTable</code>, never an empty result.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="store.lay-out.node-segment"><td><a href="#store.lay-out.node-segment" class="clause-anchor"><code>store.lay-out.node-segment</code></a></td><td>The <code>&#x3C;node-id></code> run-path segment and the node id in a ledger filename keep two machines writing one logical run id in disjoint files.</td><td>—</td></tr><tr id="store.lay-out.node-id-order"><td><a href="#store.lay-out.node-id-order" class="clause-anchor"><code>store.lay-out.node-id-order</code></a></td><td>A process resolves its node id once: <code>CONTEXTFUL_NODE_ID</code>, then <code>[node] id</code>, then a random <code>node-&#x3C;8 hex></code> generated once and persisted.</td><td>—</td></tr><tr id="store.lay-out.node-id-state-path"><td><a href="#store.lay-out.node-id-state-path" class="clause-anchor"><code>store.lay-out.node-id-state-path</code></a></td><td>A generated node id persists under <code>$CONTEXTFUL_STATE_DIR</code>, else <code>$XDG_STATE_HOME/contextful</code>, else the platform user-state directory, outside the store root.</td><td>because a copied store carrying its identity makes two machines one holder</td></tr><tr id="store.lay-out.node-id-shape"><td><a href="#store.lay-out.node-id-shape" class="clause-anchor"><code>store.lay-out.node-id-shape</code></a></td><td>A node id longer than 64 chars or outside <code>^[A-Za-z0-9._-]+$</code> raises <code>StoreNodeIdInvalid</code> at process start, before any path, key or lease carries it.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="store.lay-out.node-id-shared"><td><a href="#store.lay-out.node-id-shared" class="clause-anchor"><code>store.lay-out.node-id-shared</code></a></td><td>A node id declared in a control-plane configuration raises <code>StoreNodeIdShared</code>.</td><td>because a control-plane snapshot applies to every machine reconciling it, making one id many holders</td></tr><tr id="store.lay-out.node-id-local"><td><a href="#store.lay-out.node-id-local" class="clause-anchor"><code>store.lay-out.node-id-local</code></a></td><td>A machine with no writable state directory takes the reserved node id <code>local</code>.</td><td>—</td></tr></tbody></table></div>
+<p>unsettled: How does a consumer discover the manifest format version a store or bucket carries, and what does it do with a version newer than it parses? owner: store affects: store.lay-out</p>
+<h2 id="declare">declare</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.declare.table-block"><td><a href="#store.declare.table-block" class="clause-anchor"><code>store.declare.table-block</code></a></td><td>A table block declares any of <code>primary_key</code>, <code>order_by</code>, <code>write_mode</code>, <code>replicate</code>, <code>subject_id</code>, <code>class</code>, <code>policy</code>, <code>visibility</code>, <code>valid_time</code>, <code>view</code>, <code>cluster_by</code>, <code>partition_by</code>, <code>retain_runs</code>, <code>agent_description</code>, <code>agent_hint</code> and <code>example_queries</code>; an unset key is absent from the canonical serialization.</td><td>—</td></tr><tr id="store.declare.two-genres"><td><a href="#store.declare.two-genres" class="clause-anchor"><code>store.declare.two-genres</code></a></td><td>A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the engine does not enumerate. Both append, dedupe on content and carry a timestamp.</td><td>—</td></tr><tr id="store.declare.unkeyed-union"><td><a href="#store.declare.unkeyed-union" class="clause-anchor"><code>store.declare.unkeyed-union</code></a></td><td>A table declaring no <code>primary_key</code> reads as the byte-identical union of its committed runs.</td><td>—</td></tr><tr id="store.declare.dedup-view"><td><a href="#store.declare.dedup-view" class="clause-anchor"><code>store.declare.dedup-view</code></a></td><td>A table declaring <code>primary_key</code> reads through <code>ROW_NUMBER() OVER (PARTITION BY &#x3C;pk> ORDER BY &#x3C;order_by> DESC, _ingested_at DESC) = 1</code> over its current snapshot, if any, unioned with the committed runs that snapshot omits.</td><td>because a keyed table read as a union before its first fold inflates every aggregate silently</td></tr><tr id="store.declare.order-by-default"><td><a href="#store.declare.order-by-default" class="clause-anchor"><code>store.declare.order-by-default</code></a></td><td><code>order_by</code> names the column picking the surviving row per key, and defaults to <code>_ingested_at</code>.</td><td>—</td></tr><tr id="store.declare.order-by-unknown"><td><a href="#store.declare.order-by-unknown" class="clause-anchor"><code>store.declare.order-by-unknown</code></a></td><td>An <code>order_by</code> naming a column neither declared nor injected raises <code>StoreOrderByUnknownColumn</code> at validation, before the first batch.</td><td>because an ordering column absent from every file reads as null and picks survivors arbitrarily</td></tr><tr id="store.declare.write-mode"><td><a href="#store.declare.write-mode" class="clause-anchor"><code>store.declare.write-mode</code></a></td><td><code>write_mode</code> is <code>append</code>, the default, keeping the last write per key and retiring no key, or <code>replace</code>.</td><td>—</td></tr><tr id="store.declare.replace-frontier"><td><a href="#store.declare.replace-frontier" class="clause-anchor"><code>store.declare.replace-frontier</code></a></td><td>Under <code>replace</code>, a read covers the newest run carrying the source’s complete state plus every run committed after it.</td><td>—</td></tr><tr id="store.declare.replace-retains"><td><a href="#store.declare.replace-retains" class="clause-anchor"><code>store.declare.replace-retains</code></a></td><td>A replacing run leaves the runs it displaced on disk until <code>retain_runs</code> passes, writes no erasure receipt and walks no lineage.</td><td>—</td></tr><tr id="store.declare.empty-run"><td><a href="#store.declare.empty-run" class="clause-anchor"><code>store.declare.empty-run</code></a></td><td>A run landing zero rows commits a manifest with no parts and replaces nothing; a table with no rows registers as a zero-row relation over its declared and injected columns.</td><td>—</td></tr><tr id="store.declare.fold-coverage"><td><a href="#store.declare.fold-coverage" class="clause-anchor"><code>store.declare.fold-coverage</code></a></td><td>Validation warns, naming the table, where a key is declared and no enabled compaction job covers the table.</td><td>—</td></tr><tr id="store.declare.read-side-keys"><td><a href="#store.declare.read-side-keys" class="clause-anchor"><code>store.declare.read-side-keys</code></a></td><td>A declaration key changes what a read returns and rewrites no committed part; a key added after rows land applies from the next read.</td><td>—</td></tr></tbody></table></div>
+<p>unsettled: What retires a key a source stops serving under <code>append</code>, given the source-side deletion is invisible in the tree? owner: store affects: store.declare</p>
+<h2 id="reserve">reserve</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.reserve.underscore-namespace"><td><a href="#store.reserve.underscore-namespace" class="clause-anchor"><code>store.reserve.underscore-namespace</code></a></td><td>Column names beginning <code>_</code> belong to the engine; the injected set and the reserved optional set are its whole content.</td><td>—</td></tr><tr id="store.reserve.injected"><td><a href="#store.reserve.injected" class="clause-anchor"><code>store.reserve.injected</code></a></td><td>The engine injects <code>_ingested_at</code> as a non-null Parquet <code>TIMESTAMP(UTC, NANOS)</code>, <code>_run_id</code>, <code>_batch_seq</code> as int32 where a batch scope exists, <code>_site_id</code>, and <code>_authored_by</code> where an authenticated subject authorized the write, replacing any producer value.</td><td>because a string instant does not sort by time once fractions or offsets appear</td></tr><tr id="store.reserve.no-placeholder"><td><a href="#store.reserve.no-placeholder" class="clause-anchor"><code>store.reserve.no-placeholder</code></a></td><td>A path with no batch scope or no authenticated subject omits that column instead of writing nulls.</td><td>—</td></tr><tr id="store.reserve.optional"><td><a href="#store.reserve.optional" class="clause-anchor"><code>store.reserve.optional</code></a></td><td>A producer sets any of <code>_modality</code>, <code>_lang</code>, <code>_provenance</code> and <code>_prompt_hash</code>, and each surfaces in the provenance envelope where present.</td><td>—</td></tr><tr id="store.reserve.modality"><td><a href="#store.reserve.modality" class="clause-anchor"><code>store.reserve.modality</code></a></td><td><code>_modality</code> takes one of text, image, audio, structured or mixed; another value fails validation of its batch.</td><td>—</td></tr><tr id="store.reserve.lang-and-provenance"><td><a href="#store.reserve.lang-and-provenance" class="clause-anchor"><code>store.reserve.lang-and-provenance</code></a></td><td><code>_lang</code> carries a BCP-47 tag; <code>_provenance</code> carries the evidence rows the row derives from, addressed by the identity the source table keys on.</td><td>—</td></tr><tr id="store.reserve.prompt-hash"><td><a href="#store.reserve.prompt-hash" class="clause-anchor"><code>store.reserve.prompt-hash</code></a></td><td><code>_prompt_hash</code> is <code>sha256:&#x3C;hex></code> over the prompt template, not the rendered prompt.</td><td>—</td></tr><tr id="store.reserve.column-name"><td><a href="#store.reserve.column-name" class="clause-anchor"><code>store.reserve.column-name</code></a></td><td>A producer column inside the <code>_</code> namespace and outside the optional set raises <code>StoreReservedColumnName</code> at reconciliation, before any Parquet.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="store.reserve.table-namespaces"><td><a href="#store.reserve.table-namespaces" class="clause-anchor"><code>store.reserve.table-namespaces</code></a></td><td>The engine reserves two table namespaces: the durable run record, and the prefix the visibility engine mirrors access data under.</td><td>—</td></tr><tr id="store.reserve.table-name"><td><a href="#store.reserve.table-name" class="clause-anchor"><code>store.reserve.table-name</code></a></td><td>A pipeline declaring a table inside a reserved namespace raises <code>StoreReservedTableName</code> when its manifest is assembled, naming the reservation.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="store.reserve.ledger-path"><td><a href="#store.reserve.ledger-path" class="clause-anchor"><code>store.reserve.ledger-path</code></a></td><td>A run’s request ledger is <code>requests/&#x3C;run-id>.&#x3C;node-id>.parquet</code>, disjoint per run and per writing node.</td><td>—</td></tr><tr id="store.reserve.ledger-fold"><td><a href="#store.reserve.ledger-fold" class="clause-anchor"><code>store.reserve.ledger-fold</code></a></td><td>Each fold pass merges a table’s committed ledger files into <code>requests/folded-&#x3C;snapshot-id>.parquet</code>, and a replica carries ledgers with their table.</td><td>because one ledger file per run per node per table grows listing and diff cost without bound</td></tr><tr id="store.reserve.ledger-retention"><td><a href="#store.reserve.ledger-retention" class="clause-anchor"><code>store.reserve.ledger-retention</code></a></td><td>A ledger row is collected 365 d after its run committed.</td><td>—</td></tr></tbody></table></div>
+<h2 id="reconcile">reconcile</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.reconcile.explicit-file-list"><td><a href="#store.reconcile.explicit-file-list" class="clause-anchor"><code>store.reconcile.explicit-file-list</code></a></td><td>Every read hands <code>read_parquet</code> an explicit sorted file list resolved from the pointer and the manifests, never a glob; a stray file joins nothing.</td><td>—</td></tr><tr id="store.reconcile.union-by-name"><td><a href="#store.reconcile.union-by-name" class="clause-anchor"><code>store.reconcile.union-by-name</code></a></td><td>Every read passes <code>union_by_name=true</code>; a column resolves to the common supertype of the files carrying it, and the generated relation adds no per-column cast.</td><td>—</td></tr><tr id="store.reconcile.lattice"><td><a href="#store.reconcile.lattice" class="clause-anchor"><code>store.reconcile.lattice</code></a></td><td>The type lattice holds one promotion, <code>Int64</code> with <code>Float64</code> to <code>Float64</code>; a JSON type absorbs <code>Utf8</code>.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.reconcile.incompatible"><td><a href="#store.reconcile.incompatible" class="clause-anchor"><code>store.reconcile.incompatible</code></a></td><td>Any other pair of types observed for one column raises <code>StoreSchemaIncompatible</code> at the write, naming the column, the stored type and the arriving type.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.reconcile.float-loss"><td><a href="#store.reconcile.float-loss" class="clause-anchor"><code>store.reconcile.float-loss</code></a></td><td>An <code>Int64</code> value above 9007199254740992 loses precision once a <code>Float64</code> batch lands on its column.</td><td>—</td></tr><tr id="store.reconcile.key-widening"><td><a href="#store.reconcile.key-widening" class="clause-anchor"><code>store.reconcile.key-widening</code></a></td><td>A primary-key column takes no <code>Float64</code> promotion: the widening batch raises <code>StoreKeyWidened</code> before any Parquet, as does a fold meeting a key already reconciled to <code>Float64</code>.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.reconcile.additive"><td><a href="#store.reconcile.additive" class="clause-anchor"><code>store.reconcile.additive</code></a></td><td>An unseen column joins the merged schema, and files written before it read it as null.</td><td>—</td></tr><tr id="store.reconcile.no-invented-column"><td><a href="#store.reconcile.no-invented-column" class="clause-anchor"><code>store.reconcile.no-invented-column</code></a></td><td>A scan invents no column: an ordering column absent from every file enters through a zero-row branch, and a column added after a table’s first rows projects as a literal null.</td><td>—</td></tr><tr id="store.reconcile.first-sight"><td><a href="#store.reconcile.first-sight" class="clause-anchor"><code>store.reconcile.first-sight</code></a></td><td>A destination creates a table on the first schema it sees and merges each later schema into <code>schema.json</code>.</td><td>—</td></tr><tr id="store.reconcile.fold-never-narrows"><td><a href="#store.reconcile.fold-never-narrows" class="clause-anchor"><code>store.reconcile.fold-never-narrows</code></a></td><td>A fold backfills nulls and widens types; it narrows no type and drops no column.</td><td>—</td></tr><tr id="store.reconcile.no-history"><td><a href="#store.reconcile.no-history" class="clause-anchor"><code>store.reconcile.no-history</code></a></td><td>Reconciliation keeps the current shape alone; a past widening is attributed from the run files.</td><td>—</td></tr><tr id="store.reconcile.reserved-set-versioned"><td><a href="#store.reconcile.reserved-set-versioned" class="clause-anchor"><code>store.reconcile.reserved-set-versioned</code></a></td><td>Adding an injected column advances the semantics version, whose fingerprint recipe names the column.</td><td>—</td></tr></tbody></table></div>
+<h2 id="fold">fold</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.fold.pass"><td><a href="#store.fold.pass" class="clause-anchor"><code>store.fold.pass</code></a></td><td>A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by <code>cluster_by</code>, partitions, writes Parquet and every declared sidecar into staging, then commits by <a href="/spec/10-store/#store.fold.pointer-commit" class="clause-ref"><code>store.fold.pointer-commit</code></a>.</td><td>—</td></tr><tr id="store.fold.valid-time-line"><td><a href="#store.fold.valid-time-line" class="clause-anchor"><code>store.fold.valid-time-line</code></a></td><td>A keyed table declaring <code>valid_time</code> partitions on the key together with the valid-time line and keeps one row per line.</td><td>—</td></tr><tr id="store.fold.includes-runs"><td><a href="#store.fold.includes-runs" class="clause-anchor"><code>store.fold.includes-runs</code></a></td><td>A snapshot’s <code>includes_runs</code> names the runs it folded; a run committed afterwards reads on top of it.</td><td>—</td></tr><tr id="store.fold.triggers"><td><a href="#store.fold.triggers" class="clause-anchor"><code>store.fold.triggers</code></a></td><td>A pass fires at 50 committed runs on a table, 6 h after the table’s previous pass, or on <code>contextful context compact &#x3C;table></code>.</td><td>—</td></tr><tr id="store.fold.retention"><td><a href="#store.fold.retention" class="clause-anchor"><code>store.fold.retention</code></a></td><td><code>retain_runs</code> defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.</td><td>—</td></tr><tr id="store.fold.result"><td><a href="#store.fold.result" class="clause-anchor"><code>store.fold.result</code></a></td><td>A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass.</td><td>—</td></tr><tr id="store.fold.unknown-table"><td><a href="#store.fold.unknown-table" class="clause-anchor"><code>store.fold.unknown-table</code></a></td><td>A pass naming a table no <code>schema.json</code> declares halts the command with <a href="/spec/10-store/#store.lay-out.unknown-table" class="clause-ref"><code>store.lay-out.unknown-table</code></a>.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="store.fold.compaction-lease"><td><a href="#store.fold.compaction-lease" class="clause-anchor"><code>store.fold.compaction-lease</code></a></td><td>A pass holds the table’s compaction lease and stamps its fence into the snapshot manifest and the pointer.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.fold.pointer-commit"><td><a href="#store.fold.pointer-commit" class="clause-anchor"><code>store.fold.pointer-commit</code></a></td><td>A pass publishes by replacing <code>_pointer.json</code> conditioned on the ETag it read at pass start, with <code>If-Match</code> on an object store and a version-checked rename on a filesystem.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.fold.partial-snapshot"><td><a href="#store.fold.partial-snapshot" class="clause-anchor"><code>store.fold.partial-snapshot</code></a></td><td>A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises <code>StorePartialSnapshot</code>.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="store.fold.lost-pointer"><td><a href="#store.fold.lost-pointer" class="clause-anchor"><code>store.fold.lost-pointer</code></a></td><td>A pass whose pointer replace loses its condition publishes nothing, and its staged snapshot is collected.</td><td>—</td></tr><tr id="store.fold.staging-collected"><td><a href="#store.fold.staging-collected" class="clause-anchor"><code>store.fold.staging-collected</code></a></td><td>A staging directory, and a snapshot directory no pointer chain reaches, are collected by the next pass and read by nobody.</td><td>—</td></tr><tr id="store.fold.non-blocking"><td><a href="#store.fold.non-blocking" class="clause-anchor"><code>store.fold.non-blocking</code></a></td><td>A statement running during a pass reads the snapshot the pointer named when it started; statements starting after the commit read the new one.</td><td>—</td></tr><tr id="store.fold.supersedes"><td><a href="#store.fold.supersedes" class="clause-anchor"><code>store.fold.supersedes</code></a></td><td>A new snapshot supersedes the previous one without deleting it, and a bounded read reaches the older one until retention collects it.</td><td>—</td></tr></tbody></table></div>
+<p>A fold pass under the compaction lease, from run selection to the pointer commit.</p>
+<pre class="mermaid">sequenceDiagram
+  participant F as fold pass
+  participant L as compaction lease
+  participant S as staging directory
+  participant P as _pointer.json
+  participant R as reader
+
+  F->>L: acquire, fence N
+  alt another node holds it
+    L-->>F: LeaseHeld, pass skipped
+  else acquired
+    F->>P: read ETag
+    F->>F: select omitted runs, dedupe or union, reconcile, sort, partition
+    F->>S: Parquet + every declared sidecar, fence N in manifest
+    F->>P: replace If-Match ETag, fence N
+    alt condition holds
+      P-->>R: new snapshot for statements starting after the commit
+    else condition lost
+      P-->>F: nothing published, staging collected next pass
+    end
+  end</pre>
+<h2 id="index">index</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.index.kinds"><td><a href="#store.index.kinds" class="clause-anchor"><code>store.index.kinds</code></a></td><td>Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW vector graph, a Tantivy full-text index, and opt-in per-column bloom filters.</td><td>—</td></tr><tr id="store.index.declaration"><td><a href="#store.index.declaration" class="clause-anchor"><code>store.index.declaration</code></a></td><td>A sidecar is declared per table with a kind, a <code>column</code> and builder parameters; the vector kind takes model, dimension, metric, <code>m</code> and <code>ef_construction</code>.</td><td>—</td></tr><tr id="store.index.paths"><td><a href="#store.index.paths" class="clause-anchor"><code>store.index.paths</code></a></td><td>A vector sidecar sits at <code>indexes/vec-&#x3C;col>-&#x3C;model>/zone=&#x3C;label>/</code> and a full-text sidecar at <code>indexes/fts-&#x3C;col>/</code>, inside the snapshot directory it indexes.</td><td>—</td></tr><tr id="store.index.identity"><td><a href="#store.index.identity" class="clause-anchor"><code>store.index.identity</code></a></td><td>A sidecar’s identity is <code>(column, builder, builder-version)</code>; two builders over one column coexist, the caller picks at query time, and <code>derived.sqlite</code> records each builder.</td><td>—</td></tr><tr id="store.index.rebuild"><td><a href="#store.index.rebuild" class="clause-anchor"><code>store.index.rebuild</code></a></td><td>Swapping a builder rebuilds the sidecar, leaves the Parquet untouched, and callers on the existing identity read through the cutover.</td><td>—</td></tr><tr id="store.index.not-in-file-set"><td><a href="#store.index.not-in-file-set" class="clause-anchor"><code>store.index.not-in-file-set</code></a></td><td><code>indexes/</code> joins no table’s file set; a snapshot reader lists only the parts its manifest names.</td><td>—</td></tr><tr id="store.index.dies-with-snapshot"><td><a href="#store.index.dies-with-snapshot" class="clause-anchor"><code>store.index.dies-with-snapshot</code></a></td><td>Collecting a snapshot collects its sidecars in the same step.</td><td>—</td></tr><tr id="store.index.candidate-ids"><td><a href="#store.index.candidate-ids" class="clause-anchor"><code>store.index.candidate-ids</code></a></td><td>A sidecar yields candidate identifiers, not rows; they re-join through the enforced relation before a top-K is final.</td><td><a href="/adr/P5-rows-are-reached-only-through-the-caller/" class="record-ref">P5</a></td></tr><tr id="store.index.vector-by-fold"><td><a href="#store.index.vector-by-fold" class="clause-anchor"><code>store.index.vector-by-fold</code></a></td><td>The fold builds a vector sidecar for a table carrying an embedding column under a single-column primary key.</td><td>—</td></tr><tr id="store.index.column-absent"><td><a href="#store.index.column-absent" class="clause-anchor"><code>store.index.column-absent</code></a></td><td>An index over a column the reconciled schema lacks raises <code>StoreIndexColumnAbsent</code> at manifest validation, before the pass that builds it.</td><td>because an index over a missing column builds empty and reads as no match</td></tr><tr id="store.index.clustering"><td><a href="#store.index.clustering" class="clause-anchor"><code>store.index.clustering</code></a></td><td><code>cluster_by</code> sorts rows within a file lexicographically over its columns in declared order; zone maps then skip row groups with no manifest entry and no sidecar.</td><td>—</td></tr><tr id="store.index.partitioning"><td><a href="#store.index.partitioning" class="clause-anchor"><code>store.index.partitioning</code></a></td><td>Partitioning is off unless <code>partition_by</code> declares it.</td><td>—</td></tr><tr id="store.index.partition-warnings"><td><a href="#store.index.partition-warnings" class="clause-anchor"><code>store.index.partition-warnings</code></a></td><td>Planning warns, naming the column, where a partition specification projects more than 1000 partitions or a median partition below 16 MiB.</td><td>—</td></tr><tr id="store.index.tenant-outermost"><td><a href="#store.index.tenant-outermost" class="clause-anchor"><code>store.index.tenant-outermost</code></a></td><td>A multi-tenant table carries the tenant identifier as its outermost partition column.</td><td>because a dropped tenant predicate then reads nothing instead of every tenant</td></tr><tr id="store.index.tenant-verbatim"><td><a href="#store.index.tenant-verbatim" class="clause-anchor"><code>store.index.tenant-verbatim</code></a></td><td>A tenant value is written and compared byte for byte, with no trimming, case folding or Unicode normalization; a percent-escaped directory name is representation alone.</td><td>—</td></tr></tbody></table></div>
+<p>unsettled: Is the on-disk vector graph format stable enough to commit to, and how many incremental extensions precede a full rebuild? owner: store affects: store.index</p>
+<p>unsettled: Is a tenant partition value validated against a canonical form, given the build rewrites nothing? owner: store affects: store.index</p>
+<h2 id="bound-time">bound-time</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.bound-time.two-clocks"><td><a href="#store.bound-time.two-clocks" class="clause-anchor"><code>store.bound-time.two-clocks</code></a></td><td>Transaction time is <code>_ingested_at</code>; valid time is a declared pair of the table’s own columns. The engine infers no pair and stamps no second transaction clock.</td><td>—</td></tr><tr id="store.bound-time.valid-time-declaration"><td><a href="#store.bound-time.valid-time-declaration" class="clause-anchor"><code>store.bound-time.valid-time-declaration</code></a></td><td><code>[pipeline.tables.valid_time]</code> declares <code>from</code> and an optional <code>to</code>; a table declaring <code>from</code> alone treats each row as valid from that instant onward.</td><td>—</td></tr><tr id="store.bound-time.valid-time-type"><td><a href="#store.bound-time.valid-time-type" class="clause-anchor"><code>store.bound-time.valid-time-type</code></a></td><td>A declared valid-time column whose type is not a timestamp raises <code>StoreValidTimeNotTimestamp</code> at declaration.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="store.bound-time.instant-comparison"><td><a href="#store.bound-time.instant-comparison" class="clause-anchor"><code>store.bound-time.instant-comparison</code></a></td><td>Every bound compares instants as timestamps, never as strings; a date-only literal resolves, where it is built, to the start of the next day, exclusive.</td><td>—</td></tr><tr id="store.bound-time.as-of"><td><a href="#store.bound-time.as-of" class="clause-anchor"><code>store.bound-time.as-of</code></a></td><td><code>as_of</code> resolves each table to the newest reachable snapshot created at or before it, plus the committed runs at or before it that snapshot omits, inside the table’s FROM-source.</td><td>because filtering the current files by ingest stamp returns different rows before and after a fold</td></tr><tr id="store.bound-time.as-of-unretained"><td><a href="#store.bound-time.as-of-unretained" class="clause-anchor"><code>store.bound-time.as-of-unretained</code></a></td><td>An <code>as_of</code> earlier than the oldest retained snapshot of a table whose history has been collected raises <code>StoreAsOfUnretained</code>, naming the oldest answerable instant.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="store.bound-time.valid-as-of"><td><a href="#store.bound-time.valid-as-of" class="clause-anchor"><code>store.bound-time.valid-as-of</code></a></td><td><code>valid_as_of</code> wraps the same inner source with <code>from &#x3C;= valid_as_of AND (to IS NULL OR to > valid_as_of)</code> over the declared pair.</td><td>—</td></tr><tr id="store.bound-time.valid-time-undeclared"><td><a href="#store.bound-time.valid-time-undeclared" class="clause-anchor"><code>store.bound-time.valid-time-undeclared</code></a></td><td>A <code>valid_as_of</code> read against a table declaring no pair raises <code>StoreValidTimeUndeclared</code>, naming the table.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="store.bound-time.pin-bound"><td><a href="#store.bound-time.pin-bound" class="clause-anchor"><code>store.bound-time.pin-bound</code></a></td><td>A read carrying <code>as_of</code> and a build pin resolves each table named by both by <a href="/spec/20-read/#read.resolve-pin.earlier-bound-wins" class="clause-ref"><code>read.resolve-pin.earlier-bound-wins</code></a>.</td><td>—</td></tr><tr id="store.bound-time.unbounded-latest"><td><a href="#store.bound-time.unbounded-latest" class="clause-anchor"><code>store.bound-time.unbounded-latest</code></a></td><td>A read carrying neither bound resolves each table to its current snapshot plus the committed runs it omits.</td><td>—</td></tr><tr id="store.bound-time.beneath-enforcement"><td><a href="#store.bound-time.beneath-enforcement" class="clause-anchor"><code>store.bound-time.beneath-enforcement</code></a></td><td>Both bounds apply beneath the row predicate, the column mask and the tenant filter, narrowing what enforcement admits and widening nothing.</td><td><a href="/adr/P5-rows-are-reached-only-through-the-caller/" class="record-ref">P5</a></td></tr><tr id="store.bound-time.covering-versions"><td><a href="#store.bound-time.covering-versions" class="clause-anchor"><code>store.bound-time.covering-versions</code></a></td><td>Over an unkeyed table a valid-time bound returns every version whose interval covers the instant.</td><td>—</td></tr><tr id="store.bound-time.echo"><td><a href="#store.bound-time.echo" class="clause-anchor"><code>store.bound-time.echo</code></a></td><td>A bounded read echoes <code>contextful.bounds</code> as <code>{as_of?, valid_as_of?, inclusive}</code>, each instant in RFC 3339 UTC with nine fractional digits and a <code>Z</code> suffix; an unbounded read omits it.</td><td>—</td></tr></tbody></table></div>
+<p>unsettled: How is a set of validity intervals for one key modelled, given one pair of columns holds one interval? owner: store affects: store.bound-time</p>
+<h2 id="encrypt">encrypt</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.encrypt.key-binding"><td><a href="#store.encrypt.key-binding" class="clause-anchor"><code>store.encrypt.key-binding</code></a></td><td>At-rest encryption is per project, off unless <code>[encryption] key_source</code> names <code>env:&#x3C;NAME></code> or a key-management service.</td><td>—</td></tr><tr id="store.encrypt.key-unbound"><td><a href="#store.encrypt.key-unbound" class="clause-anchor"><code>store.encrypt.key-unbound</code></a></td><td>A <code>key_source</code> naming a binding the process lacks raises <code>StoreEncryptionKeyUnbound</code> at startup, with no cleartext fallback.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="store.encrypt.cipher"><td><a href="#store.encrypt.cipher" class="clause-anchor"><code>store.encrypt.cipher</code></a></td><td>Parquet, footers included, encrypts through Parquet modular encryption; every sidecar and ledger file encrypts with AES-256-GCM under a per-file data key wrapped by the project key.</td><td>because a cleartext vector graph admits nearest-neighbour search over the embedding space</td></tr><tr id="store.encrypt.password-kdf"><td><a href="#store.encrypt.password-kdf" class="clause-anchor"><code>store.encrypt.password-kdf</code></a></td><td>A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes.</td><td>—</td></tr><tr id="store.encrypt.transport-separate"><td><a href="#store.encrypt.transport-separate" class="clause-anchor"><code>store.encrypt.transport-separate</code></a></td><td>At-rest encryption covers files and TLS covers bucket transport; a cleartext endpoint carries no encrypted-at-rest claim.</td><td>—</td></tr><tr id="store.encrypt.redacted-index"><td><a href="#store.encrypt.redacted-index" class="clause-anchor"><code>store.encrypt.redacted-index</code></a></td><td>An index declared over a column redacted at write time raises <code>StoreIndexOverRedactedColumn</code> at manifest validation.</td><td><a href="/adr/A-authority/" class="record-ref">A-authority</a></td></tr><tr id="store.encrypt.at-rest-scope"><td><a href="#store.encrypt.at-rest-scope" class="clause-anchor"><code>store.encrypt.at-rest-scope</code></a></td><td>A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.</td><td>—</td></tr><tr id="store.encrypt.rotation"><td><a href="#store.encrypt.rotation" class="clause-anchor"><code>store.encrypt.rotation</code></a></td><td>Rotation writes forward: new files take the new key version, published files keep theirs until collected, and a key version retires once no retained file names it.</td><td>—</td></tr></tbody></table></div>
+<h2 id="push">push</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.push.prefix-escape"><td><a href="#store.push.prefix-escape" class="clause-anchor"><code>store.push.prefix-escape</code></a></td><td>A key resolving outside the prefix raises <code>SyncPrefixEscape</code>, naming the key and the prefix.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="store.push.prefix-unbound"><td><a href="#store.push.prefix-unbound" class="clause-anchor"><code>store.push.prefix-unbound</code></a></td><td>An unset variable named by <code>prefix_from</code> raises <code>SyncPrefixUnbound</code> at startup, with no bucket-root fallback.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="store.push.prefix-overspecified"><td><a href="#store.push.prefix-overspecified" class="clause-anchor"><code>store.push.prefix-overspecified</code></a></td><td>Declaring <code>prefix</code> and <code>prefix_from</code> together raises <code>SyncPrefixOverspecified</code>.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="store.push.in-flight"><td><a href="#store.push.in-flight" class="clause-anchor"><code>store.push.in-flight</code></a></td><td>A second push of one store on one machine raises <code>SyncPushInFlight</code>, naming the holder of the push guard.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr></tbody></table></div>
+<p>A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.</p>
+<pre class="mermaid">sequenceDiagram
+  participant W as writer
+  participant B as bucket objects
+  participant M as manifest.json
+
+  W->>W: walk store root, digest each file
+  W->>M: read remote manifest + ETag
+  loop each file whose digest differs
+    W->>B: upload under the prefix
+  end
+  loop up to push_retries, default 5
+    W->>W: merge own entries from local tree, others from remote
+    W->>M: replace If-Match ETag
+    alt condition holds
+      M-->>W: push committed
+    else lost the race
+      M-->>W: re-read, re-merge
+    end
+  end
+  Note over W,M: exhausted retries raise SyncManifestRebaseExhausted</pre>
+<h2 id="pull">pull</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.pull.digest-mismatch"><td><a href="#store.pull.digest-mismatch" class="clause-anchor"><code>store.pull.digest-mismatch</code></a></td><td>A downloaded object whose digest differs from its entry raises <code>SyncObjectDigestMismatch</code> and is discarded.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="store.pull.convergence"><td><a href="#store.pull.convergence" class="clause-anchor"><code>store.pull.convergence</code></a></td><td>When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.</td><td>—</td></tr><tr id="store.pull.unconverged"><td><a href="#store.pull.unconverged" class="clause-anchor"><code>store.pull.unconverged</code></a></td><td>Exhausting those retries raises <code>SyncPullDidNotConverge</code>, naming the key that kept moving, and writes no pointer.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr></tbody></table></div>
+<p>A pull converges on the bucket manifest and writes each table pointer last.</p>
+<pre class="mermaid">sequenceDiagram
+  participant P as puller
+  participant M as manifest.json
+  participant B as bucket objects
+
+  loop up to 3 attempts
+    P->>M: fetch manifest
+    P->>P: diff entries against local digests
+    par parallel downloads
+      P->>B: fetch differing objects
+    end
+    alt digest differs from entry
+      B-->>P: SyncObjectDigestMismatch, object discarded
+    else a named key disappears
+      B-->>P: re-fetch manifest, retry the shortfall
+    end
+  end
+  Note over P: exhausted retries raise SyncPullDidNotConverge and write no pointer
+  P->>P: write each table pointer after every object it reaches</pre>
+<p>unsettled: What recovers a pull whose retries are exhausted by pushes arriving faster than the re-fetch shrinks the shortfall? owner: store affects: store.pull</p>
+<h2 id="probe">probe</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.probe.inconclusive"><td><a href="#store.probe.inconclusive" class="clause-anchor"><code>store.probe.inconclusive</code></a></td><td>An unsupported-method response, a forbidden response or a transport error raises <code>SyncProbeInconclusive</code> and counts as capability not demonstrated.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.probe.unproven"><td><a href="#store.probe.unproven" class="clause-anchor"><code>store.probe.unproven</code></a></td><td>Declaring <code>cas</code> against a backend the probe did not demonstrate raises <code>SyncCoordinationUnproven</code> and stops the push.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr></tbody></table></div>
+<h2 id="merge">merge</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.merge.tombstone-owner"><td><a href="#store.merge.tombstone-owner" class="clause-anchor"><code>store.merge.tombstone-owner</code></a></td><td>A tombstone whose owner differs from the owner of the entry it names raises <code>SyncTombstoneForeign</code>, and the merge keeps the entry.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.merge.tombstone-ttl"><td><a href="#store.merge.tombstone-ttl" class="clause-anchor"><code>store.merge.tombstone-ttl</code></a></td><td>A tombstone leaves the manifest 30 d after its <code>deleted_at</code>.</td><td>—</td></tr><tr id="store.merge.retries"><td><a href="#store.merge.retries" class="clause-anchor"><code>store.merge.retries</code></a></td><td><code>[sync] push_retries</code> bounds the re-commit loop, defaulting to 5 attempts.</td><td>—</td></tr><tr id="store.merge.exhausted"><td><a href="#store.merge.exhausted" class="clause-anchor"><code>store.merge.exhausted</code></a></td><td>Exhausting those retries raises <code>SyncManifestRebaseExhausted</code>, reports every uploaded object as already in the bucket, and asks for a re-run.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.merge.cursor-recency"><td><a href="#store.merge.cursor-recency" class="clause-anchor"><code>store.merge.cursor-recency</code></a></td><td>Resolving a cursor by whichever copy was written last raises <code>SyncCursorConflict</code>; a cursor resolves through its commit.</td><td><a href="/adr/A-run/" class="record-ref">A-run</a></td></tr></tbody></table></div>
+<p>unsettled: Which key signs a tombstone, given a node id carries no key material? owner: store affects: store.merge</p>
+<h2 id="lease">lease</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.lease.ttl"><td><a href="#store.lease.ttl" class="clause-anchor"><code>store.lease.ttl</code></a></td><td>A lease is granted for 10 min.</td><td>—</td></tr><tr id="store.lease.renewal"><td><a href="#store.lease.renewal" class="clause-anchor"><code>store.lease.renewal</code></a></td><td>A holder renews every 200 s by <code>If-Match</code> replace on the ETag it holds.</td><td>—</td></tr><tr id="store.lease.clock-skew"><td><a href="#store.lease.clock-skew" class="clause-anchor"><code>store.lease.clock-skew</code></a></td><td>Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine’s monotonic clock.</td><td>because correctness rests on the fence, and the skew bound only sets how early a holder stops committing</td></tr><tr id="store.lease.held"><td><a href="#store.lease.held" class="clause-anchor"><code>store.lease.held</code></a></td><td>A run finding an unexpired lease raises <code>LeaseHeld</code>, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.lease.stale-fence"><td><a href="#store.lease.stale-fence" class="clause-anchor"><code>store.lease.stale-fence</code></a></td><td>A commit-log create, pointer replace or catalog <code>UPDATE</code> losing its condition to a higher fence raises <code>LeaseFenced</code>, and the run or snapshot it carried stays unreadable.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.lease.not-held"><td><a href="#store.lease.not-held" class="clause-anchor"><code>store.lease.not-held</code></a></td><td>Releasing a lease another node holds raises <code>LeaseNotHeld</code> and leaves the object untouched.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.lease.cursor-kind"><td><a href="#store.lease.cursor-kind" class="clause-anchor"><code>store.lease.cursor-kind</code></a></td><td>A cursor whose kind takes no lease reaching <code>cursors/</code> raises <code>LeaseCursorKindMismatch</code>.</td><td><a href="/adr/A-run/" class="record-ref">A-run</a></td></tr><tr id="store.lease.local-node"><td><a href="#store.lease.local-node" class="clause-anchor"><code>store.lease.local-node</code></a></td><td>A bucket lease attempted under the node id <code>local</code> raises <code>LeaseNodeIdLocal</code>, logging the variable that sets a node id; that machine keeps the machine lease.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr></tbody></table></div>
+<pre class="mermaid">stateDiagram-v2
+    [*] --> Unheld
+    Unheld --> Held: If-None-Match create, fence 1
+    Released --> Held: If-Match replace, fence plus one, commit-log entry
+    Expired --> Held: If-Match replace after grant plus skew, fence plus one
+    Held --> Held: If-Match renew every 200 s
+    Held --> Released: holder null, fence kept
+    Held --> Expired: no renewal within the grant</pre>
+<h2 id="replicate">replicate</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="store.replicate.write-refused"><td><a href="#store.replicate.write-refused" class="clause-anchor"><code>store.replicate.write-refused</code></a></td><td>A write verb against a replica raises <code>ReplicaWriteRefused</code>, naming the canonical store.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.replicate.partial-parquet"><td><a href="#store.replicate.partial-parquet" class="clause-anchor"><code>store.replicate.partial-parquet</code></a></td><td>A replica holding a strict subset of a snapshot’s Parquet raises <code>ReplicaPartialParquet</code> at refresh and leaves that snapshot unpublished.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.replicate.missing-index"><td><a href="#store.replicate.missing-index" class="clause-anchor"><code>store.replicate.missing-index</code></a></td><td>A query needing a sidecar or a partition the replica lacks raises <code>ReplicaMissingIndex</code>, naming the refresh that supplies it.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr><tr id="store.replicate.sensitive-refused"><td><a href="#store.replicate.sensitive-refused" class="clause-anchor"><code>store.replicate.sensitive-refused</code></a></td><td>A refresh requesting a replicate-off table raises <code>ReplicaSensitiveTable</code>; the consumer reads through the proxying face.</td><td><a href="/adr/A-store/" class="record-ref">A-store</a></td></tr></tbody></table></div>
+<p>unsettled: Where does a replica advertise the sidecars and partitions it holds, a descriptor beside its catalog or a queryable central row? owner: store affects: store.replicate</p>
+<h2 id="shapes">Shapes</h2>
+<p>The store tree and its bucket mirror:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext"><code><span class="line"><span>.contextful/context/&#x3C;project>/          bucket: &#x3C;prefix>/&#x3C;project>/</span></span>
+<span class="line"><span>  derived.sqlite                         not synced</span></span>
+<span class="line"><span>  machine.sqlite                         not synced</span></span>
+<span class="line"><span>  config.toml</span></span>
+<span class="line"><span>  cursors/&#x3C;pipeline-id>/&#x3C;seq>.json       commit log of a leased pipeline</span></span>
+<span class="line"><span>  tables/&#x3C;t>/</span></span>
+<span class="line"><span>    schema.json</span></span>
+<span class="line"><span>    _pointer.json</span></span>
+<span class="line"><span>    data/runs/&#x3C;run-id>/&#x3C;node-id>/part-00000.parquet</span></span>
+<span class="line"><span>    data/runs/&#x3C;run-id>/&#x3C;node-id>/_manifest.json</span></span>
+<span class="line"><span>    data/snapshots/snapshot-01742054400000000000/part-00000.parquet</span></span>
+<span class="line"><span>    data/snapshots/snapshot-01742054400000000000/_manifest.json</span></span>
+<span class="line"><span>    data/snapshots/snapshot-01742054400000000000/indexes/vec-&#x3C;col>-&#x3C;model>/zone=&#x3C;label>/</span></span>
+<span class="line"><span>    data/snapshots/&#x3C;id>.staging/</span></span>
+<span class="line"><span>    requests/&#x3C;run-id>.&#x3C;node-id>.parquet</span></span>
+<span class="line"><span>    requests/folded-&#x3C;snapshot-id>.parquet</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>&#x3C;prefix>/manifest.json                   key -> { sha256, size, owner }</span></span>
+<span class="line"><span>&#x3C;prefix>/_contextful/cas-probe/&#x3C;uuid></span></span>
+<span class="line"><span>&#x3C;prefix>/leases/&#x3C;pipeline-id>.json</span></span>
+<span class="line"><span>&#x3C;prefix>/leases/compact/&#x3C;table>.json</span></span></code></pre>
+<p>A table declaration:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">pipeline</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">tables</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">name         = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"filings"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">primary_key  = [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"document_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"page"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">order_by     = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"revised_at"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">write_mode   = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"replace"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">cluster_by   = [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"issuer"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"revised_at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">partition_by = [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"tenant"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">retain_runs  = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"7d"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">pipeline</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">tables</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">valid_time</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">from = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"effective_from"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">to   = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"effective_to"</span></span></code></pre>
+<p>A run manifest, a snapshot manifest and a table pointer:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{ </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"run_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"run-4815"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"table"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"filings"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"node_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"ingest-a"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "parts"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [{ </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"name"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"part-00000.parquet"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"key_version"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }],</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "committed_at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"&#x3C;instant>"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"pipeline_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"filings-sync"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "cursor"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"field"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"revised_at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"&#x3C;instant>"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"fence"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">null</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{ </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"snapshot_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"snapshot-01742054400000000000"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"parent"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"snapshot-01741968000000000000"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "table"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"filings"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"created_at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"&#x3C;instant>"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "includes_runs"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"run-4812"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"run-4813"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"run-4814"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "primary_key"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"document_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"page"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">], </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"order_by"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"revised_at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"row_count"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">128400</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "valid_time"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"from"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"effective_from"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"to"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"effective_to"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"fence"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">12</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "parts"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [{ </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"name"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"part-00000.parquet"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"key_version"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }],</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "indexes"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [{ </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"kind"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"vector"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"column"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"embedding"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"model"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"e5-small"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"dim"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">384</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">                "metric"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"cosine"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"m"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">16</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"ef_construction"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">200</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"key_version"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }] }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{ </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"snapshot_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"snapshot-01742054400000000000"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"fence"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">12</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<p>A lease object and a commit-log entry:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{ </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"holder"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"ingest-a"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"acquired_at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"&#x3C;instant>"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"expires_at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"&#x3C;instant>"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"fence"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">418</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{ </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"run_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"run-4816"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"cursor"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"kind"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"opaque-token"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"value"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"eyJwYWdlIjo0Mn0"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"fence"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">418</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<p>Sync configuration:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">sync</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">bucket          = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"context-prod"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">endpoint        = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"https://s3.example-region.internal"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">prefix_from     = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"env:CONTEXTFUL_SYNC_PREFIX"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">coordination    = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"cas"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">push_retries    = </span><span style="color:#005CC5;--shiki-dark:#79B8FF">5</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">pull_before_run = </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">node</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">id = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"ingest-a"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">encryption</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">key_source = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"env:CONTEXTFUL_KEY"</span></span></code></pre></article></main><aside class="toc" aria-label="On this page"><h2 class="group-label">On this page</h2><ul><li><a href="#lay-out">lay-out</a></li><li><a href="#declare">declare</a></li><li><a href="#reserve">reserve</a></li><li><a href="#reconcile">reconcile</a></li><li><a href="#fold">fold</a></li><li><a href="#index">index</a></li><li><a href="#bound-time">bound-time</a></li><li><a href="#encrypt">encrypt</a></li><li><a href="#push">push</a></li><li><a href="#pull">pull</a></li><li><a href="#probe">probe</a></li><li><a href="#merge">merge</a></li><li><a href="#lease">lease</a></li><li><a href="#replicate">replicate</a></li><li><a href="#shapes">Shapes</a></li></ul></aside></div><script type="module" src="/_astro/Base.astro_astro_type_script_index_0_lang.C0f5LPIN.js"></script></body></html>

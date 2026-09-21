@@ -1,0 +1,463 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>The analyst console · contextful spec</title><meta name="description" content="The console is the surface a non-technical reader reaches a store through: one composer, one transcript, and the widgets a turn draws beside its prose. It…"><meta property="og:title" content="The analyst console · contextful spec"><meta property="og:description" content="The console is the surface a non-technical reader reaches a store through: one composer, one transcript, and the widgets a turn draws beside its prose. It…"><link rel="stylesheet" href="/_astro/Base.B8j-F8YW.css"></head><body><header class="topbar"><a class="brand" href="/">contextful <span>spec</span></a></header><div class="shell"><nav class="sidebar" aria-label="Spec files"><details class="sidebar-toggle" id="sidebar-toggle"><summary>Contents</summary><section><h2 class="group-label">Contracts</h2><ul><li><a href="/spec/00-corpus/"><span class="hint">00</span>Corpus law</a></li><li><a href="/spec/01-topology/"><span class="hint">01</span>System topology</a></li><li><a href="/spec/10-store/"><span class="hint">10</span>The store and its sync</a></li><li><a href="/spec/20-read/"><span class="hint">20</span>The read face</a></li><li><a href="/spec/21-memory/"><span class="hint">21</span>Synthesized memory</a></li><li><a href="/spec/30-run/"><span class="hint">30</span>Durable runs</a></li><li><a href="/spec/31-pipeline/"><span class="hint">31</span>Pipelines and the write path</a></li><li><a href="/spec/32-derive/"><span class="hint">32</span>The derive tier</a></li><li><a href="/spec/40-connector/"><span class="hint">40</span>Connectors and the built-in sources</a></li><li><a href="/spec/41-secrets/"><span class="hint">41</span>Outbound credentials</a></li><li><a href="/spec/50-authority/"><span class="hint">50</span>Admission and authority</a></li><li><a href="/spec/51-enforcement/"><span class="hint">51</span>Enforcement and inference placement</a></li><li><a href="/spec/60-visibility/"><span class="hint">60</span>Source-faithful visibility</a></li><li><a href="/spec/61-disclosure/"><span class="hint">61</span>Aggregate disclosure</a></li><li><a href="/spec/62-accountability/"><span class="hint">62</span>Audit, erasure and the receipt</a></li><li><a href="/spec/70-control-plane/"><span class="hint">70</span>Cadence, dispatch and the operator plane</a></li><li><a href="/spec/71-console/" aria-current="page"><span class="hint">71</span>The analyst console</a></li><li><a href="/spec/80-formal/"><span class="hint">80</span>The formal model</a></li><li><a href="/spec/81-engineering/"><span class="hint">81</span>Engineering gates and the quality harness</a></li></ul></section><section><h2 class="group-label">Plan</h2><ul><li><a href="/spec/roadmap/">Milestones</a></li><li><a href="/spec/status/">Status</a></li><li><a href="/spec/targets/">Deployment targets</a></li></ul></section><section><h2 class="group-label">Principles</h2><ul><li><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/"><span class="hint">P1</span>An unknown or ineffective name refuses by name at the earliest knowable point</a></li><li><a href="/adr/P2-a-refusal-is-typed-never-reads-as/"><span class="hint">P2</span>A refusal is typed, never reads as an empty result, and echoes only caller input</a></li><li><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/"><span class="hint">P3</span>A misconfigured process refuses to start; one value has one source</a></li><li><a href="/adr/P4-no-partial-empty-or-torn-state-reads/"><span class="hint">P4</span>No partial, empty or torn state reads as complete</a></li><li><a href="/adr/P5-rows-are-reached-only-through-the-caller/"><span class="hint">P5</span>Rows are reached only through the caller&#39;s registered relation; one implementation per capability</a></li><li><a href="/adr/P6-retry-only-what-a-retry-can-change/"><span class="hint">P6</span>Retry only what a retry can change</a></li><li><a href="/adr/P7-gates-fail-the-run-rather-than-skip/"><span class="hint">P7</span>Gates fail the run rather than skip</a></li><li><a href="/adr/P8-corpus-law-clause-addressing-status-computed-from/"><span class="hint">P8</span>Clauses are addressed, status is computed from pins, and rationale lives in records</a></li></ul></section><section><h2 class="group-label">Contract ADRs</h2><ul><li><a href="/adr/A-assurance/"><span class="hint">A-assurance</span>Assurance decisions</a></li><li><a href="/adr/A-authority/"><span class="hint">A-authority</span>Authority and enforcement decisions</a></li><li><a href="/adr/A-connector/"><span class="hint">A-connector</span>Connectors and credentials decisions</a></li><li><a href="/adr/A-disclosure/"><span class="hint">A-disclosure</span>Visibility, disclosure and accountability decisions</a></li><li><a href="/adr/A-read/"><span class="hint">A-read</span>Reading and memory decisions</a></li><li><a href="/adr/A-run/"><span class="hint">A-run</span>Runs, pipelines and derive decisions</a></li><li><a href="/adr/A-store/"><span class="hint">A-store</span>The store and its sync decisions</a></li><li><a href="/adr/A-surface/"><span class="hint">A-surface</span>Operator and visitor surfaces decisions</a></li><li><a href="/adr/A-topology/"><span class="hint">A-topology</span>System topology decisions</a></li></ul></section></details><script>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script></nav><main class="content"><article class="prose"><p class="eyebrow">contract <code>surface</code></p><h1 id="the-analyst-console">The analyst console</h1>
+<p>The console is the surface a non-technical reader reaches a store through: one composer, one
+transcript, and the widgets a turn draws beside its prose. It holds no data and no privileged
+path under the tables; everything it shows arrives from a governed read, in the reader’s own
+language. The same store registry feeds the operator’s views and the client library that
+embeds search and ask in a third-party page.</p>
+<p>The console between a reader and a store, and where it meets the read contract and the model endpoint:</p>
+<pre class="mermaid">flowchart LR
+  RD["reader"] --> PER["identity perimeter"]
+  PER --> PAGE["console page"]
+  PAGE -- "same-origin routes" --> TURN
+  subgraph server["console server"]
+    REGY["store registry"]
+    CRED["one credential resolver"]
+    PACKS["capability packs"]
+    TURN["turn: recall, plan, rounds, synthesis"]
+    CH["render: grounding, view, internals"]
+    RED["redactor, temporal humanizer"]
+  end
+  REGY --> CRED
+  PACKS --> TURN
+  TURN -- "admitted read tools" --> STORE["store engine: read contract"]
+  CRED --> STORE
+  STORE --> CH
+  CH -- "grounding" --> MODEL["model endpoint: topology contract"]
+  MODEL --> RED
+  RED --> PAGE
+  CH -- "view" --> PAGE
+  TURN -- "distilled conclusions" --> MEM["memory tables: read contract"]
+  LIB["client library: four shapes"] --> STORE
+  OPS["operator surface"] --> REGY
+  PAGE -- "deliberate share" --> AUD["surface with an audience"]</pre>
+<h2 id="register-store">register-store</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.register-store.registry-unreadable"><td><a href="#surface.register-store.registry-unreadable" class="clause-anchor"><code>surface.register-store.registry-unreadable</code></a></td><td>A <code>CONTEXTFUL_STORES_JSON</code> value that does not parse raises <code>StoreRegistryUnreadable</code> at startup; the built-in stores substitute for no configured set.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="surface.register-store.malformed-entry"><td><a href="#surface.register-store.malformed-entry" class="clause-anchor"><code>surface.register-store.malformed-entry</code></a></td><td>One entry that does not decode raises <code>StoreEntryMalformed</code> naming it, and is dropped while its siblings are served.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.register-store.reserved-id"><td><a href="#surface.register-store.reserved-id" class="clause-anchor"><code>surface.register-store.reserved-id</code></a></td><td>A configured entry claiming either built-in id raises <code>StoreIdReserved</code>.</td><td>because the entry otherwise reads the fixture’s rows under its own name</td></tr><tr id="surface.register-store.authored-name"><td><a href="#surface.register-store.authored-name" class="clause-anchor"><code>surface.register-store.authored-name</code></a></td><td>An entry carrying its own credential or binding name raises <code>StoreNameAuthored</code>.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr></tbody></table></div>
+<h2 id="visualize">visualize</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.visualize.listing-page"><td><a href="#surface.visualize.listing-page" class="clause-anchor"><code>surface.visualize.listing-page</code></a></td><td>One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.</td><td>—</td></tr></tbody></table></div>
+<h2 id="package">package</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.package.stdio-credential"><td><a href="#surface.package.stdio-credential" class="clause-anchor"><code>surface.package.stdio-credential</code></a></td><td>Over the process transport a credential is mandatory, a capability token or an explicit owner flag; an unset one raises <code>StdioCredentialMissing</code> and does not resolve to the owner context.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="surface.package.store-selector"><td><a href="#surface.package.store-selector" class="clause-anchor"><code>surface.package.store-selector</code></a></td><td>The child’s working directory selects the store by walking up to the project manifest; finding none raises <code>StoreSelectorAbsent</code> and exits before writing any protocol framing.</td><td><a href="/adr/A-topology/" class="record-ref">A-topology</a></td></tr></tbody></table></div>
+<p>The client library’s four shapes, and who holds the credential in each:</p>
+<pre class="mermaid">flowchart LR
+  LIB["client library: search, query, retrieve, recall, ask and kin"]
+  LIB --> S1["host backend: same-origin proxy, injects the token"]
+  LIB --> S2["same-account host backend: service binding"]
+  LIB --> S3["engine-direct browser embed: per-viewer scoped token"]
+  LIB --> S4["local consumer: spawned engine, newline-framed JSON-RPC"]
+  S1 --> ENG["engine HTTP face: grants of the presented token"]
+  S2 --> GW["gateway entrypoint: query, mcp, health"]
+  GW -- "injects the container-side credential" --> ENG
+  S3 --> ENG
+  S4 --> CK{"credential set and project manifest found"}
+  CK -- "no credential" --> E1["StdioCredentialMissing"]
+  CK -- "no manifest" --> E2["StoreSelectorAbsent"]
+  CK -- "yes" --> CHILD["engine child: one request in flight"]</pre>
+<h2 id="speak">speak</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.speak.redactor-lookahead"><td><a href="#surface.speak.redactor-lookahead" class="clause-anchor"><code>surface.speak.redactor-lookahead</code></a></td><td>The streaming redactor buffers 128 chars across each chunk boundary, and no denylist entry is longer than the buffer.</td><td>because an identifier split between two chunks otherwise passes unredacted</td></tr><tr id="surface.speak.unanswerable-suggestion"><td><a href="#surface.speak.unanswerable-suggestion" class="clause-anchor"><code>surface.speak.unanswerable-suggestion</code></a></td><td>A suggested prompt whose answer under these rules is a decline raises <code>ConsoleSuggestionUnanswerable</code> when the suggestion set is built.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr></tbody></table></div>
+<h2 id="ground">ground</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.ground.ungrounded-answer"><td><a href="#surface.ground.ungrounded-answer" class="clause-anchor"><code>surface.ground.ungrounded-answer</code></a></td><td>A path composing answer prose in a turn holding no tool result raises <code>ConsoleUngroundedAnswer</code>.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="surface.ground.unadmitted-tool"><td><a href="#surface.ground.unadmitted-tool" class="clause-anchor"><code>surface.ground.unadmitted-tool</code></a></td><td>A call naming a tool the turn’s packs do not admit raises <code>ConsoleToolNotAdmitted</code> and dispatches nothing.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.ground.mutating-tool"><td><a href="#surface.ground.mutating-tool" class="clause-anchor"><code>surface.ground.mutating-tool</code></a></td><td>The visitor-facing endpoint admits a read subset: a client-reachable path naming a write raises <code>ConsoleMutatingToolRequested</code>. The one write a turn performs is authored on the server.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.ground.direct-file-read"><td><a href="#surface.ground.direct-file-read" class="clause-anchor"><code>surface.ground.direct-file-read</code></a></td><td>A table function resolving a path straight against stored bytes raises <code>ConsoleFileAccessDirect</code> on this surface.</td><td><a href="/adr/P5-rows-are-reached-only-through-the-caller/" class="record-ref">P5</a></td></tr><tr id="surface.ground.mint-refused"><td><a href="#surface.ground.mint-refused" class="clause-anchor"><code>surface.ground.mint-refused</code></a></td><td>A refused mint raises <code>ConsoleTokenExchangeRefused</code>. A store carrying a shared credential falls back to it; one carrying none surfaces the refusal to the reader.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="surface.ground.sources-per-turn"><td><a href="#surface.ground.sources-per-turn" class="clause-anchor"><code>surface.ground.sources-per-turn</code></a></td><td>A source list carries at most 8 entries.</td><td>—</td></tr></tbody></table></div>
+<p>The two trust layers on one grounded turn, for a store on <code>exchange</code> authentication:</p>
+<pre class="mermaid">sequenceDiagram
+  participant B as browser
+  participant P as identity perimeter
+  participant S as console server
+  participant X as store exchange route
+  participant E as store engine
+  B->>P: same-origin request
+  P->>S: request and the perimeter's assertion
+  S->>S: re-verify the assertion, take the reader's address
+  S->>X: post the verified assertion
+  alt mint refused
+    X-->>S: ConsoleTokenExchangeRefused, shared credential or refusal shown
+  else minted
+    X-->>S: per-reader credential, cached within its lifetime
+  end
+  S->>S: pick tool and arguments from the admitted packs
+  S->>E: read tool call under the reader's credential
+  E-->>S: rows through enforced relations
+  S-->>B: grounded prose, then a source list of 8 entries or fewer</pre>
+<h2 id="plan-turn">plan-turn</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.plan-turn.planner-reached-memory"><td><a href="#surface.plan-turn.planner-reached-memory" class="clause-anchor"><code>surface.plan-turn.planner-reached-memory</code></a></td><td>Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises <code>ConsolePlannerReachedMemory</code>.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.plan-turn.code-path-bounds"><td><a href="#surface.plan-turn.code-path-bounds" class="clause-anchor"><code>surface.plan-turn.code-path-bounds</code></a></td><td>The code path reads at most 5000 rows per data table and stops after 10 s.</td><td>—</td></tr><tr id="surface.plan-turn.overlay-cache"><td><a href="#surface.plan-turn.overlay-cache" class="clause-anchor"><code>surface.plan-turn.overlay-cache</code></a></td><td>The overlay caches for 5 min, a miss included.</td><td>—</td></tr><tr id="surface.plan-turn.overlay-length"><td><a href="#surface.plan-turn.overlay-length" class="clause-anchor"><code>surface.plan-turn.overlay-length</code></a></td><td>An overlay is truncated at 8000 chars.</td><td>—</td></tr></tbody></table></div>
+<p>unsettled: Does a store’s overlay reach the planner’s text as well as the analyst’s? owner: console affects: surface.plan-turn</p>
+<h2 id="set-vantage">set-vantage</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.set-vantage.unparseable"><td><a href="#surface.set-vantage.unparseable" class="clause-anchor"><code>surface.set-vantage.unparseable</code></a></td><td>A vantage that is neither a calendar day nor an instant raises <code>ConsoleVantageUnparseable</code>, answered <code>400</code>.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="surface.set-vantage.web-bound-unparseable"><td><a href="#surface.set-vantage.web-bound-unparseable" class="clause-anchor"><code>surface.set-vantage.web-bound-unparseable</code></a></td><td>A web leg whose bound fails to parse fails that leg and raises <code>ConsoleWebBoundUnparseable</code>.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="surface.set-vantage.sample-labels"><td><a href="#surface.set-vantage.sample-labels" class="clause-anchor"><code>surface.set-vantage.sample-labels</code></a></td><td>A table’s arrivals contribute at most 3 entries of sampled label.</td><td>—</td></tr></tbody></table></div>
+<h2 id="browse">browse</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead></table></div>
+<h2 id="learn">learn</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.learn.distillation"><td><a href="#surface.learn.distillation" class="clause-anchor"><code>surface.learn.distillation</code></a></td><td>After the answer streams, a second pass distils the exchange into at most 3 entries shaped <code>{subject, key, learning}</code>, zero included.</td><td>—</td></tr><tr id="surface.learn.unscoped"><td><a href="#surface.learn.unscoped" class="clause-anchor"><code>surface.learn.unscoped</code></a></td><td>A distilled conclusion landing without the reading-session scope raises <code>ConsoleLearningUnscoped</code>.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr></tbody></table></div>
+<p>unsettled: Does a subject normalize during distillation, or resolve through entity matching at recall? owner: console affects: surface.learn</p>
+<h2 id="render">render</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.render.client-authored-view"><td><a href="#surface.render.client-authored-view" class="clause-anchor"><code>surface.render.client-authored-view</code></a></td><td>A view specification arriving from a client, or composed by the model, raises <code>ConsoleViewNotServerBuilt</code>.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.render.component-choice"><td><a href="#surface.render.component-choice" class="clause-anchor"><code>surface.render.component-choice</code></a></td><td>One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.</td><td>—</td></tr></tbody></table></div>
+<p>A tool return split into three channels, and the view channel’s path to a widget:</p>
+<pre class="mermaid">flowchart TD
+  TR["tool return"] --> G["grounding channel"]
+  TR --> I["internals channel, on request"]
+  TR --> V["view channel"]
+  G --> M["model"]
+  I --> TP["trace panel"]
+  CV["view from a client or the model"] --> E1["ConsoleViewNotServerBuilt"]
+  V --> H{"view hint binds only returned columns"}
+  H -- "yes" --> HC["hinted component"]
+  H -- "no" --> INF["inference: metric, line over 3 distinct days, else table"]
+  HC --> VAL{"valid against the props schema"}
+  INF --> VAL
+  VAL -- "no" --> NONE["no widget"]
+  VAL -- "yes" --> WALK["walk: identifier redactor, temporal rewriting"]
+  WALK --> W["widget frame after the prose, one per shape"]</pre>
+<p>unsettled: What governs adding a member to the component union once transcripts saved under an older client exist? owner: console affects: surface.render</p>
+<h2 id="brief">brief</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.brief.absence-is-earned"><td><a href="#surface.brief.absence-is-earned" class="clause-anchor"><code>surface.brief.absence-is-earned</code></a></td><td>The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises <code>ConsoleBriefUnavailable</code>, and no card renders.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.brief.topic-tier"><td><a href="#surface.brief.topic-tier" class="clause-anchor"><code>surface.brief.topic-tier</code></a></td><td>The topic tier needs at least 2 tokens shared between the conclusion’s subject and text and the row’s label and topics, one of them naming the subject.</td><td>—</td></tr><tr id="surface.brief.card-subjects"><td><a href="#surface.brief.card-subjects" class="clause-anchor"><code>surface.brief.card-subjects</code></a></td><td>A card carries at most 3 subjects.</td><td>—</td></tr><tr id="surface.brief.articles-per-subject"><td><a href="#surface.brief.articles-per-subject" class="clause-anchor"><code>surface.brief.articles-per-subject</code></a></td><td>A subject carries at most 3 entries of matched article.</td><td>—</td></tr><tr id="surface.brief.catchup-window"><td><a href="#surface.brief.catchup-window" class="clause-anchor"><code>surface.brief.catchup-window</code></a></td><td>The backend caps the requested window at 7 d.</td><td>—</td></tr></tbody></table></div>
+<h2 id="publish-answer">publish-answer</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.publish-answer.share-affordance"><td><a href="#surface.publish-answer.share-affordance" class="clause-anchor"><code>surface.publish-answer.share-affordance</code></a></td><td>A surface offering a share control on access-explanation output raises <code>VisibilityShareAffordance</code>.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.publish-answer.askerless-audience"><td><a href="#surface.publish-answer.askerless-audience" class="clause-anchor"><code>surface.publish-answer.askerless-audience</code></a></td><td>A scheduled job posting to an audience under a service identity raises <code>VisibilityAskerlessAudience</code>, naming the destination; a scheduled post’s corpus is narrowed in the reviewed manifest to what the destination reaches.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr></tbody></table></div>
+<p>unsettled: Is there a principal shape for an answer computed at a room’s intersection rather than one reader’s scope? owner: console affects: surface.publish-answer</p>
+<h2 id="shapes">Shapes</h2>
+<p>A store registry entry, and the names derived from it:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  {</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"field-notes"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "label"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Field notes"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "endpoint"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"https://field-notes.example.net"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "auth"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"exchange"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "exchangeRoute"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/auth/exchange"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "packPrefix"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"packs/field-notes/"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext"><code><span class="line"><span>secret   FIELD_NOTES_QUERY_TOKEN</span></span>
+<span class="line"><span>binding  FIELD_NOTES</span></span></code></pre>
+<p>A tool return, split three ways:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "grounding"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"3 filings landed on 2 Mar, the newest from Northwind at 09:14."</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "view"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "component"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"table.v1"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "props"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"columns"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Filed on"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Publisher"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">], </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"rows"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [[</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"2 Mar"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Northwind"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]] }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "internals"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"tool"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"context.query"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"rows"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"elapsed_ms"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">41</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"redactions"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">0</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>A table’s view hint:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">tables</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">daily_levels</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">view</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">component = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"band.v1"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">x         = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"observed_on"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">measure   = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"midpoint"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">low       = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"band_low"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">high      = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"band_high"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">series    = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"instrument"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">unit      = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"index pts"</span></span></code></pre>
+<p>The catch-up payload one greeting renders from:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "since"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"&#x3C;instant>"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "clamped"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "totalNew"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">214</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "items"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    {</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">      "subject"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"northwind"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">      "display"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Northwind"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">      "learning"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Northwind's filings lead the sector by about a week."</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">      "tier"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"derived"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">      "articles"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"title"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Northwind files early again"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"source"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"example-press.com"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">          "url"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"https://example-press.com/northwind-files-early"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"published_on"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"&#x3C;day>"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      ],</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">      "followUp"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"What changed for Northwind this week?"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  ]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>One turn, from question to rendered answer:</p>
+<pre class="mermaid">flowchart TD
+  Q[Question] --> R[Recall at the vantage]
+  R --> T[Resolve temporal intent to a window]
+  T --> P[Plan against prefetched columns]
+  P --> G[Admitted read tools]
+  G --> A{Answered, by the code test?}
+  A -- no, first round --> P
+  A -- no, second round --> C[Content-token retrieval in code]
+  A -- yes --> S[Synthesis over grounding]
+  C --> S
+  S --> PR[Streamed prose, redacted and humanized]
+  PR --> W[Widget frame]
+  PR --> SB[Sources block]
+  PR --> D[Distillation, labels from grounding rows]</pre></article></main><aside class="toc" aria-label="On this page"><h2 class="group-label">On this page</h2><ul><li><a href="#register-store">register-store</a></li><li><a href="#visualize">visualize</a></li><li><a href="#package">package</a></li><li><a href="#speak">speak</a></li><li><a href="#ground">ground</a></li><li><a href="#plan-turn">plan-turn</a></li><li><a href="#set-vantage">set-vantage</a></li><li><a href="#browse">browse</a></li><li><a href="#learn">learn</a></li><li><a href="#render">render</a></li><li><a href="#brief">brief</a></li><li><a href="#publish-answer">publish-answer</a></li><li><a href="#shapes">Shapes</a></li></ul></aside></div><script type="module" src="/_astro/Base.astro_astro_type_script_index_0_lang.C0f5LPIN.js"></script></body></html>

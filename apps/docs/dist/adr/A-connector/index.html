@@ -1,0 +1,235 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>A-connector — Connectors and credentials decisions · contextful spec</title><meta name="description" content="A reviewed program is identified by a content digest, and a live run completes against the digest its record names. connector.package refuses a remote…"><meta property="og:title" content="A-connector — Connectors and credentials decisions · contextful spec"><meta property="og:description" content="A reviewed program is identified by a content digest, and a live run completes against the digest its record names. connector.package refuses a remote…"><link rel="stylesheet" href="/_astro/Base.B8j-F8YW.css"></head><body><header class="topbar"><a class="brand" href="/">contextful <span>spec</span></a></header><div class="shell"><nav class="sidebar" aria-label="Spec files"><details class="sidebar-toggle" id="sidebar-toggle"><summary>Contents</summary><section><h2 class="group-label">Contracts</h2><ul><li><a href="/spec/00-corpus/"><span class="hint">00</span>Corpus law</a></li><li><a href="/spec/01-topology/"><span class="hint">01</span>System topology</a></li><li><a href="/spec/10-store/"><span class="hint">10</span>The store and its sync</a></li><li><a href="/spec/20-read/"><span class="hint">20</span>The read face</a></li><li><a href="/spec/21-memory/"><span class="hint">21</span>Synthesized memory</a></li><li><a href="/spec/30-run/"><span class="hint">30</span>Durable runs</a></li><li><a href="/spec/31-pipeline/"><span class="hint">31</span>Pipelines and the write path</a></li><li><a href="/spec/32-derive/"><span class="hint">32</span>The derive tier</a></li><li><a href="/spec/40-connector/"><span class="hint">40</span>Connectors and the built-in sources</a></li><li><a href="/spec/41-secrets/"><span class="hint">41</span>Outbound credentials</a></li><li><a href="/spec/50-authority/"><span class="hint">50</span>Admission and authority</a></li><li><a href="/spec/51-enforcement/"><span class="hint">51</span>Enforcement and inference placement</a></li><li><a href="/spec/60-visibility/"><span class="hint">60</span>Source-faithful visibility</a></li><li><a href="/spec/61-disclosure/"><span class="hint">61</span>Aggregate disclosure</a></li><li><a href="/spec/62-accountability/"><span class="hint">62</span>Audit, erasure and the receipt</a></li><li><a href="/spec/70-control-plane/"><span class="hint">70</span>Cadence, dispatch and the operator plane</a></li><li><a href="/spec/71-console/"><span class="hint">71</span>The analyst console</a></li><li><a href="/spec/80-formal/"><span class="hint">80</span>The formal model</a></li><li><a href="/spec/81-engineering/"><span class="hint">81</span>Engineering gates and the quality harness</a></li></ul></section><section><h2 class="group-label">Plan</h2><ul><li><a href="/spec/roadmap/">Milestones</a></li><li><a href="/spec/status/">Status</a></li><li><a href="/spec/targets/">Deployment targets</a></li></ul></section><section><h2 class="group-label">Principles</h2><ul><li><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/"><span class="hint">P1</span>An unknown or ineffective name refuses by name at the earliest knowable point</a></li><li><a href="/adr/P2-a-refusal-is-typed-never-reads-as/"><span class="hint">P2</span>A refusal is typed, never reads as an empty result, and echoes only caller input</a></li><li><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/"><span class="hint">P3</span>A misconfigured process refuses to start; one value has one source</a></li><li><a href="/adr/P4-no-partial-empty-or-torn-state-reads/"><span class="hint">P4</span>No partial, empty or torn state reads as complete</a></li><li><a href="/adr/P5-rows-are-reached-only-through-the-caller/"><span class="hint">P5</span>Rows are reached only through the caller&#39;s registered relation; one implementation per capability</a></li><li><a href="/adr/P6-retry-only-what-a-retry-can-change/"><span class="hint">P6</span>Retry only what a retry can change</a></li><li><a href="/adr/P7-gates-fail-the-run-rather-than-skip/"><span class="hint">P7</span>Gates fail the run rather than skip</a></li><li><a href="/adr/P8-corpus-law-clause-addressing-status-computed-from/"><span class="hint">P8</span>Clauses are addressed, status is computed from pins, and rationale lives in records</a></li></ul></section><section><h2 class="group-label">Contract ADRs</h2><ul><li><a href="/adr/A-assurance/"><span class="hint">A-assurance</span>Assurance decisions</a></li><li><a href="/adr/A-authority/"><span class="hint">A-authority</span>Authority and enforcement decisions</a></li><li><a href="/adr/A-connector/" aria-current="page"><span class="hint">A-connector</span>Connectors and credentials decisions</a></li><li><a href="/adr/A-disclosure/"><span class="hint">A-disclosure</span>Visibility, disclosure and accountability decisions</a></li><li><a href="/adr/A-read/"><span class="hint">A-read</span>Reading and memory decisions</a></li><li><a href="/adr/A-run/"><span class="hint">A-run</span>Runs, pipelines and derive decisions</a></li><li><a href="/adr/A-store/"><span class="hint">A-store</span>The store and its sync decisions</a></li><li><a href="/adr/A-surface/"><span class="hint">A-surface</span>Operator and visitor surfaces decisions</a></li><li><a href="/adr/A-topology/"><span class="hint">A-topology</span>System topology decisions</a></li></ul></section></details><script>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script></nav><main class="content"><article class="prose"><h1 id="a-connector--connectors-and-credentials-decisions">A-connector — Connectors and credentials decisions</h1>
+<p><strong>Status:</strong> accepted</p>
+<h2 id="executables-are-content-pinned-and-replay-uses-the-recorded-artifact">Executables are content-pinned and replay uses the recorded artifact</h2>
+<p>A reviewed program is identified by a content digest, and a live run completes against the digest its record names. <a href="/spec/40-connector/#package" class="clause-ref"><code>connector.package</code></a> refuses a remote artifact without a 64-hex pin at parse, refuses plain HTTP, re-hashes resolved bytes before load, and pins only from a digest-pinned container on one fixed platform; re-resolving a connector while a journaled run is live refuses. <a href="/spec/30-run/#own" class="clause-ref"><code>run.own</code></a> holds connector identity, component world and plan hash until a terminal status; <a href="/spec/32-derive/#exec" class="clause-ref"><code>run.exec</code></a> requires a digest on a path-form command.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Pin by digest, hold the pin while work is pending, apply changes to new runs only <em>(chosen)</em></td><td>—</td><td>Pinning needs a container runtime; an urgent fix waits for in-flight runs; a bare-name binary changes with no configuration change.</td></tr><tr><td>Trust version tags</td><td>Review binding</td><td>Reviewed and running programs match only while the publisher behaves.</td></tr><tr><td>Reload in place, or adopt the new build on resume</td><td>Replay fidelity</td><td>Recorded output replays silently into code that never produced it.</td></tr><tr><td>Digest every command, including bare names</td><td>Runnability</td><td>Each package upgrade refuses every derive pipeline until re-pinned.</td></tr></tbody></table></div>
+<p>Consequences: an unpinned local artifact runs whatever bytes sit on disk unless the store policy key or per-connector flag is set.
+Revisit: production runs unpinned local artifacts, arguing for inverting the default; the toolchain stops embedding the host triple.</p>
+<h2 id="untrusted-input-decodes-off-process-and-fails-whole">Untrusted input decodes off-process and fails whole</h2>
+<p>An input lands whole and faithful or refuses by name, and no input ends the serving process. <a href="/spec/31-pipeline/#land" class="clause-ref"><code>run.land</code></a> decodes behind a process boundary bounding wall clock and resident memory; a crash is the same named diagnosis as a parse error. A partial parse refuses the whole input, naming path and page, worksheet or entry, and fails one table’s pull while siblings keep their tick. <a href="/spec/40-connector/#source" class="clause-ref"><code>connector.source</code></a> reads office parts by exact name and refuses external references; an image lands a null body with no pixel decode; <a href="/spec/32-derive/#fetch" class="clause-ref"><code>run.fetch</code></a> reads UTF-8 only.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Process boundary, permanent whole-input refusal per table <em>(chosen)</em></td><td>—</td><td>Every input pays a boundary crossing; one damaged page discards a readable document; non-UTF-8 publications are unreadable.</td></tr><tr><td>In-process unwind guard or watchdog thread</td><td>Effectiveness</td><td>The release build aborts on panic; native code is neither interruptible nor memory-bounded.</td></tr><tr><td>Land the parsed parts with a truncation flag</td><td>Distinguishability</td><td>No reader consults the flag, so a fragment is quoted as the document.</td></tr><tr><td>Skip the item and tally it</td><td>Answerability</td><td>A collection missing documents reads like one that has none.</td></tr><tr><td>Lossy or statistical decoding</td><td>Honesty of landed values</td><td>Replacement characters land as publisher text.</td></tr></tbody></table></div>
+<p>Consequences: a large collection progresses only after the offending file is removed or converted.
+Revisit: crossing overhead exceeds decode time on small inputs; a read surface honors a completeness predicate; a memory-safe compound-binary reader exists.</p>
+<h2 id="host-access-and-quota-are-declared-and-fail-closed">Host access and quota are declared and fail closed</h2>
+<p>Every host access and quota draw is named in a file the operator reads and decided before anything runs; a degraded answer is a denial. <a href="/spec/40-connector/#import" class="clause-ref"><code>connector.import</code></a> refuses a configuration table carrying a credential or environment reference with <code>ConnectorConfigRejected</code>. <a href="/spec/40-connector/#declare-capability" class="clause-ref"><code>connector.declare-capability</code></a> decides grants at load and refuses an empty or bare-wildcard allowlist, and excess or missing scopes at the probe. <a href="/spec/40-connector/#meter" class="clause-ref"><code>connector.meter</code></a> issues one permit per request, refuses on an unbound quota or unreachable limiter, and retries nothing. <a href="/spec/32-derive/#select" class="clause-ref"><code>run.select</code></a> meters per task; <a href="/spec/32-derive/#fetch" class="clause-ref"><code>run.fetch</code></a> reaches only an operator-authored host list.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Declared grants decided at load, fail closed on every degradation <em>(chosen)</em></td><td>—</td><td>A second host is a file edit and reload; a vendor dropping the scopes header breaks a working pipeline; each permit batch costs a round trip.</td></tr><tr><td>A run-time permission request</td><td>Reviewability</td><td>The grant set is a union over code paths.</td></tr><tr><td>Ambient access, denial at the network stack</td><td>Timing</td><td>Request and credential already exist when the denial fires.</td></tr><tr><td>Fail open on an unreachable limiter or missing header</td><td>Failure direction</td><td>An unmetered burst lands during the unwatched outage.</td></tr><tr><td>A local token bucket inside the engine</td><td>Visibility</td><td>It caps the engine with no view of other traffic.</td></tr></tbody></table></div>
+<p>Consequences: permits held by a crashed run return only on TTL expiry.
+Revisit: a connector class whose reachable hosts are genuinely data-dependent; permit round trips become a measurable share of read wall-clock time.</p>
+<h2 id="outbound-transport-is-origin-pinned-and-never-downgrades">Outbound transport is origin-pinned and never downgrades</h2>
+<p>The origin answering any outbound request equals the declared origin, over the same or a stronger transport. <a href="/spec/41-secrets/#attach" class="clause-ref"><code>connector.attach</code></a> follows a hop only on the configured host and port, connects to the vetted resolved address, and raises <code>ConnectorPrivateAddress</code> on a private, link-local, loopback or metadata address unless the configured host is loopback; declared headers select the proxy-bypassing client. <a href="/spec/40-connector/#source" class="clause-ref"><code>connector.source</code></a> pins next links and search hosts; <a href="/spec/41-secrets/#lease" class="clause-ref"><code>connector.lease</code></a> follows no redirect; <a href="/spec/32-derive/#fetch" class="clause-ref"><code>run.fetch</code></a> guards every hop and caps a chain at 5.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Pin origin at declaration and every hop; refuse downgrade <em>(chosen)</em></td><td>—</td><td>A vendor moving to a <code>www</code> or CDN host refuses until the declaration changes; proxy-only egress needs a direct path for credential traffic.</td></tr><tr><td>Pin only credential-bearing sources</td><td>Landed-content provenance</td><td>A redirected uncredentialed source lands another party’s body in a trusted column.</td></tr><tr><td>Check the first link only</td><td>Credential containment</td><td>One shortener empties the pin of meaning.</td></tr><tr><td>Warn and send, or follow a downgrade and record it</td><td>Irreversibility</td><td>The record follows a disclosure it cannot undo.</td></tr><tr><td>Vet the host name, not the resolved address</td><td>Internal-range containment</td><td>A name whose DNS points inward reaches the machine’s network.</td></tr></tbody></table></div>
+<p>Consequences: a publisher whose canonical address crosses domains needs both names listed.
+Revisit: the declaration grammar gains a per-vendor allowed-origin set; proxy-only egress is the sole path for a class of deployments.</p>
+<h2 id="credentials-are-references-workload-identity-is-the-default-and-leases-lead">Credentials are references, workload identity is the default, and leases lead</h2>
+<p>Declarations carry names, stores carry opaque bytes, connectors carry provider know-how, and the engine holds the shortest-lived material the deployment mints. <a href="/spec/41-secrets/#reference" class="clause-ref"><code>connector.reference</code></a> accepts only <code>${secret://&#x3C;name>}</code>; every encrypted entry records grants, scope, creation, expiry and rotation point. <a href="/spec/41-secrets/#resolve" class="clause-ref"><code>connector.resolve</code></a> defaults to an external manager through workload identity, refuses inline material outside development, and raises <code>SecretNameShadowed</code> when two adapters answer a name. <a href="/spec/41-secrets/#lease" class="clause-ref"><code>connector.lease</code></a> leads the chain with no fall-through and retries nothing; <a href="/spec/41-secrets/#rotate" class="clause-ref"><code>connector.rotate</code></a> fails the run closed on a refused write-back.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Reference-only declarations, workload identity default, lease at the head <em>(chosen)</em></td><td>—</td><td>Material sits in engine memory for a request; a credential needs a four-field record; a read-only manager cannot run the OAuth refresh loop.</td></tr><tr><td>Inline material or environment templates</td><td>Plaintext at rest</td><td>The committed file or environment becomes the secret.</td></tr><tr><td>A broker sidecar as the default</td><td>Operability</td><td>Every deployment runs a second failure domain.</td></tr><tr><td>Lease provider last, first hit wins</td><td>Posture</td><td>A leftover environment variable wins unnoticed.</td></tr><tr><td>Provider rotation engines inside the store</td><td>Swappability</td><td>Every backend reimplements every vendor’s exchange.</td></tr></tbody></table></div>
+<p>Consequences: local development pastes a token only behind an explicit opt-in flag; a bootstrap backend is a second backend to operate.
+Revisit: workload identity becomes unattestable on a needed runtime; a broker becomes near-free to operate; a runtime identity authenticates to the mint directly.</p>
+<h2 id="every-access-to-data-traverses-the-enforcement-stack-and-no-configuration-disables-it">Every access to data traverses the enforcement stack, and no configuration disables it</h2>
+<p>Complete mediation is a property of the composition, not a setting: a bypassing path returns plausible rows with masking unapplied and no audit entry. <a href="/spec/01-topology/#compose" class="clause-ref"><code>topology.compose</code></a> makes every function returning or releasing a stored row take the enforcement stack’s admission value, so a skipping path does not type-check; <a href="/spec/81-engineering/#gate" class="clause-ref"><code>assurance.gate</code></a> raises <code>CrateGraphViolation</code> when a run-path crate reaches read-path crates outside the crossings. No flag, environment variable or build feature turns the stack off.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Mediation as a build property, no disable switch <em>(chosen)</em></td><td>—</td><td>A surface holding the only handle to data writes an adapter through the stack: a network hop, or a generated artifact with a staleness check.</td></tr><tr><td>An operator flag marking a trusted path</td><td>Failure mode</td><td>A flag set once stays set while the deployment looks healthy.</td></tr><tr><td>Per-surface opt-in enforcement</td><td>Coverage</td><td>Every new surface is a fresh chance to omit it.</td></tr><tr><td>Enforcement asserted by code review alone</td><td>Detectability</td><td>A bypass reads as a call-site move in a refactor.</td></tr></tbody></table></div>
+<p>Consequences: a bulk export or offline diagnostic is slower than a direct read.
+Revisit: an adapter through the stack misses a stated throughput requirement; audit bypasses cluster in one tooling category; a layer proves a no-op on some path.</p></article></main><aside class="toc" aria-label="On this page"><h2 class="group-label">On this page</h2><ul><li><a href="#executables-are-content-pinned-and-replay-uses-the-recorded-artifact">Executables are content-pinned and replay uses the recorded artifact</a></li><li><a href="#untrusted-input-decodes-off-process-and-fails-whole">Untrusted input decodes off-process and fails whole</a></li><li><a href="#host-access-and-quota-are-declared-and-fail-closed">Host access and quota are declared and fail closed</a></li><li><a href="#outbound-transport-is-origin-pinned-and-never-downgrades">Outbound transport is origin-pinned and never downgrades</a></li><li><a href="#credentials-are-references-workload-identity-is-the-default-and-leases-lead">Credentials are references, workload identity is the default, and leases lead</a></li><li><a href="#every-access-to-data-traverses-the-enforcement-stack-and-no-configuration-disables-it">Every access to data traverses the enforcement stack, and no configuration disables it</a></li></ul></aside></div><script type="module" src="/_astro/Base.astro_astro_type_script_index_0_lang.C0f5LPIN.js"></script></body></html>

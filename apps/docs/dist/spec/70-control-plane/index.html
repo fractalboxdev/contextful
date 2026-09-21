@@ -1,0 +1,346 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>Cadence, dispatch and the operator plane · contextful spec</title><meta name="description" content="The control plane decides when work runs and where. It holds the schedule grammar and its trigger, the reconciler that turns an applied snapshot into an…"><meta property="og:title" content="Cadence, dispatch and the operator plane · contextful spec"><meta property="og:description" content="The control plane decides when work runs and where. It holds the schedule grammar and its trigger, the reconciler that turns an applied snapshot into an…"><link rel="stylesheet" href="/_astro/Base.B8j-F8YW.css"></head><body><header class="topbar"><a class="brand" href="/">contextful <span>spec</span></a></header><div class="shell"><nav class="sidebar" aria-label="Spec files"><details class="sidebar-toggle" id="sidebar-toggle"><summary>Contents</summary><section><h2 class="group-label">Contracts</h2><ul><li><a href="/spec/00-corpus/"><span class="hint">00</span>Corpus law</a></li><li><a href="/spec/01-topology/"><span class="hint">01</span>System topology</a></li><li><a href="/spec/10-store/"><span class="hint">10</span>The store and its sync</a></li><li><a href="/spec/20-read/"><span class="hint">20</span>The read face</a></li><li><a href="/spec/21-memory/"><span class="hint">21</span>Synthesized memory</a></li><li><a href="/spec/30-run/"><span class="hint">30</span>Durable runs</a></li><li><a href="/spec/31-pipeline/"><span class="hint">31</span>Pipelines and the write path</a></li><li><a href="/spec/32-derive/"><span class="hint">32</span>The derive tier</a></li><li><a href="/spec/40-connector/"><span class="hint">40</span>Connectors and the built-in sources</a></li><li><a href="/spec/41-secrets/"><span class="hint">41</span>Outbound credentials</a></li><li><a href="/spec/50-authority/"><span class="hint">50</span>Admission and authority</a></li><li><a href="/spec/51-enforcement/"><span class="hint">51</span>Enforcement and inference placement</a></li><li><a href="/spec/60-visibility/"><span class="hint">60</span>Source-faithful visibility</a></li><li><a href="/spec/61-disclosure/"><span class="hint">61</span>Aggregate disclosure</a></li><li><a href="/spec/62-accountability/"><span class="hint">62</span>Audit, erasure and the receipt</a></li><li><a href="/spec/70-control-plane/" aria-current="page"><span class="hint">70</span>Cadence, dispatch and the operator plane</a></li><li><a href="/spec/71-console/"><span class="hint">71</span>The analyst console</a></li><li><a href="/spec/80-formal/"><span class="hint">80</span>The formal model</a></li><li><a href="/spec/81-engineering/"><span class="hint">81</span>Engineering gates and the quality harness</a></li></ul></section><section><h2 class="group-label">Plan</h2><ul><li><a href="/spec/roadmap/">Milestones</a></li><li><a href="/spec/status/">Status</a></li><li><a href="/spec/targets/">Deployment targets</a></li></ul></section><section><h2 class="group-label">Principles</h2><ul><li><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/"><span class="hint">P1</span>An unknown or ineffective name refuses by name at the earliest knowable point</a></li><li><a href="/adr/P2-a-refusal-is-typed-never-reads-as/"><span class="hint">P2</span>A refusal is typed, never reads as an empty result, and echoes only caller input</a></li><li><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/"><span class="hint">P3</span>A misconfigured process refuses to start; one value has one source</a></li><li><a href="/adr/P4-no-partial-empty-or-torn-state-reads/"><span class="hint">P4</span>No partial, empty or torn state reads as complete</a></li><li><a href="/adr/P5-rows-are-reached-only-through-the-caller/"><span class="hint">P5</span>Rows are reached only through the caller&#39;s registered relation; one implementation per capability</a></li><li><a href="/adr/P6-retry-only-what-a-retry-can-change/"><span class="hint">P6</span>Retry only what a retry can change</a></li><li><a href="/adr/P7-gates-fail-the-run-rather-than-skip/"><span class="hint">P7</span>Gates fail the run rather than skip</a></li><li><a href="/adr/P8-corpus-law-clause-addressing-status-computed-from/"><span class="hint">P8</span>Clauses are addressed, status is computed from pins, and rationale lives in records</a></li></ul></section><section><h2 class="group-label">Contract ADRs</h2><ul><li><a href="/adr/A-assurance/"><span class="hint">A-assurance</span>Assurance decisions</a></li><li><a href="/adr/A-authority/"><span class="hint">A-authority</span>Authority and enforcement decisions</a></li><li><a href="/adr/A-connector/"><span class="hint">A-connector</span>Connectors and credentials decisions</a></li><li><a href="/adr/A-disclosure/"><span class="hint">A-disclosure</span>Visibility, disclosure and accountability decisions</a></li><li><a href="/adr/A-read/"><span class="hint">A-read</span>Reading and memory decisions</a></li><li><a href="/adr/A-run/"><span class="hint">A-run</span>Runs, pipelines and derive decisions</a></li><li><a href="/adr/A-store/"><span class="hint">A-store</span>The store and its sync decisions</a></li><li><a href="/adr/A-surface/"><span class="hint">A-surface</span>Operator and visitor surfaces decisions</a></li><li><a href="/adr/A-topology/"><span class="hint">A-topology</span>System topology decisions</a></li></ul></section></details><script>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script></nav><main class="content"><article class="prose"><p class="eyebrow">contract <code>surface</code></p><h1 id="cadence-dispatch-and-the-operator-plane">Cadence, dispatch and the operator plane</h1>
+<p>The control plane decides when work runs and where. It holds the schedule grammar and its
+trigger, the reconciler that turns an applied snapshot into an armed set, the fire stage,
+the bounded dispatch pool and its worker adapter, the operator’s edit and apply path over
+the control document, and the region a data plane resides in. The published hostname and
+the read path’s two hops belong to the topology contract.</p>
+<p>The path from an operator’s edit to a dispatched unit, and where it meets topology and the run path:</p>
+<pre class="mermaid">flowchart LR
+  ED["edit: control document, CRDT"] --> AP["apply: validate, claim manifest@vN, CAS pointer"]
+  AP --> SNAP["snapshot store: manifest@current, manifest@vN"]
+  SNAP -- "poll" --> RC["reconcile: diff, armed cursor"]
+  RC --> ARM["arm: armed set, one due-ness function"]
+  JOBS["operator-local job blocks"] --> ARM
+  TRG["trigger adapter: in-process or external"] --> ARM
+  ARM --> FI["fire: job kind, target"]
+  FI --> DI["dispatch: fire pool, exclusion keys"]
+  DI --> RUN["run contract: durable orchestrator instance"]
+  DI --> WK["worker target"]
+  CAT["topology contract: catalog lease rows"] -.->|"cadence lease, exclusion keys"| DI
+  RS["reside: region allow-set"] -.->|"EnforceRegionMismatch at startup"| RC</pre>
+<h2 id="arm">arm</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.arm.unreadable-schedule"><td><a href="#surface.arm.unreadable-schedule" class="clause-anchor"><code>surface.arm.unreadable-schedule</code></a></td><td>A schedule string the grammar cannot read, including <code>L</code>, <code>W</code>, <code>?</code>, <code>#</code> and <code>@</code> macros, raises <code>ScheduleUnreadable</code> for that entry alone, naming the diagnostic; every other entry of the document arms.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.arm.unknown-trigger"><td><a href="#surface.arm.unknown-trigger" class="clause-anchor"><code>surface.arm.unknown-trigger</code></a></td><td>An unrecognized trigger value raises <code>TriggerAdapterUnknown</code> at startup and downgrades onto no adapter.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="surface.arm.trigger-face-missing"><td><a href="#surface.arm.trigger-face-missing" class="clause-anchor"><code>surface.arm.trigger-face-missing</code></a></td><td><code>external</code> selected on a deployment serving no HTTP face raises <code>TriggerFaceMissing</code> at startup.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="surface.arm.wake-answer"><td><a href="#surface.arm.wake-answer" class="clause-anchor"><code>surface.arm.wake-answer</code></a></td><td>A wake answers within 25 s with what fired, what failed, what stays armed and the next due instant, naming each fire still in flight as pending.</td><td>because a platform request timeout otherwise ends the call before the caller learns anything</td></tr><tr id="surface.arm.tick-interval"><td><a href="#surface.arm.tick-interval" class="clause-anchor"><code>surface.arm.tick-interval</code></a></td><td>The in-process adapter evaluates the armed set every 500 ms.</td><td>—</td></tr></tbody></table></div>
+<p>Both trigger adapters reach one due-ness function:</p>
+<pre class="mermaid">flowchart TD
+  SCH["schedule string, UTC"] -- "unreadable" --> E1["ScheduleUnreadable, that entry alone"]
+  SCH -- "readable" --> SET["armed set"]
+  IP["in-process adapter: tick every 500 ms"] --> DUE["one due-ness function"]
+  EXT["external adapter: platform cron, alarm or crontab"] --> WAKE["wake over the HTTP face"]
+  WAKE --> DUE
+  SET --> DUE
+  DUE --> FIRE["fire due entries"]
+  FIRE --> ANS["wake answer within 25 s: fired, failed, pending, next due"]</pre>
+<h2 id="reconcile">reconcile</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.reconcile.poll-cadence"><td><a href="#surface.reconcile.poll-cadence" class="clause-anchor"><code>surface.reconcile.poll-cadence</code></a></td><td><code>poll</code> takes a schedule string, and a <code>[control]</code> block declaring none polls every 30 s.</td><td>—</td></tr><tr id="surface.reconcile.pointer-malformed"><td><a href="#surface.reconcile.pointer-malformed" class="clause-anchor"><code>surface.reconcile.pointer-malformed</code></a></td><td>A pointer body that is not wholly a version raises <code>ControlPointerMalformed</code>.</td><td>because an integer read out of leading bytes arms a version nobody applied</td></tr><tr id="surface.reconcile.fail-static"><td><a href="#surface.reconcile.fail-static" class="clause-anchor"><code>surface.reconcile.fail-static</code></a></td><td>An unreadable pointer, an unparseable snapshot or a control plane answering <code>5xx</code> raises <code>ControlSnapshotUnreadable</code>, logs a diagnostic, and leaves the armed set in place running.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.reconcile.loopback-only"><td><a href="#surface.reconcile.loopback-only" class="clause-anchor"><code>surface.reconcile.loopback-only</code></a></td><td>A control URL whose host is not a loopback address raises <code>ControlSourceNotLoopback</code> and arms nothing.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr></tbody></table></div>
+<p>One reconciler beat, polled every 30 s by default:</p>
+<pre class="mermaid">sequenceDiagram
+  participant R as reconciler
+  participant S as snapshot store
+  participant C as armed cursor
+  participant D as dispatch
+  R->>S: read manifest@current
+  alt pointer body not wholly a version
+    S-->>R: ControlPointerMalformed
+  else unreadable, unparseable or 5xx
+    S-->>R: ControlSnapshotUnreadable, armed set stays running
+  else newer version
+    R->>S: fetch manifest@vN.toml
+    R->>R: derive the scheduled set
+    R->>C: diff into added, removed, retimed, unchanged
+    R->>C: persist the cursor
+    R->>D: dispatch due units
+  end</pre>
+<p>unsettled: Does a daemon reach a non-loopback control source, carrying bearer authentication, TLS and producer signing over version and content hash, and does it learn of a new snapshot by poll or by push? owner: control affects: surface.reconcile</p>
+<h2 id="fire">fire</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.fire.job-kind-unknown"><td><a href="#surface.fire.job-kind-unknown" class="clause-anchor"><code>surface.fire.job-kind-unknown</code></a></td><td>A block naming a kind outside the union, an argument vector or a host command raises <code>JobKindUnknown</code> at validation.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.fire.target-unbound"><td><a href="#surface.fire.target-unbound" class="clause-anchor"><code>surface.fire.target-unbound</code></a></td><td>A <code>fold</code> target naming no produced table, or a <code>build</code> target naming no declared model, raises <code>JobTargetUnbound</code> at validation.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="surface.fire.cycle-control-source"><td><a href="#surface.fire.cycle-control-source" class="clause-anchor"><code>surface.fire.cycle-control-source</code></a></td><td>A configured control source that does not resolve under <code>cycle</code> raises <code>CycleControlSourceUnresolved</code>.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr></tbody></table></div>
+<h2 id="dispatch">dispatch</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.dispatch.not-a-head"><td><a href="#surface.dispatch.not-a-head" class="clause-anchor"><code>surface.dispatch.not-a-head</code></a></td><td>Where entries are landing steps of one dependent run, the run is the unit and cadence rides its head entry. A due id that is a step raises <code>DispatchUnitNotAHead</code> and starts nothing.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.dispatch.step-result"><td><a href="#surface.dispatch.step-result" class="clause-anchor"><code>surface.dispatch.step-result</code></a></td><td>A checkpointed step returns a pointer, an object-store key or a catalog row id, under a 1 MiB step-result cap.</td><td>—</td></tr><tr id="surface.dispatch.in-band-tool-error"><td><a href="#surface.dispatch.in-band-tool-error" class="clause-anchor"><code>surface.dispatch.in-band-tool-error</code></a></td><td>A step driving the engine over the tool protocol judges the tool result, not transport status: a <code>200</code> carrying a protocol error or a result flagged <code>isError</code> raises <code>StepToolError</code>.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="surface.dispatch.callback-skew"><td><a href="#surface.dispatch.callback-skew" class="clause-anchor"><code>surface.dispatch.callback-skew</code></a></td><td>The relay accepts a callback timestamp within 300 s of its own clock.</td><td>—</td></tr><tr id="surface.dispatch.callback-rejected"><td><a href="#surface.dispatch.callback-rejected" class="clause-anchor"><code>surface.dispatch.callback-rejected</code></a></td><td>A callback whose attempt is below the step’s current attempt, or whose timestamp falls outside <a href="/spec/70-control-plane/#surface.dispatch.callback-skew" class="clause-ref"><code>surface.dispatch.callback-skew</code></a>, raises <code>DispatchCallbackRejected</code> and changes no step.</td><td>because a partitioned worker’s late result otherwise overwrites its successor’s, and a captured callback replays indefinitely</td></tr><tr id="surface.dispatch.heartbeat-beat"><td><a href="#surface.dispatch.heartbeat-beat" class="clause-anchor"><code>surface.dispatch.heartbeat-beat</code></a></td><td>A worker heartbeat runs every 15 s.</td><td>—</td></tr><tr id="surface.dispatch.heartbeat-lapse"><td><a href="#surface.dispatch.heartbeat-lapse" class="clause-anchor"><code>surface.dispatch.heartbeat-lapse</code></a></td><td>A heartbeat lapse past 60 s reschedules that worker’s in-flight work onto another matching worker under the next attempt number.</td><td>—</td></tr></tbody></table></div>
+<p>One step on a worker target, from submit to an accepted or rejected callback:</p>
+<pre class="mermaid">sequenceDiagram
+  participant RC as reconciler
+  participant W as worker target
+  participant OS as object store
+  participant RL as relay route
+  RC->>W: submit(job, idempotencyKey), attempt n
+  W-->>RC: handle, the existing job on a repeated key
+  loop every 15 s
+    W->>RC: heartbeat
+  end
+  W->>OS: output at an attempt-scoped key
+  W->>RL: callback, HMAC over run id, step, attempt, timestamp
+  alt attempt below current, or skew past 300 s
+    RL-->>W: DispatchCallbackRejected, step unchanged
+  else accepted
+    RL->>RC: result pointer, under the 1 MiB step-result cap
+  end
+  opt heartbeat lapse past 60 s
+    RC->>RC: reschedule onto another matching worker, attempt n+1
+  end</pre>
+<p>unsettled: Is the fire pool’s bound one number per deployment or one per exclusion key? owner: control affects: surface.dispatch</p>
+<h2 id="edit">edit</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.edit.secret-in-document"><td><a href="#surface.edit.secret-in-document" class="clause-anchor"><code>surface.edit.secret-in-document</code></a></td><td>A credential value typed into a configuration field raises <code>SecretMaterialInDocument</code>; the document holds references and the backend holds material.</td><td>because a value in the document reaches every daemon and replica that reads a snapshot</td></tr><tr id="surface.edit.connector-upload"><td><a href="#surface.edit.connector-upload" class="clause-anchor"><code>surface.edit.connector-upload</code></a></td><td>An artifact uploaded through the operator surface raises <code>ConnectorUploadRefused</code>; the surface references registered connectors by id and version.</td><td>because publishing into the registry runs a separate signed path</td></tr></tbody></table></div>
+<h2 id="apply">apply</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.apply.version-race"><td><a href="#surface.apply.version-race" class="clause-anchor"><code>surface.apply.version-race</code></a></td><td>An apply whose compare-and-swap loses raises <code>ManifestVersionConflict</code>, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.apply.validation"><td><a href="#surface.apply.validation" class="clause-anchor"><code>surface.apply.validation</code></a></td><td>A document failing engine validation raises <code>ApplyValidationRefused</code> and claims no version.</td><td>because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it</td></tr><tr id="surface.apply.owner-unconfigured"><td><a href="#surface.apply.owner-unconfigured" class="clause-anchor"><code>surface.apply.owner-unconfigured</code></a></td><td>An owner with no storage configured or no credential raises <code>ConfigOwnerUnconfigured</code>, answered <code>503</code>; no local writer substitutes for the store-scoped API.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="surface.apply.weak-conditional-backend"><td><a href="#surface.apply.weak-conditional-backend" class="clause-anchor"><code>surface.apply.weak-conditional-backend</code></a></td><td>A configuration owner or catalog backend whose conditional replacement is not linearizable raises <code>ConditionalWriteUnsupported</code> at startup or open.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="surface.apply.uninitialized-store"><td><a href="#surface.apply.uninitialized-store" class="clause-anchor"><code>surface.apply.uninitialized-store</code></a></td><td>An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises <code>StoreNotInitialized</code>, answered <code>409</code>.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr></tbody></table></div>
+<p>One apply through the engine’s store-scoped API:</p>
+<pre class="mermaid">sequenceDiagram
+  participant O as operator surface
+  participant E as engine store-scoped API
+  participant S as snapshot store
+  participant A as audit log
+  O->>E: apply under the admin capability
+  alt store took no guarded import
+    E-->>O: StoreNotInitialized, 409
+  else document fails validation
+    E-->>O: ApplyValidationRefused, no version claimed
+  else valid
+    E->>S: write manifest@vN.toml
+    E->>S: compare-and-swap manifest@current
+    alt swap lost
+      E-->>O: ManifestVersionConflict
+      O->>E: reload the winner, reapply pending edits
+    else swap won
+      E->>A: attributed to the verified identity
+      E-->>O: version N
+    end
+  end</pre>
+<p>unsettled: Can a local control plane validate and claim a version on its own, or does every apply route through a hosted one? owner: control affects: surface.apply</p>
+<h2 id="reside">reside</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="surface.reside.region-entries"><td><a href="#surface.reside.region-entries" class="clause-anchor"><code>surface.reside.region-entries</code></a></td><td>A residency allow-set holds at most 16 entries.</td><td>—</td></tr><tr id="surface.reside.region-mismatch"><td><a href="#surface.reside.region-mismatch" class="clause-anchor"><code>surface.reside.region-mismatch</code></a></td><td>A configured resource resolving to a region the policy omits raises <code>EnforceRegionMismatch</code> at startup, and the runtime serves nothing.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr></tbody></table></div>
+<p>unsettled: How is a residency region declared differently by two sites detected, given that each resolves its own configuration? owner: control affects: surface.reside</p>
+<h2 id="shapes">Shapes</h2>
+<p>A daemon’s own configuration, the control wiring and its operator-local jobs:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">control</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">snapshot_dir = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"./.contextful/control"</span><span style="color:#6A737D;--shiki-dark:#6A737D">   # or url = "http://127.0.0.1:8787/control"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">poll         = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"every 30s"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">job</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">name     = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"nightly-fold"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">schedule = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"0 3 * * *"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">kind     = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"fold"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">target   = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"meta_ads_insights"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">job</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">name     = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"hourly-push"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">schedule = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"every 1h"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">kind     = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"sync-push"</span></span></code></pre>
+<p>The wake route’s answer:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "fired"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"field-notes"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"nightly-fold"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "failed"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [],</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "pending"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"hourly-push"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "armed"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">14</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "next_due"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"&#x3C;instant, RFC 3339 UTC>"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre></article></main><aside class="toc" aria-label="On this page"><h2 class="group-label">On this page</h2><ul><li><a href="#arm">arm</a></li><li><a href="#reconcile">reconcile</a></li><li><a href="#fire">fire</a></li><li><a href="#dispatch">dispatch</a></li><li><a href="#edit">edit</a></li><li><a href="#apply">apply</a></li><li><a href="#reside">reside</a></li><li><a href="#shapes">Shapes</a></li></ul></aside></div><script type="module" src="/_astro/Base.astro_astro_type_script_index_0_lang.C0f5LPIN.js"></script></body></html>

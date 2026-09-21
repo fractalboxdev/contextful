@@ -111,6 +111,7 @@ unsettled: Does the edge profile build for `wasm32-wasip2` with the SQL engine i
 | --- | --- | --- |
 | `assurance.gate.stage-sequence` | The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name. | |
 | `assurance.gate.remote-check` | The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, each as one status check labelled with the stage's name. | A-assurance |
+| `assurance.gate.fork-dispatch` | The pull-request workflow dispatches only a head commit pushed to the repository itself; a pull request from a fork dispatches no stage and so carries none of the required checks. | because a dispatch carries the org's signing secret and runs the commit on the org's runner, and an absent required check fails closed |
 | `assurance.gate.stage-reports` | Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code. | because memory exhaustion is silent, and a kill then reads as a number in the log |
 | `assurance.gate.pins-stage` | The pins stage resolves every pinned artifact identity a run depends on before any compilation. | |
 | `assurance.gate.schema-stage` | The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`. | |

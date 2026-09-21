@@ -1,0 +1,931 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>Connectors and the built-in sources · contextful spec</title><meta name="description" content="A connector is the one way data enters the run path from outside. This file states the interface a connector answers, the host access it declares, the quota…"><meta property="og:title" content="Connectors and the built-in sources · contextful spec"><meta property="og:description" content="A connector is the one way data enters the run path from outside. This file states the interface a connector answers, the host access it declares, the quota…"><link rel="stylesheet" href="/_astro/Base.B8j-F8YW.css"></head><body><header class="topbar"><a class="brand" href="/">contextful <span>spec</span></a></header><div class="shell"><nav class="sidebar" aria-label="Spec files"><details class="sidebar-toggle" id="sidebar-toggle"><summary>Contents</summary><section><h2 class="group-label">Contracts</h2><ul><li><a href="/spec/00-corpus/"><span class="hint">00</span>Corpus law</a></li><li><a href="/spec/01-topology/"><span class="hint">01</span>System topology</a></li><li><a href="/spec/10-store/"><span class="hint">10</span>The store and its sync</a></li><li><a href="/spec/20-read/"><span class="hint">20</span>The read face</a></li><li><a href="/spec/21-memory/"><span class="hint">21</span>Synthesized memory</a></li><li><a href="/spec/30-run/"><span class="hint">30</span>Durable runs</a></li><li><a href="/spec/31-pipeline/"><span class="hint">31</span>Pipelines and the write path</a></li><li><a href="/spec/32-derive/"><span class="hint">32</span>The derive tier</a></li><li><a href="/spec/40-connector/" aria-current="page"><span class="hint">40</span>Connectors and the built-in sources</a></li><li><a href="/spec/41-secrets/"><span class="hint">41</span>Outbound credentials</a></li><li><a href="/spec/50-authority/"><span class="hint">50</span>Admission and authority</a></li><li><a href="/spec/51-enforcement/"><span class="hint">51</span>Enforcement and inference placement</a></li><li><a href="/spec/60-visibility/"><span class="hint">60</span>Source-faithful visibility</a></li><li><a href="/spec/61-disclosure/"><span class="hint">61</span>Aggregate disclosure</a></li><li><a href="/spec/62-accountability/"><span class="hint">62</span>Audit, erasure and the receipt</a></li><li><a href="/spec/70-control-plane/"><span class="hint">70</span>Cadence, dispatch and the operator plane</a></li><li><a href="/spec/71-console/"><span class="hint">71</span>The analyst console</a></li><li><a href="/spec/80-formal/"><span class="hint">80</span>The formal model</a></li><li><a href="/spec/81-engineering/"><span class="hint">81</span>Engineering gates and the quality harness</a></li></ul></section><section><h2 class="group-label">Plan</h2><ul><li><a href="/spec/roadmap/">Milestones</a></li><li><a href="/spec/status/">Status</a></li><li><a href="/spec/targets/">Deployment targets</a></li></ul></section><section><h2 class="group-label">Principles</h2><ul><li><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/"><span class="hint">P1</span>An unknown or ineffective name refuses by name at the earliest knowable point</a></li><li><a href="/adr/P2-a-refusal-is-typed-never-reads-as/"><span class="hint">P2</span>A refusal is typed, never reads as an empty result, and echoes only caller input</a></li><li><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/"><span class="hint">P3</span>A misconfigured process refuses to start; one value has one source</a></li><li><a href="/adr/P4-no-partial-empty-or-torn-state-reads/"><span class="hint">P4</span>No partial, empty or torn state reads as complete</a></li><li><a href="/adr/P5-rows-are-reached-only-through-the-caller/"><span class="hint">P5</span>Rows are reached only through the caller&#39;s registered relation; one implementation per capability</a></li><li><a href="/adr/P6-retry-only-what-a-retry-can-change/"><span class="hint">P6</span>Retry only what a retry can change</a></li><li><a href="/adr/P7-gates-fail-the-run-rather-than-skip/"><span class="hint">P7</span>Gates fail the run rather than skip</a></li><li><a href="/adr/P8-corpus-law-clause-addressing-status-computed-from/"><span class="hint">P8</span>Clauses are addressed, status is computed from pins, and rationale lives in records</a></li></ul></section><section><h2 class="group-label">Contract ADRs</h2><ul><li><a href="/adr/A-assurance/"><span class="hint">A-assurance</span>Assurance decisions</a></li><li><a href="/adr/A-authority/"><span class="hint">A-authority</span>Authority and enforcement decisions</a></li><li><a href="/adr/A-connector/"><span class="hint">A-connector</span>Connectors and credentials decisions</a></li><li><a href="/adr/A-disclosure/"><span class="hint">A-disclosure</span>Visibility, disclosure and accountability decisions</a></li><li><a href="/adr/A-read/"><span class="hint">A-read</span>Reading and memory decisions</a></li><li><a href="/adr/A-run/"><span class="hint">A-run</span>Runs, pipelines and derive decisions</a></li><li><a href="/adr/A-store/"><span class="hint">A-store</span>The store and its sync decisions</a></li><li><a href="/adr/A-surface/"><span class="hint">A-surface</span>Operator and visitor surfaces decisions</a></li><li><a href="/adr/A-topology/"><span class="hint">A-topology</span>System topology decisions</a></li></ul></section></details><script>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script></nav><main class="content"><article class="prose"><p class="eyebrow">contract <code>connector</code></p><h1 id="connectors-and-the-built-in-sources">Connectors and the built-in sources</h1>
+<p>A connector is the one way data enters the run path from outside. This file states the
+interface a connector answers, the host access it declares, the quota it reserves against,
+the model egress it reaches, the bytes it resolves from, and the behavior of the sources
+compiled into the engine. How a credential reaches a request is in <code>spec/41-secrets.md</code>.</p>
+<p>The two connector forms, the host between them and the outside, and the contracts they meet:</p>
+<pre class="mermaid">flowchart LR
+  PKG["package · in-tree, path, https, oci + pin"] --> GUEST["component guest · sandboxed"]
+  NATIVE["compiled-in source"]
+  GUEST -->|"outgoing HTTP, logging, wall clock"| MED["host mediation point"]
+  NATIVE --> MED
+  MED &#x3C;-->|"acquire, report"| LIM["limiter"]
+  MED -->|"allowlist, attach · 41-secrets"| VEND["vendor API"]
+  MED -->|"infer · fenced data"| MODEL["model endpoint · topology contract"]
+  GUEST -->|"batches + position"| RUN["runner · run contract"]
+  NATIVE -->|"batches + position"| RUN
+  RUN --> LAND["land path · run contract"]</pre>
+<h2 id="export">export</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="connector.export.authoring-path"><td><a href="#connector.export.authoring-path" class="clause-anchor"><code>connector.export.authoring-path</code></a></td><td>Every connector implements one trait, as a component sandboxed in the host runtime or as a native sibling compiled into the binary. Dispatch carries no branch naming which of the two it calls.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.export.type-taxonomy"><td><a href="#connector.export.type-taxonomy" class="clause-anchor"><code>connector.export.type-taxonomy</code></a></td><td>The shared types interface carries a schema (name, fields, primary key) and a field (name, data type, nullability) over <code>boolean</code>, <code>int32</code>, <code>int64</code>, <code>float64</code>, <code>string</code>, <code>bytes</code>, <code>timestamp-millis</code> and <code>json</code>.</td><td>—</td></tr><tr id="connector.export.batch-encoding"><td><a href="#connector.export.batch-encoding" class="clause-anchor"><code>connector.export.batch-encoding</code></a></td><td>A batch crosses the boundary as Arrow IPC bytes, and a position as opaque bytes beside a declared cursor kind.</td><td>—</td></tr><tr id="connector.export.nested-value"><td><a href="#connector.export.nested-value" class="clause-anchor"><code>connector.export.nested-value</code></a></td><td>A nested value rides as <code>json</code> and takes its type at the normalize stage. The interface carries no recursive type definition.</td><td>—</td></tr><tr id="connector.export.guaranteed-type"><td><a href="#connector.export.guaranteed-type" class="clause-anchor"><code>connector.export.guaranteed-type</code></a></td><td>A guest declares the type it guarantees after its own parsing — <code>int64</code> for a count, <code>float64</code> for money and a rate — and lands null, never zero, for a spelling it cannot read.</td><td>because a text column pushes a cast into every downstream read</td></tr><tr id="connector.export.read-handle"><td><a href="#connector.export.read-handle" class="clause-anchor"><code>connector.export.read-handle</code></a></td><td>A source exports its cursor kind, a discovery call, and an open call taking a table and an optional position. The handle’s <code>next</code> yields one batch or exhaustion; its <code>position</code> reports where it stands.</td><td>—</td></tr><tr id="connector.export.write-handle"><td><a href="#connector.export.write-handle" class="clause-anchor"><code>connector.export.write-handle</code></a></td><td>A destination exports <code>prepare</code>, <code>write</code>, <code>commit</code> and <code>abort</code>. Source and destination are separate worlds sharing the types interface.</td><td>—</td></tr><tr id="connector.export.optional-world"><td><a href="#connector.export.optional-world" class="clause-anchor"><code>connector.export.optional-world</code></a></td><td>Operator configuration and failure attribution are each an interface in an additional world, probed on the instance by name. A base-world guest instantiates untouched, and neither addition moves the world version.</td><td>—</td></tr><tr id="connector.export.partition-attribution"><td><a href="#connector.export.partition-attribution" class="clause-anchor"><code>connector.export.partition-attribution</code></a></td><td>A guest exporting failure attribution answers with the byte-exact values of the outermost partition column a failed read belongs to. The host reads it on failure and success alike; an empty list keeps the unattributed refusal.</td><td>because a read holding one partition back and landing the rest returns success</td></tr><tr id="connector.export.attribution-budget"><td><a href="#connector.export.attribution-budget" class="clause-anchor"><code>connector.export.attribution-budget</code></a></td><td>Failure attribution carries at most 512 entries per session, each value at most 512 B.</td><td>—</td></tr><tr id="connector.export.native-read"><td><a href="#connector.export.native-read" class="clause-anchor"><code>connector.export.native-read</code></a></td><td>A native source reads a table from a position, returning batches each paired with the position after it. A source unable to bound a half-open chunk range falls back to the unbounded read.</td><td>because an overlapping read is recoverable and a mis-bounded chunk is not</td></tr><tr id="connector.export.native-extra"><td><a href="#connector.export.native-extra" class="clause-anchor"><code>connector.export.native-extra</code></a></td><td>A native source may offer a content fingerprint from a stat or a head request, never a download, plus its connector identity, audit entries, and a declared reason its vendor traffic runs unmetered.</td><td>—</td></tr><tr id="connector.export.store-blindness"><td><a href="#connector.export.store-blindness" class="clause-anchor"><code>connector.export.store-blindness</code></a></td><td>A source receives credentials, limiter bindings, the run id, the request ledger, the component pin and the incremental position, and no store handle. A store-driven run receives its query set as run parameters.</td><td><a href="/adr/P5-rows-are-reached-only-through-the-caller/" class="record-ref">P5</a></td></tr><tr id="connector.export.world-authorship"><td><a href="#connector.export.world-authorship" class="clause-anchor"><code>connector.export.world-authorship</code></a></td><td>Bindings are emitted from a host-owned template over the input specification and the connector name. An author writes method bodies alone: authentication, paging and the cursor-kind declaration.</td><td>—</td></tr></tbody></table></div>
+<p>A connector failure crosses as a variant of <a href="/spec/30-run/#run.retry.failure-taxonomy" class="clause-ref"><code>run.retry.failure-taxonomy</code></a>.</p>
+<p>unsettled: How does a guest name the partitions a failed read belongs to when the failure is a shared credential rather than a per-tenant one? owner: connector affects: connector.export</p>
+<h2 id="import">import</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="connector.import.three-imports"><td><a href="#connector.import.three-imports" class="clause-anchor"><code>connector.import.three-imports</code></a></td><td>Both worlds import outgoing HTTP, logging and a wall clock, and nothing else. There is no filesystem import and no socket import.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.import.empty-context"><td><a href="#connector.import.empty-context" class="clause-anchor"><code>connector.import.empty-context</code></a></td><td>A guest standard library pulling broader interfaces links against an empty context: no preopens, no environment, no arguments.</td><td>—</td></tr><tr id="connector.import.wait-primitive"><td><a href="#connector.import.wait-primitive" class="clause-anchor"><code>connector.import.wait-primitive</code></a></td><td>Neither world carries a monotonic clock or a sleep primitive, so a guest holds no call open across a wait.</td><td>—</td></tr><tr id="connector.import.forwarded-config"><td><a href="#connector.import.forwarded-config" class="clause-anchor"><code>connector.import.forwarded-config</code></a></td><td>The pipeline’s guest configuration table is the one part of the source configuration crossing inward, as one JSON object delivered once per session ahead of discovery.</td><td><a href="/adr/A-surface/" class="record-ref">A-surface</a></td></tr><tr id="connector.import.config-shape"><td><a href="#connector.import.config-shape" class="clause-anchor"><code>connector.import.config-shape</code></a></td><td>Ahead of any I/O, a guest configuration value that is not a table, a serialization over 64 KiB, or a credential or environment reference inside it raises <code>ConnectorConfigRejected</code>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.import.config-unclaimed"><td><a href="#connector.import.config-unclaimed" class="clause-anchor"><code>connector.import.config-unclaimed</code></a></td><td>Where the artifact is local and probed, a guest table declared against a guest exporting no configuration interface raises <code>ConnectorConfigUnclaimed</code>.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.import.unusable-key"><td><a href="#connector.import.unusable-key" class="clause-anchor"><code>connector.import.unusable-key</code></a></td><td>A guest raises a permanent failure for a configuration key or value it cannot act on.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.import.config-hashing"><td><a href="#connector.import.config-hashing" class="clause-anchor"><code>connector.import.config-hashing</code></a></td><td>The forwarded table folds into the connector’s content hash; with no table forwarded, the artifact digest is that hash verbatim.</td><td>—</td></tr></tbody></table></div>
+<p>unsettled: How is a source’s declared configuration key set enumerated, so an unknown key is answered at parse time rather than meaning the default? owner: connector affects: connector.import</p>
+<h2 id="declare-capability">declare-capability</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="connector.declare-capability.declared-grant"><td><a href="#connector.declare-capability.declared-grant" class="clause-anchor"><code>connector.declare-capability.declared-grant</code></a></td><td>A manifest lists the host access its code reaches for — outbound hosts, environment names, the wall clock — and the host decides the grant at load. There is no run-time permission request and no escalation path.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.declare-capability.undeclared-access"><td><a href="#connector.declare-capability.undeclared-access" class="clause-anchor"><code>connector.declare-capability.undeclared-access</code></a></td><td>A connector reaching for access its manifest does not list fails to load, raising <code>ConnectorUndeclaredAccess</code> naming that access.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.declare-capability.host-allowlist"><td><a href="#connector.declare-capability.host-allowlist" class="clause-anchor"><code>connector.declare-capability.host-allowlist</code></a></td><td>The outbound allowlist holds exact hosts and subdomain wildcards matched as suffixes; a wildcard entry covers subdomains and not the apex.</td><td>—</td></tr><tr id="connector.declare-capability.allowlist-shape"><td><a href="#connector.declare-capability.allowlist-shape" class="clause-anchor"><code>connector.declare-capability.allowlist-shape</code></a></td><td>An empty allowlist, a bare wildcard, an empty entry, and an entry carrying a scheme, port or path raise <code>ConnectorAllowlistRejected</code>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.declare-capability.environment-name"><td><a href="#connector.declare-capability.environment-name" class="clause-anchor"><code>connector.declare-capability.environment-name</code></a></td><td>A declared environment name is a name, not ambient access: the operator binds it to a reference and the host resolves and injects the value at call time. No connector reads the process environment.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.declare-capability.ambient-authority"><td><a href="#connector.declare-capability.ambient-authority" class="clause-anchor"><code>connector.declare-capability.ambient-authority</code></a></td><td>No credential is a property of the process: no shared client carries a default header and no import returns secret bytes. Every grant binds to one declared host and attaches at request time.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.declare-capability.scope-probe"><td><a href="#connector.declare-capability.scope-probe" class="clause-anchor"><code>connector.declare-capability.scope-probe</code></a></td><td>A manifest may declare an identity endpoint, the response header carrying granted scopes, and the grant it expects. The host calls it with the bound credential ahead of the first read.</td><td>—</td></tr><tr id="connector.declare-capability.probe-transport"><td><a href="#connector.declare-capability.probe-transport" class="clause-anchor"><code>connector.declare-capability.probe-transport</code></a></td><td>The scope probe’s host sits on the allowlist and its scheme is TLS or loopback.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.declare-capability.scope-exceeded"><td><a href="#connector.declare-capability.scope-exceeded" class="clause-anchor"><code>connector.declare-capability.scope-exceeded</code></a></td><td>A granted scope outside the declared expectation raises <code>ConnectorScopeExceeded</code>, and the session does not open.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.declare-capability.scope-unverified"><td><a href="#connector.declare-capability.scope-unverified" class="clause-anchor"><code>connector.declare-capability.scope-unverified</code></a></td><td>A probe response carrying no granted-scopes header raises <code>ConnectorScopeUnverified</code>.</td><td>because cannot-verify is not verified</td></tr><tr id="connector.declare-capability.environment-binding"><td><a href="#connector.declare-capability.environment-binding" class="clause-anchor"><code>connector.declare-capability.environment-binding</code></a></td><td>A source key binds from the environment as <code>&#x3C;key>_from = "env:&#x3C;NAME>"</code>. The engine enumerates the bindable keys in one place, each with its value shape: a scalar or a comma-separated list.</td><td>—</td></tr><tr id="connector.declare-capability.binding-unsupported"><td><a href="#connector.declare-capability.binding-unsupported" class="clause-anchor"><code>connector.declare-capability.binding-unsupported</code></a></td><td>A <code>_from</code> binding on a key the connector does not read raises <code>ConnectorBindingUnsupported</code>.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="connector.declare-capability.binding-unbound"><td><a href="#connector.declare-capability.binding-unbound" class="clause-anchor"><code>connector.declare-capability.binding-unbound</code></a></td><td>A bound key the environment did not supply, or supplied off its declared shape, raises <code>ConnectorBindingUnbound</code> at preflight.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr></tbody></table></div>
+<pre class="mermaid">flowchart TD
+  M["manifest · allow_hosts, env, clock"] --> A{"allowlist shape valid?"}
+  A -->|no| R1["ConnectorAllowlistRejected"]
+  A -->|yes| U{"code reaches only listed access?"}
+  U -->|no| R2["ConnectorUndeclaredAccess"]
+  U -->|yes| B{"every _from binding supplied, on shape?"}
+  B -->|no| R3["ConnectorBindingUnbound"]
+  B -->|yes| SP{"scope probe declared?"}
+  SP -->|no| OPEN["session opens"]
+  SP -->|yes| CALL["call the identity endpoint with the bound credential"]
+  CALL -->|"no granted-scopes header"| R4["ConnectorScopeUnverified"]
+  CALL -->|"scope outside the expectation"| R5["ConnectorScopeExceeded"]
+  CALL -->|"within the expectation"| OPEN</pre>
+<p>unsettled: Does a community-distributed connector need a signing and transparency layer above the content pin, and who runs the log? owner: connector affects: connector.declare-capability</p>
+<h2 id="meter">meter</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="connector.meter.limiter-declaration"><td><a href="#connector.meter.limiter-declaration" class="clause-anchor"><code>connector.meter.limiter-declaration</code></a></td><td>A connector declares a limiter capability naming the shared vendor quota, the traffic class of its requests, and the vendor quota-state response headers to forward.</td><td>—</td></tr><tr id="connector.meter.limiter-binding"><td><a href="#connector.meter.limiter-binding" class="clause-anchor"><code>connector.meter.limiter-binding</code></a></td><td>The operator binds that quota name to an endpoint, a bearer token held by reference, and a permit batch size.</td><td>—</td></tr><tr id="connector.meter.quota-unbound"><td><a href="#connector.meter.quota-unbound" class="clause-anchor"><code>connector.meter.quota-unbound</code></a></td><td>A declared quota with no binding raises <code>ConnectorQuotaUnbound</code> at load.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.meter.binding-transport"><td><a href="#connector.meter.binding-transport" class="clause-anchor"><code>connector.meter.binding-transport</code></a></td><td>A limiter endpoint that is neither HTTPS nor loopback, and a limiter token written as an inline literal, raise <code>ConnectorLimiterBindingRejected</code> at load.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.meter.reservation-point"><td><a href="#connector.meter.reservation-point" class="clause-anchor"><code>connector.meter.reservation-point</code></a></td><td>The host reserves at the mediation point, the guest’s outgoing-HTTP import or the engine’s shared client. One permit covers one outbound request.</td><td>because one call issues any number of requests for paging, retries and token refresh</td></tr><tr id="connector.meter.permit-batch"><td><a href="#connector.meter.permit-batch" class="clause-anchor"><code>connector.meter.permit-batch</code></a></td><td>An acquire may grant a batch of permits under a short TTL. Each request spends one, and the next report surrenders the unspent.</td><td>—</td></tr><tr id="connector.meter.acquire"><td><a href="#connector.meter.acquire" class="clause-anchor"><code>connector.meter.acquire</code></a></td><td>Acquire is an authenticated POST of quota, class and permit count, answered granted with permits and a TTL, or denied with a retry-after. A bare <code>429</code> with <code>Retry-After</code>, and a zero-permit grant, read as denials.</td><td>—</td></tr><tr id="connector.meter.unreadable-answer"><td><a href="#connector.meter.unreadable-answer" class="clause-anchor"><code>connector.meter.unreadable-answer</code></a></td><td>A limiter response the engine cannot read raises <code>ConnectorLimiterUnreadable</code> and grants nothing.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.meter.report"><td><a href="#connector.meter.report" class="clause-anchor"><code>connector.meter.report</code></a></td><td>Report is an authenticated POST of quota, class, granted, spent, one entry per vendor response (status, retry-after, verbatim headers), an observation instant and the run id.</td><td>—</td></tr><tr id="connector.meter.report-delivery"><td><a href="#connector.meter.report-delivery" class="clause-anchor"><code>connector.meter.report-delivery</code></a></td><td>Report delivery is at-least-once under bounded backoff inside the run. A report that never lands is recorded in the run audit and fails nothing.</td><td>—</td></tr><tr id="connector.meter.unmetered-request"><td><a href="#connector.meter.unmetered-request" class="clause-anchor"><code>connector.meter.unmetered-request</code></a></td><td>Under a declared limiter, a vendor request with no granted reservation raises <code>ConnectorUnmetered</code>, including when the limiter is unreachable or unbound.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.meter.allowlist-precedence"><td><a href="#connector.meter.allowlist-precedence" class="clause-anchor"><code>connector.meter.allowlist-precedence</code></a></td><td>A request the allowlist refuses never reaches the limiter and spends no permit.</td><td>—</td></tr><tr id="connector.meter.held-back-request"><td><a href="#connector.meter.held-back-request" class="clause-anchor"><code>connector.meter.held-back-request</code></a></td><td>A guest swallowing a held-back request still fails its call, and a fault inside the reservation machinery fails the request rather than passing it unmetered.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="connector.meter.synthesized-throttle"><td><a href="#connector.meter.synthesized-throttle" class="clause-anchor"><code>connector.meter.synthesized-throttle</code></a></td><td>A denied reservation returns to the guest as a synthesized <code>429</code> carrying the retry-after. An unreachable limiter fails the request as a transport failure.</td><td>because a connector mapping vendor throttles needs no second interface</td></tr><tr id="connector.meter.replay-reservation"><td><a href="#connector.meter.replay-reservation" class="clause-anchor"><code>connector.meter.replay-reservation</code></a></td><td>Replay issues no outbound request and makes no limiter call.</td><td>—</td></tr><tr id="connector.meter.built-in-grant-absent"><td><a href="#connector.meter.built-in-grant-absent" class="clause-anchor"><code>connector.meter.built-in-grant-absent</code></a></td><td>A compiled-in source reaching an outside vendor declares its grant in the pipeline’s source configuration; the build raises <code>ConnectorGrantMissing</code> without it.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.meter.grant-unhonorable"><td><a href="#connector.meter.grant-unhonorable" class="clause-anchor"><code>connector.meter.grant-unhonorable</code></a></td><td>A declared grant on a compiled-in source that bypasses the mediated client raises <code>ConnectorGrantUnhonorable</code> at load.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.meter.metered-disclosure"><td><a href="#connector.meter.metered-disclosure" class="clause-anchor"><code>connector.meter.metered-disclosure</code></a></td><td>Where the project binds any quota, every compiled-in read records whether it ran metered, the run record states an unmetered read once, and validation warns per pipeline naming the connector.</td><td>—</td></tr><tr id="connector.meter.counting-not-pricing"><td><a href="#connector.meter.counting-not-pricing" class="clause-anchor"><code>connector.meter.counting-not-pricing</code></a></td><td>The limiter counts requests and prices none.</td><td>—</td></tr></tbody></table></div>
+<pre class="mermaid">sequenceDiagram
+  participant G as guest or compiled-in source
+  participant H as host mediation point
+  participant L as limiter
+  participant V as vendor
+  G->>H: outbound request
+  H->>H: allowlist check, a refused request spends no permit
+  H->>L: POST acquire · quota, class, permits
+  alt granted
+    L-->>H: permits + TTL
+    H->>V: request, one permit spent
+    V-->>H: response + quota-state headers
+    H-->>G: response
+  else denied, bare 429 with Retry-After, or zero permits
+    L-->>H: retry-after
+    H-->>G: synthesized 429
+  else limiter unreachable or unbound
+    H-->>G: ConnectorUnmetered
+  end
+  H->>L: POST report · granted, spent, responses, run id, at-least-once</pre>
+<h2 id="infer">infer</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="connector.infer.model-endpoint"><td><a href="#connector.infer.model-endpoint" class="clause-anchor"><code>connector.infer.model-endpoint</code></a></td><td>Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, rate limit and span; the component owns the prompt template and response schema.</td><td><a href="/adr/A-topology/" class="record-ref">A-topology</a></td></tr><tr id="connector.infer.vendor-sdk"><td><a href="#connector.infer.vendor-sdk" class="clause-anchor"><code>connector.infer.vendor-sdk</code></a></td><td>A model-vendor SDK in any workspace crate is refused as <a href="/spec/01-topology/#topology.compose.vendor-sdk" class="clause-ref"><code>topology.compose.vendor-sdk</code></a>, so a provider swap is a URL edit.</td><td><a href="/adr/A-topology/" class="record-ref">A-topology</a></td></tr><tr id="connector.infer.data-fence"><td><a href="#connector.infer.data-fence" class="clause-anchor"><code>connector.infer.data-fence</code></a></td><td>No ingested value reaches a model outside a data boundary: marker pairs whose opening marker carries the value’s provenance label, a preamble declaring the blocks data, and a closing line restating the caller’s rules.</td><td>—</td></tr><tr id="connector.infer.fence-is-not-a-boundary"><td><a href="#connector.infer.fence-is-not-a-boundary" class="clause-anchor"><code>connector.infer.fence-is-not-a-boundary</code></a></td><td>The fence lowers the success rate of injected instructions and bounds nothing. No clause treats the output of a fenced call as trusted.</td><td>because spotlighting reduces injection and guarantees nothing</td></tr><tr id="connector.infer.output-taint"><td><a href="#connector.infer.output-taint" class="clause-anchor"><code>connector.infer.output-taint</code></a></td><td>Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.</td><td>because output re-landing as fresh data launders injected text</td></tr><tr id="connector.infer.marker-derivation"><td><a href="#connector.infer.marker-derivation" class="clause-anchor"><code>connector.infer.marker-derivation</code></a></td><td>A marker carries a token derived from the fenced content itself.</td><td>because closing one’s own fence then requires content containing its own digest</td></tr><tr id="connector.infer.fenced-value-hygiene"><td><a href="#connector.infer.fenced-value-hygiene" class="clause-anchor"><code>connector.infer.fenced-value-hygiene</code></a></td><td>Control characters are stripped from a fenced value, and a value past its declared character cap is truncated with a truncation mark.</td><td>—</td></tr><tr id="connector.infer.operator-template"><td><a href="#connector.infer.operator-template" class="clause-anchor"><code>connector.infer.operator-template</code></a></td><td>The operator’s prompt template stays unfenced in the system role. The idempotency hash covers the template alone.</td><td>because hardening the fence leaves a dedup key intact</td></tr></tbody></table></div>
+<p>The zone a call’s declared locality maps onto belongs to the <code>authority</code> contract; a
+placement-filtered read consults that mapping, not the endpoint URL.</p>
+<h2 id="package">package</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="connector.package.distribution-form"><td><a href="#connector.package.distribution-form" class="clause-anchor"><code>connector.package.distribution-form</code></a></td><td>A connector resolves in one of four forms: in-tree by name, a project-local artifact path, an HTTPS URL, or an OCI reference.</td><td>—</td></tr><tr id="connector.package.remote-unpinned"><td><a href="#connector.package.remote-unpinned" class="clause-anchor"><code>connector.package.remote-unpinned</code></a></td><td>A remote artifact carrying no 64-hex content pin raises <code>ConnectorRemoteUnpinned</code> at parse.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.package.insecure-artifact"><td><a href="#connector.package.insecure-artifact" class="clause-anchor"><code>connector.package.insecure-artifact</code></a></td><td>A plain-HTTP artifact reference raises <code>ConnectorInsecureArtifact</code>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.package.digest-mismatch"><td><a href="#connector.package.digest-mismatch" class="clause-anchor"><code>connector.package.digest-mismatch</code></a></td><td>The host re-hashes the resolved bytes and raises <code>ConnectorDigestMismatch</code> on a difference, before the bytes reach the engine.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.package.pin-requirement"><td><a href="#connector.package.pin-requirement" class="clause-anchor"><code>connector.package.pin-requirement</code></a></td><td>Two switches require a pin on a local artifact, composed by disjunction: a store-wide policy key and a per-connector manifest flag.</td><td>—</td></tr><tr id="connector.package.local-unpinned"><td><a href="#connector.package.local-unpinned" class="clause-anchor"><code>connector.package.local-unpinned</code></a></td><td>With either switch set, an unpinned local artifact raises <code>ConnectorLocalUnpinned</code> at build, carrying the digest of the bytes found.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.package.manifest-posture"><td><a href="#connector.package.manifest-posture" class="clause-anchor"><code>connector.package.manifest-posture</code></a></td><td>A manifest is adopted, carrying a digest built on the fixed builder platform, or a template, carrying the requirement plus a placeholder. A template parses cleanly and refuses at load.</td><td>—</td></tr><tr id="connector.package.posture-undeclared"><td><a href="#connector.package.posture-undeclared" class="clause-anchor"><code>connector.package.posture-undeclared</code></a></td><td>A manifest carrying neither a digest nor both template markers raises <code>ConnectorPostureUndeclared</code> at merge.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.package.pin-verb"><td><a href="#connector.package.pin-verb" class="clause-anchor"><code>connector.package.pin-verb</code></a></td><td><code>contextful connector pin &#x3C;manifest></code> builds the guest in a digest-pinned container on one fixed platform and writes the artifact and its digest. <code>--verify</code> rebuilds and compares without writing.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.package.host-built-pin"><td><a href="#connector.package.host-built-pin" class="clause-anchor"><code>connector.package.host-built-pin</code></a></td><td><code>--local</code> builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises <code>ConnectorHostPinRefused</code>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.package.path-remap"><td><a href="#connector.package.path-remap" class="clause-anchor"><code>connector.package.path-remap</code></a></td><td>Every build remaps the source root and the package cache, so checkout location is not a digest input.</td><td>—</td></tr><tr id="connector.package.native-verification"><td><a href="#connector.package.native-verification" class="clause-anchor"><code>connector.package.native-verification</code></a></td><td><code>--verify --native</code> checks host triple, compiler and package manager against pinned constants and clears byte-moving configuration before building. A mismatch exits with a status distinct from digest drift.</td><td>—</td></tr><tr id="connector.package.linear-memory"><td><a href="#connector.package.linear-memory" class="clause-anchor"><code>connector.package.linear-memory</code></a></td><td>A connector runs under 256 MiB of linear memory by default, raised per connector to at most 2 GiB.</td><td>—</td></tr><tr id="connector.package.call-deadline"><td><a href="#connector.package.call-deadline" class="clause-anchor"><code>connector.package.call-deadline</code></a></td><td>A read call carries a 30 s wall-clock deadline and a discovery call a 60 s one, armed by epoch interruption at 100 ms granularity.</td><td>—</td></tr><tr id="connector.package.session-budget"><td><a href="#connector.package.session-budget" class="clause-anchor"><code>connector.package.session-budget</code></a></td><td>A session carries a 1 MiB logging budget, dropping and counting messages past it, and holds at most 8 requests outbound at once.</td><td>—</td></tr><tr id="connector.package.world-compatibility"><td><a href="#connector.package.world-compatibility" class="clause-anchor"><code>connector.package.world-compatibility</code></a></td><td>Compatibility is semver over the world: a guest built against one minor loads on any host advertising a compatible minor.</td><td>—</td></tr><tr id="connector.package.world-drain"><td><a href="#connector.package.world-drain" class="clause-anchor"><code>connector.package.world-drain</code></a></td><td>On a major world bump no new run admits against the old world, in-flight runs complete or suspend on the world they pinned, and the old world then retires.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.package.live-reresolution"><td><a href="#connector.package.live-reresolution" class="clause-anchor"><code>connector.package.live-reresolution</code></a></td><td>Re-resolving or reloading a connector while a journaled run holds it raises <code>ConnectorHotReload</code>; a new version applies to runs admitted after it.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.package.built-in-registry"><td><a href="#connector.package.built-in-registry" class="clause-anchor"><code>connector.package.built-in-registry</code></a></td><td>The names resolving to compiled-in sources form one enumerated list. A listed name carries no manifest or artifact, and a feature-gated entry stays listed and answers with a rebuild hint.</td><td>—</td></tr></tbody></table></div>
+<p>A connector striking a declared bound follows <a href="/spec/30-run/#run.retry.bound-hit-is-transient" class="clause-ref"><code>run.retry.bound-hit-is-transient</code></a>.</p>
+<pre class="mermaid">flowchart TD
+  NAME["connector name"] --> K{"on the built-in list?"}
+  K -->|yes| NATIVE["compiled-in source"]
+  K -->|no| FORM{"distribution form"}
+  FORM -->|"https:// or oci://"| REMOTE{"64-hex pin?"}
+  FORM -->|"http://"| IH["ConnectorInsecureArtifact"]
+  FORM -->|local path| LOCAL{"pin switch set?"}
+  REMOTE -->|no| RU["ConnectorRemoteUnpinned"]
+  REMOTE -->|yes| HASH["re-hash bytes"]
+  LOCAL -->|yes, no digest| LU["ConnectorLocalUnpinned"]
+  LOCAL -->|no| HASH
+  HASH -->|differs| DM["ConnectorDigestMismatch"]
+  HASH -->|matches| INST["instantiate against the pinned world"]</pre>
+<p>unsettled: Which generation of the sandbox interface does the guest world target, and what does native async change about the per-call deadline and the reservation bridge? owner: connector affects: connector.package</p>
+<h2 id="source">source</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="connector.source.http-headers"><td><a href="#connector.source.http-headers" class="clause-anchor"><code>connector.source.http-headers</code></a></td><td>The generic HTTP source binds credentials through a <code>headers</code> table whose values are templates in the <a href="/spec/41-secrets/#connector.reference.value-template" class="clause-ref"><code>connector.reference.value-template</code></a> grammar, hydrated per read.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.body-format"><td><a href="#connector.source.body-format" class="clause-anchor"><code>connector.source.body-format</code></a></td><td><code>format</code> selects the decoder — <code>json</code> by default, <code>jsonl</code>, <code>csv</code> or a workbook — and one decoder serves the HTTP, file and object sources. Over HTTP the format is explicit; file sources infer it from the extension.</td><td>—</td></tr><tr id="connector.source.format-key-mismatch"><td><a href="#connector.source.format-key-mismatch" class="clause-anchor"><code>connector.source.format-key-mismatch</code></a></td><td>A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises <code>ConnectorFormatKeyRejected</code> at build.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.source.delimited-cell"><td><a href="#connector.source.delimited-cell" class="clause-anchor"><code>connector.source.delimited-cell</code></a></td><td>A delimited source lands every cell as a string and an empty unquoted field as null.</td><td>because a dimension file’s schema then depends on no data</td></tr><tr id="connector.source.declared-encoding"><td><a href="#connector.source.declared-encoding" class="clause-anchor"><code>connector.source.declared-encoding</code></a></td><td>A non-UTF-8 delimited body decodes through a declared encoding label, and bytes invalid under it raise <code>ConnectorEncodingInvalid</code>.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.source.clock-column-spelling"><td><a href="#connector.source.clock-column-spelling" class="clause-anchor"><code>connector.source.clock-column-spelling</code></a></td><td>A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises <code>ConnectorClockColumnRejected</code>.</td><td>because the watermark compares text</td></tr><tr id="connector.source.pagination"><td><a href="#connector.source.pagination" class="clause-anchor"><code>connector.source.pagination</code></a></td><td>A walk declares exactly one pagination shape: a page parameter with a start page, a next-cursor path with a cursor parameter, a next-URL path, or link-header following.</td><td>—</td></tr><tr id="connector.source.pagination-ambiguity"><td><a href="#connector.source.pagination-ambiguity" class="clause-anchor"><code>connector.source.pagination-ambiguity</code></a></td><td>Declaring two pagination shapes raises <code>ConnectorPaginationAmbiguous</code>.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.source.page-cap"><td><a href="#connector.source.page-cap" class="clause-anchor"><code>connector.source.page-cap</code></a></td><td>One walk issues at most 1000 requests.</td><td>—</td></tr><tr id="connector.source.page-loop"><td><a href="#connector.source.page-loop" class="clause-anchor"><code>connector.source.page-loop</code></a></td><td>A vendor returning a token or link it already served raises <code>ConnectorPageLoop</code>.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="connector.source.next-link-origin"><td><a href="#connector.source.next-link-origin" class="clause-anchor"><code>connector.source.next-link-origin</code></a></td><td>A vendor-supplied next link is judged as a hop under <a href="/spec/41-secrets/#connector.attach.weakened-hop" class="clause-ref"><code>connector.attach.weakened-hop</code></a>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.table-pattern"><td><a href="#connector.source.table-pattern" class="clause-anchor"><code>connector.source.table-pattern</code></a></td><td>A table pattern binds table-name segments into the request URL, percent-encoded, and each table holds its own position.</td><td>—</td></tr><tr id="connector.source.table-unmatched"><td><a href="#connector.source.table-unmatched" class="clause-anchor"><code>connector.source.table-unmatched</code></a></td><td>A table not matching the declared pattern raises <code>ConnectorTableUnmatched</code> ahead of any request.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.source.placeholder-unbound"><td><a href="#connector.source.placeholder-unbound" class="clause-anchor"><code>connector.source.placeholder-unbound</code></a></td><td>A URL placeholder with no pattern to bind it raises <code>ConnectorPlaceholderUnbound</code> at build.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.source.expansion"><td><a href="#connector.source.expansion" class="clause-anchor"><code>connector.source.expansion</code></a></td><td>An expansion block names its pointer as a URL template over the landed row’s scalar columns, percent-encoded, or as a column holding a URL, and names the column the fetched document lands under.</td><td>—</td></tr><tr id="connector.source.pointer-ambiguity"><td><a href="#connector.source.pointer-ambiguity" class="clause-anchor"><code>connector.source.pointer-ambiguity</code></a></td><td>Declaring both pointer forms raises <code>ConnectorPointerAmbiguous</code>.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.source.expansion-order"><td><a href="#connector.source.expansion-order" class="clause-anchor"><code>connector.source.expansion-order</code></a></td><td>Expansion runs after the watermark filter, and follow-ups are issued one at a time.</td><td>because a rejected row then costs no vendor request and no batch bursts one host</td></tr><tr id="connector.source.follow-up-failure"><td><a href="#connector.source.follow-up-failure" class="clause-anchor"><code>connector.source.follow-up-failure</code></a></td><td>A failed follow-up raises <code>ConnectorExpansionFailed</code> for the whole read.</td><td>because a position committed past a row missing its detail strands that row</td></tr><tr id="connector.source.expansion-budget"><td><a href="#connector.source.expansion-budget" class="clause-anchor"><code>connector.source.expansion-budget</code></a></td><td>One expanding read issues at most 200 requests of follow-up, judged before the first, buffers at most 256 MiB, and runs at most 600 s. Each budget refuses rather than truncating.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="connector.source.template-shape"><td><a href="#connector.source.template-shape" class="clause-anchor"><code>connector.source.template-shape</code></a></td><td>A pointer template carrying no placeholder, or binding one into the URL authority, raises <code>ConnectorTemplateRejected</code> at build.</td><td>because a response body then names a credential’s destination</td></tr><tr id="connector.source.pointer-column-missing"><td><a href="#connector.source.pointer-column-missing" class="clause-anchor"><code>connector.source.pointer-column-missing</code></a></td><td>A placeholder naming a column the rows lack, or carry as an array, raises <code>ConnectorPointerColumnMissing</code> on the first row, ahead of its request.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.source.target-column-occupied"><td><a href="#connector.source.target-column-occupied" class="clause-anchor"><code>connector.source.target-column-occupied</code></a></td><td>A target column any landed index row already carries raises <code>ConnectorTargetColumnOccupied</code> ahead of the walk.</td><td><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/" class="record-ref">P1</a></td></tr><tr id="connector.source.walk-boundary"><td><a href="#connector.source.walk-boundary" class="clause-anchor"><code>connector.source.walk-boundary</code></a></td><td>A directory walk reaches the configured root and nothing outside it, skips dot-entries, and traverses in sorted order. A decode-selecting key narrows nothing.</td><td>because a sorted walk over an unchanged tree reproduces across hosts</td></tr><tr id="connector.source.declined-tally"><td><a href="#connector.source.declined-tally" class="clause-anchor"><code>connector.source.declined-tally</code></a></td><td>A directory walk records on the run record what it declined, tallied by extension.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="connector.source.document-grain"><td><a href="#connector.source.document-grain" class="clause-anchor"><code>connector.source.document-grain</code></a></td><td>A document source lands one row per page, or one row per heading past a length threshold. With a base URL, each row links to its own page anchor.</td><td>—</td></tr><tr id="connector.source.document-identity"><td><a href="#connector.source.document-identity" class="clause-anchor"><code>connector.source.document-identity</code></a></td><td>A document row’s identity is a slug plus an ordinal, chunked or not.</td><td>because an identity then survives a document crossing the threshold</td></tr><tr id="connector.source.document-unreadable"><td><a href="#connector.source.document-unreadable" class="clause-anchor"><code>connector.source.document-unreadable</code></a></td><td>An encrypted document, and one with no extractable text on any page, is unreadable input under <a href="/spec/31-pipeline/#run.land.unreadable-input" class="clause-ref"><code>run.land.unreadable-input</code></a> and never lands as empty pages.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="connector.source.frontmatter-shape"><td><a href="#connector.source.frontmatter-shape" class="clause-anchor"><code>connector.source.frontmatter-shape</code></a></td><td>A nested map, a block scalar, or a key carrying the reserved producer prefix in a note’s frontmatter raises <code>ConnectorFrontmatterRejected</code>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.conversion-required"><td><a href="#connector.source.conversion-required" class="clause-anchor"><code>connector.source.conversion-required</code></a></td><td>A compound-binary office container, detected by magic bytes as well as extension, raises <code>ConnectorConversionRequired</code> naming the conversion command.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.parse-containment"><td><a href="#connector.source.parse-containment" class="clause-anchor"><code>connector.source.parse-containment</code></a></td><td>A compiled-in source decodes behind <a href="/spec/31-pipeline/#run.land.parse-boundary" class="clause-ref"><code>run.land.parse-boundary</code></a>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.office-part-selection"><td><a href="#connector.source.office-part-selection" class="clause-anchor"><code>connector.source.office-part-selection</code></a></td><td>An office container is read by exact part name. No other part is opened and no external entity is resolved.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.decompression-budget"><td><a href="#connector.source.decompression-budget" class="clause-anchor"><code>connector.source.decompression-budget</code></a></td><td>A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory’s claim and against the bytes that arrive.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.worksheet-landing"><td><a href="#connector.source.worksheet-landing" class="clause-anchor"><code>connector.source.worksheet-landing</code></a></td><td>One worksheet lands at most 64 MiB of resolved cell text, counted as cells land, and at most 1048576 rows.</td><td>because shared-string fan-out turns a small input into an unbounded output</td></tr><tr id="connector.source.cell-out-of-range"><td><a href="#connector.source.cell-out-of-range" class="clause-anchor"><code>connector.source.cell-out-of-range</code></a></td><td>A cell past the header’s width raises <code>ConnectorCellOutOfRange</code>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.external-reference"><td><a href="#connector.source.external-reference" class="clause-anchor"><code>connector.source.external-reference</code></a></td><td>An external-reference declaration, an external-links part, or a relationship marked external raises <code>ConnectorExternalReference</code>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.workbook-cell-typing"><td><a href="#connector.source.workbook-cell-typing" class="clause-anchor"><code>connector.source.workbook-cell-typing</code></a></td><td>A workbook cell lands as a string and a date cell as its serial number. No formula is evaluated; a formula cell lands its cached value.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.workbook-incremental"><td><a href="#connector.source.workbook-incremental" class="clause-anchor"><code>connector.source.workbook-incremental</code></a></td><td>An incremental position against a workbook raises <code>ConnectorIncrementalUnsupported</code>.</td><td>because a variable-width serial number advances a lexicographic watermark past unlanded rows</td></tr><tr id="connector.source.report-id-commit"><td><a href="#connector.source.report-id-commit" class="clause-anchor"><code>connector.source.report-id-commit</code></a></td><td>An async-report source commits the vendor’s run id the instant creation returns it. An exhausted polling budget ends the read successfully, and an expired vendor run is recreated for the same window.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="connector.source.page-drain"><td><a href="#connector.source.page-drain" class="clause-anchor"><code>connector.source.page-drain</code></a></td><td>Report paging drains a fixed number of pages per read, one batch per page, each carrying the position after it.</td><td>—</td></tr><tr id="connector.source.page-cursor-missing"><td><a href="#connector.source.page-cursor-missing" class="clause-anchor"><code>connector.source.page-cursor-missing</code></a></td><td>A response announcing another page while naming its cursor in neither the cursor field nor the next link raises <code>ConnectorPageCursorMissing</code>.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="connector.source.report-watermark"><td><a href="#connector.source.report-watermark" class="clause-anchor"><code>connector.source.report-watermark</code></a></td><td>Report watermarks are held per partition — account, grain, breakdown and any split dimension — as a versioned map inside one position.</td><td>—</td></tr><tr id="connector.source.partition-isolation"><td><a href="#connector.source.partition-isolation" class="clause-anchor"><code>connector.source.partition-isolation</code></a></td><td>A retryable failure on one partition holds it at its committed position and keeps the pages other partitions drained.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="connector.source.metric-grain"><td><a href="#connector.source.metric-grain" class="clause-anchor"><code>connector.source.metric-grain</code></a></td><td>A metric read at a grain where the vendor estimates rather than computes it raises <code>ConnectorMetricGrainRejected</code>.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="connector.source.restated-window"><td><a href="#connector.source.restated-window" class="clause-anchor"><code>connector.source.restated-window</code></a></td><td>A caught-up partition re-opens its lookback window every run, the pull window is at least that wide, and each row carries a deterministic key over partition, entity, date and breakdown.</td><td>—</td></tr><tr id="connector.source.report-event-time"><td><a href="#connector.source.report-event-time" class="clause-anchor"><code>connector.source.report-event-time</code></a></td><td>A report row’s event time is an RFC 3339 instant at midnight UTC of the window-start day, null where the vendor gave no usable date.</td><td>—</td></tr><tr id="connector.source.ordering-column"><td><a href="#connector.source.ordering-column" class="clause-anchor"><code>connector.source.ordering-column</code></a></td><td>Ordering a report stream by the engine-injected ingest stamp raises <code>ConnectorOrderingColumnRejected</code>.</td><td>because a late seed then outranks a live restatement</td></tr><tr id="connector.source.field-drift"><td><a href="#connector.source.field-drift" class="clause-anchor"><code>connector.source.field-drift</code></a></td><td>Report rows stay untyped JSON into the batch, and throttling is recognized from a throttle status or from an error body carrying a throttle code.</td><td>—</td></tr><tr id="connector.source.report-auth"><td><a href="#connector.source.report-auth" class="clause-anchor"><code>connector.source.report-auth</code></a></td><td>An authentication failure on a report read raises <code>ConnectorAuthTerminal</code>, terminal against the retry schedule.</td><td><a href="/adr/P6-retry-only-what-a-retry-can-change/" class="record-ref">P6</a></td></tr><tr id="connector.source.image-row"><td><a href="#connector.source.image-row" class="clause-anchor"><code>connector.source.image-row</code></a></td><td>An image source lands path, content hash, header width and height, embedded capture instant, file modification time, a modality marker and a null body. No pixel decode runs on ingest.</td><td>—</td></tr><tr id="connector.source.image-header"><td><a href="#connector.source.image-header" class="clause-anchor"><code>connector.source.image-header</code></a></td><td>An image header that does not parse raises <code>ConnectorImageHeaderUnreadable</code> naming the path.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.quotability-marker"><td><a href="#connector.source.quotability-marker" class="clause-anchor"><code>connector.source.quotability-marker</code></a></td><td>Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model’s reading.</td><td>—</td></tr><tr id="connector.source.marker-body-pairing"><td><a href="#connector.source.marker-body-pairing" class="clause-anchor"><code>connector.source.marker-body-pairing</code></a></td><td>An image body and its quotability marker that are not null together raise <code>ConnectorQuotabilityMismatch</code>.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.search-config"><td><a href="#connector.source.search-config" class="clause-anchor"><code>connector.source.search-config</code></a></td><td>The search source takes a driver, a query, a freshness window and a result ceiling, landing one row per result. Its cursor kind is snapshot-id, keyed on the result URL.</td><td>—</td></tr><tr id="connector.source.provider-origin"><td><a href="#connector.source.provider-origin" class="clause-anchor"><code>connector.source.provider-origin</code></a></td><td>Each search provider’s host is pinned at the call site; a non-TLS transport or another host raises <code>ConnectorProviderOriginRejected</code>, loopback excepted.</td><td><a href="/adr/A-connector/" class="record-ref">A-connector</a></td></tr><tr id="connector.source.search-degradation"><td><a href="#connector.source.search-degradation" class="clause-anchor"><code>connector.source.search-degradation</code></a></td><td>An absent provider key and a provider <code>5xx</code> are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.</td><td>—</td></tr><tr id="connector.source.poll-only-increments"><td><a href="#connector.source.poll-only-increments" class="clause-anchor"><code>connector.source.poll-only-increments</code></a></td><td>Incremental loading is a scheduled poll. A replication socket held open is not a source read.</td><td>because its output is unbounded and has no recorded exchange to replay</td></tr><tr id="connector.source.twin-api"><td><a href="#connector.source.twin-api" class="clause-anchor"><code>connector.source.twin-api</code></a></td><td>A source reading through an API licensed to see what no individual user sees raises <code>ConnectorTwinApiSource</code>. A sanctioned, disclosed organization-wide export path is admitted.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr></tbody></table></div>
+<h2 id="shapes">Shapes</h2>
+<p>A connector manifest in the adopted posture:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">name    = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"vendor-metrics"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">version = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"1.4.0"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">world   = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"source-connector@1.2.0"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">wasm             = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"vendor-metrics.wasm"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">wasm_sha256      = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"9f2c1b7ad0e4…"</span><span style="color:#6A737D;--shiki-dark:#6A737D">         # 64 hex, written by `connector pin`</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">require_wasm_pin = </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">capabilities</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">allow_hosts = [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"api.vendor.example"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"*.cdn.vendor.example"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">env         = [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"VENDOR_ACCOUNT_ID"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">clock       = </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">capabilities</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">scope_probe</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">endpoint      = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"https://api.vendor.example/v1/identity"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">scopes_header = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"X-Granted-Scopes"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">expect        = [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"reports.read"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"accounts.read"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">capabilities</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">limiter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">quota         = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"vendor-app-shared"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">class         = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"batch-read"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">usage_headers = [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"X-RateLimit-Remaining"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"X-RateLimit-Reset"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">attach</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">Authorization = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Bearer ${secret://vendor-token}"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">bounds</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">memory_bytes = </span><span style="color:#005CC5;--shiki-dark:#79B8FF">268435456</span></span></code></pre>
+<p>The world:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="wit"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">package</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> contextful</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0">connector</span><span style="color:#D73A49;--shiki-dark:#F97583">@</span><span style="color:#005CC5;--shiki-dark:#79B8FF">1.2.0;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">interface</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> types</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  record</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> schema</span><span style="color:#24292E;--shiki-dark:#E1E4E8">       { </span><span style="color:#E36209;--shiki-dark:#FFAB70">name</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#E36209;--shiki-dark:#FFAB70">fields</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> list</span><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">schema-field</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>, </span><span style="color:#E36209;--shiki-dark:#FFAB70">primary-key</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> list</span><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> }</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  record</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> schema-field</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="color:#E36209;--shiki-dark:#FFAB70">name</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#E36209;--shiki-dark:#FFAB70">ty</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> data-type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#E36209;--shiki-dark:#FFAB70">nullable</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> bool</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  enum</span><span style="color:#6F42C1;--shiki-dark:#B392F0">   data-type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">    { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">int32</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">int64</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">float64</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">bytes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">timestamp-millis</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">json</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  record</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> cursor</span><span style="color:#24292E;--shiki-dark:#E1E4E8">       { </span><span style="color:#E36209;--shiki-dark:#FFAB70">kind</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> cursor-kind</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#E36209;--shiki-dark:#FFAB70">bytes</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> list</span><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">u8</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> }</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  variant</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> error</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    transient</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">), </span><span style="color:#005CC5;--shiki-dark:#79B8FF">permanent</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">), </span><span style="color:#005CC5;--shiki-dark:#79B8FF">auth-expired</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    rate-limited</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">u32</span><span style="color:#24292E;--shiki-dark:#E1E4E8">), </span><span style="color:#005CC5;--shiki-dark:#79B8FF">schema-incompatible</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">world</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> source-connector</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  import</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> wasi</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">http</span><span style="color:#24292E;--shiki-dark:#E1E4E8">/</span><span style="color:#005CC5;--shiki-dark:#79B8FF">outgoing-handler</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  import</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> wasi</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">logging</span><span style="color:#24292E;--shiki-dark:#E1E4E8">/</span><span style="color:#005CC5;--shiki-dark:#79B8FF">logging</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  import</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> wasi</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">clocks</span><span style="color:#24292E;--shiki-dark:#E1E4E8">/</span><span style="color:#005CC5;--shiki-dark:#79B8FF">wall-clock</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  export</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> source</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#D73A49;--shiki-dark:#F97583">interface</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    cursor-kind</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#D73A49;--shiki-dark:#F97583"> func</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> cursor-kind</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    discover</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#D73A49;--shiki-dark:#F97583"> func</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> result</span><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">list</span><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">schema</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>, </span><span style="color:#6F42C1;--shiki-dark:#B392F0">error</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>;</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    open</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#D73A49;--shiki-dark:#F97583"> func</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#E36209;--shiki-dark:#FFAB70">table</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#E36209;--shiki-dark:#FFAB70">from</span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> option</span><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cursor</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>) </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> result</span><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">read-handle</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#6F42C1;--shiki-dark:#B392F0">error</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">world</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> configurable-source-connector</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="color:#D73A49;--shiki-dark:#F97583">include</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> source-connector</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; export config: interface { … } }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">world attributing-source-connector  { </span><span style="color:#D73A49;--shiki-dark:#F97583">include</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> source-connector</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; export attribution: interface { … } }</span></span></code></pre>
+<p>The limiter wire:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="http"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">POST</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> /v1/acquire   {"quota":"vendor-app-shared","class":"batch-read","permits":32}</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">200                {</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"granted"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"permits"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">32</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"ttl_ms"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">15000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">429</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Retry-After: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">4</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> -> a denial</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">POST /v</span><span style="color:#005CC5;--shiki-dark:#79B8FF">1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">/report    {</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"quota"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"vendor-app-shared"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"class"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"batch-read"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"granted"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">32</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"spent"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">19</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">                    "run_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"run_5f1c"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"observed_at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"&#x3C;instant>"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">                    "responses"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:[{</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"status"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">200</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"retry_after"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">null</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span><span style="color:#005CC5;--shiki-dark:#79B8FF">"headers"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:{</span><span style="color:#B31D28;--shiki-light-font-style:italic;--shiki-dark:#FDAEB7;--shiki-dark-font-style:italic">…</span><span style="color:#24292E;--shiki-dark:#E1E4E8">}}]}</span></span></code></pre>
+<p>One outbound request, end to end:</p>
+<pre class="mermaid">flowchart LR
+  G["guest source"] -->|outgoing-http| M["host mediation point"]
+  N["compiled-in source"] --> M
+  M --> A{"host on allowlist?"}
+  A -->|no| R1["SecretUnpermittedRequest"]
+  A -->|yes| D{"address public?"}
+  D -->|no| R0["ConnectorPrivateAddress"]
+  D -->|yes| L{"limiter declared?"}
+  L -->|no| H["attach bound headers"]
+  L -->|yes| Q["acquire permit"]
+  Q -->|denied| R2["synthesized 429"]
+  Q -->|unreachable| R3["ConnectorUnmetered"]
+  Q -->|granted| H
+  H --> S{"TLS or loopback?"}
+  S -->|no| R4["SecretCleartextEndpoint"]
+  S -->|yes| V["vendor, at the vetted address"]
+  V --> P["origin check on every hop"]</pre></article></main><aside class="toc" aria-label="On this page"><h2 class="group-label">On this page</h2><ul><li><a href="#export">export</a></li><li><a href="#import">import</a></li><li><a href="#declare-capability">declare-capability</a></li><li><a href="#meter">meter</a></li><li><a href="#infer">infer</a></li><li><a href="#package">package</a></li><li><a href="#source">source</a></li><li><a href="#shapes">Shapes</a></li></ul></aside></div><script type="module" src="/_astro/Base.astro_astro_type_script_index_0_lang.C0f5LPIN.js"></script></body></html>
