@@ -1,0 +1,474 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>A-authority — Authority and enforcement decisions · contextful spec</title><meta name="description" content="Redaction holds only when no derived artifact carries the pre-redaction value, so each copy path closes at its source. store.encrypt refuses an index over a…"><meta property="og:title" content="A-authority — Authority and enforcement decisions · contextful spec"><meta property="og:description" content="Redaction holds only when no derived artifact carries the pre-redaction value, so each copy path closes at its source. store.encrypt refuses an index over a…"><link rel="stylesheet" href="/_astro/Base.B8j-F8YW.css"></head><body><header class="topbar"><a class="brand" href="/">contextful <span>spec</span></a></header><div class="shell"><nav class="sidebar" aria-label="Spec files"><details class="sidebar-toggle" id="sidebar-toggle"><summary>Contents</summary><section><h2 class="group-label">Contracts</h2><ul><li><a href="/spec/00-corpus/"><span class="hint">00</span>Corpus law</a></li><li><a href="/spec/01-topology/"><span class="hint">01</span>System topology</a></li><li><a href="/spec/10-store/"><span class="hint">10</span>The store and its sync</a></li><li><a href="/spec/20-read/"><span class="hint">20</span>The read face</a></li><li><a href="/spec/21-memory/"><span class="hint">21</span>Synthesized memory</a></li><li><a href="/spec/30-run/"><span class="hint">30</span>Durable runs</a></li><li><a href="/spec/31-pipeline/"><span class="hint">31</span>Pipelines and the write path</a></li><li><a href="/spec/32-derive/"><span class="hint">32</span>The derive tier</a></li><li><a href="/spec/40-connector/"><span class="hint">40</span>Connectors and the built-in sources</a></li><li><a href="/spec/41-secrets/"><span class="hint">41</span>Outbound credentials</a></li><li><a href="/spec/50-authority/"><span class="hint">50</span>Admission and authority</a></li><li><a href="/spec/51-enforcement/"><span class="hint">51</span>Enforcement and inference placement</a></li><li><a href="/spec/60-visibility/"><span class="hint">60</span>Source-faithful visibility</a></li><li><a href="/spec/61-disclosure/"><span class="hint">61</span>Aggregate disclosure</a></li><li><a href="/spec/62-accountability/"><span class="hint">62</span>Audit, erasure and the receipt</a></li><li><a href="/spec/70-control-plane/"><span class="hint">70</span>Cadence, dispatch and the operator plane</a></li><li><a href="/spec/71-console/"><span class="hint">71</span>The analyst console</a></li><li><a href="/spec/80-formal/"><span class="hint">80</span>The formal model</a></li><li><a href="/spec/81-engineering/"><span class="hint">81</span>Engineering gates and the quality harness</a></li></ul></section><section><h2 class="group-label">Plan</h2><ul><li><a href="/spec/roadmap/">Milestones</a></li><li><a href="/spec/status/">Status</a></li><li><a href="/spec/targets/">Deployment targets</a></li></ul></section><section><h2 class="group-label">Principles</h2><ul><li><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/"><span class="hint">P1</span>An unknown or ineffective name refuses by name at the earliest knowable point</a></li><li><a href="/adr/P2-a-refusal-is-typed-never-reads-as/"><span class="hint">P2</span>A refusal is typed, never reads as an empty result, and echoes only caller input</a></li><li><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/"><span class="hint">P3</span>A misconfigured process refuses to start; one value has one source</a></li><li><a href="/adr/P4-no-partial-empty-or-torn-state-reads/"><span class="hint">P4</span>No partial, empty or torn state reads as complete</a></li><li><a href="/adr/P5-rows-are-reached-only-through-the-caller/"><span class="hint">P5</span>Rows are reached only through the caller&#39;s registered relation; one implementation per capability</a></li><li><a href="/adr/P6-retry-only-what-a-retry-can-change/"><span class="hint">P6</span>Retry only what a retry can change</a></li><li><a href="/adr/P7-gates-fail-the-run-rather-than-skip/"><span class="hint">P7</span>Gates fail the run rather than skip</a></li><li><a href="/adr/P8-corpus-law-clause-addressing-status-computed-from/"><span class="hint">P8</span>Clauses are addressed, status is computed from pins, and rationale lives in records</a></li></ul></section><section><h2 class="group-label">Contract ADRs</h2><ul><li><a href="/adr/A-assurance/"><span class="hint">A-assurance</span>Assurance decisions</a></li><li><a href="/adr/A-authority/" aria-current="page"><span class="hint">A-authority</span>Authority and enforcement decisions</a></li><li><a href="/adr/A-connector/"><span class="hint">A-connector</span>Connectors and credentials decisions</a></li><li><a href="/adr/A-disclosure/"><span class="hint">A-disclosure</span>Visibility, disclosure and accountability decisions</a></li><li><a href="/adr/A-read/"><span class="hint">A-read</span>Reading and memory decisions</a></li><li><a href="/adr/A-run/"><span class="hint">A-run</span>Runs, pipelines and derive decisions</a></li><li><a href="/adr/A-store/"><span class="hint">A-store</span>The store and its sync decisions</a></li><li><a href="/adr/A-surface/"><span class="hint">A-surface</span>Operator and visitor surfaces decisions</a></li><li><a href="/adr/A-topology/"><span class="hint">A-topology</span>System topology decisions</a></li></ul></section></details><script>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script></nav><main class="content"><article class="prose"><h1 id="a-authority--authority-and-enforcement-decisions">A-authority — Authority and enforcement decisions</h1>
+<p><strong>Status:</strong> accepted</p>
+<h2 id="redacted-material-leaves-no-derived-copy">Redacted material leaves no derived copy</h2>
+<p>Redaction holds only when no derived artifact carries the pre-redaction value, so each copy path closes at its source. <a href="/spec/10-store/#encrypt" class="clause-ref"><code>store.encrypt</code></a> refuses an index over a column redacted at write time; <a href="/spec/30-run/#journal" class="clause-ref"><code>run.journal</code></a> refuses write-path redaction paired with a journaling source, at manifest validation, reconcile and run open; the derive tier sits on the journaling opt-out list. <a href="/spec/41-secrets/#attach" class="clause-ref"><code>connector.attach</code></a> renders a URL as scheme, host, port and path and refuses configured userinfo; <a href="/spec/31-pipeline/#land" class="clause-ref"><code>run.land</code></a> passes every derived error string through address redaction at the row builder.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Refuse each copy path at declaration or at the row builder <em>(chosen)</em></td><td>—</td><td>A redacted column is reachable only by full scan; redacting pipelines lose replay-without-refetch; a derive crash re-pays up to one run of metered inference.</td></tr><tr><td>Encrypt the index or journal and permit it</td><td>At-rest completeness</td><td>The guarantee rests on key custody for content redaction exists to remove.</td></tr><tr><td>Build locally, strip at the sync edge</td><td>Failure points</td><td>The local tree is itself a copy target.</td></tr><tr><td>Redact in each adapter, or at read time</td><td>Uniformity</td><td>The guarantee is as strong as the least careful adapter; stored material outlives every reader that forgets.</td></tr></tbody></table></div>
+<p>Consequences: two failures at different pages of one walk render identically from a scrubbed URL.
+Revisit: an index structure provably independent of the indexed values; redaction runs ahead of the journal.</p>
+<h2 id="the-acting-principal-is-provider-verified-normalized-once-fixed-per-chain">The acting principal is provider-verified, normalized once, fixed per chain</h2>
+<p>Only an identity provider makes a principal. <a href="/spec/50-authority/#identify" class="clause-ref"><code>authority.identify</code></a> checks every subject at the mint: non-empty, at most 256 B, no control character, no surrounding whitespace; the command line trims a padded value and the automated exchange refuses it. A link authorizes only with method <code>scim_email</code> or <code>oidc_sub</code>; <code>operator_asserted</code> stages and confers nothing, and <a href="/spec/60-visibility/#reach" class="clause-ref"><code>disclosure.reach</code></a> consumes verified links alone. A derivation naming a different <code>on_behalf_of</code> refuses, and <a href="/spec/50-authority/#issue" class="clause-ref"><code>authority.issue</code></a> refuses a write or execute grant naming none.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Verify at the provider, normalize at the mint, fix per chain <em>(chosen)</em></td><td>—</td><td>Longer directory identifiers are inexpressible; unprovisioned accounts read nothing; acting for many people costs a round trip each.</td></tr><tr><td>Normalize at each point of use</td><td>Consistency</td><td>One padded identity behaves as two principals.</td></tr><tr><td>Authorize heuristic or operator-asserted links above a threshold</td><td>Failure asymmetry</td><td>A false match is a silent source-wide disclosure.</td></tr><tr><td>Rebinding within a parent-carried set</td><td>Offline forgery</td><td>The parent’s mint chooses whom every descendant impersonates.</td></tr><tr><td>Refuse an unbound write at the write</td><td>Failure placement</td><td>The credential admits and fails at its first useful action.</td></tr></tbody></table></div>
+<p>Consequences: a script calling the command line accepts a padded value the exchange refuses.
+Revisit: a directory’s identifiers exceed 256 B; provisioning latency dominates why subjects read nothing.</p>
+<h2 id="delegation-is-a-versioned-profile-over-an-attenuable-credential-library">Delegation is a versioned profile over an attenuable-credential library</h2>
+<p>The library’s own format is the one wire format; the engine owns a versioned profile and no envelope. <a href="/spec/50-authority/#profile" class="clause-ref"><code>authority.profile</code></a> names the admitted facts, checks and restriction tuples, and refuses any other element; the library owns serialization, signatures, chaining and evaluation. A credential is an authority block plus N attenuation blocks, and a chain past the declared depth limit refuses before evaluation. Time, audience, resolved resources and request identity are reserved engine-supplied facts. Evaluation admits no third-party block, external function, recursion or regular expression, under fact and iteration ceilings that refuse past their bound.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Library format, N-block chain, owned profile, depth and evaluation ceilings <em>(chosen)</em></td><td>—</td><td>The wire format tracks an upstream project; a pattern restriction is an enumerated allowlist.</td></tr><tr><td>A custom envelope beside the library token</td><td>Chain depth</td><td>One attenuation segment leaves grandchildren inexpressible; two formats each need review.</td></tr><tr><td>A hand-rolled N-block format</td><td>Review cost</td><td>Its failure mode is silent forgery reviewed by nobody outside the project.</td></tr><tr><td>The library’s full language, unprofiled</td><td>Bounding</td><td>Evaluation cost and reachable facts are holder-controlled.</td></tr><tr><td>Bearer token plus a policy-service lookup</td><td>Read-path independence</td><td>Every admission fails when the policy service does.</td></tr></tbody></table></div>
+<p>Consequences: no wall-clock timeout enters admission, so slow hardware refuses nothing fast hardware admits.
+Revisit: real delegation trees reach the depth limit; the library gains a backtracking-free matcher identical across native and WebAssembly builds.</p>
+<h2 id="grants-narrow-offline-and-admission-re-checks-the-whole-chain">Grants narrow offline, and admission re-checks the whole chain</h2>
+<p>Every derivation provably narrows its parent. <a href="/spec/50-authority/#grant" class="clause-ref"><code>authority.grant</code></a> table patterns take three forms — bare star, trailing star, exact literal — answered by one implementation for derivation, view registration, tool visibility and replica selection. A tenant scope over a table without a bare outermost partition column refuses; a tenant-scoped child lives 15 min. <a href="/spec/50-authority/#attenuate" class="clause-ref"><code>authority.attenuate</code></a> runs the identical comparison at derivation and over the whole chain at admission, naming the widened dimension; dropping or changing a tenant scope refuses. <a href="/spec/50-authority/#revoke" class="clause-ref"><code>authority.revoke</code></a> keys the denylist per derivation, withdrawing one subtree.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Three-form patterns, double narrowing check, per-hop revocation id <em>(chosen)</em></td><td>—</td><td>Admission pays chain-depth comparison per request; exclusions are sets of concrete patterns; the denylist grows per withdrawn hop.</td></tr><tr><td>Full glob or regular-expression patterns</td><td>Containment decidability</td><td>Derivation cannot decide offline whether a child pattern lies within its parent’s.</td></tr><tr><td>Check at derivation alone, or the last hop alone</td><td>Trust</td><td>A widened intermediate hop passes unexamined.</td></tr><tr><td>Ignore an unbindable tenant scope</td><td>Failure direction</td><td>A scoped-looking credential reads the whole table.</td></tr><tr><td>One revocation id per root</td><td>Blast radius</td><td>Stopping one sub-agent stops every sibling.</td></tr></tbody></table></div>
+<p>Consequences: a table rebuild dropping the partition column surfaces as a refusal at the read.
+Revisit: chain comparison becomes measurable against request latency; a grant dimension carries a tenant set.</p>
+<h2 id="query-templates-are-deny-by-default-capabilities">Query templates are deny-by-default capabilities</h2>
+<p>A template is reachable only by a grant naming it and runs exactly the reviewed statement. <a href="/spec/50-authority/#grant" class="clause-ref"><code>authority.grant</code></a> treats the template allowlist as a capability: absent authorizes none, star authorizes every declared template, and a child names only identifiers its parent covered; an uncovered template is absent from the listing and refuses on invocation. <a href="/spec/61-disclosure/#template" class="clause-ref"><code>disclosure.template</code></a> binds strictly — missing, unknown or mistyped arguments refuse — and validates placeholders, single statements and built-in prefix collisions at manifest check and startup. The statement runs unrewritten under every enforcement layer, over plain store tables only.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Deny-by-default allowlist, strict binding, unrewritten statement over plain tables <em>(chosen)</em></td><td>—</td><td>One grant carries two polarities; a new template amends every consuming grant; a parameter rename breaks callers with no window.</td></tr><tr><td>Restriction polarity like other dimensions</td><td>Blast radius</td><td>Long-lived credentials silently gain every later template.</td></tr><tr><td>Hide from the listing, allow invocation by name</td><td>Enumeration</td><td>A guessed identifier reaches the read.</td></tr><tr><td>Coerce or default arguments</td><td>Statement fidelity</td><td>A caller receives rows for values it never sent.</td></tr><tr><td>Gate templates through the statement guard</td><td>Expressiveness</td><td>The guard refuses exactly the reads templates exist for.</td></tr></tbody></table></div>
+<p>Consequences: identifier confinement is the sole protection on that surface.
+Revisit: operators routinely grant star; a needed store feature requires a non-plain identifier.</p>
+<h2 id="one-persisted-issuance-ceiling-bounds-every-lifetime">One persisted issuance ceiling bounds every lifetime</h2>
+<p>One number, versioned with the project, sets the longest lifetime any mint path produces, and every other window derives from it. <a href="/spec/50-authority/#issue" class="clause-ref"><code>authority.issue</code></a> reads a persisted policy: a ceiling of at most 24 h and a default audience. An explicit lifetime above the ceiling refuses; <a href="/spec/50-authority/#exchange" class="clause-ref"><code>authority.exchange</code></a> clamps a configured lifetime down to the ceiling, with an exchange ceiling of 3600 s. <a href="/spec/50-authority/#revoke" class="clause-ref"><code>authority.revoke</code></a> refuses a rotation grace shorter than the effective ceiling and validates against the recorded previous ceiling. Format withdrawal runs through revocation, expiry or key rotation at a declared cutover; no flag restores it.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>One persisted ceiling; refuse explicit excess, clamp configured excess <em>(chosen)</em></td><td>—</td><td>A ceiling change is a commit and deploy; one condition has two behaviors; a clamped deployment learns only from expiry.</td></tr><tr><td>Per-mint flag or environment variable</td><td>Uniformity</td><td>The ceiling differs per host, invisible in review.</td></tr><tr><td>A policy service consulted at mint</td><td>Offline minting</td><td>Issuance inherits a network availability requirement.</td></tr><tr><td>Clamp explicit requests silently</td><td>Caller expectation</td><td>A caller plans around a lifetime it does not hold.</td></tr><tr><td>Refuse a configured lifetime above the ceiling</td><td>Availability</td><td>A stale policy value becomes a total sign-in outage.</td></tr></tbody></table></div>
+<p>Consequences: the longest issued lifetime floors rotation cadence, and format withdrawal is never immediate.
+Revisit: a verified need for lifetimes above 24 h; operators surprised by clamped exchange sessions.</p>
+<h2 id="verification-trusts-only-pinned-or-injected-keys">Verification trusts only pinned or injected keys</h2>
+<p>The deployment, never the credential, chooses the verifying key, and an absent answer about keys refuses. <a href="/spec/50-authority/#issue" class="clause-ref"><code>authority.issue</code></a> signs through one provider-agnostic port with seed file, secret reference, cloud KMS, HSM and remote oracle adapters. The pinned key’s scheme decides verification; a conflicting algorithm claim refuses. <a href="/spec/50-authority/#verify" class="clause-ref"><code>authority.verify</code></a> accepts a key set from static pins or an opted-into key route; an opted-in checkpoint lacking the set refuses everything — the engine declines to start, a gateway answers 503. <a href="/spec/50-authority/#exchange" class="clause-ref"><code>authority.exchange</code></a> verifies against operator-injected secret, PEM key or <code>kid</code>-selected key set, with no network call.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Deployment-chosen keys: signing port, pinned scheme, key set, injected material <em>(chosen)</em></td><td>—</td><td>Port operations are the adapters’ intersection; key-route availability is admission availability; provider keys rotate out of band.</td></tr><tr><td>Dispatch on the credential’s algorithm claim</td><td>Downgrade</td><td>Every weaker supported routine is reachable by asking.</td></tr><tr><td>A single pinned key</td><td>Rotation</td><td>No overlap; every rotation is a flag day.</td></tr><tr><td>Fall back to static pins or last-known-good</td><td>Frozen keys</td><td>A retired key verifies while the route is down.</td></tr><tr><td>Provider discovery inside the exchange</td><td>Reproducibility</td><td>Verification depends on a remote document at that instant.</td></tr></tbody></table></div>
+<p>Consequences: a missed provider rotation fails the mint closed; retiring a key is an action, not an omission.
+Revisit: the port cannot express a needed adapter capability such as batch signing; key-route outages lead admission refusals.</p>
+<h2 id="a-face-admits-one-verified-credential-and-carries-authority-as-a-value">A face admits one verified credential and carries authority as a value</h2>
+<p>Authority enters through one verification and flows as an explicit value, never ambient state. <a href="/spec/50-authority/#issue" class="clause-ref"><code>authority.issue</code></a> takes an authoring posture at every project-load site with no default: <code>session</code> authors through one ambient credential, <code>per_request</code> withholds it. A served face admits a verified capability credential and nothing else — no perimeter bearer, gateway shared secret or owner path, flagged or not. <a href="/spec/50-authority/#verify" class="clause-ref"><code>authority.verify</code></a> yields an admitted-authority value, with no fabricating constructor, that every read surface and row-landing effect takes. <a href="/spec/50-authority/#exchange" class="clause-ref"><code>authority.exchange</code></a> mints per signed-in reader per request.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>One admission path, authority as an argument, per-reader mint <em>(chosen)</em></td><td>—</td><td>Every load site and effect carries a parameter; every embedding application needs an identity provider; one mint per request sits on the read path.</td></tr><tr><td>An opt-in perimeter secret or loopback owner path</td><td>Attribution</td><td>A subjectless, expiryless owner-equivalent path stands beside the credential.</td></tr><tr><td>Infer posture from deployment shape</td><td>Silence</td><td>A wrong guess mis-attributes rows with no error.</td></tr><tr><td>Read the environment or a task-local at each effect</td><td>Attribution</td><td>Two callers through one daemon both take the process’s principal.</td></tr><tr><td>One application credential plus application-side filtering</td><td>Enforcement boundary</td><td>A filter bug is a disclosure, not a failed check.</td></tr></tbody></table></div>
+<p>Consequences: a wrong posture mis-authors silently, so the posture argument is the one review point.
+Revisit: per-request mint latency dominates reads; a face needs a caller class no grant expresses.</p>
+<h2 id="credentials-are-sender-constrained-with-a-nonce-replay-window">Credentials are sender-constrained, with a nonce replay window</h2>
+<p>Holding a credential admits nothing without proof of its key, and a captured request is not re-sendable. <a href="/spec/50-authority/#verify" class="clause-ref"><code>authority.verify</code></a> requires a confirmation thumbprint of a client public key in every credential, and a per-request signature over method, target, body digest and nonce from the matching private key; a mismatch refuses. A nonce repeating inside the checkpoint’s local replay window refuses; one outside it is not remembered. The proof establishes key possession and claims nothing about what the client is.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Confirmation thumbprint, per-request signature, local nonce window <em>(chosen)</em></td><td>—</td><td>Every client holds a key pair and signs each request; a capture replayed at another checkpoint meets only the credential’s other bounds.</td></tr><tr><td>Bearer bytes defended by short lifetimes</td><td>Theft yield</td><td>A copied credential acts as the original until expiry.</td></tr><tr><td>Mutual TLS instead of a credential-carried proof</td><td>Reach across hops</td><td>The engine behind the gateway receives an unbound credential.</td></tr><tr><td>A monotonic counter per client</td><td>Concurrency</td><td>Parallel honest requests arrive out of order and refuse.</td></tr><tr><td>A replay store shared across checkpoints</td><td>Locality</td><td>Admission calls a shared service per request.</td></tr></tbody></table></div>
+<p>Consequences: a credential is minted against one client’s key; each checkpoint holds nonce state sized by window and request rate.
+Revisit: cross-checkpoint replay observed within a credential’s lifetime; a client class cannot hold a private key.</p>
+<h2 id="a-digest-over-an-exhaustible-class-needs-generalizing-truncation">A digest over an exhaustible class needs generalizing truncation</h2>
+<p>A digest over an enumerable value space — national identifier, phone, email, medical record number — ships only behind truncation, so exhaustive search returns a crowd. <a href="/spec/51-enforcement/#mask" class="clause-ref"><code>authority.mask</code></a> refuses a class outside the registry with <code>EnforceUnknownClass</code> at manifest check. A bare keyed hash over an exhaustible class refuses; <code>combine = "truncate:&#x3C;n>"</code> satisfies it, and random identifiers keep a bare hash. Truncation is the one secondary admitted behind a hash or tokenization. A width at or past the primary’s output refuses; narrower widths are operator judgment. Primary and secondary compile to one inseparable value.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Refuse a bare digest; admit it behind truncation; refuse no-op widths <em>(chosen)</em></td><td>—</td><td>A join on the column lands on a crowd; a too-wide truncation passes as a near-unique mapping.</td></tr><tr><td>A bare digest relying on key secrecy</td><td>Recovery cost</td><td>Any party computing the digest recovers identities by enumeration.</td></tr><tr><td>Refuse hashing for these classes</td><td>Utility</td><td>Equality filters and joins disappear.</td></tr><tr><td>A fixed width threshold or declared domain size</td><td>Honesty</td><td>A threshold fits one domain; a declared size is a guess treated as fact.</td></tr><tr><td>Treat an unknown class as unclassified</td><td>Failure direction</td><td>A typo silently downgrades protection.</td></tr></tbody></table></div>
+<p>Consequences: a band and a joinable key need two columns; sufficient narrowness is unverified.
+Revisit: manifests carry a measured domain size per class; a per-person join over an exhaustible class becomes a requirement.</p>
+<h2 id="placement-breadth-is-declared-data-side-and-resolution-fails-narrow">Placement breadth is declared data-side, and resolution fails narrow</h2>
+<p>Only the data side widens inference placement, every widening shows in the manifest diff, and ambiguity resolves narrowest. <a href="/spec/50-authority/#issue" class="clause-ref"><code>authority.issue</code></a> refuses a wildcard inference zone on a credential or subject. <a href="/spec/51-enforcement/#place" class="clause-ref"><code>authority.place</code></a> refuses a permissive default for unlabeled tables when more than one principal owns the store. Widening a protected-class surface past its floor requires a class-named override flag, else it narrows at serve time. A synthesized row’s zones are at most the intersection of its evidence tables’. Incognito pins the session, the local owner included. No model-vendor client library links into any workspace package.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Data-side breadth, intersection for synthesis, refusal of every widening assertion <em>(chosen)</em></td><td>—</td><td>A multi-zone batch mints per zone; a second writing principal breaks a permissive default; one narrow evidence table narrows a whole conclusion.</td></tr><tr><td>Subject-side wildcard as every zone</td><td>Widening side</td><td>A credential grants itself every zone.</td></tr><tr><td>Trust a synthesized row’s declared set, or the union</td><td>Laundering</td><td>The constrained path enforces its own constraint.</td></tr><tr><td>Honor a wider zone under incognito and audit it</td><td>Toggle guarantee</td><td>The audit reports a crossing the toggle exists to stop.</td></tr><tr><td>A vendor client behind a feature flag</td><td>Verifiability</td><td>The placement claim depends on a build the reader cannot see.</td></tr></tbody></table></div>
+<p>Consequences: the override flag records an assertion and verifies no vendor agreement; a session needing a cloud model restarts without the pin.
+Revisit: fragment-level provenance through synthesis becomes observable; per-zone minting dominates issuance.</p>
+<h2 id="redistribution-ships-an-allowlist-and-never-reaches-backwards">Redistribution ships an allowlist and never reaches backwards</h2>
+<p><a href="/spec/51-enforcement/#bound-redistribution" class="clause-ref"><code>authority.bound-redistribution</code></a> fails toward not shipping and names what an earlier push uploaded. While any table is withheld, a root object ships only if allowlisted as free of row data — the mirrored permission tables and the stale-memory index; any other raises <code>EnforceRootObjectNotAllowlisted</code> at push. Clearing the redistribution flag over a table an earlier push uploaded raises <code>EnforceStaleRedistributedObjects</code>, naming each implicated object and its remedy, up to 100 files plus the total, and removes nothing; the check runs before and after the upload loop.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Enumerate what ships; refuse and name left-behind objects <em>(chosen)</em></td><td>—</td><td>A new root artifact replicates only once listed; a retroactive bound needs an operator to clean the bucket by hand.</td></tr><tr><td>Name the objects that stay behind</td><td>Failure direction</td><td>A new object ships by default carrying withheld rows, unreported.</td></tr><tr><td>Inspect each root object for row values at push</td><td>Soundness</td><td>Record-blob contents are not statically decidable, and every push pays for the scan.</td></tr><tr><td>Delete left-behind objects automatically</td><td>Bucket authority</td><td>The engine is not the retention arbiter; deletion is irreversible and can cut a replica from its readers.</td></tr></tbody></table></div>
+<p>Consequences: a push refuses until the bucket is clean; a replica keeps resolving permissions and staleness while tables are withheld.</p></article></main><aside class="toc" aria-label="On this page"><h2 class="group-label">On this page</h2><ul><li><a href="#redacted-material-leaves-no-derived-copy">Redacted material leaves no derived copy</a></li><li><a href="#the-acting-principal-is-provider-verified-normalized-once-fixed-per-chain">The acting principal is provider-verified, normalized once, fixed per chain</a></li><li><a href="#delegation-is-a-versioned-profile-over-an-attenuable-credential-library">Delegation is a versioned profile over an attenuable-credential library</a></li><li><a href="#grants-narrow-offline-and-admission-re-checks-the-whole-chain">Grants narrow offline, and admission re-checks the whole chain</a></li><li><a href="#query-templates-are-deny-by-default-capabilities">Query templates are deny-by-default capabilities</a></li><li><a href="#one-persisted-issuance-ceiling-bounds-every-lifetime">One persisted issuance ceiling bounds every lifetime</a></li><li><a href="#verification-trusts-only-pinned-or-injected-keys">Verification trusts only pinned or injected keys</a></li><li><a href="#a-face-admits-one-verified-credential-and-carries-authority-as-a-value">A face admits one verified credential and carries authority as a value</a></li><li><a href="#credentials-are-sender-constrained-with-a-nonce-replay-window">Credentials are sender-constrained, with a nonce replay window</a></li><li><a href="#a-digest-over-an-exhaustible-class-needs-generalizing-truncation">A digest over an exhaustible class needs generalizing truncation</a></li><li><a href="#placement-breadth-is-declared-data-side-and-resolution-fails-narrow">Placement breadth is declared data-side, and resolution fails narrow</a></li><li><a href="#redistribution-ships-an-allowlist-and-never-reaches-backwards">Redistribution ships an allowlist and never reaches backwards</a></li></ul></aside></div><script type="module" src="/_astro/Base.astro_astro_type_script_index_0_lang.C0f5LPIN.js"></script></body></html>

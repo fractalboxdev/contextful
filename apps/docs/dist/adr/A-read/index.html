@@ -1,0 +1,229 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>A-read — Reading and memory decisions · contextful spec</title><meta name="description" content="read.guard walks the syntax tree the executor itself serializes and admits exactly one read-only SELECT whose base relations are views registered for the…"><meta property="og:title" content="A-read — Reading and memory decisions · contextful spec"><meta property="og:description" content="read.guard walks the syntax tree the executor itself serializes and admits exactly one read-only SELECT whose base relations are views registered for the…"><link rel="stylesheet" href="/_astro/Base.B8j-F8YW.css"></head><body><header class="topbar"><a class="brand" href="/">contextful <span>spec</span></a></header><div class="shell"><nav class="sidebar" aria-label="Spec files"><details class="sidebar-toggle" id="sidebar-toggle"><summary>Contents</summary><section><h2 class="group-label">Contracts</h2><ul><li><a href="/spec/00-corpus/"><span class="hint">00</span>Corpus law</a></li><li><a href="/spec/01-topology/"><span class="hint">01</span>System topology</a></li><li><a href="/spec/10-store/"><span class="hint">10</span>The store and its sync</a></li><li><a href="/spec/20-read/"><span class="hint">20</span>The read face</a></li><li><a href="/spec/21-memory/"><span class="hint">21</span>Synthesized memory</a></li><li><a href="/spec/30-run/"><span class="hint">30</span>Durable runs</a></li><li><a href="/spec/31-pipeline/"><span class="hint">31</span>Pipelines and the write path</a></li><li><a href="/spec/32-derive/"><span class="hint">32</span>The derive tier</a></li><li><a href="/spec/40-connector/"><span class="hint">40</span>Connectors and the built-in sources</a></li><li><a href="/spec/41-secrets/"><span class="hint">41</span>Outbound credentials</a></li><li><a href="/spec/50-authority/"><span class="hint">50</span>Admission and authority</a></li><li><a href="/spec/51-enforcement/"><span class="hint">51</span>Enforcement and inference placement</a></li><li><a href="/spec/60-visibility/"><span class="hint">60</span>Source-faithful visibility</a></li><li><a href="/spec/61-disclosure/"><span class="hint">61</span>Aggregate disclosure</a></li><li><a href="/spec/62-accountability/"><span class="hint">62</span>Audit, erasure and the receipt</a></li><li><a href="/spec/70-control-plane/"><span class="hint">70</span>Cadence, dispatch and the operator plane</a></li><li><a href="/spec/71-console/"><span class="hint">71</span>The analyst console</a></li><li><a href="/spec/80-formal/"><span class="hint">80</span>The formal model</a></li><li><a href="/spec/81-engineering/"><span class="hint">81</span>Engineering gates and the quality harness</a></li></ul></section><section><h2 class="group-label">Plan</h2><ul><li><a href="/spec/roadmap/">Milestones</a></li><li><a href="/spec/status/">Status</a></li><li><a href="/spec/targets/">Deployment targets</a></li></ul></section><section><h2 class="group-label">Principles</h2><ul><li><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/"><span class="hint">P1</span>An unknown or ineffective name refuses by name at the earliest knowable point</a></li><li><a href="/adr/P2-a-refusal-is-typed-never-reads-as/"><span class="hint">P2</span>A refusal is typed, never reads as an empty result, and echoes only caller input</a></li><li><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/"><span class="hint">P3</span>A misconfigured process refuses to start; one value has one source</a></li><li><a href="/adr/P4-no-partial-empty-or-torn-state-reads/"><span class="hint">P4</span>No partial, empty or torn state reads as complete</a></li><li><a href="/adr/P5-rows-are-reached-only-through-the-caller/"><span class="hint">P5</span>Rows are reached only through the caller&#39;s registered relation; one implementation per capability</a></li><li><a href="/adr/P6-retry-only-what-a-retry-can-change/"><span class="hint">P6</span>Retry only what a retry can change</a></li><li><a href="/adr/P7-gates-fail-the-run-rather-than-skip/"><span class="hint">P7</span>Gates fail the run rather than skip</a></li><li><a href="/adr/P8-corpus-law-clause-addressing-status-computed-from/"><span class="hint">P8</span>Clauses are addressed, status is computed from pins, and rationale lives in records</a></li></ul></section><section><h2 class="group-label">Contract ADRs</h2><ul><li><a href="/adr/A-assurance/"><span class="hint">A-assurance</span>Assurance decisions</a></li><li><a href="/adr/A-authority/"><span class="hint">A-authority</span>Authority and enforcement decisions</a></li><li><a href="/adr/A-connector/"><span class="hint">A-connector</span>Connectors and credentials decisions</a></li><li><a href="/adr/A-disclosure/"><span class="hint">A-disclosure</span>Visibility, disclosure and accountability decisions</a></li><li><a href="/adr/A-read/" aria-current="page"><span class="hint">A-read</span>Reading and memory decisions</a></li><li><a href="/adr/A-run/"><span class="hint">A-run</span>Runs, pipelines and derive decisions</a></li><li><a href="/adr/A-store/"><span class="hint">A-store</span>The store and its sync decisions</a></li><li><a href="/adr/A-surface/"><span class="hint">A-surface</span>Operator and visitor surfaces decisions</a></li><li><a href="/adr/A-topology/"><span class="hint">A-topology</span>System topology decisions</a></li></ul></section></details><script>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script></nav><main class="content"><article class="prose"><h1 id="a-read--reading-and-memory-decisions">A-read — Reading and memory decisions</h1>
+<p><strong>Status:</strong> accepted</p>
+<h2 id="the-read-surface-admits-one-read-only-statement-over-registered-relations">The read surface admits one read-only statement over registered relations</h2>
+<p><a href="/spec/20-read/#guard" class="clause-ref"><code>read.guard</code></a> walks the syntax tree the executor itself serializes and admits exactly one read-only <code>SELECT</code> whose base relations are views registered for the caller or declared common table expressions; table functions and catalog reaches refuse, and a refusal never echoes another caller’s relation. <a href="/spec/20-read/#register" class="clause-ref"><code>read.register</code></a> lists only granted templates and binds arguments strictly. A filter’s budget applies to the whole filter. <a href="/spec/20-read/#respond" class="clause-ref"><code>read.respond</code></a> reads a preview through its table’s relation. The process transport requires a token or an explicit owner flag; the run-stream socket authenticates before upgrade and carries snapshots only.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Executor’s own tree plus a relation allowlist <em>(chosen)</em></td><td>—</td><td>Each statement serializes once before execution; a harmless unregistered relation still refuses.</td></tr><tr><td>Token or regex blocklist over the text</td><td>Completeness</td><td>Every new engine verb or dialect spelling is a bypass until listed.</td></tr><tr><td>An independent SQL parser</td><td>Parser agreement</td><td>What the guard admits is not what the executor runs.</td></tr><tr><td>Check only top-level <code>FROM</code> items</td><td>Coverage</td><td>A subquery or common table expression carries the forbidden relation.</td></tr></tbody></table></div>
+<p>Consequences: a preview and a query apply identical row restriction, masks and zone gate; a socket connection mutates nothing.</p>
+<h2 id="memory-writes-validate-or-dead-letter-and-outcomes-settle-under-their-source">Memory writes validate or dead-letter, and outcomes settle under their source</h2>
+<p><a href="/spec/21-memory/#synthesize" class="clause-ref"><code>read.synthesize</code></a> validates every candidate against the declared output schema, retries with the error up to 3 attempts per batch, then dead-letters the response, template hash and drop reason with the cursor held. The relation vocabulary is a reserved core plus declared types; an undeclared edge dead-letters while the batch lands. <a href="/spec/21-memory/#resolve-entity" class="clause-ref"><code>read.resolve-entity</code></a> dead-letters ambiguous mentions and dangling endpoints. <a href="/spec/21-memory/#settle" class="clause-ref"><code>read.settle</code></a> requires one resolution form and one source — <code>metric</code>, <code>adjudicator</code> or <code>manual</code>; metric comparators evaluate outside the engine, verdicts carry an <code>http</code>/<code>https</code> citation, self-rated outcomes carry a null verdict, and the scored and unresolved views partition the join.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Validate, dead-letter, settle under the registered source <em>(chosen)</em></td><td>—</td><td>Dead-lettered candidates wait for a human; extraction spends up to 3 model calls per batch.</td></tr><tr><td>Parse a non-conforming response best-effort</td><td>Provenance</td><td>Unvalidated text becomes an untraceable row.</td></tr><tr><td>Resolve an ambiguous mention to the highest score</td><td>Reversibility</td><td>A wrong merge propagates through every claim about both entities.</td></tr><tr><td>Evaluate metric rules with an embedded expression engine</td><td>Attack surface</td><td>Anyone registering a prediction reaches the evaluator.</td></tr><tr><td>Exclude self-rated outcomes in each reader</td><td>Repetition</td><td>The first reader that forgets the filter inflates calibration.</td></tr></tbody></table></div>
+<h2 id="claim-standing-is-one-derived-tier-and-revision-is-scoped-to-a-validity-line">Claim standing is one derived tier, and revision is scoped to a validity line</h2>
+<p><a href="/spec/21-memory/#synthesize" class="clause-ref"><code>read.synthesize</code></a> stamps <code>tier</code> — <code>curated</code>, <code>derived</code> or <code>researched</code> — from the writing grant and the run’s source, never the payload; mixed grounding takes the lowest tier. <a href="/spec/21-memory/#recall" class="clause-ref"><code>read.recall</code></a> orders by tier, then score. <a href="/spec/21-memory/#revise" class="clause-ref"><code>read.revise</code></a> lets a claim retire a prior of equal or higher standing; a lower-standing contradiction lands with a bounded validity end, and two claims revise each other only when both are open-ended or anchor to the same instant. Promotion is a human act, stamped beside the synthesizing agent. A fetched result’s contributor key is its registrable domain; a coverage gap closes only on a declared source. Only <code>researched</code> claims expire, by stamping a validity end, not deleting.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>One derived tier with lexicographic precedence <em>(chosen)</em></td><td>—</td><td>A high-scoring researched claim ranks below a weak curated one.</td></tr><tr><td>A caller-supplied tier</td><td>Forgery</td><td>Any writer promotes its own output.</td></tr><tr><td>A separate store for self-directed conclusions</td><td>Recall coherence</td><td>Every reader merges two stores under its own rule.</td></tr><tr><td>A confidence ceiling per tier</td><td>Ordering</td><td>Scores across sources are incomparable, so ceilings leak.</td></tr><tr><td>Retire on subject, predicate and scope alone</td><td>History</td><td>A past-anchored belief retires the present one.</td></tr></tbody></table></div>
+<h2 id="memory-access-follows-evidence-grants-and-forgetting-is-a-separate-privilege">Memory access follows evidence grants, and forgetting is a separate privilege</h2>
+<p><a href="/spec/21-memory/#recall" class="clause-ref"><code>read.recall</code></a> serves a claim only when every evidence row resolves through the caller’s own enforced session; otherwise the claim is suppressed with <code>MemoryEvidenceUnresolved</code>, and a claim naming more than 256 evidence entries with <code>MemoryEvidenceOverflow</code>, without failing the recall. <a href="/spec/62-accountability/#erase" class="clause-ref"><code>disclosure.erase</code></a> sits outside the default grant set and raises <code>ErasureUngranted</code> without the forget grant; tombstones and cascade markers commit in one local snapshot before the verb returns.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Per-row resolution at recall, 256 cap, separate forget grant, same-commit markers <em>(chosen)</em></td><td>—</td><td>A claim whose source table is renamed goes silent; erasure needs a second credential and a heavier commit.</td></tr><tr><td>Serve the claim with an unresolved-evidence marker</td><td>Containment</td><td>The marker discloses the conclusion the gate holds.</td></tr><tr><td>Resolve evidence once at write time and cache it</td><td>Revocation latency</td><td>Later masks, grants and erasures never reach the cached verdict.</td></tr><tr><td>Forget inside the write grant</td><td>Blast radius</td><td>A routine synthesis credential erases curated claims.</td></tr><tr><td>Markers on the next ordinary commit</td><td>Marker durability</td><td>A replica pulling in between resurrects forgotten rows.</td></tr></tbody></table></div>
+<p>Consequences: revocation takes effect on the next recall with no invalidation sweep; total recall cost of the evidence join is unmeasured.
+Revisit: recall latency dominated by the evidence join; a suppression channel that names a withheld claim without its content; evidence lists clustering at the 256 cap.</p>
+<h2 id="the-store-holds-nothing-a-user-could-not-see">The store holds nothing a user could not see</h2>
+<p>Query-time enforcement bounds a read, not the stored bytes, so the ceiling sits at the write path. <a href="/spec/51-enforcement/#refuse" class="clause-ref"><code>authority.refuse</code></a> rejects a credential-shaped value per value with <code>EnforceCredentialShapedValue</code>, landing the surrounding rows; an operator-declared exemption admits a source that legitimately carries such text. <a href="/spec/40-connector/#source" class="clause-ref"><code>connector.source</code></a> refuses every organization-twin API — security, eDiscovery, legal-hold export — with <code>ConnectorTwinApiSource</code>; a sanctioned, paid, disclosed organization-wide export path is admitted.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Refuse at the write boundary; refuse twin APIs everywhere <em>(chosen)</em></td><td>—</td><td>A security corpus needs an explicit exemption; full coverage means per-user ingestion, with more connections and rate-limit budget.</td></tr><tr><td>Store and flag the value, or withhold it at query time</td><td>Reach</td><td>The value sits in every replica, readable with an object-store credential.</td></tr><tr><td>Refuse the whole batch containing the value</td><td>Proportion</td><td>One pasted key stops the pull on every retry.</td></tr><tr><td>Ingest through the twin API and restrict at query time</td><td>The ceiling</td><td>No query-time restriction lowers what the store contains.</td></tr><tr><td>Permit the twin API behind an organization-signed disclosure</td><td>Consent of the people ingested</td><td>The organization’s signature is not their consent.</td></tr></tbody></table></div>
+<p>Consequences: removing a credential never needs a rewrite across replicas, because it never landed.</p>
+<h2 id="nearness-is-a-parent-closure-over-declared-edges-and-the-engine-holds-no-geospatial-type">Nearness is a parent closure over declared edges, and the engine holds no geospatial type</h2>
+<p><a href="/spec/21-memory/#resolve-entity" class="clause-ref"><code>read.resolve-entity</code></a> answers nearness as the transitive closure over the deployment’s declared parent edges: near a place means at it or under it. The closure materializes once and left-joins as an ordinary dimension, so an unmapped place tags null and the row survives. The engine holds no geometry type, distance function or radius.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Parent closure as an ordinary dimension <em>(chosen)</em></td><td>—</td><td>A radius question is unanswerable; hierarchy gaps show as null tags, not errors; the opaque <code>place_id</code> is expensive to reverse.</td></tr><tr><td>A geospatial column type with radius search</td><td>Scope</td><td>A type system, index family and projection question enter for a workload that needs none.</td></tr><tr><td>Coordinate pairs with ad-hoc distance in SQL</td><td>Correctness</td><td>Raw latitude-longitude distance errs by an unstated latitude-dependent margin.</td></tr><tr><td>An external spatial service at query time</td><td>Consistency</td><td>A bounded read mixes two stores’ clocks.</td></tr></tbody></table></div>
+<p>Consequences: the place dimension replicates, reads at a vantage and falls under enforcement like any row; metric answers land as rows computed outside.
+Revisit: a deployment declares artificial parent levels to approximate a radius; closure materialization dominates the dimension’s build.</p></article></main><aside class="toc" aria-label="On this page"><h2 class="group-label">On this page</h2><ul><li><a href="#the-read-surface-admits-one-read-only-statement-over-registered-relations">The read surface admits one read-only statement over registered relations</a></li><li><a href="#memory-writes-validate-or-dead-letter-and-outcomes-settle-under-their-source">Memory writes validate or dead-letter, and outcomes settle under their source</a></li><li><a href="#claim-standing-is-one-derived-tier-and-revision-is-scoped-to-a-validity-line">Claim standing is one derived tier, and revision is scoped to a validity line</a></li><li><a href="#memory-access-follows-evidence-grants-and-forgetting-is-a-separate-privilege">Memory access follows evidence grants, and forgetting is a separate privilege</a></li><li><a href="#the-store-holds-nothing-a-user-could-not-see">The store holds nothing a user could not see</a></li><li><a href="#nearness-is-a-parent-closure-over-declared-edges-and-the-engine-holds-no-geospatial-type">Nearness is a parent closure over declared edges, and the engine holds no geospatial type</a></li></ul></aside></div><script type="module" src="/_astro/Base.astro_astro_type_script_index_0_lang.C0f5LPIN.js"></script></body></html>

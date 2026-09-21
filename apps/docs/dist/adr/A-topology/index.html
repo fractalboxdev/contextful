@@ -1,0 +1,197 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>A-topology — System topology decisions · contextful spec</title><meta name="description" content="connector.infer sends model access through one operator-configured endpoint speaking OpenAI-compatible HTTP; no model-vendor SDK links into any crate, a…"><meta property="og:title" content="A-topology — System topology decisions · contextful spec"><meta property="og:description" content="connector.infer sends model access through one operator-configured endpoint speaking OpenAI-compatible HTTP; no model-vendor SDK links into any crate, a…"><link rel="stylesheet" href="/_astro/Base.B8j-F8YW.css"></head><body><header class="topbar"><a class="brand" href="/">contextful <span>spec</span></a></header><div class="shell"><nav class="sidebar" aria-label="Spec files"><details class="sidebar-toggle" id="sidebar-toggle"><summary>Contents</summary><section><h2 class="group-label">Contracts</h2><ul><li><a href="/spec/00-corpus/"><span class="hint">00</span>Corpus law</a></li><li><a href="/spec/01-topology/"><span class="hint">01</span>System topology</a></li><li><a href="/spec/10-store/"><span class="hint">10</span>The store and its sync</a></li><li><a href="/spec/20-read/"><span class="hint">20</span>The read face</a></li><li><a href="/spec/21-memory/"><span class="hint">21</span>Synthesized memory</a></li><li><a href="/spec/30-run/"><span class="hint">30</span>Durable runs</a></li><li><a href="/spec/31-pipeline/"><span class="hint">31</span>Pipelines and the write path</a></li><li><a href="/spec/32-derive/"><span class="hint">32</span>The derive tier</a></li><li><a href="/spec/40-connector/"><span class="hint">40</span>Connectors and the built-in sources</a></li><li><a href="/spec/41-secrets/"><span class="hint">41</span>Outbound credentials</a></li><li><a href="/spec/50-authority/"><span class="hint">50</span>Admission and authority</a></li><li><a href="/spec/51-enforcement/"><span class="hint">51</span>Enforcement and inference placement</a></li><li><a href="/spec/60-visibility/"><span class="hint">60</span>Source-faithful visibility</a></li><li><a href="/spec/61-disclosure/"><span class="hint">61</span>Aggregate disclosure</a></li><li><a href="/spec/62-accountability/"><span class="hint">62</span>Audit, erasure and the receipt</a></li><li><a href="/spec/70-control-plane/"><span class="hint">70</span>Cadence, dispatch and the operator plane</a></li><li><a href="/spec/71-console/"><span class="hint">71</span>The analyst console</a></li><li><a href="/spec/80-formal/"><span class="hint">80</span>The formal model</a></li><li><a href="/spec/81-engineering/"><span class="hint">81</span>Engineering gates and the quality harness</a></li></ul></section><section><h2 class="group-label">Plan</h2><ul><li><a href="/spec/roadmap/">Milestones</a></li><li><a href="/spec/status/">Status</a></li><li><a href="/spec/targets/">Deployment targets</a></li></ul></section><section><h2 class="group-label">Principles</h2><ul><li><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/"><span class="hint">P1</span>An unknown or ineffective name refuses by name at the earliest knowable point</a></li><li><a href="/adr/P2-a-refusal-is-typed-never-reads-as/"><span class="hint">P2</span>A refusal is typed, never reads as an empty result, and echoes only caller input</a></li><li><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/"><span class="hint">P3</span>A misconfigured process refuses to start; one value has one source</a></li><li><a href="/adr/P4-no-partial-empty-or-torn-state-reads/"><span class="hint">P4</span>No partial, empty or torn state reads as complete</a></li><li><a href="/adr/P5-rows-are-reached-only-through-the-caller/"><span class="hint">P5</span>Rows are reached only through the caller&#39;s registered relation; one implementation per capability</a></li><li><a href="/adr/P6-retry-only-what-a-retry-can-change/"><span class="hint">P6</span>Retry only what a retry can change</a></li><li><a href="/adr/P7-gates-fail-the-run-rather-than-skip/"><span class="hint">P7</span>Gates fail the run rather than skip</a></li><li><a href="/adr/P8-corpus-law-clause-addressing-status-computed-from/"><span class="hint">P8</span>Clauses are addressed, status is computed from pins, and rationale lives in records</a></li></ul></section><section><h2 class="group-label">Contract ADRs</h2><ul><li><a href="/adr/A-assurance/"><span class="hint">A-assurance</span>Assurance decisions</a></li><li><a href="/adr/A-authority/"><span class="hint">A-authority</span>Authority and enforcement decisions</a></li><li><a href="/adr/A-connector/"><span class="hint">A-connector</span>Connectors and credentials decisions</a></li><li><a href="/adr/A-disclosure/"><span class="hint">A-disclosure</span>Visibility, disclosure and accountability decisions</a></li><li><a href="/adr/A-read/"><span class="hint">A-read</span>Reading and memory decisions</a></li><li><a href="/adr/A-run/"><span class="hint">A-run</span>Runs, pipelines and derive decisions</a></li><li><a href="/adr/A-store/"><span class="hint">A-store</span>The store and its sync decisions</a></li><li><a href="/adr/A-surface/"><span class="hint">A-surface</span>Operator and visitor surfaces decisions</a></li><li><a href="/adr/A-topology/" aria-current="page"><span class="hint">A-topology</span>System topology decisions</a></li></ul></section></details><script>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script></nav><main class="content"><article class="prose"><h1 id="a-topology--system-topology-decisions">A-topology — System topology decisions</h1>
+<p><strong>Status:</strong> accepted</p>
+<h2 id="one-inference-egress-and-one-destination-no-vendor-sdk-no-sink-plugin">One inference egress and one destination; no vendor SDK, no sink plugin</h2>
+<p><a href="/spec/40-connector/#infer" class="clause-ref"><code>connector.infer</code></a> sends model access through one operator-configured endpoint speaking OpenAI-compatible HTTP; no model-vendor SDK links into any crate, a provider swap is a URL edit, and the host owns credential, rate limit and per-call span. <a href="/spec/31-pipeline/#land" class="clause-ref"><code>run.land</code></a> resolves the local store and refuses any other destination name at assembly; a synthesized artifact writes back through the same destination and becomes queryable corpus. The destination interface has no host arm, so a guest cannot supply one.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>One compatible endpoint, one destination <em>(chosen)</em></td><td>—</td><td>A vendor feature outside the compatible wire is unreachable; an export is a copy of the store’s own layout.</td></tr><tr><td>A vendor SDK per provider behind an abstraction</td><td>Dependency custody</td><td>Each SDK links its own HTTP stack into every profile and dictates auth and retry.</td></tr><tr><td>A plugin interface for backends or sinks</td><td>Attack surface</td><td>A loaded plugin holds credentials, and the destination set is no longer nameable.</td></tr><tr><td>A sidecar translating to each vendor’s wire</td><td>Operational cost</td><td>A second deployable with its own credentials and failure modes.</td></tr><tr><td>A webhook destination</td><td>Delivery semantics</td><td>At-least-once messaging, which the run’s commit model cannot honor.</td></tr></tbody></table></div>
+<p>Consequences: the dependency audit refuses a model-vendor SDK and a second outbound path to a model; synthesized output falls under the same grants, masks and retention as landed data.
+Revisit: a capability a deployment needs that no OpenAI-compatible endpoint exposes.</p>
+<h2 id="profile-capabilities-are-fixed-at-build-an-absent-one-is-a-typed-refusal">Profile capabilities are fixed at build; an absent one is a typed refusal</h2>
+<p>Three profiles, <code>contextful-edge</code>, <code>contextful-full</code> and <code>contextful-control</code>, compile from one workspace by feature bundle, each linking only its role’s dependencies; the CRDT library links into <code>contextful-control</code> alone. A capability the running profile does not wire is a typed refusal when reached, never a panic, no-op or look-alike fallback; a profile without the embedded SQL engine refuses both read tools. <a href="/spec/01-topology/#package" class="clause-ref"><code>topology.package</code></a> publishes each profile’s wiring, a client’s required faces match at the handshake, and a spawned engine finding no project manifest exits before writing protocol framing.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Build-time profiles; typed refusal on reach <em>(chosen)</em></td><td>—</td><td>Three artifacts to build, size-gate and release; an absent capability surfaces at the handshake or first call.</td></tr><tr><td>One binary with run-time feature detection</td><td>Footprint</td><td>Every heavy dependency links into the replica.</td></tr><tr><td>Dynamically loaded plugins</td><td>Portability</td><td>Static musl targets, the edge deployment shape, load no plugins.</td></tr><tr><td>Degrade to a partial answer</td><td>Honesty of the outcome</td><td>A lexical-only ranking or an empty result reads as complete.</td></tr><tr><td>Separate repositories per artifact</td><td>Versioning</td><td>The shared domain and its crossings version across repositories.</td></tr></tbody></table></div>
+<p>Consequences: the dependency audit refuses a control-only library in another profile’s resolved graph.</p>
+<h2 id="the-engine-and-its-consumers-meet-only-at-public-surfaces">The engine and its consumers meet only at public surfaces</h2>
+<p><a href="/spec/01-topology/#compose" class="clause-ref"><code>topology.compose</code></a> admits exactly three crossings between read path and run path: the connector interface world, the columnar-part-plus-manifest layout, and capability tokens, each versioned with a conformance suite both sides run. The engine owns no domain; an application names its vocabulary in a per-store lexicon, and a behavior becomes a shared abstraction once a second application needs it. <a href="/spec/01-topology/#bound-application" class="clause-ref"><code>topology.bound-application</code></a> gives the commercial layer only the public surfaces, and a paid feature is net-new, never a license check on a data-plane capability.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Three versioned crossings; public surfaces only <em>(chosen)</em></td><td>—</td><td>A fourth crossing is a design question, and the commercial layer waits for each public surface it needs.</td></tr><tr><td>A general internal RPC surface</td><td>Review surface</td><td>Every call is a place a capability can enter.</td></tr><tr><td>Direct dependencies from read path onto run path</td><td>Composability</td><td>The run path stops being droppable and the edge profile is lost.</td></tr><tr><td>A privileged internal API for the commercial layer</td><td>Wholeness</td><td>The open engine becomes a subset of itself.</td></tr><tr><td>The first application’s vocabulary as engine defaults</td><td>Inheritance</td><td>Every later application receives meanings it did not choose.</td></tr></tbody></table></div>
+<p>Consequences: <a href="/spec/81-engineering/#gate" class="clause-ref"><code>assurance.gate</code></a> enforces these boundaries over the package graph and source, since they have no run-time trigger.</p>
+<h2 id="a-deploy-verifies-by-observation">A deploy verifies by observation</h2>
+<p><a href="/spec/70-control-plane/#apply" class="clause-ref"><code>surface.apply</code></a> runs one declaration on every control-plane target and diffs each target’s table parts byte for byte against the single-process reference run after a 24 h soak; a profile claiming a shape its target cannot express refuses. <a href="/spec/01-topology/#publish-hostname" class="clause-ref"><code>topology.publish-hostname</code></a> gives every hostname a descriptor naming its worker, contract version and gate (<code>access</code>, <code>adminToken</code> or <code>public</code>) with an explicit acknowledgement; the deploy probes each with an anonymous <code>GET /</code>, judges the answer against the gate, and fails an unreachable hostname. A descriptor with an unknown field refuses to decode.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>Declare, then observe and compare <em>(chosen)</em></td><td>—</td><td>A deploy waits on probes and a soak; a target-specific feature waits until it runs everywhere.</td></tr><tr><td>Derive posture from provider configuration</td><td>Recoverability of intent</td><td>Configuration records no gate, so an accidental opening reads as deliberate.</td></tr><tr><td>Declare with no probe</td><td>Drift</td><td>A policy attached or detached later changes exposure with no signal.</td></tr><tr><td>A periodic external monitor</td><td>Timing</td><td>The exposure window is the monitor’s interval.</td></tr><tr><td>Per-target expected outputs</td><td>Detectability</td><td>A divergence arrives as a fixture update, which reviewers approve.</td></tr></tbody></table></div>
+<p>Consequences: a divergence names the target, the table and the first differing part.</p>
+<h2 id="the-domain-crate-holds-types-and-ports-with-no-io-and-every-edge-points-toward-it">The domain crate holds types and ports with no I/O, and every edge points toward it</h2>
+<p><a href="/spec/01-topology/#package" class="clause-ref"><code>topology.package</code></a> keeps <code>contextful-core</code>, the shared types, typed error enum and port traits linked into all three profiles, pure: it performs no I/O and declares no async runtime, component host, HTTP client or columnar-format implementation, and one raises <code>DomainCrateImpurity</code>, naming the dependency and the feature that pulled it. Every adapter crate depends on the centre and the centre on none; an outward edge raises <code>TopologyDependencyInversion</code> with its manifest line.</p>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Lost on</th><th>Cost</th></tr></thead><tbody><tr><td>A pure centre of types and ports, all edges inward <em>(chosen)</em></td><td>—</td><td>Adapters restate small conversions; a port change touches every adapter in one commit.</td></tr><tr><td>A centre carrying its own runtime and format implementation</td><td>Footprint</td><td>The replica and control plane link a runtime and format neither uses.</td></tr><tr><td>A shared utility crate both directions depend on</td><td>Direction reportability</td><td>A cycle re-enters legally at every hop, with no single offending edge.</td></tr><tr><td>Ports beside their adapters, no centre</td><td>Neutral home</td><td>The error enum crossing both halves has nowhere to live.</td></tr></tbody></table></div>
+<p>Consequences: a new target is an adapter crate behind existing ports.
+Revisit: two adapters convert the same shape differently; a port change deferred more than once; the edge profile’s budget no longer the binding constraint.</p></article></main><aside class="toc" aria-label="On this page"><h2 class="group-label">On this page</h2><ul><li><a href="#one-inference-egress-and-one-destination-no-vendor-sdk-no-sink-plugin">One inference egress and one destination; no vendor SDK, no sink plugin</a></li><li><a href="#profile-capabilities-are-fixed-at-build-an-absent-one-is-a-typed-refusal">Profile capabilities are fixed at build; an absent one is a typed refusal</a></li><li><a href="#the-engine-and-its-consumers-meet-only-at-public-surfaces">The engine and its consumers meet only at public surfaces</a></li><li><a href="#a-deploy-verifies-by-observation">A deploy verifies by observation</a></li><li><a href="#the-domain-crate-holds-types-and-ports-with-no-io-and-every-edge-points-toward-it">The domain crate holds types and ports with no I/O, and every edge points toward it</a></li></ul></aside></div><script type="module" src="/_astro/Base.astro_astro_type_script_index_0_lang.C0f5LPIN.js"></script></body></html>

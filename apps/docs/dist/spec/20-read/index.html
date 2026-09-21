@@ -1,0 +1,708 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>The read face · contextful spec</title><meta name="description" content="Every question a caller asks of a store arrives here: the relations a connection sees, the statement it sends, the candidates a question generates, their…"><meta property="og:title" content="The read face · contextful spec"><meta property="og:description" content="Every question a caller asks of a store arrives here: the relations a connection sees, the statement it sends, the candidates a question generates, their…"><link rel="stylesheet" href="/_astro/Base.B8j-F8YW.css"></head><body><header class="topbar"><a class="brand" href="/">contextful <span>spec</span></a></header><div class="shell"><nav class="sidebar" aria-label="Spec files"><details class="sidebar-toggle" id="sidebar-toggle"><summary>Contents</summary><section><h2 class="group-label">Contracts</h2><ul><li><a href="/spec/00-corpus/"><span class="hint">00</span>Corpus law</a></li><li><a href="/spec/01-topology/"><span class="hint">01</span>System topology</a></li><li><a href="/spec/10-store/"><span class="hint">10</span>The store and its sync</a></li><li><a href="/spec/20-read/" aria-current="page"><span class="hint">20</span>The read face</a></li><li><a href="/spec/21-memory/"><span class="hint">21</span>Synthesized memory</a></li><li><a href="/spec/30-run/"><span class="hint">30</span>Durable runs</a></li><li><a href="/spec/31-pipeline/"><span class="hint">31</span>Pipelines and the write path</a></li><li><a href="/spec/32-derive/"><span class="hint">32</span>The derive tier</a></li><li><a href="/spec/40-connector/"><span class="hint">40</span>Connectors and the built-in sources</a></li><li><a href="/spec/41-secrets/"><span class="hint">41</span>Outbound credentials</a></li><li><a href="/spec/50-authority/"><span class="hint">50</span>Admission and authority</a></li><li><a href="/spec/51-enforcement/"><span class="hint">51</span>Enforcement and inference placement</a></li><li><a href="/spec/60-visibility/"><span class="hint">60</span>Source-faithful visibility</a></li><li><a href="/spec/61-disclosure/"><span class="hint">61</span>Aggregate disclosure</a></li><li><a href="/spec/62-accountability/"><span class="hint">62</span>Audit, erasure and the receipt</a></li><li><a href="/spec/70-control-plane/"><span class="hint">70</span>Cadence, dispatch and the operator plane</a></li><li><a href="/spec/71-console/"><span class="hint">71</span>The analyst console</a></li><li><a href="/spec/80-formal/"><span class="hint">80</span>The formal model</a></li><li><a href="/spec/81-engineering/"><span class="hint">81</span>Engineering gates and the quality harness</a></li></ul></section><section><h2 class="group-label">Plan</h2><ul><li><a href="/spec/roadmap/">Milestones</a></li><li><a href="/spec/status/">Status</a></li><li><a href="/spec/targets/">Deployment targets</a></li></ul></section><section><h2 class="group-label">Principles</h2><ul><li><a href="/adr/P1-validate-at-the-earliest-knowable-point-an/"><span class="hint">P1</span>An unknown or ineffective name refuses by name at the earliest knowable point</a></li><li><a href="/adr/P2-a-refusal-is-typed-never-reads-as/"><span class="hint">P2</span>A refusal is typed, never reads as an empty result, and echoes only caller input</a></li><li><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/"><span class="hint">P3</span>A misconfigured process refuses to start; one value has one source</a></li><li><a href="/adr/P4-no-partial-empty-or-torn-state-reads/"><span class="hint">P4</span>No partial, empty or torn state reads as complete</a></li><li><a href="/adr/P5-rows-are-reached-only-through-the-caller/"><span class="hint">P5</span>Rows are reached only through the caller&#39;s registered relation; one implementation per capability</a></li><li><a href="/adr/P6-retry-only-what-a-retry-can-change/"><span class="hint">P6</span>Retry only what a retry can change</a></li><li><a href="/adr/P7-gates-fail-the-run-rather-than-skip/"><span class="hint">P7</span>Gates fail the run rather than skip</a></li><li><a href="/adr/P8-corpus-law-clause-addressing-status-computed-from/"><span class="hint">P8</span>Clauses are addressed, status is computed from pins, and rationale lives in records</a></li></ul></section><section><h2 class="group-label">Contract ADRs</h2><ul><li><a href="/adr/A-assurance/"><span class="hint">A-assurance</span>Assurance decisions</a></li><li><a href="/adr/A-authority/"><span class="hint">A-authority</span>Authority and enforcement decisions</a></li><li><a href="/adr/A-connector/"><span class="hint">A-connector</span>Connectors and credentials decisions</a></li><li><a href="/adr/A-disclosure/"><span class="hint">A-disclosure</span>Visibility, disclosure and accountability decisions</a></li><li><a href="/adr/A-read/"><span class="hint">A-read</span>Reading and memory decisions</a></li><li><a href="/adr/A-run/"><span class="hint">A-run</span>Runs, pipelines and derive decisions</a></li><li><a href="/adr/A-store/"><span class="hint">A-store</span>The store and its sync decisions</a></li><li><a href="/adr/A-surface/"><span class="hint">A-surface</span>Operator and visitor surfaces decisions</a></li><li><a href="/adr/A-topology/"><span class="hint">A-topology</span>System topology decisions</a></li></ul></section></details><script>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script></nav><main class="content"><article class="prose"><p class="eyebrow">contract <code>read</code></p><h1 id="the-read-face">The read face</h1>
+<p>Every question a caller asks of a store arrives here: the relations a connection sees, the
+statement it sends, the candidates a question generates, their order, and the one envelope
+that carries them. A read lands no row and holds no lease. Restriction arrives already
+composed into each registered relation; this face consumes index sidecars and builds none.</p>
+<p>The read face’s operations, and where it meets the store, authority and memory:</p>
+<pre class="mermaid">flowchart LR
+  TOK["capability-token caller"] --> GRD["guard: one read-only SELECT"]
+  OPR["operator text: CLI, templates, engine-composed reads"] -- "raw" --> REG
+  GRD --> REG["register: one view per manifest table"]
+  PIN["resolve-pin: pin map, transaction-time bound"] --> REG
+  STORE["store contract: parts, manifests, sidecars"] --> REG
+  AUTH["authority contract: composed restriction"] --> REG
+  REG --> RET["retrieve: content tokens, per-table arms"]
+  MEM["memory: recall"] -- "composed by corpus.retrieve" --> RET
+  EMB["embed: embedding port"] --> RNK
+  RET --> RNK["rank: cosine, BM25, fusion"]
+  RNK --> RSP["respond: one projection"]
+  REG --> RSP
+  STORE -- "snapshot commit invalidates" --> CCH["cache: opt-in result cache"]
+  CCH -- "hit" --> RSP</pre>
+<h2 id="register">register</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="read.register.connection-views"><td><a href="#read.register.connection-views" class="clause-anchor"><code>read.register.connection-views</code></a></td><td>Ahead of a statement the engine opens a connection and issues one create-or-replace view per table the manifests name, each scanning <a href="/spec/10-store/#store.reconcile.explicit-file-list" class="clause-ref"><code>store.reconcile.explicit-file-list</code></a> No view directory exists on disk.</td><td>—</td></tr><tr id="read.register.engine"><td><a href="#read.register.engine" class="clause-anchor"><code>read.register.engine</code></a></td><td>The executor is an embedded columnar SQL engine, linked into every profile that serves reads, reading Parquet natively in standard SQL. An external process reads the same files with the engine uninstalled.</td><td><a href="/adr/A-topology/" class="record-ref">A-topology</a></td></tr><tr id="read.register.quiet-table"><td><a href="#read.register.quiet-table" class="clause-anchor"><code>read.register.quiet-table</code></a></td><td>A quiet table registers as <a href="/spec/10-store/#store.declare.empty-run" class="clause-ref"><code>store.declare.empty-run</code></a> A read of it returns an empty result, never a missing-relation fault.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="read.register.bare-name"><td><a href="#read.register.bare-name" class="clause-anchor"><code>read.register.bare-name</code></a></td><td>A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to the caller’s registered relation, which carries the caller’s restriction.</td><td><a href="/adr/P5-rows-are-reached-only-through-the-caller/" class="record-ref">P5</a></td></tr><tr id="read.register.tool-set"><td><a href="#read.register.tool-set" class="clause-anchor"><code>read.register.tool-set</code></a></td><td>The face exposes a closed tool set: <code>context.describe</code>, <code>context.query</code>, <code>context.execute_query</code> for templates, <code>context.files</code> and <code>context.file</code> over committed data files, and <code>corpus.retrieve</code> for ranked reads across a prefix.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.register.describe-payload"><td><a href="#read.register.describe-payload" class="clause-anchor"><code>read.register.describe-payload</code></a></td><td><code>context.describe</code> returns row count, schema fingerprint, description, per-column hints, declared indexes, partition scheme, <code>limits.max_rows</code>, zone label, lexicon and example queries.</td><td>—</td></tr><tr id="read.register.advertised-is-enforced"><td><a href="#read.register.advertised-is-enforced" class="clause-anchor"><code>read.register.advertised-is-enforced</code></a></td><td>A table’s published <code>limits</code> block lists a bound exactly when the engine applies it.</td><td>because a published number and a delivered guarantee cannot disagree when one derives from the other</td></tr><tr id="read.register.template-projection"><td><a href="#read.register.template-projection" class="clause-anchor"><code>read.register.template-projection</code></a></td><td>Every manifest template projects into a tool named by its identifier, whose declared positional parameters form a typed schema with every field required.</td><td>—</td></tr><tr id="read.register.file-listing"><td><a href="#read.register.file-listing" class="clause-anchor"><code>read.register.file-listing</code></a></td><td><code>context.files</code> returns store-root-relative paths for the tables the caller reads, and a table outside that set contributes no path.</td><td><a href="/adr/P5-rows-are-reached-only-through-the-caller/" class="record-ref">P5</a></td></tr><tr id="read.register.file-preview-target"><td><a href="#read.register.file-preview-target" class="clause-anchor"><code>read.register.file-preview-target</code></a></td><td><code>context.file</code> resolves a path to its <code>(table, run_id)</code> and reads it through that table’s registered relation. A snapshot part, a traversal, an absolute path or a ledger file raises <code>FilePreviewNotATable</code>.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.register.ledger-relation"><td><a href="#read.register.ledger-relation" class="clause-anchor"><code>read.register.ledger-relation</code></a></td><td>Each table’s per-run request ledger registers as the child relation <code>&#x3C;table>__requests</code>, holding identifiers, connector, method, host, status and timing of mediated outbound calls.</td><td>—</td></tr><tr id="read.register.scoped-ledger"><td><a href="#read.register.scoped-ledger" class="clause-anchor"><code>read.register.scoped-ledger</code></a></td><td>The child relation registers on the owner read alone. A tenant-scoped token naming it raises <code>LedgerNotTenantScoped</code>, stating what closed the relation.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.register.lexicon-surface"><td><a href="#read.register.lexicon-surface" class="clause-anchor"><code>read.register.lexicon-surface</code></a></td><td>The describe payload carries the store’s numeric-identifier and badge vocabulary. Aliases, time-window phrases and distillation examples stay on the serving side.</td><td>—</td></tr><tr id="read.register.reserved-relation"><td><a href="#read.register.reserved-relation" class="clause-anchor"><code>read.register.reserved-relation</code></a></td><td>The engine’s reserved table namespaces register like any other relation, with no privileged path underneath.</td><td><a href="/adr/P5-rows-are-reached-only-through-the-caller/" class="record-ref">P5</a></td></tr></tbody></table></div>
+<p>unsettled: Is a cross-table join worth a first-class retrieval call, or does an operator-defined view plus the describe payload stay the route? owner: read-path affects: read.register</p>
+<p>unsettled: What corpus-size and token metadata does the describe payload expose, so a client can choose between a full-context read and a ranked one? owner: read-path affects: read.register</p>
+<p>unsettled: Is a tenant-scoped projection of the request ledger worth building, given the tenant dimension has to reach ledger rows first? owner: read-path affects: read.register</p>
+<h2 id="guard">guard</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="read.guard.single-read-only-statement"><td><a href="#read.guard.single-read-only-statement" class="clause-anchor"><code>read.guard.single-read-only-statement</code></a></td><td>Admitted text parses to exactly one read-only SELECT. Attach, copy, install, load, pragma, set, any schema change, any data modification and a piggybacked second statement raise <code>StatementNotReadOnly</code>.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.guard.engine-own-parse"><td><a href="#read.guard.engine-own-parse" class="clause-anchor"><code>read.guard.engine-own-parse</code></a></td><td>The guard walks the syntax tree the engine itself serializes for the statement; read-only-ness is a property of that tree, not a keyword blocklist.</td><td>because guard and executor cannot disagree about what a text means when they share one parse</td></tr><tr id="read.guard.relation-allowlist"><td><a href="#read.guard.relation-allowlist" class="clause-anchor"><code>read.guard.relation-allowlist</code></a></td><td>Every base relation names a view registered for this caller or a common table expression the statement declares. A bare file path is a base relation and falls under this rule.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.guard.whole-tree-walk"><td><a href="#read.guard.whole-tree-walk" class="clause-anchor"><code>read.guard.whole-tree-walk</code></a></td><td>The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and gathers common-table-expression names across the tree before checking any base relation.</td><td>—</td></tr><tr id="read.guard.unregistered-relation"><td><a href="#read.guard.unregistered-relation" class="clause-anchor"><code>read.guard.unregistered-relation</code></a></td><td>A base relation naming nothing this connection registered is refused by <a href="/spec/51-enforcement/#authority.refuse.ungranted-table" class="clause-ref"><code>authority.refuse.ungranted-table</code></a>, echoing what the statement asked for and no relation of another caller.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.guard.table-function"><td><a href="#read.guard.table-function" class="clause-anchor"><code>read.guard.table-function</code></a></td><td>A table function anywhere in the tree, and a schema-qualified reach into a system catalog, raise <code>TableFunctionRefused</code>.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.guard.statement-provenance"><td><a href="#read.guard.statement-provenance" class="clause-anchor"><code>read.guard.statement-provenance</code></a></td><td>Admission binds on who authored the text. Operator text — the local command line, template bodies, engine-composed reads — runs raw; capability-token caller text is gated. The raw surface is reachable from no network face.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.guard.quoted-identifiers"><td><a href="#read.guard.quoted-identifiers" class="clause-anchor"><code>read.guard.quoted-identifiers</code></a></td><td>Every schema- or manifest-derived identifier is double-quoted where rendered, admitting any UTF-8 vendor field name as an identifier and never as an expression.</td><td>—</td></tr><tr id="read.guard.template-declaration"><td><a href="#read.guard.template-declaration" class="clause-anchor"><code>read.guard.template-declaration</code></a></td><td>A template declares an identifier, one SQL statement, positional parameters written <code>name:type</code> over integer, float, string, timestamp and boolean, and an optional row ceiling.</td><td>—</td></tr><tr id="read.guard.template-relation-shape"><td><a href="#read.guard.template-relation-shape" class="clause-anchor"><code>read.guard.template-relation-shape</code></a></td><td>Manifest validation and face startup refuse a template whose SQL names anything but the store’s own tables as plain identifiers, or whose identifier collides with a built-in tool prefix, raising <code>TemplateNamesForeignRelation</code>.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.guard.template-binding"><td><a href="#read.guard.template-binding" class="clause-anchor"><code>read.guard.template-binding</code></a></td><td>A missing, unknown or type-mismatched argument raises <code>TemplateArgumentRejected</code> ahead of execution, with no coercion. Placeholders cover exactly the declared parameters.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.guard.startup-time-check"><td><a href="#read.guard.startup-time-check" class="clause-anchor"><code>read.guard.startup-time-check</code></a></td><td>Template checks are caller-independent and run once at startup; a request pays nothing for them.</td><td>—</td></tr></tbody></table></div>
+<p>Admission of one statement, by provenance, and of one template:</p>
+<pre class="mermaid">flowchart TD
+  T["statement text"] --> P{"authored by"}
+  P -- "operator" --> RAW["runs raw, from no network face"]
+  P -- "capability token" --> PARSE["the engine's own parse tree"]
+  PARSE --> ONE{"exactly one read-only SELECT"}
+  ONE -- "no" --> E1["StatementNotReadOnly"]
+  ONE -- "yes" --> WALK["whole-tree walk, CTE names gathered first"]
+  WALK --> TF{"table function or system-catalog reach"}
+  TF -- "yes" --> E2["TableFunctionRefused"]
+  TF -- "no" --> REL{"every base relation registered or a declared CTE"}
+  REL -- "no" --> E3["authority.refuse.ungranted-table"]
+  REL -- "yes" --> EXEC["execute over registered relations"]
+  RAW --> EXEC
+  TPL["template"] --> START{"startup: store tables only, no prefix collision"}
+  START -- "no" --> E4["TemplateNamesForeignRelation"]
+  START -- "yes" --> BIND{"arguments match declared parameters"}
+  BIND -- "no" --> E5["TemplateArgumentRejected"]
+  BIND -- "yes" --> EXEC</pre>
+<h2 id="respond">respond</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="read.respond.one-projection"><td><a href="#read.respond.one-projection" class="clause-anchor"><code>read.respond.one-projection</code></a></td><td>The command line’s JSON output, the HTTP face and the tool protocol serialize one projection: <code>columns</code>, <code>rows</code>, <code>truncated</code>, and the optional restriction, resolved-build, provenance, retrieval and time-bound blocks.</td><td>because a guarantee landing on one transport and missing on another is worse than a guarantee on none</td></tr><tr id="read.respond.row-ceiling"><td><a href="#read.respond.row-ceiling" class="clause-anchor"><code>read.respond.row-ceiling</code></a></td><td>A per-table row ceiling published as <code>limits.max_rows</code> bounds rows delivered, applied at execution with an over-fetch of 1 rows. It bounds no work performed.</td><td>—</td></tr><tr id="read.respond.truncation-is-exact"><td><a href="#read.respond.truncation-is-exact" class="clause-anchor"><code>read.respond.truncation-is-exact</code></a></td><td><code>truncated</code> is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="read.respond.cell-encoding"><td><a href="#read.respond.cell-encoding" class="clause-anchor"><code>read.respond.cell-encoding</code></a></td><td>SQL NULL is JSON <code>null</code> and nothing else is. Non-finite floats are <code>"NaN"</code>, <code>"inf"</code>, <code>"-inf"</code>; temporal values are ISO-8601 strings, intervals ISO-8601 durations; binary is <code>\xAA</code> hex; an enum is its label; a container is its text form.</td><td>—</td></tr><tr id="read.respond.wide-number-shape"><td><a href="#read.respond.wide-number-shape" class="clause-anchor"><code>read.respond.wide-number-shape</code></a></td><td>A column’s JSON encoding follows its SQL type alone: integers of 32 bits or fewer, finite floats and decimals of 15 digits or fewer are numbers; wider integers and decimals are exact decimal strings.</td><td>because a wire type that varies with the values on one page breaks a typed client on the next</td></tr><tr id="read.respond.type-is-the-cell"><td><a href="#read.respond.type-is-the-cell" class="clause-anchor"><code>read.respond.type-is-the-cell</code></a></td><td>No separate type list rides the envelope; a cell’s JSON type is the declaration.</td><td>—</td></tr><tr id="read.respond.zero-rows-is-success"><td><a href="#read.respond.zero-rows-is-success" class="clause-anchor"><code>read.respond.zero-rows-is-success</code></a></td><td>Fewer rows than the requested limit, zero included, is a success.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="read.respond.match-count"><td><a href="#read.respond.match-count" class="clause-anchor"><code>read.respond.match-count</code></a></td><td>Match counts ride outside the internals opt-in, reporting how many rows the ranker scored as matching in the same call.</td><td>—</td></tr><tr id="read.respond.coverage-is-a-count"><td><a href="#read.respond.coverage-is-a-count" class="clause-anchor"><code>read.respond.coverage-is-a-count</code></a></td><td>A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score.</td><td>because min-max normalization pins the best row at 1.0 and IDF lifts one incidental rare-term mention</td></tr><tr id="read.respond.internals-opt-in"><td><a href="#read.respond.internals-opt-in" class="clause-anchor"><code>read.respond.internals-opt-in</code></a></td><td>Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under <code>internals: true</code>, on every read tool and the HTTP face.</td><td>—</td></tr><tr id="read.respond.operator-metadata"><td><a href="#read.respond.operator-metadata" class="clause-anchor"><code>read.respond.operator-metadata</code></a></td><td>Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="read.respond.in-band-error"><td><a href="#read.respond.in-band-error" class="clause-anchor"><code>read.respond.in-band-error</code></a></td><td>On the tool protocol a refusal arrives in-band, as a protocol error object or a result flagged as an error under transport success.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="read.respond.paths-stay-inside"><td><a href="#read.respond.paths-stay-inside" class="clause-anchor"><code>read.respond.paths-stay-inside</code></a></td><td>An ordinary read’s result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr></tbody></table></div>
+<p>unsettled: When does a duration ceiling become enforceable, and publishable in the per-table limits block beside the row ceiling? owner: read-path affects: read.respond</p>
+<p>unsettled: Does partial-result streaming belong on this surface, or does a full result set stay the one response shape? owner: read-path affects: read.respond</p>
+<h2 id="retrieve">retrieve</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="read.retrieve.ranked-call"><td><a href="#read.retrieve.ranked-call" class="clause-anchor"><code>read.retrieve.ranked-call</code></a></td><td><code>corpus.retrieve({prefix, query, query_embedding?, kinds, limit, as_of})</code> returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall and stores nothing of its own.</td><td>—</td></tr><tr id="read.retrieve.relevance-floor"><td><a href="#read.retrieve.relevance-floor" class="clause-anchor"><code>read.retrieve.relevance-floor</code></a></td><td>A row reaches a caller when its lexical score is null, at least the floor, or its vector score exceeds zero. The floor is 2 for three or more content tokens, else 1; a caller minimum overrides it.</td><td>—</td></tr><tr id="read.retrieve.content-tokens"><td><a href="#read.retrieve.content-tokens" class="clause-anchor"><code>read.retrieve.content-tokens</code></a></td><td>The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters stay, and survivors deduplicate in order.</td><td>—</td></tr><tr id="read.retrieve.token-length-floor"><td><a href="#read.retrieve.token-length-floor" class="clause-anchor"><code>read.retrieve.token-length-floor</code></a></td><td>An ASCII run shorter than 2 chars leaves the content-token set.</td><td>—</td></tr><tr id="read.retrieve.token-cap"><td><a href="#read.retrieve.token-cap" class="clause-anchor"><code>read.retrieve.token-cap</code></a></td><td>The content-token set holds at most 12 tokens. An empty set omits the relevance predicate.</td><td>—</td></tr><tr id="read.retrieve.script-split-matching"><td><a href="#read.retrieve.script-split-matching" class="clause-anchor"><code>read.retrieve.script-split-matching</code></a></td><td>An all-lowercase-alphanumeric token matches on an ASCII word boundary with an optional plural suffix; a token with any non-ASCII character matches by containment.</td><td>because no ASCII word boundary occurs beside an ideograph</td></tr><tr id="read.retrieve.plural-suffix-floor"><td><a href="#read.retrieve.plural-suffix-floor" class="clause-anchor"><code>read.retrieve.plural-suffix-floor</code></a></td><td>A token under 4 chars takes no optional plural suffix.</td><td>—</td></tr><tr id="read.retrieve.text-free-table-scores-null"><td><a href="#read.retrieve.text-free-table-scores-null" class="clause-anchor"><code>read.retrieve.text-free-table-scores-null</code></a></td><td>A table with no snippet-worthy text column scores lexically null, never zero, and its rows enter by vector score alone.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="read.retrieve.candidate-window"><td><a href="#read.retrieve.candidate-window" class="clause-anchor"><code>read.retrieve.candidate-window</code></a></td><td>The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="read.retrieve.reserved-columns-project-null"><td><a href="#read.retrieve.reserved-columns-project-null" class="clause-anchor"><code>read.retrieve.reserved-columns-project-null</code></a></td><td>Reserved projected columns — modality, language, prompt hash, kind — render null for a table lacking them, and its rows stay in the union.</td><td>—</td></tr><tr id="read.retrieve.unsatisfiable-arm-drops"><td><a href="#read.retrieve.unsatisfiable-arm-drops" class="clause-anchor"><code>read.retrieve.unsatisfiable-arm-drops</code></a></td><td><code>filter</code> binds caller-named columns. A table lacking a named column drops its arm, never emitting it unfiltered.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="read.retrieve.engine-resolved-date"><td><a href="#read.retrieve.engine-resolved-date" class="clause-anchor"><code>read.retrieve.engine-resolved-date</code></a></td><td>The engine resolves each table’s publication column itself, outside the caller’s filter.</td><td>—</td></tr><tr id="read.retrieve.filter-budget"><td><a href="#read.retrieve.filter-budget" class="clause-anchor"><code>read.retrieve.filter-budget</code></a></td><td>A filter’s membership list holds at most 256 entries, with its condition count and total byte size bounded alongside.</td><td>—</td></tr><tr id="read.retrieve.filter-budget-refusal"><td><a href="#read.retrieve.filter-budget-refusal" class="clause-anchor"><code>read.retrieve.filter-budget-refusal</code></a></td><td>The budget is checked over the whole filter ahead of building any arm; an oversized or malformed condition raises <code>FilterBudgetExceeded</code> for the whole read.</td><td><a href="/adr/A-read/" class="record-ref">A-read</a></td></tr><tr id="read.retrieve.row-key-dedup"><td><a href="#read.retrieve.row-key-dedup" class="clause-anchor"><code>read.retrieve.row-key-dedup</code></a></td><td>A ranked read keeps one row per <code>(table, row key)</code>, newest ingestion first. The row key is the declared content-hash column, else null, never a digest over projected values.</td><td>—</td></tr><tr id="read.retrieve.row-key-stays-internal"><td><a href="#read.retrieve.row-key-stays-internal" class="clause-anchor"><code>read.retrieve.row-key-stays-internal</code></a></td><td>The row key is absent from the outer projection.</td><td>—</td></tr><tr id="read.retrieve.dedup-is-gated"><td><a href="#read.retrieve.dedup-is-gated" class="clause-anchor"><code>read.retrieve.dedup-is-gated</code></a></td><td>The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.</td><td>—</td></tr><tr id="read.retrieve.snippet"><td><a href="#read.retrieve.snippet" class="clause-anchor"><code>read.retrieve.snippet</code></a></td><td>A snippet concatenates up to three text columns: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.</td><td>—</td></tr><tr id="read.retrieve.identifiers-never-snippet"><td><a href="#read.retrieve.identifiers-never-snippet" class="clause-anchor"><code>read.retrieve.identifiers-never-snippet</code></a></td><td>Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet.</td><td>—</td></tr><tr id="read.retrieve.sidecar-generates-candidates"><td><a href="#read.retrieve.sidecar-generates-candidates" class="clause-anchor"><code>read.retrieve.sidecar-generates-candidates</code></a></td><td>The vector sidecar arm adds its top results to the recency window, each re-joined by <a href="/spec/51-enforcement/#authority.compose.vector-arm" class="clause-ref"><code>authority.compose.vector-arm</code></a>. Per-row scores equal the exact path’s.</td><td><a href="/adr/P5-rows-are-reached-only-through-the-caller/" class="record-ref">P5</a></td></tr><tr id="read.retrieve.sidecar-oversampling"><td><a href="#read.retrieve.sidecar-oversampling" class="clause-anchor"><code>read.retrieve.sidecar-oversampling</code></a></td><td>One probe requests 4 times the limit or 64 rows, whichever is larger, times 4 again where the request carries restriction context.</td><td>—</td></tr><tr id="read.retrieve.sidecar-size-cap"><td><a href="#read.retrieve.sidecar-size-cap" class="clause-anchor"><code>read.retrieve.sidecar-size-cap</code></a></td><td>A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.</td><td>—</td></tr><tr id="read.retrieve.sidecar-falls-back"><td><a href="#read.retrieve.sidecar-falls-back" class="clause-anchor"><code>read.retrieve.sidecar-falls-back</code></a></td><td>Any sidecar precondition failure — no snapshot, no matching sidecar, a multi-column or masked key, a dimension or manifest mismatch, an unreadable dump, mixed producers — falls back to the exact scan.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="read.retrieve.gain-never-loss"><td><a href="#read.retrieve.gain-never-loss" class="clause-anchor"><code>read.retrieve.gain-never-loss</code></a></td><td>For one reader the accelerated arm returns a superset of the exact path’s rows. Two readers with one query on one snapshot can recall different rows.</td><td>—</td></tr></tbody></table></div>
+<p>Candidate generation for one ranked read:</p>
+<pre class="mermaid">flowchart TD
+  Q["query text"] --> TOK["content tokens: lowercased, split, stop tokens dropped, cap 12"]
+  F["filter"] --> BUD{"inside the filter budget, 256 entries"}
+  BUD -- "no" --> E1["FilterBudgetExceeded"]
+  BUD -- "yes" --> ARMS["one arm per table under the prefix"]
+  TOK --> ARMS
+  ARMS -- "table lacks a filter column" --> DROP["arm drops"]
+  ARMS --> WIN["recency window: max of 8 x limit and 200"]
+  ARMS --> SC{"sidecar preconditions hold, under 64 MiB"}
+  SC -- "yes" --> PROBE["probe: max of 4 x limit and 64, x4 under restriction"]
+  SC -- "no" --> EXACT["exact scan"]
+  PROBE --> REJ["re-join through authority.compose.vector-arm"]
+  REJ --> WIN
+  EXACT --> WIN
+  WIN --> FLOOR["relevance floor: lexical null or past the floor, or vector above 0"]
+  FLOOR --> DEDUP["one row per table and row key, newest ingestion"]
+  DEDUP --> RANK["rank"]</pre>
+<p>unsettled: What adaptive over-fetch policy holds where rows a reader cannot see cluster near a query point and the visibility estimate under-fills the requested top-K? owner: read-path affects: read.retrieve</p>
+<h2 id="rank">rank</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="read.rank.three-legs"><td><a href="#read.rank.three-legs" class="clause-anchor"><code>read.rank.three-legs</code></a></td><td>Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two.</td><td>—</td></tr><tr id="read.rank.fusion"><td><a href="#read.rank.fusion" class="clause-anchor"><code>read.rank.fusion</code></a></td><td>Fusion computes <code>w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)</code> with default weights 0.6 and 0.4. A document absent from one leg scores zero there; ties break by identifier.</td><td>—</td></tr><tr id="read.rank.lexical-leg-matches-only"><td><a href="#read.rank.lexical-leg-matches-only" class="clause-anchor"><code>read.rank.lexical-leg-matches-only</code></a></td><td>The BM25 leg ranks a disjunction of should-clauses; a document matching no term is absent. An empty query, candidate set or result yields an empty ranking that falls back to recency order.</td><td>—</td></tr><tr id="read.rank.flat-window-full-credit"><td><a href="#read.rank.flat-window-full-credit" class="clause-anchor"><code>read.rank.flat-window-full-credit</code></a></td><td>A lexical window with no score spread awards every present document full credit.</td><td>—</td></tr><tr id="read.rank.question-window-is-a-tier"><td><a href="#read.rank.question-window-is-a-tier" class="clause-anchor"><code>read.rank.question-window-is-a-tier</code></a></td><td>A question’s timeframe projects a per-row in-window flag against the resolved publication column, and the flag leads the ordering. An out-of-window row sorts down and stays.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="read.rank.window-anchor-tolerance"><td><a href="#read.rank.window-anchor-tolerance" class="clause-anchor"><code>read.rank.window-anchor-tolerance</code></a></td><td>A publication instant more than 24 h past the question’s anchor sets the in-window flag false. A null or uncastable value sets it false too, and a basis field names which case applied.</td><td>—</td></tr><tr id="read.rank.ordering-casts-first"><td><a href="#read.rank.ordering-casts-first" class="clause-anchor"><code>read.rank.ordering-casts-first</code></a></td><td>Ordering compares publication values as <code>TIMESTAMPTZ</code> instants, casting a text value before any comparison.</td><td>because a text comparison of two date spellings orders strings, not instants</td></tr><tr id="read.rank.retrieval-block"><td><a href="#read.rank.retrieval-block" class="clause-anchor"><code>read.rank.retrieval-block</code></a></td><td>The <code>contextful.retrieval</code> block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries an integer score bounded by the content-token count, the in-window flag and the basis label.</td><td>—</td></tr><tr id="read.rank.internal-score-stays-internal"><td><a href="#read.rank.internal-score-stays-internal" class="clause-anchor"><code>read.rank.internal-score-stays-internal</code></a></td><td>The lexical engine’s own float score never crosses to a caller.</td><td>because a corpus-relative number drifts under a consumer’s threshold as the corpus changes</td></tr><tr id="read.rank.absent-block"><td><a href="#read.rank.absent-block" class="clause-anchor"><code>read.rank.absent-block</code></a></td><td>The retrieval block is omitted from every non-ranked statement and from a build with no ranker, and an absent block differs from one reporting zero matches.</td><td><a href="/adr/P2-a-refusal-is-typed-never-reads-as/" class="record-ref">P2</a></td></tr><tr id="read.rank.degradation-not-error"><td><a href="#read.rank.degradation-not-error" class="clause-anchor"><code>read.rank.degradation-not-error</code></a></td><td>Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the snippet, recency breaking ties. The result differs in order and still answers.</td><td><a href="/adr/A-topology/" class="record-ref">A-topology</a></td></tr><tr id="read.rank.fallback-counts-tokens"><td><a href="#read.rank.fallback-counts-tokens" class="clause-anchor"><code>read.rank.fallback-counts-tokens</code></a></td><td>Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.</td><td>—</td></tr><tr id="read.rank.caller-embedding"><td><a href="#read.rank.caller-embedding" class="clause-anchor"><code>read.rank.caller-embedding</code></a></td><td>A supplied <code>query_embedding</code> adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.</td><td><a href="/adr/A-topology/" class="record-ref">A-topology</a></td></tr><tr id="read.rank.lexical-index-cache"><td><a href="#read.rank.lexical-index-cache" class="clause-anchor"><code>read.rank.lexical-index-cache</code></a></td><td>The full-text index is keyed on a fingerprint over the candidate documents and cached in a FIFO of 64 entries. A changed snapshot, table set or time bound changes the fingerprint.</td><td>—</td></tr><tr id="read.rank.widened-window-statistics"><td><a href="#read.rank.widened-window-statistics" class="clause-anchor"><code>read.rank.widened-window-statistics</code></a></td><td>Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.</td><td>—</td></tr></tbody></table></div>
+<p>The ranking legs, their fallback, and the ordering they feed:</p>
+<pre class="mermaid">flowchart LR
+  C["candidate set"] --> V["cosine leg, clamped 0..1, from query_embedding"]
+  C --> L{"lexical backend linked"}
+  L -- "yes" --> B["BM25 leg, min-max over the window"]
+  L -- "no" --> TF["token fallback over the snippet, recency breaks ties"]
+  V --> FU["fusion: 0.6 vector + 0.4 lexical, ties by identifier"]
+  B --> FU
+  FU --> ORD["order: in-window flag first, then score"]
+  TF --> ORD
+  ORD --> BLK["contextful.retrieval block, integer score per row"]</pre>
+<p>unsettled: What replaces min-max window normalization as a cross-index score calibration, given one bounded leg and one corpus-relative unbounded leg? owner: read-path affects: read.rank</p>
+<h2 id="cache">cache</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="read.cache.hot-local-parquet"><td><a href="#read.cache.hot-local-parquet" class="clause-anchor"><code>read.cache.hot-local-parquet</code></a></td><td>The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.</td><td>—</td></tr><tr id="read.cache.cold-start"><td><a href="#read.cache.cold-start" class="clause-anchor"><code>read.cache.cold-start</code></a></td><td>A cold retrieval container reaches readiness within 8 s; a container holding no snapshot adds a whole-store pull before its first answer.</td><td>—</td></tr><tr id="read.cache.result-key"><td><a href="#read.cache.result-key" class="clause-anchor"><code>read.cache.result-key</code></a></td><td>A cached result keys on the policy subject (token scope, inference zone, incognito state), the token id and revocation epoch, the resolved snapshot ids, the bounds echo, the pin map and the statement hash.</td><td>because a hit crossing a restriction, snapshot, bound or revocation serves rows the caller is not owed</td></tr><tr id="read.cache.cache-is-opt-in"><td><a href="#read.cache.cache-is-opt-in" class="clause-anchor"><code>read.cache.cache-is-opt-in</code></a></td><td>The result cache is opt-in per table at a short time to live and off for a table tagged private.</td><td>—</td></tr><tr id="read.cache.snapshot-invalidates"><td><a href="#read.cache.snapshot-invalidates" class="clause-anchor"><code>read.cache.snapshot-invalidates</code></a></td><td>A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads <a href="/spec/10-store/#store.fold.non-blocking" class="clause-ref"><code>store.fold.non-blocking</code></a></td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="read.cache.keep-warm-is-per-deployment"><td><a href="#read.cache.keep-warm-is-per-deployment" class="clause-anchor"><code>read.cache.keep-warm-is-per-deployment</code></a></td><td>A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.</td><td>—</td></tr></tbody></table></div>
+<h2 id="resolve-pin">resolve-pin</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="read.resolve-pin.pin-parameter"><td><a href="#read.resolve-pin.pin-parameter" class="clause-anchor"><code>read.resolve-pin.pin-parameter</code></a></td><td><code>pin</code> maps a table name to a build identifier and resolves that table to the state the build published. An unnamed table resolves to the latest published state.</td><td>—</td></tr><tr id="read.resolve-pin.unknown-build"><td><a href="#read.resolve-pin.unknown-build" class="clause-anchor"><code>read.resolve-pin.unknown-build</code></a></td><td>An unknown or collected build identifier raises <code>PinnedBuildUnavailable</code>, naming the oldest identifier still pinnable. A pin never widens to the latest state.</td><td>because a substituted build applied to every remaining query passes the consumer’s cross-query comparison and stitches two states</td></tr><tr id="read.resolve-pin.earlier-bound-wins"><td><a href="#read.resolve-pin.earlier-bound-wins" class="clause-anchor"><code>read.resolve-pin.earlier-bound-wins</code></a></td><td>A pin and the store’s transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.</td><td>—</td></tr><tr id="read.resolve-pin.resolved-echo"><td><a href="#read.resolve-pin.resolved-echo" class="clause-anchor"><code>read.resolve-pin.resolved-echo</code></a></td><td>A response touching a published model carries <code>contextful.resolved</code>, mapping each such table to <code>{build_id, watermark}</code>, pinned or not.</td><td>—</td></tr><tr id="read.resolve-pin.absent-watermark"><td><a href="#read.resolve-pin.absent-watermark" class="clause-anchor"><code>read.resolve-pin.absent-watermark</code></a></td><td>The watermark is null for a materialization carrying none, distinct from a watermark of zero.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr><tr id="read.resolve-pin.consumer-comparison"><td><a href="#read.resolve-pin.consumer-comparison" class="clause-anchor"><code>read.resolve-pin.consumer-comparison</code></a></td><td>A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.</td><td><a href="/adr/P4-no-partial-empty-or-torn-state-reads/" class="record-ref">P4</a></td></tr></tbody></table></div>
+<h2 id="embed">embed</h2>
+<div class="table-wrap">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Clause</th><th>Statement</th><th>Why</th></tr></thead><tbody><tr id="read.embed.default-embedder"><td><a href="#read.embed.default-embedder" class="clause-anchor"><code>read.embed.default-embedder</code></a></td><td>The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.</td><td>—</td></tr><tr id="read.embed.default-embedder-reach"><td><a href="#read.embed.default-embedder-reach" class="clause-anchor"><code>read.embed.default-embedder-reach</code></a></td><td>The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.</td><td>—</td></tr><tr id="read.embed.model-identifier"><td><a href="#read.embed.model-identifier" class="clause-anchor"><code>read.embed.model-identifier</code></a></td><td>Every stored vector travels beside an <code>embedding_model</code> column naming the model that produced it; index identity and provenance resolve from the rows alone.</td><td>—</td></tr><tr id="read.embed.build-identity"><td><a href="#read.embed.build-identity" class="clause-anchor"><code>read.embed.build-identity</code></a></td><td>The handshake reports the linked retrieval backends (<code>duckdb</code>, <code>fts</code>, <code>hnsw</code>), connector families (<code>m365</code>, <code>s3</code>, <code>wasm</code>) and faces (<code>http</code>, <code>eval</code>, <code>otlp</code>), composed from the same feature declarations the version output reads.</td><td><a href="/adr/P3-a-misconfigured-process-refuses-to-start-one/" class="record-ref">P3</a></td></tr><tr id="read.embed.required-face"><td><a href="#read.embed.required-face" class="clause-anchor"><code>read.embed.required-face</code></a></td><td>A client passing <code>require: [...]</code> is refused ahead of its first read with <code>RequiredFaceAbsent</code> for any name outside the reported set. An engine reporting no set satisfies no requirement.</td><td><a href="/adr/A-topology/" class="record-ref">A-topology</a></td></tr><tr id="read.embed.absent-read-backend"><td><a href="#read.embed.absent-read-backend" class="clause-anchor"><code>read.embed.absent-read-backend</code></a></td><td>Without the embedded SQL engine linked, both read tools raise <code>ReadBackendAbsent</code> rather than answering from a narrower path.</td><td><a href="/adr/A-topology/" class="record-ref">A-topology</a></td></tr></tbody></table></div>
+<h2 id="shapes">Shapes</h2>
+<p>The registered relation for one table:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">CREATE OR REPLACE</span><span style="color:#D73A49;--shiki-dark:#F97583"> VIEW</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> orders</span><span style="color:#D73A49;--shiki-dark:#F97583"> AS</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">ROW_NUMBER</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">OVER</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    PARTITION</span><span style="color:#D73A49;--shiki-dark:#F97583"> BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_id</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> updated_at </span><span style="color:#D73A49;--shiki-dark:#F97583">DESC</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, _ingested_at </span><span style="color:#D73A49;--shiki-dark:#F97583">DESC</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  ) </span><span style="color:#D73A49;--shiki-dark:#F97583">AS</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> _rn</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> read_parquet(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    [ </span><span style="color:#032F62;--shiki-dark:#9ECBFF">'tables/orders/data/snapshots/snapshot-01773100800000000000/part-00000.parquet'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#9ECBFF">      'tables/orders/data/runs/run-0192/node-9f2c/part-00000.parquet'</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ],</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    union_by_name </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> true</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  )</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> _rn </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>The response projection, with <code>total_cents</code> a <code>BIGINT</code> column:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "columns"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"order_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"total_cents"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"placed_at"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "rows"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [[</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"A-8812"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"1299"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"2026-02-14T09:31:00Z"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">], [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"A-8813"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"9007199254740993"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"2026-02-14T09:44:12Z"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]],</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "truncated"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "contextful.bounds"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"as_of"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"2026-03-01T00:00:00Z"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"inclusive"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "contextful.resolved"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"orders"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"build_id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"b-0f31a7"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"watermark"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"2026-02-14T10:00:00Z"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> } },</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "contextful.policy.applied"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"rows_dropped"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">12</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"columns_masked"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"email"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">], </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"overfetch_rounds"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">1</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "contextful.retrieval"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "window"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">200</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"candidates_prefloor"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">200</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"candidates"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">61</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "matched"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">61</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"returned"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">20</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"in_window"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">14</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"deduped"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "padded"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">0</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"floor"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"since"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"2026-02-07"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>Per-row ranking fields: <code>{ "_score": 2, "_vscore": 0.71, "_in_window": true, "_date_basis": "published_at" }</code>.</p>
+<p>A template, and the tool it projects as:</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">[[</span><span style="color:#6F42C1;--shiki-dark:#B392F0">query_templates</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">id         = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"orders_by_region"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">sql        = </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"SELECT region, sum(total_cents) FROM orders WHERE placed_at >= ? AND region = ? GROUP BY region"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">parameters = [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"since:timestamp"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"region:string"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">max_rows   = </span><span style="color:#005CC5;--shiki-dark:#79B8FF">500</span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">{ </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"name"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"orders_by_region"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "inputSchema"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"type"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"object"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "properties"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"since"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"type"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"string"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"format"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"date-time"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"region"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"type"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"string"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> } },</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">    "required"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"since"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"region"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">] },</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  "limits"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="color:#005CC5;--shiki-dark:#79B8FF">"max_rows"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">500</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> } }</span></span></code></pre>
+<p>The path one ranked read takes:</p>
+<pre class="mermaid">flowchart TD
+  A[tool call or SQL text] --> B{authored by whom}
+  B -- capability token --> C[statement guard over the whole tree]
+  B -- operator --> D[raw execution]
+  C --> F[registered relations for this connection]
+  D --> F
+  F --> G[candidate generation: content tokens, floor, per-table arms]
+  G --> H[sidecar probe widens the window]
+  H --> I[restriction in one pass]
+  I --> J[three legs and fusion]
+  J --> K[row-key dedup, in-window tier, top-K]
+  K --> L[one response projection]</pre></article></main><aside class="toc" aria-label="On this page"><h2 class="group-label">On this page</h2><ul><li><a href="#register">register</a></li><li><a href="#guard">guard</a></li><li><a href="#respond">respond</a></li><li><a href="#retrieve">retrieve</a></li><li><a href="#rank">rank</a></li><li><a href="#cache">cache</a></li><li><a href="#resolve-pin">resolve-pin</a></li><li><a href="#embed">embed</a></li><li><a href="#shapes">Shapes</a></li></ul></aside></div><script type="module" src="/_astro/Base.astro_astro_type_script_index_0_lang.C0f5LPIN.js"></script></body></html>

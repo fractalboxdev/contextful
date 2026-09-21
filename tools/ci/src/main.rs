@@ -376,8 +376,10 @@ fn merge_base(base: &str) -> Result<String> {
     git(&["merge-base", base, "HEAD"])
 }
 
+/// Every Rust file under `crates/` or `tools/` outside a `tests/` directory: `src/`,
+/// `build.rs`, `benches/` and `examples/` alike.
 fn is_source(p: &str) -> bool {
-    (p.starts_with("crates/") || p.starts_with("tools/")) && p.ends_with(".rs") && p.contains("/src/")
+    (p.starts_with("crates/") || p.starts_with("tools/")) && p.ends_with(".rs") && !is_test(p)
 }
 
 fn is_test(p: &str) -> bool {

@@ -26,6 +26,19 @@ fn source_change_without_test_is_refused() {
 }
 
 #[test]
+fn a_rust_change_outside_src_without_test_is_refused() {
+    for path in ["crates/demo/build.rs", "crates/demo/benches/speed.rs", "crates/demo/examples/show.rs"] {
+        let r = Repo::init();
+        let base = r.head();
+        r.write(path, "fn main() {}\n");
+        r.commit("a Rust file outside src/");
+        let o = r.gate(&["--stage", "test-first", "--base", &base]);
+        assert!(!o.status.success(), "{path} passed with no test");
+        assert!(stderr(&o).contains("TestNotFirst"), "{path}: {}", stderr(&o));
+    }
+}
+
+#[test]
 fn a_test_already_green_on_the_base_is_refused() {
     let r = Repo::init();
     let base = r.head();
