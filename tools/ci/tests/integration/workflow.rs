@@ -21,3 +21,19 @@ fn the_workflow_dispatches_every_gate_stage() {
     assert!(yml.contains("\"checkLabel\": \"${{ matrix.stage }}\""));
     assert!(yml.contains("contextful-ci -- gate --stage ${{ matrix.stage }}"));
 }
+
+/// The pull-request workflow dispatches only a head commit pushed to the repository itself; a pull request from a fork dispatches no stage and so carries none of the required checks.
+// spec: assurance.gate.fork-dispatch@e05736d5
+#[test]
+fn a_fork_pull_request_dispatches_no_stage() {
+    let yml = std::fs::read_to_string(repo_root().join(".github/workflows/gate.yml")).unwrap();
+    let guard = yml
+        .lines()
+        .map(str::trim)
+        .find_map(|l| l.strip_prefix("if: "))
+        .expect("an `if:` guard on the dispatch job");
+    assert!(
+        guard.contains("github.event.pull_request.head.repo.full_name == github.repository"),
+        "the dispatch job runs for a fork's head commit: {guard}"
+    );
+}

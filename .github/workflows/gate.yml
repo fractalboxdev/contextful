@@ -12,6 +12,10 @@
 #
 # A contributor runs the same stages locally: `cargo run -q -p contextful-ci -- gate`.
 # `contextful-ci`'s integration suite fails when this matrix and its stage list differ.
+#
+# A fork's pull request dispatches nothing: the dispatch signs with the org's HMAC
+# secret and runs the head commit on the org's runner, so only a branch of this
+# repository reaches it, and a fork's missing checks hold its merge.
 name: gate
 
 on:
@@ -22,7 +26,7 @@ permissions:
 
 jobs:
   dispatch:
-    if: ${{ vars.FLAREDISPATCH_ENDPOINT != '' }}
+    if: ${{ vars.FLAREDISPATCH_ENDPOINT != '' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

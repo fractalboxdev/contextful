@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 13 | 173 | 46 | 18 | 13 | 6 | 0 | 6 |
+| `assurance` | 2 | 13 | 174 | 46 | 18 | 13 | 7 | 0 | 7 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 0 | 0 | 0 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
 | `corpus` | 1 | 8 | 58 | 24 | 6 | 0 | 17 | 0 | 17 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 143 | 1389 | 443 | 159 | 100 | 23 | 0 | |
+| **total** | 19 | 143 | 1390 | 443 | 159 | 100 | 24 | 0 | |
 
 Decision records: 17.
 
@@ -37,7 +37,7 @@ Decision records: 17.
 | 11 — The derive tier | 7 | 58 | 0 | absent |
 | 12 — The console | 11 | 29 | 0 | absent |
 | 13 — Disclosure | 5 | 20 | 0 | absent |
-| 14 — Assurance | 5 | 84 | 3 | open |
+| 14 — Assurance | 5 | 85 | 4 | open |
 
 Unscheduled operations: 8.
 
@@ -45,6 +45,7 @@ Unscheduled operations: 8.
 
 | Clause | Pinned by | Verdict |
 | --- | --- | --- |
+| `assurance.gate.fork-dispatch` | `tools/ci/tests/integration/workflow.rs::a_fork_pull_request_dispatches_no_stage` | performed |
 | `assurance.gate.secret-ciphertext` | `spec/pins.toml` | performed |
 | `assurance.gate.secret-scope` | `spec/pins.toml` | performed |
 | `assurance.structure-tree.mirror-unresolved` | `spec/pins.toml` | performed |
