@@ -4,5 +4,6 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "contextful-docs",
   "compatibility_date": "2026-09-01",
-  "assets": { "directory": "./dist" }
+  "assets": { "directory": "./dist" },
+  "routes": [{ "pattern": "spec.contextful.work", "custom_domain": true }]
 }
