@@ -48,6 +48,62 @@ cite, the errors and bounds they own, and a milestone's `Reach:` and `Acceptance
 | A new subject area | A contract entry in [`spec/terms/contract.toml`](./spec/terms/contract.toml), a fragment, then the file in the standard anatomy |
 | Splitting a long file | Add a path to the contract's file list and move an `owns` entry. No clause id changes |
 
+## Test first, acceptance first
+
+Every change to Rust source under `crates/` or `tools/` starts from a failing test.
+[`A-assurance`](./spec/adr/A-assurance.md) records the decision;
+the gate enforces it.
+
+1. **Acceptance first.** Before pinning the first clause of a roadmap milestone, add the
+   test its `Acceptance:` line names under `crates/acceptance/tests/integration/`, marked
+   `#[ignore]` while the milestone is open. It drives a built binary through the CLI, MCP
+   or HTTP surface and depends on no workspace package. A pin in a milestone with no
+   acceptance test raises `SpecAcceptanceMissing`.
+2. **Red.** Write the test under the package's `tests/integration/` and commit it with
+   the change. The `test-first` stage runs the change's test files against the base
+   commit's source and requires them to fail; a source change without one raises
+   `TestNotFirst`. Inline `#[cfg(test)]` tests count toward the workspace stage, not
+   toward this check.
+3. **Green.** Implement until `cargo test --workspace` passes, then pin the clause to the
+   test — an entry in `spec/pins.toml`, or a `// spec: <id>@<rev>` tag above the test
+   function — and run `contextful-spec pins` to raise the floor. A pin to an `#[ignore]`d
+   test, to a body still holding `todo!`, or through a tag whose rev no longer matches the
+   statement computes `broken`. `contextful-spec scaffold <contract>.<operation> --package
+   <path>` writes one tagged `todo!` test per refusal and limit clause to start from.
+   **Proofs.** A clause the Lean models under `formal/` prove carries a theorem pin beside
+   its test: `-- spec: <id>@<rev>` above the `theorem`, or a `theorem` entry in
+   `spec/pins.toml`. `contextful-spec scaffold <contract>.<operation> --lean <file>`
+   appends one tagged `sorry` theorem per clause, its statement as the docstring; a pinned
+   theorem still holding `sorry` computes `broken`. The theorem proves the model; the test
+   ties the model to the code; the clause performs when both do.
+4. **Refactor.** A behavior-preserving commit carries the commit trailer
+   `Test-First: refactor` and answers to the existing suite alone.
+5. **Close the milestone** by removing the acceptance test's `#[ignore]`; status reports
+   it `passing`.
+
+```sh
+cargo run -q -p contextful-ci -- gate                          # every stage, against origin/HEAD
+cargo run -q -p contextful-ci -- gate --stage test-first --base <rev>
+```
+
+The gate measures commits, so commit before running it.
+
+## The gate
+
+[`.github/workflows/gate.yml`](./.github/workflows/gate.yml) dispatches each stage of
+`contextful-ci gate` to the org's FlareDispatch Dispatcher as a `check` run. Each stage
+reports as its own check-run on the pull request:
+`flare-dispatch/check:schema`, `flare-dispatch/check:test-first`,
+`flare-dispatch/check:workspace` and `flare-dispatch/check:acceptance`. A local run and
+the remote check invoke the identical command; `contextful-ci`'s suite fails when the
+workflow's stage matrix and the subcommand's stage list differ.
+
+The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
+under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays
+untracked. A deliberate restatement of an engine rule carries `mirrors: <clause id>` at
+its site, and `contextful-ci mirrors` resolves each one. The pull-request template asks
+the four boundary questions.
+
 ## Engineering conventions
 
 [`spec/81-engineering.md`](./spec/81-engineering.md) is the sole home of how we

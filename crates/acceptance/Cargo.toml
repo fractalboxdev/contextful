@@ -1,0 +1,15 @@
+[package]
+name = "contextful-acceptance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Acceptance tests drive built binaries through their public surfaces. This package
+# depends on no workspace package; `contextful-ci gate --stage acceptance` checks that.
+
+[dependencies]
+tempfile = "3"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
