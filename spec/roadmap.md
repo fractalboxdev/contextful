@@ -4,8 +4,19 @@ The order in which the corpus is built. A milestone names the operations it clos
 `contextful-spec state` expands each to its clause set and reports the reach in
 [`status.md`](./status.md). An operation belongs to at most one milestone.
 
+Each milestone's `Reach:` line is its acceptance criterion, and its `Acceptance:` line
+names the test in `crates/acceptance/` that drives that reach through a built binary.
+The acceptance test lands before the first clause of its milestone is pinned, ignored
+while the milestone is open; the milestone closes when the ignore comes off and the
+test passes.
+
+A `Depth: operation` line specifies a milestone at operation level: its operations carry
+refusal and limit clauses, unsettled lines and diagrams, and no behavior clause. Removing
+the line when the milestone opens admits behavior clauses again.
+
 ```mermaid
 flowchart LR
+  Z[0 Test-first gate] --> A
   A[1 Authority core] --> B[2 Store]
   B --> C[3 Run path]
   C --> D[4 Ingest]
@@ -22,6 +33,16 @@ flowchart LR
   A --> N[14 Assurance]
 ```
 
+## 0 — The test-first gate
+
+| Operations | Intent |
+| --- | --- |
+| `assurance.automate`, `assurance.test` | Typed gate subcommands, the red-before-green check over every source change, and the acceptance package. |
+
+Reach: A change altering source with no test failing against its base reds the gate before merge.
+
+Acceptance: `contextful_acceptance::m00::m00_test_first_gate`
+
 ## 1 — The authority core
 
 | Operations | Intent |
@@ -31,6 +52,8 @@ flowchart LR
 
 Reach: An authority is admitted once, travels as a value, and is re-read at the effect about to act.
 
+Acceptance: `contextful_acceptance::m01::m01_authority_core`
+
 ## 2 — The store
 
 | Operations | Intent |
@@ -38,6 +61,8 @@ Reach: An authority is admitted once, travels as a value, and is re-read at the 
 | `store.lay-out`, `store.declare`, `store.reserve`, `store.reconcile`, `store.fold`, `store.index`, `store.bound-time`, `store.encrypt` | Layout, declaration, reserved columns, reconciliation, commit and compaction, indexes, the two clocks, at-rest encryption. |
 
 Reach: A table lands, a scan resolves its file list, and a reader opens the Parquet without the engine.
+
+Acceptance: `contextful_acceptance::m02::m02_store`
 
 ## 3 — The run path
 
@@ -48,6 +73,8 @@ Reach: A table lands, a scan resolves its file list, and a reader opens the Parq
 
 Reach: A run crashes mid-step and resumes from its journal without re-issuing a recorded effect.
 
+Acceptance: `contextful_acceptance::m03::m03_run_path`
+
 ## 4 — Ingest
 
 | Operations | Intent |
@@ -56,6 +83,8 @@ Reach: A run crashes mid-step and resumes from its journal without re-issuing a 
 | `connector.*` | — |
 
 Reach: A declared pipeline pulls from a real source, lands rows under a cursor, and never holds a credential in plaintext.
+
+Acceptance: `contextful_acceptance::m04::m04_ingest`
 
 ## 5 — The read face under enforcement
 
@@ -66,6 +95,8 @@ Reach: A declared pipeline pulls from a real source, lands rows under a cursor, 
 
 Reach: An agent asks over MCP and receives ranked rows the caller's authority admits.
 
+Acceptance: `contextful_acceptance::m05::m05_read_face`
+
 ## 6 — Sync and replicas
 
 | Operations | Intent |
@@ -73,6 +104,10 @@ Reach: An agent asks over MCP and receives ranked rows the caller's authority ad
 | `store.push`, `store.pull`, `store.probe`, `store.merge`, `store.lease`, `store.replicate` | The bucket wire format, push and pull, the conditional-write probe, merge, fenced leases and the replica. |
 
 Reach: Two nodes share one bucket and converge without a coordinator.
+
+Depth: operation
+
+Acceptance: `contextful_acceptance::m06::m06_sync`
 
 ## 7 — Memory
 
@@ -82,6 +117,10 @@ Reach: Two nodes share one bucket and converge without a coordinator.
 
 Reach: A synthesized belief supersedes its predecessor on new evidence, and a reader sees which grant produced it.
 
+Depth: operation
+
+Acceptance: `contextful_acceptance::m07::m07_memory`
+
 ## 8 — Accountability
 
 | Operations | Intent |
@@ -90,6 +129,10 @@ Reach: A synthesized belief supersedes its predecessor on new evidence, and a re
 
 Reach: An operator answers what a named person could have seen over a past window, from the store, in SQL.
 
+Depth: operation
+
+Acceptance: `contextful_acceptance::m08::m08_accountability`
+
 ## 9 — Visibility
 
 | Operations | Intent |
@@ -97,6 +140,10 @@ Reach: An operator answers what a named person could have seen over a past windo
 | `disclosure.mirror`, `disclosure.sweep`, `disclosure.reach`, `disclosure.bound-staleness`, `disclosure.declare-fidelity`, `disclosure.pack` | Source permissions mirrored as data, the sweep, reachability, the staleness budget and fidelity. |
 
 Reach: A revoked grant at the source stops answering within a declared bound.
+
+Depth: operation
+
+Acceptance: `contextful_acceptance::m09::m09_visibility`
 
 ## 10 — Cadence and the operator plane
 
@@ -107,6 +154,10 @@ Reach: A revoked grant at the source stops answering within a declared bound.
 
 Reach: Due work dispatches into a bounded pool, and a published hostname is probed for the posture it declares.
 
+Depth: operation
+
+Acceptance: `contextful_acceptance::m10::m10_cadence`
+
 ## 11 — The derive tier
 
 | Operations | Intent |
@@ -114,6 +165,10 @@ Reach: Due work dispatches into a bounded pool, and a published hostname is prob
 | `run.select`, `run.bind`, `run.exec`, `run.fetch`, `run.emit`, `run.parse-cues`, `run.test-engine` | Deferred per-row work over landed rows. |
 
 Reach: A pipeline reads the words inside a landed document and fills them into the parent row.
+
+Depth: operation
+
+Acceptance: `contextful_acceptance::m11::m11_derive`
 
 ## 12 — The console
 
@@ -123,6 +178,10 @@ Reach: A pipeline reads the words inside a landed document and fills them into t
 
 Reach: A visitor asks in their own words and gets an answer citing the rows behind it.
 
+Depth: operation
+
+Acceptance: `contextful_acceptance::m12::m12_console`
+
 ## 13 — Disclosure
 
 | Operations | Intent |
@@ -131,10 +190,16 @@ Reach: A visitor asks in their own words and gets an answer citing the rows behi
 
 Reach: Two parties compare against a benchmark neither can invert.
 
+Depth: operation
+
+Acceptance: `contextful_acceptance::m13::m13_disclosure`
+
 ## 14 — Assurance
 
 | Operations | Intent |
 | --- | --- |
-| `assurance.structure-tree`, `assurance.automate`, `assurance.test`, `assurance.build`, `assurance.gate`, `assurance.evaluate`, `assurance.baseline` | The build gate, test placement, typed automation and the retrieval-quality harness. |
+| `assurance.structure-tree`, `assurance.build`, `assurance.gate`, `assurance.evaluate`, `assurance.baseline` | The build gate, the build targets and the retrieval-quality harness. |
 
 Reach: The gate holds its resource budget and the evaluation floors are measured on every change.
+
+Acceptance: `contextful_acceptance::m14::m14_assurance`

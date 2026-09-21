@@ -18,6 +18,22 @@ A pipeline declares desired state over one source and the tables it lands. This 
 that declaration, the plan it compiles to, the stages a batch passes between a source and a
 committed run, and what a published table carries. `land` is the one statement of stage order.
 
+From declaration to a published table, and the contracts each step meets:
+
+```mermaid
+flowchart LR
+  MF["contextful.toml, pipelines/*.toml, pipelines/*.json"] -->|declare| SPEC["PipelineSpec · content_hash"]
+  SPEC -->|compile| PLAN["plan · flat node list"]
+  PLAN -->|"lowering"| RUN["run substrate · 30-run"]
+  SPEC -->|"backfill, seed"| CH[("chunk plan · catalog")]
+  CH --> RUN
+  SRC["source · connector contract"] --> RUN
+  RUN --> ST["secret guard, normalize, transform chain"]
+  ST --> LAND["land · batch write, commit"]
+  LAND --> STORE[("context store · store contract")]
+  LAND -->|publish| MAN["snapshot manifest · contract identity, freshness, build"]
+```
+
 ## declare
 
 | Clause | Statement | Why |
@@ -51,13 +67,13 @@ unsettled: Does `on_table_error` take a per-table override, and a cap on failed 
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `run.compile.authoring-surface` | The authoring surface runs at build time only and emits a content-hashed plan; nothing from it executes where the engine serves, and no build profile embeds a scripting runtime. | D02 |
+| `run.compile.authoring-surface` | The authoring surface runs at build time only and emits a content-hashed plan; nothing from it executes where the engine serves, and no build profile embeds a scripting runtime. | A-run |
 | `run.compile.plan-node` | A plan is a flat node list with predecessor edges: `step` (connector, optional retry), `sleep` (duration string), `awaitEvent` (optional timeout), `branch` (predicate, label-to-node-id map) and `parallel` (node ids). | — |
 | `run.compile.plan-version` | A plan's version is the leading 16 chars of the sha256 over the RFC 8785 canonical JSON of its `{id, nodes}`. | — |
 | `run.compile.plan-schema` | The plan type is defined once in a schema library; its JSON Schema is the contract every language binds to, and the run path deserializes plan JSON against it. | — |
-| `run.compile.inline-step-body` | A `step` body other than a connector reference raises `PipelineInlineStepBody`. | D02 |
-| `run.compile.control-flow` | A data-dependent conditional or loop in a workflow body raises `PipelineUndeclaredControlFlow`; branching travels as `branch` and fan-out as `parallel`. | D02 |
-| `run.compile.node-id-collision` | A node id repeated in one plan raises `PipelineNodeIdCollision`, naming the id and both positions. | D02 |
+| `run.compile.inline-step-body` | A `step` body other than a connector reference raises `PipelineInlineStepBody`. | A-run |
+| `run.compile.control-flow` | A data-dependent conditional or loop in a workflow body raises `PipelineUndeclaredControlFlow`; branching travels as `branch` and fan-out as `parallel`. | A-run |
+| `run.compile.node-id-collision` | A node id repeated in one plan raises `PipelineNodeIdCollision`, naming the id and both positions. | A-run |
 | `run.compile.lowering` | A plan lowers node by node onto {{run.journal.substrate-port}}. | — |
 
 ## transform
@@ -65,7 +81,7 @@ unsettled: Does `on_table_error` take a per-table override, and a cap on failed 
 | Clause | Statement | Why |
 | --- | --- | --- |
 | `run.transform.chain` | The chain is an ordered list of `select`, `rename`, `cast` and a single-column `filter`, declared once per pipeline and bound to the root table. | — |
-| `run.transform.arity` | A chain operation emitting more rows than it consumed raises `PipelineTransformArity`. | D02 |
+| `run.transform.arity` | A chain operation emitting more rows than it consumed raises `PipelineTransformArity`. | A-run |
 | `run.transform.filter` | A filter dropping a root row drops that row's nested children with it. | because a child landing under a parent id no surviving row carries is a dangling reference |
 | `run.transform.column-missing` | A filter or cast naming a column the batch does not carry raises `PipelineTransformColumnMissing`, printing the column and the table. | because a cast over an absent column otherwise lands the batch untransformed |
 | `run.transform.cast` | A cast rewrites one column's type and keeps its name and position. | — |
@@ -81,10 +97,10 @@ unsettled: Does the chain grow past these four operations, or does richer work s
 | `run.normalize.normalized-form` | The canonical form is nested Arrow structs and lists; relational shredding is a late projection at the sink, so a source landing in two sinks normalizes once. | — |
 | `run.normalize.mode` | `native` keeps nesting up to the sink's capability and explodes the rest with a downgrade schema-diff event; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key. | — |
 | `run.normalize.mode-resolution` | Mode resolves per stream per sink: explicit declaration, then sink capability, then `native`. | — |
-| `run.normalize.mode-unknown` | A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings. | D50 |
+| `run.normalize.mode-unknown` | A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings. | A-run |
 | `run.normalize.identity-columns` | Normalize injects a content-hash row id on every table, a load id on the root, a parent id and list index on each child, and a root id on a child nested deeper than one level. | — |
 | `run.normalize.row-id` | The row id hashes the row's own content, so a re-run of one input emits byte-identical ids. | — |
-| `run.normalize.list-index-missing` | A relational child table emitted without the list index that makes its projection reversible raises `PipelineListIndexMissing`, naming the parent and the list. | D50 |
+| `run.normalize.list-index-missing` | A relational child table emitted without the list index that makes its projection reversible raises `PipelineListIndexMissing`, naming the parent and the list. | A-run |
 | `run.normalize.nesting-depth` | Recursion stops at the declared depth, default five levels, landing a deeper subtree as one deferred-typing JSON column. | — |
 
 unsettled: Where does a schema-diff event land, given that the store keeps only the reconciled schema? owner: pipeline affects: run.normalize
@@ -107,16 +123,16 @@ unsettled: Is the credential pattern set host-owned, or extensible per deploymen
 | Clause | Statement | Why |
 | --- | --- | --- |
 | `run.land.stage-order` | A batch passes pull, the secret guard, the recorded pull, normalize, the transform chain, write-path redaction, shredding and batch write; the run then commits rows and position together through {{run.advance.commit-with-rows}}. | — |
-| `run.land.unknown-destination` | The local context store is the only destination, and synthesized artifacts write back through it; any other `destination` raises `PipelineUnknownDestination` at assembly, before any row moves. | D01 |
-| `run.land.no-host-arm` | The destination world declares no host arm, so a guest supplies no destination. | D01 |
+| `run.land.unknown-destination` | The local context store is the only destination, and synthesized artifacts write back through it; any other `destination` raises `PipelineUnknownDestination` at assembly, before any row moves. | A-topology |
+| `run.land.no-host-arm` | The destination world declares no host arm, so a guest supplies no destination. | A-topology |
 | `run.land.batch-write` | A landing table is created on first sight of its schema, {{store.reconcile.first-sight}}; each batch is written durably in its own call, optionally carrying its ordinal as the join key onto the run's request ledger. | — |
 | `run.land.irreconcilable-schema` | An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}. | — |
 | `run.land.commit-visibility` | A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run. | — |
 | `run.land.ingest-tally` | A fire reports `fetched`, `kept`, `skipped`, `failed`, `dropped_low_quality` and a per-source breakdown; a non-zero `failed` exits non-zero. | — |
-| `run.land.unreadable-input` | Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull. | D16 |
-| `run.land.partial-parse` | A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts. | D16 |
-| `run.land.parse-boundary` | A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it killable. | D16 |
-| `run.land.parse-crashed` | A non-zero exit or fatal signal from the decode process raises `PipelineParseCrashed` naming the input; no input ends the serving process. | D16 |
+| `run.land.unreadable-input` | Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull. | A-connector |
+| `run.land.partial-parse` | A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts. | A-connector |
+| `run.land.parse-boundary` | A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it killable. | A-connector |
+| `run.land.parse-crashed` | A non-zero exit or fatal signal from the decode process raises `PipelineParseCrashed` naming the input; no input ends the serving process. | A-connector |
 | `run.land.table-failed` | A table whose pull fails raises `PipelineTableFailed` carrying the table, the error kind and the run id; the fire then follows `on_table_error`. | because a failure is answerable by name only when it carries its table and run |
 
 ```mermaid
@@ -172,15 +188,15 @@ unsettled: What is the per-tick chunk cap, and how long does the retention windo
 | --- | --- | --- |
 | `run.seed.block` | `[pipeline.seed]` attaches a bulk-load source with a ceiling `below` expressed on the seeded table's `order_by` scale. | — |
 | `run.seed.one-land-path` | Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded under the `seeding` phase. | — |
-| `run.seed.declaration-missing` | A seeded table without `primary_key`, or with `order_by` left at the ingest stamp, raises `PipelineSeedDeclarationMissing` at plan and validate. | D09 |
-| `run.seed.ceiling-breached` | A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped. | D09 |
+| `run.seed.declaration-missing` | A seeded table without `primary_key`, or with `order_by` left at the ingest stamp, raises `PipelineSeedDeclarationMissing` at plan and validate. | A-run |
+| `run.seed.ceiling-breached` | A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped. | A-run |
 | `run.seed.ceiling-point` | The ceiling is evaluated on the root batch after normalize and the chain, before the write. | — |
-| `run.seed.ceiling-unevaluable` | A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`. | D09 |
+| `run.seed.ceiling-unevaluable` | A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`. | A-run |
 | `run.seed.scope` | Seed chunk and cursor state live under a `<table>#seed` scope apart from the live pipeline's. | — |
 | `run.seed.connector-pin` | A seeding run is exempt from {{run.own.pinned-plan-changed}} and records its connector identity as provenance. | — |
 | `run.seed.ceiling-binding` | On seed commit, an unset `monotonic` live position takes the ceiling when `below` parses as an integer; under the other cursor kinds the live position stays unset and starts from the source's beginning. | — |
 | `run.seed.fingerprint` | Each run probes the seed source for a cheap fingerprint, a stat or a HEAD and never a download, and compares it with the one stamped at commit. | — |
-| `run.seed.source-changed` | A differing fingerprint raises `PipelineSeedSourceChanged` naming both values; an equal one skips the load, and an unavailable one skips with a warning. | D09 |
+| `run.seed.source-changed` | A differing fingerprint raises `PipelineSeedSourceChanged` naming both values; an equal one skips the load, and an unavailable one skips with a warning. | A-run |
 | `run.seed.commands` | `seed status` prints each seeded table's ceiling, commit state and fingerprint match; `seed reset <pipeline> [--table T]` clears the seed's chunk plan. | — |
 | `run.seed.parity` | Over keys the vendor still returns, seeding then running live across an overlapping window yields a pure live backfill's row count and per-key winners; a key the vendor stopped returning keeps its seeded value. | — |
 | `run.seed.parity-audit` | `validate` audits the seed ordering over every landed row, not over the deduped view. | — |
@@ -201,6 +217,16 @@ unsettled: What is the per-tick chunk cap, and how long does the retention windo
 | `run.publish.manifest-section` | The manifest section carries `{contract_version, schema_fingerprint, build_id, last_built_at, watermark, max_lag, last_build_status, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build, an absent optional key omitted. | — |
 | `run.publish.semantics-version` | `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included. | — |
 | `run.publish.disclosure-digest` | A build records a digest over its declared disclosure policy, set-valued fields sorted, in the manifest and in the build log. | — |
+
+```mermaid
+flowchart LR
+  B["build"] --> ST["materialize into staging"]
+  ST --> CK{"columns, types, grain match the declared contract?"}
+  CK -->|no| REF["PipelineContractMismatch · last published state keeps serving"]
+  CK -->|yes| MC["snapshot manifest commit · data, contract identity, freshness, build"]
+  MC --> LOGS["contract-history, builds, holds logs · derived from manifests"]
+  HOLD["hold · build id, principal, expiry"] -.->|"collection skips"| MC
+```
 
 ## Shapes
 

@@ -18,6 +18,24 @@ source through recorded steps, lands rows through the sequence in `31-pipeline.m
 incremental position forward, and closes on a terminal status every surface reads. One
 executor answers for the journal, retry and cancellation across pipelines and the derive tier.
 
+One run, the durable state around it, and the contracts it meets:
+
+```mermaid
+flowchart LR
+  PLAN["plan reference · content-hashed"] --> RUN["runner"]
+  SRC["source · connector contract"] -->|"batches, pulled"| RUN
+  RUN <-->|"record · replay"| J[("journal + blob store")]
+  AW["POST /awake/:token"] -->|"resume payload"| J
+  RUN --> LAND["land path · 31-pipeline"]
+  LAND --> MARK["run commit marker · store contract"]
+  MARK --> CUR[("catalog cursor cache")]
+  STOP["stop mark on the run row"] -->|"polled every 500 ms"| RUN
+  RUN --> REC[("run record · reserved store table")]
+  RUN -. "events after durable change" .-> HUB["live projection · wire snapshot"]
+  REC -->|"terminal status reconciles"| HUB
+  HUB --> SUB["run-stream subscribers"]
+```
+
 ## journal
 
 | Clause | Statement | Why |
@@ -35,13 +53,30 @@ executor answers for the journal, retry and cancellation across pipelines and th
 | `run.journal.recorded-batch` | A journaled pull records the batch as the source handed it over, after {{run.guard-secrets.placement}} and ahead of the land path. | — |
 | `run.journal.replay-lands` | A journal hit hands the recorded batch to the land path, so a resumed run lands bytes identical to an uninterrupted one, batch ordinal included. | — |
 | `run.journal.ledger-settles-first` | The outbound request ledger settles durably before the entry recording its batch commits. | — |
-| `run.journal.redacting-source` | A pipeline declaring write-path redaction over a source that journals its pulls raises `JournalRedactionConflict` at manifest validation and again at run open, before the first pull. | D17 |
+| `run.journal.redacting-source` | A pipeline declaring write-path redaction over a source that journals its pulls raises `JournalRedactionConflict` at manifest validation and again at run open, before the first pull. | A-authority |
 | `run.journal.opt-out` | Pull journaling defaults on. A source whose pre-pull cursor cannot name the content it reads opts out through one constant, pinned against each source's declaration by a test. An empty pull is never journaled. | — |
 | `run.journal.escape-hatch` | Two escape hatches exist and no third: `journal.unsafe(label, effect)` for an idempotent read, and a source declaring that it journals no pull. Each carries its idempotency argument at a greppable call site. | — |
-| `run.journal.substrate-port` | The run-path substrate is one interface: start or resume a run for a content-hashed plan reference, record a step output, commit a cursor, suspend on an awakeable with a timeout, attach a retry schedule, describe capabilities. | D02 |
+| `run.journal.substrate-port` | The run-path substrate is one interface: start or resume a run for a content-hashed plan reference, record a step output, commit a cursor, suspend on an awakeable with a timeout, attach a retry schedule, describe capabilities. | A-run |
 | `run.journal.plan-pin` | A run resolves the plan reference it started against for its whole life. | — |
-| `run.journal.unwired-capability` | Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work. | D03 |
+| `run.journal.unwired-capability` | Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work. | A-topology |
 | `run.journal.machine-state` | Journal rows, execution owners and awakeables are machine-local state that a catalog rebuild leaves untouched and the file tree never reconstructs. | — |
+
+```mermaid
+sequenceDiagram
+  participant A as caller A
+  participant B as racing caller B
+  participant J as journal
+  participant V as vendor
+  A->>J: claim (execution_id, step_label, input_hash) as pending
+  B->>J: same key
+  J-->>B: wait for the recorded value
+  A->>V: effect, idempotency key derived from the entry key
+  V-->>A: response
+  A->>J: record value, inline up to 1 MiB, else a sha256-named blob
+  J-->>B: recorded value
+  Note over A,V: a crash before the write re-enters the effect under the same idempotency key
+  Note over A,J: a pending claim whose owner lease expired passes to the next caller
+```
 
 unsettled: Does the inline-versus-blob cutoff stay one number across every step kind? owner: run-path affects: run.journal
 
@@ -59,9 +94,9 @@ unsettled: How do fan-out bodies express an explicit join, and what does a parti
 | `run.advance.inclusive-boundary` | A polled load admits a row whose clock value is at or after the stored position, re-landing the boundary instant's rows on every poll. | because a clock coarser than the row grain otherwise drops a sibling sharing the boundary value, permanently and invisibly |
 | `run.advance.declared-key-required` | The boundary re-land is idempotent on a table declaring a key; on a keyless table the repeats accumulate in its union view. | — |
 | `run.advance.watermark-shape` | A watermark position serializes as `{"field": "<name>", "at": <value>}`, naming the column it was measured against. | — |
-| `run.advance.field-rename` | Opening a position whose stored field differs from the declared `incremental` field raises `CursorFieldMismatch` before any request leaves the host. | D09 |
+| `run.advance.field-rename` | Opening a position whose stored field differs from the declared `incremental` field raises `CursorFieldMismatch` before any request leaves the host. | A-run |
 | `run.advance.frontier` | The frontier counts every fetched row, landed or not. A committed position moves forward or holds; an empty or older window never rewinds it. | — |
-| `run.advance.unorderable-position` | A row with no orderable value in the clock field, or a stream switching between text and numeric positions mid-pass, raises `CursorPositionUnorderable`, terminal for the pull. | D09 |
+| `run.advance.unorderable-position` | A row with no orderable value in the clock field, or a stream switching between text and numeric positions mid-pass, raises `CursorPositionUnorderable`, terminal for the pull. | A-run |
 | `run.advance.turning-incremental-on` | Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current window once. | — |
 | `run.advance.skip-unchanged` | A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false. | — |
 | `run.advance.zero-row-commit` | A commit landing zero rows adds and replaces nothing, so a replacing table keeps its last non-empty state across a skip or an empty pull. | — |
@@ -72,17 +107,39 @@ unsettled: What bounds allowed lateness for an out-of-order source, and does a l
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `run.suspend.awakeable` | An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row beside the journal; an external party resumes by posting the token back. | D14 |
+| `run.suspend.awakeable` | An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row beside the journal; an external party resumes by posting the token back. | A-run |
 | `run.suspend.resume-is-a-step-output` | A resume payload is recorded as the awaited step's output under key `sha256("awakeable:" + token)`, so a run that resumes and then crashes reads it back without suspending again. | — |
 | `run.suspend.deadline` | A deadline is the creation instant plus a time-to-live, both caller-supplied RFC3339 Zulu strings; the core reads no wall clock. | — |
 | `run.suspend.timeout-is-sticky` | Expiry is evaluated against an injected instant; a suspension past its deadline becomes `timed_out` and stays so under any later instant. | — |
 | `run.suspend.idempotent-resolution` | Resolving a token again with the identical payload returns the recorded value. | — |
-| `run.suspend.conflicting-resolution` | A second resolution with a different payload raises `AwakeableAlreadyResolved` and leaves the recorded value untouched. | D14 |
-| `run.suspend.expired-token` | Resolving a token past its deadline raises `AwakeableTimedOut`. | D14 |
+| `run.suspend.conflicting-resolution` | A second resolution with a different payload raises `AwakeableAlreadyResolved` and leaves the recorded value untouched. | A-run |
+| `run.suspend.expired-token` | Resolving a token past its deadline raises `AwakeableTimedOut`. | A-run |
 | `run.suspend.unknown-token` | A token with no row raises `AwakeableUnknown` and allocates no state. | P2 |
 | `run.suspend.resume-route` | `POST /awake/:token` answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming. Both authenticate before touching the registry. | — |
 | `run.suspend.payload-offload` | A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it. | — |
 | `run.suspend.survives-restart` | The awakeable registry persists beside the journal; a restart drops no pending callback. | — |
+
+```mermaid
+sequenceDiagram
+  participant R as run
+  participant E as engine
+  participant X as external party
+  R->>E: await awakeable, creation instant + time-to-live
+  E->>E: mint single-use token, persist pending row
+  E-->>X: token
+  X->>E: POST /awake/:token with payload
+  alt no row for the token
+    E-->>X: 404 · AwakeableUnknown
+  else past the deadline
+    E-->>X: 410 · AwakeableTimedOut
+  else resolved earlier with another payload
+    E-->>X: 409 · AwakeableAlreadyResolved
+  else first or identical payload
+    E->>E: record payload as the awaited step output
+    E-->>X: 200 · recorded payload
+    E-->>R: resume
+  end
+```
 
 unsettled: Is resuming a suspension bound to a verified caller identity, or is possession of the single-use token the whole authority? owner: run-path affects: run.suspend
 
@@ -117,13 +174,29 @@ unsettled: Where does an in-flight schedule's attempt counter persist, so a cras
 | `run.own.execution-id-keys-the-journal` | Recorded work keys on the execution id; a catalog run id is the provenance of one attempt, so attempts under one owner resolve the same recorded values. | — |
 | `run.own.retirement` | Retiring an owner and caching its committed position share one catalog transaction; a later fire receives a fresh execution id even at a byte-identical position. A completed backfill chunk retires the same way. | — |
 | `run.own.marker-reconciles` | At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced it before any replay. | because a crash between marker and catalog otherwise replays a recorded pull into rows already committed |
-| `run.own.pinned-plan-changed` | While an owner is pending, a changed connector identity, component world or pipeline `content_hash` raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the pipeline and both identities. | D15 |
+| `run.own.pinned-plan-changed` | While an owner is pending, a changed connector identity, component world or pipeline `content_hash` raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the pipeline and both identities. | A-connector |
 | `run.own.pin-recovery` | Restoring the recorded build and resuming to completion clears a pending owner; an explicit chunk rewind retires the owners its window covers. | — |
 | `run.own.scope-independence` | A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity. | — |
 | `run.own.pin-release` | `success`, and a failure that landed zero batches, release the owner; every other status holds it. | — |
-| `run.own.admission-pin` | A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run. | D15 |
+| `run.own.admission-pin` | A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run. | A-connector |
 | `run.own.backpressure` | A source yields a stream of batches the runner pulls; the run path holds no unbounded buffer between source and destination. | — |
 | `run.own.one-commit-per-run` | One run produces one atomic commit per table; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step. | — |
+
+```mermaid
+flowchart TD
+  O["run open"] --> M{"commit marker newer than the cached position?"}
+  M -->|yes| RET["retire the pending owner that produced it"]
+  M -->|no| P{"pending owner?"}
+  RET --> FRESH["fresh execution id"]
+  P -->|no| FRESH
+  P -->|yes| PIN{"connector identity, world, content_hash unchanged?"}
+  PIN -->|no| ERR["ExecutionPinMismatch · terminal"]
+  PIN -->|yes| REPLAY["replay recorded steps under the owner"]
+  REPLAY --> CLOSE{"close status"}
+  FRESH --> CLOSE
+  CLOSE -->|"success, or a failure landing zero batches"| REL["release the owner"]
+  CLOSE -->|"any other status"| HOLD["hold the owner"]
+```
 
 ## cancel
 
@@ -134,14 +207,33 @@ unsettled: Where does an in-flight schedule's attempt counter persist, so a cras
 | `run.cancel.one-token` | Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait, a meter acquire and a subprocess wait. | because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled |
 | `run.cancel.poll-interval` | The token is fed by one catalog read before the run's first await and then one every 500 ms, the cancellation arm evaluated ahead of the work arm. | — |
 | `run.cancel.land-path-uncut` | The land path carries no stop check; a run whose bytes are home finishes landing and records the stop it did not fulfill. | — |
-| `run.cancel.abandoned-work` | Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone. | D14 |
-| `run.cancel.child-reaped` | A stop reaches a running subprocess chain through {{run.exec.process-group-kill}}, and the record is written `canceled` only after the group is reaped. | because a record reading canceled while a child still runs misstates what the machine is doing |
+| `run.cancel.abandoned-work` | Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone. | A-run |
+| `run.cancel.child-reaped` | A stop signals a running subprocess chain's process group, and the record is written `canceled` only after the group is reaped. | because a record reading canceled while a child still runs misstates what the machine is doing |
 | `run.cancel.storage-blip` | A failed poll read warns and keeps polling. | — |
-| `run.cancel.not-in-flight` | Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal. | D14 |
+| `run.cancel.not-in-flight` | Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal. | A-run |
 | `run.cancel.re-mark` | Marking an already-marked row overwrites it with the newer request. | — |
-| `run.cancel.distinct-terminal-status` | `canceled` is a terminal status apart from `failed`, and upstream health observations skip it. | D14 |
+| `run.cancel.distinct-terminal-status` | `canceled` is a terminal status apart from `failed`, and upstream health observations skip it. | A-run |
 | `run.cancel.resumable-remains` | A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position. | — |
 | `run.cancel.authority-from-the-record` | A stop authorizes against the pipeline read off the run record, never off the request. | — |
+
+```mermaid
+sequenceDiagram
+  participant O as operator
+  participant C as run row in the catalog
+  participant R as run
+  participant G as subprocess group
+  O->>C: stop · requested-at, scope, reason
+  alt row not pending, running or waiting
+    C-->>O: CancelTargetNotInFlight · 409
+  end
+  loop every 500 ms
+    R->>C: read the stop mark
+  end
+  C-->>R: cancellation token fires on every await
+  R->>G: signal the process group
+  G-->>R: reaped
+  R->>C: record canceled · Canceled tag, ledger settled, position unchanged
+```
 
 ## record
 
@@ -188,7 +280,7 @@ unsettled: What does a run-record manifest carry for a catalog rebuild to restor
 | `run.project.outputs-by-reference` | A step output appears as a post-redaction reference and a byte count, never inline; fetching the payload is a separately authorized request. | — |
 | `run.project.connect` | A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update. | — |
 | `run.project.broadcast-ring` | The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot. | — |
-| `run.project.unauthenticated-upgrade` | The run-stream socket authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`. | D10 |
+| `run.project.unauthenticated-upgrade` | The run-stream socket authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`. | A-read |
 | `run.project.read-only-socket` | A subscription is read-only; a stop travels as an authenticated route. | — |
 | `run.project.restart-discards` | A restart discards in-memory snapshots; a subscriber recovers history from the durable record. | — |
 | `run.project.delegated-progress` | A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot. | — |

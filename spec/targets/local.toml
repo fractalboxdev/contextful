@@ -1,0 +1,24 @@
+# Target profile — the local reference target. Every role collapses into one process;
+# `topology.deploy.parity` compares every other target's parts against this one.
+
+provider = "local"
+title    = "Local (reference)"
+serves   = "The reference output, development, and air-gapped single-node deployments."
+
+[[shape]]
+name     = "process"
+default  = true
+kind     = "daemon"
+profiles = ["full"]
+excludes = []
+
+[shape.roles]
+cron_tick    = "in-process scheduler"
+reconciler   = "in-process reconcile loop"
+orchestrator = "engine journal in the catalog"
+catalog      = "local catalog file, one process"
+object_store = "local filesystem under ./.contextful/, optional S3-compatible sync"
+query_face   = "contextful serve, in process"
+compute      = "in-process component host"
+secrets      = "environment and configured secret providers"
+realtime     = "in-process WebSocket"

@@ -7,7 +7,7 @@ use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::LazyLock;
 
-pub const CHECKS: [&str; 7] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render"];
+pub const CHECKS: [&str; 8] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render", "targets"];
 
 pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
     match name {
@@ -18,21 +18,22 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
         "rationale" => rationale(c),
         "state" => state(c),
         "render" => render(c),
+        "targets" => crate::targets::check(c),
         other => vec![Finding::new("lint", "", 0, "SpecUnknownCheck", format!("no check named `{other}`"))],
     }
 }
 
 static SEGMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9-]+$").unwrap());
-static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|D[0-9]{2})$").unwrap());
+static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|A-[a-z0-9-]+)$").unwrap());
 static RECORD_FILE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^spec/decisions/(P[0-9]+|D[0-9]{2})-[a-z0-9-]+\.md$").unwrap());
+    LazyLock::new(|| Regex::new(r"^spec/adr/(?:(P[0-9]+)-[a-z0-9-]+|(A-[a-z0-9-]+))\.md$").unwrap());
 static RAISES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"raises? `([A-Za-z0-9_]+)`").unwrap());
 static NUM_UNIT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|[^A-Za-z0-9_.])([0-9][0-9_,]*(?:\.[0-9]+)?)\s?([A-Za-z%]+)\b").unwrap());
-static IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_-]*$").unwrap());
 static UNSETTLED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^unsettled: .+\? owner: \S+ affects: ([a-z0-9-]+)\.([a-z0-9-]+)$").unwrap()
 });
+static SCENARIO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^WHEN .+, THEN .+$").unwrap());
 static ISO_DATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b").unwrap());
 static BARE_ISSUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(^|\s)#[0-9]+\b|/pull/[0-9]+").unwrap());
 static EXT_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\]\((https?://|[^)]*references/)").unwrap());
@@ -180,23 +181,22 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    let ids: BTreeSet<String> = c.clauses().map(|cl| cl.id.clone()).collect();
+    for sc in c.scenarios() {
+        let own = ids.contains(&sc.clause) && sc.clause.split('.').nth(1) == Some(sc.operation.as_str());
+        if !own {
+            out.push(f("anatomy", &sc.file, sc.line, "SpecScenario", format!("scenario names `{}`, not a clause of `{}`", sc.clause, sc.operation)));
+        }
+        let when_then = SCENARIO.is_match(&sc.text);
+        let fixture = sc.text.starts_with("`tests/fixtures/") && sc.text.ends_with('`');
+        if !(when_then || fixture) {
+            out.push(f("anatomy", &sc.file, sc.line, "SpecScenario", format!("scenario for `{}` is neither `WHEN … THEN …` nor a `tests/fixtures/` path", sc.clause)));
+        }
+    }
     out
 }
 
 // ---------------------------------------------------------------- registry
-
-fn normalize(s: &str) -> String {
-    let mut t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
-    for p in ["max", "min", "the"] {
-        if s.to_lowercase().starts_with(&format!("{p}-")) || s.to_lowercase().starts_with(&format!("{p}_")) {
-            t = t[p.len()..].to_string();
-        }
-    }
-    if t.len() > 5 && t.ends_with('s') {
-        t.pop();
-    }
-    t
-}
 
 fn registry(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
@@ -293,60 +293,6 @@ fn registry(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
-    // shared identifiers
-    let mut by_token: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    let mut first: BTreeMap<String, (String, usize)> = BTreeMap::new();
-    for cl in c.clauses() {
-        for (_, tok) in tick_spans(&cl.statement) {
-            if !IDENT.is_match(&tok) || tok.len() < 3 {
-                continue;
-            }
-            by_token.entry(tok.clone()).or_default().insert(cl.contract.clone());
-            first.entry(tok).or_insert((cl.file.clone(), cl.line));
-        }
-    }
-    for (tok, cs) in &by_token {
-        if cs.len() >= 2 && !c.reg.is_registered(tok) {
-            let (file, line) = &first[tok];
-            out.push(f("registry", file, *line, "SpecRegistry", format!("`{tok}` appears in {} contracts ({}) and is not registered", cs.len(), cs.iter().cloned().collect::<Vec<_>>().join(", "))));
-        }
-    }
-    // spelling collisions and aliases
-    let mut spell: BTreeMap<String, String> = BTreeMap::new();
-    let mut aliases: BTreeMap<String, String> = BTreeMap::new();
-    let mut add = |kind: &str, owner: &str, name: &str, out: &mut Vec<Finding>| {
-        let key = normalize(name);
-        let label = format!("{kind} `{name}` ({owner})");
-        if let Some(prev) = spell.get(&key) {
-            out.push(f("registry", &format!("spec/terms/{owner}.toml"), 0, "SpecSpellingCollision", format!("{label} collides with {prev}")));
-        } else {
-            spell.insert(key, label);
-        }
-    };
-    for (owner, fr) in &c.reg.fragments {
-        for k in fr.error.keys() {
-            add("error", owner, k, &mut out);
-        }
-        for k in fr.limit.keys() {
-            add("bound", owner, k, &mut out);
-        }
-        for (k, n) in &fr.term {
-            add("term", owner, k, &mut out);
-            for a in &n.aliases {
-                aliases.insert(a.clone(), k.clone());
-            }
-        }
-    }
-    for k in c.reg.wire.keys() {
-        add("wire", "wire", k, &mut out);
-    }
-    for cl in c.clauses() {
-        for (_, tok) in tick_spans(&cl.statement) {
-            if let Some(canon) = aliases.get(&tok) {
-                out.push(f("registry", &cl.file, cl.line, "SpecSpellingCollision", format!("`{}` uses alias `{tok}`; write `{canon}`", cl.id)));
-            }
-        }
-    }
     out
 }
 
@@ -356,22 +302,6 @@ fn without_ticks_keep(s: &str) -> String {
 }
 
 // ---------------------------------------------------------------- reference
-
-fn shingles(s: &str) -> BTreeSet<String> {
-    let clean: String = strip_pointers(s, " ")
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { ' ' })
-        .collect();
-    let w: Vec<&str> = clean.split_whitespace().collect();
-    let mut out = BTreeSet::new();
-    if w.len() >= 8 {
-        for i in 0..=w.len() - 8 {
-            out.insert(w[i..i + 8].join(" "));
-        }
-    }
-    out
-}
 
 fn reference(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
@@ -391,37 +321,14 @@ fn reference(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
-    let mut owner: HashMap<String, String> = HashMap::new();
-    let mut reported: BTreeSet<(String, String)> = BTreeSet::new();
-    for cl in c.clauses() {
-        for s in shingles(&cl.statement) {
-            match owner.get(&s) {
-                Some(other) if *other != cl.id => {
-                    let key = (other.clone(), cl.id.clone());
-                    if reported.insert(key) {
-                        out.push(f("reference", &cl.file, cl.line, "SpecRestatement", format!("`{}` restates `{other}`: \"{s}\"", cl.id)));
-                    }
-                }
-                Some(_) => {}
-                None => {
-                    owner.insert(s, cl.id.clone());
-                }
-            }
-        }
-    }
     out
 }
 
 // ---------------------------------------------------------------- rationale
 
-static LEAK: LazyLock<Regex> = LazyLock::new(|| {
-    word_re(&["because", "so that", "in order to", "the reason", "which is why", "judged on", "at the cost of", "trade-off"])
-});
-static MODAL: LazyLock<Regex> =
-    LazyLock::new(|| word_re(&["must", "never", "refuses", "is refused", "at most", "at least", "always"]));
 static APPENDIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^#+\s*(open questions|out of scope|see also)\s*$").unwrap());
 
-fn why_ok(why: &str) -> Result<Vec<String>, String> {
+pub fn why_ok(why: &str) -> Result<Vec<String>, String> {
     let w = why.trim();
     if w.is_empty() || w == "—" {
         return Ok(vec![]);
@@ -438,8 +345,8 @@ fn why_ok(why: &str) -> Result<Vec<String>, String> {
     }
 }
 
-fn record_id(rel: &str) -> Option<String> {
-    RECORD_FILE.captures(rel).map(|c| c[1].to_string())
+pub fn record_id(rel: &str) -> Option<String> {
+    RECORD_FILE.captures(rel).and_then(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()))
 }
 
 fn rationale(c: &Corpus) -> Vec<Finding> {
@@ -457,19 +364,23 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
         if cl.kind == "refusal" && matches!(cl.why.trim(), "" | "—") {
             out.push(f("rationale", &cl.file, cl.line, "SpecRecord", format!("refusal `{}` carries no Why", cl.id)));
         }
-        if LEAK.is_match(&without_ticks(&cl.statement)) {
-            out.push(f("rationale", &cl.file, cl.line, "SpecRationaleLeak", format!("`{}` statement carries rationale", cl.id)));
-        }
     }
     let mut records: BTreeSet<String> = BTreeSet::new();
     for d in c.records() {
         match record_id(&d.rel) {
-            None => out.push(f("rationale", &d.rel, 1, "SpecRecord", "record file name is not P<n>-<slug>.md or D<nn>-<slug>.md".into())),
+            None => out.push(f("rationale", &d.rel, 1, "SpecRecord", "record file name is not P<n>-<slug>.md or A-<contract>.md".into())),
             Some(id) => {
                 if !cited.contains_key(&id) {
                     out.push(f("rationale", &d.rel, 1, "SpecRecord", format!("record {id} is cited by no clause")));
                 }
-                record_anatomy(d, &id, &mut out);
+                if let Some(contract) = id.strip_prefix("A-") {
+                    if !c.reg.contracts.contains_key(contract) {
+                        out.push(f("rationale", &d.rel, 1, "SpecRecord", format!("{id} names no contract")));
+                    }
+                    contract_adr_anatomy(d, &id, &mut out);
+                } else {
+                    record_anatomy(d, &id, &mut out);
+                }
                 records.insert(id);
             }
         }
@@ -487,16 +398,9 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
         .collect();
     for d in c.contracts() {
         for (n, l, k) in d.each() {
-            let plain = without_ticks(l);
             match k {
-                LineKind::Prose | LineKind::TableRow | LineKind::Heading => {
-                    if LEAK.is_match(&plain) {
-                        out.push(f("rationale", &d.rel, n, "SpecRationaleLeak", "rationale outside a Why cell".into()));
-                    }
-                    if MODAL.is_match(&plain) {
-                        out.push(f("rationale", &d.rel, n, "SpecStrayModal", format!("modal `{}` outside a clause row", MODAL.find(&plain).unwrap().as_str())));
-                    }
-                    if k == LineKind::Heading && APPENDIX.is_match(l) {
+                LineKind::Heading => {
+                    if APPENDIX.is_match(l) {
                         out.push(f("rationale", &d.rel, n, "SpecUnsettled", "appendix heading".into()));
                     }
                 }
@@ -556,11 +460,50 @@ fn record_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
     if words > 400 {
         out.push(r(1, format!("{words} words, over 400")));
     }
-    // options table
     let Some(start) = sections.iter().find(|s| s.1 == "Options").map(|s| s.0) else { return };
+    options_table(d, start, "Options", out);
+}
+
+fn words_of<'a>(lines: impl Iterator<Item = &'a str>) -> usize {
+    lines.filter(|l| !is_separator(l)).map(|l| l.replace('|', " ").split_whitespace().count()).sum()
+}
+
+/// `A-<contract>.md`: a title, a Status line, then one `## <decision>` section per decision,
+/// each holding one options table within its word limit.
+fn contract_adr_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
+    let r = |line: usize, msg: String| f("rationale", &d.rel, line, "SpecRecord", msg);
+    let first = d.lines.first().cloned().unwrap_or_default();
+    if !first.starts_with(&format!("# {id} — ")) {
+        out.push(r(1, format!("first line is not `# {id} — <title>`")));
+    }
+    if !d.lines.iter().any(|l| l.starts_with("**Status:**")) {
+        out.push(r(1, "no `**Status:**` line".into()));
+    }
+    let heads: Vec<(usize, String)> = d
+        .each()
+        .filter(|(_, _, k)| *k == LineKind::Heading)
+        .filter_map(|(n, l, _)| l.strip_prefix("## ").map(|t| (n, t.trim().to_string())))
+        .collect();
+    if heads.is_empty() {
+        out.push(r(1, "holds no `## <decision>` section".into()));
+    }
+    for (i, (n, title)) in heads.iter().enumerate() {
+        let end = heads.get(i + 1).map(|h| h.0).unwrap_or(usize::MAX);
+        let words = words_of(d.each().filter(|(m, _, _)| *m > *n && *m < end).map(|(_, l, _)| l));
+        if words > 250 {
+            out.push(r(*n, format!("section `{title}` is {words} words, over 250")));
+        }
+        options_table(d, *n, title, out);
+    }
+}
+
+/// The table after line `start` and before the next `## `: `Option | Lost on | Cost`,
+/// two to five rows, one `*(chosen)*` with `—`, every other row naming its criterion.
+fn options_table(d: &Doc, start: usize, section: &str, out: &mut Vec<Finding>) {
+    let r = |line: usize, msg: String| f("rationale", &d.rel, line, "SpecRecord", msg);
     let mut rows = Vec::new();
     let mut header = None;
-    for (n, l, _) in d.each().skip(start) {
+    for (n, l, _) in d.each().filter(|(n, _, _)| *n > start) {
         if l.starts_with("## ") {
             break;
         }
@@ -573,25 +516,28 @@ fn record_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
         }
     }
     match header {
-        Some((n, h)) if h != ["Option", "Lost on", "Cost"] => out.push(r(n, "Options table is not headed Option | Lost on | Cost".into())),
-        None => out.push(r(start, "Options holds no table".into())),
+        Some((n, h)) if h != ["Option", "Lost on", "Cost"] => out.push(r(n, format!("`{section}`: Options table is not headed Option | Lost on | Cost"))),
+        None => {
+            out.push(r(start, format!("`{section}`: holds no Options table")));
+            return;
+        }
         _ => {}
     }
     if !(2..=5).contains(&rows.len()) {
-        out.push(r(start, format!("Options holds {} rows, want 2 to 5", rows.len())));
+        out.push(r(start, format!("`{section}`: Options holds {} rows, want 2 to 5", rows.len())));
     }
-    let chosen: Vec<_> = rows.iter().filter(|(_, c)| c.first().map(|s| s.contains("*(chosen)*")).unwrap_or(false)).collect();
-    if chosen.len() != 1 {
-        out.push(r(start, format!("{} rows marked *(chosen)*, want 1", chosen.len())));
+    let chosen = rows.iter().filter(|(_, c)| c.first().map(|s| s.contains("*(chosen)*")).unwrap_or(false)).count();
+    if chosen != 1 {
+        out.push(r(start, format!("`{section}`: {chosen} rows marked *(chosen)*, want 1")));
     }
     for (n, row) in &rows {
         let is_chosen = row.first().map(|s| s.contains("*(chosen)*")).unwrap_or(false);
         let lost = row.get(1).map(|s| s.trim()).unwrap_or("");
         if is_chosen && lost != "—" {
-            out.push(r(*n, "the chosen row's Lost on is not `—`".into()));
+            out.push(r(*n, format!("`{section}`: the chosen row's Lost on is not `—`")));
         }
         if !is_chosen && (lost.is_empty() || lost == "—") {
-            out.push(r(*n, "a rejected option names no criterion it lost on".into()));
+            out.push(r(*n, format!("`{section}`: a rejected option names no criterion it lost on")));
         }
     }
 }
@@ -613,31 +559,384 @@ pub fn load_pins(c: &Corpus) -> PinsFile {
         .unwrap_or_default()
 }
 
-/// `performed` when the artifact's final segment is defined under `crates/`.
-pub fn verdict(c: &Corpus, pin: &BTreeMap<String, String>) -> &'static str {
-    let Some((kind, path)) = pin.iter().next() else { return "broken" };
+/// Where a pinned artifact's final segment is defined, if anywhere.
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum Resolution {
+    Absent,
+    Ignored,
+    Unfinished,
+    Defined,
+}
+
+/// Resolve an artifact path under the given roots: `Defined` when its final segment
+/// is defined there, `Ignored` when that definition is a test carrying `#[ignore]`.
+pub fn resolve(c: &Corpus, kind: &str, path: &str, roots: &[&str]) -> Resolution {
     let last = path.rsplit([':', '.']).next().unwrap_or(path);
-    let pat = match kind.as_str() {
+    let pat = match kind {
         "test" => format!(r"\bfn\s+{}\b", regex::escape(last)),
         "theorem" => format!(r"\b(theorem|lemma)\s+{}\b", regex::escape(last)),
         _ => format!(r"\b(fn|struct|enum|trait|type|const|static|mod)\s+{}\b", regex::escape(last)),
     };
     let re = Regex::new(&pat).unwrap();
-    let crates = c.root.join("crates");
-    if !crates.exists() {
-        return "broken";
-    }
-    for e in walkdir::WalkDir::new(crates).into_iter().flatten() {
-        let p = e.path();
-        if p.extension().map(|x| x == "rs" || x == "lean").unwrap_or(false) {
-            if let Ok(s) = std::fs::read_to_string(p) {
-                if re.is_match(&s) {
-                    return "performed";
-                }
+    for root in roots {
+        let dir = c.root.join(root);
+        let walk = walkdir::WalkDir::new(dir).into_iter().filter_entry(|e| {
+            let n = e.file_name().to_string_lossy();
+            n != "target" && n != "node_modules"
+        });
+        for e in walk.flatten() {
+            let p = e.path();
+            if !p.extension().map(|x| x == "rs" || x == "lean").unwrap_or(false) {
+                continue;
+            }
+            let Ok(s) = std::fs::read_to_string(p) else { continue };
+            if let Some(m) = re.find(&s) {
+                return if kind == "theorem" && lean_unfinished(&s[m.start()..]) {
+                    Resolution::Unfinished
+                } else if kind != "test" {
+                    Resolution::Defined
+                } else if ignored(&s[..m.start()]) {
+                    Resolution::Ignored
+                } else if unfinished(&s[m.start()..]) {
+                    Resolution::Unfinished
+                } else {
+                    Resolution::Defined
+                };
             }
         }
     }
-    "broken"
+    Resolution::Absent
+}
+
+/// Whether the attribute block directly above a definition holds `#[ignore`.
+fn ignored(before: &str) -> bool {
+    for l in before.lines().rev().map(str::trim) {
+        if l.is_empty() || l.starts_with("fn") || l.starts_with("pub") || l.starts_with("async") {
+            continue;
+        }
+        if !(l.starts_with("#[") || l.starts_with("///") || l.starts_with("//")) {
+            return false;
+        }
+        if l.starts_with("#[ignore") {
+            return true;
+        }
+    }
+    false
+}
+
+pub const PIN_ROOTS: [&str; 3] = ["crates", "tools", "formal"];
+pub const ACCEPTANCE_ROOT: &str = "crates/acceptance";
+
+/// Whether the Lean declaration starting `decl` — up to the next line at column zero —
+/// holds `sorry` or `admit`.
+fn lean_unfinished(decl: &str) -> bool {
+    let mut text = String::new();
+    for (i, l) in decl.lines().enumerate() {
+        if i > 0 && !l.is_empty() && !l.starts_with([' ', '\t']) {
+            break;
+        }
+        text.push_str(l);
+        text.push('\n');
+    }
+    SORRY.is_match(&text)
+}
+
+/// Whether the body of the function starting `def` holds a line opening with `todo!`.
+fn unfinished(def: &str) -> bool {
+    let Some(open) = def.find('{') else { return false };
+    let mut depth = 0usize;
+    let mut end = def.len();
+    for (i, ch) in def[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = open + i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    def[open + 1..end].lines().any(|l| l.trim_start().starts_with("todo!"))
+}
+
+/// A milestone's acceptance test: `absent`, `open` when ignored, `passing` otherwise.
+pub fn acceptance_verdict(c: &Corpus, path: Option<&str>) -> &'static str {
+    match path.map(|p| resolve(c, "test", p, &[ACCEPTANCE_ROOT])) {
+        Some(Resolution::Defined | Resolution::Unfinished) => "passing",
+        Some(Resolution::Ignored) => "open",
+        _ => "absent",
+    }
+}
+
+// ---------------------------------------------------------------- pins, both forms
+
+static SORRY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(sorry|admit)\b").unwrap());
+static LEAN_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^--\s*spec:\s*(\S+?)@(\S*)\s*$").unwrap());
+static LEAN_DECL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:(?:private|protected|noncomputable)\s+)*(theorem|lemma|def|abbrev|structure|inductive|instance)\s+([^\s:({\[]+)").unwrap()
+});
+static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^//\s*spec:\s*(\S+?)@(\S*)\s*$").unwrap());
+static FN_LINE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?:r#)?([A-Za-z_][A-Za-z0-9_]*)").unwrap()
+});
+
+/// A tag's view of the function it sits above.
+#[derive(Clone, Debug)]
+pub struct Tagged {
+    pub rev: String,
+    pub function: Option<String>,
+    pub ignored: bool,
+    pub unfinished: bool,
+}
+
+/// One pin: a `spec/pins.toml` entry, or a `// spec: <id>@<rev>` tag above a test.
+#[derive(Clone, Debug)]
+pub struct Pin {
+    pub clause: String,
+    pub kind: String,
+    pub path: String,
+    pub file: String,
+    pub line: usize,
+    pub tag: Option<Tagged>,
+}
+
+impl Pin {
+    /// The test function this pin names, when it names one.
+    pub fn test_name(&self) -> Option<&str> {
+        self.name_of("test")
+    }
+
+    /// The theorem this pin names, when it names one.
+    pub fn theorem_name(&self) -> Option<&str> {
+        self.name_of("theorem")
+    }
+
+    fn name_of(&self, kind: &str) -> Option<&str> {
+        if self.kind != kind {
+            return None;
+        }
+        match &self.tag {
+            Some(t) => t.function.as_deref(),
+            None => self.path.rsplit([':', '.']).next(),
+        }
+    }
+
+    /// Where the pin is written: `spec/pins.toml`, or the tagged file and function.
+    /// No line number, so a render survives edits above the test.
+    pub fn site(&self) -> String {
+        match &self.tag {
+            Some(t) => format!("{}::{}", self.file, t.function.as_deref().unwrap_or("?")),
+            None => self.file.clone(),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum PinState {
+    Performed,
+    Absent,
+    Ignored,
+    Unfinished,
+    Unattached,
+    Stale,
+}
+
+/// Every `// spec:` tag under `crates/` and `tools/`, in path and line order.
+pub fn scan_tags(c: &Corpus) -> Vec<Pin> {
+    let mut out = Vec::new();
+    for root in PIN_ROOTS {
+        let walk = walkdir::WalkDir::new(c.root.join(root)).sort_by_file_name().into_iter().filter_entry(|e| {
+            let n = e.file_name().to_string_lossy();
+            n != "target" && n != "node_modules"
+        });
+        for e in walk.flatten() {
+            let p = e.path();
+            let ext = p.extension().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
+            if ext != "rs" && ext != "lean" {
+                continue;
+            }
+            let Ok(s) = std::fs::read_to_string(p) else { continue };
+            let rel = p.strip_prefix(&c.root).unwrap_or(p).to_string_lossy().replace('\\', "/");
+            if ext == "lean" {
+                out.extend(lean_tags(&s, &rel));
+                continue;
+            }
+            let mut offsets = Vec::new();
+            let mut at = 0;
+            for l in s.split_inclusive('\n') {
+                offsets.push(at);
+                at += l.len();
+            }
+            let lines: Vec<&str> = s.lines().collect();
+            for (i, l) in lines.iter().enumerate() {
+                let Some(cap) = TAG.captures(l.trim()) else { continue };
+                let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false };
+                for (j, next) in lines.iter().enumerate().skip(i + 1) {
+                    let t = next.trim();
+                    if t.is_empty() || t.starts_with("//") || t.starts_with("#[") {
+                        continue;
+                    }
+                    if let Some(f) = FN_LINE.captures(t) {
+                        let def = offsets[j];
+                        tagged.function = Some(f[1].to_string());
+                        tagged.ignored = ignored(&s[..def]);
+                        tagged.unfinished = unfinished(&s[def..]);
+                    }
+                    break;
+                }
+                out.push(Pin {
+                    clause: cap[1].to_string(),
+                    kind: "test".into(),
+                    path: tagged.function.clone().unwrap_or_default(),
+                    file: rel.clone(),
+                    line: i + 1,
+                    tag: Some(tagged),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// `-- spec: <id>@<rev>` tags in one Lean file, each attached to the declaration below it
+/// once blank lines, comments, docstrings and attributes are skipped.
+fn lean_tags(s: &str, rel: &str) -> Vec<Pin> {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = s.lines().collect();
+    let mut offsets = Vec::new();
+    let mut at = 0;
+    for l in s.split_inclusive('\n') {
+        offsets.push(at);
+        at += l.len();
+    }
+    for (i, l) in lines.iter().enumerate() {
+        let Some(cap) = LEAN_TAG.captures(l.trim()) else { continue };
+        let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false };
+        let mut kind = "theorem";
+        let mut in_doc = false;
+        for (j, next) in lines.iter().enumerate().skip(i + 1) {
+            let t = next.trim();
+            if in_doc {
+                in_doc = !t.contains("-/");
+                continue;
+            }
+            if t.starts_with("/-") {
+                in_doc = !t.contains("-/");
+                continue;
+            }
+            if t.is_empty() || t.starts_with("--") || t.starts_with("@[") {
+                continue;
+            }
+            if let Some(d) = LEAN_DECL.captures(t) {
+                if !matches!(&d[1], "theorem" | "lemma") {
+                    kind = "item";
+                }
+                tagged.function = Some(d[2].to_string());
+                tagged.unfinished = lean_unfinished(&s[offsets[j]..]);
+            }
+            break;
+        }
+        out.push(Pin {
+            clause: cap[1].to_string(),
+            kind: kind.into(),
+            path: tagged.function.clone().unwrap_or_default(),
+            file: rel.to_string(),
+            line: i + 1,
+            tag: Some(tagged),
+        });
+    }
+    out
+}
+
+/// Every pin, `spec/pins.toml` entries first, grouped by the clause id each names.
+pub fn pins_by_clause(c: &Corpus) -> BTreeMap<String, Vec<Pin>> {
+    let mut out: BTreeMap<String, Vec<Pin>> = BTreeMap::new();
+    for (id, pin) in load_pins(c).pin {
+        let (kind, path) = pin.into_iter().next().unwrap_or_default();
+        out.entry(id.clone()).or_default().push(Pin { clause: id, kind, path, file: "spec/pins.toml".into(), line: 0, tag: None });
+    }
+    for pin in scan_tags(c) {
+        out.entry(pin.clause.clone()).or_default().push(pin);
+    }
+    out
+}
+
+pub fn pin_state(c: &Corpus, pin: &Pin) -> PinState {
+    match &pin.tag {
+        None => match resolve(c, &pin.kind, &pin.path, &PIN_ROOTS) {
+            Resolution::Defined => PinState::Performed,
+            Resolution::Ignored => PinState::Ignored,
+            Resolution::Unfinished => PinState::Unfinished,
+            Resolution::Absent => PinState::Absent,
+        },
+        Some(t) => {
+            let current = c.clauses().find(|cl| cl.id == pin.clause).map(|cl| statement_rev(&cl.statement));
+            if t.function.is_none() {
+                PinState::Unattached
+            } else if current.as_deref() != Some(t.rev.as_str()) {
+                PinState::Stale
+            } else if t.ignored {
+                PinState::Ignored
+            } else if t.unfinished {
+                PinState::Unfinished
+            } else {
+                PinState::Performed
+            }
+        }
+    }
+}
+
+/// The distinct test functions pinning one clause.
+pub fn pinned_tests(pins: &[Pin]) -> BTreeSet<&str> {
+    pins.iter().filter_map(Pin::test_name).collect()
+}
+
+/// The distinct theorems pinning one clause.
+pub fn pinned_theorems(pins: &[Pin]) -> BTreeSet<&str> {
+    pins.iter().filter_map(Pin::theorem_name).collect()
+}
+
+/// `performed` when every pin of the clause performs and at most one test and one
+/// theorem pin it; `broken` otherwise.
+pub fn clause_verdict(c: &Corpus, pins: &[Pin]) -> &'static str {
+    let single = pinned_tests(pins).len() <= 1 && pinned_theorems(pins).len() <= 1;
+    if single && pins.iter().all(|p| pin_state(c, p) == PinState::Performed) {
+        "performed"
+    } else {
+        "broken"
+    }
+}
+
+/// A milestone's `Reach:` and `Acceptance:` lines: heading, heading line, reach text, acceptance test path.
+pub struct MilestoneLines {
+    pub heading: String,
+    pub line: usize,
+    pub reach: Option<String>,
+    pub acceptance: Option<String>,
+    /// A `Depth: operation` line: the milestone admits only refusal and limit clauses.
+    pub operation_depth: bool,
+}
+
+pub fn milestone_lines(c: &Corpus) -> Vec<MilestoneLines> {
+    let mut out: Vec<MilestoneLines> = Vec::new();
+    let Some(d) = c.docs.iter().find(|d| d.role == Role::Plan) else { return out };
+    for (n, l, k) in d.each() {
+        if k == LineKind::Heading && l.starts_with("## ") {
+            out.push(MilestoneLines { heading: l[3..].trim().to_string(), line: n, reach: None, acceptance: None, operation_depth: false });
+        } else if let Some(m) = out.last_mut() {
+            if let Some(rest) = l.strip_prefix("Reach: ") {
+                m.reach = Some(rest.trim().to_string());
+            } else if l.trim() == "Depth: operation" {
+                m.operation_depth = true;
+            } else if let Some(rest) = l.strip_prefix("Acceptance: ") {
+                m.acceptance = tick_spans(rest).into_iter().next().map(|(_, t)| t);
+            }
+        }
+    }
+    out
 }
 
 /// A roadmap milestone: its heading, its line, and each named operation with its line.
@@ -713,19 +1012,55 @@ pub fn expand_roadmap(c: &Corpus) -> (BTreeMap<String, String>, Vec<Finding>) {
 fn state(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
     let pins = load_pins(c);
+    let all = pins_by_clause(c);
     let clauses = c.clause_map();
     let mut count: BTreeMap<String, i64> = BTreeMap::new();
-    for (id, pin) in &pins.pin {
+    for (id, group) in &all {
         let Some(cl) = clauses.get(id) else {
-            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin `{id}` names no clause")));
+            for p in group {
+                let what = if p.tag.is_some() { "tag" } else { "pin" };
+                out.push(f("state", &p.file, p.line, "SpecBrokenPin", format!("{what} `{id}` names no clause")));
+            }
             continue;
         };
-        if pin.contains_key("item") && cl.kind != "behavior" {
-            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("{} `{id}` takes a test or theorem, not an item", cl.kind)));
+        for p in group {
+            if p.kind == "item" && cl.kind != "behavior" {
+                out.push(f("state", &p.file, p.line, "SpecBrokenPin", format!("{} `{id}` takes a test or theorem, not an item", cl.kind)));
+            }
+            let msg = match pin_state(c, p) {
+                PinState::Performed => continue,
+                PinState::Ignored => format!("pin for `{id}` names a test carrying `#[ignore]`"),
+                PinState::Unfinished if p.kind == "test" => format!("pin for `{id}` names a test whose body still opens a line with `todo!`"),
+                PinState::Unfinished => format!("pin for `{id}` names a declaration still holding `sorry`"),
+                PinState::Absent => format!("pin for `{id}` does not resolve under crates/, tools/ or formal/"),
+                PinState::Unattached => format!("tag for `{id}` sits above no function"),
+                PinState::Stale => {
+                    let rev = p.tag.as_ref().map(|t| t.rev.as_str()).unwrap_or("");
+                    let msg = format!("tag for `{id}` records rev `{rev}`; the statement's rev is `{}`", statement_rev(&cl.statement));
+                    out.push(f("state", &p.file, p.line, "SpecStalePin", msg));
+                    continue;
+                }
+            };
+            out.push(f("state", &p.file, p.line, "SpecBrokenPin", msg));
         }
-        if verdict(c, pin) == "broken" {
-            out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("pin for `{id}` does not resolve under crates/")));
-        } else {
+        let theorems = pinned_theorems(group);
+        if theorems.len() > 1 {
+            let names: Vec<&str> = theorems.into_iter().collect();
+            out.push(f("state", &group[0].file, group[0].line, "SpecBrokenPin", format!("`{id}` is pinned to two theorems, {}", names.join(" and "))));
+        }
+        let tests = pinned_tests(group);
+        if tests.len() > 1 {
+            let names: Vec<&str> = tests.into_iter().collect();
+            let sites: Vec<String> = group.iter().map(Pin::site).collect();
+            out.push(f(
+                "state",
+                &group[0].file,
+                group[0].line,
+                "SpecBrokenPin",
+                format!("`{id}` is pinned to two tests, {} ({})", names.join(" and "), sites.join(", ")),
+            ));
+        }
+        if clause_verdict(c, group) == "performed" {
             *count.entry(cl.contract.clone()).or_default() += 1;
         }
     }
@@ -738,7 +1073,42 @@ fn state(c: &Corpus) -> Vec<Finding> {
             out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("floor names unknown contract `{contract}`")));
         }
     }
-    out.extend(expand_roadmap(c).1);
+    let (claim, found) = expand_roadmap(c);
+    out.extend(found);
+    for m in milestone_lines(c) {
+        if m.reach.is_none() {
+            out.push(f("state", "spec/roadmap.md", m.line, "SpecRoadmap", format!("milestone `{}` carries no `Reach:` line", m.heading)));
+        }
+        let Some(test) = m.acceptance.as_deref() else {
+            out.push(f("state", "spec/roadmap.md", m.line, "SpecRoadmap", format!("milestone `{}` carries no `Acceptance:` line", m.heading)));
+            continue;
+        };
+        let pinned = all.keys().filter_map(|id| clauses.get(id)).any(|cl| {
+            claim.get(&format!("{}.{}", cl.contract, cl.operation)) == Some(&m.heading)
+        });
+        if m.operation_depth {
+            for cl in c.clauses().filter(|cl| cl.kind == "behavior") {
+                if claim.get(&format!("{}.{}", cl.contract, cl.operation)) == Some(&m.heading) {
+                    out.push(f(
+                        "state",
+                        &cl.file,
+                        cl.line,
+                        "SpecDeferredBehavior",
+                        format!("behavior clause `{}` in milestone `{}`, which carries `Depth: operation`", cl.id, m.heading),
+                    ));
+                }
+            }
+        }
+        if pinned && acceptance_verdict(c, Some(test)) == "absent" {
+            out.push(f(
+                "state",
+                "spec/roadmap.md",
+                m.line,
+                "SpecAcceptanceMissing",
+                format!("milestone `{}` holds a pinned clause while `{test}` is not defined under {ACCEPTANCE_ROOT}/", m.heading),
+            ));
+        }
+    }
     out
 }
 
@@ -752,10 +1122,14 @@ static BANNED: LazyLock<Regex> = LazyLock::new(|| word_re(&["seam", "seams", "lo
 
 fn render(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
-    for (rel, want) in [("spec/status.md", crate::status_text(c)), ("spec/spec.lock.json", crate::lock_text(c))] {
+    for (rel, want) in [
+        ("spec/status.md", crate::status_text(c)),
+        ("spec/spec.lock.json", crate::lock_text(c)),
+        ("spec/targets.md", crate::targets::page(c)),
+    ] {
         let have = std::fs::read_to_string(c.root.join(rel)).unwrap_or_default();
         if have != want {
-            out.push(f("render", rel, 0, "SpecStaleRender", "differs from regeneration; run `contextful-spec state` and `extract`".into()));
+            out.push(f("render", rel, 0, "SpecStaleRender", format!("{rel} differs from regeneration; run `contextful-spec state` and `extract`")));
         }
     }
     let local = Regex::new(r"(/Users/|/home/|\$HOME/|(^|[\s(`])~/)").unwrap();

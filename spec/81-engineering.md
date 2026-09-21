@@ -16,6 +16,24 @@ How the tree is written, built and checked: one home per capability, typed autom
 placement, build targets and artifacts, the gate's stages and ceilings, and the harness that
 turns read-path quality into a red or green verdict.
 
+The tree, the checks over it, and the two verdicts they produce:
+
+```mermaid
+flowchart LR
+  SRC["source tree<br/>one home per capability"] --> BUILD["build: three profiles,<br/>cross-compiled targets"]
+  SRC --> TESTS["tests: one integration binary per crate<br/>acceptance drives a built binary"]
+  AUTO["typed subcommands, tools/ci"] --> GATE["gate: ordered stages"]
+  BUILD --> GATE
+  TESTS --> GATE
+  FORMAL["formal model:<br/>check · differential · protocol"] --> GATE
+  GATE -- "one status check per stage" --> PR["pull request"]
+  BUILD --> ART["release artifacts<br/>archive · checksum · SBOM · image"]
+  CASES["evals/cases JSONL"] --> EVAL["quality harness"]
+  STORE[("real store<br/>read contract: ranked retrieval")] --> EVAL
+  EVAL --> BASE{"in-tree baselines and floors"}
+  BASE --> V["red or green"]
+```
+
 ## structure-tree
 
 | Clause | Statement | Why |
@@ -25,6 +43,8 @@ turns read-path quality into a red or green verdict.
 | `assurance.structure-tree.decision-module` | One module owns the enforcement decision; a gateway and the engine reaching the same verdict execute it, compiled native and to WebAssembly from one pinned source. | P5 |
 | `assurance.structure-tree.adapter` | A surface with no engine process on its request path implements an adapter against the engine's ports. | P5 |
 | `assurance.structure-tree.derivation-check` | A generated artifact declares the check that fails once its source moves, and the gate's schema stage runs that check. | P5 |
+| `assurance.structure-tree.mirror-exemption` | A review-time restatement of a build-time rule is admitted where its site carries a `mirrors: <clause id>` comment naming the clause it restates; an unannotated restatement stays {{assurance.structure-tree.duplicated-capability}}. | because a reviewer-facing check sometimes restates a rule, and the annotation keeps the engine its one home and the copy traceable to it |
+| `assurance.structure-tree.mirror-unresolved` | A `mirrors:` comment in a tracked file under `crates/`, `tools/` or `apps/` naming no clause of `spec/spec.lock.json` raises `MirrorUnresolved` in the schema stage, naming the file and line. | because an annotation naming nothing exempts a copy while tying it to no rule it could drift from |
 
 unsettled: Does a derived artifact prove currency by a schema-hash comparison, by regeneration and diff, or by a build-time export? owner: build affects: assurance.structure-tree
 
@@ -49,6 +69,23 @@ unsettled: Does a derived artifact prove currency by a schema-hash comparison, b
 | `assurance.test.feature-gated-suite` | A feature-gated suite carries a module-level `cfg` attribute at the head of its module file and compiles to nothing while its feature is off. | |
 | `assurance.test.own-process` | A test needing its own process sits in a top-level file stating why at its site; a thread-scoped log capture is such a test. | |
 | `assurance.test.connector-kit` | The connector authoring toolkit ships a conformance suite — discovery returns valid schemas, an opened table yields a finite stream, a position round-trips — plus recorded-HTTP fixture replay and property tests over position monotonicity. | |
+| `assurance.test.test-first` | A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`. | A-assurance |
+| `assurance.test.refactor-trailer` | A commit carrying the trailer `Test-First: refactor` exempts the source it alters from {{assurance.test.test-first}}; the rest of the range stays held, and the workspace stage alone holds that commit. | because a behavior-preserving change has no failing test to write, and the existing suite is its specification |
+| `assurance.test.acceptance-surface` | An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`. | A-assurance |
+
+The test-first check over one commit in a change's range:
+
+```mermaid
+flowchart TD
+  CH["commit altering Rust source<br/>under crates/ or tools/"] --> TR{"trailer Test-First: refactor?"}
+  TR -- yes --> WS["workspace stage alone holds it"]
+  TR -- no --> T{"adds or alters a test<br/>under a package's tests/?"}
+  T -- no --> E1["TestNotFirst"]
+  T -- yes --> B{"that test fails against<br/>the base commit's source?"}
+  B -- no --> E1
+  B -- yes --> OK["test-first stage passes"]
+  OK --> WS2["workspace stage"]
+```
 
 unsettled: Does a suite contending process-global state declare that state in its module, or acquire a named lock the integration binary owns? owner: build affects: assurance.test
 
@@ -57,10 +94,10 @@ unsettled: Does a suite contending process-global state declare that state in it
 | Clause | Statement | Why |
 | --- | --- | --- |
 | `assurance.build.target-dir-per-stage` | Each cargo stage builds into a target directory of its own, reclaimed once the stage passes. | because stages under different feature unification share no artifacts, and peak disk is then one stage |
-| `assurance.build.one-engine-build` | The engine-linked packages build in one cargo invocation over the union of their features, compiling the bundled SQL engine once per gate run. | D53 |
+| `assurance.build.one-engine-build` | The engine-linked packages build in one cargo invocation over the union of their features, compiling the bundled SQL engine once per gate run. | A-assurance |
 | `assurance.build.staged-feature-runs` | A defect appearing under one feature combination alone is reached by a staged run, one command per container. | |
-| `assurance.build.linked-query-functions` | Columnar file reading and statement serialization link into every build linking the SQL engine, and the read path loads no extension while serving. | D53 |
-| `assurance.build.runtime-extension-load` | A read path loading an extension into a binary that statically links the SQL engine raises `ExtensionAutoloadRefused`. | D53 |
+| `assurance.build.linked-query-functions` | Columnar file reading and statement serialization link into every build linking the SQL engine, and the read path loads no extension while serving. | A-assurance |
+| `assurance.build.runtime-extension-load` | A read path loading an extension into a binary that statically links the SQL engine raises `ExtensionAutoloadRefused`. | A-assurance |
 | `assurance.build.debug-info` | Development and test profiles carry line-tables-only debug information. | |
 | `assurance.build.targets` | All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin`, `x86_64-apple-darwin` and `x86_64-pc-windows-msvc`; edge also targets `wasm32-wasip2`. | |
 | `assurance.build.release-artifact` | Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile. | |
@@ -72,14 +109,17 @@ unsettled: Does the edge profile build for `wasm32-wasip2` with the SQL engine i
 
 | Clause | Statement | Why |
 | --- | --- | --- |
-| `assurance.gate.stage-sequence` | The gate runs its stages in order — pins, toolchain, schema, workspace, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name. | |
+| `assurance.gate.stage-sequence` | The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name. | |
+| `assurance.gate.remote-check` | The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, each as one status check labelled with the stage's name. | A-assurance |
 | `assurance.gate.stage-reports` | Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code. | because memory exhaustion is silent, and a kill then reads as a number in the log |
 | `assurance.gate.pins-stage` | The pins stage resolves every pinned artifact identity a run depends on before any compilation. | |
 | `assurance.gate.schema-stage` | The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`. | |
+| `assurance.gate.secret-ciphertext` | In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file other than `.env.example` holding a value without the `encrypted:` prefix, or a tracked `.env.keys`, raises `SecretPlaintext`, naming file and key. | because a tracked file reaches every clone, and only dotenvx ciphertext is safe there while its private key stays untracked |
+| `assurance.gate.secret-scope` | In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file whose block — the assignments above it, up to the first blank line — opens with no comment carrying text raises `SecretScopeMissing`, naming file and key. | because a provider token cannot report its own grants, so the comment above it is the one record of what it reaches |
 | `assurance.gate.crate-graph` | A test over `cargo metadata` holds run-path crates to reaching read-path crates through the three crossing crates alone; another edge raises `CrateGraphViolation`, naming both crates. | P5 |
 | `assurance.gate.row-token` | Every row-returning function of the store crate takes the enforcement token type, whose constructor is private to the enforcement module; a row path outside a registered relation raises `EnforceUnmediatedPath`, naming the function. | P5 |
 | `assurance.gate.dependency-deny` | The crate-graph stage runs cargo-deny over each profile's resolved graph, with a deny list holding every crate a dependency refusal of another contract names; a hit raises that clause's error. | P7 |
-| `assurance.gate.unconfigured-egress` | An outbound call reachable under the default configuration — usage ping, license check, update probe — raises `UnconfiguredEgress` in the crate-graph stage, naming the call site. | D41 |
+| `assurance.gate.unconfigured-egress` | An outbound call reachable under the default configuration — usage ping, license check, update probe — raises `UnconfiguredEgress` in the crate-graph stage, naming the call site. | A-disclosure |
 | `assurance.gate.interpolated-claim` | A source lint over the runtime crates finding a subject claim formatted into SQL text raises `EnforceInterpolatedSubjectClaim`, naming the file and line. | P1 |
 | `assurance.gate.formal-stage` | The formal stage runs {{assurance.audit-axioms.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run. | P7 |
 | `assurance.gate.container` | The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a per-stage wall clock — and a run dies on any one. | |
@@ -94,6 +134,23 @@ unsettled: Does the edge profile build for `wasm32-wasip2` with the SQL engine i
 | `assurance.gate.typescript-surfaces` | The TypeScript surfaces run typecheck, unit tests and framework build in one stage, and a surface declaring no script for a check skips that check. | |
 | `assurance.gate.surface-check-failed` | A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script. | P7 |
 
+The stage order, under the container's ceilings:
+
+```mermaid
+flowchart LR
+  LOCAL["contributor: contextful-ci gate"] --> S1
+  WF["pull-request workflow:<br/>one remote check per stage"] --> S1
+  subgraph C["gate container · 12 GiB memory · 18 GiB disk"]
+    S1["pins"] --> S2["toolchain"] --> S3["schema"] --> S4["test-first"]
+    S4 --> S5["workspace"] --> S6["acceptance"] --> S7["features"] --> S8["crate graph"]
+    S8 --> S9["connectors"] --> S10["TypeScript surfaces"] --> S11["formal"] --> S12["budget"]
+  end
+  S3 -.-> LINT["contextful-spec lint"]
+  S8 -.-> DENY["cargo-deny per profile"]
+  S11 -.-> FORM["formal check · differential · protocol"]
+  S12 -.-> SIZE["total build size 12 GiB"]
+```
+
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate
 
 unsettled: What ordering holds when a selected stage subset omits a stage a later stage reads output from? owner: build affects: assurance.gate
@@ -104,8 +161,8 @@ unsettled: What ordering holds when a selected stage subset omits a stage a late
 | --- | --- | --- |
 | `assurance.evaluate.real-read-path` | An evaluation run ingests, indexes, retrieves, reads, judges and scores through the surfaces a caller uses, and the harness adds no storage or runtime primitive. | |
 | `assurance.evaluate.through-the-store` | The corpus loads through the real store, and the retriever under test calls {{read.retrieve.ranked-call}} with the options a caller passes. | because an unordered full-scan retriever cannot go red when ranking breaks |
-| `assurance.evaluate.policy-labels` | An evaluation corpus carries zone and row-policy labels, and a run reads it through the access-control path. | D45 |
-| `assurance.evaluate.unlabeled-corpus` | A run over a corpus carrying neither labels nor an explicit local zone raises `EvalCorpusUnlabeled`. | D45 |
+| `assurance.evaluate.policy-labels` | An evaluation corpus carries zone and row-policy labels, and a run reads it through the access-control path. | A-assurance |
+| `assurance.evaluate.unlabeled-corpus` | A run over a corpus carrying neither labels nor an explicit local zone raises `EvalCorpusUnlabeled`. | A-assurance |
 | `assurance.evaluate.case-format` | A case carries an id, a corpus reference, a question, tags, and an expected block of answer, artifacts, edges, entities, must-cite, must-abstain and time anchor. | |
 | `assurance.evaluate.converter` | Each benchmark and application ground truth converts once into the case format through its own converter, and the runner reads nothing else. | |
 | `assurance.evaluate.deterministic-tier` | Recall@k, R-precision, hit-rate@k, reciprocal rank and nDCG@k run with no model call, reported per leg — lexical, vector, hybrid — and per slice. | |
@@ -142,15 +199,15 @@ unsettled: What ordering holds when a selected stage subset omits a stage a late
 | `assurance.baseline.floors-are-absolute` | An absolute floor gates independently of every committed value. | |
 | `assurance.baseline.offline` | The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable. | |
 | `assurance.baseline.trace-store` | A trace store records run history and curation staging, and decides no verdict. | |
-| `assurance.baseline.golden-custody` | Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree. | D45 |
-| `assurance.baseline.answer-key-in-the-store` | An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`. | D45 |
-| `assurance.baseline.generated-redaction` | A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`. | D45 |
+| `assurance.baseline.golden-custody` | Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree. | A-assurance |
+| `assurance.baseline.answer-key-in-the-store` | An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`. | A-assurance |
+| `assurance.baseline.generated-redaction` | A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`. | A-assurance |
 | `assurance.baseline.promotion-source` | Only an adjudicated outcome label promotes into a golden set; a self-rated row does not. | |
 | `assurance.baseline.generators` | Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit. | |
 | `assurance.baseline.held-out` | Retrieval and synthesis are tuned on no gate input. | |
 | `assurance.baseline.rotation` | The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp. | |
 | `assurance.baseline.native-gate` | A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing. | |
-| `assurance.baseline.trace-export` | A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone. | D45 |
+| `assurance.baseline.trace-export` | A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone. | A-assurance |
 
 unsettled: Which public benchmark corpora are admissible gate inputs under research and non-commercial licences: fetched under the dataset's terms, transformed into a synthetic subset, or pinned by a content-hashed fetch manifest? owner: build affects: assurance.baseline
 
@@ -162,6 +219,8 @@ Where the build-time material sits:
 tools/
   ci/                     typed subcommands the gate invokes
   spec/                   the corpus checker
+crates/acceptance/
+  tests/integration/mNN.rs  one milestone's acceptance test, driving a built binary
 evals/
   cases/                  version-controlled JSONL, one case per line
   baselines/              one file per gated configuration

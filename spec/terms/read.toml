@@ -54,6 +54,3 @@ read-cold-start-ceiling      = { clause = "read.cache.cold-start", value = 8, un
 memory-extract-attempts      = { clause = "read.synthesize.extract-attempts", value = 3, unit = "attempts", basis = "chosen", gloss = "Extract attempts per batch, feedback included." }
 memory-evidence-references   = { clause = "read.recall.evidence-references", value = 256, unit = "entries", basis = "chosen", gloss = "Evidence references one claim names before recall suppresses it." }
 outcome-grace-window         = { clause = "read.settle.grace-window", value = 86400, unit = "s", basis = "chosen", gloss = "Inclusive window past a deadline within which an observation is scored." }
-
-[term]
-confidence = { gloss = "A 0-to-1 score a producer attaches to a fact, preference or cue." }

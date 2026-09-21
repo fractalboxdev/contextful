@@ -6,14 +6,40 @@
 #   "authority.admit.narrowing"    = { theorem = "Contextful.Authority.narrowing_implies_parent" }
 #   "store.declare.table-block"    = { item = "contextful_core::pipeline::TableModel" }
 #
+# A test also pins its clause from its own file, with a tag line above the function:
+#
+#   /// <the clause statement>
+#   // spec: store.fold.partial-snapshot@<first 8 hex of the statement's SHA-256>
+#   #[test]
+#   fn partial_snapshot() { ... }
+#
+# `contextful-spec scaffold <contract>.<operation> --package <path>` writes these tagged
+# tests, one per refusal and limit clause, each holding a `todo!` until it is written.
+#
 # An unpinned clause computes `committed`. A pinned clause computes `performed` when the
-# artifact's final path segment is defined under `crates/`, and `broken` otherwise, which
-# reds the gate: a rename is what fails, where a forgotten prose edit is silent.
+# artifact's final path segment is defined under `crates/` or `tools/`, is no ignored
+# test, holds no `todo!` body line and, for a tag, matches the statement's current rev;
+# `broken` otherwise, which reds the gate: a rename or a reworded clause is what fails,
+# where a forgotten prose edit is silent. A stale rev raises SpecStalePin; two different
+# tests pinning one clause raise SpecBrokenPin.
 #
 # A refusal or a limit takes a `test` or a `theorem`; an `item` proves presence, not behavior.
-# `contextful-spec state` reads this file and writes spec/status.md.
+# `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"corpus.targets.cap-unrecorded"     = { test = "contextful_spec::targets::a_capped_shape_not_recording_its_exclusions_is_refused" }
+"corpus.targets.function-profile"   = { test = "contextful_spec::targets::a_function_class_shape_hosting_the_full_profile_is_refused" }
+"corpus.targets.incomplete"         = { test = "contextful_spec::targets::a_shape_leaving_a_role_unfilled_is_refused" }
+"corpus.targets.page"               = { test = "contextful_spec::targets::the_targets_page_is_rendered_from_the_files" }
+"corpus.state.lean-tag"             = { test = "contextful_spec::lean::a_tagged_theorem_holding_sorry_is_broken_until_proved" }
+"corpus.state.scaffold-lean"        = { test = "contextful_spec::lean::scaffold_lean_writes_one_tagged_sorry_theorem_per_clause" }
+"corpus.state.theorem-beside-test"  = { test = "contextful_spec::lean::a_clause_carries_one_theorem_beside_one_test" }
+"corpus.rationale.contract-adr"     = { test = "contextful_spec::rationale::a_contract_adr_section_over_its_word_limit_is_a_record_finding" }
+"corpus.state.acceptance"           = { test = "contextful_spec::state::status_reports_each_milestone_acceptance_verdict" }
+"corpus.state.deferred-depth"       = { test = "contextful_spec::state::a_behavior_clause_in_an_operation_depth_milestone_is_refused" }
+"corpus.state.acceptance-first"     = { test = "contextful_spec::state::a_pin_in_a_milestone_with_no_acceptance_test_is_refused_until_one_exists" }
+"corpus.state.roadmap"              = { test = "contextful_spec::state::a_milestone_without_an_acceptance_line_is_a_roadmap_finding" }
+"corpus.state.verdict"              = { test = "contextful_spec::state::ignored_test_pin_is_broken" }
 
 # The floor is machine-maintained: `contextful-spec pins` sets each contract's entry to
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
@@ -22,7 +48,7 @@
 assurance = 0
 authority = 0
 connector = 0
-corpus = 0
+corpus = 17
 disclosure = 0
 read = 0
 run = 0

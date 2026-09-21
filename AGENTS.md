@@ -12,9 +12,9 @@ file before editing anything under `spec/`.
 - A fact has one home. The only second appearance is `{{<clause id>}}`. An error
   identifier and a numeric bound each belong to exactly one clause.
 - A clause's Why cell carries a record id or a `because` of at most 30 words.
-  Records under [`spec/decisions/`](./spec/decisions/) — eight principles (`P1`–`P8`)
-  and one record per decision several clauses share (`D01`…) — hold the options
-  and costs, in at most 400 words each.
+  Records under [`spec/adr/`](./spec/adr/) — eight principles (`P1`–`P8`, at most
+  400 words each) and one ADR per contract (`A-store`, `A-run`, …), one section of at
+  most 250 words per decision — hold the options and costs.
 - No spec file says whether something is built, and none carries a date. Build
   state is computed into [`spec/status.md`](./spec/status.md) from
   [`spec/pins.toml`](./spec/pins.toml).
@@ -29,13 +29,20 @@ identical command. A rule the checker cannot enforce is not a rule.
 cargo run -q -p contextful-spec -- lint      # every rule
 cargo run -q -p contextful-spec -- state     # regenerate spec/status.md
 cargo run -q -p contextful-spec -- extract   # regenerate spec/spec.lock.json
+cargo run -q -p contextful-spec -- slice <target> [--json]
 ```
+
+To hand one piece of work to an agent, give it `contextful-spec slice <target>`, where the
+target is `<contract>.<operation>`, `<contract>.*` or a milestone number. The pack holds the
+target's clause rows, every row their `{{id}}` pointers reach, the records their Why cells
+cite, the errors and bounds they own, and a milestone's `Reach:` and `Acceptance:` lines.
 
 ## Adding to the corpus
 
 | Change | What it takes |
 | --- | --- |
-| A new fact | One clause row under the owning operation; a fragment entry for a new error, bound or shared term |
+| A new fact | One clause row under the owning operation; a fragment entry for a new error or bound |
+| An example | A `- `<clause id>`: WHEN …, THEN …` item under the operation's `#### Scenarios`, or a `tests/fixtures/` path |
 | A refusal | The clause, its error in the fragment, and a Why: a `because` cell, or a record id when two or more clauses share the decision |
 | A new operation | A fragment entry, a `## <operation>` section, and its name in the file's `owns` |
 | A new subject area | A contract entry in [`spec/terms/contract.toml`](./spec/terms/contract.toml), a fragment, then the file in the standard anatomy |

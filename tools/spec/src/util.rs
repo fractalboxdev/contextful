@@ -62,6 +62,12 @@ pub fn sha256_lower(s: &str) -> String {
     hex(&sha256(data.as_bytes()))
 }
 
+/// The first 8 hex digits of the SHA-256 of a clause statement, exactly as written:
+/// the revision a `// spec:` tag records.
+pub fn statement_rev(statement: &str) -> String {
+    hex(&sha256(statement.as_bytes()))[..8].to_string()
+}
+
 fn hex(bytes: &[u8; 32]) -> String {
     let mut out = String::with_capacity(64);
     for b in bytes {

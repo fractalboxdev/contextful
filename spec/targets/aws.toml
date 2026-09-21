@@ -1,0 +1,58 @@
+# Target profile — AWS. `corpus.targets` states the rules this file obeys;
+# `contextful-spec lint --check targets` enforces them and `contextful-spec state`
+# renders spec/targets.md from it.
+
+provider = "aws"
+title    = "AWS"
+serves   = "VPC-bound and regulated deployments, and teams already operating on AWS."
+
+[[shape]]
+name     = "lambda-fargate"
+default  = true
+kind     = "orchestrated"
+profiles = ["full"]
+excludes = []
+
+[shape.roles]
+cron_tick    = "EventBridge Scheduler"
+reconciler   = "Lambda"
+orchestrator = "Step Functions: Standard for backfills, Express for short high-frequency pipelines"
+catalog      = "RDS Postgres via pg-catalog"
+object_store = "S3"
+query_face   = "ALB → warm contextful-full on Fargate"
+compute      = "Fargate task started by Step Functions (ECS RunTask, .sync)"
+secrets      = "Secrets Manager through the task role"
+realtime     = "Fargate-hosted run projection"
+
+[[shape]]
+name = "lambda-only"
+kind = "function"
+profiles = ["edge"]
+wall_clock_cap_min = 15
+excludes = ["first-time-backfill", "component-connector"]
+
+[shape.roles]
+cron_tick    = "EventBridge Scheduler"
+reconciler   = "Lambda"
+orchestrator = "Step Functions Express"
+catalog      = "RDS Postgres via pg-catalog"
+object_store = "S3"
+query_face   = "Lambda function URL serving the read-only replica"
+compute      = "Lambda"
+secrets      = "Secrets Manager through the function role"
+
+[[shape]]
+name     = "fargate-daemon"
+kind     = "daemon"
+profiles = ["full"]
+excludes = []
+
+[shape.roles]
+cron_tick    = "in-process scheduler"
+reconciler   = "in-process reconcile loop"
+orchestrator = "engine journal in the catalog"
+catalog      = "RDS Postgres via pg-catalog"
+object_store = "S3"
+query_face   = "ALB → contextful serve on Fargate"
+compute      = "in-process component host"
+secrets      = "Secrets Manager through the task role"
