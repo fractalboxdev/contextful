@@ -4,7 +4,7 @@
 
 ## Assurance claims carry their qualifiers, and the proof gate audits assumptions
 
-`assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a three-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
+`assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a two-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -33,7 +33,7 @@ Consequences: a zero in a report is a retrieval fact; spans never outlive the ro
 
 ## The model specifies the profile-to-effective-authority mapping, each target bound to one query path
 
-`assurance.model` specifies the mapping from the delegation profile to effective authority, with five targets: profile meaning, restriction preservation, narrowing, inclusion, and execution through the scoped session. `assurance.prove` decides placement inclusion symbolically; deciding over sample values raises `ZoneInclusionSampled`. An unmodelled manifest category raises `UnmodelledConstructor`; a target bound to no authenticated query path raises `ProofTargetUnbound`.
+`assurance.model` specifies the mapping from the delegation profile to effective authority. `assurance.prove` carries two targets, inclusion and narrowing; profile meaning, restriction preservation and scoped-session execution wait on an execution relation. `assurance.prove` decides placement inclusion symbolically; deciding over sample values raises `ZoneInclusionSampled`. An unmodelled manifest category raises `UnmodelledConstructor`; a target bound to no authenticated query path raises `ProofTargetUnbound`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

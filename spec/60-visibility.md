@@ -70,6 +70,8 @@ unsettled: What opens a resource whose access list could not be mirrored, who ma
 
 Observation of one source's permission state: sweep kinds, the observation clock, the coverage watermark, tombstones and revocation.
 
+- `coverage-watermark` — A sweep run that failed or skipped any governed resource of its source and advances `watermark_at` raises `VisibilityWatermarkUncovered`, and the watermark stays where it stood.
+  *A-disclosure*
 - `ungapped-stream` — Advancing `watermark_at` from an event stream the mapping has not declared gap-detectable raises `VisibilityUngappedStream`.
   *A-disclosure*
 - `orphan-grant` — A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set.

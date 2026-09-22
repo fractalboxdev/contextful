@@ -35,7 +35,7 @@ flowchart LR
   TPL --> REL
   UNITS --> REL
   REL --> SUP["suppress: size floor · dominance"]
-  SUP --> PUB[("published derived table<br/>__suppressed__ sentinel")]
+  SUP --> PUB[("published derived table, noised figures<br/>__suppressed__ sentinel")]
   PUB --> COH["bound-cohort: per-individual row, singleton cohort"]
 ```
 
@@ -70,6 +70,8 @@ The ordered statistics release, the write-time disclosure policy, and the per-un
 - `forbidden-column` — A contract declaring a forbidden column, or a materialization producing one, raises `DisclosureForbiddenColumnPublished`. The check runs after the contributor key leaves the published columns.
   *A-disclosure*
 
+unsettled: Which noise mechanism turns a unit's reserved per-run spend into the noise on a noised count and a published metric? owner: disclosure affects: disclosure.release
+
 unsettled: Does the engine release lookalike segments — identifier, size, coarse composition and an activation handle, never members — and under which audience floor, readback rule and cross-party consent contract? owner: disclosure affects: disclosure.release
 
 unsettled: Does a policy hash sort a grouping allowlist nested inside a sub-table, or only top-level sets? owner: disclosure affects: disclosure.release
@@ -78,7 +80,7 @@ unsettled: Does a policy hash sort a grouping allowlist nested inside a sub-tabl
 
 The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves.
 
-- `min-group-size` — `min_group_size` counts distinct contributors and is at least 2 subjects. A group under it is suppressed, and a smaller declared value raises `DisclosureMinGroupSizeBelowFloor`.
+- `min-group-size` — `min_group_size` counts distinct contributors and is at least 2 subjects. A group whose noised distinct-contributor count falls under it is suppressed, and a smaller declared value raises `DisclosureMinGroupSizeBelowFloor`.
   *A-disclosure*
 - `contributor-share` — `max_contributor_share` lies above 0 percent and at most 100 percent of a group's sign-insensitive metric mass; a value outside raises `DisclosureShareOutOfRange`.
   *A-disclosure*
@@ -93,7 +95,7 @@ The decision over one group:
 
 ```mermaid
 flowchart TD
-  G["group"] --> SZ{"distinct contributors clear min_group_size?"}
+  G["group"] --> SZ{"noised distinct-contributor count<br/>clears min_group_size?"}
   SZ -- no --> S["__suppressed__ sentinel"]
   SZ -- yes --> SH{"share constraint declared?"}
   SH -- no --> P["published row"]
@@ -148,9 +150,10 @@ retail     emea    2        t-0044      98000
 retail     emea    2        t-0332      61000
 logistics  emea    2        t-0044      55000
 
--- published after suppression and roll-up
+-- published after noisy partition selection, suppression and roll-up;
+-- the figure is noised, not the exact sum 571000
 industry      region  quarter  revenue
-retail        emea    2        571000
+retail        emea    2        568940
 __suppressed__
 ```
 
@@ -158,7 +161,7 @@ The envelope a capped template read returns:
 
 ```json
 {
-  "rows": [{ "quarter": 2, "revenue": 571000 }],
+  "rows": [{ "quarter": 2, "revenue": 568940 }],
   "truncated": true,
   "row_ceiling": 500,
   "suppression_present": true,

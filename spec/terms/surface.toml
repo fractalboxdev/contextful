@@ -52,6 +52,7 @@ ConsoleSuggestionUnanswerable = { clause = "surface.speak.unanswerable-suggestio
 ConsoleUngroundedAnswer       = { clause = "surface.ground.ungrounded-answer", gloss = "Answer prose composed in a turn holding no tool result." }
 ConsoleToolNotAdmitted        = { clause = "surface.ground.unadmitted-tool", gloss = "A tool call outside the turn's admitted packs." }
 ConsoleMutatingToolRequested  = { clause = "surface.ground.mutating-tool", gloss = "A client-reachable path naming a write." }
+ConsoleWriteToolOnOrgFace     = { clause = "surface.ground.org-face-read-only", gloss = "A write tool registered on an organization-wide face." }
 ConsoleFileAccessDirect       = { clause = "surface.ground.direct-file-read", gloss = "A table function reading stored bytes by path on the caller surface." }
 ConsoleTokenExchangeRefused   = { clause = "surface.ground.mint-refused", gloss = "A per-reader mint the store's exchange route refused." }
 ConsolePlannerReachedMemory   = { clause = "surface.plan-turn.planner-reached-memory", gloss = "Planner scaffolding naming a memory relation." }

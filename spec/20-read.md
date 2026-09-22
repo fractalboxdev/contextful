@@ -68,10 +68,10 @@ flowchart LR
 
 The relations, tools and templates one connection sees, and the engine executing against them.
 
-- `connection-views` — Ahead of a statement the engine opens a connection and issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}} No view directory exists on disk.
+- `connection-views` — Ahead of a statement the engine opens a connection and issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}. No view directory exists on disk.
 - `engine` — The executor is an embedded columnar SQL engine, linked into every profile that serves reads, reading Parquet natively in standard SQL. An external process reads the same files with the engine uninstalled.
   *A-topology*
-- `quiet-table` — A quiet table registers as {{store.declare.empty-run}} A read of it returns an empty result, never a missing-relation fault.
+- `quiet-table` — A quiet table registers as {{store.declare.empty-run}}. A read of it returns an empty result, never a missing-relation fault.
   *P4*
 - `bare-name` — A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to the caller's registered relation, which carries the caller's restriction.
   *P5*
@@ -181,7 +181,7 @@ unsettled: Does partial-result streaming belong on this surface, or does a full 
 Candidate generation for a ranked read: content tokens, the relevance floor, per-table arms, dedup, snippet.
 
 - `ranked-call` — `corpus.retrieve({prefix, query, query_embedding?, kinds, limit, as_of})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall and stores nothing of its own.
-- `relevance-floor` — A row reaches a caller when its lexical score is null, at least the floor, or its vector score exceeds zero. The floor is 2 for three or more content tokens, else 1; a caller minimum overrides it.
+- `relevance-floor` — A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.
 - `content-tokens` — The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters stay, and survivors deduplicate in order.
 - `token-length-floor` — An ASCII run shorter than 2 chars leaves the content-token set.
 - `token-cap` — The content-token set holds at most 12 tokens. An empty set omits the relevance predicate.
@@ -206,7 +206,7 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `identifiers-never-snippet` — Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet.
 - `sidecar-generates-candidates` — The vector sidecar arm adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
   *P5*
-- `sidecar-oversampling` — One probe requests 4 times the limit or 64 rows, whichever is larger, times 4 again where the request carries restriction context.
+- `sidecar-oversampling` — One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.
 - `sidecar-size-cap` — A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.
 - `sidecar-falls-back` — Any sidecar precondition failure — no snapshot, no matching sidecar, a multi-column or masked key, a dimension or manifest mismatch, an unreadable dump, mixed producers — falls back to the exact scan.
   *P4*
@@ -244,7 +244,7 @@ unsettled: What adaptive over-fetch policy holds where rows a reader cannot see 
 Ordering of a candidate set: the three legs, their fusion, the question's timeframe, reported confidence.
 
 - `three-legs` — Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two.
-- `fusion` — Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 0.6 and 0.4. A document absent from one leg scores zero there; ties break by identifier.
+- `fusion` — Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 60 percent and 40 percent. A document absent from one leg scores zero there; ties break by identifier.
 - `lexical-leg-matches-only` — The BM25 leg ranks a disjunction of should-clauses; a document matching no term is absent. An empty query, candidate set or result yields an empty ranking that falls back to recency order.
 - `flat-window-full-credit` — A lexical window with no score spread awards every present document full credit.
 - `question-window-is-a-tier` — A question's timeframe projects a per-row in-window flag against the resolved publication column, and the flag leads the ordering. An out-of-window row sorts down and stays.
@@ -287,11 +287,11 @@ unsettled: What replaces min-max window normalization as a cross-index score cal
 Locality of the bytes a read touches, and reuse of a result across requests.
 
 - `hot-local-parquet` — The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.
-- `cold-start` — A cold retrieval container reaches readiness within 8 s; a container holding no snapshot adds a whole-store pull before its first answer.
+- `cold-start` — A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.
 - `result-key` — A cached result keys on the policy subject (token scope, inference zone, incognito state), the token id and revocation epoch, the resolved snapshot ids, the bounds echo, the pin map and the statement hash.
   *because a hit crossing a restriction, snapshot, bound or revocation serves rows the caller is not owed*
 - `cache-is-opt-in` — The result cache is opt-in per table at a short time to live and off for a table tagged private.
-- `snapshot-invalidates` — A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}}
+- `snapshot-invalidates` — A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}}.
   *P4*
 - `keep-warm-is-per-deployment` — A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.
 

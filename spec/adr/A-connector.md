@@ -63,11 +63,11 @@ Revisit: the declaration grammar gains a per-vendor allowed-origin set; proxy-on
 
 ## Credentials are references, workload identity is the default, and leases lead
 
-Declarations carry names, stores carry opaque bytes, connectors carry provider know-how, and the engine holds the shortest-lived material the deployment mints. `connector.reference` accepts only `${secret://<name>}`; every encrypted entry records grants, scope, creation, expiry and rotation point. `connector.resolve` defaults to an external manager through workload identity, refuses inline material outside development, and raises `SecretNameShadowed` when two adapters answer a name. `connector.lease` leads the chain with no fall-through and retries nothing; `connector.rotate` fails the run closed on a refused write-back.
+Declarations carry names, stores carry opaque bytes, connectors carry provider know-how, and the engine holds the shortest-lived material the deployment mints. A `connector.reference` template accepts only `${secret://<name>}` placeholders; `connector.record` puts grants, account or tenancy, creation, expiry and rotation location above every encrypted entry. `connector.resolve` defaults to an external manager through workload identity, refuses inline material outside development, and raises `SecretNameShadowed` when two adapters answer a name. `connector.lease` leads the chain with no fall-through and retries nothing; `connector.rotate` fails the run closed on a refused write-back.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Reference-only declarations, workload identity default, lease at the head *(chosen)* | — | Material sits in engine memory for a request; a credential needs a four-field record; a read-only manager cannot run the OAuth refresh loop. |
+| Reference-only declarations, workload identity default, lease at the head *(chosen)* | — | Material sits in engine memory for a request; a credential needs a five-field operator record; a read-only manager cannot run the OAuth refresh loop. |
 | Inline material or environment templates | Plaintext at rest | The committed file or environment becomes the secret. |
 | A broker sidecar as the default | Operability | Every deployment runs a second failure domain. |
 | Lease provider last, first hit wins | Posture | A leftover environment variable wins unnoticed. |
@@ -75,17 +75,3 @@ Declarations carry names, stores carry opaque bytes, connectors carry provider k
 
 Consequences: local development pastes a token only behind an explicit opt-in flag; a bootstrap backend is a second backend to operate.
 Revisit: workload identity becomes unattestable on a needed runtime; a broker becomes near-free to operate; a runtime identity authenticates to the mint directly.
-
-## Every access to data traverses the enforcement stack, and no configuration disables it
-
-Complete mediation is a property of the composition, not a setting: a bypassing path returns plausible rows with masking unapplied and no audit entry. `topology.compose` makes every function returning or releasing a stored row take the enforcement stack's admission value, so a skipping path does not type-check; `assurance.gate` raises `CrateGraphViolation` when a run-path crate reaches read-path crates outside the crossings. No flag, environment variable or build feature turns the stack off.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Mediation as a build property, no disable switch *(chosen)* | — | A surface holding the only handle to data writes an adapter through the stack: a network hop, or a generated artifact with a staleness check. |
-| An operator flag marking a trusted path | Failure mode | A flag set once stays set while the deployment looks healthy. |
-| Per-surface opt-in enforcement | Coverage | Every new surface is a fresh chance to omit it. |
-| Enforcement asserted by code review alone | Detectability | A bypass reads as a call-site move in a refactor. |
-
-Consequences: a bulk export or offline diagnostic is slower than a direct read.
-Revisit: an adapter through the stack misses a stated throughput requirement; audit bypasses cluster in one tooling category; a layer proves a no-op on some path.

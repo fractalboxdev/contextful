@@ -253,6 +253,8 @@ flowchart TD
   CLOSE -->|"any other status"| HOLD["hold the owner"]
 ```
 
+unsettled: Does a batch written durably but uncommitted count as landed when a failed run decides whether it releases its owner? owner: run-path affects: run.own
+
 ## cancel
 
 Stopping work in flight at either grain, the one token every await observes, and what a stop leaves behind.

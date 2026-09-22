@@ -41,16 +41,23 @@ OutcomeCitationMissing        = { clause = "read.settle.settling-citation", glos
 
 [limit]
 read-row-ceiling-overfetch   = { clause = "read.respond.row-ceiling", value = 1, unit = "rows", basis = "chosen", gloss = "Rows fetched past the row ceiling, whose presence sets `truncated`." }
+read-relevance-floor-wide    = { clause = "read.retrieve.relevance-floor", value = 2, unit = "tokens", basis = "chosen", gloss = "Lexical-score floor for a query of at least the threshold's content tokens." }
+read-relevance-floor-narrow  = { clause = "read.retrieve.relevance-floor", value = 1, unit = "tokens", basis = "chosen", gloss = "Lexical-score floor for a query below the threshold." }
+read-relevance-floor-split   = { clause = "read.retrieve.relevance-floor", value = 3, unit = "tokens", basis = "chosen", gloss = "Content-token count at which the wider floor applies." }
 read-token-length-floor      = { clause = "read.retrieve.token-length-floor", value = 2, unit = "chars", basis = "chosen", gloss = "Shortest ASCII run kept in the content-token set." }
 read-content-token-cap       = { clause = "read.retrieve.token-cap", value = 12, unit = "tokens", basis = "chosen", gloss = "Largest content-token set from one query." }
 read-plural-suffix-floor     = { clause = "read.retrieve.plural-suffix-floor", value = 4, unit = "chars", basis = "chosen", gloss = "Token length below which no plural suffix is matched." }
 read-candidate-window-floor  = { clause = "read.retrieve.candidate-window", value = 200, unit = "rows", basis = "chosen", gloss = "Smallest candidate window of a ranked read." }
+read-candidate-window-factor = { clause = "read.retrieve.candidate-window", value = 8, unit = "times", basis = "chosen", gloss = "Multiple of the requested limit forming the candidate window." }
 read-filter-values           = { clause = "read.retrieve.filter-budget", value = 256, unit = "entries", basis = "chosen", gloss = "Values in one filter membership list." }
 read-sidecar-probe-floor     = { clause = "read.retrieve.sidecar-oversampling", value = 64, unit = "rows", basis = "chosen", gloss = "Smallest candidate count one sidecar probe requests." }
+read-sidecar-probe-factor    = { clause = "read.retrieve.sidecar-oversampling", value = 4, unit = "times", basis = "chosen", gloss = "Multiple of the limit one sidecar probe requests." }
+read-sidecar-restricted-factor = { clause = "read.retrieve.sidecar-oversampling", value = 4, unit = "times", basis = "chosen", gloss = "Further multiple applied when the request carries restriction context." }
 read-sidecar-size-cap        = { clause = "read.retrieve.sidecar-size-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Stored-vector size past which a sidecar stays unloaded." }
 read-window-anchor-tolerance = { clause = "read.rank.window-anchor-tolerance", value = 24, unit = "h", basis = "chosen", gloss = "How far past the anchor a publication instant still counts in-window." }
+read-fusion-vector-weight    = { clause = "read.rank.fusion", value = 60, unit = "percent", basis = "chosen", gloss = "Default weight of the clamped cosine leg in fusion." }
+read-fusion-lexical-weight   = { clause = "read.rank.fusion", value = 40, unit = "percent", basis = "chosen", gloss = "Default weight of the min-max BM25 leg in fusion." }
 read-lexical-index-cache     = { clause = "read.rank.lexical-index-cache", value = 64, unit = "entries", basis = "chosen", gloss = "FIFO capacity of cached full-text indexes." }
-read-cold-start-ceiling      = { clause = "read.cache.cold-start", value = 8, unit = "s", basis = "chosen", gloss = "Readiness interval of a cold retrieval container; unmeasured." }
 memory-extract-attempts      = { clause = "read.synthesize.extract-attempts", value = 3, unit = "attempts", basis = "chosen", gloss = "Extract attempts per batch, feedback included." }
 memory-evidence-references   = { clause = "read.recall.evidence-references", value = 256, unit = "entries", basis = "chosen", gloss = "Evidence references one claim names before recall suppresses it." }
 outcome-grace-window         = { clause = "read.settle.grace-window", value = 86400, unit = "s", basis = "chosen", gloss = "Inclusive window past a deadline within which an observation is scored." }

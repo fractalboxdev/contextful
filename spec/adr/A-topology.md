@@ -72,3 +72,17 @@ Consequences: a divergence names the target, the table and the first differing p
 
 Consequences: a new target is an adapter crate behind existing ports.
 Revisit: two adapters convert the same shape differently; a port change deferred more than once; the edge profile's budget no longer the binding constraint.
+
+## Every access to data traverses the enforcement stack, and no configuration disables it
+
+Complete mediation is a property of the composition, not a setting: a bypassing path returns plausible rows with masking unapplied and no audit entry. `topology.compose` makes every function returning or releasing a stored row take the enforcement stack's admission value, so a skipping path does not type-check; `assurance.gate` raises `CrateGraphViolation` when a run-path crate reaches read-path crates outside the crossings. No flag, environment variable or build feature turns the stack off.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Mediation as a build property, no disable switch *(chosen)* | — | A surface holding the only handle to data writes an adapter through the stack: a network hop, or a generated artifact with a staleness check. |
+| An operator flag marking a trusted path | Failure mode | A flag set once stays set while the deployment looks healthy. |
+| Per-surface opt-in enforcement | Coverage | Every new surface is a fresh chance to omit it. |
+| Enforcement asserted by code review alone | Detectability | A bypass reads as a call-site move in a refactor. |
+
+Consequences: a bulk export or offline diagnostic is slower than a direct read.
+Revisit: an adapter through the stack misses a stated throughput requirement; audit bypasses cluster in one tooling category; a layer proves a no-op on some path.

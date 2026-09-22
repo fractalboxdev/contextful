@@ -33,7 +33,7 @@ Consequences: one judgment — the family — per source; authorization has one 
 
 ## Aggregate disclosure is enforced at build with noisy thresholding and an up-front budget reservation
 
-`disclosure.release` stages no breaching cell: partition selection is a noisy threshold over contributor-bounded counts. A release reserves per-unit spend for every contributing unit in one catalog transaction before reading, refusing with `DisclosureUnitBudgetExhausted`. `max_contributor_share` withholds a concentrated group. A table is `per-person` or `cohort`; `DisclosureCohortWidening` and `DisclosureSingletonCohort` guard cohorts.
+`disclosure.release` stages no breaching cell: `disclosure.suppress` selects partitions by a noisy threshold over distinct-contributor counts, and every published figure carries noise. A release reserves per-unit spend for every contributing unit in one catalog transaction before reading, refusing with `DisclosureUnitBudgetExhausted`. `max_contributor_share` withholds a concentrated group. A table is `per-person` or `cohort`; `DisclosureCohortWidening` and `DisclosureSingletonCohort` guard cohorts.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ Revisit: lookalike segment release settles its audience floor, readback rule and
 
 ## A cross-owner release runs only when the boundary is enforced below the engine
 
-`disclosure.release` against a cross-owner store requires per-tenant signed manifest entries, per-tenant write prefixes enforced by the object store's access policy, and per-tenant signing keys, else `DisclosureCleanRoomPreconditionUnmet`. A hashed join keys on a per-pair escrowed pepper rotated per join; a static pepper raises `DisclosureStaticPepper`. A segment releases identifier, size, coarse cells and an activation handle; member readback refuses. A pool over other tenants' end users requires a recorded consent contract.
+`disclosure.set-mode` requires of a cross-owner store per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys, else `DisclosureCleanRoomPreconditionUnmet`. A hashed join keys on a per-pair escrowed pepper rotated per join; a static pepper raises `DisclosureStaticPepper`. A segment releases identifier, size, coarse cells and an activation handle; member readback refuses. A pool over other tenants' end users requires a recorded consent contract.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

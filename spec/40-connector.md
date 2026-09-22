@@ -397,7 +397,7 @@ wasm_sha256      = "9f2c1b7ad0e4…"         # 64 hex, written by `connector pin
 require_wasm_pin = true
 
 [capabilities]
-allow_hosts = ["api.vendor.example", "*.cdn.vendor.example"]
+allow_hosts = ["api.vendor.example"]      # one exact host: [attach] binds a credential
 env         = ["VENDOR_ACCOUNT_ID"]
 clock       = true
 

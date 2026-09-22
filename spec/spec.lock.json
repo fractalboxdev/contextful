@@ -810,7 +810,7 @@
       "subject": "mediation",
       "kind": "behavior",
       "statement": "Every function returning or releasing a stored row takes the enforcement stack's admission value as a parameter ({{assurance.gate.row-token}}), so a row path that skips enforcement does not type-check. No operator switch disables mediation.",
-      "why": "A-connector",
+      "why": "A-topology",
       "file": "spec/01-topology.md",
       "line": 110
     },
@@ -2063,7 +2063,7 @@
       "operation": "fold",
       "subject": "triggers",
       "kind": "limit",
-      "statement": "A pass fires at 50 committed runs on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.",
+      "statement": "A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 189
@@ -2866,7 +2866,7 @@
       "operation": "register",
       "subject": "connection-views",
       "kind": "behavior",
-      "statement": "Ahead of a statement the engine opens a connection and issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}} No view directory exists on disk.",
+      "statement": "Ahead of a statement the engine opens a connection and issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}. No view directory exists on disk.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 71
@@ -2888,7 +2888,7 @@
       "operation": "register",
       "subject": "quiet-table",
       "kind": "behavior",
-      "statement": "A quiet table registers as {{store.declare.empty-run}} A read of it returns an empty result, never a missing-relation fault.",
+      "statement": "A quiet table registers as {{store.declare.empty-run}}. A read of it returns an empty result, never a missing-relation fault.",
       "why": "P4",
       "file": "spec/20-read.md",
       "line": 74
@@ -3305,8 +3305,8 @@
       "contract": "read",
       "operation": "retrieve",
       "subject": "relevance-floor",
-      "kind": "behavior",
-      "statement": "A row reaches a caller when its lexical score is null, at least the floor, or its vector score exceeds zero. The floor is 2 for three or more content tokens, else 1; a caller minimum overrides it.",
+      "kind": "limit",
+      "statement": "A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 184
@@ -3515,7 +3515,7 @@
       "operation": "retrieve",
       "subject": "sidecar-oversampling",
       "kind": "limit",
-      "statement": "One probe requests 4 times the limit or 64 rows, whichever is larger, times 4 again where the request carries restriction context.",
+      "statement": "One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 209
@@ -3569,8 +3569,8 @@
       "contract": "read",
       "operation": "rank",
       "subject": "fusion",
-      "kind": "behavior",
-      "statement": "Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 0.6 and 0.4. A document absent from one leg scores zero there; ties break by identifier.",
+      "kind": "limit",
+      "statement": "Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 60 percent and 40 percent. A document absent from one leg scores zero there; ties break by identifier.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 247
@@ -3734,8 +3734,8 @@
       "contract": "read",
       "operation": "cache",
       "subject": "cold-start",
-      "kind": "limit",
-      "statement": "A cold retrieval container reaches readiness within 8 s; a container holding no snapshot adds a whole-store pull before its first answer.",
+      "kind": "behavior",
+      "statement": "A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 290
@@ -3768,7 +3768,7 @@
       "operation": "cache",
       "subject": "snapshot-invalidates",
       "kind": "behavior",
-      "statement": "A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}}",
+      "statement": "A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}}.",
       "why": "P4",
       "file": "spec/20-read.md",
       "line": 294
@@ -3966,7 +3966,7 @@
       "operation": "revise",
       "subject": "direct-write",
       "kind": "refusal",
-      "statement": "The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert",
+      "statement": "The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 115
@@ -4838,7 +4838,7 @@
       "statement": "A stop is written onto the run row as a requested-at instant, a scope and an optional reason; the catalog is the only channel.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 260
+      "line": 262
     },
     {
       "id": "run.cancel.two-grains",
@@ -4849,7 +4849,7 @@
       "statement": "A `run`-scoped stop halts one run and the fire continues; a `pipeline`-scoped stop halts every in-flight run of the pipeline and every table or chunk the fire had left. An unrecognized stored scope reads as `run`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 261
+      "line": 263
     },
     {
       "id": "run.cancel.one-token",
@@ -4860,7 +4860,7 @@
       "statement": "Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait, a meter acquire and a subprocess wait.",
       "why": "because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled",
       "file": "spec/30-run.md",
-      "line": 262
+      "line": 264
     },
     {
       "id": "run.cancel.poll-interval",
@@ -4871,7 +4871,7 @@
       "statement": "The token is fed by one catalog read before the run's first await and then one every 500 ms, the cancellation arm evaluated ahead of the work arm.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "run.cancel.land-path-uncut",
@@ -4882,7 +4882,7 @@
       "statement": "The land path carries no stop check; a run whose bytes are home finishes landing and records the stop it did not fulfill.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 265
+      "line": 267
     },
     {
       "id": "run.cancel.abandoned-work",
@@ -4893,7 +4893,7 @@
       "statement": "Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "run.cancel.child-reaped",
@@ -4904,7 +4904,7 @@
       "statement": "A stop signals a running subprocess chain's process group, and the record is written `canceled` only after the group is reaped.",
       "why": "because a record reading canceled while a child still runs misstates what the machine is doing",
       "file": "spec/30-run.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "run.cancel.storage-blip",
@@ -4915,7 +4915,7 @@
       "statement": "A failed poll read warns and keeps polling.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "run.cancel.not-in-flight",
@@ -4926,7 +4926,7 @@
       "statement": "Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 271
+      "line": 273
     },
     {
       "id": "run.cancel.re-mark",
@@ -4937,7 +4937,7 @@
       "statement": "Marking an already-marked row overwrites it with the newer request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 273
+      "line": 275
     },
     {
       "id": "run.cancel.distinct-terminal-status",
@@ -4948,7 +4948,7 @@
       "statement": "`canceled` is a terminal status apart from `failed`, and upstream health observations skip it.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "run.cancel.resumable-remains",
@@ -4959,7 +4959,7 @@
       "statement": "A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 276
+      "line": 278
     },
     {
       "id": "run.cancel.authority-from-the-record",
@@ -4970,7 +4970,7 @@
       "statement": "A stop authorizes against the pipeline read off the run record, never off the request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 277
+      "line": 279
     },
     {
       "id": "run.record.reserved-table",
@@ -4981,7 +4981,7 @@
       "statement": "The durable run record is a reserved store table holding two append-only rows per run, one at plan and one at commit; the latest row per run and phase wins. The local catalog is a cache in front of it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 310
+      "line": 312
     },
     {
       "id": "run.record.columns",
@@ -4992,7 +4992,7 @@
       "statement": "A run row carries run id, pipeline id, site id, status, owner, start and end instants, row and byte counts, error kind and message, connector id, version and hash, trace id and phase.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "run.record.status-set",
@@ -5003,7 +5003,7 @@
       "statement": "A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.",
       "why": "because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading",
       "file": "spec/30-run.md",
-      "line": 312
+      "line": 314
     },
     {
       "id": "run.record.row-at-open",
@@ -5014,7 +5014,7 @@
       "statement": "A row is written at run open, before the first pull, so a zero-row `success`, a `failed` row carrying its error kind, and no row at all read apart.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 314
+      "line": 316
     },
     {
       "id": "run.record.time-travel",
@@ -5025,7 +5025,7 @@
       "statement": "Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 315
+      "line": 317
     },
     {
       "id": "run.record.owner-lease",
@@ -5036,7 +5036,7 @@
       "statement": "A `running` or `waiting` row carries an owner of process id, boot id and a lease expiry, renewed every 10 s with a 30 s time-to-live.",
       "why": "because a second process sharing the catalog needs a liveness signal to tell a live run from an orphan",
       "file": "spec/30-run.md",
-      "line": 316
+      "line": 318
     },
     {
       "id": "run.record.orphan-reap",
@@ -5047,7 +5047,7 @@
       "statement": "Startup marks `partial_failure` only a non-terminal row whose owner lease has expired; a row held by a live process is left alone.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 318
+      "line": 320
     },
     {
       "id": "run.record.writing-site",
@@ -5058,7 +5058,7 @@
       "statement": "The writing site is an engine-injected provenance column beside the ingestion stamp and run id; a row written without one reads null and renders unattributed.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 319
+      "line": 321
     },
     {
       "id": "run.record.site-id-length",
@@ -5069,7 +5069,7 @@
       "statement": "A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.",
       "why": "because it is interpolated into run directories and request-ledger filenames",
       "file": "spec/30-run.md",
-      "line": 320
+      "line": 322
     },
     {
       "id": "run.record.site-id-unresolved",
@@ -5080,7 +5080,7 @@
       "statement": "A site id comes from the manifest or a named environment variable; an unset variable, or both sources declared, raises `SiteIdUnresolved` at startup.",
       "why": "P3",
       "file": "spec/30-run.md",
-      "line": 322
+      "line": 324
     },
     {
       "id": "run.record.history-window",
@@ -5091,7 +5091,7 @@
       "statement": "History is read through a window, an inclusive start-instant lower bound plus a row ceiling, both applied in the storage adapter's `WHERE` clause, newest first.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 324
+      "line": 326
     },
     {
       "id": "run.record.describe-window",
@@ -5102,7 +5102,7 @@
       "statement": "The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 325
+      "line": 327
     },
     {
       "id": "run.record.bound-spelling",
@@ -5113,7 +5113,7 @@
       "statement": "A window lower bound is `YYYY-MM-DD` or a UTC RFC3339 instant ending `Z`; any other spelling raises `HistoryBoundSpelling` at every caller-facing surface.",
       "why": "because a bound read under a guessed zone silently moves the window",
       "file": "spec/30-run.md",
-      "line": 326
+      "line": 328
     },
     {
       "id": "run.record.truncation-flag",
@@ -5124,7 +5124,7 @@
       "statement": "A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than the ceiling returned.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 328
+      "line": 330
     },
     {
       "id": "run.record.empty-window",
@@ -5135,7 +5135,7 @@
       "statement": "An empty window answers `[]` and raises nothing.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 329
+      "line": 331
     },
     {
       "id": "run.record.history-export",
@@ -5146,7 +5146,7 @@
       "statement": "History leaves the machine as a process listing and an NDJSON export over one run projection; the export's first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 330
+      "line": 332
     },
     {
       "id": "run.record.export-ceiling",
@@ -5157,7 +5157,7 @@
       "statement": "The export answers with 500 rows by default and clamps at 5000 rows, each pipeline's window taking the full ceiling before the merged result is clipped once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 331
+      "line": 333
     },
     {
       "id": "run.record.error-cap",
@@ -5168,7 +5168,7 @@
       "statement": "A recorded error is masked over credential-shaped spans and capped at 2 KiB with an ellipsis marker, on the one projection every surface serves.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 332
+      "line": 334
     },
     {
       "id": "run.record.failure-publishes",
@@ -5179,7 +5179,7 @@
       "statement": "The bucket push runs on the failure arm as on the success arm, for every failure past run open.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 333
+      "line": 335
     },
     {
       "id": "run.record.per-table-accounting",
@@ -5190,7 +5190,7 @@
       "statement": "A table failing inside a multi-table fire leaves one row with its error kind, a step-failure and a run-failure event, and a position where the next run resumes, under either `on_table_error` setting.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 334
+      "line": 336
     },
     {
       "id": "run.record.counts-at-destination",
@@ -5201,7 +5201,7 @@
       "statement": "Row and byte counts are measured at the destination, not at the source.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 335
+      "line": 337
     },
     {
       "id": "run.project.best-effort",
@@ -5212,7 +5212,7 @@
       "statement": "Live run state is a best-effort projection of events the runner emits after durable state changes; execution never reads it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 343
+      "line": 345
     },
     {
       "id": "run.project.wire-snapshot",
@@ -5223,7 +5223,7 @@
       "statement": "The wire snapshot carries run id, workflow id, a status from {{run.record.status-set}}, an ordered step list, an application metadata map, optional start and end instants, an optional tagged error and a version. Every deploy target emits it identically.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 344
+      "line": 346
     },
     {
       "id": "run.project.step-view",
@@ -5234,7 +5234,7 @@
       "statement": "A step view carries its label, a status of `pending`, `running`, `completed`, `failed` or `retrying`, its attempt count, optional instants, an optional output reference with byte count, and an optional tagged failure.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 345
+      "line": 347
     },
     {
       "id": "run.project.stopped-step",
@@ -5245,7 +5245,7 @@
       "statement": "A stopped run reports its executing step `failed` with the `Canceled` tag and leaves the run-level error unset.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 346
+      "line": 348
     },
     {
       "id": "run.project.emission-never-blocks",
@@ -5256,7 +5256,7 @@
       "statement": "Progress emission is no journal step: events reach an in-process observer over a bounded channel that drops when full and never blocks the runner.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 347
+      "line": 349
     },
     {
       "id": "run.project.terminal-slot",
@@ -5267,7 +5267,7 @@
       "statement": "A terminal transition bypasses the lossy channel through a per-run slot that is never dropped; a projection reading non-terminal behind a terminal run record reconciles from the record.",
       "why": "because a dropped terminal event otherwise leaves a finished run reading running forever",
       "file": "spec/30-run.md",
-      "line": 348
+      "line": 350
     },
     {
       "id": "run.project.coalescing",
@@ -5278,7 +5278,7 @@
       "statement": "Snapshot broadcasts coalesce to at most one per 100 ms, keeping only the latest; a terminal transition flushes immediately. The clock is injected.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 350
+      "line": 352
     },
     {
       "id": "run.project.metadata-too-large",
@@ -5289,7 +5289,7 @@
       "statement": "A metadata write whose serialized size exceeds 16384 B raises `RunMetadataTooLarge` naming size and bound, and the snapshot stands unchanged.",
       "why": "because a silently clipped map reads as the complete metadata",
       "file": "spec/30-run.md",
-      "line": 351
+      "line": 353
     },
     {
       "id": "run.project.version",
@@ -5300,7 +5300,7 @@
       "statement": "The snapshot version is `(epoch, counter)`, the epoch being the hub's start instant, compared lexicographically; a client discards any delta at or below the highest version it holds.",
       "why": "because a bare counter restarts at zero with the process and freezes every client's view",
       "file": "spec/30-run.md",
-      "line": 353
+      "line": 355
     },
     {
       "id": "run.project.reducer-is-total",
@@ -5311,7 +5311,7 @@
       "statement": "The reducer is total: nothing overwrites a terminal step or run status, a new step label appends, an existing one merges field-wise, and a stale delta is a no-op.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 355
+      "line": 357
     },
     {
       "id": "run.project.outputs-by-reference",
@@ -5322,7 +5322,7 @@
       "statement": "A step output appears as a post-redaction reference and a byte count, never inline; fetching the payload is a separately authorized request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 356
+      "line": 358
     },
     {
       "id": "run.project.connect",
@@ -5333,7 +5333,7 @@
       "statement": "A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 357
+      "line": 359
     },
     {
       "id": "run.project.broadcast-ring",
@@ -5344,7 +5344,7 @@
       "statement": "The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 358
+      "line": 360
     },
     {
       "id": "run.project.unauthenticated-upgrade",
@@ -5355,7 +5355,7 @@
       "statement": "The run-stream socket authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.",
       "why": "A-read",
       "file": "spec/30-run.md",
-      "line": 359
+      "line": 361
     },
     {
       "id": "run.project.read-only-socket",
@@ -5366,7 +5366,7 @@
       "statement": "A subscription is read-only; a stop travels as an authenticated route.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 361
+      "line": 363
     },
     {
       "id": "run.project.restart-discards",
@@ -5377,7 +5377,7 @@
       "statement": "A restart discards in-memory snapshots; a subscriber recovers history from the durable record.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 362
+      "line": 364
     },
     {
       "id": "run.project.delegated-progress",
@@ -5388,7 +5388,7 @@
       "statement": "A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 363
+      "line": 365
     },
     {
       "id": "run.declare.pipeline-spec",
@@ -12112,6 +12112,17 @@
       "line": 64
     },
     {
+      "id": "disclosure.sweep.coverage-watermark",
+      "contract": "disclosure",
+      "operation": "sweep",
+      "subject": "coverage-watermark",
+      "kind": "refusal",
+      "statement": "A sweep run that failed or skipped any governed resource of its source and advances `watermark_at` raises `VisibilityWatermarkUncovered`, and the watermark stays where it stood.",
+      "why": "A-disclosure",
+      "file": "spec/60-visibility.md",
+      "line": 73
+    },
+    {
       "id": "disclosure.sweep.ungapped-stream",
       "contract": "disclosure",
       "operation": "sweep",
@@ -12120,7 +12131,7 @@
       "statement": "Advancing `watermark_at` from an event stream the mapping has not declared gap-detectable raises `VisibilityUngappedStream`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 73
+      "line": 75
     },
     {
       "id": "disclosure.sweep.orphan-grant",
@@ -12131,7 +12142,7 @@
       "statement": "A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set.",
       "why": "P5",
       "file": "spec/60-visibility.md",
-      "line": 75
+      "line": 77
     },
     {
       "id": "disclosure.reach.closure-walk",
@@ -12142,7 +12153,7 @@
       "statement": "The closure walks the group graph with a visited set, ending any cycle, to a depth of `max_group_depth`, default 8 hops, and a breadth of 10000 nodes.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 82
+      "line": 84
     },
     {
       "id": "disclosure.reach.closure-overflow",
@@ -12153,7 +12164,7 @@
       "statement": "A closure reaching its depth or node bound raises `VisibilityClosureDepth` with the non-retryable HTTP status 422 and returns no set.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 83
+      "line": 85
     },
     {
       "id": "disclosure.reach.cache-capacity",
@@ -12164,7 +12175,7 @@
       "statement": "The reachable-set cache holds at most 100000 entries and evicts the least recently used.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 85
+      "line": 87
     },
     {
       "id": "disclosure.reach.degraded-uncached",
@@ -12175,7 +12186,7 @@
       "statement": "Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 86
+      "line": 88
     },
     {
       "id": "disclosure.bound-staleness.budget-grammar",
@@ -12186,7 +12197,7 @@
       "statement": "`max_acl_staleness` is a positive integer with one suffix from `s`, `m`, `h`, `d`. A compound form, a bare number or another suffix raises `VisibilityBudgetMalformed`, naming the table and the text read.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 110
+      "line": 112
     },
     {
       "id": "disclosure.bound-staleness.access-stale",
@@ -12197,7 +12208,7 @@
       "statement": "A read raises `VisibilityAccessStale` (HTTP 503, carrying source, lag, budget and last observation) when a touched table's source lag exceeds its budget, the source has no completed full run, or the public-status watermark is past budget.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 112
+      "line": 114
     },
     {
       "id": "disclosure.bound-staleness.budget-below-cadence",
@@ -12208,7 +12219,7 @@
       "statement": "A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 114
+      "line": 116
     },
     {
       "id": "disclosure.declare-fidelity.family-bound",
@@ -12219,7 +12230,7 @@
       "statement": "A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound` and the table does not load.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 121
+      "line": 123
     },
     {
       "id": "disclosure.declare-fidelity.family-undeclared",
@@ -12230,7 +12241,7 @@
       "statement": "A mapping landing a table without naming its `family` raises `VisibilityFamilyUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 123
+      "line": 125
     },
     {
       "id": "disclosure.declare-fidelity.federated-registered",
@@ -12241,7 +12252,7 @@
       "statement": "Registering a `federated` table on a read face raises `VisibilityFederatedRegistered`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 125
+      "line": 127
     },
     {
       "id": "disclosure.declare-fidelity.federated-cache",
@@ -12252,7 +12263,7 @@
       "statement": "Retaining a federated result under a key omitting the subject raises `VisibilityFederatedCacheShared`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 127
+      "line": 129
     },
     {
       "id": "disclosure.declare-fidelity.computed-inputs",
@@ -12263,7 +12274,7 @@
       "statement": "A source that computes access with a sharing engine is queried live. A mapping projecting that engine's inputs into `access_grants` raises `VisibilityComputedInputsMirrored`, naming the source.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 129
+      "line": 131
     },
     {
       "id": "disclosure.declare-fidelity.roster-from-payload",
@@ -12274,7 +12285,7 @@
       "statement": "A mapping deriving grants from a people list inside content — attendees, invitees, recipients, contacts — rather than from the source's permission endpoint raises `VisibilityRosterFromPayload`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 131
+      "line": 133
     },
     {
       "id": "disclosure.pack.mapping-absent",
@@ -12285,7 +12296,7 @@
       "statement": "A pack landing a table with neither an access mapping nor `excluded` raises `VisibilityMappingAbsent` at diagnose, naming the pack and the table.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 140
+      "line": 142
     },
     {
       "id": "disclosure.pack.asserts-access",
@@ -12296,7 +12307,7 @@
       "statement": "An access-shaped key the mapping schema does not define raises `VisibilityPackAssertsAccess` by name. Fields outside the mapping are fetch inputs and reach no authorization decision.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 142
+      "line": 144
     },
     {
       "id": "disclosure.pack.any-of-allowlist",
@@ -12307,7 +12318,7 @@
       "statement": "An allowlist evaluated as any-of raises `VisibilityAllowlistAnyOf` at load.",
       "why": "P1",
       "file": "spec/60-visibility.md",
-      "line": 144
+      "line": 146
     },
     {
       "id": "disclosure.pack.unsupported-coarse",
@@ -12318,7 +12329,7 @@
       "statement": "Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 146
+      "line": 148
     },
     {
       "id": "disclosure.set-mode.offline-diagnostic",
@@ -12436,10 +12447,10 @@
       "operation": "suppress",
       "subject": "min-group-size",
       "kind": "refusal",
-      "statement": "`min_group_size` counts distinct contributors and is at least 2 subjects. A group under it is suppressed, and a smaller declared value raises `DisclosureMinGroupSizeBelowFloor`.",
+      "statement": "`min_group_size` counts distinct contributors and is at least 2 subjects. A group whose noised distinct-contributor count falls under it is suppressed, and a smaller declared value raises `DisclosureMinGroupSizeBelowFloor`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 81
+      "line": 83
     },
     {
       "id": "disclosure.suppress.contributor-share",
@@ -12450,7 +12461,7 @@
       "statement": "`max_contributor_share` lies above 0 percent and at most 100 percent of a group's sign-insensitive metric mass; a value outside raises `DisclosureShareOutOfRange`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 83
+      "line": 85
     },
     {
       "id": "disclosure.suppress.dominance-unverifiable",
@@ -12461,7 +12472,7 @@
       "statement": "A group under a share constraint whose per-contributor masses are unavailable raises `DisclosureDominanceUnverifiable` and is suppressed.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 85
+      "line": 87
     },
     {
       "id": "disclosure.suppress.empty-policy",
@@ -12472,7 +12483,7 @@
       "statement": "A policy setting neither threshold raises `DisclosurePolicySuppressesNothing`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 87
+      "line": 89
     },
     {
       "id": "disclosure.suppress.grouping-allowlist",
@@ -12483,7 +12494,7 @@
       "statement": "An empty permitted-grouping list, or a permitted name that is not column-shaped, raises `DisclosureGroupingAllowlistEmpty`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 89
+      "line": 91
     },
     {
       "id": "disclosure.template.single-statement",
@@ -12494,7 +12505,7 @@
       "statement": "A declaration holding more than one statement raises `DisclosureTemplateMultiStatement`.",
       "why": "A-authority",
       "file": "spec/61-disclosure.md",
-      "line": 112
+      "line": 114
     },
     {
       "id": "disclosure.template.overfetch",
@@ -12505,7 +12516,7 @@
       "statement": "A capped result sets the envelope's truncation flag by reading exactly 1 rows past the effective ceiling.",
       "why": "",
       "file": "spec/61-disclosure.md",
-      "line": 114
+      "line": 116
     },
     {
       "id": "disclosure.bound-cohort.cohort-widening",
@@ -12516,7 +12527,7 @@
       "statement": "A read recovering an under-floor group by merging it into a coarser key raises `DisclosureCohortWidening`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 120
+      "line": 122
     },
     {
       "id": "disclosure.bound-cohort.per-individual-row",
@@ -12527,7 +12538,7 @@
       "statement": "Reading a per-individual row from a cohort table without an explicit grant on the reader's token raises `DisclosurePerIndividualUngranted`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 122
+      "line": 124
     },
     {
       "id": "disclosure.bound-cohort.singleton-cohort",
@@ -12538,7 +12549,7 @@
       "statement": "A cohort key whose grain resolves to one person raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 124
+      "line": 126
     },
     {
       "id": "disclosure.record.segment",
@@ -12876,7 +12887,7 @@
       "operation": "reconcile",
       "subject": "loopback-only",
       "kind": "refusal",
-      "statement": "A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing.",
+      "statement": "A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
       "line": 93
@@ -13096,7 +13107,7 @@
       "operation": "register-store",
       "subject": "registry-unreadable",
       "kind": "refusal",
-      "statement": "A `CONTEXTFUL_STORES_JSON` value that does not parse raises `StoreRegistryUnreadable` at startup; the built-in stores substitute for no configured set.",
+      "statement": "A `CONTEXTFUL_STORES_JSON` value that does not parse raises `StoreRegistryUnreadable` at startup, and no built-in store stands in for the configured set.",
       "why": "P3",
       "file": "spec/71-console.md",
       "line": 73
@@ -13223,6 +13234,17 @@
       "line": 153
     },
     {
+      "id": "surface.ground.org-face-read-only",
+      "contract": "surface",
+      "operation": "ground",
+      "subject": "org-face-read-only",
+      "kind": "refusal",
+      "statement": "A pack registering a write tool on an organization-wide face raises `ConsoleWriteToolOnOrgFace` at startup, naming the pack and the tool, and the face serves nothing.",
+      "why": "A-surface",
+      "file": "spec/71-console.md",
+      "line": 155
+    },
+    {
       "id": "surface.ground.direct-file-read",
       "contract": "surface",
       "operation": "ground",
@@ -13231,7 +13253,7 @@
       "statement": "A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on this surface.",
       "why": "P5",
       "file": "spec/71-console.md",
-      "line": 155
+      "line": 157
     },
     {
       "id": "surface.ground.mint-refused",
@@ -13242,7 +13264,7 @@
       "statement": "A refused mint raises `ConsoleTokenExchangeRefused`. A store carrying a shared credential falls back to it; one carrying none surfaces the refusal to the reader.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 157
+      "line": 159
     },
     {
       "id": "surface.ground.sources-per-turn",
@@ -13253,7 +13275,7 @@
       "statement": "A source list carries at most 8 entries.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 159
+      "line": 161
     },
     {
       "id": "surface.plan-turn.planner-reached-memory",
@@ -13264,7 +13286,7 @@
       "statement": "Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises `ConsolePlannerReachedMemory`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 197
+      "line": 199
     },
     {
       "id": "surface.plan-turn.code-path-bounds",
@@ -13275,7 +13297,7 @@
       "statement": "The code path reads at most 5000 rows per data table and stops after 10 s.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 199
+      "line": 201
     },
     {
       "id": "surface.plan-turn.overlay-cache",
@@ -13286,7 +13308,7 @@
       "statement": "The overlay caches for 5 min, a miss included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 200
+      "line": 202
     },
     {
       "id": "surface.plan-turn.overlay-length",
@@ -13297,7 +13319,7 @@
       "statement": "An overlay is truncated at 8000 chars.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 201
+      "line": 203
     },
     {
       "id": "surface.set-vantage.unparseable",
@@ -13308,7 +13330,7 @@
       "statement": "A vantage that is neither a calendar day nor an instant raises `ConsoleVantageUnparseable`, answered `400`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 209
+      "line": 211
     },
     {
       "id": "surface.set-vantage.web-bound-unparseable",
@@ -13319,7 +13341,7 @@
       "statement": "A web leg whose bound fails to parse fails that leg and raises `ConsoleWebBoundUnparseable`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 211
+      "line": 213
     },
     {
       "id": "surface.set-vantage.sample-labels",
@@ -13330,7 +13352,7 @@
       "statement": "A table's arrivals contribute at most 3 entries of sampled label.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 213
+      "line": 215
     },
     {
       "id": "surface.learn.distillation",
@@ -13341,7 +13363,7 @@
       "statement": "After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 223
+      "line": 225
     },
     {
       "id": "surface.learn.unscoped",
@@ -13352,7 +13374,7 @@
       "statement": "A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 224
+      "line": 226
     },
     {
       "id": "surface.render.client-authored-view",
@@ -13363,7 +13385,7 @@
       "statement": "A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "surface.render.component-choice",
@@ -13374,7 +13396,7 @@
       "statement": "One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 235
+      "line": 237
     },
     {
       "id": "surface.brief.absence-is-earned",
@@ -13385,7 +13407,7 @@
       "statement": "The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 269
+      "line": 271
     },
     {
       "id": "surface.brief.topic-tier",
@@ -13396,7 +13418,7 @@
       "statement": "The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 271
+      "line": 273
     },
     {
       "id": "surface.brief.card-subjects",
@@ -13407,7 +13429,7 @@
       "statement": "A card carries at most 3 subjects.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "surface.brief.articles-per-subject",
@@ -13418,7 +13440,7 @@
       "statement": "A subject carries at most 3 entries of matched article.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 273
+      "line": 275
     },
     {
       "id": "surface.brief.catchup-window",
@@ -13429,7 +13451,7 @@
       "statement": "The backend caps the requested window at 7 d.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "surface.publish-answer.share-affordance",
@@ -13440,7 +13462,7 @@
       "statement": "A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 280
+      "line": 282
     },
     {
       "id": "surface.publish-answer.askerless-audience",
@@ -13451,7 +13473,7 @@
       "statement": "A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "assurance.model.package",
@@ -14747,7 +14769,7 @@
       "subject": "unconfigured-egress",
       "kind": "refusal",
       "statement": "An outbound call reachable under the default configuration — usage ping, license check, update probe — raises `UnconfiguredEgress` in the crate-graph stage, naming the call site.",
-      "why": "A-disclosure",
+      "why": "because some deployments run with no external reach, and a call nobody configured moves data outside every grant, zone and audit record",
       "file": "spec/81-engineering.md",
       "line": 154
     },
@@ -15787,6 +15809,10 @@
       "authority.compose.vector-arm"
     ],
     [
+      "read.cache.cold-start",
+      "topology.publish-hostname.container-readiness"
+    ],
+    [
       "read.cache.snapshot-invalidates",
       "store.fold.non-blocking"
     ],
@@ -16239,6 +16265,10 @@
         "gloss": "table rows",
         "aliases": []
       },
+      "runs": {
+        "gloss": "committed runs",
+        "aliases": []
+      },
       "s": {
         "gloss": "second",
         "aliases": [
@@ -16249,6 +16279,10 @@
       },
       "subjects": {
         "gloss": "distinct subjects contributing to a cell",
+        "aliases": []
+      },
+      "times": {
+        "gloss": "multiples of a stated base quantity",
         "aliases": []
       },
       "tokens": {
@@ -18198,6 +18232,10 @@
           "VisibilityUnsupportedCoarse": {
             "clause": "disclosure.pack.unsupported-coarse",
             "gloss": "A table declared coarse where its source emits no container signal."
+          },
+          "VisibilityWatermarkUncovered": {
+            "clause": "disclosure.sweep.coverage-watermark",
+            "gloss": "A sweep run that missed a governed resource advanced the watermark."
           }
         },
         "limit": {
@@ -18468,19 +18506,19 @@
             "basis": "chosen",
             "gloss": "Inclusive window past a deadline within which an observation is scored."
           },
+          "read-candidate-window-factor": {
+            "clause": "read.retrieve.candidate-window",
+            "value": 8,
+            "unit": "times",
+            "basis": "chosen",
+            "gloss": "Multiple of the requested limit forming the candidate window."
+          },
           "read-candidate-window-floor": {
             "clause": "read.retrieve.candidate-window",
             "value": 200,
             "unit": "rows",
             "basis": "chosen",
             "gloss": "Smallest candidate window of a ranked read."
-          },
-          "read-cold-start-ceiling": {
-            "clause": "read.cache.cold-start",
-            "value": 8,
-            "unit": "s",
-            "basis": "chosen",
-            "gloss": "Readiness interval of a cold retrieval container; unmeasured."
           },
           "read-content-token-cap": {
             "clause": "read.retrieve.token-cap",
@@ -18496,6 +18534,20 @@
             "basis": "chosen",
             "gloss": "Values in one filter membership list."
           },
+          "read-fusion-lexical-weight": {
+            "clause": "read.rank.fusion",
+            "value": 40,
+            "unit": "percent",
+            "basis": "chosen",
+            "gloss": "Default weight of the min-max BM25 leg in fusion."
+          },
+          "read-fusion-vector-weight": {
+            "clause": "read.rank.fusion",
+            "value": 60,
+            "unit": "percent",
+            "basis": "chosen",
+            "gloss": "Default weight of the clamped cosine leg in fusion."
+          },
           "read-lexical-index-cache": {
             "clause": "read.rank.lexical-index-cache",
             "value": 64,
@@ -18510,6 +18562,27 @@
             "basis": "chosen",
             "gloss": "Token length below which no plural suffix is matched."
           },
+          "read-relevance-floor-narrow": {
+            "clause": "read.retrieve.relevance-floor",
+            "value": 1,
+            "unit": "tokens",
+            "basis": "chosen",
+            "gloss": "Lexical-score floor for a query below the threshold."
+          },
+          "read-relevance-floor-split": {
+            "clause": "read.retrieve.relevance-floor",
+            "value": 3,
+            "unit": "tokens",
+            "basis": "chosen",
+            "gloss": "Content-token count at which the wider floor applies."
+          },
+          "read-relevance-floor-wide": {
+            "clause": "read.retrieve.relevance-floor",
+            "value": 2,
+            "unit": "tokens",
+            "basis": "chosen",
+            "gloss": "Lexical-score floor for a query of at least the threshold's content tokens."
+          },
           "read-row-ceiling-overfetch": {
             "clause": "read.respond.row-ceiling",
             "value": 1,
@@ -18517,12 +18590,26 @@
             "basis": "chosen",
             "gloss": "Rows fetched past the row ceiling, whose presence sets `truncated`."
           },
+          "read-sidecar-probe-factor": {
+            "clause": "read.retrieve.sidecar-oversampling",
+            "value": 4,
+            "unit": "times",
+            "basis": "chosen",
+            "gloss": "Multiple of the limit one sidecar probe requests."
+          },
           "read-sidecar-probe-floor": {
             "clause": "read.retrieve.sidecar-oversampling",
             "value": 64,
             "unit": "rows",
             "basis": "chosen",
             "gloss": "Smallest candidate count one sidecar probe requests."
+          },
+          "read-sidecar-restricted-factor": {
+            "clause": "read.retrieve.sidecar-oversampling",
+            "value": 4,
+            "unit": "times",
+            "basis": "chosen",
+            "gloss": "Further multiple applied when the request carries restriction context."
           },
           "read-sidecar-size-cap": {
             "clause": "read.retrieve.sidecar-size-cap",
@@ -19495,6 +19582,13 @@
             "basis": "chosen",
             "gloss": "Elapsed time after a table's previous pass that fires the next."
           },
+          "store-compaction-run-count": {
+            "clause": "store.fold.triggers",
+            "value": 50,
+            "unit": "runs",
+            "basis": "chosen",
+            "gloss": "Runs committed on a table since its previous pass that fire the next."
+          },
           "store-kdf-iterations": {
             "clause": "store.encrypt.password-kdf",
             "value": 3,
@@ -19731,6 +19825,10 @@
           "ConsoleWebBoundUnparseable": {
             "clause": "surface.set-vantage.web-bound-unparseable",
             "gloss": "A web leg whose publication bound does not parse."
+          },
+          "ConsoleWriteToolOnOrgFace": {
+            "clause": "surface.ground.org-face-read-only",
+            "gloss": "A write tool registered on an organization-wide face."
           },
           "ControlPointerMalformed": {
             "clause": "surface.reconcile.pointer-malformed",

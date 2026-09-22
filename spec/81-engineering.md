@@ -152,7 +152,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `dependency-deny` — The crate-graph stage runs cargo-deny over each profile's resolved graph, with a deny list holding every crate a dependency refusal of another contract names; a hit raises that clause's error.
   *P7*
 - `unconfigured-egress` — An outbound call reachable under the default configuration — usage ping, license check, update probe — raises `UnconfiguredEgress` in the crate-graph stage, naming the call site.
-  *A-disclosure*
+  *because some deployments run with no external reach, and a call nobody configured moves data outside every grant, zone and audit record*
 - `interpolated-claim` — A source lint over the runtime crates finding a subject claim formatted into SQL text raises `EnforceInterpolatedSubjectClaim`, naming the file and line.
   *P1*
 - `formal-stage` — The formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.

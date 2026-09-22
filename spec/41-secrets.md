@@ -272,12 +272,14 @@ unsettled: Is the record's grant vocabulary free text or a per-adapter enumerati
 A declaration binding one credential through a template:
 
 ```toml
-[[pipeline.source]]
-kind = "http"
-url  = "https://api.vendor.example/v1/orders"
-host = "api.vendor.example"           # exact host: a credential attaches here
+[pipeline.source]
+name = "http"
 
-[pipeline.source.headers]
+[pipeline.source.config]
+endpoint = "https://api.vendor.example/v1/orders"   # one exact host: a credential attaches here
+format   = "json"
+
+[pipeline.source.config.headers]
 Authorization = "Bearer ${secret://vendor-token}"
 ```
 

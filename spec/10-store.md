@@ -186,7 +186,7 @@ Compaction: pass order, triggers, retention, the compaction lease, and the point
 - `pass` — A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}.
 - `valid-time-line` — A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line.
 - `includes-runs` — A snapshot's `includes_runs` names the runs it folded; a run committed afterwards reads on top of it.
-- `triggers` — A pass fires at 50 committed runs on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
+- `triggers` — A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
 - `retention` — `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
 - `result` — A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass.
 - `unknown-table` — A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}.

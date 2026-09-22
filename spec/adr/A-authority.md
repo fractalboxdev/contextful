@@ -4,7 +4,7 @@
 
 ## Redacted material leaves no derived copy
 
-Redaction holds only when no derived artifact carries the pre-redaction value, so each copy path closes at its source. `store.encrypt` refuses an index over a column redacted at write time; `run.journal` refuses write-path redaction paired with a journaling source, at manifest validation, reconcile and run open; the derive tier sits on the journaling opt-out list. `connector.attach` renders a URL as scheme, host, port and path and refuses configured userinfo; `run.land` passes every derived error string through address redaction at the row builder.
+Redaction holds only when no derived artifact carries the pre-redaction value, so each copy path closes at its source. `store.encrypt` refuses an index over a column redacted at write time; `run.journal` refuses write-path redaction paired with a journaling source, at manifest validation and again at run open; the derive tier sits on the journaling opt-out list. `connector.attach` renders a URL as scheme, host, port and path and refuses configured userinfo; `run.emit` refuses a derived error string written without address redaction.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -33,18 +33,18 @@ Revisit: a directory's identifiers exceed 256 B; provisioning latency dominates 
 
 ## Delegation is a versioned profile over an attenuable-credential library
 
-The library's own format is the one wire format; the engine owns a versioned profile and no envelope. `authority.profile` names the admitted facts, checks and restriction tuples, and refuses any other element; the library owns serialization, signatures, chaining and evaluation. A credential is an authority block plus N attenuation blocks, and a chain past the declared depth limit refuses before evaluation. Time, audience, resolved resources and request identity are reserved engine-supplied facts. Evaluation admits no third-party block, external function, recursion or regular expression, under fact and iteration ceilings that refuse past their bound.
+The library's own format is the one wire format; the engine owns a versioned profile and no envelope. `authority.profile` names the admitted facts, checks and restriction tuples, and refuses any other element; the library owns serialization, signatures, chaining and evaluation. A credential is an authority block plus N attenuation blocks; the supported chain depth is unsettled under `authority.attenuate`. Time, audience, resolved resources and request identity are reserved engine-supplied facts. Evaluation admits no third-party block, external function, recursion or regular expression, under fact and iteration ceilings that refuse past their bound.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Library format, N-block chain, owned profile, depth and evaluation ceilings *(chosen)* | — | The wire format tracks an upstream project; a pattern restriction is an enumerated allowlist. |
+| Library format, N-block chain, owned profile, evaluation ceilings *(chosen)* | — | The wire format tracks an upstream project; a pattern restriction is an enumerated allowlist. |
 | A custom envelope beside the library token | Chain depth | One attenuation segment leaves grandchildren inexpressible; two formats each need review. |
 | A hand-rolled N-block format | Review cost | Its failure mode is silent forgery reviewed by nobody outside the project. |
 | The library's full language, unprofiled | Bounding | Evaluation cost and reachable facts are holder-controlled. |
 | Bearer token plus a policy-service lookup | Read-path independence | Every admission fails when the policy service does. |
 
 Consequences: no wall-clock timeout enters admission, so slow hardware refuses nothing fast hardware admits.
-Revisit: real delegation trees reach the depth limit; the library gains a backtracking-free matcher identical across native and WebAssembly builds.
+Revisit: chain verification cost becomes measurable at real delegation depths; the library gains a backtracking-free matcher identical across native and WebAssembly builds.
 
 ## Grants narrow offline, and admission re-checks the whole chain
 
@@ -93,7 +93,7 @@ Revisit: a verified need for lifetimes above 24 h; operators surprised by clampe
 
 ## Verification trusts only pinned or injected keys
 
-The deployment, never the credential, chooses the verifying key, and an absent answer about keys refuses. `authority.issue` signs through one provider-agnostic port with seed file, secret reference, cloud KMS, HSM and remote oracle adapters. The pinned key's scheme decides verification; a conflicting algorithm claim refuses. `authority.verify` accepts a key set from static pins or an opted-into key route; an opted-in checkpoint lacking the set refuses everything — the engine declines to start, a gateway answers 503. `authority.exchange` verifies against operator-injected secret, PEM key or `kid`-selected key set, with no network call.
+The deployment, never the credential, chooses the verifying key, and an absent answer about keys refuses. `authority.issue` signs through one provider-agnostic port with seed file, secret reference and remote signing oracle adapters. The pinned key's scheme decides verification; a conflicting algorithm claim refuses. `authority.verify` accepts a key set from static pins or an opted-into key route; an opted-in checkpoint lacking the set refuses everything — the engine declines to start, a gateway answers 503. `authority.exchange` verifies against operator-injected secret, PEM key or `kid`-selected key set, with no network call.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

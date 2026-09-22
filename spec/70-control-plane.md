@@ -90,7 +90,7 @@ The control source, the snapshot pointer and its versions, the pure schedule dif
   *because an integer read out of leading bytes arms a version nobody applied*
 - `fail-static` — An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.
   *A-surface*
-- `loopback-only` — A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing.
+- `loopback-only` — A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.
   *A-surface*
 
 One reconciler beat, polled every 30 s by default:

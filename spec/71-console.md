@@ -70,7 +70,7 @@ flowchart LR
 
 Which stores a deployment serves, how each store's credential and binding names derive, and how a request reaches a store's origin.
 
-- `registry-unreadable` — A `CONTEXTFUL_STORES_JSON` value that does not parse raises `StoreRegistryUnreadable` at startup; the built-in stores substitute for no configured set.
+- `registry-unreadable` — A `CONTEXTFUL_STORES_JSON` value that does not parse raises `StoreRegistryUnreadable` at startup, and no built-in store stands in for the configured set.
   *P3*
 - `malformed-entry` — One entry that does not decode raises `StoreEntryMalformed` naming it, and is dropped while its siblings are served.
   *A-surface*
@@ -151,6 +151,8 @@ Where an answer's material comes from: the closed tool set, the two trust layers
 - `unadmitted-tool` — A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing.
   *A-surface*
 - `mutating-tool` — The visitor-facing endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server.
+  *A-surface*
+- `org-face-read-only` — A pack registering a write tool on an organization-wide face raises `ConsoleWriteToolOnOrgFace` at startup, naming the pack and the tool, and the face serves nothing.
   *A-surface*
 - `direct-file-read` — A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on this surface.
   *P5*

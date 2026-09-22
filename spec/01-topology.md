@@ -108,7 +108,7 @@ The two halves of the engine, the three crossings between them, complete mediati
 - `run-path-droppable` — A build linking no execution core, scheduler or component host serves reads of data a full daemon produced, over the identical part-and-manifest layout and connector contract.
 - `cli-binary` — The system ships one command binary, `contextful`, and one package scope, `@contextful/*`. The smallest deployable build is a profile, not a crate.
 - `mediation` — Every function returning or releasing a stored row takes the enforcement stack's admission value as a parameter ({{assurance.gate.row-token}}), so a row path that skips enforcement does not type-check. No operator switch disables mediation.
-  *A-connector*
+  *A-topology*
 - `enforcement-span` — The enforcement stack spans both halves: capability allowlists and the journal on the run path; the statement guard, visibility semi-join, row and column restriction, masking and the audit chain on the read path.
 - `semantic-layer` — Enforcement interprets no content. Retrieval, memory synthesis, the analyst surface and inference placement interpret content and reach enforcement through the three crossings alone.
 - `one-tree` — Laptop through cluster runs from one source tree. A single-node or edge deployment runs no external queue, cache or coordination process; a multi-node deployment adds one shared database.
