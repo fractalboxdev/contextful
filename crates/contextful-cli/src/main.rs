@@ -1,5 +1,6 @@
 //! The `contextful` binary.
 
+mod differential;
 mod formal;
 mod token;
 

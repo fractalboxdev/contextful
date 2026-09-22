@@ -100,6 +100,10 @@ pub enum FormalCmd {
         #[arg(long)]
         root: Option<PathBuf>,
     },
+    /// Replay the counterexample corpus, then run seeded generated cases through the engine's
+    /// decision functions and the Lean reference model; exits non-zero on the first
+    /// disagreement.
+    Differential(crate::differential::DifferentialArgs),
 }
 
 pub fn run(cmd: FormalCmd) -> Result<()> {
@@ -110,6 +114,7 @@ pub fn run(cmd: FormalCmd) -> Result<()> {
             check(&root, &report_path)
         }
         FormalCmd::Recheck { root } => recheck(root),
+        FormalCmd::Differential(args) => crate::differential::run(args),
     }
 }
 
