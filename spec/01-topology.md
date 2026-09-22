@@ -21,38 +21,38 @@ The system: the parties outside it, eight runtime contracts placed on the two ha
 the three crossings joining them; `corpus` governs this text and appears in no process.
 
 ```mermaid
-flowchart LR
+flowchart TB
   OPER(["operator"])
   CALLER(["agent · analyst · application"])
   SRC[("sources")]
-  MODEL(["inference endpoint · OpenAI-compatible HTTP"])
+  MODEL(["inference endpoint<br/>OpenAI-compatible HTTP"])
   BUCKET[("S3-compatible bucket")]
 
   subgraph SURF["surface · contextful-control profile"]
-    CADENCE["cadence tick · reconciler · dispatch"]
-    CONSOLE["analyst console"]
+    CADENCE["<b>cadence</b><br/>tick · reconciler · dispatch"]
+    CONSOLE["<b>analyst console</b>"]
   end
 
   subgraph RUN["run path · contextful-full"]
-    JOURNAL["run · journal · scheduler · cursor commit"]
-    HOST["connector · component host + native connectors"]
-    ALLOW["authority · capability allowlists"]
+    JOURNAL["<b>run</b><br/>journal · scheduler · cursor commit"]
+    HOST["<b>connector</b><br/>component host + native connectors"]
+    ALLOW["<b>authority</b><br/>capability allowlists"]
   end
 
   subgraph CROSS["the three crossings"]
-    X1["1 · connector interface world"]
-    X2["2 · columnar parts + manifest"]
-    X3["3 · capability-token format"]
+    X1["<b>1</b> · connector interface world"]:::crossing
+    X2["<b>2</b> · columnar parts + manifest"]:::crossing
+    X3["<b>3</b> · capability-token format"]:::crossing
   end
 
   subgraph READ["read path · contextful-edge + contextful-full"]
-    FACE["read · query · ranking · memory"]
-    ENF["authority + disclosure · enforcement stack"]
-    STORE["store · parts · manifests · catalog"]
+    FACE["<b>read</b><br/>query · ranking · memory"]
+    ENF["<b>enforcement stack</b><br/>authority + disclosure"]
+    STORE["<b>store</b><br/>parts · manifests · catalog"]
   end
 
-  ASSURE["assurance · crate-graph gate"]
-
+  ASSURE["<b>assurance</b><br/>crate-graph gate"]
+  classDef crossing stroke:#0e7a69,stroke-width:2px,fill:#e2f2ee,color:#10231e
   OPER --> CADENCE
   CADENCE -- "dispatch a unit" --> JOURNAL
   JOURNAL -- "journaled step" --> HOST
