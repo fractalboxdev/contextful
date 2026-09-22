@@ -133,6 +133,24 @@ declare module 'astro:content' {
   filePath?: string;
   digest?: string | number;
 }>;
+"cards": Record<string, {
+  id: string;
+  body?: string;
+  collection: "cards";
+  data: InferEntrySchema<"cards">;
+  rendered?: RenderedContent;
+  filePath?: string;
+  digest?: string | number;
+}>;
+"guide": Record<string, {
+  id: string;
+  body?: string;
+  collection: "guide";
+  data: InferEntrySchema<"guide">;
+  rendered?: RenderedContent;
+  filePath?: string;
+  digest?: string | number;
+}>;
 "spec": Record<string, {
   id: string;
   body?: string;

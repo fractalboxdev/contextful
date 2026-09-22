@@ -4,22 +4,22 @@ import Base from "../../layouts/Base.astro";
 import { companions, descriptionOf, titleOf } from "../../lib/nav";
 
 export async function getStaticPaths() {
-  const entries = await getCollection("spec");
+  const entries = await getCollection("cards");
   return entries.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
 }
 
 const { entry } = Astro.props;
 const { Content, headings } = await render(entry);
-const links = await companions(entry.data.contract);
+const links = await companions(entry.id);
 ---
 
 <Base title={titleOf(entry)} description={descriptionOf(entry)} headings={headings}>
   {
     links && (
       <p class="eyebrow">
-        contract <code>{links.contract}</code>
+        card for contract <code>{links.contract}</code>
+        {links.files.map((f) => <> · <a href={f.href}><code>{f.file}</code></a></>)}
         {links.guide && <> · <a href={links.guide}>guide</a></>}
-        {links.card && <> · <a href={links.card}>card</a></>}
       </p>
     )
   }

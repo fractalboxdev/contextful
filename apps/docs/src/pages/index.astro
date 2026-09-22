@@ -22,12 +22,15 @@ const contractFiles = spec
 
 <Base
   title="Contextful specification"
-  description="The Contextful specification: contract files, principles, per-contract decision records, the milestone roadmap and computed build status."
+  description="The Contextful specification: contract files, per-contract guides and cards, principles, per-contract decision records, the milestone roadmap and computed build status."
 >
   <h1><strong>Contextful</strong> specification</h1>
   <p>
-    Each contract file is a table of clauses addressed <code>&lt;contract&gt;.&lt;operation&gt;.&lt;subject&gt;</code>.
-    A clause row carries an anchor at its id, so <code>/spec/10-store/#store.fold.partial-snapshot</code> lands on the row.
+    Each contract file states its clauses as list items under one <code>##</code> section per operation, and
+    each clause is addressed <code>&lt;contract&gt;.&lt;operation&gt;.&lt;subject&gt;</code>. The item carries an
+    anchor at its full id, so <code>/spec/10-store/#store.fold.partial-snapshot</code> lands on that clause.
+    Each contract also has a guide that teaches it in prose and a generated card that lists its operations,
+    refusals and bounds on one page.
   </p>
 
   <h2 id="contracts">Contracts</h2>
