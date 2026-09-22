@@ -263,3 +263,20 @@ fn a_generated_node_id_persists_in_the_state_directory() {
     assert_eq!(node.as_str(), "local");
     assert!(!f.store.root().join("state").exists());
 }
+
+/// A run is its run id on one node: a second node committing a folded run id lands a run no snapshot holds.
+#[test]
+fn a_run_id_folded_on_one_node_leaves_the_other_nodes_run_unfolded() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"\nretain_runs = \"1d\"");
+    f.land_on(&d, "run-1", "ingest-a", json!([{"id": "a"}]), "2030-01-01T00:00:00Z", &[]).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    f.land_on(&d, "run-1", "ingest-b", json!([{"id": "b"}]), "2030-01-01T02:00:00Z", &[]).unwrap();
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t ORDER BY id"), [[s("a")], [s("b")]]);
+    fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t ORDER BY id"), [[s("a")], [s("b")]]);
+    // Retention collects what was folded, and the rows stay readable.
+    f.land_on(&d, "run-2", "ingest-a", json!([{"id": "c"}]), "2030-01-03T00:00:00Z", &[]).unwrap();
+    fold(&f.store, &d, at("2030-01-03T04:00:00Z")).unwrap();
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t ORDER BY id"), [[s("a")], [s("b")], [s("c")]]);
+}

@@ -164,3 +164,11 @@ fn transaction_time_is_ingested_at_and_valid_time_is_declared() {
     .collect();
     assert_eq!(cols, ["_ingested_at"]);
 }
+
+#[test]
+fn an_exclusive_valid_bound_admits_rows_ending_at_it() {
+    let mut t = TableDecl::named("rates");
+    t.valid_time = Some(ValidTime { from: "f".into(), to: Some("u".into()) });
+    let rel = relation(&t, &["/s/a.parquet".into()], &[], &[], Some(Bound::parse("2030-01-15").unwrap())).unwrap();
+    assert!(rel.contains("\"f\" < TIMESTAMPTZ '2030-01-16T00:00:00.000000000Z' AND (\"u\" IS NULL OR \"u\" >= TIMESTAMPTZ '2030-01-16T00:00:00.000000000Z')"), "{rel}");
+}

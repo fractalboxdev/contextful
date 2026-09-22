@@ -181,6 +181,7 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
             }
         }
     }
+    let _schema_lock = store.lock_schema(table)?;
     let stored = store.try_schema(table)?.unwrap_or_default();
     let injected: Vec<Column> = ctx
         .injection

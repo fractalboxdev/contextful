@@ -45,7 +45,11 @@ pub fn relation(
     }
 
     let mut rel = if decl.is_keyed() {
-        let pk: Vec<String> = decl.primary_key().iter().map(|k| ident(k)).collect();
+        // A table declaring valid time keeps one row per key and valid-time line, as the fold does.
+        let mut pk: Vec<String> = decl.primary_key().iter().map(|k| ident(k)).collect();
+        if let Some(vt) = &decl.valid_time {
+            pk.push(ident(&vt.from));
+        }
         let mut order = vec![format!("{} DESC", ident(decl.order_by()))];
         if decl.order_by() != super::reserve::INGESTED_AT {
             order.push(format!("{} DESC", ident(super::reserve::INGESTED_AT)));
@@ -64,10 +68,12 @@ pub fn relation(
             StoreError::StoreValidTimeUndeclared(format!("table `{}` declares no valid-time pair", decl.name))
         })?;
         let at = format!("TIMESTAMPTZ {}", literal(&b.at.to_rfc3339_nanos()));
-        let from_cmp = if b.inclusive { "<=" } else { "<" };
+        // An exclusive bound asks about the instant just before it: a row starting at
+        // the bound is not yet valid, and a row ending at it still is.
+        let (from_cmp, to_cmp) = if b.inclusive { ("<=", ">") } else { ("<", ">=") };
         let mut pred = format!("{} {from_cmp} {at}", ident(&vt.from));
         if let Some(to) = &vt.to {
-            pred = format!("{pred} AND ({} IS NULL OR {} > {at})", ident(to), ident(to));
+            pred = format!("{pred} AND ({} IS NULL OR {} {to_cmp} {at})", ident(to), ident(to));
         }
         rel = format!("SELECT * FROM ({rel}) WHERE {pred}");
     }

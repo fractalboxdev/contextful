@@ -66,3 +66,34 @@ fn an_unkeyed_table_returns_every_covering_version() {
     let roles = f.query(&d, valid_as_of("2030-02-01T00:00:00Z"), "SELECT role FROM t ORDER BY role");
     assert_eq!(roles, [[s("analyst")], [s("reviewer")]]);
 }
+
+/// A keyed table declaring `valid_time` keeps one row per key and line, so a valid-time read reaches a key's past version.
+#[test]
+fn a_keyed_valid_time_read_reaches_the_version_valid_then() {
+    let f = Fixture::new();
+    let d = decl("name = \"rates\"\nprimary_key = [\"ccy\"]\n[pipeline.tables.valid_time]\nfrom = \"from_ts\"");
+    let ts = [("from_ts", ColumnType::Timestamp)];
+    f.land_typed(&d, "run-1", json!([
+        {"ccy": "eur", "rate": 1, "from_ts": "2030-01-01T00:00:00Z"},
+        {"ccy": "eur", "rate": 2, "from_ts": "2030-03-01T00:00:00Z"},
+    ]), "2030-01-01T00:00:00Z", &ts).unwrap();
+    let rates = |b: &str| f.query(&d, valid_as_of(b), "SELECT rate FROM t ORDER BY rate");
+    assert_eq!(rates("2030-02-15T00:00:00Z"), [[s("1")]]);
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    assert_eq!(rates("2030-02-15T00:00:00Z"), [[s("1")]]);
+    assert_eq!(rates("2030-03-15T00:00:00Z"), [[s("1")], [s("2")]]);
+}
+
+/// A date-only valid-time bound covers the whole day: a row ending at the next midnight is valid on it.
+#[test]
+fn a_date_only_valid_bound_covers_rows_ending_at_the_next_midnight() {
+    let f = Fixture::new();
+    let d = decl("name = \"rates\"\n[pipeline.tables.valid_time]\nfrom = \"from_ts\"\nto = \"to_ts\"");
+    let ts = [("from_ts", ColumnType::Timestamp), ("to_ts", ColumnType::Timestamp)];
+    f.land_typed(&d, "run-1", json!([
+        {"rate": 1, "from_ts": "2030-01-01T00:00:00Z", "to_ts": "2030-01-16T00:00:00Z"},
+        {"rate": 2, "from_ts": "2030-01-16T00:00:00Z", "to_ts": null},
+    ]), "2030-01-01T00:00:00Z", &ts).unwrap();
+    assert_eq!(f.query(&d, valid_as_of("2030-01-15"), "SELECT rate FROM t"), [[s("1")]]);
+    assert_eq!(f.query(&d, valid_as_of("2030-01-16"), "SELECT rate FROM t"), [[s("2")]]);
+}

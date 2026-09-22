@@ -33,7 +33,7 @@ pub fn snapshot(created: &str, parent: Option<&SnapshotId>, includes: &[&str]) -
         parent: parent.cloned(),
         table: "filings".into(),
         created_at: at(created),
-        includes_runs: includes.iter().map(|s| s.to_string()).collect(),
+        includes_runs: includes.iter().map(|s| format!("{s}/ingest-a")).collect(),
         primary_key: vec![],
         order_by: None,
         row_count: 0,

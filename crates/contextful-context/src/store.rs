@@ -105,6 +105,14 @@ impl Store {
         Ok(Some(schema))
     }
 
+    /// Lock the table's schema for a read-merge-replace, so concurrent landings each merge
+    /// into the other's result.
+    pub fn lock_schema(&self, table: &str) -> Result<FileLock> {
+        let dir = self.table_dir(table)?;
+        fs::create_dir_all(&dir).at(&dir)?;
+        FileLock::acquire(&dir.join(format!("{SCHEMA_FILE}.lock")), std::time::Duration::from_secs(LOCK_STALE_SECS))
+    }
+
     /// Replace `schema.json` with the merged schema (`store.lay-out.schema-file`).
     pub fn write_schema(&self, table: &str, schema: &Schema) -> Result<()> {
         let dir = self.table_dir(table)?;
@@ -227,7 +235,7 @@ impl Store {
         let table = decl.name.as_str();
         let runs = self.committed_runs(table)?;
         let (chain, parent_collected) = self.chain(table)?;
-        let present: BTreeSet<&str> = runs.iter().map(|r| r.run_id.as_str()).collect();
+        let present: BTreeSet<String> = runs.iter().map(RunManifest::key).collect();
         let run_collected = chain.iter().flat_map(|s| &s.includes_runs).any(|r| !present.contains(r.as_str()));
         Ok(TableState {
             table: table.to_string(),
@@ -240,6 +248,59 @@ impl Store {
 }
 
 pub const ABSENT_ETAG: &str = "absent";
+
+/// Age past which a lock file is taken as left by a crashed process and removed.
+pub const LOCK_STALE_SECS: u64 = 30;
+
+/// An exclusive lock file, removed on drop: the filesystem's stand-in for a
+/// conditional write. A lock older than [`LOCK_STALE_SECS`] was left by a crashed
+/// holder and is cleared.
+#[derive(Debug)]
+pub struct FileLock(PathBuf);
+
+impl FileLock {
+    /// Take the lock, or `None` while a live holder has it.
+    pub fn try_acquire(path: &Path) -> Result<Option<FileLock>> {
+        for _ in 0..2 {
+            match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+                Ok(_) => return Ok(Some(FileLock(path.to_path_buf()))),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let stale = fs::metadata(path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age.as_secs() >= LOCK_STALE_SECS);
+                    if !stale {
+                        return Ok(None);
+                    }
+                    let _ = fs::remove_file(path);
+                }
+                Err(e) => return Err(ContextError::Io { path: path.to_path_buf(), source: e }),
+            }
+        }
+        Ok(None)
+    }
+
+    /// Take the lock, waiting up to `wait` for a live holder to release it.
+    pub fn acquire(path: &Path, wait: std::time::Duration) -> Result<FileLock> {
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(lock) = FileLock::try_acquire(path)? {
+                return Ok(lock);
+            }
+            if start.elapsed() >= wait {
+                return Err(ContextError::Invalid(format!("{} is held by another process", path.display())));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+}
+
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
 
 pub(crate) fn etag(bytes: &[u8]) -> String {
     let d = Sha256::digest(bytes);

@@ -103,6 +103,14 @@ pub struct RunManifest {
     pub fence: Option<u64>,
 }
 
+impl RunManifest {
+    /// The run's identity in a snapshot's `includes_runs`: `<run-id>/<node-id>`, its path
+    /// under `data/runs/`, since two nodes commit one logical run id in disjoint directories.
+    pub fn key(&self) -> String {
+        format!("{}/{}", self.run_id, self.node_id)
+    }
+}
+
 /// A snapshot's manifest (`store.lay-out.snapshot-manifest`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SnapshotManifest {

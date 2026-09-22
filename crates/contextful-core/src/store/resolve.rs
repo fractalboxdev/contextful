@@ -45,7 +45,8 @@ impl Resolution<'_> {
 }
 
 impl TableState {
-    /// Runs folded into the snapshot at `chain[i]` or any ancestor of it.
+    /// Runs folded into the snapshot at `chain[i]` or any ancestor of it, by
+    /// [`RunManifest::key`].
     pub fn folded(&self, i: usize) -> BTreeSet<&str> {
         self.chain[i..].iter().flat_map(|s| s.includes_runs.iter().map(String::as_str)).collect()
     }
@@ -69,7 +70,7 @@ impl TableState {
         }
         let folded = at.map(|i| self.folded(i)).unwrap_or_default();
         let mut runs: Vec<&RunManifest> =
-            self.runs.iter().filter(|r| admits(r.committed_at) && !folded.contains(r.run_id.as_str())).collect();
+            self.runs.iter().filter(|r| admits(r.committed_at) && !folded.contains(r.key().as_str())).collect();
         runs.sort_by(|a, b| (a.committed_at, &a.run_id).cmp(&(b.committed_at, &b.run_id)));
         let mut snapshot = at.map(|i| &self.chain[i]);
 
@@ -87,7 +88,7 @@ impl TableState {
     /// Every committed run the current snapshot omits: what the next fold folds.
     pub fn unfolded_runs(&self) -> Vec<&RunManifest> {
         let folded = if self.chain.is_empty() { BTreeSet::new() } else { self.folded(0) };
-        let mut runs: Vec<&RunManifest> = self.runs.iter().filter(|r| !folded.contains(r.run_id.as_str())).collect();
+        let mut runs: Vec<&RunManifest> = self.runs.iter().filter(|r| !folded.contains(r.key().as_str())).collect();
         runs.sort_by(|a, b| (a.committed_at, &a.run_id).cmp(&(b.committed_at, &b.run_id)));
         runs
     }

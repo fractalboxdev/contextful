@@ -3,7 +3,7 @@
 
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
-use crate::store::{replace_file, Store};
+use crate::store::{replace_file, FileLock, Store};
 use arrow_array::{Array, ArrayRef, BooleanArray, RecordBatch, StringArray, UInt32Array};
 use arrow_ord::sort::{lexsort_to_indices, SortColumn, SortOptions};
 use arrow_row::{RowConverter, SortField};
@@ -76,12 +76,15 @@ pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome
 /// (`store.fold.pass`).
 pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared> {
     let table = decl.name.as_str();
+    // The pointer, then the runs, then the schema: a landing writes its schema before
+    // its manifest, so every run read here has its columns in the schema read after.
+    let etag = store.pointer_etag(table)?;
+    store.schema(table)?;
+    let state = store.state(decl)?;
     let schema = store.schema(table)?;
     decl.validate(&schema)?;
-    let etag = store.pointer_etag(table)?;
-    let state = store.state(decl)?;
 
-    let unfolded: Vec<String> = state.unfolded_runs().iter().map(|r| r.run_id.clone()).collect();
+    let unfolded: Vec<String> = state.unfolded_runs().iter().map(|r| r.key()).collect();
     if unfolded.is_empty() {
         return Ok(Prepared::NothingLanded);
     }
@@ -186,21 +189,14 @@ pub fn commit(store: &Store, staged: Staged) -> Result<Committed> {
     let pointer = Pointer { snapshot_id: staged.manifest.snapshot_id.clone(), fence: staged.manifest.fence };
     let bytes = serde_json::to_vec_pretty(&pointer).expect("a pointer serializes");
     let table_dir = store.table_dir(table)?;
-    let lock = table_dir.join(format!("{POINTER_FILE}.lock"));
-    match fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Ok(Committed::Lost),
-        Err(e) => return Err(ContextError::Io { path: lock, source: e }),
+    let Some(_lock) = FileLock::try_acquire(&table_dir.join(format!("{POINTER_FILE}.lock")))? else {
+        return Ok(Committed::Lost);
+    };
+    if store.pointer_etag(table)? != staged.etag {
+        return Ok(Committed::Lost);
     }
-    let replaced = (|| -> Result<bool> {
-        if store.pointer_etag(table)? != staged.etag {
-            return Ok(false);
-        }
-        replace_file(&table_dir.join(POINTER_FILE), &bytes)?;
-        Ok(true)
-    })();
-    let _ = fs::remove_file(&lock);
-    Ok(if replaced? { Committed::Published(Box::new(staged.manifest)) } else { Committed::Lost })
+    replace_file(&table_dir.join(POINTER_FILE), &bytes)?;
+    Ok(Committed::Published(Box::new(staged.manifest)))
 }
 
 /// Remove every staging directory and every snapshot directory no pointer chain
@@ -247,8 +243,8 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
         if s.created_at > cutoff {
             continue;
         }
-        for run_id in &s.includes_runs {
-            for r in runs.iter().filter(|r| &r.run_id == run_id) {
+        for key in &s.includes_runs {
+            for r in runs.iter().filter(|r| &r.key() == key) {
                 let dir = store.table_dir(table)?.join("data").join("runs").join(&r.run_id);
                 let node = dir.join(&r.node_id);
                 if node.exists() {

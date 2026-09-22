@@ -73,7 +73,14 @@ pub fn columns(path: &Path) -> Result<Vec<String>> {
 
 /// Conform a batch to `target`: each column cast to its reconciled type, and each
 /// column the batch predates backfilled with nulls (`store.reconcile.fold-never-narrows`).
+/// A column the target lacks refuses rather than being dropped.
 pub fn conform(batch: &RecordBatch, target: &Arc<ArrowSchema>) -> Result<RecordBatch> {
+    if let Some(extra) = batch.schema().fields().iter().find(|f| target.field_with_name(f.name()).is_err()) {
+        return Err(ContextError::Invalid(format!(
+            "column `{}` is absent from the merged schema; conforming would drop it",
+            extra.name()
+        )));
+    }
     let rows = batch.num_rows();
     let mut cols = Vec::with_capacity(target.fields().len());
     for f in target.fields() {

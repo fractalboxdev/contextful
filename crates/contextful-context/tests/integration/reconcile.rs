@@ -153,3 +153,28 @@ fn a_fold_backfills_and_widens() {
     assert_eq!(price, [[s("DOUBLE")]]);
     assert_eq!(f.query(&d, Bounds::default(), "SELECT sku, price, note FROM t ORDER BY sku"), [[s("a"), s("3.0"), None], [s("b"), s("2.5"), s("sale")]]);
 }
+
+/// Concurrent landings into one table each merge into `schema.json`; neither loses the other's column.
+#[test]
+fn concurrent_landings_keep_every_column() {
+    let f = std::sync::Arc::new(Fixture::new());
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-0", json!([{"id": "x"}]), "2030-01-01T00:00:00Z").unwrap();
+    for i in 0..8 {
+        let handles: Vec<_> = ["left", "right"]
+            .into_iter()
+            .map(|side| {
+                let (f, d) = (f.clone(), d.clone());
+                std::thread::spawn(move || {
+                    let col = format!("{side}_{i}");
+                    f.land(&d, &format!("run-{side}-{i}"), json!([{"id": "x", col: 1}]), "2030-01-01T00:01:00Z").unwrap();
+                })
+            })
+            .collect();
+        handles.into_iter().for_each(|h| h.join().unwrap());
+        let schema = f.store.schema("events").unwrap();
+        for side in ["left", "right"] {
+            assert!(schema.get(&format!("{side}_{i}")).is_some(), "round {i}: `{side}_{i}` lost from schema.json");
+        }
+    }
+}

@@ -67,7 +67,7 @@ fn a_snapshot_names_the_runs_it_folded() {
     fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
     f.land(&d, "run-3", json!([{"e": 3}]), "2030-01-01T02:00:00Z").unwrap();
     let (chain, _) = f.store.chain("events").unwrap();
-    assert_eq!(chain[0].includes_runs, ["run-1", "run-2"]);
+    assert_eq!(chain[0].includes_runs, ["run-1/ingest-a", "run-2/ingest-a"]);
     let files = f.scan(&d, Bounds::default()).unwrap().files;
     assert_eq!(files.len(), 2);
     assert!(files.iter().any(|p| p.contains("/runs/run-3/")));
@@ -228,4 +228,34 @@ fn a_new_snapshot_supersedes_without_deleting() {
     assert!(f.scan(&d, old).unwrap().files[0].contains(&chain[1].snapshot_id.to_string()));
     assert_eq!(f.query(&d, old, "SELECT v FROM t"), [[s("1")]]);
     assert_eq!(f.query(&d, Bounds::default(), "SELECT v FROM t"), [[s("2")]]);
+}
+
+/// A pointer lock a crashed pass left behind stops no later pass once it is stale.
+#[test]
+fn a_stale_pointer_lock_is_cleared() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    let lock = f.table_dir("events").join("_pointer.json.lock");
+    let file = fs::File::create(&lock).unwrap();
+    file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600)).unwrap();
+    drop(file);
+    assert!(matches!(fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap(), FoldOutcome::Folded { .. }));
+    assert!(!lock.exists());
+}
+
+/// A batch carrying a column the merged schema lacks refuses to conform rather than lose the column.
+#[test]
+fn conforming_never_drops_a_column() {
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch};
+    use contextful_core::store::reconcile::{Column, ColumnType, Schema};
+    use std::sync::Arc;
+    let target = contextful_context::parquet_io::arrow_schema(&Schema { columns: vec![Column::new("a", ColumnType::Int64, true)] });
+    let wide = RecordBatch::try_from_iter([
+        ("a", Arc::new(Int64Array::from(vec![1])) as ArrayRef),
+        ("c", Arc::new(Int64Array::from(vec![2])) as ArrayRef),
+    ])
+    .unwrap();
+    let err = contextful_context::parquet_io::conform(&wide, &target).unwrap_err();
+    assert!(err.to_string().contains("`c`"), "{err}");
 }
