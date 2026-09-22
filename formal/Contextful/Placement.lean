@@ -15,7 +15,7 @@ set_option genSizeOfSpec false
 set_option genInjectivity false
 
 /-- A zone identifier. The identifier space is unbounded; the model holds it as a character list. -/
-abbrev Ident := List Char
+abbrev ZoneId := List Char
 
 /-- The categories whose zones carry an identifier: `on-prem`, `private-cloud`, `public-cloud`. -/
 inductive Category where
@@ -32,9 +32,9 @@ names a single zone, so its constructor carries no free identifier. -/
 -- spec: assurance.model.placement-inductive@73a8709c
 inductive Placement where
   | localDevice
-  | onPrem (id : Ident)
-  | privateCloud (id : Ident)
-  | publicCloud (id : Ident)
+  | onPrem (id : ZoneId)
+  | privateCloud (id : ZoneId)
+  | publicCloud (id : ZoneId)
   | undeclared
 
 /-- Whether a placement is `local:device`. -/
@@ -46,7 +46,7 @@ def Placement.isLocal : Placement → Bool
   | .undeclared => false
 
 /-- The category and identifier of an identifier-carrying placement; `none` otherwise. -/
-def Placement.named : Placement → Option (Category × Ident)
+def Placement.named : Placement → Option (Category × ZoneId)
   | .localDevice => none
   | .onPrem i => some (.onPrem, i)
   | .privateCloud i => some (.privateCloud, i)
@@ -54,12 +54,12 @@ def Placement.named : Placement → Option (Category × Ident)
   | .undeclared => none
 
 /-- The placement of an identifier-carrying category and an identifier. -/
-def Placement.ofNamed : Category → Ident → Placement
+def Placement.ofNamed : Category → ZoneId → Placement
   | .onPrem, i => .onPrem i
   | .privateCloud, i => .privateCloud i
   | .publicCloud, i => .publicCloud i
 
-theorem Placement.named_ofNamed (c : Category) (i : Ident) : (Placement.ofNamed c i).named = some (c, i) := by
+theorem Placement.named_ofNamed (c : Category) (i : ZoneId) : (Placement.ofNamed c i).named = some (c, i) := by
   cases c <;> rfl
 
 /-- The category prefixes the manifest's zone grammar admits. -/
@@ -124,7 +124,7 @@ inductive Entry where
   | any
   | localDevice
   | every (c : Category)
-  | named (c : Category) (id : Ident)
+  | named (c : Category) (id : ZoneId)
 
 /-- Whether an entry is `local:device`. -/
 def Entry.isLocal : Entry → Bool
@@ -141,7 +141,7 @@ def Entry.category? : Entry → Option Category
   | .named c _ => some c
 
 /-- The category and identifier an entry carries, when it carries an identifier. -/
-def Entry.named? : Entry → Option (Category × Ident)
+def Entry.named? : Entry → Option (Category × ZoneId)
   | .any => none
   | .localDevice => none
   | .every _ => none
@@ -202,10 +202,10 @@ theorem Entry.subsumes_sound :
       exact hm
 
 /-- An identifier longer than every identifier in `avoid`, so absent from it. -/
-def fresh (avoid : List Ident) : Ident :=
+def fresh (avoid : List ZoneId) : ZoneId :=
   List.replicate (avoid.foldr (fun i m => max i.length m) 0 + 1) 'x'
 
-theorem length_le_bound : ∀ (avoid : List Ident) (i : Ident),
+theorem length_le_bound : ∀ (avoid : List ZoneId) (i : ZoneId),
     i ∈ avoid → i.length ≤ avoid.foldr (fun i m => max i.length m) 0 := by
   intro avoid i h
   induction avoid with
@@ -215,7 +215,7 @@ theorem length_le_bound : ∀ (avoid : List Ident) (i : Ident),
     | head => exact Nat.le_max_left _ _
     | tail _ h' => exact Nat.le_trans (ih h') (Nat.le_max_right _ _)
 
-theorem fresh_not_mem : ∀ (avoid : List Ident), fresh avoid ∉ avoid := by
+theorem fresh_not_mem : ∀ (avoid : List ZoneId), fresh avoid ∉ avoid := by
   intro avoid h
   have hle := length_le_bound avoid (fresh avoid) h
   rw [fresh, List.length_replicate] at hle
@@ -223,14 +223,14 @@ theorem fresh_not_mem : ∀ (avoid : List Ident), fresh avoid ∉ avoid := by
 
 /-- A placement an entry matches, whose identifier — for a bare category — lies outside
 `avoid`, so no identifier-carrying entry drawn from `avoid` matches it. -/
-def witness (e : Entry) (avoid : List Ident) : Placement :=
+def witness (e : Entry) (avoid : List ZoneId) : Placement :=
   match e with
   | .any => .undeclared
   | .localDevice => .localDevice
   | .every c => .ofNamed c (fresh avoid)
   | .named c i => .ofNamed c i
 
-theorem witness_matches : ∀ (e : Entry) (avoid : List Ident), e.matches (witness e avoid) = true := by
+theorem witness_matches : ∀ (e : Entry) (avoid : List ZoneId), e.matches (witness e avoid) = true := by
   intro e avoid
   cases e with
   | any => rfl
@@ -239,7 +239,7 @@ theorem witness_matches : ∀ (e : Entry) (avoid : List Ident), e.matches (witne
   | named c i => exact decide_eq_true (Placement.named_ofNamed c i)
 
 theorem subsumes_of_matches_witness :
-    ∀ (a e : Entry) (avoid : List Ident),
+    ∀ (a e : Entry) (avoid : List ZoneId),
       (∀ j, a.named?.map Prod.snd = some j → j ∈ avoid) → a.matches (witness e avoid) = true →
         a.subsumes e = true := by
   intro a e avoid hid hm
@@ -307,7 +307,7 @@ def failClosed : AllowSet := allowSetOf [.localDevice, .every .onPrem]
 caller, and the fail-closed allow-set rejects both cloud categories. -/
 -- spec: assurance.prove.fail-closed@93adceae
 theorem failClosed_floor_rejects_cloud :
-    ∀ {es : List AllowSet}, failClosed ∈ es → ∀ id : Ident,
+    ∀ {es : List AllowSet}, failClosed ∈ es → ∀ id : ZoneId,
       floor es (Placement.publicCloud id) = false ∧
         failClosed (Placement.privateCloud id) = false ∧ failClosed (Placement.publicCloud id) = false := by
   intro es hmem id
