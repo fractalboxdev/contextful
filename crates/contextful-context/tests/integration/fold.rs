@@ -293,22 +293,24 @@ fn a_failed_collection_does_not_unpublish_the_snapshot() {
     fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
     f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T02:00:00Z").unwrap();
 
-    // The run directory retention is about to collect is not removable.
+    // Retention alone reads the window, so a declaration carrying one outside the grammar
+    // fails the collection and nothing else: staging and the pointer replace are untouched.
+    let mut broken = d.clone();
+    broken.retain_runs = Some("1 day".into());
+    assert!(broken.retain_runs_secs().is_err(), "the window still parses");
     let run_dir = f.table_dir("events").join("data/runs/run-1");
-    let mut perms = fs::metadata(&run_dir).unwrap().permissions();
-    perms.set_readonly(true);
-    fs::set_permissions(&run_dir, perms).unwrap();
+    assert!(run_dir.is_dir());
 
-    let outcome = fold(&f.store, &d, at("2030-01-03T00:00:00Z")).unwrap();
+    let outcome = fold(&f.store, &broken, at("2030-01-03T00:00:00Z")).unwrap();
     assert!(matches!(outcome, FoldOutcome::Folded { .. }), "retention failure reported as {outcome:?}");
     let (chain, _) = f.store.chain("events").unwrap();
     assert_eq!(chain.len(), 2, "the pointer did not move");
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("2")]]);
+    assert!(run_dir.is_dir(), "the collection ran despite its window");
 
-    let mut perms = fs::metadata(&run_dir).unwrap().permissions();
-    #[allow(clippy::permissions_set_readonly_false)]
-    perms.set_readonly(false);
-    fs::set_permissions(&run_dir, perms).unwrap();
+    // The same pass with a window that parses collects what it could not before.
+    fold(&f.store, &d, at("2030-01-03T01:00:00Z")).unwrap();
+    assert!(!run_dir.exists());
 }
 
 /// A pass whose id an earlier lost pass already promoted publishes anyway: what sits at
