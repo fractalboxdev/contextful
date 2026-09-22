@@ -10,6 +10,10 @@ publish = false
 [dependencies]
 tempfile = "3"
 
+[dev-dependencies]
+# A third-party reader: the store's Parquet opens with no engine code in the process.
+parquet = { version = "57", default-features = false, features = ["zstd"] }
+
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"

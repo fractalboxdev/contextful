@@ -1,0 +1,333 @@
+//! A project's store root on a filesystem: its configuration, table directories,
+//! schemas, committed runs, and the pointer chain.
+
+use crate::error::{ContextError, IoPath, Result};
+use contextful_core::store::declare::TableDecl;
+use contextful_core::store::lay_out::{
+    store_root, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
+};
+use contextful_core::store::reconcile::Schema;
+use contextful_core::store::resolve::TableState;
+use contextful_core::store::StoreError;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+/// The store root's `config.toml`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoreConfig {
+    #[serde(default)]
+    pub node: Option<NodeConfig>,
+    #[serde(default)]
+    pub encryption: Option<EncryptionConfig>,
+    /// Bucket sync, read by the sync adapter.
+    #[serde(default)]
+    pub sync: Option<toml::Value>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeConfig {
+    pub id: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EncryptionConfig {
+    pub key_source: String,
+}
+
+/// An opened store root.
+#[derive(Debug, Clone)]
+pub struct Store {
+    root: PathBuf,
+    config_node_id: Option<String>,
+}
+
+impl Store {
+    /// Open the store of `project` under `project_dir`, resolving its configuration at
+    /// startup. A declared key source whose binding is absent refuses with no
+    /// cleartext fallback (`store.encrypt.key-unbound`); a bound one refuses too, since
+    /// this build links no at-rest cipher and writes no cleartext in its place.
+    pub fn open(project_dir: &Path, project: &str) -> Result<Store> {
+        check_segment_path(project, "project")?;
+        let root = project_dir.join(store_root(project));
+        let config_path = root.join("config.toml");
+        let config: StoreConfig = match fs::read_to_string(&config_path) {
+            Ok(text) => toml::from_str(&text)
+                .map_err(|e| ContextError::Invalid(format!("{}: {e}", config_path.display())))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => StoreConfig::default(),
+            Err(e) => return Err(ContextError::Io { path: config_path, source: e }),
+        };
+        if let Some(enc) = &config.encryption {
+            check_key_source(&enc.key_source)?;
+        }
+        Ok(Store { root, config_node_id: config.node.and_then(|n| n.id) })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// `[node] id` from the store's configuration.
+    pub fn configured_node_id(&self) -> Option<String> {
+        self.config_node_id.clone()
+    }
+
+    /// `tables/<t>/`, for a table name of path-safe segments.
+    pub fn table_dir(&self, table: &str) -> Result<PathBuf> {
+        check_segment_path(table, "table")?;
+        Ok(self.root.join("tables").join(table))
+    }
+
+    /// The table's merged schema. A table no `schema.json` declares refuses
+    /// (`store.lay-out.unknown-table`).
+    pub fn schema(&self, table: &str) -> Result<Schema> {
+        self.try_schema(table)?.ok_or_else(|| {
+            StoreError::StoreUnknownTable(format!("no table `{table}`: no `schema.json` in the store declares it")).into()
+        })
+    }
+
+    /// The table's merged schema, or `None` before its first batch.
+    pub fn try_schema(&self, table: &str) -> Result<Option<Schema>> {
+        let path = self.table_dir(table)?.join(SCHEMA_FILE);
+        let text = match fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(ContextError::Io { path, source: e }),
+        };
+        let schema = serde_json::from_str::<Schema>(&text).map_err(|e| {
+            StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
+        })?;
+        Ok(Some(schema))
+    }
+
+    /// Replace `schema.json` with the merged schema (`store.lay-out.schema-file`).
+    pub fn write_schema(&self, table: &str, schema: &Schema) -> Result<()> {
+        let dir = self.table_dir(table)?;
+        fs::create_dir_all(&dir).at(&dir)?;
+        let text = serde_json::to_string_pretty(schema).expect("a schema serializes");
+        replace_file(&dir.join(SCHEMA_FILE), text.as_bytes())
+    }
+
+    /// Every table a `schema.json` declares, sorted.
+    pub fn tables(&self) -> Result<Vec<String>> {
+        let base = self.root.join("tables");
+        let mut out = Vec::new();
+        let mut stack = vec![base.clone()];
+        while let Some(dir) = stack.pop() {
+            let entries = match fs::read_dir(&dir) {
+                Ok(e) => e,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(ContextError::Io { path: dir, source: e }),
+            };
+            for entry in entries {
+                let path = entry.at(&dir)?.path();
+                if path.join(SCHEMA_FILE).is_file() {
+                    let rel = path.strip_prefix(&base).expect("under the tables root");
+                    out.push(rel.to_string_lossy().replace('\\', "/"));
+                } else if path.is_dir() && path.file_name().is_some_and(|n| n != "data" && n != "requests") {
+                    stack.push(path);
+                }
+            }
+        }
+        out.sort();
+        Ok(out)
+    }
+
+    /// Every committed run of a table: each `data/runs/<run>/<node>/` holding a
+    /// `_manifest.json`. A directory without one is in flight and joins nothing
+    /// (`store.lay-out.uncommitted-run`); a manifest that fails to parse, or whose
+    /// `run_id`, `node_id` or `table` disagrees with its path, refuses the table
+    /// (`store.lay-out.manifest-unreadable`).
+    pub fn committed_runs(&self, table: &str) -> Result<Vec<RunManifest>> {
+        let runs_dir = self.table_dir(table)?.join("data").join("runs");
+        let mut out = Vec::new();
+        for run_dir in sorted_dirs(&runs_dir)? {
+            for node_dir in sorted_dirs(&run_dir)? {
+                let path = node_dir.join(MANIFEST_FILE);
+                let text = match fs::read_to_string(&path) {
+                    Ok(t) => t,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(e) => return Err(ContextError::Io { path, source: e }),
+                };
+                let unreadable =
+                    |why: String| StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {why}", path.display()));
+                let m: RunManifest = serde_json::from_str(&text).map_err(|e| unreadable(e.to_string()))?;
+                let (run_seg, node_seg) = (file_name(&run_dir), file_name(&node_dir));
+                if m.run_id != run_seg || m.node_id != node_seg || m.table != table {
+                    return Err(unreadable(format!(
+                        "names run `{}` on node `{}` of table `{}`, but sits at `{run_seg}/{node_seg}`",
+                        m.run_id, m.node_id, m.table
+                    ))
+                    .into());
+                }
+                out.push(m);
+            }
+        }
+        Ok(out)
+    }
+
+    /// The pointer and the ETag of its bytes, or `None` before the first fold.
+    pub fn pointer(&self, table: &str) -> Result<Option<(Pointer, String)>> {
+        let path = self.table_dir(table)?.join(POINTER_FILE);
+        let bytes = match fs::read(&path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(ContextError::Io { path, source: e }),
+        };
+        let p: Pointer = serde_json::from_slice(&bytes).map_err(|e| {
+            StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
+        })?;
+        Ok(Some((p, etag(&bytes))))
+    }
+
+    /// The pointer's ETag: the SHA-256 of its bytes, or `absent`.
+    pub fn pointer_etag(&self, table: &str) -> Result<String> {
+        let path = self.table_dir(table)?.join(POINTER_FILE);
+        match fs::read(&path) {
+            Ok(b) => Ok(etag(&b)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ABSENT_ETAG.into()),
+            Err(e) => Err(ContextError::Io { path, source: e }),
+        }
+    }
+
+    pub fn snapshot_dir(&self, table: &str, id: &SnapshotId) -> Result<PathBuf> {
+        Ok(self.table_dir(table)?.join("data").join("snapshots").join(id.to_string()))
+    }
+
+    /// The snapshot the pointer names and its `parent` chain, newest first, and whether
+    /// the chain ends at a parent retention has collected. A reachable manifest that
+    /// fails to parse refuses the table.
+    pub fn chain(&self, table: &str) -> Result<(Vec<SnapshotManifest>, bool)> {
+        let mut chain = Vec::new();
+        let Some((ptr, _)) = self.pointer(table)? else { return Ok((chain, false)) };
+        let mut next = Some(ptr.snapshot_id);
+        while let Some(id) = next {
+            let path = self.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
+            let text = match fs::read_to_string(&path) {
+                Ok(t) => t,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound && !chain.is_empty() => return Ok((chain, true)),
+                Err(e) => return Err(ContextError::Io { path, source: e }),
+            };
+            let m: SnapshotManifest = serde_json::from_str(&text).map_err(|e| {
+                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
+            })?;
+            next = m.parent.clone();
+            chain.push(m);
+        }
+        Ok((chain, false))
+    }
+
+    /// Everything a read or a fold resolves against, for one table.
+    pub fn state(&self, decl: &TableDecl) -> Result<TableState> {
+        let table = decl.name.as_str();
+        let runs = self.committed_runs(table)?;
+        let (chain, parent_collected) = self.chain(table)?;
+        let present: BTreeSet<&str> = runs.iter().map(|r| r.run_id.as_str()).collect();
+        let run_collected = chain.iter().flat_map(|s| &s.includes_runs).any(|r| !present.contains(r.as_str()));
+        Ok(TableState {
+            table: table.to_string(),
+            write_mode: decl.write_mode(),
+            runs,
+            chain,
+            history_collected: parent_collected || run_collected,
+        })
+    }
+}
+
+pub const ABSENT_ETAG: &str = "absent";
+
+pub(crate) fn etag(bytes: &[u8]) -> String {
+    let d = Sha256::digest(bytes);
+    d.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn file_name(p: &Path) -> String {
+    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// Subdirectories of `dir`, sorted; a missing `dir` has none and a stray file is skipped.
+pub(crate) fn sorted_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(ContextError::Io { path: dir.to_path_buf(), source: e }),
+    };
+    let mut out = Vec::new();
+    for entry in entries {
+        let path = entry.at(dir)?.path();
+        if path.is_dir() {
+            out.push(path);
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// Write to a sibling temporary file, then rename it over `path`.
+pub(crate) fn replace_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    let tmp = tmp_sibling(path);
+    fs::write(&tmp, bytes).at(&tmp)?;
+    fs::rename(&tmp, path).at(path)
+}
+
+/// Create `path` holding `bytes` only if nothing is there: the bytes land in a sibling
+/// temporary file and a hard link publishes them, failing where `path` exists.
+pub(crate) fn create_new_file(path: &Path, bytes: &[u8]) -> Result<bool> {
+    let tmp = tmp_sibling(path);
+    fs::write(&tmp, bytes).at(&tmp)?;
+    let linked = fs::hard_link(&tmp, path);
+    let _ = fs::remove_file(&tmp);
+    match linked {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(ContextError::Io { path: path.to_path_buf(), source: e }),
+    }
+}
+
+fn tmp_sibling(path: &Path) -> PathBuf {
+    let mut nonce = [0u8; 8];
+    getrandom::fill(&mut nonce).expect("the platform supplies randomness");
+    let hex: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
+    let name = format!(".{}.{hex}.tmp", file_name(path));
+    path.with_file_name(name)
+}
+
+/// A table or project name: `/`-separated segments of `[A-Za-z0-9._-]`, none `.` or `..`.
+fn check_segment_path(name: &str, what: &str) -> Result<()> {
+    let ok = !name.is_empty()
+        && name.split('/').all(|seg| {
+            !seg.is_empty()
+                && seg != "."
+                && seg != ".."
+                && seg.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        });
+    if ok {
+        Ok(())
+    } else {
+        Err(ContextError::Invalid(format!("{what} name `{name}` is not `/`-separated segments of [A-Za-z0-9._-]")))
+    }
+}
+
+fn check_key_source(source: &str) -> Result<()> {
+    if let Some(var) = source.strip_prefix("env:") {
+        if std::env::var_os(var).is_none_or(|v| v.is_empty()) {
+            return Err(StoreError::StoreEncryptionKeyUnbound(format!(
+                "`[encryption] key_source = \"{source}\"` names `{var}`, which this process lacks"
+            ))
+            .into());
+        }
+    } else {
+        return Err(StoreError::StoreEncryptionKeyUnbound(format!(
+            "`[encryption] key_source = \"{source}\"` names a key-management service this build has no client for"
+        ))
+        .into());
+    }
+    Err(ContextError::Invalid(format!(
+        "`[encryption] key_source = \"{source}\"` is bound, and this build links no at-rest cipher; it refuses rather than write cleartext"
+    )))
+}

@@ -1,0 +1,33 @@
+[package]
+name = "contextful-context"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The store adapter: Parquet table parts, run and snapshot manifests, the table
+# pointer, the fold, and the relation a scan resolves.
+
+[dependencies]
+contextful-core = { path = "../contextful-core" }
+arrow-array = "57"
+arrow-cast = "57"
+arrow-ord = "57"
+arrow-row = "57"
+arrow-schema = "57"
+arrow-select = "57"
+getrandom = "0.3"
+parquet = { version = "57", default-features = false, features = ["arrow", "zstd"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+toml = "0.8"
+
+[dev-dependencies]
+# Executes the relation a scan resolves, as the read face will.
+duckdb = { version = "1.10500", features = ["bundled"] }
+tempfile = "3"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"

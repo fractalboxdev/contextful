@@ -6,4 +6,5 @@ mod grant;
 mod identify;
 mod issue;
 mod revoke;
+mod store;
 mod time;
