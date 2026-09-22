@@ -134,15 +134,14 @@ impl TableDecl {
     pub fn retain_runs_secs(&self) -> Result<u64, DeclarationMalformed> {
         let Some(s) = &self.retain_runs else { return Ok(DEFAULT_RETAIN_RUNS_SECS) };
         let bad = || DeclarationMalformed(format!("table `{}`: retain_runs `{s}` is not <n>d, <n>h, <n>m or <n>s", self.name));
-        let (n, unit) = s.split_at(s.len().checked_sub(1).ok_or_else(bad)?);
-        let n: u64 = n.parse().map_err(|_| bad())?;
-        let per = match unit {
-            "d" => 86_400,
-            "h" => 3_600,
-            "m" => 60,
-            "s" => 1,
+        let per = match s.chars().next_back().ok_or_else(bad)? {
+            'd' => 86_400,
+            'h' => 3_600,
+            'm' => 60,
+            's' => 1,
             _ => return Err(bad()),
         };
+        let n: u64 = s[..s.len() - 1].parse().map_err(|_| bad())?;
         n.checked_mul(per).ok_or_else(bad)
     }
 

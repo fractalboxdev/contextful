@@ -28,6 +28,7 @@ pub struct Scan {
 pub fn scan(store: &Store, decl: &TableDecl, bounds: Bounds) -> Result<Scan> {
     let table = decl.name.as_str();
     let schema = store.schema(table)?;
+    decl.validate(&schema)?;
     let state = store.state(decl)?;
     let resolution = state.resolve(bounds.as_of)?;
     let table_rel = format!("tables/{table}");

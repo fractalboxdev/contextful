@@ -3,7 +3,7 @@
 
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
-use crate::store::{create_new_file, Store};
+use crate::store::{create_new_file, FileLock, Store, LOCK_STALE_SECS};
 use arrow_array::builder::{BooleanBuilder, Float64Builder, Int32Builder, Int64Builder, StringBuilder, TimestampNanosecondBuilder};
 use arrow_array::{ArrayRef, NullArray, RecordBatch};
 use contextful_core::store::declare::TableDecl;
@@ -174,9 +174,16 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
 
     // Reconcile: the producer's columns, held to the namespace, merged into the stored shape.
     let arriving = producer_columns(&batch_schema(batch)?)?;
+    // An optional column's value is held to its vocabulary whatever JSON type it arrives
+    // as: a number reads as its text, so `{"_modality": 7}` refuses like `"7"` would.
     for c in arriving.columns.iter().filter(|c| c.name.starts_with('_')) {
         for row in &batch.rows {
-            if let Some(problem) = row.get(&c.name).and_then(Value::as_str).and_then(|v| optional_value_problem(&c.name, v)) {
+            let text = match row.get(&c.name) {
+                None | Some(Value::Null) => continue,
+                Some(Value::String(v)) => v.clone(),
+                Some(v) => v.to_string(),
+            };
+            if let Some(problem) = optional_value_problem(&c.name, &text) {
                 return Err(ContextError::Invalid(format!("batch invalid: {problem}")));
             }
         }
@@ -197,6 +204,17 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
         .merge(&arriving, decl.primary_key())?
         .merge(&Schema { columns: injected }, decl.primary_key())?;
     decl.validate(&merged)?;
+
+    // Every refusal has fired, so the tree may be written. The part carries the name the
+    // manifest names, so two landings of one run on one node serialize from here to the
+    // manifest: without the lock the loser rewrites the part the winner's manifest
+    // already describes, and the run reads rows no manifest accounts for.
+    std::fs::create_dir_all(&node_dir).at(&node_dir)?;
+    let _run_lock =
+        FileLock::acquire(&node_dir.join(format!("{MANIFEST_FILE}.lock")), std::time::Duration::from_secs(LOCK_STALE_SECS))?;
+    if manifest_path.exists() {
+        return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
+    }
 
     // Build the part: the producer's columns in their arriving types, then the injected ones.
     let mut parts = Vec::new();

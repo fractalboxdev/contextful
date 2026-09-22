@@ -280,3 +280,74 @@ fn a_run_id_folded_on_one_node_leaves_the_other_nodes_run_unfolded() {
     fold(&f.store, &d, at("2030-01-03T04:00:00Z")).unwrap();
     assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t ORDER BY id"), [[s("a")], [s("b")], [s("c")]]);
 }
+
+/// A manifest whose `parent` returns to a snapshot the walk already passed refuses the
+/// table with `StoreManifestUnreadable`, rather than walking the chain without end.
+#[test]
+fn a_parent_chain_that_does_not_terminate_refuses_the_table() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (chain, _) = f.store.chain("events").unwrap();
+    let id = chain[0].snapshot_id.clone();
+
+    // The snapshot becomes its own parent.
+    let path = f.store.snapshot_dir("events", &id).unwrap().join("_manifest.json");
+    let mut m: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    m["parent"] = json!(id.to_string());
+    fs::write(&path, serde_json::to_vec_pretty(&m).unwrap()).unwrap();
+
+    // The walk terminates, so the answer arrives within the wait rather than never.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let store = f.store.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(store.chain("events").map_err(store_err));
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        Ok(Err(StoreError::StoreManifestUnreadable(_))) => {}
+        Ok(other) => panic!("expected StoreManifestUnreadable, got {other:?}"),
+        Err(_) => panic!("the parent chain did not terminate within 10 s"),
+    }
+}
+
+/// A table name carries `/`, so a table directory still holds tables below it: every
+/// landed table appears in the listing, whatever nests under whatever.
+#[test]
+fn a_table_nested_under_another_table_is_still_listed() {
+    let f = Fixture::new();
+    for name in ["a", "a/b", "a/b/c", "plain"] {
+        f.land(&decl(&format!("name = \"{name}\"")), "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    }
+    assert_eq!(f.store.tables().unwrap(), ["a", "a/b", "a/b/c", "plain"]);
+}
+
+/// Two landings of one run id on one node leave a run whose part holds exactly the rows
+/// its manifest accounts for: one commits, the other is refused, and neither rewrites
+/// the part the committed manifest names.
+#[test]
+fn two_landings_of_one_run_on_one_node_leave_the_committed_rows_intact() {
+    let f = std::sync::Arc::new(Fixture::new());
+    let d = decl("name = \"events\"");
+    for round in 0..16 {
+        let run = format!("run-{round}");
+        let handles: Vec<_> = [1_i64, 2]
+            .into_iter()
+            .map(|tag| {
+                let (f, d, run) = (f.clone(), d.clone(), run.clone());
+                std::thread::spawn(move || {
+                    let rows = json!([{"id": "x", "tag": tag}, {"id": "y", "tag": tag}]);
+                    f.land(&d, &run, rows, "2030-01-01T00:00:00Z").map(|m| (tag, m))
+                })
+            })
+            .collect();
+        let landed: Vec<_> = handles.into_iter().filter_map(|h| h.join().unwrap().ok()).collect();
+        assert_eq!(landed.len(), 1, "round {round}: both landings of `{run}` committed");
+
+        // The committed manifest's rows are the rows on disk, so the read is its tag alone.
+        let (tag, manifest) = &landed[0];
+        assert_eq!(manifest.parts.len(), 1);
+        let rows = f.query(&d, Bounds::default(), &format!("SELECT DISTINCT tag FROM t WHERE _run_id = '{run}'"));
+        assert_eq!(rows, [[s(&tag.to_string())]], "round {round}: the part holds rows its manifest does not account for");
+    }
+}

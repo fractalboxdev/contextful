@@ -137,7 +137,9 @@ impl Store {
                 if path.join(SCHEMA_FILE).is_file() {
                     let rel = path.strip_prefix(&base).expect("under the tables root");
                     out.push(rel.to_string_lossy().replace('\\', "/"));
-                } else if path.is_dir() && path.file_name().is_some_and(|n| n != "data" && n != "requests") {
+                }
+                // A table name carries `/`, so a table directory still holds tables below it.
+                if path.is_dir() && path.file_name().is_some_and(|n| n != "data" && n != "requests") {
                     stack.push(path);
                 }
             }
@@ -209,12 +211,20 @@ impl Store {
 
     /// The snapshot the pointer names and its `parent` chain, newest first, and whether
     /// the chain ends at a parent retention has collected. A reachable manifest that
-    /// fails to parse refuses the table.
+    /// fails to parse refuses the table, as does one whose `parent` returns to a
+    /// snapshot the walk already passed.
     pub fn chain(&self, table: &str) -> Result<(Vec<SnapshotManifest>, bool)> {
         let mut chain = Vec::new();
         let Some((ptr, _)) = self.pointer(table)? else { return Ok((chain, false)) };
+        let mut seen = std::collections::BTreeSet::new();
         let mut next = Some(ptr.snapshot_id);
         while let Some(id) = next {
+            if !seen.insert(id.to_string()) {
+                return Err(StoreError::StoreManifestUnreadable(format!(
+                    "table `{table}`: snapshot {id} is its own ancestor; the parent chain does not terminate"
+                ))
+                .into());
+            }
             let path = self.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
             let text = match fs::read_to_string(&path) {
                 Ok(t) => t,

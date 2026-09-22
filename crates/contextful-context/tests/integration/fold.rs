@@ -259,3 +259,54 @@ fn conforming_never_drops_a_column() {
     let err = contextful_context::parquet_io::conform(&wide, &target).unwrap_err();
     assert!(err.to_string().contains("`c`"), "{err}");
 }
+
+/// Retention ages from the fold, not from a landing: a table that stops receiving runs
+/// still collects a snapshot the window has passed, on a pass with nothing to fold.
+#[test]
+fn an_idle_table_still_collects_what_retention_allows() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\nretain_runs = \"1d\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (first, _) = f.store.chain("events").unwrap();
+    let first_dir = f.store.snapshot_dir("events", &first[0].snapshot_id).unwrap();
+    let run_dir = f.table_dir("events").join("data/runs/run-1");
+
+    f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T02:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
+    assert!(first_dir.is_dir() && run_dir.is_dir(), "inside the window, both stay");
+
+    // Nothing lands again. The pass folds nothing and still collects both.
+    assert_eq!(fold(&f.store, &d, at("2030-01-03T00:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
+    assert!(!first_dir.exists(), "a snapshot superseded 2 d ago survived an idle pass");
+    assert!(!run_dir.exists(), "a run folded 2 d ago survived an idle pass");
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("2")]]);
+}
+
+/// A collection that fails leaves the published snapshot published: the pointer has
+/// already moved, so the pass reports what it did, not what retention could not finish.
+#[test]
+fn a_failed_collection_does_not_unpublish_the_snapshot() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\nretain_runs = \"1d\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T02:00:00Z").unwrap();
+
+    // The run directory retention is about to collect is not removable.
+    let run_dir = f.table_dir("events").join("data/runs/run-1");
+    let mut perms = fs::metadata(&run_dir).unwrap().permissions();
+    perms.set_readonly(true);
+    fs::set_permissions(&run_dir, perms).unwrap();
+
+    let outcome = fold(&f.store, &d, at("2030-01-03T00:00:00Z")).unwrap();
+    assert!(matches!(outcome, FoldOutcome::Folded { .. }), "retention failure reported as {outcome:?}");
+    let (chain, _) = f.store.chain("events").unwrap();
+    assert_eq!(chain.len(), 2, "the pointer did not move");
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("2")]]);
+
+    let mut perms = fs::metadata(&run_dir).unwrap().permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    perms.set_readonly(false);
+    fs::set_permissions(&run_dir, perms).unwrap();
+}

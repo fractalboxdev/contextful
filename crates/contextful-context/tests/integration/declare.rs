@@ -137,3 +137,19 @@ fn an_unknown_order_by_refuses_the_first_batch_before_any_parquet() {
     assert!(!f.table_dir("filings").join("data").exists());
     assert!(!f.table_dir("filings").join("schema.json").exists());
 }
+
+/// A read holds the declaration to the table's schema exactly as a landing and a fold do:
+/// an `order_by` edited to a column the table does not carry raises
+/// `StoreOrderByUnknownColumn`, not a binder error from the relation it would emit.
+#[test]
+fn a_read_refuses_an_unknown_order_by_rather_than_emitting_it() {
+    let f = Fixture::new();
+    let good = decl("name = \"filings\"\nprimary_key = [\"doc\"]\norder_by = \"rev\"");
+    f.land(&good, "run-1", json!([{"doc": "a", "rev": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    assert_eq!(f.query(&good, Bounds::default(), "SELECT doc FROM t"), [[s("a")]]);
+
+    // The same table, read through a declaration whose ordering column it does not carry.
+    let edited = decl("name = \"filings\"\nprimary_key = [\"doc\"]\norder_by = \"nope\"");
+    let err = f.scan(&edited, Bounds::default()).unwrap_err();
+    assert!(matches!(err.store(), Some(StoreError::StoreOrderByUnknownColumn(_))), "{err}");
+}

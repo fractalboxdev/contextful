@@ -58,6 +58,22 @@ fn a_producer_sets_the_optional_columns_and_modality_is_checked() {
     assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 1, "the invalid batch landed");
 }
 
+/// An optional column's value is held to its vocabulary whatever JSON type it arrives as:
+/// a number is read as its text and refused like the same text would be, and a null is a
+/// value the producer did not set.
+#[test]
+fn an_optional_column_is_checked_whatever_json_type_it_arrives_as() {
+    let f = Fixture::new();
+    let d = decl("name = \"notes\"");
+    for (col, value) in [("_modality", json!(7)), ("_prompt_hash", json!(12345)), ("_modality", json!(true))] {
+        let rows = json!([{"id": "a", col.to_string(): value}]);
+        let err = f.land(&d, "run-1", rows, "2030-01-01T00:00:00Z").unwrap_err();
+        assert!(err.to_string().contains(col), "a non-string `{col}` landed unchecked: {err}");
+    }
+    // A null is absence, not a bad value.
+    f.land(&d, "run-1", json!([{"id": "a", "_modality": null}]), "2030-01-01T00:00:00Z").unwrap();
+}
+
 /// A pipeline declaring a table inside a reserved namespace raises `StoreReservedTableName` when its manifest is assembled, naming the reservation.
 #[test]
 fn a_reserved_table_name_refuses_the_landing() {

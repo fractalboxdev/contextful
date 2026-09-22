@@ -92,6 +92,24 @@ fn write_mode_is_append_by_default_or_replace() {
     assert_eq!(TableDecl::named("t").retain_runs_secs().unwrap(), DEFAULT_RETAIN_RUNS_SECS);
 }
 
+/// A `retain_runs` the grammar does not admit is refused, whatever bytes it carries: the
+/// unit is read as a character, so a multi-byte suffix raises `DeclarationMalformed`
+/// rather than splitting the value mid-character.
+#[test]
+fn a_retain_runs_outside_the_grammar_is_refused_not_panicked_on() {
+    // `parse_pipeline` reads the window too, so either it or `retain_runs_secs` refuses.
+    let secs = |v: &str| {
+        TableDecl::parse_pipeline(&format!("[[pipeline.tables]]\nname = \"t\"\nretain_runs = \"{v}\"\n"))
+            .map_err(|e| e.to_string())
+            .and_then(|mut d| d.remove(0).retain_runs_secs().map_err(|e| e.to_string()))
+    };
+    assert_eq!(secs("90s").unwrap(), 90);
+    assert_eq!(secs("12h").unwrap(), 12 * 3_600);
+    for bad in ["7天", "", "d", "7x", "7 d", "seven d", "٧d"] {
+        assert!(secs(bad).is_err(), "`{bad}` was accepted as a retain_runs window");
+    }
+}
+
 /// Under `replace`, a read covers the newest run carrying the source's complete state plus every run committed after it.
 // spec: store.declare.replace-frontier@1ddd0474
 #[test]
