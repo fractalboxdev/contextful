@@ -32,9 +32,28 @@ fn installed_pin() -> Option<String> {
     std::path::Path::new(&home).join(".elan/toolchains").join(dir).exists().then(|| pin.trim().to_string())
 }
 
+/// An elan home sharing this host's installed toolchains but configuring no default
+/// toolchain, as a fresh CI install does, so `lean` resolves only through the gate's pin.
+fn elan_home_without_default() -> tempfile::TempDir {
+    let host = std::path::PathBuf::from(std::env::var("HOME").unwrap()).join(".elan");
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("bin")).unwrap();
+    for e in std::fs::read_dir(host.join("bin")).unwrap().flatten() {
+        std::fs::copy(e.path(), dir.path().join("bin").join(e.file_name())).unwrap();
+    }
+    std::os::unix::fs::symlink(host.join("toolchains"), dir.path().join("toolchains")).unwrap();
+    std::fs::write(dir.path().join("settings.toml"), "telemetry = false\nversion = \"12\"\n\n[overrides]\n").unwrap();
+    dir
+}
+
 fn workspace_stage(r: &Repo) -> std::process::Output {
+    workspace_stage_with(r, &[])
+}
+
+fn workspace_stage_with(r: &Repo, env: &[(&str, &std::path::Path)]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
         .args(["gate", "--stage", "workspace"])
+        .envs(env.iter().copied())
         .current_dir(&r.root)
         .env_remove("CARGO_TARGET_DIR")
         .env_remove("CONTEXTFUL_REQUIRE_LEAN")
@@ -55,7 +74,9 @@ fn a_repository_pinning_lean_runs_its_tests_with_the_pinned_toolchain_required()
     r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod lean;\n");
     r.write("crates/demo/tests/integration/lean.rs", NEEDS_LEAN);
     r.commit("a Lean model and a test that needs it");
-    let o = workspace_stage(&r);
+    // The test runs `lean` from a package directory no `lean-toolchain` sits above.
+    let elan = elan_home_without_default();
+    let o = workspace_stage_with(&r, &[("ELAN_HOME", elan.path())]);
     assert!(o.status.success(), "{}", stderr(&o));
 }
 

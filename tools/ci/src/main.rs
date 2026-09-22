@@ -120,7 +120,7 @@ fn workspace(root: &Path) -> Result<()> {
 // ---------------------------------------------------------------- lean
 
 /// Install elan when absent and the toolchain `formal/lean-toolchain` pins, put elan's
-/// `bin` first on `PATH`, and set `CONTEXTFUL_REQUIRE_LEAN=1` for every test process
+/// `bin` first on `PATH`, pin `ELAN_TOOLCHAIN` to it, and set `CONTEXTFUL_REQUIRE_LEAN=1` for every test process
 /// this gate run starts. A tree pinning no toolchain is left untouched.
 fn provision_lean(root: &Path) -> Result<()> {
     let Ok(pin) = std::fs::read_to_string(root.join(LEAN_PIN)) else { return Ok(()) };
@@ -143,6 +143,9 @@ fn provision_lean(root: &Path) -> Result<()> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let joined = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path)))?;
     std::env::set_var("PATH", joined);
+    // A test runs `lean` from its package directory, where no `lean-toolchain` sits
+    // above it and a fresh elan has no default to fall back to.
+    std::env::set_var("ELAN_TOOLCHAIN", pin);
     std::env::set_var(REQUIRE_LEAN, "1");
     eprintln!("lean: {pin} provisioned; {REQUIRE_LEAN}=1");
     Ok(())
