@@ -1,0 +1,1 @@
+//! `authority.profile`.

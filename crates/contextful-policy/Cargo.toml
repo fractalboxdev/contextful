@@ -1,0 +1,20 @@
+[package]
+name = "contextful-policy"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The credential format adapter (the delegation profile over biscuit), admission,
+# possession proofs, key sets, revocation and the exchange.
+
+[dependencies]
+contextful-core = { path = "../contextful-core" }
+biscuit-auth = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
