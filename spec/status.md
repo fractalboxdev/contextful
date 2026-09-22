@@ -5,8 +5,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 13 | 174 | 46 | 18 | 13 | 25 | 0 | 25 |
-| `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 55 | 0 | 55 |
+| `assurance` | 2 | 13 | 174 | 46 | 18 | 13 | 36 | 0 | 36 |
+| `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 70 | 0 | 70 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
 | `corpus` | 1 | 9 | 64 | 25 | 7 | 0 | 25 | 0 | 25 |
 | `disclosure` | 3 | 16 | 63 | 54 | 9 | 12 | 0 | 0 | 0 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 144 | 1396 | 444 | 160 | 100 | 105 | 0 | |
+| **total** | 19 | 144 | 1396 | 444 | 160 | 100 | 131 | 0 | |
 
 Decision records: 18.
 
@@ -24,7 +24,7 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 15 | 3 | passing |
-| 1 — The authority core | 14 | 190 | 73 | open |
+| 1 — The authority core | 14 | 190 | 99 | open |
 | 2 — The store | 8 | 111 | 0 | absent |
 | 3 — The run path | 11 | 169 | 0 | absent |
 | 4 — Ingest | 22 | 328 | 0 | absent |
@@ -55,6 +55,17 @@ Unscheduled operations: 9.
 | `assurance.audit-axioms.statement-drift` | `crates/contextful-cli/tests/integration/formal.rs::a_weakened_statement_drifts` | performed |
 | `assurance.audit-axioms.transitive-audit` | `crates/contextful-cli/tests/integration/formal.rs::a_footprint_reaches_through_helper_lemmas` | performed |
 | `assurance.audit-axioms.verdict-input` | `crates/contextful-cli/tests/integration/formal.rs::source_text_and_build_status_decide_nothing` | performed |
+| `assurance.differential-test.case-classes` | `crates/contextful-cli/tests/integration/differential.rs::the_report_names_the_three_case_classes` | performed |
+| `assurance.differential-test.command` | `crates/contextful-cli/tests/integration/differential.rs::the_command_replays_then_generates_and_stops_at_the_first_disagreement` | performed |
+| `assurance.differential-test.corpus-entries` | `crates/contextful-cli/tests/integration/differential.rs::a_full_corpus_evicts_the_oldest_reproducible_case` | performed |
+| `assurance.differential-test.corpus-replay` | `crates/contextful-cli/tests/integration/differential.rs::corpus_cases_replay_before_generated_cases` | performed |
+| `assurance.differential-test.disagreement` | `crates/contextful-cli/tests/integration/differential.rs::a_disagreement_raises_reference_model_drift_with_both_decisions` | performed |
+| `assurance.differential-test.discarded-counterexample` | `crates/contextful-cli/tests/integration/differential.rs::a_disagreement_the_corpus_cannot_hold_is_discarded_loudly` | performed |
+| `assurance.differential-test.harness` | `crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases` | performed |
+| `assurance.differential-test.minimized` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_disagreement_is_minimal_under_field_removal` | performed |
+| `assurance.differential-test.reference-model` | `crates/contextful-cli/tests/integration/differential.rs::the_reference_binary_reads_one_case_and_prints_one_decision` | performed |
+| `assurance.differential-test.run-budget` | `crates/contextful-cli/tests/integration/differential.rs::a_run_past_its_budget_stops` | performed |
+| `assurance.differential-test.seed` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_seed_reproduces_the_case_sequence` | performed |
 | `assurance.gate.fork-dispatch` | `tools/ci/tests/integration/workflow.rs::a_fork_pull_request_dispatches_no_stage` | performed |
 | `assurance.gate.secret-ciphertext` | `spec/pins.toml` | performed |
 | `assurance.gate.secret-scope` | `spec/pins.toml` | performed |
@@ -74,12 +85,15 @@ Unscheduled operations: 9.
 | `authority.attenuate.narrowing` | `crates/contextful-core/tests/integration/attenuate.rs::narrowing` | performed |
 | `authority.attenuate.tenant-dropped` | `crates/contextful-core/tests/integration/attenuate.rs::tenant_dropped` | performed |
 | `authority.attenuate.widens` | `crates/contextful-core/tests/integration/attenuate.rs::widens` | performed |
-| `authority.exchange.assertion-invalid` | `crates/contextful-core/tests/integration/exchange.rs::an_assertion_failing_any_check_is_invalid_and_mints_nothing` | performed |
+| `authority.exchange.assertion-invalid` | `crates/contextful-policy/tests/integration/exchange.rs::a_signed_assertion_failing_any_check_is_invalid_and_mints_nothing` | performed |
 | `authority.exchange.audience` | `crates/contextful-core/tests/integration/exchange.rs::the_minted_audience_falls_back_to_the_persisted_default` | performed |
+| `authority.exchange.injected-material` | `crates/contextful-policy/tests/integration/exchange.rs::verifying_material_is_a_secret_a_pem_key_or_a_kid_selected_key_set` | performed |
 | `authority.exchange.lifetime-ceiling` | `crates/contextful-core/tests/integration/exchange.rs::a_configured_ttl_clamps_to_3600_seconds_and_the_issuance_ceiling` | performed |
 | `authority.exchange.lifetime-default` | `crates/contextful-core/tests/integration/exchange.rs::a_policy_without_ttl_mints_900_seconds` | performed |
 | `authority.exchange.material-missing` | `crates/contextful-core/tests/integration/exchange.rs::an_exchange_without_verifying_material_mints_nothing` | performed |
 | `authority.exchange.minted-grants` | `crates/contextful-core/tests/integration/exchange.rs::minted_grants_come_from_role_grants_and_default_grants_alone` | performed |
+| `authority.exchange.no-cross-reader` | `crates/contextful-policy/tests/integration/exchange.rs::a_plan_for_one_reader_never_carries_another_readers_principal` | performed |
+| `authority.exchange.per-reader` | `crates/contextful-policy/tests/integration/exchange.rs::each_readers_assertion_mints_that_readers_short_lived_credential` | performed |
 | `authority.exchange.policy` | `crates/contextful-core/tests/integration/exchange.rs::the_exchange_policy_declares_its_fields` | performed |
 | `authority.exchange.tenant` | `crates/contextful-core/tests/integration/exchange.rs::the_tenant_claim_scopes_every_minted_grant` | performed |
 | `authority.grant.aggregate` | `crates/contextful-core/tests/integration/grant.rs::aggregate_only_grants_contribute_no_raw_table` | performed |
@@ -119,11 +133,23 @@ Unscheduled operations: 9.
 | `authority.revoke.denylist` | `crates/contextful-core/tests/integration/revoke.rs::a_denylist_entry_ages_out_once_no_live_key_version_verifies_it` | performed |
 | `authority.revoke.epoch` | `crates/contextful-core/tests/integration/revoke.rs::a_scoped_epoch_invalidates_only_its_slice` | performed |
 | `authority.revoke.format-withdrawn` | `crates/contextful-core/tests/integration/revoke.rs::a_withdrawn_format_refuses_from_its_cutover_until_explicitly_restored` | performed |
+| `authority.revoke.immediate-retire` | `crates/contextful-policy/tests/integration/keyset.rs::a_retired_version_drops_from_the_checkpoint_at_its_next_refresh` | performed |
 | `authority.revoke.revocation-id` | `crates/contextful-core/tests/integration/revoke.rs::denying_a_derivation_withdraws_its_subtree_and_leaves_the_root` | performed |
 | `authority.revoke.revoked` | `crates/contextful-core/tests/integration/revoke.rs::a_denylisted_or_stale_epoch_credential_is_revoked` | performed |
 | `authority.revoke.rotation-grace` | `crates/contextful-core/tests/integration/revoke.rs::a_retiring_key_verifies_through_a_grace_window_validated_against_issuance` | performed |
 | `authority.revoke.short-grace` | `crates/contextful-core/tests/integration/revoke.rs::a_grace_window_shorter_than_the_effective_ceiling_refuses` | performed |
+| `authority.verify.clock-skew` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_issued_more_than_thirty_seconds_ahead_refuses` | performed |
+| `authority.verify.key-set` | `crates/contextful-policy/tests/integration/keyset.rs::a_checkpoint_accepts_comma_separated_pins_or_a_published_key_route` | performed |
+| `authority.verify.key-set-refresh` | `crates/contextful-policy/tests/integration/keyset.rs::a_published_key_set_refreshes_every_300_s_single_flight_and_once_on_signature_failure` | performed |
+| `authority.verify.key-set-stale` | `crates/contextful-policy/tests/integration/keyset.rs::a_last_known_good_set_serves_under_one_hour_then_raises_key_set_stale` | performed |
+| `authority.verify.key-set-unavailable` | `crates/contextful-policy/tests/integration/keyset.rs::an_unobtainable_set_or_a_malformed_pin_raises_key_set_unavailable_and_declines_to_start` | performed |
 | `authority.verify.malformed-timestamp` | `crates/contextful-core/tests/integration/time.rs::a_timestamp_outside_the_grammar_is_malformed` | performed |
+| `authority.verify.nonce-cache` | `crates/contextful-policy/tests/integration/possession.rs::a_full_nonce_cache_answers_503_and_admits_nothing` | performed |
+| `authority.verify.possession-binding` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_binds_method_target_body_instant_and_nonce_to_the_confirmation_thumbprint` | performed |
+| `authority.verify.possession-invalid` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_from_another_key_or_malformed_raises_possession_proof_invalid` | performed |
+| `authority.verify.public-key-only` | `crates/contextful-policy/tests/integration/keyset.rs::a_checkpoint_admits_from_public_keys_alone_with_no_call_out` | performed |
+| `authority.verify.replay-window` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_older_than_the_replay_window_refuses_and_nonces_live_for_that_window` | performed |
+| `authority.verify.replayed-nonce` | `crates/contextful-policy/tests/integration/possession.rs::a_nonce_repeating_inside_the_window_raises_possession_proof_replayed` | performed |
 | `authority.verify.timestamps` | `crates/contextful-core/tests/integration/time.rs::timestamps_decode_into_utc_instants_and_compare_as_instants` | performed |
 | `corpus.address.clause-id` | `tools/spec/tests/integration/readable.rs::a_clause_item_takes_its_contract_and_operation_from_its_file_and_section` | performed |
 | `corpus.anatomy.bad-anatomy` | `tools/spec/tests/integration/readable.rs::an_item_outside_the_clause_shape_is_an_anatomy_finding` | performed |
