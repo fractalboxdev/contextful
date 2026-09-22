@@ -1,0 +1,18 @@
+[claim]
+targets  = ["Fx.narrows"]
+trusted  = ["delegation-library", "translator"]
+rests_on = ["delegation-library"]
+
+[constant."Fx.narrows"]
+module    = "Fx.Basic"
+statement = "∀ (n : Nat), n + 0 = n"
+axioms    = ["propext", "Quot.sound"]
+binding   = "engine/fx/src/lib.rs::narrows"
+negative  = "Leaves open: that a caller reaches the fold."
+
+[constant."Fx.extensional"]
+module    = "Fx.Basic"
+statement = "∀ (f g : Nat → Nat), (∀ (n : Nat), f n = g n) → ∀ (a b : Prop), (a ↔ b) → f = g ∧ a = b"
+axioms    = ["propext", "Quot.sound"]
+binding   = "engine/fx/src/lib.rs::extensional"
+negative  = "Leaves open: every function outside Nat."
