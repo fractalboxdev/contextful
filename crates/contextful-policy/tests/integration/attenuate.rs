@@ -50,7 +50,7 @@ fn a_holder_derives_a_child_offline_and_the_parent_stays_intact() {
 fn a_chain_truncated_to_a_broader_prefix_verifies_as_nothing() {
     let signer = issuer();
     let parent = minted(&signer);
-    let child = narrowed(&parent, &["research/filings"]).unwrap();
+    let child = narrowed(&parent, &["research/filings*"]).unwrap();
     let grandchild = narrowed(&child, &["research/filings/eu"]).unwrap();
     assert!(admit(&grandchild, &signer, DURING).is_ok());
     let key = keys(&signer).keys().next().unwrap().public_key;

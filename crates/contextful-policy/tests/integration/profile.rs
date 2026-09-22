@@ -44,8 +44,12 @@ fn an_element_the_profile_does_not_name_is_refused() {
     refused(admit(&craft(&signer, &b, &[], "check if iss($x);"), &signer, DURING), "ProfileElementUnrecognized");
     // An authority-only claim in an attenuation block.
     refused(admit(&append_raw(&minted(&signer), "aud(\"contextful://other\");"), &signer, DURING), "ProfileElementUnrecognized");
-    // A block version: a fact holding an array term moves the block past version 3.
-    refused(admit(&append_raw(&minted(&signer), "exp([1, 2]);"), &signer, DURING), "ProfileElementUnrecognized");
+    // A block version: `check all` moves a block past datalog version 3.
+    let err = admit(&append_raw(&minted(&signer), "check all exp($x), $x > 0;"), &signer, DURING).unwrap_err();
+    assert_eq!(err_name(&err), "ProfileElementUnrecognized");
+    assert!(err.to_string().contains("datalog version"), "{err}");
+    // A term type the profile does not name for a predicate.
+    refused(admit(&append_raw(&minted(&signer), "cnf([1, 2]);"), &signer, DURING), "ProfileElementUnrecognized");
     // A grant field.
     refused(
         admit(

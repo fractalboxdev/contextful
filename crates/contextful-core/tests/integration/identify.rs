@@ -237,3 +237,19 @@ fn the_authority_block_round_trips_the_shape_the_profile_maps() {
     let back = serde_json::to_value(&block).unwrap();
     assert_eq!(back, serde_json::from_str::<serde_json::Value>(json).unwrap());
 }
+
+#[test]
+fn an_authority_block_binding_no_holder_key_round_trips_without_cnf() {
+    let json = r#"{
+      "iss": "contextful://acme-research", "aud": "contextful://acme-research", "jti": "j1",
+      "iat": 1770000000, "exp": 1770000900, "alg": "Ed25519",
+      "sub": { "on_behalf_of": "user://dana@acme.example", "incognito": false },
+      "att": { "on_behalf_of": "verified" },
+      "grants": [],
+      "rev": { "id": "rev://j1", "epoch": 0 }
+    }"#;
+    let block: AuthorityBlock = serde_json::from_str(json).unwrap();
+    assert_eq!(block.cnf, None);
+    let back = serde_json::to_value(&block).unwrap();
+    assert!(back.get("cnf").is_none(), "{back}");
+}
