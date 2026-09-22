@@ -165,3 +165,18 @@ fn narrowing() {
     };
     assert!(matches!(check_chain(&root, &[rebound]), Err(AuthorityError::AuthoritySubjectRebound(_))));
 }
+
+/// Narrowing compares the groups-per-query ceilings aggregate grants take effect with: a
+/// declared 0 takes effect as 1, so a child declaring 1 under it is equal, not broader.
+#[test]
+fn group_ceiling_narrows_by_effective_ceiling() {
+    let under = |parent_groups: u64, child_groups: u64| {
+        let p = parent(vec![Grant { aggregate: Some(aggregate(10, parent_groups)), ..grant(&[Action::Read], &["t"]) }]);
+        attenuate(&p, &child(vec![Grant { aggregate: Some(aggregate(10, child_groups)), ..grant(&[Action::Read], &["t"]) }]))
+    };
+    assert!(under(0, 1).is_ok(), "1 under a declared 0 is the same ceiling of 1");
+    assert!(under(1, 0).is_ok());
+    assert!(under(0, 0).is_ok());
+    assert!(matches!(under(0, 2), Err(AuthorityError::AttenuationWidens(_))));
+    assert!(matches!(under(5, 6), Err(AuthorityError::AttenuationWidens(_))));
+}

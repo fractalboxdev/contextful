@@ -64,12 +64,13 @@ fn widened(child: &Grant, parent: &Grant) -> Vec<Dimension> {
     out
 }
 
-/// Every aggregate constraint holds or tightens; an absent child row ceiling inherits.
+/// Every aggregate constraint holds or tightens, the groups-per-query ceilings as they take
+/// effect; an absent child row ceiling inherits.
 fn aggregate_within(child: &AggregateGrant, parent: &AggregateGrant) -> bool {
     child.min_group_size >= parent.min_group_size
         && child.max_contributor_share <= parent.max_contributor_share
         && child.functions.iter().all(|f| parent.functions.contains(f))
-        && child.max_groups <= parent.max_groups
+        && child.group_ceiling() <= parent.group_ceiling()
         && match (child.max_rows, parent.max_rows) {
             (Some(c), Some(p)) => c <= p,
             (None, Some(_)) | (_, None) => true,
