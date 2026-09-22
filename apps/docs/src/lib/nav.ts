@@ -47,18 +47,14 @@ interface ContractMeta {
 /** `spec/terms/contract.toml`, keyed by file stem (`10-store`). */
 export const contractsByFile = (): Map<string, ContractMeta> => {
   const out = new Map<string, ContractMeta>();
-  try {
-    const toml = parse(readFileSync(join(SPEC_DIR, "terms/contract.toml"), "utf8")) as {
-      contract?: Record<string, { title?: string; gloss?: string; files?: string[] }>;
-    };
-    for (const [contract, c] of Object.entries(toml.contract ?? {})) {
-      for (const f of c.files ?? []) {
-        const stem = f.replace(/^spec\//, "").replace(/\.md$/, "");
-        out.set(stem, { contract, title: c.title ?? contract, gloss: c.gloss });
-      }
+  const toml = parse(readFileSync(join(SPEC_DIR, "terms/contract.toml"), "utf8")) as {
+    contract?: Record<string, { title?: string; gloss?: string; files?: string[] }>;
+  };
+  for (const [contract, c] of Object.entries(toml.contract ?? {})) {
+    for (const f of c.files ?? []) {
+      const stem = f.replace(/^spec\//, "").replace(/\.md$/, "");
+      out.set(stem, { contract, title: c.title ?? contract, gloss: c.gloss });
     }
-  } catch {
-    // The index falls back to each file's H1 when the registry is unreadable.
   }
   return out;
 };
