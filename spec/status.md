@@ -8,16 +8,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `assurance` | 2 | 13 | 174 | 46 | 18 | 13 | 7 | 0 | 7 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 0 | 0 | 0 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
-| `corpus` | 1 | 8 | 58 | 24 | 6 | 0 | 17 | 0 | 17 |
+| `corpus` | 1 | 9 | 64 | 25 | 7 | 0 | 25 | 0 | 25 |
 | `disclosure` | 3 | 16 | 63 | 54 | 9 | 12 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 13 | 16 | 0 | 0 | 0 |
 | `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 143 | 1390 | 443 | 159 | 100 | 24 | 0 | |
+| **total** | 19 | 144 | 1396 | 444 | 160 | 100 | 32 | 0 | |
 
-Decision records: 17.
+Decision records: 18.
 
 ## Milestones
 
@@ -39,7 +39,7 @@ Decision records: 17.
 | 13 — Disclosure | 5 | 20 | 0 | absent |
 | 14 — Assurance | 5 | 85 | 4 | open |
 
-Unscheduled operations: 8.
+Unscheduled operations: 9.
 
 ## Pins
 
@@ -52,7 +52,15 @@ Unscheduled operations: 8.
 | `assurance.test.acceptance-surface` | `spec/pins.toml` | performed |
 | `assurance.test.refactor-trailer` | `spec/pins.toml` | performed |
 | `assurance.test.test-first` | `spec/pins.toml` | performed |
+| `corpus.address.clause-id` | `tools/spec/tests/integration/readable.rs::a_clause_item_takes_its_contract_and_operation_from_its_file_and_section` | performed |
+| `corpus.anatomy.bad-anatomy` | `tools/spec/tests/integration/readable.rs::an_item_outside_the_clause_shape_is_an_anatomy_finding` | performed |
+| `corpus.anatomy.clause-list` | `tools/spec/tests/integration/readable.rs::a_clause_list_split_by_prose_is_an_anatomy_finding` | performed |
+| `corpus.anatomy.lede` | `tools/spec/tests/integration/readable.rs::the_lede_lands_in_the_lock_and_its_absence_is_an_anatomy_finding` | performed |
+| `corpus.guide.bad-guide` | `tools/spec/tests/integration/readable.rs::a_contract_without_a_guide_is_a_guide_finding` | performed |
+| `corpus.guide.file` | `tools/spec/tests/integration/readable.rs::a_guide_over_its_length_or_off_its_title_is_a_guide_finding` | performed |
+| `corpus.guide.non-normative` | `tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding` | performed |
 | `corpus.rationale.contract-adr` | `spec/pins.toml` | performed |
+| `corpus.render.card` | `tools/spec/tests/integration/readable.rs::state_writes_a_card_per_contract_and_a_stale_card_is_a_render_finding` | performed |
 | `corpus.state.acceptance` | `spec/pins.toml` | performed |
 | `corpus.state.acceptance-first` | `spec/pins.toml` | performed |
 | `corpus.state.deferred-depth` | `spec/pins.toml` | performed |

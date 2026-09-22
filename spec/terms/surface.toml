@@ -1,25 +1,25 @@
 # Registry fragment — contract `surface`, files spec/70-control-plane.md and spec/71-console.md.
 
 [operation]
-arm            = { gloss = "The schedule grammar and cron dialect, the trigger adapter and its durability, the wake route, and how an entry computes its next fire." }
-reconcile      = { gloss = "The control source, the snapshot pointer and its versions, the pure schedule diff, and what a failed poll leaves running." }
-fire           = { gloss = "Job declaration, the closed kind union, same-tick order, the fire watermark, and one-shot evaluation." }
-dispatch       = { gloss = "The bounded fire pool and its exclusion keys, the reconciler's hold on the cadence lease, step results, and the worker adapter with its attempt-fenced callback." }
-edit           = { gloss = "The configuration document, the records it presents read-only, the structured schedule specification, and connector configuration." }
-apply          = { gloss = "Validation, the immutable version claim, the pointer advance, the owner's storage, and the authority an apply carries." }
-reside         = { gloss = "Where the data plane runs, the region allow-set gating placement, and operation with no external reach." }
-register-store = { gloss = "Which stores a deployment serves, how each store's credential and binding names derive, and how a request reaches a store's origin." }
-visualize      = { gloss = "The operations canvas, the pack file surface, and the learnings record a store publishes about itself." }
-package        = { gloss = "The client library, its four deployment shapes and transports, and the credential each shape carries." }
-speak          = { gloss = "The language every visitor-visible string carries, the audience contract, and the deterministic backstops beneath it." }
-ground         = { gloss = "Where an answer's material comes from: the closed tool set, the two trust layers, the per-reader credential, the web supplement and the sources block." }
-plan-turn      = { gloss = "The shape of one turn: planner scaffolding, the replanning round, the answerability test, the code path, and the store's prompt overlay." }
-set-vantage    = { gloss = "A session's time basis: its vantage, the bound each leg carries, the snapshot timeline and the arrivals strip." }
-browse         = { gloss = "What a store advertises before a question: discovered chips, humanized labels, the insights panel and the file gallery." }
-learn          = { gloss = "The reading loop's memory: recall ahead of planning, the per-turn distillation and the labels its conclusions inherit." }
-render         = { gloss = "The three channels, the component union, deterministic component choice, view hints and the sanitizer walk." }
-brief          = { gloss = "The proactive greeting card: its derivation, payload, matching tiers, client-side clock and the absence it earns." }
-publish-answer = { gloss = "The moment an answer computed for one reader reaches a place other people read." }
+arm            = {}
+reconcile      = {}
+fire           = {}
+dispatch       = {}
+edit           = {}
+apply          = {}
+reside         = {}
+register-store = {}
+visualize      = {}
+package        = {}
+speak          = {}
+ground         = {}
+plan-turn      = {}
+set-vantage    = {}
+browse         = {}
+learn          = {}
+render         = {}
+brief          = {}
+publish-answer = {}
 
 [error]
 ScheduleUnreadable            = { clause = "surface.arm.unreadable-schedule", gloss = "A schedule string the grammar or cron dialect cannot read." }

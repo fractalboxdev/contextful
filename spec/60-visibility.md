@@ -37,28 +37,34 @@ flowchart LR
 
 ## mirror
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.mirror.unbound-table` | On an organization-wide face, a table with no visibility block raises `VisibilityUnboundTable` from diagnose and from the serving guardrail at start, naming the table. | P5 |
-| `disclosure.mirror.incomplete-binding` | A binding at a servable level lacking a declared sweep for its source or a `max_acl_staleness` raises `VisibilityBindingIncomplete`. | P5 |
+The three-way conjunction, the access tables as store data, and the binding that compiles a table's semi-join.
+
+- `unbound-table` — On an organization-wide face, a table with no visibility block raises `VisibilityUnboundTable` from diagnose and from the serving guardrail at start, naming the table.
+  *P5*
+- `incomplete-binding` — A binding at a servable level lacking a declared sweep for its source or a `max_acl_staleness` raises `VisibilityBindingIncomplete`.
+  *P5*
 
 unsettled: What opens a resource whose access list could not be mirrored, who may open it, and does the opening land as an expiring grant row or as manifest policy? owner: disclosure affects: disclosure.mirror
 
 ## sweep
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.sweep.ungapped-stream` | Advancing `watermark_at` from an event stream the mapping has not declared gap-detectable raises `VisibilityUngappedStream`. | A-disclosure |
-| `disclosure.sweep.orphan-grant` | A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set. | P5 |
+Observation of one source's permission state: sweep kinds, the observation clock, the coverage watermark, tombstones and revocation.
+
+- `ungapped-stream` — Advancing `watermark_at` from an event stream the mapping has not declared gap-detectable raises `VisibilityUngappedStream`.
+  *A-disclosure*
+- `orphan-grant` — A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set.
+  *P5*
 
 ## reach
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.reach.closure-walk` | The closure walks the group graph with a visited set, ending any cycle, to a depth of `max_group_depth`, default 8 hops, and a breadth of 10000 nodes. | |
-| `disclosure.reach.closure-overflow` | A closure reaching its depth or node bound raises `VisibilityClosureDepth` with the non-retryable HTTP status 422 and returns no set. | A-disclosure |
-| `disclosure.reach.cache-capacity` | The reachable-set cache holds at most 100000 entries and evicts the least recently used. | |
-| `disclosure.reach.degraded-uncached` | Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`. | A-disclosure |
+Per-request resolution of a subject to the resources it reaches, the bounded group closure, and the reachable-set cache.
+
+- `closure-walk` — The closure walks the group graph with a visited set, ending any cycle, to a depth of `max_group_depth`, default 8 hops, and a breadth of 10000 nodes.
+- `closure-overflow` — A closure reaching its depth or node bound raises `VisibilityClosureDepth` with the non-retryable HTTP status 422 and returns no set.
+  *A-disclosure*
+- `cache-capacity` — The reachable-set cache holds at most 100000 entries and evicts the least recently used.
+- `degraded-uncached` — Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`.
+  *A-disclosure*
 
 The per-request resolution of a subject to its reachable set:
 
@@ -79,33 +85,46 @@ unsettled: Do the epochs keying the reachable-set cache scope per source rather 
 
 ## bound-staleness
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.bound-staleness.budget-grammar` | `max_acl_staleness` is a positive integer with one suffix from `s`, `m`, `h`, `d`. A compound form, a bare number or another suffix raises `VisibilityBudgetMalformed`, naming the table and the text read. | A-disclosure |
-| `disclosure.bound-staleness.access-stale` | A read raises `VisibilityAccessStale` (HTTP 503, carrying source, lag, budget and last observation) when a touched table's source lag exceeds its budget, the source has no completed full run, or the public-status watermark is past budget. | A-disclosure |
-| `disclosure.bound-staleness.budget-below-cadence` | A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures. | A-disclosure |
+The declared age budget on mirrored authorization, the refusal past it, and the one narrowing posture.
+
+- `budget-grammar` — `max_acl_staleness` is a positive integer with one suffix from `s`, `m`, `h`, `d`. A compound form, a bare number or another suffix raises `VisibilityBudgetMalformed`, naming the table and the text read.
+  *A-disclosure*
+- `access-stale` — A read raises `VisibilityAccessStale` (HTTP 503, carrying source, lag, budget and last observation) when a touched table's source lag exceeds its budget, the source has no completed full run, or the public-status watermark is past budget.
+  *A-disclosure*
+- `budget-below-cadence` — A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures.
+  *A-disclosure*
 
 ## declare-fidelity
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.declare-fidelity.family-bound` | A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound` and the table does not load. | A-disclosure |
-| `disclosure.declare-fidelity.family-undeclared` | A mapping landing a table without naming its `family` raises `VisibilityFamilyUndeclared`. | A-disclosure |
-| `disclosure.declare-fidelity.federated-registered` | Registering a `federated` table on a read face raises `VisibilityFederatedRegistered`. | A-disclosure |
-| `disclosure.declare-fidelity.federated-cache` | Retaining a federated result under a key omitting the subject raises `VisibilityFederatedCacheShared`. | A-disclosure |
-| `disclosure.declare-fidelity.computed-inputs` | A source that computes access with a sharing engine is queried live. A mapping projecting that engine's inputs into `access_grants` raises `VisibilityComputedInputsMirrored`, naming the source. | A-disclosure |
-| `disclosure.declare-fidelity.roster-from-payload` | A mapping deriving grants from a people list inside content — attendees, invitees, recipients, contacts — rather than from the source's permission endpoint raises `VisibilityRosterFromPayload`. | A-disclosure |
+The fidelity level a table claims, the source family bounding the claim, and live federation under a reader's delegated credential.
+
+- `family-bound` — A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound` and the table does not load.
+  *A-disclosure*
+- `family-undeclared` — A mapping landing a table without naming its `family` raises `VisibilityFamilyUndeclared`.
+  *A-disclosure*
+- `federated-registered` — Registering a `federated` table on a read face raises `VisibilityFederatedRegistered`.
+  *A-disclosure*
+- `federated-cache` — Retaining a federated result under a key omitting the subject raises `VisibilityFederatedCacheShared`.
+  *A-disclosure*
+- `computed-inputs` — A source that computes access with a sharing engine is queried live. A mapping projecting that engine's inputs into `access_grants` raises `VisibilityComputedInputsMirrored`, naming the source.
+  *A-disclosure*
+- `roster-from-payload` — A mapping deriving grants from a people list inside content — attendees, invitees, recipients, contacts — rather than from the source's permission endpoint raises `VisibilityRosterFromPayload`.
+  *A-disclosure*
 
 unsettled: Where does the per-reader delegated credential a federated leg runs under come from, and how does a federated result with no store row carry a citation? owner: disclosure affects: disclosure.declare-fidelity
 
 ## pack
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.pack.mapping-absent` | A pack landing a table with neither an access mapping nor `excluded` raises `VisibilityMappingAbsent` at diagnose, naming the pack and the table. | A-disclosure |
-| `disclosure.pack.asserts-access` | An access-shaped key the mapping schema does not define raises `VisibilityPackAssertsAccess` by name. Fields outside the mapping are fetch inputs and reach no authorization decision. | A-disclosure |
-| `disclosure.pack.any-of-allowlist` | An allowlist evaluated as any-of raises `VisibilityAllowlistAnyOf` at load. | P1 |
-| `disclosure.pack.unsupported-coarse` | Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`. | A-disclosure |
+The reviewed unit landing one source: a manifest fragment plus a connector pin, its access mapping, defaults and container allowlist.
+
+- `mapping-absent` — A pack landing a table with neither an access mapping nor `excluded` raises `VisibilityMappingAbsent` at diagnose, naming the pack and the table.
+  *A-disclosure*
+- `asserts-access` — An access-shaped key the mapping schema does not define raises `VisibilityPackAssertsAccess` by name. Fields outside the mapping are fetch inputs and reach no authorization decision.
+  *A-disclosure*
+- `any-of-allowlist` — An allowlist evaluated as any-of raises `VisibilityAllowlistAnyOf` at load.
+  *P1*
+- `unsupported-coarse` — Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`.
+  *A-disclosure*
 
 ## Shapes
 

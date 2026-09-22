@@ -1,12 +1,12 @@
 # Registry fragment — contract `topology`, file spec/01-topology.md.
 
 [operation]
-compose           = { gloss = "The two halves of the engine, the three crossings between them, complete mediation, and the properties holding across both halves." }
-package           = { gloss = "The domain crate, dependency direction, and the three build profiles with what each links." }
-deploy            = { gloss = "One declaration across providers, deployment roles, self-hosted shapes, the reference target and output parity." }
-publish-hostname  = { gloss = "A published hostname's descriptor, gate and posture probe, and the two hops a published store answers through." }
-coordinate        = { gloss = "The conditional-write primitive, every single-writer operation, lease rows with their fence, and the catalog backends." }
-bound-application = { gloss = "Where the engine's contracts end, what an application owns, and the surfaces the commercial layer reaches." }
+compose           = {}
+package           = {}
+deploy            = {}
+publish-hostname  = {}
+coordinate        = {}
+bound-application = {}
 
 [error]
 VendorSdkLinked             = { clause = "topology.compose.vendor-sdk", gloss = "A crate declares a model-vendor SDK, or a second outbound path to a model exists." }

@@ -6,6 +6,11 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+
+static CLAUSE_ITEM: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^- `([^`]+)` — (.+)$").unwrap());
+static CLAUSE_WHY: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"^  \*(.+)\*$").unwrap());
 
 // ---------------------------------------------------------------- registry
 
@@ -141,6 +146,7 @@ pub enum Role {
     Contract,
     Record,
     Plan,
+    Guide,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -150,8 +156,12 @@ pub enum LineKind {
     Fence,
     Code,
     Heading,
-    ClauseHeader,
-    ClauseRow,
+    /// `` - `<subject>` — <statement> `` at operation level.
+    ClauseItem,
+    /// The two-space-indented `*…*` line following a clause item.
+    ClauseWhy,
+    /// A `` - ` `` line at operation level outside the clause-item shape.
+    BadClause,
     TableRow,
     Unsettled,
     Prose,
@@ -192,6 +202,8 @@ pub struct Doc {
     pub contract: Option<String>,
     pub owns: Vec<String>,
     pub clauses: Vec<Clause>,
+    /// Each `## <operation>` section's opening paragraph, by operation name.
+    pub ledes: BTreeMap<String, String>,
 }
 
 impl Doc {
@@ -263,58 +275,88 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
         }
     }
     let mut fence = false;
-    let mut clause_table = false;
+    // the `## ` section in force, and whether a `###`+ heading sits between it and the line
+    let mut section: Option<String> = None;
+    let mut sub = false;
+    let mut ledes: BTreeMap<String, String> = BTreeMap::new();
+    // 0: no lede pending, 1: heading seen, 2: inside the lede paragraph
+    let mut lede = 0u8;
+    let at_operation = |section: &Option<String>, sub: bool| {
+        role == Role::Contract && !sub && section.as_deref().map(|s| s != "Shapes").unwrap_or(false)
+    };
     while i < lines.len() {
         let l = lines[i].as_str();
         let t = l.trim();
+        let prev = if i > 0 { kinds[i - 1] } else { LineKind::Blank };
         if t.starts_with("```") {
             kinds[i] = LineKind::Fence;
             fence = !fence;
-            clause_table = false;
         } else if fence {
             kinds[i] = LineKind::Code;
         } else if t.is_empty() {
             kinds[i] = LineKind::Blank;
-            clause_table = false;
         } else if t.starts_with('#') {
             kinds[i] = LineKind::Heading;
-            clause_table = false;
-        } else if t.starts_with('|') {
-            let c = cells(t);
-            if role == Role::Contract && c.len() == 3 && c[0] == "Clause" && c[1] == "Statement" && c[2] == "Why" {
-                kinds[i] = LineKind::ClauseHeader;
-                clause_table = true;
-            } else if clause_table && is_separator(t) {
-                kinds[i] = LineKind::ClauseHeader;
-            } else if clause_table {
-                kinds[i] = LineKind::ClauseRow;
-                let id = c.first().map(|s| s.trim_matches('`').to_string()).unwrap_or_default();
-                let seg: Vec<&str> = id.split('.').collect();
-                clauses.push(Clause {
-                    id: id.clone(),
-                    contract: seg.first().unwrap_or(&"").to_string(),
-                    operation: seg.get(1).unwrap_or(&"").to_string(),
-                    subject: seg.get(2..).map(|s| s.join(".")).unwrap_or_default(),
-                    kind: "behavior".into(),
-                    statement: c.get(1).cloned().unwrap_or_default(),
-                    why: c.get(2..).map(|s| s.join(" | ")).unwrap_or_default(),
-                    file: rel.to_string(),
-                    line: i + 1,
-                    scenarios: Vec::new(),
-                });
+            if let Some(h) = l.strip_prefix("## ") {
+                section = Some(h.trim().to_string());
+                sub = false;
+            } else if l.starts_with("# ") {
+                section = None;
+                sub = false;
             } else {
-                kinds[i] = LineKind::TableRow;
+                sub = true;
             }
+        } else if at_operation(&section, sub) && l.starts_with("- `") {
+            match CLAUSE_ITEM.captures(l) {
+                Some(m) => {
+                    kinds[i] = LineKind::ClauseItem;
+                    let c = contract.clone().unwrap_or_default();
+                    let op = section.clone().unwrap_or_default();
+                    let subject = m[1].to_string();
+                    clauses.push(Clause {
+                        id: format!("{c}.{op}.{subject}"),
+                        contract: c,
+                        operation: op,
+                        subject,
+                        kind: "behavior".into(),
+                        statement: m[2].trim().to_string(),
+                        why: String::new(),
+                        file: rel.to_string(),
+                        line: i + 1,
+                        scenarios: Vec::new(),
+                    });
+                }
+                None => kinds[i] = LineKind::BadClause,
+            }
+        } else if prev == LineKind::ClauseItem && CLAUSE_WHY.is_match(l) {
+            kinds[i] = LineKind::ClauseWhy;
+            if let Some(cl) = clauses.last_mut() {
+                cl.why = CLAUSE_WHY.captures(l).unwrap()[1].trim().to_string();
+            }
+        } else if t.starts_with('|') {
+            kinds[i] = LineKind::TableRow;
         } else if t.starts_with("unsettled:") {
             kinds[i] = LineKind::Unsettled;
-            clause_table = false;
         } else {
             kinds[i] = LineKind::Prose;
-            clause_table = false;
         }
+        // an operation's lede is the first paragraph after its heading, when prose
+        lede = match (lede, kinds[i]) {
+            (_, LineKind::Heading) if l.starts_with("## ") && at_operation(&section, sub) => 1,
+            (1, LineKind::Blank) => 1,
+            (1 | 2, LineKind::Prose) => {
+                let e = ledes.entry(section.clone().unwrap_or_default()).or_default();
+                if !e.is_empty() {
+                    e.push(' ');
+                }
+                e.push_str(t);
+                2
+            }
+            _ => 0,
+        };
         i += 1;
     }
-    Doc { rel: rel.to_string(), role, lines, kinds, contract, owns, clauses }
+    Doc { rel: rel.to_string(), role, lines, kinds, contract, owns, clauses, ledes }
 }
 
 // ---------------------------------------------------------------- corpus
@@ -356,6 +398,20 @@ impl Corpus {
         for rel in recs {
             let text = std::fs::read_to_string(root.join(&rel))?;
             docs.push(parse(&rel, Role::Record, &text));
+        }
+        let mut guides: Vec<String> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(spec.join("guide")) {
+            for e in rd {
+                let p = e?.path();
+                if p.extension().map(|x| x == "md").unwrap_or(false) {
+                    guides.push(format!("spec/guide/{}", p.file_name().unwrap().to_string_lossy()));
+                }
+            }
+        }
+        guides.sort();
+        for rel in guides {
+            let text = std::fs::read_to_string(root.join(&rel))?;
+            docs.push(parse(&rel, Role::Guide, &text));
         }
         if let Ok(text) = std::fs::read_to_string(spec.join("roadmap.md")) {
             docs.push(parse("spec/roadmap.md", Role::Plan, &text));
@@ -431,6 +487,20 @@ impl Corpus {
 
     pub fn contracts(&self) -> impl Iterator<Item = &Doc> {
         self.docs.iter().filter(|d| d.role == Role::Contract)
+    }
+
+    pub fn guides(&self) -> impl Iterator<Item = &Doc> {
+        self.docs.iter().filter(|d| d.role == Role::Guide)
+    }
+
+    /// Every operation's lede, keyed `<contract>.<operation>`.
+    pub fn ledes(&self) -> BTreeMap<String, &str> {
+        self.contracts()
+            .flat_map(|d| {
+                let c = d.contract.clone().unwrap_or_default();
+                d.ledes.iter().map(move |(op, t)| (format!("{c}.{op}"), t.as_str()))
+            })
+            .collect()
     }
 
     pub fn records(&self) -> impl Iterator<Item = &Doc> {

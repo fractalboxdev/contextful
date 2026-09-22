@@ -4,6 +4,7 @@
 mod grammar;
 mod lean;
 mod rationale;
+mod readable;
 mod slice;
 mod scaffold;
 mod state;

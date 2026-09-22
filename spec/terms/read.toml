@@ -1,20 +1,20 @@
 # Registry fragment — contract `read`, files spec/20-read.md and spec/21-memory.md.
 
 [operation]
-register       = { gloss = "The relations, tools and templates one connection sees, and the engine executing against them." }
-guard          = { gloss = "Admission of caller-written SQL: what parses, what a base relation names, whose text runs raw." }
-respond        = { gloss = "The one response projection: cell encoding, the row ceiling, truncation, counts and operator metadata." }
-retrieve       = { gloss = "Candidate generation for a ranked read: content tokens, the relevance floor, per-table arms, dedup, snippet." }
-rank           = { gloss = "Ordering of a candidate set: the three legs, their fusion, the question's timeframe, reported confidence." }
-cache          = { gloss = "Locality of the bytes a read touches, and reuse of a result across requests." }
-resolve-pin    = { gloss = "Resolution of a named published-model build at read time, and the state each response echoes." }
-embed          = { gloss = "The embedding port and its default, the model identifier beside each vector, the linked-backend identity a handshake reports, and refusals on an absent backend." }
-declare        = { gloss = "The five memory table shapes, their canonical columns, tier and scope, and the relation vocabulary with its cardinality." }
-synthesize     = { gloss = "Extract, Resolve and Consolidate; the dedup key, evidence support, the audit record and coverage gaps." }
-revise         = { gloss = "Supersession within one validity line, confidence decay, the direct write and its anchor, expiry, retention, promotion." }
-recall         = { gloss = "Serving live memory at present time: the two clocks, tier-first ordering, the scope filter, the tombstone filter, the evidence gate." }
-resolve-entity = { gloss = "Mention-to-entity matching, aliases, the knowledge card, place identity and nearness, edges, and ownership answers." }
-settle         = { gloss = "Predictions, observations, the registration, the citation a verdict owes, and the label views." }
+register       = {}
+guard          = {}
+respond        = {}
+retrieve       = {}
+rank           = {}
+cache          = {}
+resolve-pin    = {}
+embed          = {}
+declare        = {}
+synthesize     = {}
+revise         = {}
+recall         = {}
+resolve-entity = {}
+settle         = {}
 
 [error]
 FilePreviewNotATable          = { clause = "read.register.file-preview-target", gloss = "A previewed path resolved to no table." }

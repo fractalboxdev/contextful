@@ -1,19 +1,19 @@
 # Registry fragment — contract `assurance`, files spec/80-formal.md and spec/81-engineering.md.
 
 [operation]
-model             = { gloss = "The Lean policy package and the Lean protocol state machine, their pins, and the definitions theorems and checks range over." }
-prove             = { gloss = "The theorem inventory: layer composition, placement, the evidence floor, and the proof targets over the authority mapping." }
-audit-axioms      = { gloss = "The axiom allowlist, the transitive footprint audit over the elaborated environment, the inventory and the report." }
-recheck           = { gloss = "Rebuilding and re-auditing from pinned source in a credential-free environment." }
-scope-claim       = { gloss = "The sentence the assurance claim is allowed to be: named decisions, trusted dependencies, translation chain, refinement reach." }
-differential-test = { gloss = "The executable reference models, the case generators, the minimized counterexample corpus and the command running them." }
-structure-tree    = { gloss = "One home per capability, the one enforcement decision module, adapters, mirror annotations and derived-artifact checks." }
-automate          = { gloss = "Typed subcommands over compiled binaries, and the boundary shell keeps." }
-test              = { gloss = "Assertion construction, guard validation, suite placement, test-first and acceptance tests, and the connector test kit." }
-build             = { gloss = "Target directories, the engine-linked invocation, linked query functions, build targets, release artifacts and the dependency allowlist." }
-gate              = { gloss = "Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks." }
-evaluate          = { gloss = "The read-path quality harness: case format, deterministic metrics and floors, judged dimensions, the reader and the judge." }
-baseline          = { gloss = "Holding a run against committed baselines and absolute floors, intervals, golden custody and case generation." }
+model             = {}
+prove             = {}
+audit-axioms      = {}
+recheck           = {}
+scope-claim       = {}
+differential-test = {}
+structure-tree    = {}
+automate          = {}
+test              = {}
+build             = {}
+gate              = {}
+evaluate          = {}
+baseline          = {}
 
 [error]
 FormalPackageDependency          = { clause = "assurance.model.declared-dependency", gloss = "The Lean package manifest declares an external library." }

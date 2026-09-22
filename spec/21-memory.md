@@ -36,19 +36,22 @@ flowchart LR
 
 ## declare
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `read.declare.canonical-column` | A table naming a shape and omitting one of its canonical columns raises `MemoryShapeColumnMissing` when the declaration loads. | P1 |
-| `read.declare.undeclared-relation` | A candidate edge whose `rel_type` falls outside the union lands in the dead-letter table and raises `MemoryUndeclaredRelation`; no row is written under the unknown type. | A-read |
+The five memory table shapes, their canonical columns, tier and scope, and the relation vocabulary with its cardinality.
+
+- `canonical-column` — A table naming a shape and omitting one of its canonical columns raises `MemoryShapeColumnMissing` when the declaration loads.
+  *P1*
+- `undeclared-relation` — A candidate edge whose `rel_type` falls outside the union lands in the dead-letter table and raises `MemoryUndeclaredRelation`; no row is written under the unknown type.
+  *A-read*
 
 unsettled: Which relation types belong in the reserved core, and what declared path adds or renames one without stranding rows? owner: memory affects: read.declare
 
 ## synthesize
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `read.synthesize.extract-attempts` | A schema-invalid response is re-prompted with its validation feedback, at most 3 attempts per batch in total. | — |
-| `read.synthesize.dead-letter` | A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced. | A-read |
+Extract, Resolve and Consolidate; the dedup key, evidence support, the audit record and coverage gaps.
+
+- `extract-attempts` — A schema-invalid response is re-prompted with its validation feedback, at most 3 attempts per batch in total.
+- `dead-letter` — A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced.
+  *A-read*
 
 One synthesis pass and its dead-letter exits:
 
@@ -73,9 +76,10 @@ unsettled: How is a model-emitted confidence rescaled into a comparable number, 
 
 ## revise
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `read.revise.direct-write` | The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert | A-read |
+Supersession within one validity line, confidence decay, the direct write and its anchor, expiry, retention, promotion.
+
+- `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert
+  *A-read*
 
 unsettled: How are two unscoped writers colliding on one subject, predicate and scope surfaced to a human, rather than the later one landing not live? owner: memory affects: read.revise
 
@@ -83,10 +87,12 @@ unsettled: What decay half-life applies to a claim nothing reinforces, and is fa
 
 ## recall
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `read.recall.evidence-unresolved` | An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`. | A-read |
-| `read.recall.evidence-references` | A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`. | A-read |
+Serving live memory at present time: the two clocks, tier-first ordering, the scope filter, the tombstone filter, the evidence gate.
+
+- `evidence-unresolved` — An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.
+  *A-read*
+- `evidence-references` — A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
+  *A-read*
 
 The evidence check a claim passes on its way to a grounded turn:
 
@@ -102,10 +108,12 @@ unsettled: What supplies a read-side usage ledger, so retention can ask whether 
 
 ## resolve-entity
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `read.resolve-entity.ambiguous-mention` | A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim. | A-read |
-| `read.resolve-entity.edge-endpoint` | A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`. | A-read |
+Mention-to-entity matching, aliases, the knowledge card, place identity and nearness, edges, and ownership answers.
+
+- `ambiguous-mention` — A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.
+  *A-read*
+- `edge-endpoint` — A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.
+  *A-read*
 
 unsettled: At what hop depth or edge count does an external graph engine become a served backend rather than a derived index? owner: memory affects: read.resolve-entity
 
@@ -113,12 +121,15 @@ unsettled: Does an ownership answer over an artifact with several attached princ
 
 ## settle
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `read.settle.registration` | A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`. | A-read |
-| `read.settle.source-mismatch` | An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`. | A-read |
-| `read.settle.settling-citation` | An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view. | A-read |
-| `read.settle.grace-window` | The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s. | — |
+Predictions, observations, the registration, the citation a verdict owes, and the label views.
+
+- `registration` — A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.
+  *A-read*
+- `source-mismatch` — An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.
+  *A-read*
+- `settling-citation` — An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.
+  *A-read*
+- `grace-window` — The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.
 
 Registration, observation and the label view:
 

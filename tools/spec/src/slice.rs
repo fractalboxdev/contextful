@@ -1,6 +1,6 @@
 //! `contextful-spec slice`: a self-contained context pack for one operation, one
-//! contract or one roadmap milestone — its clause rows, the `{{id}}` closure they
-//! point into, the records their Why cells cite, and the errors and bounds they own.
+//! contract or one roadmap milestone — its clauses and operation ledes, the `{{id}}` closure they
+//! point into, the records their Why lines cite, and the errors and bounds they own.
 
 use crate::checks;
 use crate::corpus::*;
@@ -55,6 +55,8 @@ pub struct Summary {
 pub struct Slice {
     pub target: String,
     pub operations: Vec<String>,
+    /// Each named operation's lede, by `<contract>.<operation>`.
+    pub ledes: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub milestone: Option<MilestoneLine>,
     pub clauses: Vec<Row>,
@@ -155,10 +157,13 @@ pub fn build(c: &Corpus, target: &str) -> Result<Slice> {
         })
         .collect();
 
+    let all_ledes = c.ledes();
+    let ledes = operations.iter().filter_map(|o| all_ledes.get(o).map(|t| (o.clone(), t.to_string()))).collect();
     let summary = Summary { clauses: own.len(), pointed: pointed.len(), pointers: edges.len(), records: records.len() };
     Ok(Slice {
         target: target.to_string(),
         operations,
+        ledes,
         milestone,
         clauses: own.into_iter().map(row).collect(),
         pointed: pointed.into_iter().map(row).collect(),
@@ -189,8 +194,18 @@ pub fn markdown(sl: &Slice) -> String {
             let _ = writeln!(s, "Acceptance: `{a}`\n");
         }
     }
-    let ops: Vec<String> = sl.operations.iter().map(|o| format!("`{o}`")).collect();
-    let _ = writeln!(s, "Operations: {}\n", ops.join(", "));
+    s.push_str("## Operations\n\n");
+    for o in &sl.operations {
+        match sl.ledes.get(o) {
+            Some(t) => {
+                let _ = writeln!(s, "- `{o}` — {t}");
+            }
+            None => {
+                let _ = writeln!(s, "- `{o}`");
+            }
+        }
+    }
+    s.push('\n');
     s.push_str("## Clauses\n\n");
     table(&mut s, &sl.clauses);
     if !sl.pointed.is_empty() {

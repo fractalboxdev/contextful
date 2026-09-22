@@ -1,6 +1,7 @@
 //! `contextful-spec` — the one implementation of every rule `spec/00-corpus.md`
 //! states. The gate and a local run invoke the identical command.
 
+mod cards;
 mod checks;
 mod corpus;
 mod slice;
@@ -69,6 +70,10 @@ fn main() -> Result<()> {
         Cmd::Extract => Ok(std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?),
         Cmd::State => {
             std::fs::write(root.join("spec/targets.md"), targets::page(&c))?;
+            std::fs::create_dir_all(root.join("spec/cards"))?;
+            for (contract, text) in cards::pages(&c) {
+                std::fs::write(root.join(format!("spec/cards/{contract}.md")), text)?;
+            }
             Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?)
         }
         Cmd::Pins => raise_floor(&c),
@@ -134,6 +139,7 @@ pub fn lock_text(c: &Corpus) -> String {
     struct Lock<'a> {
         clauses: Vec<&'a Clause>,
         owns: BTreeMap<&'a str, &'a Vec<String>>,
+        ledes: BTreeMap<String, &'a str>,
         pointers: Vec<(&'a str, String)>,
         registry: &'a Registry,
     }
@@ -143,7 +149,7 @@ pub fn lock_text(c: &Corpus) -> String {
         .flat_map(|cl| pointers(&cl.statement).into_iter().map(move |p| (cl.id.as_str(), p)))
         .collect();
     let owns = c.contracts().map(|d| (d.rel.as_str(), &d.owns)).collect();
-    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, pointers, registry: &c.reg }).unwrap();
+    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, ledes: c.ledes(), pointers, registry: &c.reg }).unwrap();
     s.push('\n');
     s
 }

@@ -55,25 +55,31 @@ flowchart LR
 
 ## register-store
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.register-store.registry-unreadable` | A `CONTEXTFUL_STORES_JSON` value that does not parse raises `StoreRegistryUnreadable` at startup; the built-in stores substitute for no configured set. | P3 |
-| `surface.register-store.malformed-entry` | One entry that does not decode raises `StoreEntryMalformed` naming it, and is dropped while its siblings are served. | A-surface |
-| `surface.register-store.reserved-id` | A configured entry claiming either built-in id raises `StoreIdReserved`. | because the entry otherwise reads the fixture's rows under its own name |
-| `surface.register-store.authored-name` | An entry carrying its own credential or binding name raises `StoreNameAuthored`. | A-surface |
+Which stores a deployment serves, how each store's credential and binding names derive, and how a request reaches a store's origin.
+
+- `registry-unreadable` — A `CONTEXTFUL_STORES_JSON` value that does not parse raises `StoreRegistryUnreadable` at startup; the built-in stores substitute for no configured set.
+  *P3*
+- `malformed-entry` — One entry that does not decode raises `StoreEntryMalformed` naming it, and is dropped while its siblings are served.
+  *A-surface*
+- `reserved-id` — A configured entry claiming either built-in id raises `StoreIdReserved`.
+  *because the entry otherwise reads the fixture's rows under its own name*
+- `authored-name` — An entry carrying its own credential or binding name raises `StoreNameAuthored`.
+  *A-surface*
 
 ## visualize
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.visualize.listing-page` | One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve. | — |
+The operations canvas, the pack file surface, and the learnings record a store publishes about itself.
+
+- `listing-page` — One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.
 
 ## package
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.package.stdio-credential` | Over the process transport a credential is mandatory, a capability token or an explicit owner flag; an unset one raises `StdioCredentialMissing` and does not resolve to the owner context. | A-read |
-| `surface.package.store-selector` | The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing. | A-topology |
+The client library, its four deployment shapes and transports, and the credential each shape carries.
+
+- `stdio-credential` — Over the process transport a credential is mandatory, a capability token or an explicit owner flag; an unset one raises `StdioCredentialMissing` and does not resolve to the owner context.
+  *A-read*
+- `store-selector` — The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
+  *A-topology*
 
 The client library's four shapes, and who holds the credential in each:
 
@@ -96,21 +102,28 @@ flowchart LR
 
 ## speak
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.speak.redactor-lookahead` | The streaming redactor buffers 128 chars across each chunk boundary, and no denylist entry is longer than the buffer. | because an identifier split between two chunks otherwise passes unredacted |
-| `surface.speak.unanswerable-suggestion` | A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built. | A-surface |
+The language every visitor-visible string carries, the audience contract, and the deterministic backstops beneath it.
+
+- `redactor-lookahead` — The streaming redactor buffers 128 chars across each chunk boundary, and no denylist entry is longer than the buffer.
+  *because an identifier split between two chunks otherwise passes unredacted*
+- `unanswerable-suggestion` — A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built.
+  *A-surface*
 
 ## ground
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.ground.ungrounded-answer` | A path composing answer prose in a turn holding no tool result raises `ConsoleUngroundedAnswer`. | P2 |
-| `surface.ground.unadmitted-tool` | A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing. | A-surface |
-| `surface.ground.mutating-tool` | The visitor-facing endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server. | A-surface |
-| `surface.ground.direct-file-read` | A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on this surface. | P5 |
-| `surface.ground.mint-refused` | A refused mint raises `ConsoleTokenExchangeRefused`. A store carrying a shared credential falls back to it; one carrying none surfaces the refusal to the reader. | P2 |
-| `surface.ground.sources-per-turn` | A source list carries at most 8 entries. | — |
+Where an answer's material comes from: the closed tool set, the two trust layers, the per-reader credential, the web supplement and the sources block.
+
+- `ungrounded-answer` — A path composing answer prose in a turn holding no tool result raises `ConsoleUngroundedAnswer`.
+  *P2*
+- `unadmitted-tool` — A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing.
+  *A-surface*
+- `mutating-tool` — The visitor-facing endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server.
+  *A-surface*
+- `direct-file-read` — A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on this surface.
+  *P5*
+- `mint-refused` — A refused mint raises `ConsoleTokenExchangeRefused`. A store carrying a shared credential falls back to it; one carrying none surfaces the refusal to the reader.
+  *P2*
+- `sources-per-turn` — A source list carries at most 8 entries.
 
 The two trust layers on one grounded turn, for a store on `exchange` authentication:
 
@@ -138,43 +151,47 @@ sequenceDiagram
 
 ## plan-turn
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.plan-turn.planner-reached-memory` | Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises `ConsolePlannerReachedMemory`. | A-surface |
-| `surface.plan-turn.code-path-bounds` | The code path reads at most 5000 rows per data table and stops after 10 s. | — |
-| `surface.plan-turn.overlay-cache` | The overlay caches for 5 min, a miss included. | — |
-| `surface.plan-turn.overlay-length` | An overlay is truncated at 8000 chars. | — |
+The shape of one turn: planner scaffolding, the replanning round, the answerability test, the code path, and the store's prompt overlay.
+
+- `planner-reached-memory` — Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises `ConsolePlannerReachedMemory`.
+  *A-surface*
+- `code-path-bounds` — The code path reads at most 5000 rows per data table and stops after 10 s.
+- `overlay-cache` — The overlay caches for 5 min, a miss included.
+- `overlay-length` — An overlay is truncated at 8000 chars.
 
 unsettled: Does a store's overlay reach the planner's text as well as the analyst's? owner: console affects: surface.plan-turn
 
 ## set-vantage
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.set-vantage.unparseable` | A vantage that is neither a calendar day nor an instant raises `ConsoleVantageUnparseable`, answered `400`. | P2 |
-| `surface.set-vantage.web-bound-unparseable` | A web leg whose bound fails to parse fails that leg and raises `ConsoleWebBoundUnparseable`. | P2 |
-| `surface.set-vantage.sample-labels` | A table's arrivals contribute at most 3 entries of sampled label. | — |
+A session's time basis: its vantage, the bound each leg carries, the snapshot timeline and the arrivals strip.
+
+- `unparseable` — A vantage that is neither a calendar day nor an instant raises `ConsoleVantageUnparseable`, answered `400`.
+  *P2*
+- `web-bound-unparseable` — A web leg whose bound fails to parse fails that leg and raises `ConsoleWebBoundUnparseable`.
+  *P2*
+- `sample-labels` — A table's arrivals contribute at most 3 entries of sampled label.
 
 ## browse
 
-| Clause | Statement | Why |
-| --- | --- | --- |
+What a store advertises before a question: discovered chips, humanized labels, the insights panel and the file gallery.
 
 ## learn
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.learn.distillation` | After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included. | — |
-| `surface.learn.unscoped` | A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`. | A-surface |
+The reading loop's memory: recall ahead of planning, the per-turn distillation and the labels its conclusions inherit.
+
+- `distillation` — After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.
+- `unscoped` — A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.
+  *A-surface*
 
 unsettled: Does a subject normalize during distillation, or resolve through entity matching at recall? owner: console affects: surface.learn
 
 ## render
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.render.client-authored-view` | A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`. | A-surface |
-| `surface.render.component-choice` | One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view. | — |
+The three channels, the component union, deterministic component choice, view hints and the sanitizer walk.
+
+- `client-authored-view` — A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`.
+  *A-surface*
+- `component-choice` — One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.
 
 A tool return split into three channels, and the view channel's path to a widget:
 
@@ -200,20 +217,23 @@ unsettled: What governs adding a member to the component union once transcripts 
 
 ## brief
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.brief.absence-is-earned` | The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders. | A-surface |
-| `surface.brief.topic-tier` | The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject. | — |
-| `surface.brief.card-subjects` | A card carries at most 3 subjects. | — |
-| `surface.brief.articles-per-subject` | A subject carries at most 3 entries of matched article. | — |
-| `surface.brief.catchup-window` | The backend caps the requested window at 7 d. | — |
+The proactive greeting card: its derivation, payload, matching tiers, client-side clock and the absence it earns.
+
+- `absence-is-earned` — The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders.
+  *A-surface*
+- `topic-tier` — The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject.
+- `card-subjects` — A card carries at most 3 subjects.
+- `articles-per-subject` — A subject carries at most 3 entries of matched article.
+- `catchup-window` — The backend caps the requested window at 7 d.
 
 ## publish-answer
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `surface.publish-answer.share-affordance` | A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`. | A-surface |
-| `surface.publish-answer.askerless-audience` | A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches. | A-surface |
+The moment an answer computed for one reader reaches a place other people read.
+
+- `share-affordance` — A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.
+  *A-surface*
+- `askerless-audience` — A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.
+  *A-surface*
 
 unsettled: Is there a principal shape for an answer computed at a room's intersection rather than one reader's scope? owner: console affects: surface.publish-answer
 

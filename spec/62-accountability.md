@@ -37,11 +37,12 @@ flowchart LR
 
 ## record
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.record.segment` | Entries append to a numbered segment file in ascending `seq`, and a segment closes at 4096 entries under one signed root. | |
-| `disclosure.record.unpersisted-entry` | A read whose entry fails to reach local durable storage raises `AuditEntryUnpersisted` and returns no rows. | A-disclosure |
-| `disclosure.record.projection` | The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s. | |
+What a read leaves behind: the span, the hash-linked audit entry, and where telemetry lands.
+
+- `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes at 4096 entries under one signed root.
+- `unpersisted-entry` — A read whose entry fails to reach local durable storage raises `AuditEntryUnpersisted` and returns no rows.
+  *A-disclosure*
+- `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
 
 One read's entry under group commit:
 
@@ -68,35 +69,49 @@ unsettled: Does a read refused by enforcement append an entry, and what does tha
 
 ## explain
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.explain.no-row` | An explanation returning a row, field value or excerpt from the resource it decides about raises `VisibilityDiagnosticRow`. | P2 |
-| `disclosure.explain.empty-window` | A window holding no observations raises `VisibilityNoObservations` and states that no claim is available. | P2 |
-| `disclosure.explain.unqualified-assurance` | A negative assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`. | P2 |
-| `disclosure.explain.groups-not-members` | A reader-facing explanation rendering the member identities of a group on the path raises `VisibilityIndividualNamed`. | P2 |
+The access decision and its path, replay over a window with its coverage, and the audience report.
+
+- `no-row` — An explanation returning a row, field value or excerpt from the resource it decides about raises `VisibilityDiagnosticRow`.
+  *P2*
+- `empty-window` — A window holding no observations raises `VisibilityNoObservations` and states that no claim is available.
+  *P2*
+- `unqualified-assurance` — A negative assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`.
+  *P2*
+- `groups-not-members` — A reader-facing explanation rendering the member identities of a group on the path raises `VisibilityIndividualNamed`.
+  *P2*
 
 ## attest
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.attest.broken-chain` | A disagreeing digest, a sequence gap, or an absent chain while `chain.tip` or a signed root exists raises `AuditChainBroken` with the index of the earliest failure. | A-disclosure |
-| `disclosure.attest.root-replication` | Signed roots reach the replication bucket asynchronously every 10 min. | |
+Chain verification, signed segment roots, lineage attestations, and the reach of each guarantee.
+
+- `broken-chain` — A disagreeing digest, a sequence gap, or an absent chain while `chain.tip` or a signed root exists raises `AuditChainBroken` with the index of the earliest failure.
+  *A-disclosure*
+- `root-replication` — Signed roots reach the replication bucket asynchronously every 10 min.
 
 unsettled: Does a lineage attestation over evidence spanning a withheld table name that table or elide it? owner: disclosure affects: disclosure.attest
 
 ## erase
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.erase.privilege` | Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`. | A-read |
-| `disclosure.erase.subject-column` | A table names its subject column as `subject_id = "<column>"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table. | A-disclosure |
-| `disclosure.erase.cascade` | In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops. | A-disclosure |
-| `disclosure.erase.cascade-unbounded` | A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing. | A-disclosure |
-| `disclosure.erase.physical-removal` | Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit. | A-disclosure |
-| `disclosure.erase.restaging-gate` | `--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb. | A-disclosure |
-| `disclosure.erase.tenant-column-type` | A tenant column of a non-string type raises `PurgeTenantColumnType`. | A-disclosure |
-| `disclosure.erase.tenant-undeclared` | A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`. | A-disclosure |
-| `disclosure.erase.owner-only` | A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents. | A-disclosure |
+The one erasure verb: subject tombstones, the bounded provenance cascade, the restaging gate, and the tenant rewrite.
+
+- `privilege` — Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.
+  *A-read*
+- `subject-column` — A table names its subject column as `subject_id = "<column>"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.
+  *A-disclosure*
+- `cascade` — In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.
+  *A-disclosure*
+- `cascade-unbounded` — A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.
+  *A-disclosure*
+- `physical-removal` — Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit.
+  *A-disclosure*
+- `restaging-gate` — `--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb.
+  *A-disclosure*
+- `tenant-column-type` — A tenant column of a non-string type raises `PurgeTenantColumnType`.
+  *A-disclosure*
+- `tenant-undeclared` — A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.
+  *A-disclosure*
+- `owner-only` — A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.
+  *A-disclosure*
 
 A subject erasure:
 
@@ -124,12 +139,16 @@ unsettled: Does the free-form statement face fall under the restaging gate as a 
 
 ## receipt
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `disclosure.receipt.pseudonym` | `tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing. | A-disclosure |
-| `disclosure.receipt.widened-claim` | A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`. | A-disclosure |
-| `disclosure.receipt.replayed` | Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`. | A-disclosure |
-| `disclosure.receipt.no-rewrite-engine` | A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing. | because a receipt over a rewrite that did not run states a false claim |
+The signed artifact a tenant purge returns: its claim, its coverage block, its pseudonym and its idempotence.
+
+- `pseudonym` — `tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.
+  *A-disclosure*
+- `widened-claim` — A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.
+  *A-disclosure*
+- `replayed` — Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.
+  *A-disclosure*
+- `no-rewrite-engine` — A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.
+  *because a receipt over a rewrite that did not run states a false claim*
 
 A tenant purge, its receipt, and an offline check of it:
 

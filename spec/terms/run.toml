@@ -1,30 +1,30 @@
 # Registry fragment — contract `run`, files spec/30-run.md, spec/31-pipeline.md, spec/32-derive.md.
 
 [operation]
-journal       = { gloss = "Recording a step's value once, resolving it on replay, and collecting what a replay can no longer reach." }
-advance       = { gloss = "Committing an incremental read position under its declared kind, and the boundary a poll re-reads." }
-suspend       = { gloss = "Durable suspension on an external callback, its deadline and its resumption." }
-retry         = { gloss = "Classifying a failure, the single retry layer, and the delay before the next attempt." }
-own           = { gloss = "The execution owner a scope holds and the connector build it pins while pending." }
-cancel        = { gloss = "Stopping work in flight at either grain, the one token every await observes, and what a stop leaves behind." }
-record        = { gloss = "The durable run record, its statuses, its owner lease and windowed history over it." }
-project       = { gloss = "The best-effort live view of a run and the subscription that carries it off the machine." }
-declare       = { gloss = "The pipeline specification, its serializations, manifest discovery, the content hash, table entries and lifecycle verbs." }
-compile       = { gloss = "The plan a specification becomes at build time: node kinds, version and schema." }
-transform     = { gloss = "The declarative chain that rewrites a batch in place." }
-normalize     = { gloss = "Canonical nested form, late relational shredding, injected identity columns and recursion depth." }
-guard-secrets = { gloss = "The write-time mask over credential-shaped spans in a pulled batch." }
-land          = { gloss = "The stage order from pull to commit, the one destination, the ingest tally and containment of unreadable input." }
-backfill      = { gloss = "Phases, chunk plans, fenced chunk leases and the rewind window." }
-seed          = { gloss = "The bulk-load source mode, its ceiling, its scope and the parity it guarantees." }
-publish       = { gloss = "A published table's contract identity, build, freshness and holds, committed with its snapshot manifest." }
-select        = { gloss = "The derive source: its configuration, the outstanding set recomputed each tick, eligibility and a run's budget." }
-bind          = { gloss = "Where a derive engine's definition lives, the port every engine implements, and the values an engine returns." }
-exec          = { gloss = "Operator-declared argv chains against local binaries: resolution, pinning, environment, bounds and identity." }
-fetch         = { gloss = "Following a link a third party wrote: host and address guards, redirects, the head scanner and the picture probe." }
-emit          = { gloss = "The derived row and marker, the unit status, attempt accounting, citation keys and row provenance." }
-parse-cues    = { gloss = "Reading a caption document into passages: one grammar, defect accounting, coalescing and rolling display." }
-test-engine   = { gloss = "Building one derive engine outside a pipeline and running it against one file." }
+journal       = {}
+advance       = {}
+suspend       = {}
+retry         = {}
+own           = {}
+cancel        = {}
+record        = {}
+project       = {}
+declare       = {}
+compile       = {}
+transform     = {}
+normalize     = {}
+guard-secrets = {}
+land          = {}
+backfill      = {}
+seed          = {}
+publish       = {}
+select        = {}
+bind          = {}
+exec          = {}
+fetch         = {}
+emit          = {}
+parse-cues    = {}
+test-engine   = {}
 
 [error]
 BlobMissing                    = { clause = "run.journal.missing-blob", gloss = "A journal row's blob reference resolves to no file." }

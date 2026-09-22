@@ -10,10 +10,10 @@ A prose specification restates a fact in several places, and the copies drift. A
 
 The corpus is data a checker reads, and every rule it states is one the checker enforces.
 
-- A normative sentence is one clause row addressed `<contract>.<operation>.<subject>`. Contract and operation resolve against the registry; the kind is computed from the error and bound entries the fragment assigns. An id changes only when a fact changes obligor.
+- A normative sentence is one clause item addressed `<contract>.<operation>.<subject>`. Contract and operation resolve against the registry; the kind is computed from the error and bound entries the fragment assigns. An id changes only when a fact changes obligor.
 - A fact has one home, and another statement reaches it by `{{id}}`.
 - `spec/status.md` is generated from `spec/pins.toml`: an unpinned clause is committed, a resolving pin is performed, and a pin that resolves to nothing is broken and reds the gate. No authored file states build state.
-- Rationale lives in principle records and one ADR per contract under `spec/adr/`. A contract row's Why cell cites a record or carries a short deciding criterion; nothing else in a contract argues.
+- Rationale lives in principle records and one ADR per contract under `spec/adr/`. A clause's Why cites a record or carries a short deciding criterion; nothing else in a contract argues.
 - An unknown is one inline line where it applies, naming a question, an owner and an operation.
 - `corpus.rationale` and the other corpus operations are enforced by one command, which the gate and a local run invoke identically.
 
@@ -21,7 +21,7 @@ The corpus is data a checker reads, and every rule it states is one the checker 
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Addressed clause rows, computed status, rationale in records *(chosen)* | — | Every new fact needs a registry entry, every performed claim a pin, and every contested direction a record. |
+| Addressed clauses, computed status, rationale in records *(chosen)* | — | Every new fact needs a registry entry, every performed claim a pin, and every contested direction a record. |
 | Prose sections with a citation convention | Detection | A citation records acknowledgement; nothing joins a restated fact back to its owner. |
 | Status markers written beside each claim | Maintenance | A marker is stale the day the code moves. |
 | Status from whether a named identifier exists, with no pin | Precision | A type existing is not evidence that a refusal fires. |

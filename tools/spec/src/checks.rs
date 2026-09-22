@@ -7,7 +7,7 @@ use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::LazyLock;
 
-pub const CHECKS: [&str; 8] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render", "targets"];
+pub const CHECKS: [&str; 9] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render", "targets", "guide"];
 
 pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
     match name {
@@ -19,6 +19,7 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
         "state" => state(c),
         "render" => render(c),
         "targets" => crate::targets::check(c),
+        "guide" => guide(c),
         other => vec![Finding::new("lint", "", 0, "SpecUnknownCheck", format!("no check named `{other}`"))],
     }
 }
@@ -151,28 +152,35 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
                 format!("sections [{}] differ from owns order [{}]", names.join(", "), want.join(", ")),
             ));
         }
-        // every owned section carries one clause table
-        let mut tables: BTreeMap<String, usize> = BTreeMap::new();
+        // every owned section opens with a lede, then at most one contiguous clause list
+        let mut breaks: BTreeMap<String, usize> = BTreeMap::new();
         let mut cur = String::new();
-        for (_, l, k) in d.each() {
-            if k == LineKind::Heading {
-                if let Some(t) = l.strip_prefix("## ") {
-                    cur = t.trim().to_string();
+        let mut last: Option<usize> = None; // line of the latest item or Why line in `cur`
+        for (n, l, k) in d.each() {
+            match k {
+                LineKind::Heading if l.starts_with("## ") => {
+                    cur = l[3..].trim().to_string();
+                    last = None;
                 }
-            }
-            if k == LineKind::ClauseHeader && !is_separator(l) {
-                *tables.entry(cur.clone()).or_default() += 1;
+                LineKind::ClauseItem => {
+                    if matches!(last, Some(p) if p + 1 != n) {
+                        breaks.entry(cur.clone()).or_insert(n);
+                    }
+                    last = Some(n);
+                }
+                LineKind::ClauseWhy => last = Some(n),
+                LineKind::BadClause => out.push(a(n, "clause item is not `` - `<subject>` — <statement> ``".into())),
+                _ => {}
             }
         }
         for op in &d.owns {
-            let n = tables.get(op).copied().unwrap_or(0);
-            if n != 1 {
-                let line = sections.iter().find(|s| &s.1 == op).map(|s| s.0).unwrap_or(1);
-                out.push(a(line, format!("section `{op}` holds {n} clause tables, want 1")));
+            let line = sections.iter().find(|s| &s.1 == op).map(|s| s.0).unwrap_or(1);
+            if let Some(n) = breaks.get(op) {
+                out.push(a(*n, format!("section `{op}` clause list is broken by other lines")));
             }
-        }
-        if tables.contains_key("Shapes") {
-            out.push(a(1, "`Shapes` holds a clause table".into()));
+            if d.ledes.get(op).map(|t| t.is_empty()).unwrap_or(true) {
+                out.push(a(line, format!("section `{op}` opens without a lede")));
+            }
         }
         for cl in &d.clauses {
             let w = word_count(&cl.statement);
@@ -191,6 +199,74 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
         let fixture = sc.text.starts_with("`tests/fixtures/") && sc.text.ends_with('`');
         if !(when_then || fixture) {
             out.push(f("anatomy", &sc.file, sc.line, "SpecScenario", format!("scenario for `{}` is neither `WHEN … THEN …` nor a `tests/fixtures/` path", sc.clause)));
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------- guide
+
+static GUIDE_ITEM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^- `[^`]+` — ").unwrap());
+static GUIDE_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\]\([^)]*guide/").unwrap());
+
+fn guide(c: &Corpus) -> Vec<Finding> {
+    let mut out = Vec::new();
+    let g = |file: &str, line: usize, msg: String| f("guide", file, line, "SpecGuide", msg);
+    let cap = c
+        .reg
+        .fragments
+        .get("corpus")
+        .and_then(|fr| fr.limit.get("corpus-guide-words"))
+        .and_then(|l| l.value.as_integer())
+        .unwrap_or(700) as usize;
+    let errors: BTreeSet<&str> = c.reg.fragments.values().flat_map(|fr| fr.error.keys().map(String::as_str)).collect();
+    let word = Regex::new(r"[A-Za-z][A-Za-z0-9_]*").unwrap();
+    for name in c.reg.contracts.keys() {
+        let rel = format!("spec/guide/{name}.md");
+        if !c.guides().any(|d| d.rel == rel) {
+            out.push(g(&rel, 0, format!("contract `{name}` has no guide")));
+        }
+    }
+    for d in c.guides() {
+        let stem = d.rel.trim_start_matches("spec/guide/").trim_end_matches(".md");
+        let entry = c.reg.contracts.get(stem);
+        match (&d.contract, entry) {
+            (_, None) => out.push(g(&d.rel, 1, format!("`{stem}` is no registered contract"))),
+            (Some(fm), Some(_)) if fm != stem => out.push(g(&d.rel, 1, format!("front matter says `{fm}`, file names `{stem}`"))),
+            (None, Some(_)) => out.push(g(&d.rel, 1, "no front-matter `contract`".into())),
+            _ => {}
+        }
+        let titles: Vec<(usize, &str)> =
+            d.each().filter(|(_, l, k)| *k == LineKind::Heading && l.starts_with("# ")).map(|(n, l, _)| (n, l[2..].trim())).collect();
+        match (titles.as_slice(), entry) {
+            ([(n, t)], Some(e)) if *t != e.title => out.push(g(&d.rel, *n, format!("title `{t}` differs from registry `{}`", e.title))),
+            ([_], _) => {}
+            _ => out.push(g(&d.rel, 1, format!("{} `# ` titles, want 1", titles.len()))),
+        }
+        let words = words_of(d.each().filter(|(_, _, k)| !matches!(k, LineKind::Code | LineKind::Fence | LineKind::Front)).map(|(_, l, _)| l));
+        if words > cap {
+            out.push(g(&d.rel, 1, format!("{words} words exceed {cap}")));
+        }
+        for (n, l, k) in d.each() {
+            if matches!(k, LineKind::Code | LineKind::Fence | LineKind::Front) {
+                continue;
+            }
+            if GUIDE_ITEM.is_match(l) {
+                out.push(g(&d.rel, n, "clause item in a guide".into()));
+            }
+            let plain = strip_pointers(l, " ");
+            for m in word.find_iter(&plain) {
+                if errors.contains(m.as_str()) {
+                    out.push(g(&d.rel, n, format!("guide names error `{}`; point at its clause", m.as_str())));
+                }
+            }
+        }
+    }
+    for d in c.contracts() {
+        for (n, l, k) in d.each() {
+            if k != LineKind::Code && GUIDE_LINK.is_match(l) {
+                out.push(g(&d.rel, n, "contract file links a guide".into()));
+            }
         }
     }
     out
@@ -223,8 +299,8 @@ fn registry(c: &Corpus) -> Vec<Finding> {
             if files.len() != 1 {
                 out.push(f("registry", &frel, 0, "SpecRegistry", format!("operation `{contract}.{op}` is owned by {} files", files.len())));
             }
-            if n.gloss.trim().is_empty() {
-                out.push(f("registry", &frel, 0, "SpecRegistry", format!("operation `{op}` has no gloss")));
+            if !n.gloss.trim().is_empty() {
+                out.push(f("registry", &frel, 0, "SpecRegistry", format!("operation `{op}` carries a gloss; its lede in the contract file is its description")));
             }
         }
         for (id, e) in &fr.error {
@@ -341,7 +417,7 @@ pub fn why_ok(why: &str) -> Result<Vec<String>, String> {
     if ids.iter().all(|i| RECORD_ID.is_match(i)) {
         Ok(ids)
     } else {
-        Err(format!("Why cell `{w}` is neither record ids nor a `because` clause"))
+        Err(format!("Why `{w}` is neither record ids nor a `because` clause"))
     }
 }
 
@@ -1122,11 +1198,16 @@ static BANNED: LazyLock<Regex> = LazyLock::new(|| word_re(&["seam", "seams", "lo
 
 fn render(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
-    for (rel, want) in [
-        ("spec/status.md", crate::status_text(c)),
-        ("spec/spec.lock.json", crate::lock_text(c)),
-        ("spec/targets.md", crate::targets::page(c)),
-    ] {
+    let mut generated = vec![
+        ("spec/status.md".to_string(), crate::status_text(c)),
+        ("spec/spec.lock.json".to_string(), crate::lock_text(c)),
+        ("spec/targets.md".to_string(), crate::targets::page(c)),
+    ];
+    for (contract, text) in crate::cards::pages(c) {
+        generated.push((format!("spec/cards/{contract}.md"), text));
+    }
+    for (rel, want) in generated {
+        let rel = rel.as_str();
         let have = std::fs::read_to_string(c.root.join(rel)).unwrap_or_default();
         if have != want {
             out.push(f("render", rel, 0, "SpecStaleRender", format!("{rel} differs from regeneration; run `contextful-spec state` and `extract`")));
@@ -1154,8 +1235,8 @@ fn render(c: &Corpus) -> Vec<Finding> {
             if d.role != Role::Plan && (DATED.is_match(&plain) || ISO_DATE.is_match(&plain)) {
                 out.push(f("render", &d.rel, n, "SpecDatedProse", "build-state or dated vocabulary".into()));
             }
-            if d.role == Role::Contract && COUNTERFACTUAL.is_match(&plain) {
-                out.push(f("render", &d.rel, n, "SpecCounterfactual", format!("`{}` in a contract file", COUNTERFACTUAL.find(&plain).unwrap().as_str())));
+            if matches!(d.role, Role::Contract | Role::Guide) && COUNTERFACTUAL.is_match(&plain) {
+                out.push(f("render", &d.rel, n, "SpecCounterfactual", format!("`{}` in a contract file or guide", COUNTERFACTUAL.find(&plain).unwrap().as_str())));
             }
             if BANNED.is_match(&plain) || BARE_ISSUE.is_match(&plain) {
                 out.push(f("render", &d.rel, n, "SpecBannedWord", "banned noun or provenance link".into()));
