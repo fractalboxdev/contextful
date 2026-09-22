@@ -2,27 +2,29 @@
 # spec/61-disclosure.md and spec/62-accountability.md.
 
 [operation]
-mirror           = { gloss = "The three-way conjunction, the access tables as store data, and the binding that compiles a table's semi-join." }
-sweep            = { gloss = "Observation of one source's permission state: sweep kinds, the observation clock, the coverage watermark, tombstones and revocation." }
-reach            = { gloss = "Per-request resolution of a subject to the resources it reaches, the bounded group closure, and the reachable-set cache." }
-bound-staleness  = { gloss = "The declared age budget on mirrored authorization, the refusal past it, and the one narrowing posture." }
-declare-fidelity = { gloss = "The fidelity level a table claims, the source family bounding the claim, and live federation under a reader's delegated credential." }
-pack             = { gloss = "The reviewed unit landing one source: a manifest fragment plus a connector pin, its access mapping, defaults and container allowlist." }
-set-mode         = { gloss = "The two deployment settings a derived result is computed in, the offline diagnostic, and the cross-owner hashed join." }
-release          = { gloss = "The ordered statistics release, the write-time disclosure policy, and the per-unit budget reservation." }
-suppress         = { gloss = "The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves." }
-template         = { gloss = "Query templates a releasing principal calls by name: the single-statement rule, the checks they pass, and the truncation flag a capped read carries." }
-bound-cohort     = { gloss = "The line between a per-person table and a cohort table, and the floor a cohort read carries." }
-record           = { gloss = "What a read leaves behind: the span, the hash-linked audit entry, and where telemetry lands." }
-explain          = { gloss = "The access decision and its path, replay over a window with its coverage, and the audience report." }
-attest           = { gloss = "Chain verification, signed segment roots, lineage attestations, and the reach of each guarantee." }
-erase            = { gloss = "The one erasure verb: subject tombstones, the bounded provenance cascade, the restaging gate, and the tenant rewrite." }
-receipt          = { gloss = "The signed artifact a tenant purge returns: its claim, its coverage block, its pseudonym and its idempotence." }
+mirror           = {}
+sweep            = {}
+reach            = {}
+bound-staleness  = {}
+declare-fidelity = {}
+pack             = {}
+set-mode         = {}
+release          = {}
+suppress         = {}
+template         = {}
+bound-cohort     = {}
+record           = {}
+explain          = {}
+attest           = {}
+erase            = {}
+receipt          = {}
 
 [error]
+DisclosureExactPerPerson         = { clause = "disclosure.bound-cohort.exact-figures", gloss = "A per-person table declares exact figures." }
 VisibilityUnboundTable           = { clause = "disclosure.mirror.unbound-table", gloss = "A table on an organization-wide face carries no visibility block." }
 VisibilityBindingIncomplete      = { clause = "disclosure.mirror.incomplete-binding", gloss = "A servable binding lacks a declared sweep or a staleness budget." }
 VisibilityUngappedStream         = { clause = "disclosure.sweep.ungapped-stream", gloss = "The watermark advanced from an event stream not declared gap-detectable." }
+VisibilityWatermarkUncovered     = { clause = "disclosure.sweep.coverage-watermark", gloss = "A sweep run that missed a governed resource advanced the watermark." }
 VisibilityOrphanGrant            = { clause = "disclosure.sweep.orphan-grant", gloss = "A grant landed with no resource row, or on an unknown-class resource." }
 VisibilityClosureDepth           = { clause = "disclosure.reach.closure-overflow", gloss = "The group closure reached its depth or node bound; no set is returned." }
 VisibilityDegradedCached         = { clause = "disclosure.reach.degraded-uncached", gloss = "A result produced past a budget or under the narrowing posture was retained." }

@@ -58,6 +58,10 @@ fn the_targets_page_is_rendered_from_the_files() {
     assert!(page.contains("Durable Object"), "{page}");
     assert!(page.contains("Step Functions"), "{page}");
     assert_eq!(page.matches("```mermaid").count(), 3, "one diagram per provider:\n{page}");
+    // the deploying account and its planes are containers; the caller stands outside them
+    assert_eq!(page.matches("  subgraph ACCOUNT[").count(), 3, "{page}");
+    assert!(page.contains("    subgraph CONTROL[\"control plane\"]"), "{page}");
+    assert!(page.find("CALLER([").unwrap() < page.find("subgraph ACCOUNT[").unwrap(), "{page}");
 
     let cf = s.read(CF).replace("Workflows", "Queues");
     s.write(CF, &cf);

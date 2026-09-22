@@ -1,22 +1,22 @@
 # Registry fragment — contract `authority`, files spec/50-authority.md and spec/51-enforcement.md.
 
 [operation]
-identify             = { gloss = "The subject tuple, its per-member attestation, hygiene at the mint, and the identity links connecting a subject to a source's principals." }
-profile              = { gloss = "The versioned delegation profile over the attenuable-credential library: admitted elements, reserved facts, the bounded evaluator, the scoped session." }
-grant                = { gloss = "What a credential says a holder does: actions, table patterns, tenant scope, the template allowlist, ceilings, and resources answering by name." }
-attenuate            = { gloss = "Deriving a narrower child offline, and the narrowing legality of each grant dimension." }
-issue                = { gloss = "Minting: the persisted lifetime ceiling, the principal a row-landing grant needs, signing custody, and the authoring posture." }
-verify               = { gloss = "Admission at a checkpoint: signatures, audience, timestamps, possession proof, key sets, and the admitted-authority value." }
-revoke               = { gloss = "Ending a credential's usefulness ahead of expiry: short lifetimes, the denylist, the scoped epoch, key rotation, format withdrawal." }
-exchange             = { gloss = "Trading a verified external assertion for a scoped credential under injected verifying material and a declared policy." }
-redact               = { gloss = "Removal and transformation inside the writer, ahead of columnar bytes and the run path's durable record." }
-compose              = { gloss = "The three layers as one reference monitor, and the order a registered relation applies." }
-filter-rows          = { gloss = "The typed row-predicate grammar, subject binding, the tenant equality and the project default." }
-mask                 = { gloss = "Column classes, strategies and combines, guardrails over an exhaustible value space, the pepper, and masked behavior under caller SQL." }
-refuse               = { gloss = "The two shapes an unauthorized read takes, the scope guard, and what a refusal discloses." }
-bound-redistribution = { gloss = "The per-table licence bound applied at push, the root-object allowlist, and the per-credential edge filter." }
-place                = { gloss = "Inference zones: grammar, composition across grains, floors, incognito, and the serve-time outcome." }
-resist               = { gloss = "The paths that stay closed to an injected instruction." }
+identify             = {}
+profile              = {}
+grant                = {}
+attenuate            = {}
+issue                = {}
+verify               = {}
+revoke               = {}
+exchange             = {}
+redact               = {}
+compose              = {}
+filter-rows          = {}
+mask                 = {}
+refuse               = {}
+bound-redistribution = {}
+place                = {}
+resist               = {}
 
 [error]
 AuthoritySubjectMalformed            = { clause = "authority.identify.malformed-value", gloss = "A subject value fails mint hygiene, or arrives padded on the exchange." }

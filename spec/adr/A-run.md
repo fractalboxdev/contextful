@@ -4,7 +4,7 @@
 
 ## A plan is compiled, content-hashed data with no embedded runtime
 
-A journaled step replays correctly only against the definition that produced it. The authoring surface is a build-time compiler emitting a serialized, content-hashed plan, a run pins against the plan hash, and no profile links a script runtime. `run.compile` accepts a step body only as a connector reference, and control flow is declared as `branch`, `parallel` and map, so data selects an arm and never which arms exist. `run.transform` never emits more rows than it consumed.
+A journaled step replays correctly only against the definition that produced it. The authoring surface is a build-time compiler emitting a serialized, content-hashed plan, a run pins against the plan hash, and no profile links a script runtime. `run.compile` accepts a step body only as a connector reference, and control flow is declared as `branch` and `parallel` nodes, so data selects an arm and never which arms exist. `run.transform` never emits more rows than it consumed.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ Consequences: a source supplying no fingerprint skips the load and warns each ru
 
 ## External signals are single-valued catalog writes
 
-Every external signal lands as one catalog write whose value is fixed once observed, and every mismatch is a named outcome. `run.suspend` returns the written value for an identical re-resolution, raises `AwakeableAlreadyResolved` (409) for a different payload, evaluates deadlines lazily against the injected instant and raises `AwakeableTimedOut` (410) late. `run.cancel` writes a requested-at instant raced against the pull on a 500 ms poll; a stop matching no running or pending row raises `CancelTargetNotInFlight`. `canceled` is a terminal status excluded from upstream health.
+Every external signal lands as one catalog write whose value is fixed once observed, and every mismatch is a named outcome. `run.suspend` returns the written value for an identical re-resolution, raises `AwakeableAlreadyResolved` (409) for a different payload, evaluates deadlines lazily against the injected instant and raises `AwakeableTimedOut` (410) late. `run.cancel` writes a requested-at instant raced against every await on a 500 ms poll; a stop matching no pending, running or waiting row raises `CancelTargetNotInFlight`. `canceled` is a terminal status excluded from upstream health.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -47,7 +47,7 @@ Revisit: a deploy target where the requesting process and the run share no catal
 
 ## The derive work set is an anti-join against marker rows
 
-The tier's own output table is the single record of what is done, failed or settled, and the work set is recomputed from it every tick. `run.select` reads the parent table and drops every parent already holding an output row, markers included, before the row cap. `run.land` records a unit that produced nothing as one marker row with status, attempts, last error and `retryable`. Status separates `ok`, `empty`, `unavailable` (the default) and `failed`; `retryable = false` settles a unit whatever the attempt ceiling.
+The tier's own output table is the single record of what is done, failed or settled, and the work set is recomputed from it every tick. `run.select` reads the parent table and drops every parent already holding a content row or a settled marker before the row cap. `run.emit` records a unit that produced nothing as one marker row with status, attempts, last error and `retryable`. Status separates `ok`, `empty`, `unavailable` (the default) and `failed`; `retryable = false` settles a unit whatever the attempt ceiling.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

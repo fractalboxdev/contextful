@@ -4,7 +4,7 @@
 
 ## The control document is CAS-versioned, validated per entry, and fails static
 
-One hand-edited control document arms every scheduled entry unattended. `surface.apply` claims a version by compare-and-swap on an engine-assigned version; a loser raises `ManifestVersionConflict`, reloads and reapplies. The engine owns the control-state model and raises `ConfigOwnerUnconfigured`, `StoreNotInitialized` or `ConditionalWriteUnsupported` rather than substitute a local writer. `surface.arm` holds back an invalid entry alone, by name; an unparsable registry falls back to the built-ins. `surface.reconcile` keeps the armed set unchanged on a failed poll. `surface.dispatch` starts one instance per due unit; a dependent run's step refuses as a unit.
+One hand-edited control document arms every scheduled entry unattended. `surface.apply` claims a version by compare-and-swap on an engine-assigned version; a loser raises `ManifestVersionConflict`, reloads and reapplies. The engine owns the control-state model and raises `ConfigOwnerUnconfigured`, `StoreNotInitialized` or `ConditionalWriteUnsupported` rather than substitute a local writer. `surface.arm` holds back an invalid entry alone, by name. `surface.reconcile` keeps the armed set unchanged on a failed poll. `surface.dispatch` starts one instance per due unit; a dependent run's step refuses as a unit.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ Consequences: entries authored as a chain run as one unit under the head entry's
 
 ## Configuration reaches only engine-named code and secrets
 
-Configuration selects among things the engine names, never code, a host command, a secret or a remote control source. `surface.fire` runs a closed union — `sweep`, `build`, `fold`, `rebuild-catalog`, `sync-push`, `validate` — beside the pipeline-run kind; anything else raises `JobKindUnknown`. `surface.register-store` derives the secret name `<ID>_QUERY_TOKEN` and binding name from the kebab-case id; authoring either raises `StoreNameAuthored`. `surface.arm` polls a control URL only on pinned loopback with no redirect or proxy; any other host raises `ControlSourceNotLoopback`.
+Configuration selects among things the engine names, never code, a host command, a secret or a remote control source. `surface.fire` runs a closed union — `sweep`, `build`, `fold`, `rebuild-catalog`, `sync-push`, `validate` — beside the pipeline-run kind; anything else raises `JobKindUnknown`. `surface.register-store` derives the secret name `<ID>_QUERY_TOKEN` and binding name from the kebab-case id; authoring either raises `StoreNameAuthored`. `surface.reconcile` polls a control URL only on loopback, following no redirect and no proxy; any other host raises `ControlSourceNotLoopback`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ Revisit: a remote control source carrying a bearer-authenticated read, TLS, and 
 
 ## Answer surfaces read through server-chosen, grounded calls
 
-The server decides every capability a turn exercises. `surface.plan-turn` chooses tools from the turn's admitted read subset; any other raises `ConsoleToolNotAdmitted`, an organization-wide face registers no write tool, and a turn's one write is server-authored. `surface.ground` reaches conclusions only through recall. `surface.render` infers views server-side over a closed component union. `surface.speak` offers only answerable suggestions. `surface.brief` renders a greeting only within budget. `surface.publish-answer` delivers to the asker alone; posting is the asker's separate act.
+The server decides every capability a turn exercises. `surface.ground` dispatches only tools the turn's packs admit, else `ConsoleToolNotAdmitted`; an organization-wide face registers no write tool, and a turn's one write is server-authored. `surface.ground` reaches conclusions only through recall. `surface.render` infers views server-side over a closed component union. `surface.speak` offers only answerable suggestions. `surface.brief` renders a greeting only within budget. `surface.publish-answer` delivers to the asker alone; posting is the asker's separate act.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

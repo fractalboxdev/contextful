@@ -110,8 +110,8 @@ fn scaffold_keeps_an_existing_test_function_and_mod_line() {
 fn the_tag_rev_is_the_first_8_hex_of_the_statement_digest() {
     let s = Scratch::copy();
     let corpus = s.read("spec/00-corpus.md");
-    let row = corpus.lines().find(|l| l.starts_with("| `corpus.anatomy.statement-words` |")).unwrap().to_string();
-    let fixed = "| `corpus.anatomy.statement-words` | A clause statement holds at most 40 words. | because one row states one obligation |";
+    let row = corpus.lines().find(|l| l.starts_with("- `statement-words` — ")).unwrap().to_string();
+    let fixed = "- `statement-words` — A clause statement holds at most 40 words.";
     s.write("spec/00-corpus.md", &corpus.replacen(&row, fixed, 1));
     s.scaffold("corpus.anatomy", "crates/demo");
     let tags: Vec<String> = module(&s).lines().filter(|l| l.starts_with("// spec: ")).map(str::to_string).collect();

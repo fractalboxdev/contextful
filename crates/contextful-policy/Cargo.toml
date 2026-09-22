@@ -1,0 +1,31 @@
+[package]
+name = "contextful-policy"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The credential format adapter (the delegation profile over biscuit), admission,
+# possession proofs, key sets, revocation and the exchange.
+
+[dependencies]
+contextful-core = { path = "../contextful-core" }
+biscuit-auth = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
+# Possession proofs: the client key scheme, the body digest and the compact encoding.
+base64 = "0.22"
+ed25519-dalek = "2"
+sha2 = "0.10"
+# The exchange: external assertion verification under injected material.
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
+# The credential format: reading the library's block encoding, credential identifiers
+# and revocation identifiers.
+hex = "0.4"
+prost = "0.10"
+rand = "0.8"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"

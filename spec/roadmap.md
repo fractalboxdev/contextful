@@ -48,7 +48,7 @@ Acceptance: `contextful_acceptance::m00::m00_test_first_gate`
 | Operations | Intent |
 | --- | --- |
 | `authority.identify`, `authority.profile`, `authority.grant`, `authority.attenuate`, `authority.issue`, `authority.verify`, `authority.revoke`, `authority.exchange` | The subject, delegation, admission, custody and revocation, with the proof package and differential harness beside them. |
-| `assurance.model`, `assurance.prove`, `assurance.audit-axioms`, `assurance.recheck`, `assurance.scope-claim`, `assurance.differential-test` | — |
+| `assurance.model`, `assurance.prove`, `assurance.audit-assumptions`, `assurance.recheck`, `assurance.scope-claim`, `assurance.differential-test` | — |
 
 Reach: An authority is admitted once, travels as a value, and is re-read at the effect about to act.
 

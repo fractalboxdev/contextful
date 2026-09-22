@@ -42,11 +42,11 @@ fn a_contract_adr_naming_no_contract_is_a_record_finding() {
 }
 
 #[test]
-fn a_why_cell_naming_a_numbered_decision_record_is_a_record_finding() {
+fn a_why_naming_a_numbered_decision_record_is_a_record_finding() {
     let s = Scratch::copy();
     let store = s.read("spec/10-store.md");
-    let row = store.lines().find(|l| l.starts_with("| `store.") && l.ends_with("| A-store |")).expect("a row citing A-store").to_string();
-    s.write("spec/10-store.md", &store.replacen(&row, &row.replace("| A-store |", "| D07 |"), 1));
+    assert!(store.contains("\n  *A-store*\n"), "a clause citing A-store");
+    s.write("spec/10-store.md", &store.replacen("\n  *A-store*\n", "\n  *D07*\n", 1));
     let found = codes(&s.lint("rationale"), "SpecRecord");
     assert!(found.iter().any(|m| m.contains("D07")), "{found:?}");
 }

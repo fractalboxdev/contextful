@@ -12,7 +12,8 @@ if (!existsSync(join(SPEC_DIR, "terms/contract.toml"))) {
   throw new Error(`spec/ not found at ${SPEC_DIR}: run the docs build from apps/docs`);
 }
 
-const CLAUSE_ROW = /^\|\s*`([a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9.-]+)`\s*\|/;
+// A clause item: `- \`<subject>\` — <statement>`, its Why on an optional indented line.
+export const CLAUSE_ITEM = /^- `([a-z0-9-]+)` — (.+)$/;
 
 const mdFiles = (dir) =>
   existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".md")).sort() : [];
@@ -29,7 +30,8 @@ export const routeFor = (absPath) => {
   if (rel.startsWith("..") || !rel.endsWith(".md")) return undefined;
   const stem = rel.slice(0, -3);
   if (!stem.includes("/")) return `/spec/${stem}/`;
-  if (stem.startsWith("adr/") && stem.split("/").length === 2) return `/${stem}/`;
+  const [dir, name, ...rest] = stem.split("/");
+  if (rest.length === 0 && ["adr", "guide", "cards"].includes(dir)) return `/${dir}/${name}/`;
   return undefined;
 };
 
@@ -41,9 +43,43 @@ const frontMatter = (src) => {
   return { contract, owns };
 };
 
+/** A statement as plain text: code ticks and emphasis dropped, `{{id}}` shown as its subject. */
+const plainStatement = (s) =>
+  s.replace(/\{\{[a-z0-9-]+\.[a-z0-9-]+\.([a-z0-9-]+)\}\}/g, "$1").replace(/[`*]/g, "").trim();
+
 /**
- * Clause id → route, `contract.operation` → route of the owning section, record id → route.
- * Read fresh on every call so `astro dev` tracks edits.
+ * The clause items of one contract file: under each `## <operation>`, the first
+ * contiguous list after the lede. Fences, `###`+ subsections and `## Shapes` hold none.
+ */
+export const clauseItems = (src, contract) => {
+  const out = [];
+  let op;
+  let fence = false;
+  let state = "none"; // none → lede → list → done, per operation section
+  for (const line of src.replace(/^---\n[\s\S]*?\n---\n/, "").split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+    if (fence) continue;
+    const h = /^(#{1,6}) (.+)$/.exec(line);
+    if (h) {
+      op = h[1].length === 2 && h[2].trim() !== "Shapes" ? h[2].trim() : undefined;
+      state = "none";
+      continue;
+    }
+    if (!op || state === "done") continue;
+    const item = CLAUSE_ITEM.exec(line);
+    if (item) {
+      state = "list";
+      out.push({ id: `${contract}.${op}.${item[1]}`, statement: plainStatement(item[2]) });
+    } else if (state === "list" && !/^\s{2,}\S/.test(line)) {
+      state = "done";
+    }
+  }
+  return out;
+};
+
+/**
+ * Clause id → `{ route, statement }`, `contract.operation` → route of the owning
+ * section, record id → route. Read fresh on every call so `astro dev` tracks edits.
  */
 export const corpusIndex = () => {
   const clauses = new Map();
@@ -52,21 +88,11 @@ export const corpusIndex = () => {
     const src = readFileSync(join(SPEC_DIR, f), "utf8");
     return { route: routeFor(join(SPEC_DIR, f)), src, ...frontMatter(src) };
   });
-  const owner = new Map();
-  for (const { route, contract, owns } of files) {
+  for (const { route, src, contract, owns } of files) {
     if (!contract) continue;
-    for (const op of owns) {
-      operations.set(`${contract}.${op}`, `${route}#${op}`);
-      owner.set(`${contract}.${op}`, route);
-    }
-  }
-  // A clause belongs to the file owning its operation; an example row elsewhere never claims it.
-  for (const { route, src } of files) {
-    for (const line of src.split("\n")) {
-      const id = CLAUSE_ROW.exec(line)?.[1];
-      if (!id) continue;
-      const home = owner.get(id.split(".").slice(0, 2).join("."));
-      if (home ? home === route : !clauses.has(id)) clauses.set(id, route);
+    for (const op of owns) operations.set(`${contract}.${op}`, `${route}#${op}`);
+    for (const { id, statement } of clauseItems(src, contract)) {
+      if (!clauses.has(id)) clauses.set(id, { route, statement });
     }
   }
   const records = new Map();

@@ -1,20 +1,20 @@
 # Registry fragment — contract `store`, file spec/10-store.md.
 
 [operation]
-lay-out    = { gloss = "The directory tree, run and snapshot manifests, the table pointer, the two catalogs, and node identity." }
-declare    = { gloss = "A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row." }
-reserve    = { gloss = "The column and table namespaces the engine holds, the provenance columns it injects, and the request ledger." }
-reconcile  = { gloss = "Schema evolution across a table's file set: the type lattice, additive columns, and what a scan may invent." }
-fold       = { gloss = "Compaction: pass order, triggers, retention, the compaction lease, and the pointer commit that makes a snapshot readable." }
-index      = { gloss = "Sidecar index kinds and identity, clustering, partitioning and the tenant partition." }
-bound-time = { gloss = "The two clocks a row carries, the parameter bounding each, and what a bounded read resolves to." }
-encrypt    = { gloss = "At-rest encryption of Parquet, sidecars and ledgers, the key derivation, and forward key rotation." }
-push       = { gloss = "Uploading the store to a bucket: the wire format, the bucket manifest, prefix confinement and the manifest write that commits it." }
-pull       = { gloss = "Fetching a bucket into a store: the digest diff, the parallel download, and the pointer written last." }
-probe      = { gloss = "Measuring a backend's conditional-write behavior with a live sentinel, and the coordination mode that outcome resolves." }
-merge      = { gloss = "Reconciling one bucket manifest between writers: per-entry ownership, tombstones, the rebase loop and the consumer-facing section." }
-lease      = { gloss = "Single-writer exclusion over a pipeline or a table's compaction: two implementations, the fence, and the commit log carrying the cursor." }
-replicate  = { gloss = "A consuming replica of the bucket: the refresh diff, what it holds whole, what it declines, and what it rebuilds." }
+lay-out    = {}
+declare    = {}
+reserve    = {}
+reconcile  = {}
+fold       = {}
+index      = {}
+bound-time = {}
+encrypt    = {}
+push       = {}
+pull       = {}
+probe      = {}
+merge      = {}
+lease      = {}
+replicate  = {}
 
 
 [error]
@@ -60,6 +60,7 @@ store-snapshot-id-width     = { clause = "store.lay-out.snapshot-id", value = 20
 store-node-id-length        = { clause = "store.lay-out.node-id-shape", value = 64, unit = "chars", basis = "chosen", gloss = "Longest node id, which is interpolated into paths and keys." }
 store-ledger-retention      = { clause = "store.reserve.ledger-retention", value = 365, unit = "d", basis = "chosen", gloss = "Age at which a request-ledger row is collected." }
 store-compaction-interval   = { clause = "store.fold.triggers", value = 6, unit = "h", basis = "chosen", gloss = "Elapsed time after a table's previous pass that fires the next." }
+store-compaction-run-count  = { clause = "store.fold.triggers", value = 50, unit = "runs", basis = "chosen", gloss = "Runs committed on a table since its previous pass that fire the next." }
 store-run-retention         = { clause = "store.fold.retention", value = 7, unit = "d", basis = "chosen", gloss = "Default `retain_runs` window, past which a folded run or a snapshot superseded by ordinary writes is collected." }
 store-partition-median      = { clause = "store.index.partition-warnings", value = 16, unit = "MiB", basis = "chosen", gloss = "Projected median partition size below which planning warns." }
 store-kdf-memory            = { clause = "store.encrypt.password-kdf", value = 64, unit = "MiB", basis = "standard:rfc9106", gloss = "Argon2id memory cost." }

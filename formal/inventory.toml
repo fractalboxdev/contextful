@@ -1,0 +1,81 @@
+# Required constants of the policy model: each row's statement is the elaborator's
+# pretty-printed type, matched by `contextful formal check`.
+
+[claim]
+targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent"]
+trusted  = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser", "translator"]
+rests_on = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser"]
+
+[constant."composed_sound"]
+module    = "Contextful.Layer"
+statement = "∀ {ls : List Layer} {r : RowId}, composed ls r = true → ∀ (l : Layer), l ∈ ls → l r = true"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: that the required members were present in the list; that a member performs removal rather than a test; that an execution reaches the fold ahead of an effect.
+"""
+
+[constant."composed_narrows"]
+module    = "Contextful.Layer"
+statement = "∀ {l : Layer} {ls : List Layer} {r : RowId}, composed (l :: ls) r = true → composed ls r = true"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: that the required members were present in the list; that a member performs removal rather than a test; that an execution reaches the fold ahead of an effect. Says nothing about the order of the list; the theorem holds for any order, and the order is fixed elsewhere.
+"""
+
+[constant."zone_layer_sound"]
+module    = "Contextful.Placement"
+statement = "∀ {effectiveSet : RowId → AllowSet} {session : Placement} {ls : List Layer} {r : RowId}, zoneLayer effectiveSet session ∈ ls → composed ls r = true → effectiveSet r session = true"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: that the required members were present in the list; that a member performs removal rather than a test; that an execution reaches the fold ahead of an effect. Leaves open that the zone layer is in the list, and that the effective allow-set a row carries is the one its table declares.
+"""
+
+[constant."floor_no_downgrade"]
+module    = "Contextful.Placement"
+statement = "∀ {es : List AllowSet} {c : Placement}, floor es c = true → ∀ (a : AllowSet), a ∈ es → a c = true"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: that the evidence list backing a floor is complete — the empty list folds to admit every caller; that the caller's placement is the one it declares; that the floor is consulted before inference runs.
+"""
+
+[constant."failClosed_floor_rejects_cloud"]
+module    = "Contextful.Placement"
+statement = "∀ {es : List AllowSet}, failClosed ∈ es → ∀ (id : ZoneId), floor es (Placement.publicCloud id) = false ∧ failClosed (Placement.privateCloud id) = false ∧ failClosed (Placement.publicCloud id) = false"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: that the fail-closed member is in the evidence list; that the caller's placement is the one it declares; that the floor is consulted before inference runs.
+"""
+
+[constant."includedIn_iff_placement_inclusion"]
+module    = "Contextful.Placement"
+statement = "∀ (small big : List Entry), includedIn small big = true ↔ ∀ (p : Placement), allowSetOf small p = true → allowSetOf big p = true"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: that the entries parsed from the manifest are the entries the model receives; that a manifest category has a placement case (checked at elaboration, not by this theorem); zone text outside the grammar, which the model folds into the undeclared case.
+"""
+
+[constant."effective_included_in_both"]
+module    = "Contextful.Placement"
+statement = "∀ (a b : List Entry), (allowSetOf (effective a b)).Included (allowSetOf a) ∧ (allowSetOf (effective a b)).Included (allowSetOf b)"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: that the effective policy is the one the engine enforces; that each input allow-set is the one its source declares; whether the effective policy is the largest set included in both.
+"""
+
+[constant."Authority.grant_includedIn_permits"]
+module    = "Contextful.Authority"
+statement = "∀ (child parent : Authority.Grant), child.includedIn parent = true → ∀ (r : Authority.Request), child.permits r = true → parent.permits r = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/attenuate.rs::widened via crates/contextful-core/src/grant.rs::TablePattern::covers; test crates/contextful-core/tests/integration/attenuate.rs::widens"
+negative  = """
+Leaves open: templates, aggregate constraints, tenant scope and row ceilings, which the model's grant omits; that the parsed patterns are the patterns the credential carries; that the engine consults the check before admitting a request.
+"""
+
+[constant."Authority.attenuate_permits_parent"]
+module    = "Contextful.Authority"
+statement = "∀ (env : Authority.Env) (c : Authority.Credential) (b : Authority.Block) (r : Authority.Request), Authority.permits env (Authority.attenuate c b) r = true → Authority.permits env c r = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/attenuate.rs::attenuate; test crates/contextful-core/tests/integration/attenuate.rs::narrowing"
+negative  = """
+Leaves open: credential bytes, signatures and block chaining, which the delegation library owns; a change of the trusted environment between the two decisions; that every block the library verified reaches the decision; facts, checks and restrictions beyond grants, expiry and audience.
+"""

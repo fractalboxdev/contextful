@@ -1,0 +1,9 @@
+name = "protocol"
+defaultTargets = ["Protocol", "protocol"]
+
+[[lean_lib]]
+name = "Protocol"
+
+[[lean_exe]]
+name = "protocol"
+root = "Main"
