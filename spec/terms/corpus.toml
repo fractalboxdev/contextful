@@ -36,6 +36,7 @@ SpecCounterfactual     = { clause = "corpus.render.counterfactual", gloss = "Fut
 SpecBannedWord         = { clause = "corpus.render.banned-vocabulary", gloss = "A banned noun, refused name or provenance link." }
 SpecLocalPath          = { clause = "corpus.render.local-path", gloss = "An absolute path from a local machine." }
 SpecAsciiDiagram       = { clause = "corpus.render.diagram", gloss = "Box-drawing outside a mermaid fence." }
+SpecDiagramBoundary    = { clause = "corpus.render.diagram-boundary", gloss = "A flowchart node standing for a contract or a boundary instead of a container." }
 SpecGuide              = { clause = "corpus.guide.bad-guide", gloss = "A missing or malformed guide, or one restating a rule." }
 
 [limit]

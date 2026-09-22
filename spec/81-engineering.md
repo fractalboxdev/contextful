@@ -28,8 +28,11 @@ flowchart LR
   FORMAL["formal model:<br/>check · differential · protocol"] --> GATE
   GATE -- "one status check per stage" --> PR["pull request"]
   BUILD --> ART["release artifacts<br/>archive · checksum · SBOM · image"]
+  subgraph read["read contract"]
+    STORE[("real store<br/>ranked retrieval")]
+  end
   CASES["evals/cases JSONL"] --> EVAL["quality harness"]
-  STORE[("real store<br/>read contract: ranked retrieval")] --> EVAL
+  STORE --> EVAL
   EVAL --> BASE{"in-tree baselines and floors"}
   BASE --> V["red or green"]
 ```
@@ -175,8 +178,14 @@ The stage order, under the container's ceilings:
 
 ```mermaid
 flowchart LR
-  LOCAL["contributor: contextful-ci gate"] --> S1
-  WF["pull-request workflow:<br/>one remote check per stage"] --> S1
+  subgraph contributor["contributor"]
+    LOCAL["contextful-ci gate"]
+  end
+  subgraph forge["pull-request workflow"]
+    WF["one remote check per stage"]
+  end
+  LOCAL --> S1
+  WF --> S1
   subgraph C["gate container · 12 GiB memory · 18 GiB disk"]
     S1["pins"] --> S2["toolchain"] --> S3["schema"] --> S4["test-first"]
     S4 --> S5["workspace"] --> S6["acceptance"] --> S7["features"] --> S8["crate graph"]

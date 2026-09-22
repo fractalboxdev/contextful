@@ -22,22 +22,52 @@ The path of a credential from issuance to the effects it authorizes:
 
 ```mermaid
 flowchart LR
-  IDP["identity provider"] -- "verified assertion" --> EXCH["exchange"]
-  IDP -- "directory provisioning" --> LINK["identity links<br/>scim_email · oidc_sub"]
-  LINK --> DISC["disclosure contract:<br/>reachable set"]
-  ADMIN["holder of an admin grant"] -- "mint" --> PORT["signing port"]
+  IDP["identity provider"]
+  ADMIN["holder of an admin grant"]
+  LINK["identity links<br/>scim_email · oidc_sub"]
+  subgraph ISS["issuer"]
+    EXCH["exchange"]
+    POL["issuance policy<br/>audience · lifetime ceiling"]
+    PORT["signing port"]
+  end
+  subgraph HOLD["holder"]
+    CRED["capability credential<br/>subject tuple + grants"]
+    CHILD["child credential"]
+  end
+  subgraph CPZ["checkpoint"]
+    KEYS["issuer key set<br/>static pins · published route"]
+    REV["denylist · revocation epoch"]
+    CP{"verify"}
+  end
+  AA["admitted authority"]
+  subgraph ENF["enforcement"]
+    RELS["registered relations"]
+  end
+  subgraph READ["read"]
+    RS["read surfaces"]
+  end
+  subgraph RUN["run"]
+    RLE["row-landing effects"]
+  end
+  subgraph DISC["disclosure"]
+    REACH["reachable set"]
+  end
+  IDP -- "verified assertion" --> EXCH
+  IDP -- "directory provisioning" --> LINK
+  LINK --> REACH
+  ADMIN -- "mint" --> PORT
   EXCH -- "role_grants · default_grants" --> PORT
-  POL["issuance policy<br/>audience · lifetime ceiling"] --> PORT
-  PORT --> CRED["capability credential<br/>subject tuple + grants"]
-  CRED -- "attenuate: append a signed block" --> CHILD["child credential"]
-  CRED --> CP{"checkpoint"}
+  POL --> PORT
+  PORT --> CRED
+  CRED -- "attenuate: append a signed block" --> CHILD
+  CRED --> CP
   CHILD --> CP
-  KEYS["issuer key set<br/>static pins · published route"] --> CP
-  REV["denylist · revocation epoch"] --> CP
-  CP -- "verify" --> AA["admitted authority"]
-  AA --> ENF["enforcement:<br/>registered relations"]
-  AA --> READ["read contract:<br/>read surfaces"]
-  AA --> RUN["run contract:<br/>row-landing effects"]
+  KEYS --> CP
+  REV --> CP
+  CP --> AA
+  AA --> RELS
+  AA --> RS
+  AA --> RLE
 ```
 
 ## identify
@@ -180,7 +210,9 @@ A derivation, from the holder's append to the checkpoint's recheck:
 
 ```mermaid
 flowchart TD
-  P["parent credential, bytes unchanged"] --> D["holder appends a signed block<br/>no issuer round trip"]
+  subgraph HOLD["holder"]
+    P["parent credential, bytes unchanged"] --> D["append a signed block<br/>no issuer round trip"]
+  end
   D --> W{"broader on actions, tables,<br/>templates or aggregate?"}
   W -- yes --> R1["AttenuationWidens"]
   W -- no --> X{"expiry past the parent's?"}
@@ -190,7 +222,10 @@ flowchart TD
   T -- no --> O{"on_behalf_of differs?"}
   O -- yes --> R4["AuthoritySubjectRebound"]
   O -- no --> C["child credential<br/>own revocation identifier"]
-  C -- "admission rechecks the whole chain" --> CP["checkpoint"]
+  subgraph CPZ["checkpoint"]
+    CP["admission rechecks<br/>the whole chain"]
+  end
+  C --> CP
 ```
 
 unsettled: What delegation depth does the library format support, and what verification cost does a chain carry at that depth? owner: authority affects: authority.attenuate
@@ -359,8 +394,10 @@ An embedding application reading as its signed-in reader:
 sequenceDiagram
     participant App as embedding application
     participant IdP as identity provider
-    participant X as exchange
-    participant CP as checkpoint
+    box Contextful
+        participant X as exchange
+        participant CP as checkpoint
+    end
     App->>IdP: sign the reader in
     IdP-->>App: signed assertion
     App->>X: POST /auth/exchange with the assertion
@@ -462,19 +499,24 @@ Admission, from transmitted bytes to the value an effect acts under:
 
 ```mermaid
 flowchart TD
-  A["transmitted bytes"] --> B{"every block signature<br/>checks against a pinned key"}
-  B -- no --> R1["SignatureInvalid"]
-  B -- yes --> C{"profile names every element"}
-  C -- no --> R2["ProfileElementUnrecognized"]
-  C -- yes --> D{"audience matches"}
-  D -- no --> R3["AudienceMismatch"]
-  D -- yes --> E{"timestamps decode;<br/>expiry after now"}
-  E -- no --> R4["AuthorityExpired"]
-  E -- yes --> F{"request proof checks<br/>against cnf.jkt"}
-  F -- no --> R5["PossessionProofInvalid"]
-  F -- yes --> G{"off the denylist;<br/>epoch current"}
-  G -- no --> R6["AuthorityRevoked"]
-  G -- yes --> H["admitted authority"]
-  H --> I["scoped session"]
-  I --> J["each effect boundary re-reads<br/>expiry, epoch, policy version"]
+  A["transmitted bytes"] --> B
+  subgraph CPZ["checkpoint"]
+    B{"every block signature<br/>checks against a pinned key"}
+    B -- no --> R1["SignatureInvalid"]
+    B -- yes --> C{"profile names every element"}
+    C -- no --> R2["ProfileElementUnrecognized"]
+    C -- yes --> D{"audience matches"}
+    D -- no --> R3["AudienceMismatch"]
+    D -- yes --> E{"timestamps decode;<br/>expiry after now"}
+    E -- no --> R4["AuthorityExpired"]
+    E -- yes --> F{"request proof checks<br/>against cnf.jkt"}
+    F -- no --> R5["PossessionProofInvalid"]
+    F -- yes --> G{"off the denylist;<br/>epoch current"}
+    G -- no --> R6["AuthorityRevoked"]
+    G -- yes --> H["admitted authority"]
+  end
+  subgraph SESS["scoped session"]
+    J["each effect re-reads<br/>expiry, epoch, policy version"]
+  end
+  H --> J
 ```

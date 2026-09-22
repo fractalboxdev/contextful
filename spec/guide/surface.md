@@ -15,11 +15,18 @@ reads under the reader's own credential ({{assurance.structure-tree.one-home}}).
 
 ```mermaid
 flowchart LR
-  OP["operator"] --> ED["edit"] --> AP["apply"] --> RC["reconcile"] --> ARM["arm"] --> FI["fire"] --> DI["dispatch"]
+  OP["operator"] --> ED
+  subgraph plane["control plane"]
+    ED["edit"] --> AP["apply"] --> RC["reconcile"] --> ARM["arm"] --> FI["fire"] --> DI["dispatch"]
+  end
+  subgraph console["console"]
+    TURN["turn: ground, plan, render, learn"]
+    ANS["prose, widget, sources"]
+  end
   DI --> STORE[("store engine")]
-  RD["reader"] --> TURN["turn: ground, plan, render, learn"]
+  RD["reader"] --> TURN
   TURN -- "admitted read tools" --> STORE
-  TURN --> ANS["prose, widget, sources"]
+  TURN --> ANS
 ```
 
 ## How it works

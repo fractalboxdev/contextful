@@ -17,13 +17,20 @@ outside world: the journal is a flight recorder the next attempt flies from.
 
 ```mermaid
 flowchart LR
-  D["declare"] --> C["compile"]
-  C --> O["run open · owner"]
-  O --> J[("journal")]
-  J --> L["land · stage order"]
-  L --> M["commit marker · rows + position"]
-  M --> R[("run record")]
-  R --> P["live projection"]
+  subgraph RUNC["run contract"]
+    D["declare"] --> C["compile"]
+    C --> O["run open · owner"]
+    O --> J[("journal")]
+    J --> L["land · stage order"]
+    P["live projection"]
+  end
+  subgraph STORE["store contract"]
+    M["commit marker · rows + position"]
+    R[("run record")]
+  end
+  L --> M
+  M --> R
+  R --> P
 ```
 
 A pipeline specification ({{run.declare.pipeline-spec}}) is identified by a content hash

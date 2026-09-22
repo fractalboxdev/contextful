@@ -193,6 +193,9 @@ The generated files, and the vocabulary no authored file carries.
   *P8*
 - `diagram` — A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.
   *P8*
+- `diagram-boundary` — A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.
+  *because a boundary drawn as a node hides which components sit inside it and which edges cross it*
+  *P8*
 
 
 ## targets

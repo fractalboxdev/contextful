@@ -21,24 +21,44 @@ The two models, the checks over them, and where each meets the engine:
 
 ```mermaid
 flowchart LR
-  SPEC["specification text"] --> LEAN["Lean package formal/<br/>Layer · Placement · Authority"]
-  SPEC --> PROT["Lean protocol package formal/protocol/<br/>lease · compare-and-swap · fence"]
-  LEAN -- "lake build" --> ENV["elaborated environment"]
-  INV["formal/inventory.toml"] --> AUD["audit-assumptions:<br/>contextful formal check"]
+  SPEC["specification text"]
+  INV["formal/inventory.toml"]
+  subgraph lean["Lean packages"]
+    LEAN["formal/<br/>Layer · Placement · Authority"]
+    PROT["formal/protocol/<br/>lease · compare-and-swap · fence"]
+    ENV["elaborated environment"]
+    REF["reference binary"]
+    PEXE["protocol executable"]
+  end
+  subgraph engine["Rust engine"]
+    subgraph authority["authority contract"]
+      ENG["engine decision functions"]
+    end
+    subgraph store["store contract"]
+      RUST["Rust store"]
+      PIN["stale fence · partial snapshot"]
+    end
+  end
+  subgraph gate["gate: formal stage"]
+    AUD["audit-assumptions:<br/>contextful formal check"]
+    DIFF["differential harness"]
+    MC["bounded invariant check"]
+  end
+  SPEC --> LEAN
+  SPEC --> PROT
+  LEAN -- "lake build" --> ENV
+  INV --> AUD
   ENV --> AUD
   AUD --> REC["recheck: rebuild and re-audit"]
-  LEAN --> REF["reference binary"]
-  REF --> DIFF["differential harness"]
-  ENG["authority contract:<br/>engine decision functions"] --> DIFF
-  PROT -- "3 nodes · 4 lease generations" --> MC["bounded invariant check"]
+  LEAN --> REF
+  REF --> DIFF
+  ENG --> DIFF
+  PROT -- "3 nodes · 4 lease generations" --> MC
   PROT -- "invariant theorems" --> AUD
-  PROT -- "lean_exe" --> PEXE["protocol executable"]
+  PROT -- "lean_exe" --> PEXE
   PEXE --> DIFF
-  RUST["Rust store"] --> DIFF
-  AUD -. "pins" .-> STORE["store contract:<br/>stale fence · partial snapshot"]
-  AUD --> GATE["gate: formal stage"]
-  DIFF --> GATE
-  MC --> GATE
+  RUST --> DIFF
+  AUD -. "pins" .-> PIN
 ```
 
 ## model
@@ -215,10 +235,16 @@ One differential run:
 
 ```mermaid
 sequenceDiagram
-    participant H as harness
-    participant K as counterexample corpus
-    participant R as reference binary
-    participant E as engine decision function
+    box harness
+        participant H as harness
+        participant K as counterexample corpus
+    end
+    box Lean model
+        participant R as reference binary
+    end
+    box Rust engine
+        participant E as engine decision function
+    end
     H->>K: replay every entry before fresh cases
     loop each generated case, from the recorded seed
         H->>R: case on standard input

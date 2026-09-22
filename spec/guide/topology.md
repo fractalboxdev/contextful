@@ -28,11 +28,28 @@ A team runs `contextful-full` on one server with a local catalog file ({{topolog
 
 ```mermaid
 flowchart LR
-  TICK["cadence tick"] --> FULL["contextful-full · journaled connector step"]
-  FULL -- "parts + manifest" --> STORE["store"]
-  STORE -- "push" --> BUCKET[("bucket")]
-  BUCKET -- "pull" --> EDGE["contextful-edge · function-class target"]
-  ANALYST(["analyst"]) --> HOP["routing hop"] --> RET["retrieval container"]
+  ANALYST(["analyst"])
+  BUCKET[("bucket")]
+
+  subgraph SERVER["one server"]
+    TICK["cadence tick"]
+    subgraph FULL["contextful-full"]
+      STEP["journaled connector step"]
+    end
+    STORE["store"]
+  end
+
+  subgraph PROV["function-class provider"]
+    HOP["routing hop"]
+    RET["retrieval container"]
+    EDGE["contextful-edge · function-class target"]
+  end
+
+  TICK --> STEP
+  STEP -- "parts + manifest" --> STORE
+  STORE -- "push" --> BUCKET
+  BUCKET -- "pull" --> EDGE
+  ANALYST --> HOP --> RET
   RET --> EDGE
 ```
 

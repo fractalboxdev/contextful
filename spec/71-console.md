@@ -28,8 +28,10 @@ The console between a reader and a store, and where it meets the read contract a
 ```mermaid
 flowchart LR
   RD["reader"] --> PER["identity perimeter"]
-  PER --> PAGE["console page"]
-  PAGE -- "same-origin routes" --> TURN
+  subgraph browser["browser"]
+    PAGE["console page"]
+  end
+  PER --> PAGE
   subgraph server["console server"]
     REGY["store registry"]
     CRED["one credential resolver"]
@@ -38,17 +40,28 @@ flowchart LR
     CH["render: grounding, view, internals"]
     RED["redactor, temporal humanizer"]
   end
+  subgraph read["read contract"]
+    STORE["store engine"]
+    MEM["memory tables"]
+  end
+  subgraph topology["topology contract"]
+    MODEL["model endpoint"]
+  end
+  subgraph thirdparty["third-party page"]
+    LIB["client library: four shapes"]
+  end
+  PAGE -- "same-origin routes" --> TURN
   REGY --> CRED
   PACKS --> TURN
-  TURN -- "admitted read tools" --> STORE["store engine: read contract"]
+  TURN -- "admitted read tools" --> STORE
   CRED --> STORE
   STORE --> CH
-  CH -- "grounding" --> MODEL["model endpoint: topology contract"]
+  CH -- "grounding" --> MODEL
   MODEL --> RED
   RED --> PAGE
   CH -- "view" --> PAGE
-  TURN -- "distilled conclusions" --> MEM["memory tables: read contract"]
-  LIB["client library: four shapes"] --> STORE
+  TURN -- "distilled conclusions" --> MEM
+  LIB --> STORE
   OPS["operator surface"] --> REGY
   PAGE -- "deliberate share" --> AUD["surface with an audience"]
 ```
@@ -86,18 +99,38 @@ The client library's four shapes, and who holds the credential in each:
 ```mermaid
 flowchart LR
   LIB["client library: search, query, retrieve, recall, ask and kin"]
-  LIB --> S1["host backend: same-origin proxy, injects the token"]
-  LIB --> S2["same-account host backend: service binding"]
-  LIB --> S3["engine-direct browser embed: per-viewer scoped token"]
-  LIB --> S4["local consumer: spawned engine, newline-framed JSON-RPC"]
-  S1 --> ENG["engine HTTP face: grants of the presented token"]
-  S2 --> GW["gateway entrypoint: query, mcp, health"]
+  subgraph host["host backend"]
+    S1["same-origin proxy, injects the token"]
+    S2["same-account: service binding"]
+  end
+  subgraph browser["browser"]
+    S3["engine-direct embed: per-viewer scoped token"]
+  end
+  subgraph local["local consumer"]
+    S4["spawned engine, newline-framed JSON-RPC"]
+    CK{"credential set and project manifest found"}
+    E1["StdioCredentialMissing"]
+    E2["StoreSelectorAbsent"]
+    CHILD["engine child: one request in flight"]
+  end
+  subgraph engine["engine"]
+    GW["gateway entrypoint: query, mcp, health"]
+    subgraph container["engine container"]
+      ENG["HTTP face: grants of the presented token"]
+    end
+  end
+  LIB --> S1
+  LIB --> S2
+  LIB --> S3
+  LIB --> S4
+  S1 --> ENG
+  S2 --> GW
   GW -- "injects the container-side credential" --> ENG
   S3 --> ENG
-  S4 --> CK{"credential set and project manifest found"}
-  CK -- "no credential" --> E1["StdioCredentialMissing"]
-  CK -- "no manifest" --> E2["StoreSelectorAbsent"]
-  CK -- "yes" --> CHILD["engine child: one request in flight"]
+  S4 --> CK
+  CK -- "no credential" --> E1
+  CK -- "no manifest" --> E2
+  CK -- "yes" --> CHILD
 ```
 
 ## speak
@@ -129,11 +162,19 @@ The two trust layers on one grounded turn, for a store on `exchange` authenticat
 
 ```mermaid
 sequenceDiagram
-  participant B as browser
-  participant P as identity perimeter
-  participant S as console server
-  participant X as store exchange route
-  participant E as store engine
+  box reader
+    participant B as browser
+  end
+  box perimeter
+    participant P as identity perimeter
+  end
+  box console
+    participant S as console server
+  end
+  box store
+    participant X as exchange route
+    participant E as store engine
+  end
   B->>P: same-origin request
   P->>S: request and the perimeter's assertion
   S->>S: re-verify the assertion, take the reader's address
@@ -197,20 +238,26 @@ A tool return split into three channels, and the view channel's path to a widget
 
 ```mermaid
 flowchart TD
-  TR["tool return"] --> G["grounding channel"]
-  TR --> I["internals channel, on request"]
-  TR --> V["view channel"]
+  subgraph server["console server"]
+    TR["tool return"] --> G["grounding channel"]
+    TR --> I["internals channel, on request"]
+    TR --> V["view channel"]
+    CV["view from a client or the model"] --> E1["ConsoleViewNotServerBuilt"]
+    V --> H{"view hint binds only returned columns"}
+    H -- "yes" --> HC["hinted component"]
+    H -- "no" --> INF["inference: metric, line over 3 distinct days, else table"]
+    HC --> VAL{"valid against the props schema"}
+    INF --> VAL
+    VAL -- "no" --> NONE["no widget"]
+    VAL -- "yes" --> WALK["walk: identifier redactor, temporal rewriting"]
+  end
+  subgraph browser["browser"]
+    TP["trace panel"]
+    W["widget frame after the prose, one per shape"]
+  end
   G --> M["model"]
-  I --> TP["trace panel"]
-  CV["view from a client or the model"] --> E1["ConsoleViewNotServerBuilt"]
-  V --> H{"view hint binds only returned columns"}
-  H -- "yes" --> HC["hinted component"]
-  H -- "no" --> INF["inference: metric, line over 3 distinct days, else table"]
-  HC --> VAL{"valid against the props schema"}
-  INF --> VAL
-  VAL -- "no" --> NONE["no widget"]
-  VAL -- "yes" --> WALK["walk: identifier redactor, temporal rewriting"]
-  WALK --> W["widget frame after the prose, one per shape"]
+  I --> TP
+  WALK --> W
 ```
 
 unsettled: What governs adding a member to the component union once transcripts saved under an older client exist? owner: console affects: surface.render

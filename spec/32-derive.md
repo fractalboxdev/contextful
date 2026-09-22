@@ -21,18 +21,39 @@ The derive tier between two tables, and the contracts it reaches through:
 
 ```mermaid
 flowchart LR
-  PT[("landed parent table")] --> SEL["select · scan, eligibility, anti-join"]
-  OUT[("derive output table")] -.->|"rows and markers"| SEL
-  SEL --> BIND["bind · derive.name block in the local contextful.toml"]
-  BIND -->|transcribe| EXEC["exec driver · preprocess steps + engine step"]
-  BIND -->|link_preview| FETCH["fetch driver · head scan + picture probe"]
-  EXEC --> PC["parse-cues · WebVTT, SubRip"]
-  PC --> EMIT["emit · content rows, markers"]
+  subgraph STORE["store contract"]
+    PT[("landed parent table")]
+    OUT[("derive output table")]
+  end
+  subgraph RUNC["run contract"]
+    subgraph DER["32-derive"]
+      SEL["select · scan, eligibility, anti-join"]
+      BIND["bind · derive.name block in the local contextful.toml"]
+      EXEC["exec driver · preprocess steps + engine step"]
+      FETCH["fetch driver · head scan + picture probe"]
+      PC["parse-cues · WebVTT, SubRip"]
+      EMIT["emit · content rows, markers"]
+    end
+    subgraph PIPE["31-pipeline"]
+      LAND["land path"]
+    end
+  end
+  subgraph CONN["connector contract"]
+    RES["resolver"]
+    MED["host mediation"]
+  end
+  PT --> SEL
+  OUT -.->|"rows and markers"| SEL
+  SEL --> BIND
+  BIND -->|transcribe| EXEC
+  BIND -->|link_preview| FETCH
+  EXEC --> PC
+  PC --> EMIT
   FETCH --> EMIT
-  EMIT --> LAND["land path · 31-pipeline"]
+  EMIT --> LAND
   LAND --> OUT
-  EXEC -.->|"credential references"| RES["resolver · connector contract"]
-  FETCH -.->|"mediated client"| MED["host mediation · connector contract"]
+  EXEC -.->|"credential references"| RES
+  FETCH -.->|"mediated client"| MED
 ```
 
 ## select
@@ -119,9 +140,13 @@ Operator-declared argv chains against local binaries: resolution, pinning, envir
 
 ```mermaid
 sequenceDiagram
-  participant T as derive tier
-  participant P as preprocess step
-  participant E as engine step
+  box engine
+    participant T as derive tier
+  end
+  box step processes
+    participant P as preprocess step
+    participant E as engine step
+  end
   T->>T: cleared environment + allowlist
   loop each preprocess step whose when condition holds
     T->>P: argument array, no shell, own process group

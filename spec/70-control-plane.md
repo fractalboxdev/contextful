@@ -22,18 +22,30 @@ The path from an operator's edit to a dispatched unit, and where it meets topolo
 
 ```mermaid
 flowchart LR
-  ED["edit: control document, CRDT"] --> AP["apply: validate, claim manifest@vN, CAS pointer"]
-  AP --> SNAP["snapshot store: manifest@current, manifest@vN"]
-  SNAP -- "poll" --> RC["reconcile: diff, armed cursor"]
-  RC --> ARM["arm: armed set, one due-ness function"]
-  JOBS["operator-local job blocks"] --> ARM
-  TRG["trigger adapter: in-process or external"] --> ARM
-  ARM --> FI["fire: job kind, target"]
-  FI --> DI["dispatch: fire pool, exclusion keys"]
-  DI --> RUN["run contract: durable orchestrator instance"]
-  DI --> WK["worker target"]
-  CAT["topology contract: catalog lease rows"] -.->|"cadence lease, exclusion keys"| DI
-  RS["reside: region allow-set"] -.->|"EnforceRegionMismatch at startup"| RC
+  subgraph plane["operator plane"]
+    direction LR
+    ED["edit: control document, CRDT"] --> AP["apply: validate, claim manifest@vN, CAS pointer"]
+    AP --> SNAP["snapshot store: manifest@current, manifest@vN"]
+    SNAP -- "poll" --> RC["reconcile: diff, armed cursor"]
+    RC --> ARM["arm: armed set, one due-ness function"]
+    JOBS["operator-local job blocks"] --> ARM
+    TRG["trigger adapter: in-process or external"] --> ARM
+    ARM --> FI["fire: job kind, target"]
+    FI --> DI["dispatch: fire pool, exclusion keys"]
+    RS["reside: region allow-set"] -.->|"EnforceRegionMismatch at startup"| RC
+  end
+  subgraph topology["topology contract"]
+    CAT["catalog lease rows"]
+  end
+  subgraph run["run contract"]
+    RUN["durable orchestrator instance"]
+  end
+  subgraph workers["workers"]
+    WK["worker target"]
+  end
+  DI --> RUN
+  DI --> WK
+  CAT -.->|"cadence lease, exclusion keys"| DI
 ```
 
 ## arm
@@ -54,14 +66,19 @@ Both trigger adapters reach one due-ness function:
 
 ```mermaid
 flowchart TD
-  SCH["schedule string, UTC"] -- "unreadable" --> E1["ScheduleUnreadable, that entry alone"]
-  SCH -- "readable" --> SET["armed set"]
-  IP["in-process adapter: tick every 500 ms"] --> DUE["one due-ness function"]
-  EXT["external adapter: platform cron, alarm or crontab"] --> WAKE["wake over the HTTP face"]
-  WAKE --> DUE
-  SET --> DUE
-  DUE --> FIRE["fire due entries"]
-  FIRE --> ANS["wake answer within 25 s: fired, failed, pending, next due"]
+  subgraph platform["platform"]
+    EXT["external adapter: platform cron, alarm or crontab"]
+  end
+  subgraph plane["operator plane"]
+    SCH["schedule string, UTC"] -- "unreadable" --> E1["ScheduleUnreadable, that entry alone"]
+    SCH -- "readable" --> SET["armed set"]
+    IP["in-process adapter: tick every 500 ms"] --> DUE["one due-ness function"]
+    WAKE["wake over the HTTP face"] --> DUE
+    SET --> DUE
+    DUE --> FIRE["fire due entries"]
+    FIRE --> ANS["wake answer within 25 s: fired, failed, pending, next due"]
+  end
+  EXT --> WAKE
 ```
 
 ## reconcile
@@ -80,10 +97,12 @@ One reconciler beat, polled every 30 s by default:
 
 ```mermaid
 sequenceDiagram
-  participant R as reconciler
+  box operator plane
+    participant R as reconciler
+    participant C as armed cursor
+    participant D as dispatch
+  end
   participant S as snapshot store
-  participant C as armed cursor
-  participant D as dispatch
   R->>S: read manifest@current
   alt pointer body not wholly a version
     S-->>R: ControlPointerMalformed
@@ -130,10 +149,14 @@ One step on a worker target, from submit to an accepted or rejected callback:
 
 ```mermaid
 sequenceDiagram
-  participant RC as reconciler
-  participant W as worker target
+  box operator plane
+    participant RC as reconciler
+    participant RL as relay route
+  end
+  box worker
+    participant W as worker target
+  end
   participant OS as object store
-  participant RL as relay route
   RC->>W: submit(job, idempotencyKey), attempt n
   W-->>RC: handle, the existing job on a repeated key
   loop every 15 s
@@ -181,10 +204,14 @@ One apply through the engine's store-scoped API:
 
 ```mermaid
 sequenceDiagram
-  participant O as operator surface
-  participant E as engine store-scoped API
+  box operator plane
+    participant O as operator surface
+  end
+  box engine
+    participant E as store-scoped API
+    participant A as audit log
+  end
   participant S as snapshot store
-  participant A as audit log
   O->>E: apply under the admin capability
   alt store took no guarded import
     E-->>O: StoreNotInitialized, 409

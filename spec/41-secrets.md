@@ -19,16 +19,33 @@ A credential from its reference to the vendor, keyed throughout by its logical n
 
 ```mermaid
 flowchart LR
-  DECL["declaration · secret://name, value templates"] -->|reference| RES["resolver · per source, cached"]
-  RES -->|"first hit wins"| CHAIN["provider chain · lease, environment, keychain, manager, tunnel"]
-  MINT["lease endpoint"] -->|"value + expiry"| CHAIN
-  MGR[("customer-operated manager")] --- CHAIN
-  ROT["rotate · OAuth refresh"] -->|"blind versioned put"| MGR
-  CHAIN -->|"material in a redacting wrapper"| ATT["host attach · one mediated path"]
-  EGR["guest, built-in source, limiter call, exec step"] --> ATT
-  ATT -->|"bound header, one host"| VEND["vendor API"]
-  RES -->|"answering adapter per name"| AUD["run audit"]
-  REC["operator record · inventory"] -.->|"logical name"| DECL
+  subgraph TREE["file tree"]
+    DECL["declaration · secret://name, value templates"]
+    REC["operator record · inventory"]
+  end
+  subgraph ENGINE["engine process"]
+    RES["resolver · per source, cached"]
+    CHAIN["provider chain · lease, environment, keychain, manager, tunnel"]
+    ROT["rotate · OAuth refresh"]
+    ATT["host attach · one mediated path"]
+    EGR["guest, built-in source, limiter call, exec step"]
+    AUD["run audit"]
+  end
+  MINT["lease endpoint"]
+  subgraph CUST["customer"]
+    MGR[("customer-operated manager")]
+  end
+  VEND["vendor API"]
+  DECL -->|reference| RES
+  RES -->|"first hit wins"| CHAIN
+  MINT -->|"value + expiry"| CHAIN
+  MGR --- CHAIN
+  ROT -->|"blind versioned put"| MGR
+  CHAIN -->|"material in a redacting wrapper"| ATT
+  EGR --> ATT
+  ATT -->|"bound header, one host"| VEND
+  RES -->|"answering adapter per name"| AUD
+  REC -.->|"logical name"| DECL
 ```
 
 ## reference
@@ -143,8 +160,10 @@ The declaration-scoped lease provider at the head of the chain: endpoint, expiry
 
 ```mermaid
 sequenceDiagram
-  participant R as resolver
-  participant B as adapters behind the lease provider
+  box engine
+    participant R as resolver
+    participant B as adapters behind the lease provider
+  end
   participant P as mint endpoint
   R->>B: hydrate the bootstrap mint reference
   B-->>R: mint credential

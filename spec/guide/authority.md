@@ -16,14 +16,30 @@ flag or a second secret.
 
 ```mermaid
 flowchart LR
-  IDP["identity provider"] --> X["exchange or mint"]
-  X --> CRED["credential"]
-  CRED -->|"append a block"| CHILD["narrower child"]
-  CRED --> V{"checkpoint"}
+  IDP["identity provider"]
+  subgraph ISS["issuer"]
+    X["exchange or mint"]
+  end
+  subgraph HOLD["holder"]
+    CRED["credential"]
+    CHILD["narrower child"]
+  end
+  subgraph CPZ["checkpoint"]
+    V{"verify"}
+  end
+  AA["admitted authority"]
+  subgraph ENF["enforcement"]
+    REL["registered relation"]
+  end
+  READ["read surfaces"]
+  IDP --> X
+  X --> CRED
+  CRED -->|"append a block"| CHILD
+  CRED --> V
   CHILD --> V
-  V --> AA["admitted authority"]
-  AA --> REL["registered relation"]
-  REL --> READ["read surfaces"]
+  V --> AA
+  AA --> REL
+  REL --> READ
 ```
 
 A subject is a tuple of agent, host, principal, task, zone and incognito flag

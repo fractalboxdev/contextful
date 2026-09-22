@@ -20,18 +20,49 @@ Memory's operations over the five tables, and where they meet the run path, the 
 
 ```mermaid
 flowchart LR
-  ROWS["run contract: rows landed since the pass cursor"] --> SYN["synthesize: Extract, Resolve, Consolidate"]
-  SYN <--> RES["resolve-entity: entity_id, place_id, edges"]
-  SYN --> REV["revise"]
-  DW["direct write: claims alone"] --> REV
-  REV --> COMMIT["run contract: post-run commit"]
-  DECL["declare: shapes, relation types"] --> TBL
-  COMMIT --> TBL["memory_episodes, memory_facts, memory_entities, memory_edges, memory_preferences"]
-  ERASE["disclosure contract: erase"] -- "tombstones" --> TBL
-  TBL --> REC["recall"]
-  REC -- "evidence through the caller's session" --> READ["read face: enforced relations"]
-  REC --> ANS["grounded turn, knowledge card"]
-  APP["application"] -- "registrations, observations" --> SET["settle: predictions, outcomes, outcome_labels"]
+  APP(["application"])
+  ANS["grounded turn, knowledge card"]
+
+  subgraph RUNC["run"]
+    ROWS["rows landed since the pass cursor"]
+    COMMIT["post-run commit"]
+  end
+
+  subgraph READC["read"]
+    subgraph MEMO["memory"]
+      DECL["declare: shapes, relation types"]
+      SYN["synthesize: Extract, Resolve, Consolidate"]
+      RES["resolve-entity: entity_id, place_id, edges"]
+      DW["direct write: claims alone"]
+      REV["revise"]
+      REC["recall"]
+      SET["settle: predictions, outcomes, outcome_labels"]
+    end
+    subgraph FACE["read face"]
+      READ["enforced relations"]
+    end
+  end
+
+  subgraph STOREC["store"]
+    TBL["memory_episodes, memory_facts, memory_entities,<br/>memory_edges, memory_preferences"]
+  end
+
+  subgraph DISC["disclosure"]
+    ERASE["erase"]
+  end
+
+  ROWS --> SYN
+  SYN <--> RES
+  SYN --> REV
+  DW --> REV
+  REV --> COMMIT
+  DECL --> TBL
+  COMMIT --> TBL
+  ERASE -- "tombstones" --> TBL
+  TBL --> REC
+  REC -- "evidence through the caller's session" --> READ
+  REC --> ANS
+  APP -- "registrations, observations" --> SET
 ```
 
 ## declare
@@ -67,7 +98,10 @@ flowchart TD
   RS -- "rel_type outside the union" --> DL4["dead-letter: MemoryUndeclaredRelation"]
   RS --> CO["Consolidate"]
   CO --> RV["revise"]
-  RV --> CM["write path post-run commit"]
+  subgraph RUNW["run · write path"]
+    CM["post-run commit"]
+  end
+  RV --> CM
 ```
 
 unsettled: What sets the synthesis cadence per shape, and does a shape default give way to a deployment override? owner: memory affects: read.synthesize

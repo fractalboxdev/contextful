@@ -22,13 +22,30 @@ An empty answer then always means an empty corpus, never a quiet failure.
 
 ```mermaid
 flowchart LR
-  PACK["pack: access mapping"] --> SWEEP["sweep"]
-  SWEEP --> AT[("access tables")]
-  AT --> REACH["reach: reachable set"]
-  REACH --> READ["read, inside the budget"]
-  READ --> CHAIN["audit chain"]
-  REL["release"] --> SUP["suppress"] --> PUB[("published aggregate")]
-  FORGET["erase"] --> RCPT["receipt"]
+  PACK["pack: access mapping"]
+  subgraph VIS["visibility"]
+    SWEEP["sweep"]
+    AT[("access tables")]
+    REACH["reach: reachable set"]
+  end
+  READ["read, inside the budget"]
+  subgraph AGG["disclosure"]
+    REL["release"]
+    SUP["suppress"]
+    PUB[("published aggregate")]
+  end
+  subgraph ACC["accountability"]
+    CHAIN["audit chain"]
+    FORGET["erase"]
+    RCPT["receipt"]
+  end
+  PACK --> SWEEP
+  SWEEP --> AT
+  AT --> REACH
+  REACH --> READ
+  READ --> CHAIN
+  REL --> SUP --> PUB
+  FORGET --> RCPT
   FORGET --> CHAIN
 ```
 

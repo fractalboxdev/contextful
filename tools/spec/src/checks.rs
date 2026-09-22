@@ -1213,6 +1213,37 @@ fn render(c: &Corpus) -> Vec<Finding> {
             out.push(f("render", rel, 0, "SpecStaleRender", format!("{rel} differs from regeneration; run `contextful-spec state` and `extract`")));
         }
     }
+    // a flowchart node label: a quoted string opening a node shape, never an edge label
+    let node_label = Regex::new(r#"[\[({>]"([^"]*)""#).unwrap();
+    let names: Vec<String> = c.reg.contracts.keys().map(|k| regex::escape(k)).collect();
+    let boundary = Regex::new(&format!(r"(?i)\b(({}) contract|boundary)\b", names.join("|"))).unwrap();
+    for d in &c.docs {
+        let mut flowchart = false;
+        let mut first = false;
+        for (n, l, k) in d.each() {
+            if k == LineKind::Fence {
+                first = l.trim().starts_with("```mermaid");
+                flowchart = false;
+                continue;
+            }
+            if k != LineKind::Code {
+                continue;
+            }
+            if first {
+                flowchart = l.trim().starts_with("flowchart") || l.trim().starts_with("graph");
+                first = false;
+                continue;
+            }
+            if !flowchart || l.trim_start().starts_with("subgraph") {
+                continue;
+            }
+            for m in node_label.captures_iter(l) {
+                if let Some(b) = boundary.find(&m[1]) {
+                    out.push(f("render", &d.rel, n, "SpecDiagramBoundary", format!("node `{}` stands for `{}`; draw it as a `subgraph` holding its components", &m[1], b.as_str())));
+                }
+            }
+        }
+    }
     let local = Regex::new(r"(/Users/|/home/|\$HOME/|(^|[\s(`])~/)").unwrap();
     let boxes = |s: &str| s.chars().any(|ch| ('\u{2500}'..='\u{257F}').contains(&ch));
     for d in &c.docs {

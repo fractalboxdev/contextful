@@ -20,19 +20,39 @@ The chain, what appends to it, and what reads it back:
 
 ```mermaid
 flowchart LR
-  READ["read contract: a read"] --> SPAN["span"]
-  SPAN --> ENTRY["audit entry<br/>seq · prev_hash · entry_hash"]
-  SPAN --> TEL["telemetry projection<br/>stderr JSON or OTLP"]
-  ENTRY --> SEG[("segment, 4096 entries<br/>closed by a signed root")]
-  SEG -- "every 10 min" --> BKT[("replication bucket")]
-  SEG --> VER["attest: contextful audit verify"]
-  ACC[("access tables")] --> EXPL["explain: VISIBLE or DENIED"]
+  subgraph READ["read"]
+    RD["a read"]
+  end
+  subgraph CHAIN["audit chain"]
+    ENTRY["audit entry<br/>seq · prev_hash · entry_hash"]
+    SEG[("segment, 4096 entries<br/>closed by a signed root")]
+  end
+  subgraph STORE["store"]
+    SNAP[("snapshot commit")]
+  end
+  SPAN["span"]
+  TEL["telemetry projection<br/>stderr JSON or OTLP"]
+  BKT[("replication bucket")]
+  VER["attest: contextful audit verify"]
+  ACC[("access tables")]
+  EXPL["explain: VISIBLE or DENIED"]
+  FORGET["erase: contextful context forget"]
+  LEDGER[("forget_requests ledger")]
+  RCPT["receipt: signed, per tenant purge"]
+  AUDITOR["verifier, offline"]
+  RD --> SPAN
+  SPAN --> ENTRY
+  SPAN --> TEL
+  ENTRY --> SEG
+  SEG -- "every 10 min" --> BKT
+  SEG --> VER
+  ACC --> EXPL
   EXPL --> ENTRY
-  FORGET["erase: contextful context forget"] --> LEDGER[("forget_requests ledger")]
-  FORGET --> STORE[("store contract:<br/>snapshot commit")]
+  FORGET --> LEDGER
+  FORGET --> SNAP
   FORGET --> ENTRY
-  LEDGER --> RCPT["receipt: signed, per tenant purge"]
-  RCPT --> AUDITOR["verifier, offline"]
+  LEDGER --> RCPT
+  RCPT --> AUDITOR
 ```
 
 ## record
@@ -155,8 +175,10 @@ A tenant purge, its receipt, and an offline check of it:
 ```mermaid
 sequenceDiagram
     participant O as store owner
-    participant P as purge
-    participant L as forget_requests ledger
+    box Contextful
+        participant P as purge
+        participant L as forget_requests ledger
+    end
     participant V as verifier
     O->>P: forget --tenant, no capability token
     P->>P: rewrite run files, compaction snapshots, model builds, memory mirror

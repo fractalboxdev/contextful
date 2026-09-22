@@ -136,3 +136,15 @@ fn an_unbackticked_axiom_is_a_banned_word_and_a_lean_identifier_is_not() {
     s.write(GUIDE, &format!("{text}\nThe audit lists every axiom a constant reaches.\n"));
     assert_eq!(codes(&s.lint("render"), "SpecBannedWord").len(), 1);
 }
+
+#[test]
+fn a_flowchart_node_standing_for_a_contract_or_boundary_is_a_diagram_finding() {
+    let s = Scratch::copy();
+    let text = s.read(GUIDE);
+    let container = "```mermaid\nflowchart LR\n  subgraph READ[\"read contract\"]\n    Q[\"query face\"]\n  end\n  F[\"fold\"] --> Q\n```\n";
+    s.write(GUIDE, &format!("{text}\n{container}"));
+    assert!(codes(&s.lint("render"), "SpecDiagramBoundary").is_empty());
+    let squeezed = "```mermaid\nflowchart LR\n  F[\"fold\"] -- \"read contract\" --> Q[\"read contract:<br/>query face\"]\n  Q --> T{\"trust boundary\"}\n```\n";
+    s.write(GUIDE, &format!("{text}\n{squeezed}"));
+    assert_eq!(codes(&s.lint("render"), "SpecDiagramBoundary").len(), 2);
+}

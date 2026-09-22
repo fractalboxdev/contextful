@@ -22,19 +22,45 @@ The read face's operations, and where it meets the store, authority and memory:
 
 ```mermaid
 flowchart LR
-  TOK["capability-token caller"] --> GRD["guard: one read-only SELECT"]
-  OPR["operator text: CLI, templates, engine-composed reads"] -- "raw" --> REG
-  GRD --> REG["register: one view per manifest table"]
-  PIN["resolve-pin: pin map, transaction-time bound"] --> REG
-  STORE["store contract: parts, manifests, sidecars"] --> REG
-  AUTH["authority contract: composed restriction"] --> REG
-  REG --> RET["retrieve: content tokens, per-table arms"]
-  MEM["memory: recall"] -- "composed by corpus.retrieve" --> RET
-  EMB["embed: embedding port"] --> RNK
-  RET --> RNK["rank: cosine, BM25, fusion"]
-  RNK --> RSP["respond: one projection"]
+  TOK(["capability-token caller"])
+  OPR(["operator text: CLI, templates, engine-composed reads"])
+
+  subgraph READC["read"]
+    subgraph FACE["read face"]
+      GRD["guard: one read-only SELECT"]
+      PIN["resolve-pin: pin map, transaction-time bound"]
+      REG["register: one view per manifest table"]
+      RET["retrieve: content tokens, per-table arms"]
+      EMB["embed: embedding port"]
+      RNK["rank: cosine, BM25, fusion"]
+      RSP["respond: one projection"]
+      CCH["cache: opt-in result cache"]
+    end
+    subgraph MEMS["memory"]
+      MEM["recall"]
+    end
+  end
+
+  subgraph STOREC["store"]
+    PARTS["parts, manifests, sidecars"]
+  end
+  subgraph AUTHC["authority"]
+    RESTR["composed restriction"]
+  end
+
+  TOK --> GRD
+  OPR -- "raw" --> REG
+  GRD --> REG
+  PIN --> REG
+  PARTS --> REG
+  RESTR --> REG
+  REG --> RET
+  MEM -- "composed by corpus.retrieve" --> RET
+  EMB --> RNK
+  RET --> RNK
+  RNK --> RSP
   REG --> RSP
-  STORE -- "snapshot commit invalidates" --> CCH["cache: opt-in result cache"]
+  PARTS -- "snapshot commit invalidates" --> CCH
   CCH -- "hit" --> RSP
 ```
 
@@ -200,7 +226,10 @@ flowchart TD
   ARMS --> SC{"sidecar preconditions hold, under 64 MiB"}
   SC -- "yes" --> PROBE["probe: max of 4 x limit and 64, x4 under restriction"]
   SC -- "no" --> EXACT["exact scan"]
-  PROBE --> REJ["re-join through authority.compose.vector-arm"]
+  subgraph AUTHC["authority"]
+    REJ["re-join through authority.compose.vector-arm"]
+  end
+  PROBE --> REJ
   REJ --> WIN
   EXACT --> WIN
   WIN --> FLOOR["relevance floor: lexical null or past the floor, or vector above 0"]

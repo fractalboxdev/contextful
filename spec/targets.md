@@ -26,14 +26,22 @@ The `lambda-fargate` shape:
 ```mermaid
 flowchart LR
   CALLER(["caller"])
-  TICK["cron tick · EventBridge Scheduler"]
-  REC["reconciler · Lambda"]
-  ORCH["durable orchestrator · Step Functions: Standard for backfills, Express for short high-frequency pipelines"]
-  COMP["heavy compute · Fargate task started by Step Functions (ECS RunTask, .sync)"]
-  QF["query face · ALB → warm contextful-full on Fargate"]
-  CAT[("catalog · RDS Postgres via pg-catalog")]
-  OBJ[("object store · S3")]
-  SEC["secrets · Secrets Manager through the task role"]
+  subgraph ACCOUNT["AWS · the deploying account"]
+    subgraph CONTROL["control plane"]
+      TICK["cron tick<br/>EventBridge Scheduler"]
+      REC["reconciler<br/>Lambda"]
+      ORCH["durable orchestrator<br/>Step Functions: Standard for backfills, Express for short high-frequency pipelines"]
+    end
+    subgraph DATA["data plane"]
+      COMP["heavy compute<br/>Fargate task started by Step Functions (ECS RunTask, .sync)"]
+      QF["query face<br/>ALB → warm contextful-full on Fargate"]
+    end
+    subgraph STATE["durable state"]
+      CAT[("catalog<br/>RDS Postgres via pg-catalog")]
+      OBJ[("object store<br/>S3")]
+    end
+    SEC["secrets<br/>Secrets Manager through the task role"]
+  end
   TICK --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
   COMP -- "land parts + manifest" --> OBJ
   REC & ORCH & COMP -- "conditional write" --> CAT
@@ -65,14 +73,22 @@ The `worker-container` shape:
 ```mermaid
 flowchart LR
   CALLER(["caller"])
-  TICK["cron tick · Cron Trigger"]
-  REC["reconciler · Worker"]
-  ORCH["durable orchestrator · Workflows"]
-  COMP["heavy compute · Container"]
-  QF["query face · Worker router → warm contextful-full Container"]
-  CAT[("catalog · Durable Object SQLite, one object per store")]
-  OBJ[("object store · R2")]
-  SEC["secrets · Workers Secrets"]
+  subgraph ACCOUNT["Cloudflare · the deploying account"]
+    subgraph CONTROL["control plane"]
+      TICK["cron tick<br/>Cron Trigger"]
+      REC["reconciler<br/>Worker"]
+      ORCH["durable orchestrator<br/>Workflows"]
+    end
+    subgraph DATA["data plane"]
+      COMP["heavy compute<br/>Container"]
+      QF["query face<br/>Worker router → warm contextful-full Container"]
+    end
+    subgraph STATE["durable state"]
+      CAT[("catalog<br/>Durable Object SQLite, one object per store")]
+      OBJ[("object store<br/>R2")]
+    end
+    SEC["secrets<br/>Workers Secrets"]
+  end
   TICK --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
   COMP -- "land parts + manifest" --> OBJ
   REC & ORCH & COMP -- "conditional write" --> CAT
@@ -104,14 +120,22 @@ The `process` shape:
 ```mermaid
 flowchart LR
   CALLER(["caller"])
-  TICK["cron tick · in-process scheduler"]
-  REC["reconciler · in-process reconcile loop"]
-  ORCH["durable orchestrator · engine journal in the catalog"]
-  COMP["heavy compute · in-process component host"]
-  QF["query face · contextful serve, in process"]
-  CAT[("catalog · local catalog file, one process")]
-  OBJ[("object store · local filesystem under ./.contextful/, optional S3-compatible sync")]
-  SEC["secrets · environment and configured secret providers"]
+  subgraph ACCOUNT["Local (reference) · the deploying account"]
+    subgraph CONTROL["control plane"]
+      TICK["cron tick<br/>in-process scheduler"]
+      REC["reconciler<br/>in-process reconcile loop"]
+      ORCH["durable orchestrator<br/>engine journal in the catalog"]
+    end
+    subgraph DATA["data plane"]
+      COMP["heavy compute<br/>in-process component host"]
+      QF["query face<br/>contextful serve, in process"]
+    end
+    subgraph STATE["durable state"]
+      CAT[("catalog<br/>local catalog file, one process")]
+      OBJ[("object store<br/>local filesystem under ./.contextful/, optional S3-compatible sync")]
+    end
+    SEC["secrets<br/>environment and configured secret providers"]
+  end
   TICK --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
   COMP -- "land parts + manifest" --> OBJ
   REC & ORCH & COMP -- "conditional write" --> CAT

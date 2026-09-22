@@ -22,16 +22,34 @@ One run, the durable state around it, and the contracts it meets:
 
 ```mermaid
 flowchart LR
-  PLAN["plan reference · content-hashed"] --> RUN["runner"]
-  SRC["source · connector contract"] -->|"batches, pulled"| RUN
-  RUN <-->|"record · replay"| J[("journal + blob store")]
-  AW["POST /awake/:token"] -->|"resume payload"| J
-  RUN --> LAND["land path · 31-pipeline"]
-  LAND --> MARK["run commit marker · store contract"]
-  MARK --> CUR[("catalog cursor cache")]
-  STOP["stop mark on the run row"] -->|"polled every 500 ms"| RUN
-  RUN --> REC[("run record · reserved store table")]
-  RUN -. "events after durable change" .-> HUB["live projection · wire snapshot"]
+  PLAN["plan reference · content-hashed"] --> RUN
+  subgraph CONN["connector contract"]
+    SRC["source"]
+  end
+  subgraph RUNC["run contract"]
+    RUN["runner"]
+    J[("journal + blob store")]
+    AW["POST /awake/:token"]
+    HUB["live projection · wire snapshot"]
+    subgraph PIPE["31-pipeline"]
+      LAND["land path"]
+    end
+  end
+  subgraph STORE["store contract"]
+    MARK["run commit marker"]
+    CUR[("catalog cursor cache")]
+    STOP["stop mark on the run row"]
+    REC[("run record · reserved table")]
+  end
+  SRC -->|"batches, pulled"| RUN
+  RUN <-->|"record · replay"| J
+  AW -->|"resume payload"| J
+  RUN --> LAND
+  LAND --> MARK
+  MARK --> CUR
+  STOP -->|"polled every 500 ms"| RUN
+  RUN --> REC
+  RUN -. "events after durable change" .-> HUB
   REC -->|"terminal status reconciles"| HUB
   HUB --> SUB["run-stream subscribers"]
 ```
@@ -72,10 +90,14 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
 
 ```mermaid
 sequenceDiagram
-  participant A as caller A
-  participant B as racing caller B
-  participant J as journal
-  participant V as vendor
+  box engine
+    participant A as caller A
+    participant B as racing caller B
+    participant J as journal
+  end
+  box vendor
+    participant V as vendor
+  end
   A->>J: claim (execution_id, step_label, input_hash) as pending
   B->>J: same key
   J-->>B: wait for the recorded value
@@ -139,9 +161,13 @@ Durable suspension on an external callback, its deadline and its resumption.
 
 ```mermaid
 sequenceDiagram
-  participant R as run
-  participant E as engine
-  participant X as external party
+  box engine
+    participant R as run
+    participant E as engine
+  end
+  box external party
+    participant X as external party
+  end
   R->>E: await awakeable, creation instant + time-to-live
   E->>E: mint single-use token, persist pending row
   E-->>X: token
@@ -252,10 +278,18 @@ Stopping work in flight at either grain, the one token every await observes, and
 
 ```mermaid
 sequenceDiagram
-  participant O as operator
-  participant C as run row in the catalog
-  participant R as run
-  participant G as subprocess group
+  box operator
+    participant O as operator
+  end
+  box catalog
+    participant C as run row
+  end
+  box engine
+    participant R as run
+  end
+  box subprocess group
+    participant G as subprocess group
+  end
   O->>C: stop · requested-at, scope, reason
   alt row not pending, running or waiting
     C-->>O: CancelTargetNotInFlight · 409

@@ -25,33 +25,53 @@ flowchart LR
   OPER(["operator"])
   CALLER(["agent · analyst · application"])
   SRC[("sources")]
-  MODEL(["inference endpoint · OpenAI-compatible HTTP"])
+  MODEL(["inference endpoint<br/>OpenAI-compatible HTTP"])
   BUCKET[("S3-compatible bucket")]
 
-  subgraph SURF["surface · contextful-control profile"]
-    CADENCE["cadence tick · reconciler · dispatch"]
-    CONSOLE["analyst console"]
-  end
+  subgraph ENGINE["engine workspace"]
+    subgraph SURF["surface · contextful-control profile"]
+      direction TB
+      CADENCE["cadence tick · reconciler · dispatch"]
+      CONSOLE["analyst console"]
+    end
 
-  subgraph RUN["run path · contextful-full"]
-    JOURNAL["run · journal · scheduler · cursor commit"]
-    HOST["connector · component host + native connectors"]
-    ALLOW["authority · capability allowlists"]
-  end
+    subgraph RUNP["run path · contextful-full"]
+      direction TB
+      subgraph RUN["run"]
+        JOURNAL["journal · scheduler · cursor commit"]
+      end
+      subgraph CONN["connector"]
+        HOST["component host + native connectors"]
+      end
+      subgraph AUTHR["authority"]
+        ALLOW["capability allowlists"]
+      end
+    end
 
-  subgraph CROSS["the three crossings"]
-    X1["1 · connector interface world"]
-    X2["2 · columnar parts + manifest"]
-    X3["3 · capability-token format"]
-  end
+    subgraph CROSS["the three crossings"]
+      direction TB
+      X1["1 · connector interface world"]
+      X2["2 · columnar parts + manifest"]
+      X3["3 · capability-token format"]
+    end
 
-  subgraph READ["read path · contextful-edge + contextful-full"]
-    FACE["read · query · ranking · memory"]
-    ENF["authority + disclosure · enforcement stack"]
-    STORE["store · parts · manifests · catalog"]
-  end
+    subgraph READP["read path · contextful-edge + contextful-full"]
+      direction TB
+      subgraph READ["read"]
+        FACE["read face · query · ranking · memory"]
+      end
+      subgraph ENFC["authority + disclosure"]
+        ENF["enforcement stack"]
+      end
+      subgraph STOREC["store"]
+        STORE["parts · manifests · catalog"]
+      end
+    end
 
-  ASSURE["assurance · crate-graph gate"]
+    subgraph ASSURE["assurance"]
+      GATE["crate-graph gate"]
+    end
+  end
 
   OPER --> CADENCE
   CADENCE -- "dispatch a unit" --> JOURNAL
@@ -61,7 +81,7 @@ flowchart LR
   HOST --- X1
   JOURNAL -- "land" --> X2
   ALLOW --- X3
-  X1 --- READ
+  X1 --- READP
   X2 --> STORE
   X3 --- ENF
   CALLER -- "tool protocol · SQL · HTTP" --> FACE
@@ -70,7 +90,7 @@ flowchart LR
   ENF -- "row path" --> STORE
   FACE -- "inference egress" --> MODEL
   STORE <-- "push · pull" --> BUCKET
-  ASSURE -. "checks every edge" .-> CROSS
+  GATE -. "checks every edge" .-> CROSS
 ```
 
 ## compose
@@ -136,20 +156,21 @@ Profiles, the domain crate they share, and the dependency edges the gates raise 
 ```mermaid
 flowchart TD
   CLI["contextful-cli · the contextful binary · wiring per profile"]
-  EDGE["contextful-edge · read replica"]
-  FULL["contextful-full · daemon"]
-  CTRL["contextful-control · control plane"]
   CORE["contextful-core · domain types + ports · no I/O"]
   ADAPT["adapter crates"]
-  NATIVE["native connectors · bucket sync · read-only SQL"]
-  DAEMON["engine · scheduler · component host · sidecars · tool server · pg-catalog"]
-  CRDT["CRDT library"]
   COMP["component connector"]
 
+  subgraph EDGE["contextful-edge · read replica"]
+    NATIVE["native connectors · bucket sync · read-only SQL"]
+  end
+  subgraph FULL["contextful-full · daemon"]
+    DAEMON["engine · scheduler · component host<br/>sidecars · tool server · pg-catalog"]
+  end
+  subgraph CTRL["contextful-control · control plane"]
+    CRDT["CRDT library"]
+  end
+
   CLI -- "build-time feature bundle" --> EDGE & FULL & CTRL
-  EDGE --> NATIVE
-  FULL --> DAEMON
-  CTRL --> CRDT
   EDGE & FULL & CTRL --> CORE
   ADAPT -- "implements ports" --> CORE
   CORE -. "TopologyDependencyInversion" .-x ADAPT
@@ -180,28 +201,30 @@ against the reference target. Each provider's shapes are data under `spec/target
 ```mermaid
 flowchart LR
   DECL["engine binary + contextful.toml"]
-  TP["target profile · provider primitives per role"]
   UNSUP["TargetShapeUnsupported"]
-  CP["control-plane target · cadence tick · reconciler · durable orchestrator · single-writer catalog"]
-  WK["worker target · accept job · run to completion · report"]
-  FN["function-class target · edge profile only"]
-  CAP["15 min wall-clock cap · no first-time backfill · no component connector"]
-  REF["reference target · one process · ./.contextful/"]
-  CMD["stateless command"]
-  DMN["daemon · SIGHUP reload"]
-  CLU["cluster of daemons · one shared catalog"]
+  CAP["15 min wall-clock cap · no first-time backfill<br/>no component connector"]
   PAR["ParityDivergence"]
+
+  subgraph TP["target profile · provider primitives per role"]
+    CP["control-plane target · cadence tick · reconciler<br/>durable orchestrator · single-writer catalog"]
+    WK["worker target · accept job · run to completion · report"]
+    FN["function-class target · edge profile only"]
+  end
+
+  subgraph SELF["self-hosted"]
+    REF["reference target · one process · ./.contextful/"]
+    CMD["stateless command"]
+    DMN["daemon · SIGHUP reload"]
+    CLU["cluster of daemons · one shared catalog"]
+  end
 
   DECL --> TP
   TP -. "claims a missing shape" .-> UNSUP
-  TP --> CP
-  TP --> WK
   CP -- "dispatch" --> WK
   WK -- "report" --> CP
-  TP --> FN
   FN -- "execution runs on" --> WK
   CAP -. "recorded in" .-> TP
-  DECL -- "self-hosted shapes" --> REF & CMD & DMN & CLU
+  DECL -- "self-hosted shapes" --> SELF
   CP -- "24 h soak · byte compare of parts" --> REF
   REF -. "first differing part" .-> PAR
 ```
@@ -230,8 +253,10 @@ The deploy-time posture probe, then a request through the two hops.
 sequenceDiagram
   participant D as deploy
   participant C as caller
-  participant H as routing hop
-  participant R as retrieval container
+  box published store
+    participant H as routing hop
+    participant R as retrieval container
+  end
   participant O as object storage
 
   D->>H: anonymous GET /
@@ -301,18 +326,30 @@ flowchart LR
   subgraph OPS["single-writer operations"]
     LROW["lease row · fence plus one"]
     CUR["cursor compare-and-swap"]
-    PTR["store · pointer commit"]
-    LA["store · lease acquire"]
-    CL["store · commit log"]
-    MAN["store · bucket manifest CAS"]
-    APPLY["surface · apply claims a version"]
+    subgraph STOREOPS["store"]
+      PTR["pointer commit"]
+      LA["lease acquire"]
+      CL["commit log"]
+      MAN["bucket manifest CAS"]
+    end
+    subgraph SURFOPS["surface"]
+      APPLY["apply claims a version"]
+    end
   end
   PRIM["linearizable conditional write"]
   PORT["Catalog port"]
-  LOCAL["local catalog file · single node"]
-  PG["Postgres via pg-catalog · self-hosted cluster"]
-  SQLITE["per-object SQLite · managed edge"]
-  MPG["managed Postgres · managed cloud"]
+  subgraph NODE1["single node"]
+    LOCAL["local catalog file"]
+  end
+  subgraph CLUSTER["self-hosted cluster"]
+    PG["Postgres via pg-catalog"]
+  end
+  subgraph MEDGE["managed edge"]
+    SQLITE["per-object SQLite"]
+  end
+  subgraph MCLOUD["managed cloud"]
+    MPG["managed Postgres"]
+  end
   WEAK["ConditionalWriteUnsupported at open"]
   STALE["LeaseFenced"]
 

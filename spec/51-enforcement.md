@@ -22,27 +22,44 @@ The three layers of the reference monitor and the contracts feeding each:
 
 ```mermaid
 flowchart LR
-  SRC["source values"] --> W["writer"]
+  SRC["source values"]
+  AA["admitted authority"]
+  ZONE["caller zone, per request"]
+  subgraph RM["reference monitor"]
+    direction TB
+    subgraph L1["write-time removal"]
+      W["writer"] --> RED["redact: rule set per pipeline"]
+    end
+    subgraph L2["redistribution bound"]
+      PUSH["push"] --> WH{"redistribution flag cleared?"}
+    end
+    subgraph L3["query-time restriction"]
+      REL["registered relation<br/>filter-rows · mask · place"]
+    end
+  end
+  subgraph STORE["store"]
+    PARTS[("columnar parts")]
+  end
+  subgraph DISC["disclosure"]
+    SJ["mirrored permission semi-join"]
+  end
+  subgraph READ["read"]
+    RS["statements · retrieval arms"]
+  end
+  BKT[("bucket")]
+  EDGE["serving edge: filter by<br/>the pulling credential's grants"]
+  SRC --> W
   W -- "credential-shaped value" --> RES["EnforceCredentialShapedValue"]
-  subgraph L1["write-time removal"]
-    W --> RED["redact: rule set per pipeline"]
-  end
-  RED --> PARTS[("store contract:<br/>columnar parts")]
-  subgraph L2["redistribution bound"]
-    PUSH["push"] --> WH{"redistribution flag cleared?"}
-  end
+  RED --> PARTS
   PARTS --> PUSH
   WH -- "yes: withheld, no manifest entry" --> OUT["not in the bucket"]
-  WH -- no --> BKT[("bucket")]
-  BKT --> EDGE["serving edge: filter by<br/>the pulling credential's grants"]
-  subgraph L3["query-time restriction"]
-    REL["registered relation<br/>filter-rows · mask · place"]
-  end
+  WH -- no --> BKT
+  BKT --> EDGE
   PARTS --> REL
-  AA["admitted authority"] --> REL
-  VIS["disclosure contract:<br/>mirrored permission semi-join"] --> REL
-  ZONE["caller zone, per request"] --> REL
-  REL --> READ["read contract:<br/>statements · retrieval arms"]
+  AA --> REL
+  SJ --> REL
+  ZONE --> REL
+  REL --> RS
 ```
 
 ## redact

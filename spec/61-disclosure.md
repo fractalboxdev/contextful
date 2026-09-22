@@ -22,11 +22,18 @@ flowchart LR
   MODE{"set-mode"} -- "single operator" --> SO["write-time disclosure policy<br/>offline diagnostic"]
   MODE -- "clean room" --> CR["per-owner subtrees, prefixes, keys<br/>per-pair peppers"]
   CALLER["releasing principal"] -- "template id + typed arguments" --> TPL["reviewed template"]
-  AUTH["authority contract:<br/>template allowlist"] --> TPL
+  subgraph AUTH["authority"]
+    TA["template allowlist"]
+  end
+  subgraph RUN["run: journaled"]
+    REL["release job"]
+  end
+  UNITS["contributing units"]
+  TA --> TPL
   SO --> REL
   CR --> REL
-  TPL --> REL["release job<br/>run contract: journaled"]
-  UNITS["contributing units"] --> REL
+  TPL --> REL
+  UNITS --> REL
   REL --> SUP["suppress: size floor · dominance"]
   SUP --> PUB[("published derived table<br/>__suppressed__ sentinel")]
   PUB --> COH["bound-cohort: per-individual row, singleton cohort"]

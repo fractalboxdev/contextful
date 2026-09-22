@@ -20,19 +20,39 @@ Mirrored permission state, from the source's permission endpoint to the reader's
 
 ```mermaid
 flowchart LR
-  PACK["pack: access mapping, fidelity,<br/>budget and cadence defaults"] --> VB["visibility block<br/>per content table"]
+  PACK["pack: access mapping, fidelity,<br/>budget and cadence defaults"]
+  SRC["source permission endpoint"]
+  FED["federated source, queried live<br/>under the reader's credential"]
+  subgraph RUN["run: journaled run path"]
+    SWEEP["acl_sweep<br/>full · incremental · webhook"]
+  end
+  subgraph AUTH["authority"]
+    AA["admitted subject"]
+  end
+  subgraph DISC["disclosure"]
+    VB["visibility block<br/>per content table"]
+    AT[("access tables<br/>resources · grants · principals ·<br/>group members · identity links ·<br/>tombstones · freshness")]
+    REACH["reach: reachable resource set"]
+    STALE{"bound-staleness:<br/>lag within max_acl_staleness?"}
+    DEG["VisibilityAccessStale"]
+    SJ["semi-join compiled into<br/>the registered view"]
+  end
+  subgraph READ["read"]
+    RS["statements · retrieval arms · templates"]
+  end
+  PACK --> VB
   PACK --> SWEEP
-  SRC["source permission endpoint"] --> SWEEP["acl_sweep<br/>full · incremental · webhook"]
-  SWEEP -- "run contract: journaled run path" --> AT[("access tables<br/>resources · grants · principals ·<br/>group members · identity links ·<br/>tombstones · freshness")]
-  AA["authority contract:<br/>admitted subject"] --> REACH["reach: reachable resource set"]
+  SRC --> SWEEP
+  SWEEP --> AT
+  AA --> REACH
   AT --> REACH
-  AT -- "watermark_at" --> STALE{"bound-staleness:<br/>lag within max_acl_staleness?"}
+  AT -- "watermark_at" --> STALE
   VB --> STALE
-  STALE -- no --> DEG["VisibilityAccessStale"]
-  STALE -- yes --> SJ["semi-join compiled into<br/>the registered view"]
+  STALE -- no --> DEG
+  STALE -- yes --> SJ
   REACH --> SJ
-  SJ --> READ["read contract:<br/>statements · retrieval arms · templates"]
-  FED["federated source, queried live<br/>under the reader's credential"] -.-> READ
+  SJ --> RS
+  FED -.-> RS
 ```
 
 ## mirror

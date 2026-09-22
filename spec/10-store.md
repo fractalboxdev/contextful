@@ -29,10 +29,18 @@ writing into it and reading from it.
 
 ```mermaid
 flowchart LR
-  RUNC["run · pipeline landing"]
-  READC["read · query face"]
-  ENF["authority · enforcement stack"]
-  COORD["topology · coordinate"]
+  subgraph RUNC["run"]
+    LAND["pipeline landing"]
+  end
+  subgraph READC["read"]
+    QFACE["query face"]
+  end
+  subgraph AUTHC["authority"]
+    ENF["enforcement stack"]
+  end
+  subgraph TOPO["topology"]
+    COORD["coordinate"]
+  end
 
   subgraph ROOT["store root · .contextful/context/&lt;project&gt;/"]
     RUNS["run parts + run manifest"]
@@ -45,11 +53,13 @@ flowchart LR
     MACHINE[("machine.sqlite · journal · cursor cache · lease rows")]
   end
 
-  BUCKET[("bucket · &lt;prefix&gt;/manifest.json")]
+  subgraph BUCKET["bucket"]
+    BMAN[("&lt;prefix&gt;/manifest.json")]
+  end
   REPLICA["replica · read-only"]
 
-  RUNC -- "conditional create _manifest.json" --> RUNS
-  RUNC -- "leased pipeline" --> LOG
+  LAND -- "conditional create _manifest.json" --> RUNS
+  LAND -- "leased pipeline" --> LOG
   RUNS --> FOLD
   FOLD -- "staging, then If-Match" --> SNAP
   FOLD --> PTR
@@ -57,8 +67,8 @@ flowchart LR
   RUNS -. "merged schema" .-> SCHEMA
   PTR & RUNS & SCHEMA -. "rebuild-catalog" .-> DERIVED
   MACHINE -. "lease port" .- COORD
-  READC -- "explicit sorted file list" --> PTR
-  READC -- "admission value" --> ENF
+  QFACE -- "explicit sorted file list" --> PTR
+  QFACE -- "admission value" --> ENF
   BUCKET <-- "push · pull by digest" --> ROOT
   BUCKET -- "refresh" --> REPLICA
 ```
@@ -197,9 +207,13 @@ A fold pass under the compaction lease, from run selection to the pointer commit
 ```mermaid
 sequenceDiagram
   participant F as fold pass
-  participant L as compaction lease
-  participant S as staging directory
-  participant P as _pointer.json
+  box catalog
+    participant L as compaction lease
+  end
+  box store root
+    participant S as staging directory
+    participant P as _pointer.json
+  end
   participant R as reader
 
   F->>L: acquire, fence N
@@ -304,8 +318,10 @@ A push: digest, upload, then the bucket-manifest commit by merge and compare-and
 ```mermaid
 sequenceDiagram
   participant W as writer
-  participant B as bucket objects
-  participant M as manifest.json
+  box bucket
+    participant B as bucket objects
+    participant M as manifest.json
+  end
 
   W->>W: walk store root, digest each file
   W->>M: read remote manifest + ETag
@@ -339,8 +355,10 @@ A pull converges on the bucket manifest and writes each table pointer last.
 ```mermaid
 sequenceDiagram
   participant P as puller
-  participant M as manifest.json
-  participant B as bucket objects
+  box bucket
+    participant M as manifest.json
+    participant B as bucket objects
+  end
 
   loop up to 3 attempts
     P->>M: fetch manifest

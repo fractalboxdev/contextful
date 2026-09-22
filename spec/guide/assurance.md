@@ -17,9 +17,16 @@ and the read path's quality into a red or green verdict.
 
 ```mermaid
 flowchart LR
-  SPEC["specification"] --> MODEL["Lean models"] --> AUDIT["assumption audit"]
+  SPEC["specification"] --> MODEL
+  subgraph lean["Lean packages"]
+    MODEL["Lean models"]
+  end
+  subgraph rust["Rust engine"]
+    ENGINE["engine and store"]
+  end
+  MODEL --> AUDIT["assumption audit"]
   MODEL --> DIFF["differential harness"]
-  ENGINE["engine and store"] --> DIFF
+  ENGINE --> DIFF
   AUDIT --> GATE["gate"]
   DIFF --> GATE
   EVAL["quality harness"] --> GATE

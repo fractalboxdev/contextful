@@ -21,16 +21,31 @@ The two connector forms, the host between them and the outside, and the contract
 
 ```mermaid
 flowchart LR
-  PKG["package · in-tree, path, https, oci + pin"] --> GUEST["component guest · sandboxed"]
-  NATIVE["compiled-in source"]
-  GUEST -->|"outgoing HTTP, logging, wall clock"| MED["host mediation point"]
+  PKG["package · in-tree, path, https, oci + pin"] --> GUEST
+  subgraph ENGINE["engine process"]
+    subgraph SANDBOX["component sandbox"]
+      GUEST["component guest"]
+    end
+    NATIVE["compiled-in source"]
+    MED["host mediation point"]
+    subgraph RUNC["run contract"]
+      RUN["runner"]
+      LAND["land path"]
+    end
+  end
+  LIM["limiter"]
+  VEND["vendor API"]
+  subgraph TOPO["topology contract"]
+    MODEL["model endpoint"]
+  end
+  GUEST -->|"outgoing HTTP, logging, wall clock"| MED
   NATIVE --> MED
-  MED <-->|"acquire, report"| LIM["limiter"]
-  MED -->|"allowlist, attach · 41-secrets"| VEND["vendor API"]
-  MED -->|"infer · fenced data"| MODEL["model endpoint · topology contract"]
-  GUEST -->|"batches + position"| RUN["runner · run contract"]
+  MED <-->|"acquire, report"| LIM
+  MED -->|"allowlist, attach · 41-secrets"| VEND
+  MED -->|"infer · fenced data"| MODEL
+  GUEST -->|"batches + position"| RUN
   NATIVE -->|"batches + position"| RUN
-  RUN --> LAND["land path · run contract"]
+  RUN --> LAND
 ```
 
 ## export
@@ -162,10 +177,16 @@ Reservation against a shared vendor quota: declaration, binding, permits, denial
 
 ```mermaid
 sequenceDiagram
-  participant G as guest or compiled-in source
-  participant H as host mediation point
-  participant L as limiter
-  participant V as vendor
+  box engine
+    participant G as guest or compiled-in source
+    participant H as host mediation point
+  end
+  box limiter
+    participant L as limiter
+  end
+  box vendor
+    participant V as vendor
+  end
   G->>H: outbound request
   H->>H: allowlist check, a refused request spends no permit
   H->>L: POST acquire · quota, class, permits
@@ -444,20 +465,40 @@ One outbound request, end to end:
 
 ```mermaid
 flowchart LR
-  G["guest source"] -->|outgoing-http| M["host mediation point"]
-  N["compiled-in source"] --> M
-  M --> A{"host on allowlist?"}
-  A -->|no| R1["SecretUnpermittedRequest"]
-  A -->|yes| D{"address public?"}
-  D -->|no| R0["ConnectorPrivateAddress"]
-  D -->|yes| L{"limiter declared?"}
-  L -->|no| H["attach bound headers"]
-  L -->|yes| Q["acquire permit"]
-  Q -->|denied| R2["synthesized 429"]
-  Q -->|unreachable| R3["ConnectorUnmetered"]
+  subgraph ENGINE["engine process"]
+    subgraph SANDBOX["component sandbox"]
+      G["guest source"]
+    end
+    N["compiled-in source"]
+    M["host mediation point"]
+    A{"host on allowlist?"}
+    R1["SecretUnpermittedRequest"]
+    D{"address public?"}
+    R0["ConnectorPrivateAddress"]
+    L{"limiter declared?"}
+    Q["acquire permit"]
+    R2["synthesized 429"]
+    R3["ConnectorUnmetered"]
+    H["attach bound headers"]
+    S{"TLS or loopback?"}
+    R4["SecretCleartextEndpoint"]
+    P["origin check on every hop"]
+  end
+  V["vendor, at the vetted address"]
+  G -->|outgoing-http| M
+  N --> M
+  M --> A
+  A -->|no| R1
+  A -->|yes| D
+  D -->|no| R0
+  D -->|yes| L
+  L -->|no| H
+  L -->|yes| Q
+  Q -->|denied| R2
+  Q -->|unreachable| R3
   Q -->|granted| H
-  H --> S{"TLS or loopback?"}
-  S -->|no| R4["SecretCleartextEndpoint"]
-  S -->|yes| V["vendor, at the vetted address"]
-  V --> P["origin check on every hop"]
+  H --> S
+  S -->|no| R4
+  S -->|yes| V
+  V --> P
 ```
