@@ -20,6 +20,7 @@ erase            = {}
 receipt          = {}
 
 [error]
+DisclosureExactPerPerson         = { clause = "disclosure.bound-cohort.exact-figures", gloss = "A per-person table declares exact figures." }
 VisibilityUnboundTable           = { clause = "disclosure.mirror.unbound-table", gloss = "A table on an organization-wide face carries no visibility block." }
 VisibilityBindingIncomplete      = { clause = "disclosure.mirror.incomplete-binding", gloss = "A servable binding lacks a declared sweep or a staleness budget." }
 VisibilityUngappedStream         = { clause = "disclosure.sweep.ungapped-stream", gloss = "The watermark advanced from an event stream not declared gap-detectable." }

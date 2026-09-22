@@ -125,6 +125,8 @@ The line between a per-person table and a cohort table, and the floor a cohort r
   *A-disclosure*
 - `singleton-cohort` — A cohort key whose grain resolves to one person raises `DisclosureSingletonCohort` at declaration, before any row lands under it.
   *A-disclosure*
+- `exact-figures` — A policy declaring `figures = "exact"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `"noised"`, and exact figures publish only from a `cohort` table.
+  *A-disclosure*
 
 ## Shapes
 
@@ -137,6 +139,7 @@ contributor_key       = "tenant_id"
 min_group_size        = 5
 max_contributor_share = 0.4
 emit_sentinel         = true
+figures               = "noised"   # the default; "exact" only on a cohort table
 forbidden_columns     = ["tenant_id", "subject_id", "account_email"]
 ```
 

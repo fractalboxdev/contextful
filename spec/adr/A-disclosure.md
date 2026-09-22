@@ -33,12 +33,12 @@ Consequences: one judgment — the family — per source; authorization has one 
 
 ## Aggregate disclosure is enforced at build with noisy thresholding and an up-front budget reservation
 
-`disclosure.release` stages no breaching cell: `disclosure.suppress` selects partitions by a noisy threshold over distinct-contributor counts, and every published figure carries noise. A release reserves per-unit spend for every contributing unit in one catalog transaction before reading, refusing with `DisclosureUnitBudgetExhausted`. `max_contributor_share` withholds a concentrated group. A table is `per-person` or `cohort`; `DisclosureCohortWidening` and `DisclosureSingletonCohort` guard cohorts.
+`disclosure.release` stages no breaching cell: `disclosure.suppress` selects partitions by a noisy threshold over distinct-contributor counts, and a published figure carries noise whose strength follows the declared per-run spend. `disclosure.bound-cohort` admits exact figures from a `cohort` table only; a reader entitled to every contributing row reads them as an ordinary read. A release reserves per-unit spend for every contributing unit in one catalog transaction before reading, refusing with `DisclosureUnitBudgetExhausted`. `max_contributor_share` withholds a concentrated group. A table is `per-person` or `cohort`; `DisclosureCohortWidening` and `DisclosureSingletonCohort` guard cohorts.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Build-time enforcement, noisy partition selection, reservation up front *(chosen)* | — | A policy edit is a rebuild; published figures carry noise; an exhausted unit blocks every release naming it. |
-| Suppress on exact counts, then add noise | Privacy guarantee | Cell presence discloses whether a contributor crossed the threshold. |
+| Build-time enforcement, noisy partition selection, exact figures from cohort tables only, reservation up front *(chosen)* | — | A policy edit is a rebuild; per-person figures carry noise; an exhausted unit blocks every release naming it. |
+| Suppress on exact counts, or a policy switch to exact figures | Privacy guarantee | Cell presence discloses whether a contributor crossed the threshold; whoever edits a policy removes the protection. |
 | Debit spend after the release | Concurrency | Two concurrent releases each observe budget the other spends. |
 | Skip exhausted units silently | Truthfulness | A result reads as complete while its shortfall reveals which units spent their budget. |
 | A query-time aggregate evaluator | Survival across read paths | Reimplemented per surface; cannot recover per-contributor mass from a rollup. |
@@ -48,17 +48,16 @@ Revisit: lookalike segment release settles its audience floor, readback rule and
 
 ## A cross-owner release runs only when the boundary is enforced below the engine
 
-`disclosure.set-mode` requires of a cross-owner store per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys, else `DisclosureCleanRoomPreconditionUnmet`. A hashed join keys on a per-pair escrowed pepper rotated per join; a static pepper raises `DisclosureStaticPepper`. A segment releases identifier, size, coarse cells and an activation handle; member readback refuses. A pool over other tenants' end users requires a recorded consent contract.
+`disclosure.set-mode` requires of a cross-owner store per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys, else `DisclosureCleanRoomPreconditionUnmet`. A hashed join keys on a per-pair escrowed pepper rotated per join; a static pepper raises `DisclosureStaticPepper`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Store-enforced preconditions, per-pair pepper, activation-only segments, pool-keyed posture *(chosen)* | — | Stores unable to express per-prefix writes are ruled out; pepper escrow is operational work; a requester cannot audit the segment it activates. |
+| Store-enforced preconditions, per-pair pepper *(chosen)* | — | Stores unable to express per-prefix writes are ruled out; pepper escrow is operational work. |
 | Document the protections as operator responsibilities | Detectability | Failure arrives silently as corrupted data or a forged grant. |
 | Accept two of three preconditions | Coverage | The third path stands fully open. |
 | A static pepper shared across joins | Pepper compromise | One recovered pepper reverses every join, both directions. |
-| Posture keyed on the scoring method | Boundary crossing | Identical mathematics over a different pool changes who discloses to whom. |
 
-Consequences: a segment is size-gated and opaque, not differentially private; the engine verifies a consent contract's binding, not its legal validity.
+Consequences: a cross-owner join never reuses a pepper; whether segments release, and under which consent, stays open under `disclosure.release`.
 Revisit: private set intersection replaces the pepper; an attested enclave join serves very-high-risk pairings.
 
 ## The hash chain is the attestable record

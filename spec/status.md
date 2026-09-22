@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 91 | 0 | 91 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
 | `corpus` | 1 | 9 | 65 | 26 | 7 | 0 | 25 | 0 | 25 |
-| `disclosure` | 3 | 16 | 64 | 55 | 9 | 13 | 0 | 0 | 0 |
+| `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 14 | 16 | 0 | 0 | 0 |
-| `run` | 3 | 24 | 278 | 79 | 34 | 25 | 0 | 0 | 0 |
+| `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 144 | 1400 | 447 | 161 | 102 | 165 | 0 | |
+| **total** | 19 | 144 | 1401 | 448 | 161 | 101 | 165 | 0 | |
 
 Decision records: 18.
 
@@ -36,7 +36,7 @@ Decision records: 18.
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
 | 11 — The derive tier | 7 | 58 | 0 | absent |
 | 12 — The console | 11 | 30 | 0 | absent |
-| 13 — Disclosure | 5 | 20 | 0 | absent |
+| 13 — Disclosure | 5 | 21 | 0 | absent |
 | 14 — Assurance | 5 | 85 | 4 | open |
 
 Unscheduled operations: 9.

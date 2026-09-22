@@ -231,7 +231,7 @@ The execution owner a scope holds and the connector build it pins while pending.
   *A-connector*
 - `pin-recovery` — Restoring the recorded build and resuming to completion clears a pending owner; an explicit chunk rewind retires the owners its window covers.
 - `scope-independence` — A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.
-- `pin-release` — `success`, and a failure that landed zero batches, release the owner; every other status holds it.
+- `pin-release` — `success`, and a failure that wrote no batch, release the owner; every other status holds it.
 - `admission-pin` — A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.
   *A-connector*
 - `backpressure` — A source yields a stream of batches the runner pulls; the run path holds no unbounded buffer between source and destination.
@@ -253,7 +253,6 @@ flowchart TD
   CLOSE -->|"any other status"| HOLD["hold the owner"]
 ```
 
-unsettled: Does a batch written durably but uncommitted count as landed when a failed run decides whether it releases its owner? owner: run-path affects: run.own
 
 ## cancel
 
