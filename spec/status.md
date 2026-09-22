@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 13 | 174 | 46 | 18 | 13 | 49 | 0 | 49 |
-| `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 70 | 0 | 70 |
+| `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 91 | 0 | 91 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
 | `corpus` | 1 | 9 | 64 | 25 | 7 | 0 | 25 | 0 | 25 |
 | `disclosure` | 3 | 16 | 63 | 54 | 9 | 12 | 0 | 0 | 0 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 144 | 1396 | 444 | 160 | 100 | 144 | 0 | |
+| **total** | 19 | 144 | 1396 | 444 | 160 | 100 | 165 | 0 | |
 
 Decision records: 18.
 
@@ -24,7 +24,7 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 15 | 3 | passing |
-| 1 — The authority core | 14 | 190 | 112 | open |
+| 1 — The authority core | 14 | 190 | 133 | passing |
 | 2 — The store | 8 | 111 | 0 | absent |
 | 3 — The run path | 11 | 169 | 0 | absent |
 | 4 — Ingest | 22 | 328 | 0 | absent |
@@ -96,7 +96,10 @@ Unscheduled operations: 9.
 | `assurance.test.test-first` | `spec/pins.toml` | performed |
 | `authority.attenuate.expiry-extended` | `crates/contextful-core/tests/integration/attenuate.rs::expiry_extended` | performed |
 | `authority.attenuate.narrowing` | `crates/contextful-core/tests/integration/attenuate.rs::narrowing` | performed |
+| `authority.attenuate.offline` | `crates/contextful-policy/tests/integration/attenuate.rs::a_holder_derives_a_child_offline_and_the_parent_stays_intact` | performed |
+| `authority.attenuate.per-sub-agent` | `crates/contextful-policy/tests/integration/attenuate.rs::each_sub_agent_child_binds_that_sub_agents_own_key` | performed |
 | `authority.attenuate.tenant-dropped` | `crates/contextful-core/tests/integration/attenuate.rs::tenant_dropped` | performed |
+| `authority.attenuate.truncation` | `crates/contextful-policy/tests/integration/attenuate.rs::a_chain_truncated_to_a_broader_prefix_verifies_as_nothing` | performed |
 | `authority.attenuate.widens` | `crates/contextful-core/tests/integration/attenuate.rs::widens` | performed |
 | `authority.exchange.assertion-invalid` | `crates/contextful-policy/tests/integration/exchange.rs::a_signed_assertion_failing_any_check_is_invalid_and_mints_nothing` | performed |
 | `authority.exchange.audience` | `crates/contextful-core/tests/integration/exchange.rs::the_minted_audience_falls_back_to_the_persisted_default` | performed |
@@ -142,7 +145,19 @@ Unscheduled operations: 9.
 | `authority.issue.principal-required` | `crates/contextful-core/tests/integration/issue.rs::a_write_or_execute_mint_without_a_principal_refuses` | performed |
 | `authority.issue.replica-mint` | `crates/contextful-core/tests/integration/issue.rs::a_mint_on_a_replica_refuses` | performed |
 | `authority.issue.unauthorized-mint` | `crates/contextful-core/tests/integration/issue.rs::a_mint_request_presenting_no_admin_grant_refuses` | performed |
+| `authority.issue.unresolvable-key` | `crates/contextful-policy/tests/integration/issue.rs::an_issuer_key_reference_resolving_to_nothing_is_refused_and_fabricates_no_key` | performed |
 | `authority.issue.zone-wildcard` | `crates/contextful-core/tests/integration/issue.rs::a_subject_declaring_a_wildcard_zone_refuses` | performed |
+| `authority.profile.appended-block` | `crates/contextful-policy/tests/integration/profile.rs::an_appended_block_narrows_or_adds_nothing` | performed |
+| `authority.profile.declared-field` | `crates/contextful-policy/tests/integration/profile.rs::a_refused_restriction_field_stays_declared_and_parsed` | performed |
+| `authority.profile.declared-scope` | `crates/contextful-policy/tests/integration/profile.rs::introspection_reports_the_declared_scope_without_evaluating_it` | performed |
+| `authority.profile.delegation-profile` | `crates/contextful-policy/tests/integration/profile.rs::a_credential_is_one_library_chain_whose_every_block_the_profile_reads` | performed |
+| `authority.profile.evaluator-bound` | `crates/contextful-policy/tests/integration/profile.rs::the_evaluator_admits_no_third_party_block_rule_or_regex_and_refuses_input_past_its_ceiling` | performed |
+| `authority.profile.fact-ceiling` | `crates/contextful-policy/tests/integration/profile.rs::one_authorization_holds_at_most_1000_facts` | performed |
+| `authority.profile.reserved-fact` | `crates/contextful-policy/tests/integration/profile.rs::a_token_block_introducing_a_reserved_fact_is_refused` | performed |
+| `authority.profile.scoped-session` | `crates/contextful-policy/tests/integration/profile.rs::a_statement_over_two_tables_needs_one_grant_covering_both` | performed |
+| `authority.profile.unevaluated-restriction` | `crates/contextful-policy/tests/integration/profile.rs::a_restriction_with_no_read_evaluator_is_refused_at_mint_derivation_and_admission` | performed |
+| `authority.profile.unrecognized-element` | `crates/contextful-policy/tests/integration/profile.rs::an_element_the_profile_does_not_name_is_refused` | performed |
+| `authority.profile.version-unsupported` | `crates/contextful-policy/tests/integration/profile.rs::a_profile_version_outside_the_supported_set_is_refused` | performed |
 | `authority.revoke.denylist` | `crates/contextful-core/tests/integration/revoke.rs::a_denylist_entry_ages_out_once_no_live_key_version_verifies_it` | performed |
 | `authority.revoke.epoch` | `crates/contextful-core/tests/integration/revoke.rs::a_scoped_epoch_invalidates_only_its_slice` | performed |
 | `authority.revoke.format-withdrawn` | `crates/contextful-core/tests/integration/revoke.rs::a_withdrawn_format_refuses_from_its_cutover_until_explicitly_restored` | performed |
@@ -151,7 +166,13 @@ Unscheduled operations: 9.
 | `authority.revoke.revoked` | `crates/contextful-core/tests/integration/revoke.rs::a_denylisted_or_stale_epoch_credential_is_revoked` | performed |
 | `authority.revoke.rotation-grace` | `crates/contextful-core/tests/integration/revoke.rs::a_retiring_key_verifies_through_a_grace_window_validated_against_issuance` | performed |
 | `authority.revoke.short-grace` | `crates/contextful-core/tests/integration/revoke.rs::a_grace_window_shorter_than_the_effective_ceiling_refuses` | performed |
+| `authority.verify.admitted-authority` | `crates/contextful-policy/tests/integration/verify.rs::verification_yields_an_admitted_value_with_the_normalized_subject_and_grants` | performed |
+| `authority.verify.audience-mismatch` | `crates/contextful-policy/tests/integration/verify.rs::a_declared_audience_refuses_another_or_none_and_an_undeclared_one_checks_nothing` | performed |
+| `authority.verify.bad-signature` | `crates/contextful-policy/tests/integration/verify.rs::any_failing_block_signature_admits_nothing_not_even_a_verified_prefix` | performed |
 | `authority.verify.clock-skew` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_issued_more_than_thirty_seconds_ahead_refuses` | performed |
+| `authority.verify.effect-boundary` | `crates/contextful-policy/tests/integration/verify.rs::each_effect_boundary_re_reads_expiry_revocation_and_profile_version` | performed |
+| `authority.verify.expired` | `crates/contextful-policy/tests/integration/verify.rs::a_credential_past_its_expiry_is_refused_at_admission_and_every_later_boundary` | performed |
+| `authority.verify.format-interface` | `crates/contextful-policy/tests/integration/verify.rs::issue_attenuate_verify_and_introspect_run_through_one_interface` | performed |
 | `authority.verify.key-set` | `crates/contextful-policy/tests/integration/keyset.rs::a_checkpoint_accepts_comma_separated_pins_or_a_published_key_route` | performed |
 | `authority.verify.key-set-refresh` | `crates/contextful-policy/tests/integration/keyset.rs::a_published_key_set_refreshes_every_300_s_single_flight_and_once_on_signature_failure` | performed |
 | `authority.verify.key-set-stale` | `crates/contextful-policy/tests/integration/keyset.rs::a_last_known_good_set_serves_under_one_hour_then_raises_key_set_stale` | performed |
