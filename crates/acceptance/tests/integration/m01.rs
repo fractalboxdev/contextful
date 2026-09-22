@@ -21,7 +21,6 @@ fn refused(out: &Output, error: &str) {
 }
 
 #[test]
-#[ignore = "milestone 1 is open"]
 fn m01_authority_core() {
     let cf = bin("contextful");
     let p = GitRepo::init();
