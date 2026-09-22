@@ -1,11 +1,16 @@
 // Reads the spec tree in place: routes, clause anchors and record ids.
 // Imported by astro.config.mjs (markdown plugins) and by pages (navigation).
 import { readdirSync, readFileSync, existsSync } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, join, relative, resolve, sep } from "node:path";
 
-export const SPEC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../spec");
+// Anchored to the Astro project root (apps/docs), the same base the content
+// collections use. `import.meta.url` is not a stable anchor: pages load this module
+// from a bundled chunk whose location differs from src/lib.
+export const SPEC_DIR = resolve(process.cwd(), "../../spec");
 export const ADR_DIR = join(SPEC_DIR, "adr");
+if (!existsSync(join(SPEC_DIR, "terms/contract.toml"))) {
+  throw new Error(`spec/ not found at ${SPEC_DIR}: run the docs build from apps/docs`);
+}
 
 // A clause item: `- \`<subject>\` — <statement>`, its Why on an optional indented line.
 export const CLAUSE_ITEM = /^- `([a-z0-9-]+)` — (.+)$/;
