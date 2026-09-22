@@ -1,6 +1,7 @@
 //! Pure domain types and the ports adapters implement.
 
 pub mod attenuate;
+pub mod claims;
 pub mod error;
 pub mod exchange;
 pub mod grant;
