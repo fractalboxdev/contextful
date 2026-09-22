@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 13 | 174 | 46 | 18 | 13 | 36 | 0 | 36 |
+| `assurance` | 2 | 13 | 174 | 46 | 18 | 13 | 49 | 0 | 49 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 70 | 0 | 70 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
 | `corpus` | 1 | 9 | 64 | 25 | 7 | 0 | 25 | 0 | 25 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 144 | 1396 | 444 | 160 | 100 | 131 | 0 | |
+| **total** | 19 | 144 | 1396 | 444 | 160 | 100 | 144 | 0 | |
 
 Decision records: 18.
 
@@ -24,7 +24,7 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 15 | 3 | passing |
-| 1 — The authority core | 14 | 190 | 99 | open |
+| 1 — The authority core | 14 | 190 | 112 | open |
 | 2 — The store | 8 | 111 | 0 | absent |
 | 3 — The run path | 11 | 169 | 0 | absent |
 | 4 — Ingest | 22 | 328 | 0 | absent |
@@ -70,8 +70,21 @@ Unscheduled operations: 9.
 | `assurance.gate.secret-ciphertext` | `spec/pins.toml` | performed |
 | `assurance.gate.secret-scope` | `spec/pins.toml` | performed |
 | `assurance.model.declared-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_require_stanza_is_refused` | performed |
+| `assurance.model.floor` | `formal/Contextful/Placement.lean::floor` | performed |
+| `assurance.model.layer` | `formal/Contextful/Layer.lean::composed` | performed |
+| `assurance.model.placement-inductive` | `formal/Contextful/Placement.lean::Placement` | performed |
+| `assurance.model.protocol-model` | `formal/protocol/Protocol/Step.lean::step` | performed |
+| `assurance.model.protocol-safety` | `formal/protocol/Protocol/Invariants.lean::protocol_safety` | performed |
 | `assurance.model.toolchain-drift` | `crates/contextful-cli/tests/integration/formal.rs::an_override_toolchain_drifts_from_the_pin` | performed |
+| `assurance.prove.composition-sound` | `formal/Contextful/Layer.lean::composed_sound` | performed |
+| `assurance.prove.effective-policy` | `formal/Contextful/Placement.lean::effective_included_in_both` | performed |
+| `assurance.prove.fail-closed` | `formal/Contextful/Placement.lean::failClosed_floor_rejects_cloud` | performed |
+| `assurance.prove.floor-no-downgrade` | `formal/Contextful/Placement.lean::floor_no_downgrade` | performed |
+| `assurance.prove.narrowing` | `formal/Contextful/Layer.lean::composed_narrows` | performed |
 | `assurance.prove.no-negative-space` | `crates/contextful-cli/tests/integration/formal.rs::a_row_without_negative_space_is_refused` | performed |
+| `assurance.prove.placement-is-a-layer` | `formal/Contextful/Placement.lean::zone_layer_sound` | performed |
+| `assurance.prove.proof-targets` | `formal/Contextful/Authority.lean::authorityMapping_inclusion_and_narrowing` | performed |
+| `assurance.prove.symbolic-inclusion` | `formal/Contextful/Placement.lean::includedIn_iff_placement_inclusion` | performed |
 | `assurance.prove.unbound-target` | `crates/contextful-cli/tests/integration/formal.rs::a_claimed_target_without_a_binding_is_refused` | performed |
 | `assurance.recheck.credential-free` | `crates/contextful-cli/tests/integration/formal.rs::a_credentialed_recheck_is_refused` | performed |
 | `assurance.recheck.report-mismatch` | `crates/contextful-cli/tests/integration/formal.rs::a_recheck_disagreeing_with_the_first_phase_is_refused` | performed |
