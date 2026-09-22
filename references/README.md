@@ -51,3 +51,4 @@ names it by title.
 | [prompt-injection.md](./prompt-injection.md) | Indirect prompt injection and defenses by construction | `connector.infer`, `authority.resist`, `surface.plan-turn`, `surface.ground` |
 | [formal-methods.md](./formal-methods.md) | Model checking, verification-guided development, Rust verification | `assurance.prove`, `assurance.differential-test`, `assurance.scope-claim`, `store.lease`, `run.journal` |
 | [specification-practice.md](./specification-practice.md) | Decision records, requirement syntax and quality, spec-to-test traceability | `corpus.rationale`, `corpus.address`, `corpus.anatomy`, `corpus.state`, `corpus.reference` |
+| [specification-readability.md](./specification-readability.md) | Readable specifications with addressed, test-linked sentences; rendered views, guide layers, one-page cards | `corpus.render`, `corpus.anatomy`, `corpus.reference` |
