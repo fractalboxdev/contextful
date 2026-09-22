@@ -217,7 +217,23 @@ li.clause:target .clause-anchor code { color: var(--accent); }
 .record-ref { font-family: var(--font-mono); font-size: 0.86em; }
 
 figure.diagram { position: relative; margin: 1rem 0; cursor: zoom-in; }
-figure.diagram:hover pre.mermaid { border-color: var(--accent); }
+figure.diagram:hover pre.mermaid,
+figure.merlion-figure:hover { border-color: var(--accent); }
+
+/* Merlion diagrams draw on the page's own background, ink and accent, in both schemes. */
+:root:not([data-theme]) {
+  --merlion-bg: var(--bg);
+  --merlion-fg: var(--fg);
+  --merlion-accent: var(--accent);
+}
+
+figure.merlion-figure {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+}
+figure.merlion-figure > svg { max-width: 100%; height: auto; }
 
 pre.mermaid {
   display: flex;

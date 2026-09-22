@@ -1,6 +1,8 @@
 ---
 import type { MarkdownHeading } from "astro";
 import { navigation } from "../lib/nav";
+import "@fractalboxdev/merlion-themes/merlion-themes.css";
+import "@fractalboxdev/merlion-themes/merlion-font.css";
 import "../styles/site.css";
 
 interface Props {
@@ -139,10 +141,10 @@ const pageTitle = here === "/" ? title : `${title} · Contextful spec`;
         if (view) view.style.width = `${Math.round(natural * scale)}px`;
       };
       const open = (figure: HTMLElement) => {
-        const svg = figure.querySelector<SVGSVGElement>("pre.mermaid svg");
+        const svg = figure.querySelector<SVGSVGElement>(":scope > svg, pre.mermaid svg");
         if (!svg) return;
         view = svg.cloneNode(true) as SVGSVGElement;
-        // Mermaid sizes its SVG to 100% with a max-width; the viewBox carries the drawn size.
+        // Either renderer's viewBox carries the drawn size; the page CSS scales the inline copy.
         view.removeAttribute("width");
         view.style.maxWidth = "none";
         view.style.height = "auto";

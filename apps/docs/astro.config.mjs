@@ -1,4 +1,5 @@
 import { defineConfig } from "astro/config";
+import rehypeMerlion from "@fractalboxdev/merlion-rehype";
 import { remarkCorpus, rehypeCorpus } from "./src/lib/markdown.mjs";
 
 // The dev server answers localhost alone. DOCS_ALLOWED_HOSTS names the exact
@@ -12,11 +13,13 @@ export default defineConfig({
     syntaxHighlight: { type: "shiki", excludeLangs: ["mermaid"] },
     shikiConfig: { themes: { light: "github-light", dark: "github-dark" } },
     remarkPlugins: [remarkCorpus],
-    rehypePlugins: [rehypeCorpus],
+    // Merlion draws flowcharts to inline SVG at build time; rehypeCorpus hands any other
+    // diagram type, which Merlion leaves as code, to mermaid in the browser.
+    rehypePlugins: [[rehypeMerlion, { width: 720, source: "none", viewer: false, fontCss: true, cacheDir: ".merlion" }], rehypeCorpus],
   },
   vite: {
     server: { allowedHosts, fs: { allow: ["../.."] } },
-    // mermaid is loaded on demand, only on pages that carry a diagram.
+    // mermaid is loaded on demand, only on pages that carry a non-flowchart diagram.
     build: { chunkSizeWarningLimit: 3000 },
   },
 });

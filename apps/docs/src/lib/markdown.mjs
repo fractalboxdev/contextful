@@ -8,9 +8,6 @@ const CLAUSE_ID = /^[a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9.-]+$/;
 // `{{clause.id}}` references and bare record ids (P4, D07, A-store).
 const INLINE_REF = /\{\{([a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9.-]+)\}\}|\b(P[1-9]|D\d{2}|A-[a-z]+)\b/g;
 
-const escapeHtml = (s) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
 const sourcePath = (file) => file.path ?? file.history?.[0];
 
 /** Front-matter `contract` of the source file; guides and cards carry one too, so only `spec/NN-*.md` counts. */
@@ -80,24 +77,13 @@ const addressClauses = (tree, contract, owns) => {
 };
 
 /**
- * Rewrites `.md` links to routes, addresses clause items, links `{{id}}` and record ids, and hands each mermaid
- * fence to the client inside a figure whose button opens it full size.
+ * Rewrites `.md` links to routes, addresses clause items, and links `{{id}}` and record ids.
  */
 export function remarkCorpus() {
   return (tree, file) => {
     const { clauses, operations, records } = corpusIndex();
     const from = sourcePath(file);
     const self = from ? routeFor(from) : undefined;
-
-    visit(tree, "code", (node, index, parent) => {
-      if (node.lang !== "mermaid" || !parent) return;
-      parent.children[index] = {
-        type: "html",
-        value:
-          `<figure class="diagram"><pre class="mermaid">${escapeHtml(node.value)}</pre>` +
-          `<button type="button" class="diagram-open" aria-label="Enlarge diagram" title="Enlarge diagram">⤢</button></figure>`,
-      };
-    });
 
     visit(tree, "link", (node) => {
       const m = /^([^:#?]+\.md)(#.*)?$/.exec(node.url);
@@ -150,13 +136,51 @@ export function remarkCorpus() {
   };
 }
 
-/** Wraps each table so a wide one scrolls horizontally instead of the page. */
+const hasClass = (node, name) => {
+  const c = node.properties?.className;
+  return Array.isArray(c) ? c.includes(name) : typeof c === "string" && c.split(/\s+/).includes(name);
+};
+
+const textOf = (node) => (node.type === "text" ? node.value : (node.children ?? []).map(textOf).join(""));
+
+const enlarge = () => ({
+  type: "element",
+  tagName: "button",
+  properties: { type: "button", className: ["diagram-open"], ariaLabel: "Enlarge diagram", title: "Enlarge diagram" },
+  children: [{ type: "text", value: "⤢" }],
+});
+
+/**
+ * Wraps each table so a wide one scrolls horizontally instead of the page. Gives each
+ * Merlion figure the enlarge button; a mermaid block Merlion leaves in place (a diagram
+ * type other than flowchart) becomes a `pre.mermaid` figure that mermaid draws in the browser.
+ */
 export function rehypeCorpus() {
   return (tree) => {
     visit(tree, "element", (node, index, parent) => {
-      if (node.tagName !== "table" || !parent || index === undefined) return;
-      parent.children[index] = { type: "element", tagName: "div", properties: { className: ["table-wrap"] }, children: [node] };
-      return SKIP;
+      if (!parent || index === undefined) return;
+      if (node.tagName === "table") {
+        parent.children[index] = { type: "element", tagName: "div", properties: { className: ["table-wrap"] }, children: [node] };
+        return SKIP;
+      }
+      if (node.tagName === "figure" && hasClass(node, "merlion-figure")) {
+        node.properties.className = ["merlion-figure", "diagram"];
+        node.children.push(enlarge());
+        return SKIP;
+      }
+      const [code] = node.tagName === "pre" ? node.children.filter((c) => c.type === "element") : [];
+      if (code?.tagName === "code" && hasClass(code, "language-mermaid")) {
+        parent.children[index] = {
+          type: "element",
+          tagName: "figure",
+          properties: { className: ["diagram"] },
+          children: [
+            { type: "element", tagName: "pre", properties: { className: ["mermaid"] }, children: [{ type: "text", value: textOf(code) }] },
+            enlarge(),
+          ],
+        };
+        return SKIP;
+      }
     });
   };
 }
