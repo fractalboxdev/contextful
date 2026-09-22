@@ -1,5 +1,5 @@
 import { defineConfig } from "astro/config";
-import rehypeMerlion from "@fractalboxdev/merlion-rehype";
+import rehypeMerlion from "@fractalbox/merlion-rehype";
 import { remarkCorpus, rehypeCorpus } from "./src/lib/markdown.mjs";
 
 // The dev server answers localhost alone. DOCS_ALLOWED_HOSTS names the exact

@@ -11,15 +11,15 @@ importers:
       '@astrojs/markdown-remark':
         specifier: ^7.3.1
         version: 7.3.1
-      '@fractalboxdev/merlion-rehype':
-        specifier: file:vendor/merlion/fractalboxdev-merlion-rehype-0.1.0.tgz
-        version: file:vendor/merlion/fractalboxdev-merlion-rehype-0.1.0.tgz(@fractalboxdev/merlion-wasm@file:vendor/merlion/fractalboxdev-merlion-wasm-0.1.0.tgz)
-      '@fractalboxdev/merlion-themes':
-        specifier: file:vendor/merlion/fractalboxdev-merlion-themes-0.1.0.tgz
-        version: file:vendor/merlion/fractalboxdev-merlion-themes-0.1.0.tgz
-      '@fractalboxdev/merlion-wasm':
-        specifier: file:vendor/merlion/fractalboxdev-merlion-wasm-0.1.0.tgz
-        version: file:vendor/merlion/fractalboxdev-merlion-wasm-0.1.0.tgz
+      '@fractalbox/merlion-rehype':
+        specifier: file:vendor/merlion/fractalbox-merlion-rehype-0.1.0.tgz
+        version: file:vendor/merlion/fractalbox-merlion-rehype-0.1.0.tgz(@fractalbox/merlion-wasm@file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz)
+      '@fractalbox/merlion-themes':
+        specifier: file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz
+        version: file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz
+      '@fractalbox/merlion-wasm':
+        specifier: file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz
+        version: file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz
       astro:
         specifier: ^7.3.3
         version: 7.3.3(@astrojs/markdown-remark@7.3.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@22.20.4)(yaml@2.9.1)
@@ -653,22 +653,22 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@fractalboxdev/merlion-rehype@file:vendor/merlion/fractalboxdev-merlion-rehype-0.1.0.tgz':
-    resolution: {integrity: sha512-C7r6JTWcT0L8LQoCNXjuPKfQNwtQu98tEuKp+Cf0PFirlk9IKO4cxTR1Vs/HboE/hAw2S1dyBIWfiEl98gsMoQ==, tarball: file:vendor/merlion/fractalboxdev-merlion-rehype-0.1.0.tgz}
+  '@fractalbox/merlion-rehype@file:vendor/merlion/fractalbox-merlion-rehype-0.1.0.tgz':
+    resolution: {integrity: sha512-lixQ4dsRqtkrH0ZcyR5ycKjfwDhByg9IECHetyRrBcPLqGLrsGmEOnMzeN8J9lWT5IiXr3jdCUB7Q8BS8Dkw4Q==, tarball: file:vendor/merlion/fractalbox-merlion-rehype-0.1.0.tgz}
     version: 0.1.0
     engines: {node: '>=20.6'}
     peerDependencies:
-      '@fractalboxdev/merlion-wasm': 0.1.0
+      '@fractalbox/merlion-wasm': 0.1.0
     peerDependenciesMeta:
-      '@fractalboxdev/merlion-wasm':
+      '@fractalbox/merlion-wasm':
         optional: true
 
-  '@fractalboxdev/merlion-themes@file:vendor/merlion/fractalboxdev-merlion-themes-0.1.0.tgz':
-    resolution: {integrity: sha512-VnhBXaD1EXpGMwU+bC1qgzoMIX4EXJin1XMRX2PcUN3lFmi5I46aMWZ7OTMsOvaOcpqhEe5M4Z+wdCN04MdbGg==, tarball: file:vendor/merlion/fractalboxdev-merlion-themes-0.1.0.tgz}
+  '@fractalbox/merlion-themes@file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz':
+    resolution: {integrity: sha512-UFJkJdZFwpN3LC/0W5nJ2ZGUhFc8xOcOiWqx6sHsmZtBN1FlLBU5V57PtxXSbDloequq0qaFUm/E72mX0HwyhQ==, tarball: file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz}
     version: 0.1.0
 
-  '@fractalboxdev/merlion-wasm@file:vendor/merlion/fractalboxdev-merlion-wasm-0.1.0.tgz':
-    resolution: {integrity: sha512-TAnDbzVh+oy7AEkI7rlUHOduBk1L4Qne/n/DihN+wuJLOjvc+11Z5ni4LZMO/t613MHzEpXed2C4ma6ACTSFBg==, tarball: file:vendor/merlion/fractalboxdev-merlion-wasm-0.1.0.tgz}
+  '@fractalbox/merlion-wasm@file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz':
+    resolution: {integrity: sha512-nCyVdyCXiQelMjEZFiXXM7JoEZbhcLNLyqSqH2Vw8yQa4FUlMH0P+wg7Zhs3ms4eNWQsbPuYKn0iphxO8vznnQ==, tarball: file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz}
     version: 0.1.0
     engines: {node: '>=18'}
 
@@ -3285,13 +3285,13 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@fractalboxdev/merlion-rehype@file:vendor/merlion/fractalboxdev-merlion-rehype-0.1.0.tgz(@fractalboxdev/merlion-wasm@file:vendor/merlion/fractalboxdev-merlion-wasm-0.1.0.tgz)':
+  '@fractalbox/merlion-rehype@file:vendor/merlion/fractalbox-merlion-rehype-0.1.0.tgz(@fractalbox/merlion-wasm@file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz)':
     optionalDependencies:
-      '@fractalboxdev/merlion-wasm': file:vendor/merlion/fractalboxdev-merlion-wasm-0.1.0.tgz
+      '@fractalbox/merlion-wasm': file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz
 
-  '@fractalboxdev/merlion-themes@file:vendor/merlion/fractalboxdev-merlion-themes-0.1.0.tgz': {}
+  '@fractalbox/merlion-themes@file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz': {}
 
-  '@fractalboxdev/merlion-wasm@file:vendor/merlion/fractalboxdev-merlion-wasm-0.1.0.tgz': {}
+  '@fractalbox/merlion-wasm@file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz': {}
 
   '@iconify/types@2.0.0': {}
 
