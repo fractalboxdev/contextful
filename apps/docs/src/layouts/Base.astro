@@ -1,0 +1,169 @@
+---
+import type { MarkdownHeading } from "astro";
+import { navigation } from "../lib/nav";
+import "../styles/site.css";
+
+interface Props {
+  title: string;
+  description: string;
+  headings?: MarkdownHeading[];
+}
+
+const { title, description, headings = [] } = Astro.props;
+const groups = await navigation();
+const here = Astro.url.pathname;
+const toc = headings.filter((h) => h.depth === 2);
+const pageTitle = here === "/" ? title : `${title} · Contextful spec`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/"><strong>Contextful</strong> <span>spec</span></a>
+    </header>
+    <div class="shell">
+      <nav class="sidebar" aria-label="Spec files">
+        <details class="sidebar-toggle" id="sidebar-toggle">
+          <summary>Contents</summary>
+          {
+            groups.map((g) => (
+              <section>
+                {g.collapsed ? (
+                  <details open={g.items.some((i) => i.href === here)}>
+                    <summary class="group-label">{g.label} ({g.items.length})</summary>
+                    <ul>
+                      {g.items.map((i) => (
+                        <li>
+                          <a href={i.href} aria-current={i.href === here ? "page" : undefined}>
+                            {i.hint && <span class="hint">{i.hint}</span>}
+                            {i.label}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : (
+                  <>
+                    <h2 class="group-label">{g.label}</h2>
+                    <ul>
+                      {g.items.map((i) => (
+                        <li>
+                          <a href={i.href} aria-current={i.href === here ? "page" : undefined}>
+                            {i.hint && <span class="hint">{i.hint}</span>}
+                            {i.label}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </section>
+            ))
+          }
+        </details>
+        <script is:inline>
+          // Open on wide screens; a phone starts with the contents folded above the page.
+          document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
+        </script>
+      </nav>
+      <main class="content">
+        <article class="prose">
+          <slot />
+        </article>
+      </main>
+      {
+        toc.length > 0 && (
+          <aside class="toc" aria-label="On this page">
+            <h2 class="group-label">On this page</h2>
+            <ul>
+              {toc.map((h) => (
+                <li>
+                  <a href={`#${h.slug}`}>{h.text}</a>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )
+      }
+    </div>
+    <dialog class="diagram-dialog" id="diagram-dialog" aria-label="Diagram">
+      <form method="dialog" class="diagram-bar">
+        <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
+        <button type="button" data-zoom="fit" aria-label="Fit to screen">Fit</button>
+        <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+        <button value="close" aria-label="Close">Close</button>
+      </form>
+      <div class="diagram-stage"></div>
+    </dialog>
+    <script>
+      const blocks = [...document.querySelectorAll<HTMLElement>("pre.mermaid")];
+      const drawDiagrams = async () => {
+        for (const b of blocks) b.dataset.source = b.textContent ?? "";
+        const { default: mermaid } = await import("mermaid");
+        const dark = window.matchMedia("(prefers-color-scheme: dark)");
+        const draw = async () => {
+          mermaid.initialize({ startOnLoad: false, theme: dark.matches ? "dark" : "default", securityLevel: "strict" });
+          for (const b of blocks) {
+            b.removeAttribute("data-processed");
+            b.textContent = b.dataset.source ?? "";
+          }
+          await mermaid.run({ nodes: blocks });
+        };
+        await draw();
+        dark.addEventListener("change", () => void draw());
+      };
+      if (blocks.length) void drawDiagrams();
+
+      // A diagram opens in a dialog scaled to the viewport width, at most 2x its drawn
+      // size. Zoom steps by 1.25x between 0.1x and 4x; wider than the viewport, it scrolls.
+      // Escape, Close or a click on the backdrop dismisses it.
+      const dialog = document.getElementById("diagram-dialog") as HTMLDialogElement;
+      const stage = dialog.querySelector<HTMLElement>(".diagram-stage")!;
+      let view: SVGSVGElement | undefined;
+      let natural = 0;
+      let scale = 1;
+
+      const fitScale = () => Math.min(2, (stage.clientWidth - 32) / natural);
+      const apply = (next: number) => {
+        scale = Math.min(4, Math.max(0.1, next));
+        if (view) view.style.width = `${Math.round(natural * scale)}px`;
+      };
+      const open = (figure: HTMLElement) => {
+        const svg = figure.querySelector<SVGSVGElement>("pre.mermaid svg");
+        if (!svg) return;
+        view = svg.cloneNode(true) as SVGSVGElement;
+        // Mermaid sizes its SVG to 100% with a max-width; the viewBox carries the drawn size.
+        view.removeAttribute("width");
+        view.style.maxWidth = "none";
+        view.style.height = "auto";
+        natural = svg.viewBox.baseVal.width || svg.getBoundingClientRect().width;
+        stage.replaceChildren(view);
+        dialog.showModal();
+        apply(fitScale());
+      };
+
+      for (const figure of document.querySelectorAll<HTMLElement>("figure.diagram")) {
+        figure.addEventListener("click", () => open(figure));
+      }
+      dialog.querySelector(".diagram-bar")!.addEventListener("click", (e) => {
+        const zoom = (e.target as HTMLElement).dataset.zoom;
+        if (zoom === "in") apply(scale * 1.25);
+        else if (zoom === "out") apply(scale / 1.25);
+        else if (zoom === "fit") apply(fitScale());
+      });
+      dialog.addEventListener("click", (e) => {
+        if (e.target === dialog) dialog.close();
+      });
+    </script>
+  </body>
+</html>

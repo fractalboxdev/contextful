@@ -1,0 +1,13 @@
+// The docs site is static: the Worker serves `dist/` through Workers Static Assets
+// and runs no script. Diagrams draw in the reader's browser, so the build is plain Node.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "contextful-docs",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "./dist" },
+  // Each non-production branch's preview is served at <preview-name>.spec.contextful.work.
+  "routes": [{ "pattern": "spec.contextful.work", "custom_domain": true, "previews_enabled": true }],
+  // Workers Builds runs `wrangler preview` on non-production branches, and that command
+  // refuses a configuration without a `previews` block.
+  "previews": {}
+}

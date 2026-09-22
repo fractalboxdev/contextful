@@ -13,7 +13,7 @@ owns:
 
 # Corpus law
 
-This corpus is the specification of contextful, written before the code and built
+This corpus is the specification of **Contextful**, written before the code and built
 against. This file is the grammar every other file obeys, and it obeys that grammar
 itself. `contextful-spec lint` implements every clause below; a local run and the gate
 invoke the identical command, and a rule the checker cannot enforce is not a rule.

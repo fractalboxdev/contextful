@@ -1,6 +1,6 @@
 # References
 
-The literature and practice the contextful design answers to. The specification
+The literature and practice the **Contextful** design answers to. The specification
 under `spec/` states behavior and never cites; this directory holds the sources
 behind that behavior, and points into the spec by contract and operation name
 (`store.lease`, `authority.attenuate`, `disclosure.release`). No file under `spec/`
