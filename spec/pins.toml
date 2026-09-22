@@ -51,10 +51,10 @@
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 7
-authority = 0
+assurance = 49
+authority = 91
 connector = 0
-corpus = 17
+corpus = 25
 disclosure = 0
 read = 0
 run = 0

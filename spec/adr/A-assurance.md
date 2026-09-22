@@ -2,13 +2,13 @@
 
 **Status:** accepted
 
-## Assurance claims carry their qualifiers, and the proof gate audits axioms
+## Assurance claims carry their qualifiers, and the proof gate audits assumptions
 
-`assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-axioms` matches a hand-maintained inventory against each constant's transitive axiom footprint over a three-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
+`assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a two-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Inventory plus transitive axiom audit, qualified claims, zero-dependency package *(chosen)* | — | Every lemma is hand-rolled; the inventory is maintained by hand; the claim is narrower than a buyer prefers. |
+| Inventory plus transitive assumption audit, qualified claims, zero-dependency package *(chosen)* | — | Every lemma is hand-rolled; the inventory is maintained by hand; the claim is narrower than a buyer prefers. |
 | A source pattern over package files | Catching a proof of `False` | A parenthesized hole or a respelled tactic passes. |
 | Build and read the exit status | Catching a proof of `False` | A hole elaborates as a warning and exits zero. |
 | An inventory generated from the declarations | Independence | A weakened statement carries its inventory with it. |
@@ -33,7 +33,7 @@ Consequences: a zero in a report is a retrieval fact; spans never outlive the ro
 
 ## The model specifies the profile-to-effective-authority mapping, each target bound to one query path
 
-`assurance.model` specifies the mapping from the delegation profile to effective authority, with five targets: profile meaning, restriction preservation, narrowing, inclusion, and execution through the scoped session. `assurance.prove` decides placement inclusion symbolically; deciding over sample values raises `ZoneInclusionSampled`. An unmodelled manifest category raises `UnmodelledConstructor`; a target bound to no authenticated query path raises `ProofTargetUnbound`.
+`assurance.model` specifies the mapping from the delegation profile to effective authority. `assurance.prove` carries two targets, inclusion and narrowing; profile meaning, restriction preservation and scoped-session execution wait on an execution relation. `assurance.prove` decides placement inclusion symbolically; deciding over sample values raises `ZoneInclusionSampled`. An unmodelled manifest category raises `UnmodelledConstructor`; a target bound to no authenticated query path raises `ProofTargetUnbound`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -72,7 +72,7 @@ Revisit: a pinned, reproducible translation toolchain exists; a production diver
 | TLA+ with a harness over ITF traces | Maintained Rust bridge | We build and keep action dispatch, state projection and comparison, in a second language. |
 | TLA+ trace validation of an instrumented store | Java-only instrumentation | A Rust logging API is built from scratch, and a run checks only the interleavings it provokes. |
 
-Consequences: one toolchain, one axiom audit and one differential harness cover both models; a theorem proves the invariant for every generation, where a model checker bounds it.
+Consequences: one toolchain, one assumption audit and one differential harness cover both models; a theorem proves the invariant for every generation, where a model checker bounds it.
 Revisit: the bounded check exceeds the formal stage's wall clock; a maintained Rust bridge to a model checker reaches the protocol's step vocabulary.
 
 ## The columnar-read and statement-serialization functions link into every engine-linked build

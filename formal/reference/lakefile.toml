@@ -1,0 +1,9 @@
+name = "reference"
+defaultTargets = ["contextful-reference"]
+
+[[lean_lib]]
+name = "Reference"
+
+[[lean_exe]]
+name = "contextful-reference"
+root = "Main"

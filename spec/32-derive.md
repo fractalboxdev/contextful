@@ -21,34 +21,62 @@ The derive tier between two tables, and the contracts it reaches through:
 
 ```mermaid
 flowchart LR
-  PT[("landed parent table")] --> SEL["select · scan, eligibility, anti-join"]
-  OUT[("derive output table")] -.->|"rows and markers"| SEL
-  SEL --> BIND["bind · derive.name block in the local contextful.toml"]
-  BIND -->|transcribe| EXEC["exec driver · preprocess steps + engine step"]
-  BIND -->|link_preview| FETCH["fetch driver · head scan + picture probe"]
-  EXEC --> PC["parse-cues · WebVTT, SubRip"]
-  PC --> EMIT["emit · content rows, markers"]
+  subgraph STORE["store contract"]
+    PT[("landed parent table")]
+    OUT[("derive output table")]
+  end
+  subgraph RUNC["run contract"]
+    subgraph DER["32-derive"]
+      SEL["select · scan, eligibility, anti-join"]
+      BIND["bind · derive.name block in the local contextful.toml"]
+      EXEC["exec driver · preprocess steps + engine step"]
+      FETCH["fetch driver · head scan + picture probe"]
+      PC["parse-cues · WebVTT, SubRip"]
+      EMIT["emit · content rows, markers"]
+    end
+    subgraph PIPE["31-pipeline"]
+      LAND["land path"]
+    end
+  end
+  subgraph CONN["connector contract"]
+    RES["resolver"]
+    MED["host mediation"]
+  end
+  PT --> SEL
+  OUT -.->|"rows and markers"| SEL
+  SEL --> BIND
+  BIND -->|transcribe| EXEC
+  BIND -->|link_preview| FETCH
+  EXEC --> PC
+  PC --> EMIT
   FETCH --> EMIT
-  EMIT --> LAND["land path · 31-pipeline"]
+  EMIT --> LAND
   LAND --> OUT
-  EXEC -.->|"credential references"| RES["resolver · connector contract"]
-  FETCH -.->|"mediated client"| MED["host mediation · connector contract"]
+  EXEC -.->|"credential references"| RES
+  FETCH -.->|"mediated client"| MED
 ```
 
 ## select
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `run.select.required-key` | An absent or blank `engine`, `source_table`, `media_column` or `parent_id_column` raises `DeriveConfigKeyMissing`, naming the key and the pipeline. | A-run |
-| `run.select.no-store-root` | A source built without a store root or without its pipeline id raises `DeriveNoStoreRoot`, naming which is absent. | A-run |
-| `run.select.foreign-output-table` | The anti-join's pipeline id comes from the build alone; a config key naming another pipeline's output raises `DeriveForeignOutputTable`. | A-run |
-| `run.select.rows-per-run` | `max_rows_per_run` truncates the outstanding list after the anti-join, at 25 rows by default; zero or below resolves to that default. | — |
-| `run.select.attempts-per-unit` | `max_attempts` allows 3 attempts per unit by default, and a non-positive spelling means the same figure. | — |
-| `run.select.seconds-per-run` | `max_seconds_per_run` bounds the serial unit loop at 300 s by default for `link_preview` and carries no default for `transcribe`. | — |
-| `run.select.incomplete-unit` | A parent row whose key or media column is null, empty or whitespace raises `DeriveUnitIncomplete`; the row is skipped and counted on the run record. | P4 |
-| `run.select.journaled-pull` | A derive pipeline configured to journal its pulls raises `DeriveJournaledPull`. | A-authority |
-| `run.select.unmetered-grant` | `task` alone decides whether a derive pipeline reaches vendors; a `transcribe` pipeline declaring a shared-quota grant raises `DeriveUnmeteredGrant`. | A-connector |
-| `run.select.metered-client` | A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger. | A-connector |
+The derive source: its configuration, the outstanding set recomputed each tick, eligibility and a run's budget.
+
+- `required-key` — An absent or blank `engine`, `source_table`, `media_column` or `parent_id_column` raises `DeriveConfigKeyMissing`, naming the key and the pipeline.
+  *A-run*
+- `no-store-root` — A source built without a store root or without its pipeline id raises `DeriveNoStoreRoot`, naming which is absent.
+  *A-run*
+- `foreign-output-table` — The anti-join's pipeline id comes from the build alone; a config key naming another pipeline's output raises `DeriveForeignOutputTable`.
+  *A-run*
+- `rows-per-run` — `max_rows_per_run` truncates the outstanding list after the anti-join, at 25 rows by default; zero or below resolves to that default.
+- `attempts-per-unit` — `max_attempts` allows 3 attempts per unit by default, and a non-positive spelling means the same figure.
+- `seconds-per-run` — `max_seconds_per_run` bounds the serial unit loop at 300 s by default for `link_preview` and carries no default for `transcribe`.
+- `incomplete-unit` — A parent row whose key or media column is null, empty or whitespace raises `DeriveUnitIncomplete`; the row is skipped and counted on the run record.
+  *P4*
+- `journaled-pull` — A derive pipeline configured to journal its pulls raises `DeriveJournaledPull`.
+  *A-authority*
+- `unmetered-grant` — `task` alone decides whether a derive pipeline reaches vendors; a `transcribe` pipeline declaring a shared-quota grant raises `DeriveUnmeteredGrant`.
+  *A-connector*
+- `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
+  *A-connector*
 
 unsettled: At what parent-table size does the in-memory scan stop fitting, and what replaces it? owner: derive affects: run.select
 
@@ -56,46 +84,69 @@ unsettled: Does a dry run print eligible, already-derived and outstanding counts
 
 ## bind
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `run.bind.unbound-engine` | An engine with no `[derive.<name>]` block raises `DeriveEngineUnbound`, naming the pipeline, the engine, the file to edit and every bound engine. | A-run |
-| `run.bind.command-in-manifest` | `command`, `preprocess`, `env` or `allow_hosts` inside `[pipeline.source.config]` raises `DeriveCommandInManifest`. | A-run |
-| `run.bind.unknown-task` | `task` is `transcribe`, the default, or `link_preview`; any other value raises `DeriveUnknownTask`, printing both. | A-run |
-| `run.bind.driver-mismatch` | `driver` is `exec` or `"none"` behind `transcribe` and `fetch` behind `link_preview`; any other pairing raises `DeriveDriverMismatch`. | A-run |
-| `run.bind.endpoint-host-bare` | An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`. | A-run |
-| `run.bind.remote-url-unsupported` | An `http` or `https` media value for an engine declining remote addresses raises `DeriveRemoteUrlUnsupported`, naming the `when = "media_is_url"` preprocess step. | A-run |
-| `run.bind.media-unreadable` | A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing that unit alone. | A-run |
-| `run.bind.confidence-range` | A `confidence` outside `0.0..=1.0` after adapter normalization raises `DeriveConfidenceOutOfRange` and lands null. | A-run |
-| `run.bind.upstream-excerpt` | An `Upstream` excerpt holds at most 4 KiB and no request body. | — |
-| `run.bind.engine-unavailable` | `EngineUnavailable` from a transcriber ends the run; from a `LinkReader` it raises `DeriveLinkEngineUnavailable` and costs that one unit. | P6 |
-| `run.bind.advisory-zone` | A row zone taken from the binding's advisory `zone` key raises `DeriveAdvisoryZone`. | A-run |
+Where a derive engine's definition lives, the port every engine implements, and the values an engine returns.
+
+- `unbound-engine` — An engine with no `[derive.<name>]` block raises `DeriveEngineUnbound`, naming the pipeline, the engine, the file to edit and every bound engine.
+  *A-run*
+- `command-in-manifest` — `command`, `preprocess`, `env` or `allow_hosts` inside `[pipeline.source.config]` raises `DeriveCommandInManifest`.
+  *A-run*
+- `unknown-task` — `task` is `transcribe`, the default, or `link_preview`; any other value raises `DeriveUnknownTask`, printing both.
+  *A-run*
+- `driver-mismatch` — `driver` is `exec` or `"none"` behind `transcribe` and `fetch` behind `link_preview`; any other pairing raises `DeriveDriverMismatch`.
+  *A-run*
+- `endpoint-host-bare` — An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`.
+  *A-run*
+- `remote-url-unsupported` — An `http` or `https` media value for an engine declining remote addresses raises `DeriveRemoteUrlUnsupported`, naming the `when = "media_is_url"` preprocess step.
+  *A-run*
+- `media-unreadable` — A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing that unit alone.
+  *A-run*
+- `confidence-range` — A `confidence` outside `0.0..=1.0` after adapter normalization raises `DeriveConfidenceOutOfRange` and lands null.
+  *A-run*
+- `upstream-excerpt` — An `Upstream` excerpt holds at most 4 KiB and no request body.
+- `engine-unavailable` — `EngineUnavailable` from a transcriber ends the run; from a `LinkReader` it raises `DeriveLinkEngineUnavailable` and costs that one unit.
+  *P6*
+- `advisory-zone` — A row zone taken from the binding's advisory `zone` key raises `DeriveAdvisoryZone`.
+  *A-run*
 
 unsettled: Does a build-time check refuse an engine whose declared locality is wider than the source table's admitted zones? owner: derive affects: run.bind
 
 ## exec
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `run.exec.shell-command` | `command` is an argument array run with no shell; a `command` given as one string raises `DeriveShellCommand`. | A-run |
-| `run.exec.env-name` | An allowlist name that is not ASCII alphanumeric or underscore, or that leads with a digit, raises `DeriveEnvNameInvalid`. | A-run |
-| `run.exec.chain-deadline` | `timeout_secs` bounds one unit's whole chain at 1800 s by default. | — |
-| `run.exec.captured-output` | `max_output_bytes` bounds each step's captured standard output and error at 8 MiB by default. | — |
-| `run.exec.audit-entries` | A chain contributes at most 64 entries of captured output to the run record. | — |
-| `run.exec.step-error-excerpt` | A failing step's error text carries at most 4 KiB of its standard error. | — |
-| `run.exec.non-zero-exit` | A step exiting non-zero raises `DeriveStepExit` carrying its bounded error text into the run audit. | A-run |
-| `run.exec.deadline-elapsed` | A chain outrunning its deadline raises `DeriveStepTimeout`, naming the running step. | A-run |
-| `run.exec.output-cap` | Output past the bound is counted and discarded, never buffered; crossing it kills the step and raises `DeriveOutputCap` with the byte count, draining continuing so the child never blocks. | A-run |
-| `run.exec.silent-step` | A preprocess step exiting zero without writing its output file raises `DeriveStepProducedNothing`. | A-run |
-| `run.exec.missing-binary` | A `command[0]` that is not an executable file on this machine raises `DeriveBinaryMissing`, naming the binary and the step. | A-connector |
-| `run.exec.unpinned-path` | A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the digest just computed; a bare search-path name carries none. | A-connector |
-| `run.exec.digest-mismatch` | A pinned file whose bytes differ from its recorded digest raises `DeriveDigestMismatch`. | A-connector |
-| `run.exec.engine-id` | An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments. | — |
+Operator-declared argv chains against local binaries: resolution, pinning, environment, bounds and identity.
+
+- `shell-command` — `command` is an argument array run with no shell; a `command` given as one string raises `DeriveShellCommand`.
+  *A-run*
+- `env-name` — An allowlist name that is not ASCII alphanumeric or underscore, or that leads with a digit, raises `DeriveEnvNameInvalid`.
+  *A-run*
+- `chain-deadline` — `timeout_secs` bounds one unit's whole chain at 1800 s by default.
+- `captured-output` — `max_output_bytes` bounds each step's captured standard output and error at 8 MiB by default.
+- `audit-entries` — A chain contributes at most 64 entries of captured output to the run record.
+- `step-error-excerpt` — A failing step's error text carries at most 4 KiB of its standard error.
+- `non-zero-exit` — A step exiting non-zero raises `DeriveStepExit` carrying its bounded error text into the run audit.
+  *A-run*
+- `deadline-elapsed` — A chain outrunning its deadline raises `DeriveStepTimeout`, naming the running step.
+  *A-run*
+- `output-cap` — Output past the bound is counted and discarded, never buffered; crossing it kills the step and raises `DeriveOutputCap` with the byte count, draining continuing so the child never blocks.
+  *A-run*
+- `silent-step` — A preprocess step exiting zero without writing its output file raises `DeriveStepProducedNothing`.
+  *A-run*
+- `missing-binary` — A `command[0]` that is not an executable file on this machine raises `DeriveBinaryMissing`, naming the binary and the step.
+  *A-connector*
+- `unpinned-path` — A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the digest just computed; a bare search-path name carries none.
+  *A-connector*
+- `digest-mismatch` — A pinned file whose bytes differ from its recorded digest raises `DeriveDigestMismatch`.
+  *A-connector*
+- `engine-id` — An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments.
 
 ```mermaid
 sequenceDiagram
-  participant T as derive tier
-  participant P as preprocess step
-  participant E as engine step
+  box engine
+    participant T as derive tier
+  end
+  box step processes
+    participant P as preprocess step
+    participant E as engine step
+  end
   T->>T: cleared environment + allowlist
   loop each preprocess step whose when condition holds
     T->>P: argument array, no shell, own process group
@@ -111,18 +162,23 @@ unsettled: Does a vendor engine reached over HTTP need a deadline of its own, se
 
 ## fetch
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `run.fetch.scheme` | An address whose scheme is neither `http` nor `https` raises `DeriveSchemeUnsupported` before any socket opens. | A-connector |
-| `run.fetch.address-literal` | A host written as an address literal raises `DeriveAddressLiteral`. | A-connector |
-| `run.fetch.redirect-chain` | A redirect chain runs to at most 5 hops. | — |
-| `run.fetch.binding-key` | `env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key. | because a silently ignored key leaves an operator believing a fetch carries a credential or runs a process |
-| `run.fetch.document-prefix` | `max_document_bytes` bounds the scanned document prefix at 1 MiB by default, dropping the remainder. | — |
-| `run.fetch.probe-prefix` | `max_probe_bytes` bounds one picture range request at 64 KiB by default. | — |
-| `run.fetch.hop-timeout` | `request_timeout_secs` bounds one hop at 20 s by default. | — |
-| `run.fetch.retry-after-default` | A `429` without a usable `Retry-After` maps to `RateLimited` carrying 60 s. | — |
-| `run.fetch.charset` | A declared character set other than UTF-8 raises `DeriveCharsetUnsupported`, naming the value. | A-connector |
-| `run.fetch.not-utf8` | A document declaring no character set and failing UTF-8 validation raises `DeriveBytesNotUtf8`; a character split at the byte bound is tolerated. | A-connector |
+Following a link a third party wrote: host and address guards, redirects, the head scanner and the picture probe.
+
+- `scheme` — An address whose scheme is neither `http` nor `https` raises `DeriveSchemeUnsupported` before any socket opens.
+  *A-connector*
+- `address-literal` — A host written as an address literal raises `DeriveAddressLiteral`.
+  *A-connector*
+- `redirect-chain` — A redirect chain runs to at most 5 hops.
+- `binding-key` — `env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key.
+  *because a silently ignored key leaves an operator believing a fetch carries a credential or runs a process*
+- `document-prefix` — `max_document_bytes` bounds the scanned document prefix at 1 MiB by default, dropping the remainder.
+- `probe-prefix` — `max_probe_bytes` bounds one picture range request at 64 KiB by default.
+- `hop-timeout` — `request_timeout_secs` bounds one hop at 20 s by default.
+- `retry-after-default` — A `429` without a usable `Retry-After` maps to `RateLimited` carrying 60 s.
+- `charset` — A declared character set other than UTF-8 raises `DeriveCharsetUnsupported`, naming the value.
+  *A-connector*
+- `not-utf8` — A document declaring no character set and failing UTF-8 validation raises `DeriveBytesNotUtf8`; a character split at the byte bound is tolerated.
+  *A-connector*
 
 ```mermaid
 flowchart TD
@@ -146,15 +202,21 @@ flowchart TD
 
 ## emit
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `run.emit.failure-off-table` | Per-unit failure state recorded outside the output table raises `DeriveFailureOffTable`. | A-run |
-| `run.emit.unit-status` | `unit_status` is `ok`, `empty` where the engine established nothing to derive, `unavailable` where it returned nothing and stated no reason, or `failed` on a typed error; any other value raises `DeriveUnitStatusUnknown`. | A-run |
-| `run.emit.reserved-discriminator` | A derive table declaring a column named `kind` raises `DeriveReservedDiscriminator`. | A-run |
-| `run.emit.settled-revived` | A settled unit re-entering the outstanding set raises `DeriveSettledUnitRevived`. | A-run |
-| `run.emit.attempts` | `attempts` is the prior count plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total. | — |
-| `run.emit.unredacted-error` | A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`. | A-authority |
-| `run.emit.primary-key` | A derive output table without `primary_key` `["unit_ref", "cue_seq"]` raises `DerivePrimaryKeyMissing`. | because a re-derived unit otherwise lands duplicate passages beside the originals |
+The derived row and marker, the unit status, attempt accounting, citation keys and row provenance.
+
+- `failure-off-table` — Per-unit failure state recorded outside the output table raises `DeriveFailureOffTable`.
+  *A-run*
+- `unit-status` — `unit_status` is `ok`, `empty` where the engine established nothing to derive, `unavailable` where it returned nothing and stated no reason, or `failed` on a typed error; any other value raises `DeriveUnitStatusUnknown`.
+  *A-run*
+- `reserved-discriminator` — A derive table declaring a column named `kind` raises `DeriveReservedDiscriminator`.
+  *A-run*
+- `settled-revived` — A settled unit re-entering the outstanding set raises `DeriveSettledUnitRevived`.
+  *A-run*
+- `attempts` — `attempts` is the prior count plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.
+- `unredacted-error` — A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.
+  *A-authority*
+- `primary-key` — A derive output table without `primary_key` `["unit_ref", "cue_seq"]` raises `DerivePrimaryKeyMissing`.
+  *because a re-derived unit otherwise lands duplicate passages beside the originals*
 
 unsettled: What validated domain does `_modality` carry, and which value does a passage derived from a video row take? owner: derive affects: run.emit
 
@@ -164,19 +226,21 @@ unsettled: What reaps derived rows whose parent row is deleted upstream? owner: 
 
 ## parse-cues
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `run.parse-cues.backward-cue` | A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped. | P4 |
-| `run.parse-cues.passage-chars` | A passage stays open while it holds fewer than 600 chars. | — |
-| `run.parse-cues.passage-span` | A passage stays open while it spans less than 60 s. | — |
-| `run.parse-cues.passage-bytes` | One passage's text holds at most 8 KiB. | — |
-| `run.parse-cues.passages-per-document` | One document yields at most 2000 rows of passages. | — |
+Reading a caption document into passages: one grammar, defect accounting, coalescing and rolling display.
+
+- `backward-cue` — A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.
+  *P4*
+- `passage-chars` — A passage stays open while it holds fewer than 600 chars.
+- `passage-span` — A passage stays open while it spans less than 60 s.
+- `passage-bytes` — One passage's text holds at most 8 KiB.
+- `passages-per-document` — One document yields at most 2000 rows of passages.
 
 ## test-engine
 
-| Clause | Statement | Why |
-| --- | --- | --- |
-| `run.test-engine.unsupported-driver` | A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`. | because the verb drives a transcriber over media, and a link engine takes no media |
+Building one derive engine outside a pipeline and running it against one file.
+
+- `unsupported-driver` — A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.
+  *because the verb drives a transcriber over media, and a link engine takes no media*
 
 ## Shapes
 

@@ -33,3 +33,5 @@ lanes    = { gloss = "Argon2id parallelism lanes" }
 cases     = { gloss = "evaluation cases" }
 resamples = { gloss = "bootstrap resamples" }
 nodes    = { gloss = "graph nodes" }
+runs     = { gloss = "committed runs" }
+times    = { gloss = "multiples of a stated base quantity" }

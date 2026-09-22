@@ -1,0 +1,19 @@
+[package]
+name = "contextful-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Pure domain types and the port traits every adapter implements. No I/O, no async
+# runtime, no HTTP client, no columnar format (topology.package.domain-impurity).
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+time = { version = "0.3", features = ["parsing", "formatting", "macros", "serde"] }
+toml = "0.8"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"

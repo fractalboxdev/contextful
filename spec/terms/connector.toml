@@ -1,19 +1,19 @@
 # Registry fragment — contract `connector`, files spec/40-connector.md and spec/41-secrets.md.
 
 [operation]
-export             = { gloss = "The calls a connector offers across the boundary: the shared types, the source and destination worlds, the optional worlds, the compiled-in sibling." }
-import             = { gloss = "What crosses inward: the three host imports and the forwarded guest configuration table." }
-declare-capability = { gloss = "The manifest's statement of host access and the scope probe judging a bound credential's grant." }
-meter              = { gloss = "Reservation against a shared vendor quota: declaration, binding, permits, denial and the usage report." }
-infer              = { gloss = "Model egress: the single endpoint, the data fence and the trust label of model output." }
-package            = { gloss = "Distribution form, digest pinning, per-connector resource bounds and world versioning." }
-source             = { gloss = "The declared behavior of each source compiled into the engine." }
-reference          = { gloss = "The credential plane, the `secret://` scheme and the template grammar." }
-resolve            = { gloss = "The provider port, the chain and its precedence, hydration timing, the redacting wrapper and the postures." }
-lease              = { gloss = "The declaration-scoped lease provider at the head of the chain: endpoint, expiry, failure classes and bootstrap." }
-attach             = { gloss = "Host mediation of an outbound request: the bound host, address vetting, header templates, origin pinning and URL scrubbing." }
-rotate             = { gloss = "The division of labor on credential turnover and the rotation mechanisms." }
-record             = { gloss = "The operator record of a credential, the inventory, and the provider attribution a run emits." }
+export             = {}
+import             = {}
+declare-capability = {}
+meter              = {}
+infer              = {}
+package            = {}
+source             = {}
+reference          = {}
+resolve            = {}
+lease              = {}
+attach             = {}
+rotate             = {}
+record             = {}
 
 [error]
 ConnectorConfigRejected         = { clause = "connector.import.config-shape", gloss = "A forwarded guest configuration value of the wrong type, above its size bound, or carrying a reference." }

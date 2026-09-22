@@ -144,15 +144,24 @@ pub fn page(c: &Corpus) -> String {
         if let Some(d) = t.shape.iter().find(|sh| sh.default) {
             let r = |k: &str| d.roles.get(k).cloned().unwrap_or_default().replace('"', "'");
             let _ = write!(s, "\nThe `{}` shape:\n\n```mermaid\nflowchart LR\n", d.name);
-            let _ = writeln!(s, "  CALLER([\"caller\"])");
-            let _ = writeln!(s, "  TICK[\"cron tick · {}\"]", r("cron_tick"));
-            let _ = writeln!(s, "  REC[\"reconciler · {}\"]", r("reconciler"));
-            let _ = writeln!(s, "  ORCH[\"durable orchestrator · {}\"]", r("orchestrator"));
-            let _ = writeln!(s, "  COMP[\"heavy compute · {}\"]", r("compute"));
-            let _ = writeln!(s, "  QF[\"query face · {}\"]", r("query_face"));
-            let _ = writeln!(s, "  CAT[(\"catalog · {}\")]", r("catalog"));
-            let _ = writeln!(s, "  OBJ[(\"object store · {}\")]", r("object_store"));
-            let _ = writeln!(s, "  SEC[\"secrets · {}\"]", r("secrets"));
+            let node = |id: &str, open: &str, close: &str, role: &str, key: &str| {
+                format!("      {id}{open}\"{role}<br/>{}\"{close}\n", r(key))
+            };
+            s.push_str("  CALLER([\"caller\"])\n");
+            let _ = writeln!(s, "  subgraph ACCOUNT[\"{} · the deploying account\"]", t.title.replace('"', "'"));
+            s.push_str("    subgraph CONTROL[\"control plane\"]\n");
+            s.push_str(&node("TICK", "[", "]", "cron tick", "cron_tick"));
+            s.push_str(&node("REC", "[", "]", "reconciler", "reconciler"));
+            s.push_str(&node("ORCH", "[", "]", "durable orchestrator", "orchestrator"));
+            s.push_str("    end\n    subgraph DATA[\"data plane\"]\n");
+            s.push_str(&node("COMP", "[", "]", "heavy compute", "compute"));
+            s.push_str(&node("QF", "[", "]", "query face", "query_face"));
+            s.push_str("    end\n    subgraph STATE[\"durable state\"]\n");
+            s.push_str(&node("CAT", "[(", ")]", "catalog", "catalog"));
+            s.push_str(&node("OBJ", "[(", ")]", "object store", "object_store"));
+            s.push_str("    end\n");
+            s.push_str(&node("SEC", "[", "]", "secrets", "secrets").replacen("      ", "    ", 1));
+            s.push_str("  end\n");
             s.push_str("  TICK --> REC -- \"dispatch a due unit\" --> ORCH -- \"run a step\" --> COMP\n");
             s.push_str("  COMP -- \"land parts + manifest\" --> OBJ\n");
             s.push_str("  REC & ORCH & COMP -- \"conditional write\" --> CAT\n");

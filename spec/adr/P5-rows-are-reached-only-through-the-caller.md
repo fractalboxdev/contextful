@@ -12,8 +12,8 @@ Every read of stored rows, caller-facing or internal, traverses the caller's reg
 
 - `authority.compose` runs one decision module, compiled native and to WebAssembly from one pinned source where a gateway decides.
 - `disclosure.reach` binds visibility to the table, not the face; an unknown access class reaches no subject, and a grant row with no resource is refused at commit.
-- `surface.browse` reads files back through the enforced relation and refuses a direct path read.
-- `assurance.gate` requires a staleness check on every generated artifact and refuses a hand-written constant mirroring an engine constant.
+- `surface.ground` refuses a table function resolving a path straight against stored bytes.
+- `assurance.structure-tree` requires a staleness check on every generated artifact and refuses a hand-written copy of an engine constant.
 
 ## Options
 

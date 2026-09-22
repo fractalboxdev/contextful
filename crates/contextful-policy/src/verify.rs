@@ -1,0 +1,347 @@
+//! `authority.verify`: admission at a checkpoint, the admitted-authority value, the
+//! effect boundary, and the one credential-format interface.
+//!
+//! Admission runs in the order of the admission flowchart in `spec/50-authority.md`:
+//! format withdrawal, every block signature against a pinned key, the profile and its
+//! evaluator bound, the credential's scheme against the verifying key's, audience, the
+//! chain's narrowing, timestamps and expiry, the possession proof, revocation, and a
+//! subject member.
+
+use crate::attenuate::Derivation;
+use crate::issue::{MintClaims, SeedSigner};
+use crate::keyset::KeySet;
+use crate::profile::{read_chain, Chain, Hop, SUPPORTED_PROFILE_VERSIONS};
+use crate::revoke::RevocationState;
+use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
+use base64::engine::DecodePaddingMode;
+use base64::Engine;
+use biscuit_auth::Biscuit;
+use contextful_core::claims::AuthorityBlock;
+use contextful_core::grant::{Action, Grant};
+use contextful_core::identify::NormalizedSubject;
+use contextful_core::issue::{MintPlan, SignatureAlgorithm};
+use contextful_core::time::Instant;
+use contextful_core::AuthorityError;
+use serde::Serialize;
+
+/// The name of the one credential format: the delegation profile over biscuit.
+pub const BISCUIT_FORMAT: &str = "biscuit";
+
+/// The surface name `AuthoritySubjectMissing` reports at admission.
+const ADMISSION_SURFACE: &str = "the checkpoint";
+
+/// The library's encoding: URL-safe base64, padded on output, either way on input.
+const TOKEN_BASE64: GeneralPurpose = GeneralPurpose::new(
+    &base64::alphabet::URL_SAFE,
+    GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+);
+
+/// What a checkpoint admits against: the expected audience, the evaluation instant, the
+/// revocation state and the supported profile versions.
+#[derive(Debug, Clone, Copy)]
+pub struct Admission<'a> {
+    /// `None` performs no audience check (`authority.verify.audience-mismatch`).
+    pub audience: Option<&'a str>,
+    pub at: Instant,
+    pub revocation: &'a RevocationState,
+    pub profiles: &'a [i64],
+}
+
+impl<'a> Admission<'a> {
+    /// Admission at `at` under `revocation`, checking no audience, over the supported
+    /// profile versions.
+    pub fn new(at: Instant, revocation: &'a RevocationState) -> Admission<'a> {
+        Admission { audience: None, at, revocation, profiles: SUPPORTED_PROFILE_VERSIONS }
+    }
+
+    /// The same admission expecting `audience`.
+    pub fn expecting(self, audience: &'a str) -> Admission<'a> {
+        Admission { audience: Some(audience), ..self }
+    }
+}
+
+/// The authority a verification admitted: the normalized subject and its grants, and
+/// what each effect boundary re-reads. Its fields are private and no function outside
+/// this module constructs one, so a value exists only after a verification
+/// (`authority.verify.no-bypass-constructor`):
+///
+/// ```compile_fail
+/// let forged = contextful_policy::verify::AdmittedAuthority { grants: Vec::new() };
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct AdmittedAuthority {
+    subject: NormalizedSubject,
+    grants: Vec<Grant>,
+    issuer: String,
+    audience: String,
+    issued_at: Instant,
+    expires_at: Instant,
+    confirmation: Option<String>,
+    credential_id: String,
+    revocation_ids: Vec<String>,
+    epoch: u64,
+    profile: i64,
+    key_version: String,
+    format: &'static str,
+}
+
+impl AdmittedAuthority {
+    pub fn subject(&self) -> &NormalizedSubject {
+        &self.subject
+    }
+    pub fn grants(&self) -> &[Grant] {
+        &self.grants
+    }
+    pub fn issuer(&self) -> &str {
+        &self.issuer
+    }
+    pub fn audience(&self) -> &str {
+        &self.audience
+    }
+    pub fn issued_at(&self) -> Instant {
+        self.issued_at
+    }
+    pub fn expires_at(&self) -> Instant {
+        self.expires_at
+    }
+    /// The holder key thumbprint the chain-final block binds.
+    pub fn confirmation(&self) -> Option<&str> {
+        self.confirmation.as_deref()
+    }
+    /// The authority block's `rev.id`.
+    pub fn credential_id(&self) -> &str {
+        &self.credential_id
+    }
+    /// One revocation identifier per derivation, root first.
+    pub fn revocation_ids(&self) -> &[String] {
+        &self.revocation_ids
+    }
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+    pub fn profile(&self) -> i64 {
+        self.profile
+    }
+    /// The version of the pinned key the chain verified under.
+    pub fn key_version(&self) -> &str {
+        &self.key_version
+    }
+    pub fn format(&self) -> &'static str {
+        self.format
+    }
+
+    /// Whether one grant carries `action` over every table in `tables`: the scoped
+    /// session never flattens actions and tables into independent allowlists
+    /// (`authority.profile.scoped-session`).
+    pub fn permits(&self, action: Action, tables: &[&str]) -> bool {
+        self.grants
+            .iter()
+            .any(|g| g.actions.contains(&action) && tables.iter().all(|t| g.tables.iter().any(|p| p.covers_name(t))))
+    }
+
+    /// The admitted value as JSON, for a surface to print.
+    pub fn to_json(&self) -> String {
+        #[derive(Serialize)]
+        struct View<'a> {
+            subject: contextful_core::identify::Subject,
+            attestations: std::collections::BTreeMap<contextful_core::identify::Member, contextful_core::identify::Attestation>,
+            grants: &'a [Grant],
+            iss: &'a str,
+            aud: &'a str,
+            iat: String,
+            exp: String,
+            cnf: Option<&'a str>,
+            rev_ids: &'a [String],
+            epoch: u64,
+            profile: i64,
+            key_version: &'a str,
+            format: &'a str,
+        }
+        serde_json::to_string_pretty(&View {
+            subject: self.subject.to_subject(),
+            attestations: self.subject.attestations(),
+            grants: &self.grants,
+            iss: &self.issuer,
+            aud: &self.audience,
+            iat: self.issued_at.to_rfc3339(),
+            exp: self.expires_at.to_rfc3339(),
+            cnf: self.confirmation(),
+            rev_ids: &self.revocation_ids,
+            epoch: self.epoch,
+            profile: self.profile,
+            key_version: &self.key_version,
+            format: self.format,
+        })
+        .expect("an admitted authority serializes")
+    }
+}
+
+/// Decode transmitted text into the library's bytes. Text that is not the encoding
+/// carries no signature anybody made.
+pub(crate) fn token_bytes(credential: &str) -> Result<Vec<u8>, AuthorityError> {
+    TOKEN_BASE64
+        .decode(credential.trim())
+        .map_err(|e| AuthorityError::SignatureInvalid(format!("the credential is not a signed chain: {e}")))
+}
+
+/// Admit a credential with no possession proof.
+pub fn verify(credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError> {
+    admit(credential, keys, admission, |_| Ok(()))
+}
+
+/// Admit a credential whose chain-final confirmation claim a request proof must match.
+/// `proof` receives the thumbprint and runs the checkpoint's proof check; a credential
+/// binding no key refuses with `PossessionProofInvalid`.
+pub fn verify_with_proof<E: From<AuthorityError>>(
+    credential: &str,
+    keys: &KeySet,
+    admission: &Admission<'_>,
+    proof: impl FnOnce(&str) -> Result<(), E>,
+) -> Result<AdmittedAuthority, E> {
+    admit(credential, keys, admission, |cnf| match cnf {
+        Some(jkt) => proof(jkt),
+        None => Err(AuthorityError::PossessionProofInvalid("the credential binds no holder key".into()).into()),
+    })
+}
+
+fn admit<E: From<AuthorityError>>(
+    credential: &str,
+    keys: &KeySet,
+    admission: &Admission<'_>,
+    possession: impl FnOnce(Option<&str>) -> Result<(), E>,
+) -> Result<AdmittedAuthority, E> {
+    admission.revocation.withdrawals.check(BISCUIT_FORMAT, admission.at)?;
+    let bytes = token_bytes(credential)?;
+    let (token, key_version, pinned) = keys
+        .keys()
+        .find_map(|k| Biscuit::from(&bytes, k.public_key).ok().map(|t| (t, k.version.clone(), k.algorithm())))
+        .ok_or_else(|| AuthorityError::SignatureInvalid("no block chain verifies against a pinned key".into()))?;
+    let chain = read_chain(&bytes, admission.profiles)?;
+    crate::profile::evaluate(&token, admission.at)?;
+    SignatureAlgorithm::check_named(&chain.authority.alg, pinned)?;
+    let block = &chain.authority;
+    if let Some(expected) = admission.audience {
+        if block.aud != expected {
+            return Err(AuthorityError::AudienceMismatch(format!(
+                "the credential is for `{}`; this checkpoint expects `{expected}`",
+                block.aud
+            ))
+            .into());
+        }
+    }
+    let effective = chain.effective()?;
+    let expires_at = Instant::from_unix_secs(effective.exp)?;
+    if expires_at < admission.at {
+        return Err(AuthorityError::AuthorityExpired(format!("expired at {expires_at}; evaluated at {}", admission.at)).into());
+    }
+    let confirmation = chain.confirmation().map(|c| c.jkt.clone());
+    possession(confirmation.as_deref())?;
+    let admitted = AdmittedAuthority {
+        subject: effective.subject,
+        grants: effective.grants,
+        issuer: block.iss.clone(),
+        audience: block.aud.clone(),
+        issued_at: Instant::from_unix_secs(block.iat)?,
+        expires_at,
+        confirmation,
+        credential_id: block.rev.id.clone(),
+        revocation_ids: token.revocation_identifiers().iter().map(hex::encode).collect(),
+        epoch: block.rev.epoch,
+        profile: chain.version,
+        key_version,
+        format: BISCUIT_FORMAT,
+    };
+    admission.revocation.check(&admitted, admission.at)?;
+    admitted.subject.require_member(ADMISSION_SURFACE)?;
+    Ok(admitted)
+}
+
+/// Re-read expiry, revocation and the profile version against a carried value at an
+/// effect boundary (`authority.verify.effect-boundary`). The boundary's audience is
+/// not consulted: admission settled it.
+pub fn effect_boundary(admitted: &AdmittedAuthority, boundary: &Admission<'_>) -> Result<(), AuthorityError> {
+    if admitted.expires_at < boundary.at {
+        return Err(AuthorityError::AuthorityExpired(format!(
+            "expired at {}; the effect boundary is at {}",
+            admitted.expires_at, boundary.at
+        )));
+    }
+    boundary.revocation.check(admitted, boundary.at)?;
+    if !boundary.profiles.contains(&admitted.profile) {
+        return Err(AuthorityError::ProfileVersionUnsupported(format!(
+            "profile {} is outside the supported set {:?}",
+            admitted.profile, boundary.profiles
+        )));
+    }
+    Ok(())
+}
+
+/// The scope a credential declares, read without evaluating it
+/// (`authority.profile.declared-scope`): no signature, time, revocation or table policy
+/// settles anything here.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Introspection {
+    pub format: &'static str,
+    pub profile: i64,
+    pub authority: AuthorityBlock,
+    pub blocks: Vec<Hop>,
+    /// One revocation identifier per derivation, root first.
+    pub revocation_ids: Vec<String>,
+    /// The chain-final block's revocation identifier.
+    pub rev_id: String,
+}
+
+impl Introspection {
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).expect("an introspection serializes")
+    }
+}
+
+/// Read a credential's declared scope without verifying or evaluating it.
+pub fn introspect(credential: &str) -> Result<Introspection, AuthorityError> {
+    let bytes = token_bytes(credential)?;
+    let chain: Chain = read_chain(&bytes, SUPPORTED_PROFILE_VERSIONS)?;
+    let unverified = biscuit_auth::UnverifiedBiscuit::from(&bytes)
+        .map_err(|e| AuthorityError::SignatureInvalid(format!("the credential is not a signed chain: {e}")))?;
+    let revocation_ids: Vec<String> = unverified.revocation_identifiers().iter().map(hex::encode).collect();
+    Ok(Introspection {
+        format: BISCUIT_FORMAT,
+        profile: chain.version,
+        rev_id: revocation_ids.last().cloned().unwrap_or_default(),
+        authority: chain.authority,
+        blocks: chain.hops,
+        revocation_ids,
+    })
+}
+
+/// The one interface every surface reaches a credential through
+/// (`authority.verify.format-interface`); no enforcement call site names a credential type.
+pub trait CredentialFormat {
+    fn name(&self) -> &'static str;
+    fn issue(&self, plan: &MintPlan, claims: &MintClaims, signer: &SeedSigner) -> Result<String, AuthorityError>;
+    fn attenuate(&self, credential: &str, derivation: &Derivation) -> Result<String, AuthorityError>;
+    fn verify(&self, credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError>;
+    fn introspect(&self, credential: &str) -> Result<Introspection, AuthorityError>;
+}
+
+/// The delegation profile over biscuit, the one format.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BiscuitFormat;
+
+impl CredentialFormat for BiscuitFormat {
+    fn name(&self) -> &'static str {
+        BISCUIT_FORMAT
+    }
+    fn issue(&self, plan: &MintPlan, claims: &MintClaims, signer: &SeedSigner) -> Result<String, AuthorityError> {
+        crate::issue::mint(plan, claims, signer)
+    }
+    fn attenuate(&self, credential: &str, derivation: &Derivation) -> Result<String, AuthorityError> {
+        crate::attenuate::attenuate(credential, derivation)
+    }
+    fn verify(&self, credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError> {
+        verify(credential, keys, admission)
+    }
+    fn introspect(&self, credential: &str) -> Result<Introspection, AuthorityError> {
+        introspect(credential)
+    }
+}
