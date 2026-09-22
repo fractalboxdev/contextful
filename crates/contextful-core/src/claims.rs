@@ -16,7 +16,9 @@ pub struct AuthorityBlock {
     pub iat: i64,
     pub exp: i64,
     pub alg: String,
-    pub cnf: Confirmation,
+    /// Absent on a bearer credential bound to no holder key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cnf: Option<Confirmation>,
     pub sub: Subject,
     pub att: BTreeMap<Member, Attestation>,
     pub grants: Vec<Grant>,

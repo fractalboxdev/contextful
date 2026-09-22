@@ -7,4 +7,5 @@ mod keyset;
 mod possession;
 mod profile;
 mod revoke;
+mod support;
 mod verify;
