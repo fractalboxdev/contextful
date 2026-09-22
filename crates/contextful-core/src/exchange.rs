@@ -245,37 +245,13 @@ struct RawGrant {
 impl RawGrant {
     fn into_grant(self) -> Result<Grant, PolicyError> {
         Ok(Grant {
-            actions: self.actions.iter().map(|a| parse_action(a)).collect::<Result<_, _>>()?,
-            tables: self.tables.iter().map(|t| parse_pattern(t)).collect::<Result<_, _>>()?,
+            actions: self.actions.iter().map(|a| Action::parse(a)).collect::<Result<_, _>>()?,
+            tables: self.tables.iter().map(|t| TablePattern::parse(t)).collect::<Result<_, _>>()?,
             tenant: None,
             aggregate: self.aggregate,
             templates: self.templates,
             max_rows: self.max_rows,
         })
-    }
-}
-
-/// The action vocabulary as policy text.
-// mirrors: authority.grant.unknown-action
-fn parse_action(s: &str) -> Result<Action, AuthorityError> {
-    match s {
-        "read" => Ok(Action::Read),
-        "write" => Ok(Action::Write),
-        "execute" => Ok(Action::Execute),
-        "admin" => Ok(Action::Admin),
-        _ => Err(AuthorityError::GrantActionUnknown(format!("`{s}` is not read, write, execute or admin"))),
-    }
-}
-
-/// A table pattern as policy text.
-// mirrors: authority.grant.malformed-pattern
-fn parse_pattern(s: &str) -> Result<TablePattern, AuthorityError> {
-    match s.find('*') {
-        None => Ok(TablePattern::Exact(s.to_string())),
-        Some(i) if i + 1 == s.len() => {
-            Ok(if i == 0 { TablePattern::All } else { TablePattern::Prefix(s[..i].to_string()) })
-        }
-        Some(_) => Err(AuthorityError::GrantPatternMalformed(format!("`{s}` holds `*` before its final position"))),
     }
 }
 
