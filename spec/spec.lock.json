@@ -2052,7 +2052,7 @@
       "operation": "fold",
       "subject": "includes-runs",
       "kind": "behavior",
-      "statement": "A snapshot's `includes_runs` names the runs it folded; a run committed afterwards reads on top of it.",
+      "statement": "A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 188

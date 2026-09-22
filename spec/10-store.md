@@ -185,7 +185,7 @@ Compaction: pass order, triggers, retention, the compaction lease, and the point
 
 - `pass` — A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}.
 - `valid-time-line` — A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line.
-- `includes-runs` — A snapshot's `includes_runs` names the runs it folded; a run committed afterwards reads on top of it.
+- `includes-runs` — A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.
 - `triggers` — A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
 - `retention` — `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
 - `result` — A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass.
@@ -502,7 +502,7 @@ A run manifest, a snapshot manifest and a table pointer:
 
 { "snapshot_id": "snapshot-01742054400000000000", "parent": "snapshot-01741968000000000000",
   "table": "filings", "created_at": "<instant>",
-  "includes_runs": ["run-4812", "run-4813", "run-4814"],
+  "includes_runs": ["run-4812/ingest-a", "run-4813/ingest-a", "run-4814/ingest-b"],
   "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
   "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,
   "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],

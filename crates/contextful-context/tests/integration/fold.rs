@@ -56,8 +56,8 @@ fn a_valid_time_table_keeps_one_row_per_key_and_line() {
     assert_eq!(raw, [[s("1")], [s("3")]]);
 }
 
-/// A snapshot's `includes_runs` names the runs it folded; a run committed afterwards reads on top of it.
-// spec: store.fold.includes-runs@b96c418f
+/// A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.
+// spec: store.fold.includes-runs@f8549a98
 #[test]
 fn a_snapshot_names_the_runs_it_folded() {
     let f = Fixture::new();

@@ -53,7 +53,7 @@ fn the_snapshot_manifest_and_pointer_decode_in_their_documented_shape() {
     let snap: SnapshotManifest = serde_json::from_str(
         r#"{ "snapshot_id": "snapshot-01742054400000000000", "parent": "snapshot-01741968000000000000",
   "table": "filings", "created_at": "2025-03-15T16:00:00Z",
-  "includes_runs": ["run-4812", "run-4813", "run-4814"],
+  "includes_runs": ["run-4812/ingest-a", "run-4813/ingest-a", "run-4814/ingest-b"],
   "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
   "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,
   "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
