@@ -187,7 +187,7 @@ The generated files, and the vocabulary no authored file carries.
   *because build state is computed, and a dated sentence is stale the day it lands*
 - `counterfactual` — The words `will`, `would` and `shall` raise `SpecCounterfactual` in a contract file or a guide.
   *because a contract states present behavior, and a record's Options is where a path not taken is described*
-- `banned-vocabulary` — The nouns `seam`, `load-bearing`, `wedge`, `rung` and `land-grab`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.
+- `banned-vocabulary` — The nouns `seam`, `load-bearing`, `wedge`, `rung`, `land-grab` and an unbackticked `axiom`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.
   *P8*
 - `local-path` — A path beginning `/Users/`, `/home/`, `$HOME/` or `~/` raises `SpecLocalPath`.
   *P8*

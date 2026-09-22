@@ -578,7 +578,7 @@
       "operation": "render",
       "subject": "banned-vocabulary",
       "kind": "refusal",
-      "statement": "The nouns `seam`, `load-bearing`, `wedge`, `rung` and `land-grab`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.",
+      "statement": "The nouns `seam`, `load-bearing`, `wedge`, `rung`, `land-grab` and an unbackticked `axiom`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
       "line": 190
@@ -13624,7 +13624,7 @@
       "operation": "model",
       "subject": "protocol-theorems",
       "kind": "behavior",
-      "statement": "Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-axioms.check-command}} against the same allowlist.",
+      "statement": "Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-assumptions.check-command}} against the same allowlist.",
       "why": "",
       "file": "spec/80-formal.md",
       "line": 72
@@ -13839,136 +13839,147 @@
       "line": 106
     },
     {
-      "id": "assurance.audit-axioms.allowlist",
+      "id": "assurance.audit-assumptions.assumption",
       "contract": "assurance",
-      "operation": "audit-axioms",
-      "subject": "allowlist",
-      "kind": "limit",
-      "statement": "The axiom allowlist holds 2 entries, `propext` and `Quot.sound`, and every theorem's footprint is a subset of it.",
-      "why": "because no required constant draws on `Classical.choice`",
+      "operation": "audit-assumptions",
+      "subject": "assumption",
+      "kind": "behavior",
+      "statement": "An assumption is a declaration the Lean kernel accepts without proof: the set `#print axioms` reports for a constant, which the audit reads through `collectAxioms`.",
+      "why": "",
       "file": "spec/80-formal.md",
       "line": 118
     },
     {
-      "id": "assurance.audit-axioms.transitive-audit",
+      "id": "assurance.audit-assumptions.allowlist",
       "contract": "assurance",
-      "operation": "audit-axioms",
-      "subject": "transitive-audit",
-      "kind": "behavior",
-      "statement": "Each required constant's axiom footprint is read transitively off the elaborated environment, naming every axiom reached.",
-      "why": "",
+      "operation": "audit-assumptions",
+      "subject": "allowlist",
+      "kind": "limit",
+      "statement": "The assumption allowlist holds 2 entries, `propext` and `Quot.sound`, and every theorem's footprint is a subset of it.",
+      "why": "because no required constant draws on `Classical.choice`",
       "file": "spec/80-formal.md",
-      "line": 120
+      "line": 119
     },
     {
-      "id": "assurance.audit-axioms.verdict-input",
+      "id": "assurance.audit-assumptions.transitive-audit",
       "contract": "assurance",
-      "operation": "audit-axioms",
+      "operation": "audit-assumptions",
+      "subject": "transitive-audit",
+      "kind": "behavior",
+      "statement": "Each required constant's assumption footprint is read transitively off the elaborated environment, naming every assumption reached.",
+      "why": "",
+      "file": "spec/80-formal.md",
+      "line": 121
+    },
+    {
+      "id": "assurance.audit-assumptions.verdict-input",
+      "contract": "assurance",
+      "operation": "audit-assumptions",
       "subject": "verdict-input",
       "kind": "behavior",
       "statement": "A verdict is a function of the elaborated environment and the inventory alone; source text, declaration counts and the build's exit status decide nothing.",
       "why": "because elaboration reports a hole as a warning and exits zero, and a character pattern misses a hole spelled in parentheses",
       "file": "spec/80-formal.md",
-      "line": 121
+      "line": 122
     },
     {
-      "id": "assurance.audit-axioms.axiom-outside-allowlist",
+      "id": "assurance.audit-assumptions.assumption-outside-allowlist",
       "contract": "assurance",
-      "operation": "audit-axioms",
-      "subject": "axiom-outside-allowlist",
+      "operation": "audit-assumptions",
+      "subject": "assumption-outside-allowlist",
       "kind": "refusal",
-      "statement": "An axiom in a footprint and absent from the allowlist raises `AxiomOutsideAllowlist`, printing the constant and the axiom.",
+      "statement": "An assumption in a footprint and absent from the allowlist raises `AssumptionOutsideAllowlist`, printing the constant and the assumption.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 123
+      "line": 124
     },
     {
-      "id": "assurance.audit-axioms.hole-axiom",
+      "id": "assurance.audit-assumptions.hole-assumption",
       "contract": "assurance",
-      "operation": "audit-axioms",
-      "subject": "hole-axiom",
+      "operation": "audit-assumptions",
+      "subject": "hole-assumption",
       "kind": "refusal",
-      "statement": "A footprint containing the hole axiom raises `ProofHoleAxiom`, naming the declaration, whatever its syntax spells.",
+      "statement": "A footprint containing the hole assumption raises `ProofHoleAssumption`, naming the declaration, whatever its syntax spells.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 125
+      "line": 126
     },
     {
-      "id": "assurance.audit-axioms.native-evaluation-axiom",
+      "id": "assurance.audit-assumptions.native-evaluation-assumption",
       "contract": "assurance",
-      "operation": "audit-axioms",
-      "subject": "native-evaluation-axiom",
+      "operation": "audit-assumptions",
+      "subject": "native-evaluation-assumption",
       "kind": "refusal",
-      "statement": "A footprint containing a per-declaration native-evaluation axiom raises `NativeEvaluationAxiom`, naming the declaration that minted it.",
+      "statement": "A footprint containing a per-declaration native-evaluation assumption raises `NativeEvaluationAssumption`, naming the declaration that minted it.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 127
+      "line": 128
     },
     {
-      "id": "assurance.audit-axioms.inventory",
+      "id": "assurance.audit-assumptions.inventory",
       "contract": "assurance",
-      "operation": "audit-axioms",
+      "operation": "audit-assumptions",
       "subject": "inventory",
       "kind": "behavior",
-      "statement": "`formal/inventory.toml` holds one row per required constant — name, module, expected statement text, admitted axioms, binding, negative space — edited apart from the declarations satisfying it.",
+      "statement": "`formal/inventory.toml` holds one row per required constant — name, module, expected statement text, admitted assumptions, binding, negative space — edited apart from the declarations satisfying it.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 129
+      "line": 130
     },
     {
-      "id": "assurance.audit-axioms.missing-constant",
+      "id": "assurance.audit-assumptions.missing-constant",
       "contract": "assurance",
-      "operation": "audit-axioms",
+      "operation": "audit-assumptions",
       "subject": "missing-constant",
       "kind": "refusal",
       "statement": "A required constant absent from the elaborated environment raises `TheoremConstantMissing`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 130
+      "line": 131
     },
     {
-      "id": "assurance.audit-axioms.statement-drift",
+      "id": "assurance.audit-assumptions.statement-drift",
       "contract": "assurance",
-      "operation": "audit-axioms",
+      "operation": "audit-assumptions",
       "subject": "statement-drift",
       "kind": "refusal",
       "statement": "A required constant whose elaborated statement differs from its expected text raises `TheoremStatementDrift`, printing both.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 132
+      "line": 133
     },
     {
-      "id": "assurance.audit-axioms.inventory-change",
+      "id": "assurance.audit-assumptions.inventory-change",
       "contract": "assurance",
-      "operation": "audit-axioms",
+      "operation": "audit-assumptions",
       "subject": "inventory-change",
       "kind": "behavior",
       "statement": "A change to a required statement lands in the commit carrying the proof it admits.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 134
-    },
-    {
-      "id": "assurance.audit-axioms.report",
-      "contract": "assurance",
-      "operation": "audit-axioms",
-      "subject": "report",
-      "kind": "behavior",
-      "statement": "The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the axioms it reaches.",
-      "why": "",
-      "file": "spec/80-formal.md",
       "line": 135
     },
     {
-      "id": "assurance.audit-axioms.check-command",
+      "id": "assurance.audit-assumptions.report",
       "contract": "assurance",
-      "operation": "audit-axioms",
+      "operation": "audit-assumptions",
+      "subject": "report",
+      "kind": "behavior",
+      "statement": "The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the assumptions it reaches.",
+      "why": "",
+      "file": "spec/80-formal.md",
+      "line": 136
+    },
+    {
+      "id": "assurance.audit-assumptions.check-command",
+      "contract": "assurance",
+      "operation": "audit-assumptions",
       "subject": "check-command",
       "kind": "behavior",
       "statement": "`contextful formal check` elaborates the package, matches every inventory row, audits every footprint, writes the report, and exits non-zero naming the first failing constant.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 136
+      "line": 137
     },
     {
       "id": "assurance.recheck.two-phase",
@@ -13979,7 +13990,7 @@
       "statement": "A recheck rebuilds the package from the commit's own source and pinned toolchain into an empty artifact directory, fetching nothing, and re-runs the audit against the rebuilt environment.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 162
+      "line": 163
     },
     {
       "id": "assurance.recheck.credential-free",
@@ -13990,7 +14001,7 @@
       "statement": "A recheck environment exposing a token, a signing key or a registry login raises `RecheckEnvironmentCredentialed`, naming the variable or file carrying it.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 163
+      "line": 164
     },
     {
       "id": "assurance.recheck.report-mismatch",
@@ -13998,10 +14009,10 @@
       "operation": "recheck",
       "subject": "report-mismatch",
       "kind": "refusal",
-      "statement": "A recheck whose per-constant statement text or axiom set differs from the first phase's raises `RecheckReportMismatch`, naming the constant.",
+      "statement": "A recheck whose per-constant statement text or assumption set differs from the first phase's raises `RecheckReportMismatch`, naming the constant.",
       "why": "because `.olean` output is not byte-reproducible across hosts and paths, while the per-constant report is the fact under check",
       "file": "spec/80-formal.md",
-      "line": 165
+      "line": 166
     },
     {
       "id": "assurance.recheck.wall-time",
@@ -14012,7 +14023,7 @@
       "statement": "A recheck completes within 600 s.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 167
+      "line": 168
     },
     {
       "id": "assurance.scope-claim.claim-sentence",
@@ -14023,7 +14034,7 @@
       "statement": "The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated translation and runtime assumptions; each list resolves to code paths, constants and components in the tree.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 173
+      "line": 174
     },
     {
       "id": "assurance.scope-claim.beyond-named-decisions",
@@ -14034,7 +14045,7 @@
       "statement": "A claim that the enforcement engine, or any object wider than the named decisions, is verified raises `ClaimBeyondNamedDecisions`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 174
+      "line": 175
     },
     {
       "id": "assurance.scope-claim.trusted-dependencies",
@@ -14045,7 +14056,7 @@
       "statement": "The claim names the delegation library, its cryptography, its parser and the translator as trusted dependencies, and proves none of them.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 176
+      "line": 177
     },
     {
       "id": "assurance.scope-claim.unnamed-dependency",
@@ -14056,7 +14067,7 @@
       "statement": "A claim resting on a component absent from its trusted-dependency list raises `TrustedDependencyUnnamed`, naming the component.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 177
+      "line": 178
     },
     {
       "id": "assurance.scope-claim.translation-chain",
@@ -14067,7 +14078,7 @@
       "statement": "A statement about translated code inherits four links: the compiler's lowering, the translator, hand-written models of external definitions, and the production build configuration.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 179
+      "line": 180
     },
     {
       "id": "assurance.scope-claim.unstated-chain",
@@ -14078,7 +14089,7 @@
       "statement": "A theorem claimed over translated code without its translation chain raises `TranslationChainUnstated`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 180
+      "line": 181
     },
     {
       "id": "assurance.scope-claim.refinement-scope",
@@ -14089,7 +14100,7 @@
       "statement": "Refinement covers the decision functions behind the two proof targets, whose inputs are values and whose outputs are decisions.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 182
+      "line": 183
     },
     {
       "id": "assurance.scope-claim.refinement-exceeded",
@@ -14100,7 +14111,7 @@
       "statement": "Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 183
+      "line": 184
     },
     {
       "id": "assurance.differential-test.reference-model",
@@ -14111,7 +14122,7 @@
       "statement": "The reference model is an executable Lean rendering of the decision functions, built to a binary that reads one case on standard input and prints one decision.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 192
+      "line": 193
     },
     {
       "id": "assurance.differential-test.harness",
@@ -14122,7 +14133,7 @@
       "statement": "The harness drives the reference binary and the engine's decision function over each generated case and compares the two decisions field by field.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 193
+      "line": 194
     },
     {
       "id": "assurance.differential-test.case-classes",
@@ -14133,7 +14144,7 @@
       "statement": "Each run generates malformed inputs, boundary values and well-formed requests, and its report names the classes it drew from.",
       "why": "because a green run is evidence over the generated classes, not an equivalence proof",
       "file": "spec/80-formal.md",
-      "line": 195
+      "line": 196
     },
     {
       "id": "assurance.differential-test.minimized",
@@ -14144,7 +14155,7 @@
       "statement": "A disagreement is shrunk until removing any further field makes the two agree, and the minimized case is recorded.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 197
+      "line": 198
     },
     {
       "id": "assurance.differential-test.corpus-replay",
@@ -14155,7 +14166,7 @@
       "statement": "Every counterexample-corpus case replays before any freshly generated case.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 198
+      "line": 199
     },
     {
       "id": "assurance.differential-test.corpus-entries",
@@ -14166,7 +14177,7 @@
       "statement": "The counterexample corpus retains at most 256 entries, evicting the oldest case a fresh seed reproduces.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 199
+      "line": 200
     },
     {
       "id": "assurance.differential-test.run-budget",
@@ -14177,7 +14188,7 @@
       "statement": "One invocation, corpus replay included, completes within 300 s.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 200
+      "line": 201
     },
     {
       "id": "assurance.differential-test.disagreement",
@@ -14188,7 +14199,7 @@
       "statement": "A case on which the two decisions differ raises `ReferenceModelDrift`, printing the minimized case and both decisions.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 201
+      "line": 202
     },
     {
       "id": "assurance.differential-test.discarded-counterexample",
@@ -14199,7 +14210,7 @@
       "statement": "A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 203
+      "line": 204
     },
     {
       "id": "assurance.differential-test.seed",
@@ -14210,7 +14221,7 @@
       "statement": "Each run records its generator seed, and re-running with that seed reproduces the same case sequence.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 205
+      "line": 206
     },
     {
       "id": "assurance.differential-test.protocol-cases",
@@ -14221,7 +14232,7 @@
       "statement": "Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over acquire, renew, release, expire, commit, pause, delay and crash steps across three nodes.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 206
+      "line": 207
     },
     {
       "id": "assurance.differential-test.protocol-harness",
@@ -14232,7 +14243,7 @@
       "statement": "The harness drives the protocol package's compiled executable and the Rust store through each protocol case, comparing lease holder, fence, pointer ETag and commit outcome after every step.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 207
+      "line": 208
     },
     {
       "id": "assurance.differential-test.protocol-drift",
@@ -14243,7 +14254,7 @@
       "statement": "A step after which the model's state and the store's projected state differ raises `ProtocolConformanceDrift`, printing the minimized operation sequence and both states.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 209
+      "line": 210
     },
     {
       "id": "assurance.differential-test.command",
@@ -14254,7 +14265,7 @@
       "statement": "`contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 211
+      "line": 212
     },
     {
       "id": "assurance.structure-tree.one-home",
@@ -14746,7 +14757,7 @@
       "operation": "gate",
       "subject": "formal-stage",
       "kind": "behavior",
-      "statement": "The formal stage runs {{assurance.audit-axioms.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.",
+      "statement": "The formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.",
       "why": "P7",
       "file": "spec/81-engineering.md",
       "line": 155
@@ -15526,7 +15537,7 @@
     "spec/80-formal.md": [
       "model",
       "prove",
-      "audit-axioms",
+      "audit-assumptions",
       "recheck",
       "scope-claim",
       "differential-test"
@@ -15542,7 +15553,7 @@
     ]
   },
   "ledes": {
-    "assurance.audit-axioms": "The axiom allowlist, the transitive footprint audit over the elaborated environment, the inventory and the report.",
+    "assurance.audit-assumptions": "The assumption allowlist, the transitive footprint audit over the elaborated environment, the inventory and the report.",
     "assurance.automate": "Typed subcommands over compiled binaries, and the boundary shell keeps.",
     "assurance.baseline": "Holding a run against committed baselines and absolute floors, intervals, golden custody and case generation.",
     "assurance.build": "Target directories, the engine-linked invocation, linked query functions, build targets, release artifacts and the dependency allowlist.",
@@ -15914,7 +15925,7 @@
     ],
     [
       "assurance.model.protocol-theorems",
-      "assurance.audit-axioms.check-command"
+      "assurance.audit-assumptions.check-command"
     ],
     [
       "assurance.model.protocol-pins",
@@ -15942,7 +15953,7 @@
     ],
     [
       "assurance.gate.formal-stage",
-      "assurance.audit-axioms.check-command"
+      "assurance.audit-assumptions.check-command"
     ],
     [
       "assurance.gate.formal-stage",
@@ -16249,7 +16260,7 @@
     "fragments": {
       "assurance": {
         "operation": {
-          "audit-axioms": {
+          "audit-assumptions": {
             "gloss": "",
             "aliases": []
           },
@@ -16307,9 +16318,9 @@
             "clause": "assurance.test.acceptance-surface",
             "gloss": "The acceptance package depending on a workspace package."
           },
-          "AxiomOutsideAllowlist": {
-            "clause": "assurance.audit-axioms.axiom-outside-allowlist",
-            "gloss": "A constant's footprint reaches an axiom absent from the allowlist."
+          "AssumptionOutsideAllowlist": {
+            "clause": "assurance.audit-assumptions.assumption-outside-allowlist",
+            "gloss": "A constant's footprint reaches an assumption absent from the allowlist."
           },
           "BaselinePathUnresolved": {
             "clause": "assurance.baseline.unresolvable-path",
@@ -16387,13 +16398,13 @@
             "clause": "assurance.structure-tree.mirror-unresolved",
             "gloss": "A mirrors annotation naming no clause of the lock file."
           },
-          "NativeEvaluationAxiom": {
-            "clause": "assurance.audit-axioms.native-evaluation-axiom",
-            "gloss": "A footprint contains a per-declaration native-evaluation axiom."
+          "NativeEvaluationAssumption": {
+            "clause": "assurance.audit-assumptions.native-evaluation-assumption",
+            "gloss": "A footprint contains a per-declaration native-evaluation assumption."
           },
-          "ProofHoleAxiom": {
-            "clause": "assurance.audit-axioms.hole-axiom",
-            "gloss": "A footprint contains the hole axiom."
+          "ProofHoleAssumption": {
+            "clause": "assurance.audit-assumptions.hole-assumption",
+            "gloss": "A footprint contains the hole assumption."
           },
           "ProofTargetUnbound": {
             "clause": "assurance.prove.unbound-target",
@@ -16417,7 +16428,7 @@
           },
           "RecheckReportMismatch": {
             "clause": "assurance.recheck.report-mismatch",
-            "gloss": "The recheck's per-constant statement or axiom set differs from the first phase's."
+            "gloss": "The recheck's per-constant statement or assumption set differs from the first phase's."
           },
           "ReferenceModelDrift": {
             "clause": "assurance.differential-test.disagreement",
@@ -16448,11 +16459,11 @@
             "gloss": "A source change carrying no test that fails against the base commit's source."
           },
           "TheoremConstantMissing": {
-            "clause": "assurance.audit-axioms.missing-constant",
+            "clause": "assurance.audit-assumptions.missing-constant",
             "gloss": "A required constant is absent from the elaborated environment."
           },
           "TheoremStatementDrift": {
-            "clause": "assurance.audit-axioms.statement-drift",
+            "clause": "assurance.audit-assumptions.statement-drift",
             "gloss": "A required constant's elaborated statement differs from its expected text."
           },
           "TheoremWithoutNegativeSpace": {
@@ -16489,12 +16500,12 @@
           }
         },
         "limit": {
-          "assurance-axiom-allowlist": {
-            "clause": "assurance.audit-axioms.allowlist",
+          "assurance-assumption-allowlist": {
+            "clause": "assurance.audit-assumptions.allowlist",
             "value": 2,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Axioms a required constant's footprint may reach."
+            "gloss": "Assumptions a required constant's footprint may reach."
           },
           "assurance-bootstrap-resamples": {
             "clause": "assurance.baseline.interval",

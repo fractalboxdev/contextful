@@ -1,9 +1,9 @@
-//! `contextful formal` — elaboration and axiom audit of the Lean models.
+//! `contextful formal` — elaboration and assumption audit of the Lean models.
 //!
 //! `check` refuses a package manifest declaring a dependency and a toolchain that drifts
 //! from its pin, refuses an inventory that publishes a theorem without its negative space,
 //! names an unbound proof target or rests on an unnamed component, then builds the package
-//! and reads each required constant's elaborated statement and transitive axiom footprint
+//! and reads each required constant's elaborated statement and transitive assumption footprint
 //! off the elaborated environment through a generated Lean file. Source text decides
 //! nothing. `recheck` repeats the audit over the commit's own source in an empty artifact
 //! directory, from a credential-free environment, and compares the per-constant reports.
@@ -17,15 +17,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-/// The axioms a required constant's footprint may reach (`assurance-axiom-allowlist`: 2 entries).
-pub const AXIOM_ALLOWLIST: [&str; 2] = ["propext", "Quot.sound"];
+/// The assumptions a required constant's footprint may reach (`assurance-assumption-allowlist`: 2 entries).
+pub const ASSUMPTION_ALLOWLIST: [&str; 2] = ["propext", "Quot.sound"];
 
-/// The hole axiom every `sorry`, however spelled, elaborates to.
-pub const HOLE_AXIOM: &str = "sorryAx";
+/// The hole assumption every `sorry`, however spelled, elaborates to.
+pub const HOLE_ASSUMPTION: &str = "sorryAx";
 
-/// Axioms trusting the compiler's evaluation. `native_decide` also mints one axiom per
+/// Assumptions trusting the compiler's evaluation. `native_decide` also mints one assumption per
 /// declaration, whose name carries a `_native` component.
-pub const NATIVE_AXIOMS: [&str; 3] = ["Lean.ofReduceBool", "Lean.ofReduceNat", "Lean.trustCompiler"];
+pub const NATIVE_ASSUMPTIONS: [&str; 3] = ["Lean.ofReduceBool", "Lean.ofReduceNat", "Lean.trustCompiler"];
 
 /// One recheck from an empty artifact directory (`assurance-recheck-wall-time`: 600 s).
 pub const RECHECK_WALL_TIME: Duration = Duration::from_secs(600);
@@ -52,21 +52,21 @@ pub enum FormalError {
     /// (`assurance.scope-claim.unnamed-dependency`)
     #[error("TrustedDependencyUnnamed: {0}")]
     TrustedDependencyUnnamed(String),
-    /// (`assurance.audit-axioms.missing-constant`)
+    /// (`assurance.audit-assumptions.missing-constant`)
     #[error("TheoremConstantMissing: {0}")]
     TheoremConstantMissing(String),
-    /// (`assurance.audit-axioms.statement-drift`)
+    /// (`assurance.audit-assumptions.statement-drift`)
     #[error("TheoremStatementDrift: {0}")]
     TheoremStatementDrift(String),
-    /// (`assurance.audit-axioms.hole-axiom`)
-    #[error("ProofHoleAxiom: {0}")]
-    ProofHoleAxiom(String),
-    /// (`assurance.audit-axioms.native-evaluation-axiom`)
-    #[error("NativeEvaluationAxiom: {0}")]
-    NativeEvaluationAxiom(String),
-    /// (`assurance.audit-axioms.axiom-outside-allowlist`)
-    #[error("AxiomOutsideAllowlist: {0}")]
-    AxiomOutsideAllowlist(String),
+    /// (`assurance.audit-assumptions.hole-assumption`)
+    #[error("ProofHoleAssumption: {0}")]
+    ProofHoleAssumption(String),
+    /// (`assurance.audit-assumptions.native-evaluation-assumption`)
+    #[error("NativeEvaluationAssumption: {0}")]
+    NativeEvaluationAssumption(String),
+    /// (`assurance.audit-assumptions.assumption-outside-allowlist`)
+    #[error("AssumptionOutsideAllowlist: {0}")]
+    AssumptionOutsideAllowlist(String),
     /// (`assurance.recheck.credential-free`)
     #[error("RecheckEnvironmentCredentialed: {0}")]
     RecheckEnvironmentCredentialed(String),
@@ -83,7 +83,7 @@ impl FormalError {
 
 #[derive(Subcommand)]
 pub enum FormalCmd {
-    /// Elaborate the package, match every inventory row, audit every axiom footprint and
+    /// Elaborate the package, match every inventory row, audit every assumption footprint and
     /// write the report; exits non-zero naming the first failing constant.
     Check {
         /// The Lean package root (default: `formal/` under the repository).
@@ -184,8 +184,8 @@ pub struct Row {
     pub statement_elaborated: Option<String>,
     pub statement_match: bool,
     /// The transitive footprint, sorted.
-    pub axioms: Vec<String>,
-    /// The axioms this row admits: its own list within the allowlist.
+    pub assumptions: Vec<String>,
+    /// The assumptions this row admits: its own list within the allowlist.
     pub admitted: Vec<String>,
     /// `ok`, or the identifier of the refusal the row raises.
     pub verdict: String,
@@ -211,16 +211,16 @@ fn audit(root: &Path) -> Result<Report> {
         commit: git(root, &["rev-parse", "HEAD"]).unwrap_or_else(|| "none".into()),
         worktree_clean: git(root, &["status", "--porcelain", "--", "."]).is_some_and(|s| s.is_empty()),
         toolchain,
-        allowlist: AXIOM_ALLOWLIST.iter().map(|s| s.to_string()).collect(),
+        allowlist: ASSUMPTION_ALLOWLIST.iter().map(|s| s.to_string()).collect(),
         inventory_revision: inventory.revision,
         constants,
     })
 }
 
 fn judge(row: &InventoryRow, found: Option<&Elaborated>) -> Row {
-    let admitted: Vec<String> = match &row.axioms {
-        Some(list) => AXIOM_ALLOWLIST.iter().filter(|a| list.iter().any(|l| l == *a)).map(|a| a.to_string()).collect(),
-        None => AXIOM_ALLOWLIST.iter().map(|a| a.to_string()).collect(),
+    let admitted: Vec<String> = match &row.assumptions {
+        Some(list) => ASSUMPTION_ALLOWLIST.iter().filter(|a| list.iter().any(|l| l == *a)).map(|a| a.to_string()).collect(),
+        None => ASSUMPTION_ALLOWLIST.iter().map(|a| a.to_string()).collect(),
     };
     let mut out = Row {
         name: row.name.clone(),
@@ -229,7 +229,7 @@ fn judge(row: &InventoryRow, found: Option<&Elaborated>) -> Row {
         statement_expected: row.statement.clone(),
         statement_elaborated: found.map(|f| f.statement.clone()),
         statement_match: false,
-        axioms: found.map(|f| f.axioms.iter().cloned().collect()).unwrap_or_default(),
+        assumptions: found.map(|f| f.assumptions.iter().cloned().collect()).unwrap_or_default(),
         admitted,
         verdict: "ok".into(),
         failure: None,
@@ -248,24 +248,24 @@ fn judge(row: &InventoryRow, found: Option<&Elaborated>) -> Row {
         ))),
         Some(f) => {
             out.statement_match = normalize(&f.statement) == normalize(&row.statement);
-            let native: Vec<&String> = f.axioms.iter().filter(|a| is_native(a)).collect();
+            let native: Vec<&String> = f.assumptions.iter().filter(|a| is_native(a)).collect();
             let outside: Vec<&String> =
-                f.axioms.iter().filter(|a| !out.admitted.iter().any(|ok| ok == *a)).collect();
+                f.assumptions.iter().filter(|a| !out.admitted.iter().any(|ok| ok == *a)).collect();
             if !out.statement_match {
                 Some(FormalError::TheoremStatementDrift(format!(
                     "`{name}`: expected `{}`, elaborated `{}`",
                     row.statement, f.statement
                 )))
-            } else if f.axioms.contains(HOLE_AXIOM) {
-                Some(FormalError::ProofHoleAxiom(format!("`{name}` reaches `{HOLE_AXIOM}`")))
+            } else if f.assumptions.contains(HOLE_ASSUMPTION) {
+                Some(FormalError::ProofHoleAssumption(format!("`{name}` reaches `{HOLE_ASSUMPTION}`")))
             } else if let Some(ax) = native.first() {
-                Some(FormalError::NativeEvaluationAxiom(format!(
+                Some(FormalError::NativeEvaluationAssumption(format!(
                     "`{name}` reaches `{ax}`, minted by `{}`",
                     minter(ax).unwrap_or(name)
                 )))
             } else if !outside.is_empty() {
                 let list: Vec<&str> = outside.iter().map(|s| s.as_str()).collect();
-                Some(FormalError::AxiomOutsideAllowlist(format!(
+                Some(FormalError::AssumptionOutsideAllowlist(format!(
                     "`{name}` reaches {} (admitted: {})",
                     list.iter().map(|a| format!("`{a}`")).collect::<Vec<_>>().join(", "),
                     out.admitted.join(", ")
@@ -286,14 +286,14 @@ fn normalize(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn is_native(axiom: &str) -> bool {
-    NATIVE_AXIOMS.contains(&axiom) || axiom.split('.').any(|c| c == "_native")
+fn is_native(assumption: &str) -> bool {
+    NATIVE_ASSUMPTIONS.contains(&assumption) || assumption.split('.').any(|c| c == "_native")
 }
 
-/// The declaration a per-declaration native axiom was minted for: the name before its
+/// The declaration a per-declaration native assumption was minted for: the name before its
 /// `_native` component.
-fn minter(axiom: &str) -> Option<&str> {
-    axiom.find("._native").map(|i| &axiom[..i])
+fn minter(assumption: &str) -> Option<&str> {
+    assumption.find("._native").map(|i| &assumption[..i])
 }
 
 // ---------------------------------------------------------------- manifest and toolchain
@@ -350,7 +350,7 @@ fn resolve_toolchain(root: &Path) -> Result<Toolchain> {
 struct RawRow {
     module: Option<String>,
     statement: Option<String>,
-    axioms: Option<Vec<String>>,
+    assumptions: Option<Vec<String>>,
     binding: Option<String>,
     negative: Option<String>,
 }
@@ -378,7 +378,7 @@ struct InventoryRow {
     name: String,
     module: String,
     statement: String,
-    axioms: Option<Vec<String>>,
+    assumptions: Option<Vec<String>>,
     binding: Option<String>,
     negative: Option<String>,
 }
@@ -411,7 +411,7 @@ impl Inventory {
                 name,
                 module,
                 statement,
-                axioms: r.axioms,
+                assumptions: r.assumptions,
                 binding: r.binding,
                 negative: r.negative,
             });
@@ -464,17 +464,17 @@ impl Inventory {
 struct Elaborated {
     module: String,
     statement: String,
-    axioms: BTreeSet<String>,
+    assumptions: BTreeSet<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ElaboratedRow {
     module: Option<String>,
     statement: Option<String>,
-    axioms: Option<BTreeSet<String>>,
+    assumptions: Option<BTreeSet<String>>,
 }
 
-/// Reads each row's elaborated statement and transitive axiom footprint off the
+/// Reads each row's elaborated statement and transitive assumption footprint off the
 /// environment `lake build` wrote, through a generated Lean file importing every row's
 /// module that elaborated. A constant whose module left no `.olean` is absent.
 fn elaborate(root: &Path, inventory: &Inventory) -> Result<BTreeMap<String, Elaborated>> {
@@ -508,7 +508,7 @@ fn elaborate(root: &Path, inventory: &Inventory) -> Result<BTreeMap<String, Elab
       rows := rows.push (Json.mkObj [("name", toJson c.toString),
         ("module", toJson m.toString),
         ("statement", toJson (f.pretty 1000000)),
-        ("axioms", toJson (axs.map (·.toString)))])
+        ("assumptions", toJson (axs.map (·.toString)))])
   IO.FS.writeFile {out} (Json.arr rows).compress
 "#,
         names = names.join(", "),
@@ -539,7 +539,7 @@ fn elaborate(root: &Path, inventory: &Inventory) -> Result<BTreeMap<String, Elab
         .filter_map(|(inv, row)| {
             let statement = row.statement?;
             let module = row.module.unwrap_or_default();
-            Some((inv.name.clone(), Elaborated { module, statement, axioms: row.axioms.unwrap_or_default() }))
+            Some((inv.name.clone(), Elaborated { module, statement, assumptions: row.assumptions.unwrap_or_default() }))
         })
         .collect())
 }
@@ -598,7 +598,7 @@ fn recheck(root: Option<PathBuf>) -> Result<()> {
     }
 
     let index = |r: &Report| -> BTreeMap<String, (Option<String>, Vec<String>)> {
-        r.constants.iter().map(|c| (c.name.clone(), (c.statement_elaborated.clone(), c.axioms.clone()))).collect()
+        r.constants.iter().map(|c| (c.name.clone(), (c.statement_elaborated.clone(), c.assumptions.clone()))).collect()
     };
     let (a, b) = (index(&first), index(&second));
     let names: BTreeSet<&String> = a.keys().chain(b.keys()).collect();

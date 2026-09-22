@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 13 | 174 | 46 | 18 | 13 | 49 | 0 | 49 |
+| `assurance` | 2 | 13 | 175 | 46 | 18 | 13 | 49 | 0 | 49 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 91 | 0 | 91 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
 | `corpus` | 1 | 9 | 64 | 25 | 7 | 0 | 25 | 0 | 25 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 137 | 36 | 12 | 8 | 0 | 0 | 0 |
 | `surface` | 2 | 19 | 61 | 40 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 144 | 1396 | 444 | 160 | 100 | 165 | 0 | |
+| **total** | 19 | 144 | 1397 | 444 | 160 | 100 | 165 | 0 | |
 
 Decision records: 18.
 
@@ -24,7 +24,7 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 15 | 3 | passing |
-| 1 — The authority core | 14 | 190 | 133 | passing |
+| 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 111 | 0 | absent |
 | 3 — The run path | 11 | 169 | 0 | absent |
 | 4 — Ingest | 22 | 328 | 0 | absent |
@@ -45,16 +45,16 @@ Unscheduled operations: 9.
 
 | Clause | Pinned by | Verdict |
 | --- | --- | --- |
-| `assurance.audit-axioms.allowlist` | `crates/contextful-cli/tests/integration/formal.rs::the_allowlist_is_propext_and_quot_sound` | performed |
-| `assurance.audit-axioms.axiom-outside-allowlist` | `crates/contextful-cli/tests/integration/formal.rs::classical_choice_is_outside_the_allowlist` | performed |
-| `assurance.audit-axioms.check-command` | `crates/contextful-cli/tests/integration/formal.rs::check_passes_a_clean_package_and_names_the_first_failing_constant` | performed |
-| `assurance.audit-axioms.hole-axiom` | `crates/contextful-cli/tests/integration/formal.rs::a_parenthesized_hole_is_a_hole` | performed |
-| `assurance.audit-axioms.missing-constant` | `crates/contextful-cli/tests/integration/formal.rs::a_deleted_theorem_is_missing` | performed |
-| `assurance.audit-axioms.native-evaluation-axiom` | `crates/contextful-cli/tests/integration/formal.rs::native_decide_mints_a_native_evaluation_axiom` | performed |
-| `assurance.audit-axioms.report` | `crates/contextful-cli/tests/integration/formal.rs::the_report_names_commit_toolchain_allowlist_revision_and_rows` | performed |
-| `assurance.audit-axioms.statement-drift` | `crates/contextful-cli/tests/integration/formal.rs::a_weakened_statement_drifts` | performed |
-| `assurance.audit-axioms.transitive-audit` | `crates/contextful-cli/tests/integration/formal.rs::a_footprint_reaches_through_helper_lemmas` | performed |
-| `assurance.audit-axioms.verdict-input` | `crates/contextful-cli/tests/integration/formal.rs::source_text_and_build_status_decide_nothing` | performed |
+| `assurance.audit-assumptions.allowlist` | `crates/contextful-cli/tests/integration/formal.rs::the_allowlist_is_propext_and_quot_sound` | performed |
+| `assurance.audit-assumptions.assumption-outside-allowlist` | `crates/contextful-cli/tests/integration/formal.rs::classical_choice_is_outside_the_allowlist` | performed |
+| `assurance.audit-assumptions.check-command` | `crates/contextful-cli/tests/integration/formal.rs::check_passes_a_clean_package_and_names_the_first_failing_constant` | performed |
+| `assurance.audit-assumptions.hole-assumption` | `crates/contextful-cli/tests/integration/formal.rs::a_parenthesized_hole_is_a_hole` | performed |
+| `assurance.audit-assumptions.missing-constant` | `crates/contextful-cli/tests/integration/formal.rs::a_deleted_theorem_is_missing` | performed |
+| `assurance.audit-assumptions.native-evaluation-assumption` | `crates/contextful-cli/tests/integration/formal.rs::native_decide_mints_a_native_evaluation_assumption` | performed |
+| `assurance.audit-assumptions.report` | `crates/contextful-cli/tests/integration/formal.rs::the_report_names_commit_toolchain_allowlist_revision_and_rows` | performed |
+| `assurance.audit-assumptions.statement-drift` | `crates/contextful-cli/tests/integration/formal.rs::a_weakened_statement_drifts` | performed |
+| `assurance.audit-assumptions.transitive-audit` | `crates/contextful-cli/tests/integration/formal.rs::a_footprint_reaches_through_helper_lemmas` | performed |
+| `assurance.audit-assumptions.verdict-input` | `crates/contextful-cli/tests/integration/formal.rs::source_text_and_build_status_decide_nothing` | performed |
 | `assurance.differential-test.case-classes` | `crates/contextful-cli/tests/integration/differential.rs::the_report_names_the_three_case_classes` | performed |
 | `assurance.differential-test.command` | `crates/contextful-cli/tests/integration/differential.rs::the_command_replays_then_generates_and_stops_at_the_first_disagreement` | performed |
 | `assurance.differential-test.corpus-entries` | `crates/contextful-cli/tests/integration/differential.rs::a_full_corpus_evicts_the_oldest_reproducible_case` | performed |

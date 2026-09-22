@@ -99,7 +99,7 @@ impl Pkg {
         let mut inv = self.read("inventory.toml");
         inv.push_str(&format!(
             "\n[constant.\"{name}\"]\nmodule    = \"Fx.Basic\"\nstatement = \"{statement}\"\n\
-             axioms    = [\"propext\", \"Quot.sound\"]\nbinding   = \"engine/fx/src/lib.rs::x\"\n\
+             assumptions    = [\"propext\", \"Quot.sound\"]\nbinding   = \"engine/fx/src/lib.rs::x\"\n\
              negative  = \"Leaves open: the rest.\"\n"
         ));
         self.write("inventory.toml", &inv);
@@ -182,7 +182,7 @@ fn refused(out: &Output, error: &str) -> String {
 }
 
 /// `contextful formal check` elaborates the package, matches every inventory row, audits every footprint, writes the report, and exits non-zero naming the first failing constant.
-// spec: assurance.audit-axioms.check-command@bd29299d
+// spec: assurance.audit-assumptions.check-command@bd29299d
 #[test]
 fn check_passes_a_clean_package_and_names_the_first_failing_constant() {
     let t = lean_or_skip!();
@@ -195,14 +195,14 @@ fn check_passes_a_clean_package_and_names_the_first_failing_constant() {
     failing.declare("theorem gap (n : Nat) : n = n := sorry\n\ntheorem gap2 (n : Nat) : n = n := sorry");
     failing.require("Fx.gap", "∀ (n : Nat), n = n");
     failing.require("Fx.gap2", "∀ (n : Nat), n = n");
-    let err = refused(&failing.check(), "ProofHoleAxiom");
+    let err = refused(&failing.check(), "ProofHoleAssumption");
     let first = err.lines().last().unwrap();
     assert!(first.contains("Fx.gap") && !first.contains("Fx.gap2"), "{err}");
     assert_eq!(failing.report()["constants"].as_array().unwrap().len(), 4, "every row is reported");
 }
 
-/// The axiom allowlist holds 2 entries, `propext` and `Quot.sound`, and every theorem's footprint is a subset of it.
-// spec: assurance.audit-axioms.allowlist@17430155
+/// The assumption allowlist holds 2 entries, `propext` and `Quot.sound`, and every theorem's footprint is a subset of it.
+// spec: assurance.audit-assumptions.allowlist@2a9cf235
 #[test]
 fn the_allowlist_is_propext_and_quot_sound() {
     let t = lean_or_skip!();
@@ -217,18 +217,18 @@ fn the_allowlist_is_propext_and_quot_sound() {
         .find(|c| c["name"] == "Fx.extensional")
         .unwrap()
         .clone();
-    assert_eq!(ext["axioms"], serde_json::json!(["Quot.sound", "propext"]));
+    assert_eq!(ext["assumptions"], serde_json::json!(["Quot.sound", "propext"]));
 }
 
-/// Each required constant's axiom footprint is read transitively off the elaborated environment, naming every axiom reached.
-// spec: assurance.audit-axioms.transitive-audit@fe187996
+/// Each required constant's assumption footprint is read transitively off the elaborated environment, naming every assumption reached.
+// spec: assurance.audit-assumptions.transitive-audit@12964479
 #[test]
 fn a_footprint_reaches_through_helper_lemmas() {
     let t = lean_or_skip!();
     let p = Pkg::new(&t);
     p.declare("theorem helper (p : Prop) : p ∨ ¬p := Classical.em p\n\ntheorem viaHelper (p : Prop) : p ∨ ¬p := helper p");
     p.require("Fx.viaHelper", "∀ (p : Prop), p ∨ ¬p");
-    let err = refused(&p.check(), "AxiomOutsideAllowlist");
+    let err = refused(&p.check(), "AssumptionOutsideAllowlist");
     assert!(err.contains("Fx.viaHelper") && err.contains("Classical.choice"), "{err}");
     let row = p.report()["constants"]
         .as_array()
@@ -237,11 +237,11 @@ fn a_footprint_reaches_through_helper_lemmas() {
         .find(|c| c["name"] == "Fx.viaHelper")
         .unwrap()
         .clone();
-    assert_eq!(row["axioms"], serde_json::json!(["Classical.choice", "Quot.sound", "propext"]));
+    assert_eq!(row["assumptions"], serde_json::json!(["Classical.choice", "Quot.sound", "propext"]));
 }
 
 /// A verdict is a function of the elaborated environment and the inventory alone; source text, declaration counts and the build's exit status decide nothing.
-// spec: assurance.audit-axioms.verdict-input@082a7987
+// spec: assurance.audit-assumptions.verdict-input@082a7987
 #[test]
 fn source_text_and_build_status_decide_nothing() {
     let t = lean_or_skip!();
@@ -257,44 +257,44 @@ fn source_text_and_build_status_decide_nothing() {
     passed(&q.check());
 }
 
-/// An axiom in a footprint and absent from the allowlist raises `AxiomOutsideAllowlist`, printing the constant and the axiom.
-// spec: assurance.audit-axioms.axiom-outside-allowlist@035ccb4d
+/// An assumption in a footprint and absent from the allowlist raises `AssumptionOutsideAllowlist`, printing the constant and the assumption.
+// spec: assurance.audit-assumptions.assumption-outside-allowlist@2e71d5b7
 #[test]
 fn classical_choice_is_outside_the_allowlist() {
     let t = lean_or_skip!();
     let p = Pkg::new(&t);
     p.declare("theorem em' (p : Prop) : p ∨ ¬p := Classical.em p");
     p.require("Fx.em'", "∀ (p : Prop), p ∨ ¬p");
-    let err = refused(&p.check(), "AxiomOutsideAllowlist");
+    let err = refused(&p.check(), "AssumptionOutsideAllowlist");
     assert!(err.contains("Fx.em'") && err.contains("Classical.choice"), "{err}");
 }
 
-/// A footprint containing the hole axiom raises `ProofHoleAxiom`, naming the declaration, whatever its syntax spells.
-// spec: assurance.audit-axioms.hole-axiom@37caf8e4
+/// A footprint containing the hole assumption raises `ProofHoleAssumption`, naming the declaration, whatever its syntax spells.
+// spec: assurance.audit-assumptions.hole-assumption@48ca973f
 #[test]
 fn a_parenthesized_hole_is_a_hole() {
     let t = lean_or_skip!();
     let p = Pkg::new(&t);
     p.declare("theorem holey (n : Nat) : n = n := by exact (sorry)");
     p.require("Fx.holey", "∀ (n : Nat), n = n");
-    let err = refused(&p.check(), "ProofHoleAxiom");
+    let err = refused(&p.check(), "ProofHoleAssumption");
     assert!(err.contains("Fx.holey"), "{err}");
 }
 
-/// A footprint containing a per-declaration native-evaluation axiom raises `NativeEvaluationAxiom`, naming the declaration that minted it.
-// spec: assurance.audit-axioms.native-evaluation-axiom@8f5c3ec4
+/// A footprint containing a per-declaration native-evaluation assumption raises `NativeEvaluationAssumption`, naming the declaration that minted it.
+// spec: assurance.audit-assumptions.native-evaluation-assumption@52b00896
 #[test]
-fn native_decide_mints_a_native_evaluation_axiom() {
+fn native_decide_mints_a_native_evaluation_assumption() {
     let t = lean_or_skip!();
     let p = Pkg::new(&t);
     p.declare("theorem sums : 10 + 10 = 20 := by native_decide");
     p.require("Fx.sums", "10 + 10 = 20");
-    let err = refused(&p.check(), "NativeEvaluationAxiom");
+    let err = refused(&p.check(), "NativeEvaluationAssumption");
     assert!(err.contains("Fx.sums"), "{err}");
 }
 
 /// A required constant absent from the elaborated environment raises `TheoremConstantMissing`.
-// spec: assurance.audit-axioms.missing-constant@539ef556
+// spec: assurance.audit-assumptions.missing-constant@539ef556
 #[test]
 fn a_deleted_theorem_is_missing() {
     let t = lean_or_skip!();
@@ -312,7 +312,7 @@ fn a_deleted_theorem_is_missing() {
 }
 
 /// A required constant whose elaborated statement differs from its expected text raises `TheoremStatementDrift`, printing both.
-// spec: assurance.audit-axioms.statement-drift@c254061a
+// spec: assurance.audit-assumptions.statement-drift@c254061a
 #[test]
 fn a_weakened_statement_drifts() {
     let t = lean_or_skip!();
@@ -324,8 +324,8 @@ fn a_weakened_statement_drifts() {
     assert!(err.contains("∀ (n : Nat), n + 0 = n") && err.contains("∀ (n : Nat), n = n"), "{err}");
 }
 
-/// The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the axioms it reaches.
-// spec: assurance.audit-axioms.report@ebefb224
+/// The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the assumptions it reaches.
+// spec: assurance.audit-assumptions.report@6e57548d
 #[test]
 fn the_report_names_commit_toolchain_allowlist_revision_and_rows() {
     let t = lean_or_skip!();
@@ -345,7 +345,7 @@ fn the_report_names_commit_toolchain_allowlist_revision_and_rows() {
     let rows = report["constants"].as_array().unwrap();
     assert_eq!(rows[0]["name"], "Fx.narrows");
     assert_eq!(rows[0]["statement_match"], true);
-    assert_eq!(rows[0]["axioms"], serde_json::json!([]));
+    assert_eq!(rows[0]["assumptions"], serde_json::json!([]));
     assert_eq!(rows[1]["name"], "Fx.extensional");
 }
 
@@ -469,8 +469,8 @@ fn a_recheck_rebuilds_the_commit_and_reaches_the_same_report() {
     assert!(err.contains("Fx.fresh"), "{err}");
 }
 
-/// A recheck whose per-constant statement text or axiom set differs from the first phase's raises `RecheckReportMismatch`, naming the constant.
-// spec: assurance.recheck.report-mismatch@f672fdac
+/// A recheck whose per-constant statement text or assumption set differs from the first phase's raises `RecheckReportMismatch`, naming the constant.
+// spec: assurance.recheck.report-mismatch@80ed8394
 #[test]
 fn a_recheck_disagreeing_with_the_first_phase_is_refused() {
     let t = lean_or_skip!();

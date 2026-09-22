@@ -152,7 +152,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-disclosure*
 - `interpolated-claim` — A source lint over the runtime crates finding a subject claim formatted into SQL text raises `EnforceInterpolatedSubjectClaim`, naming the file and line.
   *P1*
-- `formal-stage` — The formal stage runs {{assurance.audit-axioms.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.
+- `formal-stage` — The formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.
   *P7*
 - `container` — The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a per-stage wall clock — and a run dies on any one.
 - `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.

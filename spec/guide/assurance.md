@@ -17,7 +17,7 @@ and the read path's quality into a red or green verdict.
 
 ```mermaid
 flowchart LR
-  SPEC["specification"] --> MODEL["Lean models"] --> AUDIT["axiom audit"]
+  SPEC["specification"] --> MODEL["Lean models"] --> AUDIT["assumption audit"]
   MODEL --> DIFF["differential harness"]
   ENGINE["engine and store"] --> DIFF
   AUDIT --> GATE["gate"]
@@ -42,11 +42,11 @@ The theorems cover layer composition ({{assurance.prove.composition-sound}}), na
 leaves open ({{assurance.prove.negative-space}}).
 
 A proof counts only if the audit accepts it. The verdict reads the elaborated environment
-and the inventory alone ({{assurance.audit-axioms.verdict-input}}), because a build exits
-zero over a hole. Each required constant's axiom footprint is read transitively
-({{assurance.audit-axioms.transitive-audit}}) against a fixed allowlist
-({{assurance.audit-axioms.allowlist}}), and its statement must match the inventory
-({{assurance.audit-axioms.statement-drift}}). A recheck repeats this from pinned source in
+and the inventory alone ({{assurance.audit-assumptions.verdict-input}}), because a build exits
+zero over a hole. Each required constant's assumption footprint is read transitively
+({{assurance.audit-assumptions.transitive-audit}}) against a fixed allowlist
+({{assurance.audit-assumptions.allowlist}}), and its statement must match the inventory
+({{assurance.audit-assumptions.statement-drift}}). A recheck repeats this from pinned source in
 an environment holding no credential ({{assurance.recheck.credential-free}}).
 
 The claim is one sentence ({{assurance.scope-claim.claim-sentence}}) naming decisions,
@@ -73,10 +73,10 @@ without one the test-first stage stops it. The gate then reaches the formal stag
 
 Suppose the contributor also edits the Lean statement of the composition theorem to
 match. The inventory is edited apart from the declarations
-({{assurance.audit-axioms.inventory}}), so the elaborated statement no longer matches its
-expected text and the check command fails ({{assurance.audit-axioms.check-command}}). A
+({{assurance.audit-assumptions.inventory}}), so the elaborated statement no longer matches its
+expected text and the check command fails ({{assurance.audit-assumptions.check-command}}). A
 proof finished with a hole fails on its footprint
-({{assurance.audit-axioms.hole-axiom}}), whatever the syntax spells.
+({{assurance.audit-assumptions.hole-assumption}}), whatever the syntax spells.
 
 Suppose instead the Lean side stays untouched. The differential harness feeds generated
 cases to the reference binary and the engine ({{assurance.differential-test.harness}}).
@@ -99,7 +99,7 @@ beside one test ({{corpus.state.theorem-beside-test}}).
 | Question | Operation |
 | --- | --- |
 | What does a theorem leave open? | `assurance.prove` |
-| Why did the proof gate fail? | `assurance.audit-axioms` |
+| Why did the proof gate fail? | `assurance.audit-assumptions` |
 | What may the claim say? | `assurance.scope-claim` |
 | Which gate stage runs what? | `assurance.gate` |
 | When does quality go red? | `assurance.evaluate`, `assurance.baseline` |

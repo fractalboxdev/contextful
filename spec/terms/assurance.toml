@@ -3,7 +3,7 @@
 [operation]
 model             = {}
 prove             = {}
-audit-axioms      = {}
+audit-assumptions      = {}
 recheck           = {}
 scope-claim       = {}
 differential-test = {}
@@ -26,13 +26,13 @@ ZoneInclusionSampled             = { clause = "assurance.prove.sampled-inclusion
 ProofTargetUnbound               = { clause = "assurance.prove.unbound-target", gloss = "A proof target named in the claim with no authenticated query path bound to it." }
 TheoremWithoutNegativeSpace      = { clause = "assurance.prove.no-negative-space", gloss = "A theorem published with no statement of what it leaves open." }
 MediationClaimedFromComposition  = { clause = "assurance.prove.mediation-from-composition", gloss = "A filter-composition theorem offered as a mediation theorem." }
-AxiomOutsideAllowlist            = { clause = "assurance.audit-axioms.axiom-outside-allowlist", gloss = "A constant's footprint reaches an axiom absent from the allowlist." }
-ProofHoleAxiom                   = { clause = "assurance.audit-axioms.hole-axiom", gloss = "A footprint contains the hole axiom." }
-NativeEvaluationAxiom            = { clause = "assurance.audit-axioms.native-evaluation-axiom", gloss = "A footprint contains a per-declaration native-evaluation axiom." }
-TheoremConstantMissing           = { clause = "assurance.audit-axioms.missing-constant", gloss = "A required constant is absent from the elaborated environment." }
-TheoremStatementDrift            = { clause = "assurance.audit-axioms.statement-drift", gloss = "A required constant's elaborated statement differs from its expected text." }
+AssumptionOutsideAllowlist            = { clause = "assurance.audit-assumptions.assumption-outside-allowlist", gloss = "A constant's footprint reaches an assumption absent from the allowlist." }
+ProofHoleAssumption                   = { clause = "assurance.audit-assumptions.hole-assumption", gloss = "A footprint contains the hole assumption." }
+NativeEvaluationAssumption            = { clause = "assurance.audit-assumptions.native-evaluation-assumption", gloss = "A footprint contains a per-declaration native-evaluation assumption." }
+TheoremConstantMissing           = { clause = "assurance.audit-assumptions.missing-constant", gloss = "A required constant is absent from the elaborated environment." }
+TheoremStatementDrift            = { clause = "assurance.audit-assumptions.statement-drift", gloss = "A required constant's elaborated statement differs from its expected text." }
 RecheckEnvironmentCredentialed   = { clause = "assurance.recheck.credential-free", gloss = "The recheck environment exposes a credential." }
-RecheckReportMismatch            = { clause = "assurance.recheck.report-mismatch", gloss = "The recheck's per-constant statement or axiom set differs from the first phase's." }
+RecheckReportMismatch            = { clause = "assurance.recheck.report-mismatch", gloss = "The recheck's per-constant statement or assumption set differs from the first phase's." }
 ClaimBeyondNamedDecisions        = { clause = "assurance.scope-claim.beyond-named-decisions", gloss = "The assurance claim asserts an object wider than its named decisions." }
 TrustedDependencyUnnamed         = { clause = "assurance.scope-claim.unnamed-dependency", gloss = "The claim rests on a component absent from its trusted-dependency list." }
 TranslationChainUnstated         = { clause = "assurance.scope-claim.unstated-chain", gloss = "A theorem over translated code claimed without its translation chain." }
@@ -66,7 +66,7 @@ TraceExportOutOfPerimeter        = { clause = "assurance.baseline.trace-export",
 [limit]
 assurance-formal-build-time      = { clause = "assurance.model.build-cost", value = 60, unit = "s", basis = "chosen", gloss = "Cold elaboration of the Lean package." }
 assurance-formal-build-artifacts = { clause = "assurance.model.build-cost", value = 512, unit = "KiB", basis = "chosen", gloss = "Artifacts a full elaboration writes." }
-assurance-axiom-allowlist        = { clause = "assurance.audit-axioms.allowlist", value = 2, unit = "entries", basis = "chosen", gloss = "Axioms a required constant's footprint may reach." }
+assurance-assumption-allowlist        = { clause = "assurance.audit-assumptions.allowlist", value = 2, unit = "entries", basis = "chosen", gloss = "Assumptions a required constant's footprint may reach." }
 assurance-recheck-wall-time      = { clause = "assurance.recheck.wall-time", value = 600, unit = "s", basis = "chosen", gloss = "One recheck from an empty artifact directory." }
 assurance-counterexample-corpus  = { clause = "assurance.differential-test.corpus-entries", value = 256, unit = "entries", basis = "chosen", gloss = "Minimized disagreements the corpus retains." }
 assurance-differential-budget    = { clause = "assurance.differential-test.run-budget", value = 300, unit = "s", basis = "chosen", gloss = "One differential invocation, corpus replay included." }

@@ -3,7 +3,7 @@ contract: assurance
 owns:
   - model
   - prove
-  - audit-axioms
+  - audit-assumptions
   - recheck
   - scope-claim
   - differential-test
@@ -24,7 +24,7 @@ flowchart LR
   SPEC["specification text"] --> LEAN["Lean package formal/<br/>Layer · Placement · Authority"]
   SPEC --> PROT["Lean protocol package formal/protocol/<br/>lease · compare-and-swap · fence"]
   LEAN -- "lake build" --> ENV["elaborated environment"]
-  INV["formal/inventory.toml"] --> AUD["audit-axioms:<br/>contextful formal check"]
+  INV["formal/inventory.toml"] --> AUD["audit-assumptions:<br/>contextful formal check"]
   ENV --> AUD
   AUD --> REC["recheck: rebuild and re-audit"]
   LEAN --> REF["reference binary"]
@@ -69,7 +69,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `protocol-model` — The protocol model is a total, computable step function over lease acquisition, renewal, expiry and release, the fenced compare-and-swap on the catalog row and the cursor object, holder pause, message delay and crash.
   *A-assurance*
 - `protocol-safety` — Four invariants are Lean theorems over every reachable state: one lease holder per fence, fences only increase, no commit lands carrying a fence below the highest granted, and release keeps the lease object and its fence.
-- `protocol-theorems` — Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-axioms.check-command}} against the same allowlist.
+- `protocol-theorems` — Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-assumptions.check-command}} against the same allowlist.
 - `protocol-check` — The gate evaluates every invariant on each state reached by every step sequence over three nodes and four lease generations; a breaking state raises `ProtocolInvariantViolated`, printing the shortest sequence reaching it.
   *P7*
 - `protocol-pins` — {{store.lease.stale-fence}} and {{store.fold.partial-snapshot}} pin to the protocol model's invariant theorems.
@@ -111,28 +111,29 @@ unsettled: Is inclusion decided by subsumption over patterns or by a normal form
 
 unsettled: What discharges the completeness of an evidence list backing a floor, given that the empty list folds to admit-everything? owner: formal affects: assurance.prove
 
-## audit-axioms
+## audit-assumptions
 
-The axiom allowlist, the transitive footprint audit over the elaborated environment, the inventory and the report.
+The assumption allowlist, the transitive footprint audit over the elaborated environment, the inventory and the report.
 
-- `allowlist` — The axiom allowlist holds 2 entries, `propext` and `Quot.sound`, and every theorem's footprint is a subset of it.
+- `assumption` — An assumption is a declaration the Lean kernel accepts without proof: the set `#print axioms` reports for a constant, which the audit reads through `collectAxioms`.
+- `allowlist` — The assumption allowlist holds 2 entries, `propext` and `Quot.sound`, and every theorem's footprint is a subset of it.
   *because no required constant draws on `Classical.choice`*
-- `transitive-audit` — Each required constant's axiom footprint is read transitively off the elaborated environment, naming every axiom reached.
+- `transitive-audit` — Each required constant's assumption footprint is read transitively off the elaborated environment, naming every assumption reached.
 - `verdict-input` — A verdict is a function of the elaborated environment and the inventory alone; source text, declaration counts and the build's exit status decide nothing.
   *because elaboration reports a hole as a warning and exits zero, and a character pattern misses a hole spelled in parentheses*
-- `axiom-outside-allowlist` — An axiom in a footprint and absent from the allowlist raises `AxiomOutsideAllowlist`, printing the constant and the axiom.
+- `assumption-outside-allowlist` — An assumption in a footprint and absent from the allowlist raises `AssumptionOutsideAllowlist`, printing the constant and the assumption.
   *A-assurance*
-- `hole-axiom` — A footprint containing the hole axiom raises `ProofHoleAxiom`, naming the declaration, whatever its syntax spells.
+- `hole-assumption` — A footprint containing the hole assumption raises `ProofHoleAssumption`, naming the declaration, whatever its syntax spells.
   *A-assurance*
-- `native-evaluation-axiom` — A footprint containing a per-declaration native-evaluation axiom raises `NativeEvaluationAxiom`, naming the declaration that minted it.
+- `native-evaluation-assumption` — A footprint containing a per-declaration native-evaluation assumption raises `NativeEvaluationAssumption`, naming the declaration that minted it.
   *A-assurance*
-- `inventory` — `formal/inventory.toml` holds one row per required constant — name, module, expected statement text, admitted axioms, binding, negative space — edited apart from the declarations satisfying it.
+- `inventory` — `formal/inventory.toml` holds one row per required constant — name, module, expected statement text, admitted assumptions, binding, negative space — edited apart from the declarations satisfying it.
 - `missing-constant` — A required constant absent from the elaborated environment raises `TheoremConstantMissing`.
   *A-assurance*
 - `statement-drift` — A required constant whose elaborated statement differs from its expected text raises `TheoremStatementDrift`, printing both.
   *A-assurance*
 - `inventory-change` — A change to a required statement lands in the commit carrying the proof it admits.
-- `report` — The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the axioms it reaches.
+- `report` — The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the assumptions it reaches.
 - `check-command` — `contextful formal check` elaborates the package, matches every inventory row, audits every footprint, writes the report, and exits non-zero naming the first failing constant.
 
 The verdict over one inventory row:
@@ -143,17 +144,17 @@ flowchart TD
   P -- no --> E1["TheoremConstantMissing"]
   P -- yes --> S{"statement matches the expected text?"}
   S -- no --> E2["TheoremStatementDrift"]
-  S -- yes --> F["transitive axiom footprint"]
-  F --> H{"hole axiom?"}
-  H -- yes --> E3["ProofHoleAxiom"]
-  H -- no --> N{"native-evaluation axiom?"}
-  N -- yes --> E4["NativeEvaluationAxiom"]
+  S -- yes --> F["transitive assumption footprint"]
+  F --> H{"hole assumption?"}
+  H -- yes --> E3["ProofHoleAssumption"]
+  H -- no --> N{"native-evaluation assumption?"}
+  N -- yes --> E4["NativeEvaluationAssumption"]
   N -- no --> A{"within propext, Quot.sound?"}
-  A -- no --> E5["AxiomOutsideAllowlist"]
+  A -- no --> E5["AssumptionOutsideAllowlist"]
   A -- yes --> OK["row passes, written to the report"]
 ```
 
-unsettled: Which review admits a new axiom to the allowlist, and where is it recorded beside the constant that draws on it? owner: formal affects: assurance.audit-axioms
+unsettled: Which review admits a new assumption to the allowlist, and where is it recorded beside the constant that draws on it? owner: formal affects: assurance.audit-assumptions
 
 ## recheck
 
@@ -162,7 +163,7 @@ Rebuilding and re-auditing from pinned source in a credential-free environment.
 - `two-phase` — A recheck rebuilds the package from the commit's own source and pinned toolchain into an empty artifact directory, fetching nothing, and re-runs the audit against the rebuilt environment.
 - `credential-free` — A recheck environment exposing a token, a signing key or a registry login raises `RecheckEnvironmentCredentialed`, naming the variable or file carrying it.
   *A-assurance*
-- `report-mismatch` — A recheck whose per-constant statement text or axiom set differs from the first phase's raises `RecheckReportMismatch`, naming the constant.
+- `report-mismatch` — A recheck whose per-constant statement text or assumption set differs from the first phase's raises `RecheckReportMismatch`, naming the constant.
   *because `.olean` output is not byte-reproducible across hosts and paths, while the per-constant report is the fact under check*
 - `wall-time` — A recheck completes within 600 s.
 
@@ -265,7 +266,7 @@ One inventory row:
 [constant.composed_sound]
 module    = "Contextful.Layer"
 statement = "∀ {ls : List Layer} {r : RowId}, composed ls r = true → ∀ l ∈ ls, l r = true"
-axioms    = ["propext", "Quot.sound"]
+assumptions    = ["propext", "Quot.sound"]
 binding   = "engine/policy/src/relation.rs::compose_layers"
 negative  = """
 Leaves open: that the required members were present in the list; that a member
