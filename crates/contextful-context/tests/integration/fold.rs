@@ -310,3 +310,83 @@ fn a_failed_collection_does_not_unpublish_the_snapshot() {
     perms.set_readonly(false);
     fs::set_permissions(&run_dir, perms).unwrap();
 }
+
+/// A pass whose id an earlier lost pass already promoted publishes anyway: what sits at
+/// that id is the lost pass's orphan, which no pointer chain reaches, so the retry is not
+/// wedged by its own earlier attempt.
+#[test]
+fn a_retry_at_the_same_instant_publishes_over_the_lost_passs_orphan() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+
+    // A pass at this instant loses the pointer and leaves its snapshot promoted. The id
+    // is a function of the instant and the parent, so the retry recomputes the same one.
+    let now = at("2030-01-01T01:00:00Z");
+    let orphan_id = contextful_core::store::lay_out::SnapshotId::next(now, None);
+    let orphan = f.store.snapshot_dir("events", &orphan_id).unwrap();
+    fs::create_dir_all(&orphan).unwrap();
+    fs::write(orphan.join("part-00000.parquet"), b"not a snapshot any pointer reaches").unwrap();
+
+    // The retry at that same instant publishes over it rather than failing to rename.
+    let outcome = fold(&f.store, &d, now).unwrap();
+    let FoldOutcome::Folded { snapshot_id, .. } = outcome else { panic!("the retry was wedged: {outcome:?}") };
+    assert_eq!(snapshot_id, orphan_id.to_string(), "the retry took a different id");
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("1")]]);
+}
+
+/// A pointer lock a live pass holds is contention, not a verdict: the commit waits for it
+/// and then reads the ETag, so two passes racing one table never both report failure when
+/// the pointer did not move under either.
+#[test]
+fn a_busy_pointer_lock_is_waited_for_rather_than_read_as_a_moved_pointer() {
+    let f = std::sync::Arc::new(Fixture::new());
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    let lock = f.table_dir("events").join("_pointer.json.lock");
+
+    // A holder that releases well inside the wait: the pass publishes, not fails.
+    fs::write(&lock, b"").unwrap();
+    let releaser = {
+        let lock = lock.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            fs::remove_file(&lock).unwrap();
+        })
+    };
+    let st = staged(&f, &d, "2030-01-01T01:00:00Z");
+    assert!(matches!(commit(&f.store, st).unwrap(), Committed::Published(_)), "contention was read as a lost pointer");
+    releaser.join().unwrap();
+
+    // A holder that outlasts the wait is still a lost condition, so a commit terminates.
+    f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T02:00:00Z").unwrap();
+    let st = staged(&f, &d, "2030-01-01T03:00:00Z");
+    fs::write(&lock, b"").unwrap();
+    assert_eq!(commit(&f.store, st).unwrap(), Committed::Lost);
+    fs::remove_file(&lock).unwrap();
+}
+
+/// A staging directory whose pass still holds its lock is in flight, whatever id it
+/// carries: a concurrent pass's collection leaves it alone, so the earlier pass reaches
+/// its own commit and reports a lost pointer rather than a missing directory.
+#[test]
+fn a_collection_leaves_an_in_flight_staging_directory_alone() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+
+    // An earlier pass stages and holds; a later pass folds and collects around it.
+    let early = staged(&f, &d, "2030-01-01T01:00:00Z");
+    let early_staging = early.staging.clone();
+    let later = fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap();
+    assert!(matches!(later, FoldOutcome::Folded { .. }), "{later:?}");
+    assert!(early_staging.is_dir(), "a pass in flight had its staging directory collected");
+
+    // The earlier pass reaches its commit and loses on the ETag, as the rules read it.
+    assert_eq!(commit(&f.store, early).unwrap(), Committed::Lost);
+
+    // Once that pass ends, the next collection takes what it left.
+    f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T03:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T04:00:00Z")).unwrap();
+    assert!(!early_staging.exists());
+}

@@ -25,6 +25,11 @@ use std::path::PathBuf;
 /// The directory name a partition value takes when null.
 pub const NULL_PARTITION: &str = "__HIVE_DEFAULT_PARTITION__";
 
+/// How long a commit waits for the pointer lock before reading contention as a lost
+/// condition. The lock spans a pointer read and a replace, so a live holder clears it in
+/// well under this.
+pub const POINTER_LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
+
 /// A snapshot written into staging and not yet published.
 #[derive(Debug, Clone)]
 pub struct Staged {
@@ -34,7 +39,13 @@ pub struct Staged {
     /// The pointer's ETag when the pass started.
     pub etag: String,
     pub runs: usize,
+    /// Held for the pass's life, so a concurrent pass's collection reads this staging
+    /// directory as in flight rather than as one an earlier pass abandoned.
+    pub(crate) _in_flight: Option<std::sync::Arc<FileLock>>,
 }
+
+/// The lock file inside a staging directory that marks its pass as in flight.
+pub const STAGING_LOCK: &str = "_staging.lock";
 
 /// What a pass's first half produced.
 #[derive(Debug, Clone)]
@@ -137,6 +148,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         fs::remove_dir_all(&staging).at(&staging)?;
     }
     fs::create_dir_all(&staging).at(&staging)?;
+    let in_flight = FileLock::try_acquire(&staging.join(STAGING_LOCK))?.map(std::sync::Arc::new);
     let mut parts = Vec::new();
     if rows.num_rows() > 0 {
         for (dir, batch) in partition(&rows, decl.partition_by()).map_err(invalid)? {
@@ -161,15 +173,23 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     };
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
     fs::write(staging.join(MANIFEST_FILE), bytes).at(staging.join(MANIFEST_FILE))?;
-    Ok(Prepared::Staged(Box::new(Staged { table: table.to_string(), manifest, staging, etag, runs: unfolded.len() })))
+    Ok(Prepared::Staged(Box::new(Staged {
+        table: table.to_string(),
+        manifest,
+        staging,
+        etag,
+        runs: unfolded.len(),
+        _in_flight: in_flight,
+    })))
 }
 
 /// Publish a staged snapshot: check it is whole, move it out of staging, and replace
 /// `_pointer.json` only if its ETag still equals the one read at pass start — on a
 /// filesystem, a replace under an exclusive lock file that re-checks the ETag
 /// (`store.fold.pointer-commit`).
-pub fn commit(store: &Store, staged: Staged) -> Result<Committed> {
-    let table = staged.table.as_str();
+pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
+    let table = staged.table.clone();
+    let table = table.as_str();
     for p in &staged.manifest.parts {
         if !staged.staging.join(&p.name).is_file() {
             return Err(StoreError::StorePartialSnapshot(format!(
@@ -189,13 +209,28 @@ pub fn commit(store: &Store, staged: Staged) -> Result<Committed> {
             .into());
         }
     }
+    // The snapshot is whole, so the pass leaves staging: its in-flight mark goes first,
+    // and the directory that moves carries data alone.
+    staged._in_flight = None;
+    let _ = fs::remove_file(staged.staging.join(STAGING_LOCK));
+
+    // A pass whose id a lost pass already promoted finds that directory in place. The id
+    // exceeds every snapshot the chain reaches, so what sits there is that pass's orphan
+    // and no reader's snapshot; it goes, and the rename lands.
     let final_dir = store.snapshot_dir(table, &staged.manifest.snapshot_id)?;
+    if final_dir.exists() {
+        fs::remove_dir_all(&final_dir).at(&final_dir)?;
+    }
     fs::rename(&staged.staging, &final_dir).at(&final_dir)?;
 
     let pointer = Pointer { snapshot_id: staged.manifest.snapshot_id.clone(), fence: staged.manifest.fence };
     let bytes = serde_json::to_vec_pretty(&pointer).expect("a pointer serializes");
     let table_dir = store.table_dir(table)?;
-    let Some(_lock) = FileLock::try_acquire(&table_dir.join(format!("{POINTER_FILE}.lock")))? else {
+    // A held lock is another pass inside its own commit, not a verdict on this one: wait
+    // briefly, since the lock spans a pointer read and a replace. The ETag then answers
+    // whether that pass moved the pointer, so contention and the condition stay distinct.
+    let lock_path = table_dir.join(format!("{POINTER_FILE}.lock"));
+    let Some(_lock) = FileLock::acquire_within(&lock_path, POINTER_LOCK_WAIT)? else {
         return Ok(Committed::Lost);
     };
     if store.pointer_etag(table)? != staged.etag {
@@ -207,7 +242,8 @@ pub fn commit(store: &Store, staged: Staged) -> Result<Committed> {
 
 /// Remove every staging directory and every snapshot directory no pointer chain
 /// reaches whose id precedes the current snapshot's (`store.fold.staging-collected`).
-/// A pass in flight stages a later id and survives until the pass after it.
+/// A staging directory whose pass still holds its lock is in flight, whatever id it
+/// carries, and survives until that pass ends.
 fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest]) -> Result<()> {
     let Some(current) = chain.first() else { return Ok(()) };
     let reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
@@ -215,6 +251,9 @@ fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest]) -
     for dir in crate::store::sorted_dirs(&snapshots)? {
         let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         if reachable.contains(&name) {
+            continue;
+        }
+        if name.ends_with(STAGING_SUFFIX) && FileLock::try_acquire(&dir.join(STAGING_LOCK))?.is_none() {
             continue;
         }
         let id = SnapshotId::try_from(name.trim_end_matches(STAGING_SUFFIX).to_string()).ok();

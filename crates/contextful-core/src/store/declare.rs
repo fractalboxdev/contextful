@@ -176,6 +176,12 @@ impl TableDecl {
             }
         }
         for k in self.primary_key() {
+            if !is_injected(k) && schema.get(k).is_none() {
+                return Err(StoreError::StoreKeyUnknownColumn(format!(
+                    "table `{}` keys on `{k}`, which is neither a column of the table nor an injected column",
+                    self.name
+                )));
+            }
             if schema.get(k).is_some_and(|c| c.ty == ColumnType::Float64) {
                 return Err(StoreError::StoreKeyWidened(format!(
                     "table `{}`: primary-key column `{k}` is reconciled to Float64",

@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 14 | 16 | 0 | 0 | 0 |
 | `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |
-| `store` | 1 | 14 | 137 | 36 | 12 | 8 | 72 | 0 | 72 |
+| `store` | 1 | 14 | 138 | 37 | 12 | 8 | 73 | 0 | 72 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 144 | 1401 | 448 | 161 | 101 | 237 | 0 | |
+| **total** | 19 | 144 | 1402 | 449 | 161 | 101 | 238 | 0 | |
 
 Decision records: 18.
 
@@ -25,7 +25,7 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 15 | 3 | passing |
 | 1 — The authority core | 14 | 191 | 133 | passing |
-| 2 — The store | 8 | 111 | 72 | passing |
+| 2 — The store | 8 | 112 | 73 | passing |
 | 3 — The run path | 11 | 169 | 0 | absent |
 | 4 — Ingest | 22 | 328 | 0 | absent |
 | 5 — The read face under enforcement | 16 | 203 | 0 | absent |
@@ -222,6 +222,7 @@ Unscheduled operations: 9.
 | `store.bound-time.valid-time-undeclared` | `crates/contextful-core/tests/integration/store/bound_time.rs::valid_as_of_on_a_table_declaring_no_pair_is_refused` | performed |
 | `store.declare.dedup-view` | `crates/contextful-context/tests/integration/declare.rs::a_keyed_table_reads_one_row_per_key_before_and_after_a_fold` | performed |
 | `store.declare.empty-run` | `crates/contextful-context/tests/integration/declare.rs::a_zero_row_run_commits_no_parts_and_an_empty_table_registers` | performed |
+| `store.declare.key-unknown` | `crates/contextful-context/tests/integration/declare.rs::an_unknown_primary_key_refuses_the_first_batch_before_any_parquet` | performed |
 | `store.declare.order-by-default` | `crates/contextful-core/tests/integration/store/declare.rs::order_by_defaults_to_ingested_at` | performed |
 | `store.declare.order-by-unknown` | `crates/contextful-core/tests/integration/store/declare.rs::an_order_by_naming_no_column_is_refused` | performed |
 | `store.declare.read-side-keys` | `crates/contextful-context/tests/integration/declare.rs::a_key_added_after_rows_land_applies_at_the_next_read` | performed |

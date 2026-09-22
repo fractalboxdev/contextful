@@ -128,6 +128,8 @@ A table's declaration block: its key, ordering column and write mode, and what a
 - `order-by-default` — `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
 - `order-by-unknown` — An `order_by` naming a column neither declared nor injected raises `StoreOrderByUnknownColumn` at validation, before the first batch.
   *because an ordering column absent from every file reads as null and picks survivors arbitrarily*
+- `key-unknown` — A `primary_key` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` at validation, before the first batch.
+  *because a key column absent from every file partitions every row into one group and collapses the table to a single row*
 - `write-mode` — `write_mode` is `append`, the default, keeping the last write per key and retiring no key, or `replace`.
 - `replace-frontier` — Under `replace`, a read covers the newest run carrying the source's complete state plus every run committed after it.
 - `replace-retains` — A replacing run leaves the runs it displaced on disk until `retain_runs` passes, writes no erasure receipt and walks no lineage.

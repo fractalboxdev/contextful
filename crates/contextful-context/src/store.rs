@@ -291,18 +291,25 @@ impl FileLock {
         Ok(None)
     }
 
-    /// Take the lock, waiting up to `wait` for a live holder to release it.
-    pub fn acquire(path: &Path, wait: std::time::Duration) -> Result<FileLock> {
+    /// Take the lock, waiting up to `wait` for a live holder to release it, or `None`
+    /// while one still holds it. The caller decides what contention means.
+    pub fn acquire_within(path: &Path, wait: std::time::Duration) -> Result<Option<FileLock>> {
         let start = std::time::Instant::now();
         loop {
             if let Some(lock) = FileLock::try_acquire(path)? {
-                return Ok(lock);
+                return Ok(Some(lock));
             }
             if start.elapsed() >= wait {
-                return Err(ContextError::Invalid(format!("{} is held by another process", path.display())));
+                return Ok(None);
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    /// Take the lock, waiting up to `wait`, and refuse when a live holder outlasts it.
+    pub fn acquire(path: &Path, wait: std::time::Duration) -> Result<FileLock> {
+        FileLock::acquire_within(path, wait)?
+            .ok_or_else(|| ContextError::Invalid(format!("{} is held by another process", path.display())))
     }
 }
 

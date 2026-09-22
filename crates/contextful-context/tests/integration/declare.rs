@@ -153,3 +153,23 @@ fn a_read_refuses_an_unknown_order_by_rather_than_emitting_it() {
     let err = f.scan(&edited, Bounds::default()).unwrap_err();
     assert!(matches!(err.store(), Some(StoreError::StoreOrderByUnknownColumn(_))), "{err}");
 }
+
+/// A `primary_key` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` at validation, before the first batch.
+// spec: store.declare.key-unknown@ab12e0f7
+#[test]
+fn an_unknown_primary_key_refuses_the_first_batch_before_any_parquet() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"\nprimary_key = [\"docid\"]");
+    let err = f.land(&d, "run-1", json!([{"doc_id": "a", "rev": 1}]), "2030-01-01T00:00:00Z").unwrap_err();
+    assert!(matches!(err.store(), Some(StoreError::StoreKeyUnknownColumn(_))), "{err}");
+    assert!(!f.table_dir("filings").join("data").exists());
+    assert!(!f.table_dir("filings").join("schema.json").exists());
+
+    // A key on an injected column is known, so the same table keyed on `_run_id` lands.
+    let injected = decl("name = \"filings\"\nprimary_key = [\"_run_id\"]");
+    f.land(&injected, "run-1", json!([{"doc_id": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+
+    // The read refuses it too, rather than emitting a partition over a column no file has.
+    let err = f.scan(&d, Bounds::default()).unwrap_err();
+    assert!(matches!(err.store(), Some(StoreError::StoreKeyUnknownColumn(_))), "{err}");
+}
