@@ -262,8 +262,8 @@ fn the_minted_audience_falls_back_to_the_persisted_default() {
     assert_eq!(mint(&fallback, &claims(json!(["analyst"])), 3600).unwrap().audience, PROJECT_AUD);
 }
 
-/// A bad signature, a lapsed assertion, an untrusted issuer or audience, or a mapped claim absent from the assertion raises `ExchangeAssertionInvalid` and mints nothing.
-// spec: authority.exchange.assertion-invalid@202f428c
+/// The claim checks behind `authority.exchange.assertion-invalid`: issuer, audience, expiry
+/// and mapped claims. The policy crate's suite pins the clause over signed assertions.
 #[test]
 fn an_assertion_failing_any_check_is_invalid_and_mints_nothing() {
     let p = spec_policy();

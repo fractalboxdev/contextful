@@ -64,7 +64,9 @@ pub enum VerifyingMaterial {
 }
 
 impl VerifyingMaterial {
-    fn is_empty(&self) -> bool {
+    /// Material holding no bytes, which counts as none configured
+    /// (`authority.exchange.material-missing`).
+    pub fn is_empty(&self) -> bool {
         match self {
             VerifyingMaterial::SharedSecret(s) => s.is_empty(),
             VerifyingMaterial::Rs256PublicKeyPem(s) | VerifyingMaterial::KeySet(s) => s.trim().is_empty(),
