@@ -15,6 +15,9 @@ model; a credential here is the value the library hands the engine after verific
 
 namespace Authority
 
+set_option genSizeOfSpec false
+set_option genInjectivity false
+
 /-- A table name or audience, as a character list. -/
 abbrev Name := List Char
 
@@ -27,6 +30,7 @@ inductive Action where
   | admin
   deriving DecidableEq
 
+set_option genCtorIdx false in
 /-- A table pattern: `*` covering every table, a prefix ending in `*` covering every name
 beginning with that prefix (held without its `*`), or any other string matched exactly. -/
 inductive Pattern where
@@ -84,11 +88,13 @@ theorem Pattern.subsumes_sound :
       cases of_decide_eq_true hs
       exact hc
 
+set_option genCtorIdx false in
 /-- A grant: the actions it confers over the tables its patterns cover. -/
 structure Grant where
   actions : List Action
   tables : List Pattern
 
+set_option genCtorIdx false in
 /-- One statement's request: an action over every table the statement names. -/
 structure Request where
   action : Action
@@ -117,17 +123,20 @@ theorem grant_includedIn_permits :
   obtain ⟨p, hpm, hsub⟩ := List.any_eq_true.mp (List.all_eq_true.mp ht q hq)
   exact List.any_eq_true.mpr ⟨p, hpm, Pattern.subsumes_sound p q t hsub hcov⟩
 
+set_option genCtorIdx false in
 /-- A block: the grants it states and the expiry instant it carries, if any. -/
 structure Block where
   grants : List Grant
   expiry : Option Nat
 
+set_option genCtorIdx false in
 /-- A credential: the audience it names, its authority block, and the blocks appended to it. -/
 structure Credential where
   audience : Option Name
   authority : Block
   appended : List Block
 
+set_option genCtorIdx false in
 /-- The trusted environment's reserved facts: the evaluation instant and the checkpoint's
 expected audience. -/
 structure Env where

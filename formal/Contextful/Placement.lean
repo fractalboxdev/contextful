@@ -11,6 +11,9 @@ concrete identifier. A zone is admitted when any entry matches, and only `*` adm
 undeclared zone.
 -/
 
+set_option genSizeOfSpec false
+set_option genInjectivity false
+
 /-- A zone identifier. The identifier space is unbounded; the model holds it as a character list. -/
 abbrev Ident := List Char
 
@@ -21,6 +24,8 @@ inductive Category where
   | publicCloud
   deriving DecidableEq
 
+set_option genCtorIdx false in
+set_option genCtorIdx false in
 /-- The declared placement: one case per category the manifest admits, each carrying its
 identifier inside the constructor, and one case for an absent declaration. `local:device`
 names a single zone, so its constructor carries no free identifier. -/
@@ -112,6 +117,7 @@ theorem zone_layer_sound :
 
 /-! ## Allow-set entries and symbolic inclusion -/
 
+set_option genCtorIdx false in
 /-- An allow-set entry: `*`, `local:device`, a bare category, or a category carrying a
 concrete identifier. -/
 inductive Entry where

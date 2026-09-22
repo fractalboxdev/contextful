@@ -37,42 +37,57 @@ theorem inv_mono {s s' : State} (h : Inv s) (hg : s'.granted = s.granted)
   · rw [hc, hg]; exact h4
   · rw [hcur, hg]; exact h5
 
+theorem grant_node_self (r : Bool) (s : State) (n : Node) (f : Nat) :
+    (grant r s n f).node n = { s.node n with belief := some f } := by
+  simp [grant, State.setNode]
+
+theorem grant_node_other (r : Bool) (s : State) {n m : Node} (f : Nat) (h : m ≠ n) :
+    (grant r s n f).node m = s.node m := by
+  simp [grant, State.setNode, h]
+
 /-- A grant one past the highest fence keeps the invariant. -/
-theorem inv_grant {s : State} {n : Node} {f : Fence} (h : Inv s) (hf : f = s.granted + 1) :
+theorem inv_grant {s : State} {n : Node} {f : Nat} (h : Inv s) (hf : f = s.granted + 1) :
     Inv (grant true s n f) := by
   obtain ⟨h1, h2, h3, h4, h5⟩ := h
-  have hg : (grant true s n f).granted = f := rfl
+  have below : ∀ m g, (s.node m).belief = some g → g < f := fun m g hm => by
+    have := h1 m g hm; omega
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro m g hm
-    rw [hg]
+    show g ≤ f
     by_cases e : m = n
     · subst e
-      simp only [grant, setNode_node, if_pos rfl, Option.some.injEq] at hm
+      rw [grant_node_self] at hm
+      have : f = g := Option.some.inj hm
       omega
-    · simp only [grant, setNode_node, if_neg e] at hm
-      have := h1 m g hm
+    · rw [grant_node_other true s f e] at hm
+      have := below m g hm
       omega
   · intro a b g ha hb
     by_cases ea : a = n <;> by_cases eb : b = n
     · rw [ea, eb]
     · subst ea
-      simp only [grant, setNode_node, if_pos rfl, if_neg eb, Option.some.injEq] at ha hb
-      have := h1 b g hb
+      rw [grant_node_self] at ha
+      rw [grant_node_other true s f eb] at hb
+      have e1 : f = g := Option.some.inj ha
+      have := below b g hb
       omega
     · subst eb
-      simp only [grant, setNode_node, if_pos rfl, if_neg ea, Option.some.injEq] at ha hb
-      have := h1 a g ha
+      rw [grant_node_self] at hb
+      rw [grant_node_other true s f ea] at ha
+      have e1 : f = g := Option.some.inj hb
+      have := below a g ha
       omega
-    · simp only [grant, setNode_node, if_neg ea, if_neg eb] at ha hb
+    · rw [grant_node_other true s f ea] at ha
+      rw [grant_node_other true s f eb] at hb
       exact h2 a b g ha hb
   · intro m t g hm
-    rw [hg]
+    show g ≤ f
     by_cases e : m = n
     · subst e
-      simp only [grant, setNode_node, if_pos rfl] at hm
+      rw [grant_node_self] at hm
       have := h3 m t g hm
       omega
-    · simp only [grant, setNode_node, if_neg e] at hm
+    · rw [grant_node_other true s f e] at hm
       have := h3 m t g hm
       omega
   · show max s.catalogFence f = f
@@ -80,7 +95,7 @@ theorem inv_grant {s : State} {n : Node} {f : Fence} (h : Inv s) (hf : f = s.gra
   · show max s.cursorFence f = f
     omega
 
-theorem inv_setFence {s : State} {t : Target} {f : Fence} (h : Inv s) (hf : f = s.granted) :
+theorem inv_setFence {s : State} {t : Target} {f : Nat} (h : Inv s) (hf : f = s.granted) :
     Inv (s.setFence t f) := by
   obtain ⟨h1, h2, h3, h4, h5⟩ := h
   cases t with
@@ -132,7 +147,7 @@ theorem inv_step {s : State} (h : Inv s) (st : Step) : Inv (step s st) := by
           · simpa [setNode_node, e] using hf
         · intro m t f hf
           by_cases e : m = n
-          · subst e; simp only [setNode_node, if_pos rfl] at hf; exact h.2.2.1 m t f hf
+          · subst e; simp only [setNode_node] at hf; exact h.2.2.1 m t f hf
           · simp only [setNode_node, if_neg e] at hf; exact h.2.2.1 m t f hf
       · exact h
     · exact h
@@ -150,7 +165,7 @@ theorem inv_step {s : State} (h : Inv s) (st : Step) : Inv (step s st) := by
         · intro m t' g hg
           by_cases e : m = n
           · subst e
-            simp only [setNode_node, if_pos rfl, Option.some.injEq, Prod.mk.injEq] at hg
+            simp only [setNode_node] at hg
             obtain ⟨_, rfl⟩ := hg
             exact h.1 m f hbel
           · simp only [setNode_node, if_neg e] at hg; exact h.2.2.1 m t' g hg
@@ -189,7 +204,7 @@ theorem inv_step {s : State} (h : Inv s) (st : Step) : Inv (step s st) := by
       · simpa [step, stepWith, setNode_node, e] using hg
     · intro m t g hg
       by_cases e : m = n
-      · subst e; simp only [step, stepWith, setNode_node, if_pos rfl] at hg; exact h.2.2.1 m t g hg
+      · subst e; simp only [step, stepWith, setNode_node] at hg; exact h.2.2.1 m t g hg
       · simp only [step, stepWith, setNode_node, if_neg e] at hg; exact h.2.2.1 m t g hg
   | resume n =>
     refine inv_mono h rfl rfl rfl ?_ ?_
@@ -199,7 +214,7 @@ theorem inv_step {s : State} (h : Inv s) (st : Step) : Inv (step s st) := by
       · simpa [step, stepWith, setNode_node, e] using hg
     · intro m t g hg
       by_cases e : m = n
-      · subst e; simp only [step, stepWith, setNode_node, if_pos rfl] at hg; exact h.2.2.1 m t g hg
+      · subst e; simp only [step, stepWith, setNode_node] at hg; exact h.2.2.1 m t g hg
       · simp only [step, stepWith, setNode_node, if_neg e] at hg; exact h.2.2.1 m t g hg
   | crash n =>
     refine inv_mono h rfl rfl rfl ?_ ?_
@@ -209,7 +224,7 @@ theorem inv_step {s : State} (h : Inv s) (st : Step) : Inv (step s st) := by
       · simpa [step, stepWith, setNode_node, e] using hg
     · intro m t g hg
       by_cases e : m = n
-      · subst e; simp only [step, stepWith, setNode_node, if_pos rfl] at hg; exact h.2.2.1 m t g hg
+      · subst e; simp only [step, stepWith, setNode_node] at hg; exact h.2.2.1 m t g hg
       · simp only [step, stepWith, setNode_node, if_neg e] at hg; exact h.2.2.1 m t g hg
 
 theorem reachable_inv : ∀ {s : State}, Reachable s → Inv s := by
@@ -220,7 +235,7 @@ theorem reachable_inv : ∀ {s : State}, Reachable s → Inv s := by
 
 /-- One lease holder per fence: no two nodes of a reachable state believe they hold the same fence. -/
 theorem one_holder_per_fence :
-    ∀ {s : State}, Reachable s → ∀ (n m : Node) (f : Fence),
+    ∀ {s : State}, Reachable s → ∀ (n m : Node) (f : Nat),
       (s.node n).belief = some f → (s.node m).belief = some f → n = m :=
   fun h => (reachable_inv h).2.1
 
@@ -292,7 +307,7 @@ theorem fences_only_increase :
 /-- No commit lands carrying a fence below the highest granted: every write a step of a
 reachable state lands carries a fence at least the lease object's. -/
 theorem no_commit_below_granted :
-    ∀ {s : State}, Reachable s → ∀ (st : Step) (t : Target) (f : Fence),
+    ∀ {s : State}, Reachable s → ∀ (st : Step) (t : Target) (f : Nat),
       landed s st = some (t, f) → s.granted ≤ f := by
   intro s hr st t f hl
   have h := reachable_inv hr
@@ -333,10 +348,10 @@ the lease object and its fence. -/
 -- spec: assurance.model.protocol-safety@01e46fbe
 theorem protocol_safety :
     ∀ {s : State}, Reachable s →
-      (∀ (n m : Node) (f : Fence), (s.node n).belief = some f → (s.node m).belief = some f → n = m) ∧
+      (∀ (n m : Node) (f : Nat), (s.node n).belief = some f → (s.node m).belief = some f → n = m) ∧
       (∀ st : Step, s.granted ≤ (step s st).granted ∧ s.catalogFence ≤ (step s st).catalogFence ∧
         s.cursorFence ≤ (step s st).cursorFence) ∧
-      (∀ (st : Step) (t : Target) (f : Fence), landed s st = some (t, f) → s.granted ≤ f) ∧
+      (∀ (st : Step) (t : Target) (f : Nat), landed s st = some (t, f) → s.granted ≤ f) ∧
       (∀ n : Node, (step s (.release n)).lease.map Lease.fence = s.lease.map Lease.fence) :=
   fun h => ⟨one_holder_per_fence h, fences_only_increase _, no_commit_below_granted h, release_keeps_lease _⟩
 

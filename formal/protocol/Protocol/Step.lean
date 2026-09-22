@@ -17,9 +17,6 @@ namespace Protocol
 /-- A node identifier. The proofs range over every node; the bounded check uses three. -/
 abbrev Node := Nat
 
-/-- A fence: the generation number a grant stamps. -/
-abbrev Fence := Nat
-
 /-- The two objects a fence guards. -/
 inductive Target where
   | catalog
@@ -30,16 +27,16 @@ inductive Target where
 still unexpired. The object is never deleted once created. -/
 structure Lease where
   holder : Option Node
-  fence : Fence
+  fence : Nat
   live : Bool
   deriving DecidableEq, Hashable, Repr
 
 /-- One node's local view: the fence it believes it holds, whether it is paused, and the one
 fenced write it has in flight. -/
 structure NodeState where
-  belief : Option Fence
+  belief : Option Nat
   paused : Bool
-  pending : Option (Target × Fence)
+  pending : Option (Target × Nat)
   deriving DecidableEq, Hashable, Repr
 
 /-- The idle node: no belief, running, nothing in flight. -/
@@ -49,21 +46,21 @@ def NodeState.idle : NodeState := ⟨none, false, none⟩
 guarded object holds, and every node's view. -/
 structure State where
   lease : Option Lease
-  catalogFence : Fence
-  cursorFence : Fence
+  catalogFence : Nat
+  cursorFence : Nat
   node : Node → NodeState
 
 /-- The initial state: no lease object, both guarded objects at fence 0, every node idle. -/
 def State.init : State := ⟨none, 0, 0, fun _ => NodeState.idle⟩
 
 /-- The highest fence granted: the lease object's fence, 0 before its creation. -/
-def State.granted (s : State) : Fence :=
+def State.granted (s : State) : Nat :=
   match s.lease with
   | none => 0
   | some l => l.fence
 
 /-- The fence a guarded object holds. -/
-def State.fenceOf (s : State) : Target → Fence
+def State.fenceOf (s : State) : Target → Nat
   | .catalog => s.catalogFence
   | .cursor => s.cursorFence
 
@@ -87,7 +84,7 @@ def State.setNode (s : State) (n : Node) (v : NodeState) : State :=
 
 /-- Grant the lease to `n` at fence `f`. With `raise`, the grant writes `f` into both guarded
 objects; without it, the guarded objects keep their fences until the holder commits. -/
-def grant (raise : Bool) (s : State) (n : Node) (f : Fence) : State :=
+def grant (raise : Bool) (s : State) (n : Node) (f : Nat) : State :=
   let s' := s.setNode n { s.node n with belief := some f }
   { s' with
     lease := some ⟨some n, f, true⟩
@@ -102,7 +99,7 @@ def holds (s : State) (n : Node) (l : Lease) : Bool :=
   decide (l.holder = some n) && decide ((s.node n).belief = some l.fence)
 
 /-- Apply a delivered write to the object it targets. -/
-def State.setFence (s : State) : Target → Fence → State
+def State.setFence (s : State) : Target → Nat → State
   | .catalog, f => { s with catalogFence := f }
   | .cursor, f => { s with cursorFence := f }
 
@@ -151,7 +148,7 @@ def step : State → Step → State := stepWith true
 
 /-- The commit a step lands: the target and carried fence of a delivered write whose
 condition holds; `none` for every other step. -/
-def landed (s : State) : Step → Option (Target × Fence)
+def landed (s : State) : Step → Option (Target × Nat)
   | .deliver n =>
     match (s.node n).pending with
     | some (t, f) => if s.fenceOf t ≤ f then some (t, f) else none
