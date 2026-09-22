@@ -126,3 +126,13 @@ fn state_writes_a_card_per_contract_and_a_stale_card_is_a_render_finding() {
     let found = codes(&s.lint("render"), "SpecStaleRender");
     assert!(found.iter().any(|m| m.contains("spec/cards/store.md")), "{found:?}");
 }
+
+#[test]
+fn an_unbackticked_axiom_is_a_banned_word_and_a_lean_identifier_is_not() {
+    let s = Scratch::copy();
+    let text = s.read(GUIDE);
+    s.write(GUIDE, &format!("{text}\nThe audit reads `#print axioms` for each constant.\n"));
+    assert!(codes(&s.lint("render"), "SpecBannedWord").is_empty());
+    s.write(GUIDE, &format!("{text}\nThe audit lists every axiom a constant reaches.\n"));
+    assert_eq!(codes(&s.lint("render"), "SpecBannedWord").len(), 1);
+}

@@ -10,6 +10,10 @@
 #   flare-dispatch/check:workspace   cargo test --workspace, acceptance excluded
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
 #
+# Before test-first and workspace, the gate installs elan and the Lean toolchain
+# `formal/lean-toolchain` pins when the sandbox lacks them, and sets
+# CONTEXTFUL_REQUIRE_LEAN=1, so a Lean-backed test fails rather than skips.
+#
 # A contributor runs the same stages locally: `cargo run -q -p contextful-ci -- gate`.
 # `contextful-ci`'s integration suite fails when this matrix and its stage list differ.
 #

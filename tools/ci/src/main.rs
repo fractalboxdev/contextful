@@ -11,6 +11,12 @@ const STAGES: [&str; 4] = ["schema", "test-first", "workspace", "acceptance"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
 const REFACTOR_TRAILER: &str = "refactor";
+/// The toolchain the Lean models pin; its presence makes Lean a test dependency.
+const LEAN_PIN: &str = "formal/lean-toolchain";
+/// Set for every test process once Lean is provisioned, so a Lean-backed test fails
+/// instead of skipping.
+const REQUIRE_LEAN: &str = "CONTEXTFUL_REQUIRE_LEAN";
+const ELAN_INIT: &str = "https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh";
 
 #[derive(Parser)]
 #[command(name = "contextful-ci", about = "The gate's stages")]
@@ -88,8 +94,14 @@ fn gate(selected: &[String], base: &str) -> Result<()> {
                 mirrors(&root)?;
                 run(&root, "cargo", &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
             }
-            "test-first" => test_first(&root, base)?,
-            "workspace" => workspace(&root)?,
+            "test-first" => {
+                provision_lean(&root)?;
+                test_first(&root, base)?
+            }
+            "workspace" => {
+                provision_lean(&root)?;
+                workspace(&root)?
+            }
             "acceptance" => acceptance(&root)?,
             _ => unreachable!(),
         }
@@ -103,6 +115,37 @@ fn workspace(root: &Path) -> Result<()> {
         args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
     }
     run(root, "cargo", &args)
+}
+
+// ---------------------------------------------------------------- lean
+
+/// Install elan when absent and the toolchain `formal/lean-toolchain` pins, put elan's
+/// `bin` first on `PATH`, and set `CONTEXTFUL_REQUIRE_LEAN=1` for every test process
+/// this gate run starts. A tree pinning no toolchain is left untouched.
+fn provision_lean(root: &Path) -> Result<()> {
+    let Ok(pin) = std::fs::read_to_string(root.join(LEAN_PIN)) else { return Ok(()) };
+    let pin = pin.trim();
+    let elan_home = std::env::var_os("ELAN_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".elan")))
+        .context("neither ELAN_HOME nor HOME is set")?;
+    let bin = elan_home.join("bin");
+    if !bin.join("elan").exists() {
+        eprintln!("lean: installing elan into {}", elan_home.display());
+        let script = format!("curl -sSfL {ELAN_INIT} | sh -s -- -y --no-modify-path --default-toolchain none");
+        run(root, "sh", &["-c", &script])?;
+    }
+    let elan = bin.join("elan");
+    let listed = Command::new(&elan).args(["toolchain", "list"]).output().context("running elan")?;
+    if !String::from_utf8_lossy(&listed.stdout).lines().any(|l| l.split_whitespace().next() == Some(pin)) {
+        run(root, &elan.to_string_lossy(), &["toolchain", "install", pin])?;
+    }
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let joined = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path)))?;
+    std::env::set_var("PATH", joined);
+    std::env::set_var(REQUIRE_LEAN, "1");
+    eprintln!("lean: {pin} provisioned; {REQUIRE_LEAN}=1");
+    Ok(())
 }
 
 // ---------------------------------------------------------------- secrets

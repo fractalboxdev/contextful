@@ -1194,7 +1194,7 @@ static DATED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(planned|not yet|currently|today|shipped|implemented|previously|used to|legacy)\b|\b(TODO|FIXME|WIP)\b").unwrap()
 });
 static COUNTERFACTUAL: LazyLock<Regex> = LazyLock::new(|| word_re(&["will", "would", "shall"]));
-static BANNED: LazyLock<Regex> = LazyLock::new(|| word_re(&["seam", "seams", "load-bearing", "wedge", "rung", "rungs", "land-grab"]));
+static BANNED: LazyLock<Regex> = LazyLock::new(|| word_re(&["seam", "seams", "load-bearing", "wedge", "rung", "rungs", "land-grab", "axiom", "axioms"]));
 
 fn render(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
