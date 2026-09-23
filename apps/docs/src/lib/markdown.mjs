@@ -141,8 +141,6 @@ const hasClass = (node, name) => {
   return Array.isArray(c) ? c.includes(name) : typeof c === "string" && c.split(/\s+/).includes(name);
 };
 
-const textOf = (node) => (node.type === "text" ? node.value : (node.children ?? []).map(textOf).join(""));
-
 const enlarge = () => ({
   type: "element",
   tagName: "button",
@@ -150,13 +148,28 @@ const enlarge = () => ({
   children: [{ type: "text", value: "⤢" }],
 });
 
+/** `<file>:<line>` of each mermaid fence Merlion did not draw in this build. */
+export const unrendered = [];
+
+/** Fails the build when any mermaid fence reached the page as code. */
+export const diagramGate = {
+  name: "diagram-gate",
+  hooks: {
+    "astro:build:done": () => {
+      if (unrendered.length) {
+        throw new Error(`Merlion did not render ${unrendered.length} mermaid fence(s): ${unrendered.join(", ")}`);
+      }
+    },
+  },
+};
+
 /**
- * Wraps each table so a wide one scrolls horizontally instead of the page. Gives each
- * Merlion figure the enlarge button; a mermaid block Merlion leaves in place (a diagram
- * type other than flowchart) becomes a `pre.mermaid` figure that mermaid draws in the browser.
+ * Wraps each table so a wide one scrolls horizontally instead of the page, and gives each
+ * Merlion figure the enlarge button. A mermaid fence Merlion left as code is recorded in
+ * `unrendered`; the site ships no client-side renderer, so the build fails on any.
  */
 export function rehypeCorpus() {
-  return (tree) => {
+  return (tree, file) => {
     visit(tree, "element", (node, index, parent) => {
       if (!parent || index === undefined) return;
       if (node.tagName === "table") {
@@ -168,18 +181,8 @@ export function rehypeCorpus() {
         node.children.push(enlarge());
         return SKIP;
       }
-      const [code] = node.tagName === "pre" ? node.children.filter((c) => c.type === "element") : [];
-      if (code?.tagName === "code" && hasClass(code, "language-mermaid")) {
-        parent.children[index] = {
-          type: "element",
-          tagName: "figure",
-          properties: { className: ["diagram"] },
-          children: [
-            { type: "element", tagName: "pre", properties: { className: ["mermaid"] }, children: [{ type: "text", value: textOf(code) }] },
-            enlarge(),
-          ],
-        };
-        return SKIP;
+      if (node.tagName === "code" && hasClass(node, "language-mermaid")) {
+        unrendered.push(`${sourcePath(file) ?? "?"}:${node.position?.start.line ?? 0}`);
       }
     });
   };

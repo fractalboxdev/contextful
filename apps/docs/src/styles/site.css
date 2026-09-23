@@ -217,7 +217,6 @@ li.clause:target .clause-anchor code { color: var(--accent); }
 .record-ref { font-family: var(--font-mono); font-size: 0.86em; }
 
 figure.diagram { position: relative; margin: 1rem 0; cursor: zoom-in; }
-figure.diagram:hover pre.mermaid,
 figure.merlion-figure:hover { border-color: var(--accent); }
 
 /* Merlion diagrams draw on the page's own background, ink and accent, in both schemes. */
@@ -234,16 +233,6 @@ figure.merlion-figure {
   border: 1px solid var(--border);
 }
 figure.merlion-figure > svg { max-width: 100%; height: auto; }
-
-pre.mermaid {
-  display: flex;
-  justify-content: center;
-  margin: 0;
-  background: transparent;
-  border: 1px solid var(--border);
-  white-space: pre;
-}
-pre.mermaid[data-processed] { white-space: normal; }
 
 .diagram-open {
   position: absolute;
