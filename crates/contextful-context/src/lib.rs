@@ -1,6 +1,6 @@
 //! The store adapter: a project's store root on a filesystem, Parquet table parts, run
-//! and snapshot manifests, the table pointer, the fold, and the scan that resolves a
-//! table's file list and relation.
+//! and snapshot manifests, the table pointer, the fold, the scan that resolves a table's
+//! file list and relation, and the read face executing over it.
 
 pub mod error;
 pub mod fold;

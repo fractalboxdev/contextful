@@ -3,6 +3,7 @@
 mod context;
 mod differential;
 mod formal;
+mod mcp;
 mod pipeline;
 mod run;
 mod token;
@@ -30,6 +31,8 @@ enum Cmd {
     /// Start, inspect, stop and resume durable runs.
     #[command(subcommand)]
     Run(run::RunCmd),
+    /// Serve the read face over the tool protocol on standard input and output.
+    Mcp(mcp::McpArgs),
     /// Elaborate and audit the Lean models under `formal/`.
     #[command(subcommand)]
     Formal(formal::FormalCmd),
@@ -42,6 +45,7 @@ fn main() {
         Cmd::Context(c) => context::run(c),
         Cmd::Run(c) => run::run(c),
         Cmd::Pipeline(c) => pipeline::run(c),
+        Cmd::Mcp(c) => mcp::run(c),
         Cmd::Formal(c) => formal::run(c),
     };
     if let Err(e) = result {

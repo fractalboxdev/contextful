@@ -106,3 +106,18 @@ fn introspection_reports_declared_scope_and_the_chain_final_revocation_id() {
     assert_eq!(ids.len(), 2, "{text}");
     assert_eq!(json["rev_id"], ids[1], "{text}");
 }
+
+#[test]
+fn a_mint_carries_a_tenant_scope_on_its_grant() {
+    let p = project();
+    keygen(p.path());
+    let token = stdout(&mint(
+        p.path(),
+        &["--on-behalf-of", "user://dana@acme.example", "--table", "research/*", "--tenant", "research/notes=acme"],
+    ));
+    let text = stdout(&run(p.path(), &["token", "introspect", "--token", &token]));
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(json["authority"]["grants"][0]["tenant"], serde_json::json!({ "table": "research/notes", "value": "acme" }), "{text}");
+    let err = stderr(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "research/*", "--tenant", "acme"]));
+    assert!(err.contains("<table>=<value>"), "{err}");
+}

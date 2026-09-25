@@ -690,6 +690,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "contextful-agent",
  "contextful-connectors",
  "contextful-context",
  "contextful-core",

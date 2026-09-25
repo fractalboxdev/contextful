@@ -9,6 +9,7 @@ name = "contextful"
 path = "src/main.rs"
 
 [dependencies]
+contextful-agent = { path = "../contextful-agent" }
 contextful-connectors = { path = "../contextful-connectors" }
 contextful-context = { path = "../contextful-context" }
 contextful-core = { path = "../contextful-core" }

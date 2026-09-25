@@ -1,0 +1,93 @@
+//! `contextful mcp` through the built binary: admission at startup, then the tool
+//! protocol over standard input and output.
+
+use serde_json::{json, Value};
+use std::io::Write;
+use std::path::Path;
+use std::process::{Command, Output, Stdio};
+
+const AUD: &str = "contextful://acme-research";
+
+fn run(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_contextful")).args(args).current_dir(dir).output().unwrap()
+}
+
+fn stdout(out: &Output) -> String {
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// A project holding one landed table, an issuer and a credential reading it.
+fn project() -> (tempfile::TempDir, String, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    std::fs::create_dir_all(p.join(".contextful")).unwrap();
+    std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
+    std::fs::write(p.join("contextful.toml"), "[[pipeline.tables]]\nname = \"research/notes\"\n").unwrap();
+    std::fs::write(p.join("notes.jsonl"), "{\"note_id\":\"n1\",\"title\":\"Solar battery storage\"}\n").unwrap();
+    stdout(&run(p, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
+    let public = stdout(&run(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let token = stdout(&run(
+        p,
+        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "600"],
+    ));
+    (dir, public, token)
+}
+
+/// Run the server over `input`, one message per line.
+fn serve(dir: &Path, args: &[&str], token: Option<&str>, input: &[Value]) -> Output {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
+    cmd.args(args).current_dir(dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).env_remove("CONTEXTFUL_TOKEN");
+    if let Some(t) = token {
+        cmd.env("CONTEXTFUL_TOKEN", t);
+    }
+    let mut child = cmd.spawn().unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        for m in input {
+            let _ = writeln!(stdin, "{m}");
+        }
+    }
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn the_server_admits_its_credential_then_answers_tool_calls() {
+    let (dir, public, token) = project();
+    let args = ["mcp", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let out = serve(
+        dir.path(),
+        &args,
+        Some(&token),
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }),
+            json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } }),
+        ],
+    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let lines: Vec<Value> = String::from_utf8_lossy(&out.stdout).lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(lines.len(), 2, "a notification has no answer");
+    assert_eq!(lines[0]["result"]["serverInfo"]["name"], json!("contextful"));
+    assert_eq!(lines[1]["result"]["structuredContent"]["rows"], json!([["n1"]]));
+    // With no pepper configured, the run signals the development pepper once.
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(err.matches("CONTEXTFUL_PEPPER").count(), 1, "{err}");
+}
+
+#[test]
+fn a_server_with_no_admissible_credential_writes_no_framing() {
+    let (dir, public, token) = project();
+    let args = ["mcp", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let hello = [json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} })];
+    let none = serve(dir.path(), &args, None, &hello);
+    assert!(!none.status.success() && none.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&none.stderr).contains("CONTEXTFUL_TOKEN"));
+    let other = ["mcp", "--project", "research", "--public-key", &public, "--audience", "contextful://other"];
+    let mismatch = serve(dir.path(), &other, Some(&token), &hello);
+    assert!(!mismatch.status.success() && mismatch.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&mismatch.stderr).contains("AudienceMismatch"));
+    std::fs::remove_file(dir.path().join("contextful.toml")).unwrap();
+    let unmanifested = serve(dir.path(), &args, Some(&token), &hello);
+    assert!(!unmanifested.status.success() && unmanifested.stdout.is_empty());
+}
