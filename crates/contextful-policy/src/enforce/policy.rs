@@ -128,11 +128,6 @@ impl TablePolicy {
         };
         let placement = Placement { declared, protected: table_class.is_some_and(|c| c.protected()), protected_override };
         placement.check(&format!("table {}", decl.name))?;
-        for (name, c) in &columns {
-            if c.class.is_some_and(|cls| cls.protected()) {
-                Placement { protected: true, ..placement.clone() }.check(&format!("column {}.{name}", decl.name))?;
-            }
-        }
         let rows = raw
             .rows
             .map(|r| -> Result<RowPolicy, EnforceError> {
@@ -175,7 +170,8 @@ impl TablePolicy {
     }
 
     /// The set a column's cells serve under: the table's, narrowed to the protected floor
-    /// for a protected-class column.
+    /// for a protected-class column, which declares no set of its own and so resolves down
+    /// at serve time (`authority.place.protected-floor`).
     pub fn column_set(&self, column: &str) -> AllowSet {
         let protected = self.columns.get(column).and_then(|c| c.class).is_some_and(|c| c.protected());
         let column = Placement { protected: protected || self.placement.protected, ..self.placement.clone() };

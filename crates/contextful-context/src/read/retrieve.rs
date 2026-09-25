@@ -1,0 +1,296 @@
+//! `corpus.retrieve`: one arm per registered relation under a prefix, the recency
+//! window, snippets and content tokens, the relevance floor, the ranking legs and the
+//! retrieval block.
+
+use super::engine::{cell, SqlEngine};
+use super::face::Face;
+use super::fault::ReadFault;
+use contextful_core::read::embed::cosine;
+use contextful_core::read::rank::{
+    candidate_window, fingerprint, fuse, min_max, order, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
+    Timeframe,
+};
+use contextful_core::read::respond::{Cell, Response};
+use contextful_core::read::tokens::{content_tokens, lexical_score, passes_floor, relevance_floor};
+use contextful_core::store::bound_time::Bounds;
+use contextful_core::store::reconcile::ColumnType;
+use contextful_core::store::relation::ident;
+use contextful_core::store::reserve::{AUTHORED_BY, INGESTED_AT, ROW_SEQ, RUN_ID};
+use contextful_core::time::Instant;
+use contextful_policy::enforce::session::Session;
+use duckdb::types::Value as Engine;
+use serde_json::{json, Map, Value};
+
+/// Default number of rows a ranked read returns.
+pub const DEFAULT_LIMIT: u64 = 10;
+
+/// Label-priority columns, which lead a snippet (`read.retrieve.snippet`).
+const LABEL_COLUMNS: [&str; 8] = ["title", "headline", "name", "subject", "summary", "abstract", "description", "thesis"];
+
+/// Publication columns the engine resolves, in preference order, before falling back to
+/// the ingestion instant (`read.retrieve.engine-resolved-date`).
+const PUBLICATION_COLUMNS: [&str; 6] = ["published_at", "publication_date", "published", "pub_date", "date", "created_at"];
+
+/// Reserved columns every ranked row projects, null where its table lacks them
+/// (`read.retrieve.reserved-columns-project-null`).
+const RESERVED_PROJECTED: [(&str, &str); 4] =
+    [("_modality", "_modality"), ("_lang", "_lang"), ("_prompt_hash", "_prompt_hash"), ("_kind", "kind")];
+
+/// The column carrying a row's stored vector.
+const EMBEDDING_COLUMN: &str = "embedding";
+
+/// What a ranked read asks for.
+#[derive(Debug, Clone, Default)]
+pub struct RetrieveRequest {
+    pub prefix: String,
+    pub query: String,
+    pub query_embedding: Option<Vec<f32>>,
+    pub limit: Option<u64>,
+    /// The question's lower bound on publication.
+    pub since: Option<Instant>,
+    /// The instant the question is asked at; the timeframe's anchor.
+    pub anchor: Option<Instant>,
+    /// A caller minimum overriding the relevance floor.
+    pub min_score: Option<u32>,
+    pub internals: bool,
+}
+
+/// Whether a column names an identifier or an instant, which never enter a snippet
+/// (`read.retrieve.identifiers-never-snippet`).
+fn identifier_like(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.starts_with('_')
+        || n == "id"
+        || ["_id", "_key", "hash", "url", "uri", "link", "_at", "_date", "_time", "email"].iter().any(|s| n.ends_with(s))
+        || n == "date"
+        || n == "time"
+}
+
+/// Up to three snippet columns: label-priority text columns first, then the table's
+/// other prose-worthy text columns in schema order (`read.retrieve.snippet`). A
+/// partition column, and a column carrying a declared class or mask, never enters one.
+fn snippet_columns(text: &[&str], sensitive: impl Fn(&str) -> bool) -> Vec<String> {
+    let eligible: Vec<&str> = text.iter().copied().filter(|c| !identifier_like(c) && !sensitive(c)).collect();
+    let mut out: Vec<String> = LABEL_COLUMNS.iter().filter(|l| eligible.contains(l)).map(|l| l.to_string()).collect();
+    out.extend(eligible.iter().filter(|c| !LABEL_COLUMNS.contains(c)).map(|c| c.to_string()));
+    out.truncate(3);
+    out
+}
+
+/// One candidate row of one arm.
+struct Row {
+    table: String,
+    id: String,
+    values: Vec<(String, Value)>,
+    snippet: Option<String>,
+    lexical: Option<u32>,
+    vector: Option<f64>,
+    publication: Publication,
+    basis_column: String,
+    ingested: Option<Instant>,
+}
+
+fn text_of(v: &Engine) -> Option<String> {
+    match cell(v.clone()) {
+        Cell::Null => None,
+        Cell::Text(s) => Some(s),
+        other => match other.to_json() {
+            Value::String(s) => Some(s),
+            j => Some(j.to_string()),
+        },
+    }
+}
+
+fn vector_of(v: &Engine) -> Option<Vec<f32>> {
+    match v {
+        Engine::List(items) | Engine::Array(items) => items
+            .iter()
+            .map(|x| match x {
+                Engine::Float(f) => Some(*f),
+                Engine::Double(f) => Some(*f as f32),
+                _ => None,
+            })
+            .collect(),
+        _ => None,
+    }
+}
+
+impl Face {
+    /// A ranked read across the tables under a prefix. Each arm reads its table's
+    /// registered relation, so restriction completes before the cut
+    /// (`authority.compose.before-the-cut`).
+    pub fn retrieve(&self, session: &Session, request: &RetrieveRequest, bounds: Bounds) -> Result<Response, ReadFault> {
+        let limit = request.limit.unwrap_or(DEFAULT_LIMIT);
+        let tokens = content_tokens(&request.query);
+        let floor = relevance_floor(&tokens, request.min_score);
+        let window = candidate_window(limit);
+        let engine = SqlEngine::open(session)?;
+        let mut rows: Vec<Row> = Vec::new();
+        let arms: Vec<String> =
+            session.relations().map(|r| r.name().to_string()).filter(|n| n.starts_with(&request.prefix)).collect();
+        for table in &arms {
+            let schema = self.store.try_schema(table)?.map(|s| s.columns).unwrap_or_default();
+            let policy = session.policy(table);
+            let text: Vec<&str> = schema.iter().filter(|c| c.ty == ColumnType::Utf8).map(|c| c.name.as_str()).collect();
+            let decl = self.decl(table);
+            let snippet = snippet_columns(&text, |c| {
+                decl.partition_by().iter().any(|p| p == c)
+                    || policy.and_then(|p| p.columns.get(c)).is_some_and(|p| p.class.is_some() || p.mask.is_some())
+            });
+            let basis = PUBLICATION_COLUMNS
+                .iter()
+                .find(|p| schema.iter().any(|c| c.name == **p && matches!(c.ty, ColumnType::Timestamp | ColumnType::Utf8)))
+                .map_or(INGESTED_AT, |p| *p)
+                .to_string();
+            let sql = format!(
+                "SELECT * FROM {} ORDER BY {} DESC, {} DESC, {} DESC LIMIT {window}",
+                ident(table),
+                ident(INGESTED_AT),
+                ident(RUN_ID),
+                ident(ROW_SEQ)
+            );
+            let (columns, values) = engine.run_values(&sql, &[], None)?;
+            let at = |name: &str| columns.iter().position(|c| c == name);
+            for v in values {
+                let get = |name: &str| at(name).map(|i| &v[i]);
+                let snippet_text: Vec<String> = snippet.iter().filter_map(|c| get(c).and_then(text_of)).collect();
+                let snippet_text = (!snippet.is_empty()).then(|| snippet_text.join(" — "));
+                let publication = match get(&basis).map(|p| cell(p.clone())) {
+                    Some(Cell::Timestamp(t)) => Publication::At(t),
+                    Some(Cell::Null) | None => Publication::Null,
+                    Some(other) => Publication::cast(match other.to_json() {
+                        Value::String(s) => Some(s),
+                        _ => None,
+                    }
+                    .as_deref()),
+                };
+                let ingested = match get(INGESTED_AT).map(|p| cell(p.clone())) {
+                    Some(Cell::Timestamp(t)) => Some(t),
+                    _ => None,
+                };
+                let vector = match (&request.query_embedding, get(EMBEDDING_COLUMN).and_then(vector_of)) {
+                    (Some(q), Some(row)) => cosine(q, &row),
+                    _ => None,
+                };
+                let id = format!(
+                    "{table}\u{1f}{}\u{1f}{}",
+                    get(RUN_ID).and_then(text_of).unwrap_or_default(),
+                    get(ROW_SEQ).and_then(text_of).unwrap_or_default()
+                );
+                let values = columns.iter().zip(&v).map(|(c, x)| (c.clone(), cell(x.clone()).to_json())).collect();
+                rows.push(Row {
+                    table: table.clone(),
+                    id,
+                    lexical: lexical_score(&tokens, snippet_text.as_deref()),
+                    snippet: snippet_text,
+                    vector,
+                    publication,
+                    basis_column: basis.clone(),
+                    ingested,
+                    values,
+                });
+            }
+        }
+        let prefloor = rows.len() as u64;
+        rows.retain(|r| passes_floor(floor, r.lexical, r.vector));
+        let candidates = rows.len() as u64;
+
+        let key = fingerprint(
+            [bounds.echo().map(|b| b.to_string()).unwrap_or_default(), arms.join("\u{1e}")]
+                .iter()
+                .map(String::as_str)
+                .chain(rows.iter().flat_map(|r| [r.id.as_str(), r.snippet.as_deref().unwrap_or("")]))
+                .collect::<Vec<_>>(),
+        );
+        let index = {
+            let mut cache = self.lexical.lock().expect("the lexical cache lock is not poisoned");
+            cache.get_or_build(&key, || LexicalIndex::build(&rows.iter().map(|r| r.snippet.as_deref()).collect::<Vec<_>>()))
+        };
+        let bm25 = index.bm25(&tokens);
+        let matched = bm25.iter().filter(|s| s.is_some()).count() as u64;
+        let lexical = min_max(&bm25);
+        let ranking_empty = matched == 0 && rows.iter().all(|r| r.vector.is_none());
+        let timeframe = request.since.map(|since| Timeframe { since: Some(since), anchor: request.anchor.unwrap_or_else(now) });
+        let mut ranked: Vec<(Candidate, usize)> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let in_window = timeframe.is_none_or(|tf| tf.admits(r.publication));
+                let c = Candidate {
+                    id: r.id.clone(),
+                    in_window,
+                    fused: fuse(r.vector, lexical[i]),
+                    recency: r.publication.instant().or(r.ingested),
+                };
+                (c, i)
+            })
+            .collect();
+        let mut order_only: Vec<Candidate> = ranked.iter().map(|(c, _)| c.clone()).collect();
+        order(&mut order_only, ranking_empty);
+        ranked.sort_by_key(|(c, _)| order_only.iter().position(|o| o.id == c.id));
+        ranked.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
+
+        let columns: Vec<String> = [
+            "_table", "_row", "_snippet", "_score", "_vscore", "_in_window", "_date_basis", "_run_id", "_ingested_at", "_authored_by",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .chain(RESERVED_PROJECTED.iter().map(|(out, _)| out.to_string()))
+        .collect();
+        let mut in_window = 0;
+        let out_rows: Vec<Vec<Value>> = ranked
+            .iter()
+            .map(|(c, i)| {
+                let r = &rows[*i];
+                in_window += u64::from(c.in_window);
+                let own: Map<String, Value> =
+                    r.values.iter().filter(|(k, _)| !k.starts_with('_') && k != EMBEDDING_COLUMN).cloned().collect();
+                let field = |name: &str| r.values.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone()).unwrap_or(Value::Null);
+                let ranking = RowRanking {
+                    score: r.lexical,
+                    vscore: r.vector,
+                    in_window: c.in_window,
+                    date_basis: r.publication.basis(&r.basis_column),
+                };
+                let ranking = serde_json::to_value(&ranking).expect("ranking fields serialize");
+                let mut row = vec![
+                    json!(r.table),
+                    Value::Object(own),
+                    json!(r.snippet),
+                    ranking["_score"].clone(),
+                    ranking["_vscore"].clone(),
+                    ranking["_in_window"].clone(),
+                    ranking["_date_basis"].clone(),
+                    field(RUN_ID),
+                    field(INGESTED_AT),
+                    field(AUTHORED_BY),
+                ];
+                row.extend(RESERVED_PROJECTED.iter().map(|(_, source)| field(source)));
+                row
+            })
+            .collect();
+        let block = RetrievalBlock {
+            window,
+            candidates_prefloor: prefloor,
+            candidates,
+            matched,
+            returned: out_rows.len() as u64,
+            in_window,
+            deduped: 0,
+            padded: 0,
+            floor,
+            since: request.since.map(|s| s.to_rfc3339()),
+        };
+        let mut response = Response::cut(columns, out_rows, None)
+            .with_block("retrieval", serde_json::to_value(block).expect("the retrieval block serializes"));
+        if let Some(b) = bounds.echo() {
+            response = response.with_block("bounds", b);
+        }
+        Ok(response)
+    }
+}
+
+fn now() -> Instant {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+    Instant::from_unix_nanos(nanos as i128).expect("the system clock reads a representable instant")
+}

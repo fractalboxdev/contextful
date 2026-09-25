@@ -6,6 +6,7 @@ mod encrypt;
 mod fold;
 mod index;
 mod lay_out;
+mod read;
 mod reconcile;
 mod reserve;
 mod run_commit;

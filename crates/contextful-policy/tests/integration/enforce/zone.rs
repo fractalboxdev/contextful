@@ -114,15 +114,19 @@ fn a_protected_surface_resolves_down_to_its_floor() {
 // spec: authority.place.floor-widened@13de91c9
 #[test]
 fn widening_a_protected_surface_needs_the_override() {
-    let widened = "[[pipeline.tables]]\nname = \"visits\"\n[pipeline.tables.policy.zone]\nallow = [\"public-cloud:*\"]\n[pipeline.tables.policy.columns]\ncase_notes = { class = \"phi\" }\n";
+    let widened = "[[pipeline.tables]]\nname = \"visits\"\nclass = \"phi\"\n[pipeline.tables.policy.zone]\nallow = [\"public-cloud:*\"]\n";
     match TablePolicy::from_decl(&decl(widened)) {
-        Err(PolicyError::Enforce(EnforceError::ProtectedFloorWidened(why))) => assert!(why.contains("case_notes"), "{why}"),
+        Err(PolicyError::Enforce(EnforceError::ProtectedFloorWidened(why))) => assert!(why.contains("visits"), "{why}"),
         other => panic!("{other:?}"),
     }
     let overridden = widened.replace("allow = [\"public-cloud:*\"]", "allow = [\"public-cloud:*\"]\nprotected_class_override = true");
     assert!(TablePolicy::from_decl(&decl(&overridden)).is_ok());
-    let table_class = "[[pipeline.tables]]\nname = \"visits\"\nclass = \"phi\"\n[pipeline.tables.policy.zone]\nallow = [\"*\"]\n";
-    assert!(matches!(TablePolicy::from_decl(&decl(table_class)), Err(PolicyError::Enforce(EnforceError::ProtectedFloorWidened(_)))));
+    let within = widened.replace("public-cloud:*", "on-prem:hq");
+    assert!(TablePolicy::from_decl(&decl(&within)).is_ok());
+    // A protected column declares no set of its own: it narrows at serve time instead.
+    let column = "[[pipeline.tables]]\nname = \"visits\"\n[pipeline.tables.policy.zone]\nallow = [\"public-cloud:*\"]\n[pipeline.tables.policy.columns]\ncase_notes = { class = \"phi\" }\n";
+    let t = TablePolicy::from_decl(&decl(column)).unwrap();
+    assert!(!t.column_set("case_notes").admits(&z("public-cloud:x")));
 }
 
 /// A column's set narrows its table's; a principal's set narrows both.

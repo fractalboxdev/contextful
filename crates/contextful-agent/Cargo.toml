@@ -1,0 +1,21 @@
+[package]
+name = "contextful-agent"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The tool server: the read face over the tool protocol, one admitted credential per
+# process, line-delimited JSON-RPC over standard input and output.
+
+[dependencies]
+contextful-context = { path = "../contextful-context" }
+contextful-core = { path = "../contextful-core" }
+contextful-policy = { path = "../contextful-policy" }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
