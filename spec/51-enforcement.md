@@ -24,42 +24,39 @@ The three layers of the reference monitor and the contracts feeding each:
 flowchart LR
   SRC["source values"]
   AA["admitted authority"]
-  ZONE["caller zone, per request"]
-  subgraph RM["reference monitor"]
-    direction TB
-    subgraph L1["write-time removal"]
-      W["writer"] --> RED["redact: rule set per pipeline"]
-    end
-    subgraph L2["redistribution bound"]
-      PUSH["push"] --> WH{"redistribution flag cleared?"}
-    end
-    subgraph L3["query-time restriction"]
-      REL["registered relation<br/>filter-rows · mask · place"]
-    end
+  ZONE["caller zone"]
+  subgraph L1["write-time removal"]
+    W["writer"] --> RED["redact"]
+  end
+  subgraph L2["redistribution bound"]
+    PUSH["push"] --> WH{"redistribution flag cleared?"}
+  end
+  subgraph L3["query-time restriction"]
+    REL["registered relation"]
   end
   subgraph STORE["store"]
     PARTS[("columnar parts")]
   end
   subgraph DISC["disclosure"]
-    SJ["mirrored permission semi-join"]
+    SJ["permission semi-join"]
   end
   subgraph READ["read"]
-    RS["statements · retrieval arms"]
+    RS["read surfaces"]
   end
   BKT[("bucket")]
-  EDGE["serving edge: filter by<br/>the pulling credential's grants"]
+  EDGE["serving edge"]
   SRC --> W
-  W -- "credential-shaped value" --> RES["EnforceCredentialShapedValue"]
-  RED --> PARTS
+  W -- "credential-shaped value" --> RES(["refused"])
+  RED -- "rule set per pipeline" --> PARTS
   PARTS --> PUSH
-  WH -- "yes: withheld, no manifest entry" --> OUT["not in the bucket"]
+  WH -- "yes: withheld" --> OUT["kept out of the bucket"]
   WH -- no --> BKT
-  BKT --> EDGE
+  BKT -- "filtered by the puller's grants" --> EDGE
   PARTS --> REL
   AA --> REL
   SJ --> REL
-  ZONE --> REL
-  REL --> RS
+  ZONE -- "per request" --> REL
+  REL -- "filter rows, mask, place" --> RS
 ```
 
 ## redact
@@ -253,15 +250,15 @@ One push under the bound:
 ```mermaid
 flowchart TD
   P["push"] --> C1{"left-behind check"}
-  C1 -- "withheld table has uploaded objects" --> E1["EnforceStaleRedistributedObjects<br/>names each object, deletes none"]
+  C1 -- "withheld table has uploaded objects" --> E1(["refused, nothing deleted"])
   C1 -- clean --> X["exclude withheld tables"]
   X --> D["compute the object diff"]
-  D --> RA{"table withheld: root-level<br/>object on the allowlist?"}
-  RA -- no --> E2["EnforceRootObjectNotAllowlisted"]
+  D --> RA{"root object allowlisted?"}
+  RA -- "no, table withheld" --> E2(["refused"])
   RA -- yes --> U["upload loop"]
   U --> C2{"left-behind check"}
   C2 -- "stale objects" --> E1
-  C2 -- clean --> M["bucket manifest naming<br/>no withheld table"]
+  C2 -- clean --> M["bucket manifest"]
 ```
 
 ## place
@@ -325,20 +322,20 @@ Resolving one served row against the session's zone:
 
 ```mermaid
 flowchart TD
-  CZ["caller zone, declared per request"] --> INC{"incognito?"}
+  CZ["caller zone"] --> INC{"incognito?"}
   INC -- no --> Z["session zone"]
-  INC -- yes --> PIN{"asserted zone wider than<br/>local:device, on-prem:*?"}
-  PIN -- yes --> E1["EnforceIncognitoWidening"]
+  INC -- yes --> PIN{"asserted zone too wide?"}
+  PIN -- "wider than local:device, on-prem:*" --> E1(["refused"])
   PIN -- no --> Z
-  TS["table allow-set, or the<br/>fail-closed pair when undeclared"] --> FL["phi floor at the fail-closed pair"]
-  FL --> TE{"table set, narrowed by the authoring<br/>principal's set, admits the zone?"}
+  TS["table allow-set"] -- "fail-closed pair when undeclared" --> FL["apply the phi floor"]
+  FL --> TE{"table set admits zone?"}
   Z --> TE
-  TE -- no --> DROP["row leaves the result"]
-  TE -- yes --> CE{"column set admits the zone?"}
-  CE -- no --> NUL["cell arrives null"]
-  CE -- yes --> SRV["cell served under its mask"]
-  DROP --> ENV["response envelope:<br/>removed counts, masked columns"]
-  NUL --> ENV
+  TE -- "no, narrowed by the author's set" --> DROP["drop the row"]
+  TE -- yes --> CE{"column set admits zone?"}
+  CE -- no --> NUL["null the cell"]
+  CE -- yes --> SRV["serve the masked cell"]
+  DROP -- "removed count" --> ENV["response envelope"]
+  NUL -- "masked column" --> ENV
 ```
 
 unsettled: What fixes the completeness of the evidence list a synthesized row's floor intersects over, given that an empty list intersects to everything? owner: authority affects: authority.place
@@ -362,12 +359,12 @@ The order a registered relation applies, one table, one session:
 flowchart TD
   T[(table)] --> M[mirrored permission semi-join]
   M --> TEN[tenant byte equality]
-  TEN --> RP[credential predicate via the subject relation]
-  RP --> TP[table policy, overrides replace one predicate]
+  TEN -- "via the subject relation" --> RP[credential predicate]
+  RP -- "overrides replace one predicate" --> TP[table policy]
   TP --> DEF[project default]
-  DEF --> ZONE[table zone: row drop]
-  ZONE --> PROJ[projection: column and principal zone nulls, masks, quote bound]
-  PROJ --> V[[registered relation]]
+  DEF --> ZONE[drop rows by zone]
+  ZONE --> PROJ[project the columns]
+  PROJ -- "zone nulls, masks, quote bound" --> V[[registered relation]]
 ```
 
 The class registry. The width ceiling assumes the default `crowd`:

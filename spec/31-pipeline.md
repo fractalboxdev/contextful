@@ -22,34 +22,30 @@ From declaration to a published table, and the contracts each step meets:
 
 ```mermaid
 flowchart LR
-  MF["contextful.toml, pipelines/*.toml, pipelines/*.json"] -->|declare| SPEC
+  MF["pipeline manifests"] -->|declare| SPEC
   subgraph CONN["connector contract"]
     SRC["source"]
   end
   subgraph RUNC["run contract"]
-    subgraph P31["31-pipeline"]
-      SPEC["PipelineSpec · content_hash"]
-      PLAN["plan · flat node list"]
-      ST["secret guard, normalize, transform chain"]
-      LAND["land · batch write, commit"]
-    end
-    subgraph R30["30-run"]
-      RUN["run substrate"]
-    end
+    SPEC["PipelineSpec"]
+    PLAN["plan"]
+    RUN["run substrate"]
+    ST["stage the batch"]
+    LAND["land the batch"]
   end
   subgraph STORE["store contract"]
-    CH[("chunk plan · catalog")]
+    CH[("chunk plan")]
     CS[("context store")]
-    MAN["snapshot manifest · contract identity, freshness, build"]
+    MAN["snapshot manifest"]
   end
   SPEC -->|compile| PLAN
-  PLAN -->|"lowering"| RUN
+  PLAN -->|lower| RUN
   SPEC -->|"backfill, seed"| CH
   CH --> RUN
   SRC --> RUN
   RUN --> ST
   ST --> LAND
-  LAND --> CS
+  LAND -->|"batch write, commit"| CS
   LAND -->|publish| MAN
 ```
 
@@ -189,10 +185,10 @@ flowchart LR
     S -->|relational| X[shred to child tables] --> W
   end
   subgraph STORE["store contract"]
-    C["commit marker · rows + position"]
+    C["commit marker"]
     K[(catalog cache)]
   end
-  W --> C
+  W -->|"rows + position"| C
   C --> K
 ```
 
@@ -281,15 +277,15 @@ A published table's contract identity, build, freshness and holds, committed wit
 flowchart LR
   subgraph RUNC["run contract"]
     B["build"] --> ST["materialize into staging"]
-    ST --> CK{"columns, types, grain match the declared contract?"}
-    CK -->|no| REF["PipelineContractMismatch · last published state keeps serving"]
-    HOLD["hold · build id, principal, expiry"]
+    ST --> CK{"matches the declared contract?"}
+    CK -->|"no: PipelineContractMismatch"| KEEP["last published state serves"]
+    HOLD["hold"]
   end
   subgraph STORE["store contract"]
-    MC["snapshot manifest commit · data, contract identity, freshness, build"]
+    MC["commit the snapshot manifest"]
   end
   CK -->|yes| MC
-  MC --> LOGS["contract-history, builds, holds logs · derived from manifests"]
+  MC -->|"derives"| LOGS["history logs"]
   HOLD -.->|"collection skips"| MC
 ```
 

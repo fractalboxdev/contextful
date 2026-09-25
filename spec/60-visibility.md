@@ -20,39 +20,39 @@ Mirrored permission state, from the source's permission endpoint to the reader's
 
 ```mermaid
 flowchart LR
-  PACK["pack: access mapping, fidelity,<br/>budget and cadence defaults"]
+  PACK["pack"]
   SRC["source permission endpoint"]
-  FED["federated source, queried live<br/>under the reader's credential"]
+  FED["federated source"]
   subgraph RUN["run: journaled run path"]
-    SWEEP["acl_sweep<br/>full · incremental · webhook"]
+    SWEEP["acl_sweep"]
   end
   subgraph AUTH["authority"]
     AA["admitted subject"]
   end
   subgraph DISC["disclosure"]
-    VB["visibility block<br/>per content table"]
-    AT[("access tables<br/>resources · grants · principals ·<br/>group members · identity links ·<br/>tombstones · freshness")]
-    REACH["reach: reachable resource set"]
-    STALE{"bound-staleness:<br/>lag within max_acl_staleness?"}
-    DEG["VisibilityAccessStale"]
-    SJ["semi-join compiled into<br/>the registered view"]
+    VB["visibility block"]
+    AT[("access tables")]
+    REACH["compute reachable resources"]
+    STALE{"lag within bound?"}
+    DEG(["refuse the read"])
+    SJ["compile the semi-join"]
   end
   subgraph READ["read"]
-    RS["statements · retrieval arms · templates"]
+    RS["registered statement"]
   end
-  PACK --> VB
-  PACK --> SWEEP
+  PACK -- "access mapping" --> VB
+  PACK -- "cadence defaults" --> SWEEP
   SRC --> SWEEP
-  SWEEP --> AT
+  SWEEP -- "full, incremental, webhook" --> AT
   AA --> REACH
   AT --> REACH
   AT -- "watermark_at" --> STALE
   VB --> STALE
-  STALE -- no --> DEG
+  STALE -- "no: VisibilityAccessStale" --> DEG
   STALE -- yes --> SJ
   REACH --> SJ
   SJ --> RS
-  FED -.-> RS
+  FED -. "reader's credential" .-> RS
 ```
 
 ## mirror
@@ -92,15 +92,14 @@ The per-request resolution of a subject to its reachable set:
 
 ```mermaid
 flowchart LR
-  S["subject"] -- "scim_email · oidc_sub links" --> SP["source principals"]
-  SP --> GC["group closure<br/>8 hops · 10000 nodes"]
-  GC -- "bound reached" --> E1["VisibilityClosureDepth · 422"]
-  GC --> PUB["closure + public"]
-  PUB -- "read-conferring grants" --> RES["resources"]
+  S["subject"] -- "identity links" --> SP["source principals"]
+  SP -- "8 hops, 10000 nodes" --> GC["close over groups"]
+  GC -- "VisibilityClosureDepth" --> E1(["refuse the request"])
+  GC -- "closure + public" --> RES["read-conferring grants"]
   RES --> UNK["drop the unknown class"]
-  UNK --> TOMB["subtract tombstones in force"]
+  UNK --> TOMB["subtract tombstones"]
   TOMB --> SET["reachable set"]
-  SET --> CACHE[("cache keyed on subject,<br/>source epoch, directory epoch")]
+  SET -- "subject, source and directory epochs" --> CACHE[("reachable-set cache")]
 ```
 
 unsettled: Do the epochs keying the reachable-set cache scope per source rather than per access table, and does a materialized closure live in a rebuildable projection or in files a replica opens offline? owner: disclosure affects: disclosure.reach

@@ -21,17 +21,17 @@ The two connector forms, the host between them and the outside, and the contract
 
 ```mermaid
 flowchart LR
-  PKG["package · in-tree, path, https, oci + pin"] --> GUEST
+  PKG["connector package"] -->|"pinned install"| GUEST
+  subgraph SANDBOX["component sandbox"]
+    GUEST["component guest"]
+  end
   subgraph ENGINE["engine process"]
-    subgraph SANDBOX["component sandbox"]
-      GUEST["component guest"]
-    end
     NATIVE["compiled-in source"]
     MED["host mediation point"]
-    subgraph RUNC["run contract"]
-      RUN["runner"]
-      LAND["land path"]
-    end
+  end
+  subgraph RUNC["run contract"]
+    RUN["runner"]
+    LAND["land path"]
   end
   LIM["limiter"]
   VEND["vendor API"]
@@ -41,8 +41,8 @@ flowchart LR
   GUEST -->|"outgoing HTTP, logging, wall clock"| MED
   NATIVE --> MED
   MED <-->|"acquire, report"| LIM
-  MED -->|"allowlist, attach · 41-secrets"| VEND
-  MED -->|"infer · fenced data"| MODEL
+  MED -->|"allowlist, attach credentials"| VEND
+  MED -->|"infer on fenced data"| MODEL
   GUEST -->|"batches + position"| RUN
   NATIVE -->|"batches + position"| RUN
   RUN --> LAND
@@ -126,17 +126,17 @@ The manifest's statement of host access and the scope probe judging a bound cred
 
 ```mermaid
 flowchart TD
-  M["manifest · allow_hosts, env, clock"] --> A{"allowlist shape valid?"}
-  A -->|no| R1["ConnectorAllowlistRejected"]
-  A -->|yes| U{"code reaches only listed access?"}
-  U -->|no| R2["ConnectorUndeclaredAccess"]
-  U -->|yes| B{"every _from binding supplied, on shape?"}
-  B -->|no| R3["ConnectorBindingUnbound"]
+  M["connector manifest"] --> A{"allowlist shape valid?"}
+  A -->|"no: ConnectorAllowlistRejected"| X(["refused"])
+  A -->|yes| U{"only listed access?"}
+  U -->|"no: ConnectorUndeclaredAccess"| X
+  U -->|yes| B{"bindings supplied on shape?"}
+  B -->|"no: ConnectorBindingUnbound"| X
   B -->|yes| SP{"scope probe declared?"}
-  SP -->|no| OPEN["session opens"]
-  SP -->|yes| CALL["call the identity endpoint with the bound credential"]
-  CALL -->|"no granted-scopes header"| R4["ConnectorScopeUnverified"]
-  CALL -->|"scope outside the expectation"| R5["ConnectorScopeExceeded"]
+  SP -->|no| OPEN["open the session"]
+  SP -->|yes| CALL["call the identity endpoint"]
+  CALL -->|"no scopes header: ConnectorScopeUnverified"| X
+  CALL -->|"scope exceeded: ConnectorScopeExceeded"| X
   CALL -->|"within the expectation"| OPEN
 ```
 
@@ -267,14 +267,14 @@ flowchart TD
   K -->|yes| NATIVE["compiled-in source"]
   K -->|no| FORM{"distribution form"}
   FORM -->|"https:// or oci://"| REMOTE{"64-hex pin?"}
-  FORM -->|"http://"| IH["ConnectorInsecureArtifact"]
+  FORM -->|"http://: ConnectorInsecureArtifact"| X(["refused"])
   FORM -->|local path| LOCAL{"pin switch set?"}
-  REMOTE -->|no| RU["ConnectorRemoteUnpinned"]
+  REMOTE -->|"no: ConnectorRemoteUnpinned"| X
   REMOTE -->|yes| HASH["re-hash bytes"]
-  LOCAL -->|yes, no digest| LU["ConnectorLocalUnpinned"]
+  LOCAL -->|"yes, no digest: ConnectorLocalUnpinned"| X
   LOCAL -->|no| HASH
-  HASH -->|differs| DM["ConnectorDigestMismatch"]
-  HASH -->|matches| INST["instantiate against the pinned world"]
+  HASH -->|"differs: ConnectorDigestMismatch"| X
+  HASH -->|matches| INST["instantiate against the world"]
 ```
 
 unsettled: Which generation of the sandbox interface does the guest world target, and what does native async change about the per-call deadline and the reservation bridge? owner: connector affects: connector.package
@@ -465,40 +465,35 @@ One outbound request, end to end:
 
 ```mermaid
 flowchart LR
+  subgraph SANDBOX["component sandbox"]
+    G["guest source"]
+  end
   subgraph ENGINE["engine process"]
-    subgraph SANDBOX["component sandbox"]
-      G["guest source"]
-    end
     N["compiled-in source"]
     M["host mediation point"]
     A{"host on allowlist?"}
-    R1["SecretUnpermittedRequest"]
     D{"address public?"}
-    R0["ConnectorPrivateAddress"]
     L{"limiter declared?"}
     Q["acquire permit"]
-    R2["synthesized 429"]
-    R3["ConnectorUnmetered"]
     H["attach bound headers"]
     S{"TLS or loopback?"}
-    R4["SecretCleartextEndpoint"]
-    P["origin check on every hop"]
   end
-  V["vendor, at the vetted address"]
+  X(["refused"])
+  V["vendor"]
   G -->|outgoing-http| M
   N --> M
   M --> A
-  A -->|no| R1
+  A -->|"no: SecretUnpermittedRequest"| X
   A -->|yes| D
-  D -->|no| R0
+  D -->|"no: ConnectorPrivateAddress"| X
   D -->|yes| L
   L -->|no| H
   L -->|yes| Q
-  Q -->|denied| R2
-  Q -->|unreachable| R3
+  Q -->|"denied: synthesized 429"| X
+  Q -->|"unreachable: ConnectorUnmetered"| X
   Q -->|granted| H
   H --> S
-  S -->|no| R4
-  S -->|yes| V
-  V --> P
+  S -->|"no: SecretCleartextEndpoint"| X
+  S -->|"yes, vetted address"| V
+  V -.->|"hop off origin: SecretRedirectOffOrigin"| X
 ```

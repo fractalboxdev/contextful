@@ -19,16 +19,16 @@ outside world: the journal is a flight recorder the next attempt flies from.
 flowchart LR
   subgraph RUNC["run contract"]
     D["declare"] --> C["compile"]
-    C --> O["run open · owner"]
-    O --> J[("journal")]
-    J --> L["land · stage order"]
+    C --> O["open the run"]
+    O -->|"owner"| J[("journal")]
+    J --> L["land in stage order"]
     P["live projection"]
   end
   subgraph STORE["store contract"]
-    M["commit marker · rows + position"]
+    M["commit marker"]
     R[("run record")]
   end
-  L --> M
+  L -->|"rows and position"| M
   M --> R
   R --> P
 ```

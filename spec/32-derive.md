@@ -26,17 +26,13 @@ flowchart LR
     OUT[("derive output table")]
   end
   subgraph RUNC["run contract"]
-    subgraph DER["32-derive"]
-      SEL["select · scan, eligibility, anti-join"]
-      BIND["bind · derive.name block in the local contextful.toml"]
-      EXEC["exec driver · preprocess steps + engine step"]
-      FETCH["fetch driver · head scan + picture probe"]
-      PC["parse-cues · WebVTT, SubRip"]
-      EMIT["emit · content rows, markers"]
-    end
-    subgraph PIPE["31-pipeline"]
-      LAND["land path"]
-    end
+    SEL["select outstanding rows"]
+    BIND["bind the derive"]
+    EXEC["exec driver"]
+    FETCH["fetch driver"]
+    PC["parse cues"]
+    EMIT["emit rows and markers"]
+    LAND["land path"]
   end
   subgraph CONN["connector contract"]
     RES["resolver"]
@@ -183,21 +179,21 @@ Following a link a third party wrote: host and address guards, redirects, the he
 ```mermaid
 flowchart TD
   A["address from the row"] --> S{"http or https?"}
-  S -->|no| R1["DeriveSchemeUnsupported"]
+  S -->|"no: DeriveSchemeUnsupported"| X(["refused"])
   S -->|yes| L{"address literal?"}
-  L -->|yes| R2["DeriveAddressLiteral"]
+  L -->|"yes: DeriveAddressLiteral"| X
   L -->|no| H{"host in allow_hosts?"}
-  H -->|no| R3["SecretUnpermittedRequest"]
-  H -->|yes| P{"resolves to a public address?"}
-  P -->|no| R4["ConnectorPrivateAddress"]
-  P -->|yes| G["GET · 20 s per hop"]
+  H -->|"no: SecretUnpermittedRequest"| X
+  H -->|yes| P{"public address?"}
+  P -->|"no: ConnectorPrivateAddress"| X
+  P -->|"yes, 20 s per hop"| G["GET the page"]
   G -->|"redirect, up to 5 hops"| H
-  G --> D["scan the head within a 1 MiB prefix"]
+  G -->|"1 MiB prefix"| D["scan the head"]
   D --> C{"UTF-8?"}
-  C -->|no| R5["DeriveCharsetUnsupported or DeriveBytesNotUtf8"]
-  C -->|yes| F["head facts + picture candidates"]
-  F --> PR["probe each picture · 64 KiB range"]
-  PR --> ROW["link rows · probe_status per candidate"]
+  C -->|"no: DeriveCharsetUnsupported, DeriveBytesNotUtf8"| X
+  C -->|yes| F["collect picture candidates"]
+  F -->|"64 KiB range"| PR["probe each picture"]
+  PR -->|"probe_status per candidate"| ROW["write link rows"]
 ```
 
 ## emit

@@ -22,27 +22,25 @@ One run, the durable state around it, and the contracts it meets:
 
 ```mermaid
 flowchart LR
-  PLAN["plan reference · content-hashed"] --> RUN
+  PLAN["plan reference"] -->|"content-hashed"| RUN
   subgraph CONN["connector contract"]
     SRC["source"]
   end
   subgraph RUNC["run contract"]
     RUN["runner"]
-    J[("journal + blob store")]
+    J[("journal and blob store")]
     AW["POST /awake/:token"]
-    HUB["live projection · wire snapshot"]
-    subgraph PIPE["31-pipeline"]
-      LAND["land path"]
-    end
+    HUB["live projection"]
+    LAND["land path"]
   end
   subgraph STORE["store contract"]
     MARK["run commit marker"]
     CUR[("catalog cursor cache")]
-    STOP["stop mark on the run row"]
-    REC[("run record · reserved table")]
+    STOP["stop mark"]
+    REC[("run record")]
   end
   SRC -->|"batches, pulled"| RUN
-  RUN <-->|"record · replay"| J
+  RUN <-->|"record, replay"| J
   AW -->|"resume payload"| J
   RUN --> LAND
   LAND --> MARK
@@ -51,7 +49,7 @@ flowchart LR
   RUN --> REC
   RUN -. "events after durable change" .-> HUB
   REC -->|"terminal status reconciles"| HUB
-  HUB --> SUB["run-stream subscribers"]
+  HUB -->|"wire snapshot"| SUB(["run-stream subscribers"])
 ```
 
 ## journal
@@ -239,14 +237,14 @@ The execution owner a scope holds and the connector build it pins while pending.
 
 ```mermaid
 flowchart TD
-  O["run open"] --> M{"commit marker newer than the cached position?"}
-  M -->|yes| RET["retire the pending owner that produced it"]
+  O["run open"] --> M{"marker past cached position?"}
+  M -->|yes| RET["retire the pending owner"]
   M -->|no| P{"pending owner?"}
   RET --> FRESH["fresh execution id"]
   P -->|no| FRESH
-  P -->|yes| PIN{"connector identity, world, content_hash unchanged?"}
-  PIN -->|no| ERR["ExecutionPinMismatch · terminal"]
-  PIN -->|yes| REPLAY["replay recorded steps under the owner"]
+  P -->|yes| PIN{"pinned identity unchanged?"}
+  PIN -->|"ExecutionPinMismatch"| ERR(["terminal failure"])
+  PIN -->|yes| REPLAY["replay recorded steps"]
   REPLAY --> CLOSE{"close status"}
   FRESH --> CLOSE
   CLOSE -->|"success, or a failure landing zero batches"| REL["release the owner"]

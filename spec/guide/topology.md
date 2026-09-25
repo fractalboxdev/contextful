@@ -31,18 +31,16 @@ flowchart LR
   ANALYST(["analyst"])
   BUCKET[("bucket")]
 
-  subgraph SERVER["one server"]
+  subgraph SERVER["one server running contextful-full"]
     TICK["cadence tick"]
-    subgraph FULL["contextful-full"]
-      STEP["journaled connector step"]
-    end
+    STEP["journaled connector step"]
     STORE["store"]
   end
 
   subgraph PROV["function-class provider"]
     HOP["routing hop"]
     RET["retrieval container"]
-    EDGE["contextful-edge · function-class target"]
+    EDGE["contextful-edge"]
   end
 
   TICK --> STEP

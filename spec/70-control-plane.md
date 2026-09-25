@@ -24,15 +24,15 @@ The path from an operator's edit to a dispatched unit, and where it meets topolo
 flowchart LR
   subgraph plane["operator plane"]
     direction LR
-    ED["edit: control document, CRDT"] --> AP["apply: validate, claim manifest@vN, CAS pointer"]
-    AP --> SNAP["snapshot store: manifest@current, manifest@vN"]
-    SNAP -- "poll" --> RC["reconcile: diff, armed cursor"]
-    RC --> ARM["arm: armed set, one due-ness function"]
+    ED["edit the control document"] -- "CRDT" --> AP["apply a version"]
+    AP -- "claim manifest@vN, swap pointer" --> SNAP[("snapshot store")]
+    SNAP -- "poll" --> RC["reconciler"]
+    RC -- "diff, armed cursor" --> ARM["armed set"]
     JOBS["operator-local job blocks"] --> ARM
-    TRG["trigger adapter: in-process or external"] --> ARM
-    ARM --> FI["fire: job kind, target"]
-    FI --> DI["dispatch: fire pool, exclusion keys"]
-    RS["reside: region allow-set"] -.->|"EnforceRegionMismatch at startup"| RC
+    TRG["trigger adapter"] -- "in-process or external" --> ARM
+    ARM -- "due entries" --> FI["fire"]
+    FI -- "job kind, target" --> DI["dispatch pool"]
+    RS["region allow-set"] -.->|"EnforceRegionMismatch at startup"| RC
   end
   subgraph topology["topology contract"]
     CAT["catalog lease rows"]
@@ -67,16 +67,16 @@ Both trigger adapters reach one due-ness function:
 ```mermaid
 flowchart TD
   subgraph platform["platform"]
-    EXT["external adapter: platform cron, alarm or crontab"]
+    EXT["external adapter"]
   end
   subgraph plane["operator plane"]
-    SCH["schedule string, UTC"] -- "unreadable" --> E1["ScheduleUnreadable, that entry alone"]
+    SCH["schedule string"] -- "unreadable: ScheduleUnreadable" --> E1(["skip that entry"])
     SCH -- "readable" --> SET["armed set"]
-    IP["in-process adapter: tick every 500 ms"] --> DUE["one due-ness function"]
-    WAKE["wake over the HTTP face"] --> DUE
+    IP["in-process adapter"] -- "every 500 ms" --> DUE["due-ness function"]
+    WAKE["wake over HTTP"] --> DUE
     SET --> DUE
     DUE --> FIRE["fire due entries"]
-    FIRE --> ANS["wake answer within 25 s: fired, failed, pending, next due"]
+    FIRE -- "within 25 s" --> ANS["answer the wake"]
   end
   EXT --> WAKE
 ```

@@ -21,37 +21,32 @@ Memory's operations over the five tables, and where they meet the run path, the 
 ```mermaid
 flowchart LR
   APP(["application"])
-  ANS["grounded turn, knowledge card"]
 
   subgraph RUNC["run"]
-    ROWS["rows landed since the pass cursor"]
+    ROWS["landed rows"]
     COMMIT["post-run commit"]
   end
 
   subgraph READC["read"]
-    subgraph MEMO["memory"]
-      DECL["declare: shapes, relation types"]
-      SYN["synthesize: Extract, Resolve, Consolidate"]
-      RES["resolve-entity: entity_id, place_id, edges"]
-      DW["direct write: claims alone"]
-      REV["revise"]
-      REC["recall"]
-      SET["settle: predictions, outcomes, outcome_labels"]
-    end
-    subgraph FACE["read face"]
-      READ["enforced relations"]
-    end
+    DECL["declare shapes"]
+    SYN["synthesize"]
+    RES["resolve entities"]
+    DW["write claims directly"]
+    REV["revise"]
+    REC["recall"]
+    SET["settle outcomes"]
+    READ["enforced relations"]
   end
 
   subgraph STOREC["store"]
-    TBL["memory_episodes, memory_facts, memory_entities,<br/>memory_edges, memory_preferences"]
+    TBL[("memory tables")]
   end
 
   subgraph DISC["disclosure"]
     ERASE["erase"]
   end
 
-  ROWS --> SYN
+  ROWS -- "since the pass cursor" --> SYN
   SYN <--> RES
   SYN --> REV
   DW --> REV
@@ -61,7 +56,7 @@ flowchart LR
   ERASE -- "tombstones" --> TBL
   TBL --> REC
   REC -- "evidence through the caller's session" --> READ
-  REC --> ANS
+  REC -- "grounded turn" --> APP
   APP -- "registrations, observations" --> SET
 ```
 
@@ -88,17 +83,17 @@ One synthesis pass and its dead-letter exits:
 
 ```mermaid
 flowchart TD
-  CUR["pass cursor"] --> EX["Extract"]
-  EX --> VAL{"valid against the output schema"}
-  VAL -- "no, attempts left of 3" --> EX
-  VAL -- "no, 3 attempts spent" --> DL1["dead-letter: MemoryExtractExhausted, cursor unadvanced"]
-  VAL -- "yes" --> RS["Resolve: mentions to entity_id"]
-  RS -- "two identities, no separating key" --> DL2["dead-letter: MemoryEntityAmbiguous"]
-  RS -- "edge endpoint unresolved" --> DL3["dead-letter: MemoryEdgeEndpointUnresolved"]
-  RS -- "rel_type outside the union" --> DL4["dead-letter: MemoryUndeclaredRelation"]
-  RS --> CO["Consolidate"]
+  CUR["pass cursor"] --> EX["extract"]
+  EX --> VAL{"valid against the schema?"}
+  VAL -- "no, attempts left" --> EX
+  VAL -- "MemoryExtractExhausted" --> DL(["dead letter"])
+  VAL -- "yes" --> RS["resolve mentions"]
+  RS -- "MemoryEntityAmbiguous" --> DL
+  RS -- "MemoryEdgeEndpointUnresolved" --> DL
+  RS -- "MemoryUndeclaredRelation" --> DL
+  RS --> CO["consolidate"]
   CO --> RV["revise"]
-  subgraph RUNW["run · write path"]
+  subgraph RUNW["run write path"]
     CM["post-run commit"]
   end
   RV --> CM
@@ -132,10 +127,10 @@ The evidence check a claim passes on its way to a grounded turn:
 
 ```mermaid
 flowchart TD
-  M["memory tables"] --> EV{"every evidence row reads through the caller's session"}
-  EV -- "over 256 references" --> E1["MemoryEvidenceOverflow"]
-  EV -- "unreadable, masked, unknown or malformed" --> E2["MemoryEvidenceUnresolved"]
-  EV -- "yes" --> INJ["explicit block in the grounded turn"]
+  M[("memory tables")] --> EV{"evidence readable in session?"}
+  EV -- "MemoryEvidenceOverflow" --> NO(["refused"])
+  EV -- "MemoryEvidenceUnresolved" --> NO
+  EV -- "yes" --> INJ["ground the turn"]
 ```
 
 unsettled: What supplies a read-side usage ledger, so retention can ask whether a claim was ever recalled rather than whether something cited it? owner: memory affects: read.recall
@@ -169,14 +164,14 @@ Registration, observation and the label view:
 
 ```mermaid
 flowchart LR
-  REG["registration: one form, one source"] -- "invalid" --> E1["OutcomeRegistrationInvalid"]
-  REG --> P["predictions"]
-  OBS["observation"] -- "source differs" --> E2["OutcomeSourceMismatch"]
-  OBS -- "adjudicator or manual, no citation" --> E3["OutcomeCitationMissing"]
-  OBS --> O["outcomes"]
-  P --> J["join on prediction id, grace 86400 s"]
+  REG["registration"] -- "OutcomeRegistrationInvalid" --> NO(["refused"])
+  REG --> P[("predictions")]
+  OBS["observation"] -- "OutcomeSourceMismatch" --> NO
+  OBS -- "OutcomeCitationMissing" --> NO
+  OBS --> O[("outcomes")]
+  P --> J["join on prediction id"]
   O --> J
-  J --> L["outcome_labels"]
+  J -- "after the grace period" --> L[("outcome_labels")]
 ```
 
 unsettled: At what grain are calibration and confidence reported to a consumer, and which figures derive from the scored view? owner: memory affects: read.settle

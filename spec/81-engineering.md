@@ -20,20 +20,20 @@ The tree, the checks over it, and the two verdicts they produce:
 
 ```mermaid
 flowchart LR
-  SRC["source tree<br/>one home per capability"] --> BUILD["build: three profiles,<br/>cross-compiled targets"]
-  SRC --> TESTS["tests: one integration binary per crate<br/>acceptance drives a built binary"]
-  AUTO["typed subcommands, tools/ci"] --> GATE["gate: ordered stages"]
+  SRC["source tree"] -- "three profiles" --> BUILD["build"]
+  SRC -- "one binary per crate" --> TESTS["tests"]
+  AUTO["typed subcommands"] --> GATE["gate"]
   BUILD --> GATE
   TESTS --> GATE
-  FORMAL["formal model:<br/>check · differential · protocol"] --> GATE
+  FORMAL["formal model"] --> GATE
   GATE -- "one status check per stage" --> PR["pull request"]
-  BUILD --> ART["release artifacts<br/>archive · checksum · SBOM · image"]
+  BUILD -- "archive, checksum, SBOM, image" --> ART["release artifacts"]
   subgraph read["read contract"]
-    STORE[("real store<br/>ranked retrieval")]
+    STORE[("real store")]
   end
   CASES["evals/cases JSONL"] --> EVAL["quality harness"]
-  STORE --> EVAL
-  EVAL --> BASE{"in-tree baselines and floors"}
+  STORE -- "ranked retrieval" --> EVAL
+  EVAL --> BASE{"within baselines and floors?"}
   BASE --> V["red or green"]
 ```
 
@@ -96,13 +96,14 @@ The test-first check over one commit in a change's range:
 
 ```mermaid
 flowchart TD
-  CH["commit altering Rust source<br/>under crates/ or tools/"] --> TR{"trailer Test-First: refactor?"}
-  TR -- yes --> WS["workspace stage alone holds it"]
-  TR -- no --> T{"adds or alters a test<br/>under a package's tests/?"}
-  T -- no --> E1["TestNotFirst"]
-  T -- yes --> B{"that test fails against<br/>the base commit's source?"}
-  B -- no --> E1
+  CH["commit altering Rust source"] --> TR{"refactor trailer?"}
+  TR -- yes --> WS["workspace stage"]
+  TR -- no --> T{"adds or alters a test?"}
+  T -- "no: TestNotFirst" --> E1(["refuse the change"])
+  T -- yes --> B{"test fails on base?"}
+  B -- "no: TestNotFirst" --> E1
   B -- yes --> OK["test-first stage passes"]
+  OK --> WS
   OK --> WS2["workspace stage"]
 ```
 
@@ -193,8 +194,8 @@ flowchart LR
   end
   S3 -.-> LINT["contextful-spec lint"]
   S8 -.-> DENY["cargo-deny per profile"]
-  S11 -.-> FORM["formal check · differential · protocol"]
-  S12 -.-> SIZE["total build size 12 GiB"]
+  S11 -.-> FORM["formal check"]
+  S12 -.->|"12 GiB total"| SIZE["measure the build size"]
 ```
 
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate

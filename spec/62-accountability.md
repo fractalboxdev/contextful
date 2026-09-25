@@ -24,30 +24,30 @@ flowchart LR
     RD["a read"]
   end
   subgraph CHAIN["audit chain"]
-    ENTRY["audit entry<br/>seq · prev_hash · entry_hash"]
-    SEG[("segment, 4096 entries<br/>closed by a signed root")]
+    ENTRY["audit entry"]
+    SEG[("chain segment")]
   end
   subgraph STORE["store"]
     SNAP[("snapshot commit")]
   end
   SPAN["span"]
-  TEL["telemetry projection<br/>stderr JSON or OTLP"]
+  TEL["telemetry projection"]
   BKT[("replication bucket")]
-  VER["attest: contextful audit verify"]
+  VER["verify the chain"]
   ACC[("access tables")]
-  EXPL["explain: VISIBLE or DENIED"]
-  FORGET["erase: contextful context forget"]
+  EXPL["explain a decision"]
+  FORGET["erase a subject"]
   LEDGER[("forget_requests ledger")]
-  RCPT["receipt: signed, per tenant purge"]
-  AUDITOR["verifier, offline"]
+  RCPT["signed purge receipt"]
+  AUDITOR["offline verifier"]
   RD --> SPAN
-  SPAN --> ENTRY
+  SPAN -- "hash-linked" --> ENTRY
   SPAN --> TEL
-  ENTRY --> SEG
+  ENTRY -- "4096 per signed root" --> SEG
   SEG -- "every 10 min" --> BKT
   SEG --> VER
   ACC --> EXPL
-  EXPL --> ENTRY
+  EXPL -- "VISIBLE or DENIED" --> ENTRY
   FORGET --> LEDGER
   FORGET --> SNAP
   FORGET --> ENTRY
@@ -138,19 +138,19 @@ A subject erasure:
 ```mermaid
 flowchart TD
   V["forget --subject"] --> G{"forget grant?"}
-  G -- no --> E1["ErasureUngranted"]
-  G -- yes --> PS["key to HMAC-SHA256 pseudonym"]
+  G -- "no: ErasureUngranted" --> E1(["refuse the erasure"])
+  G -- yes --> PS["pseudonymize the subject"]
   PS --> L["open the forget_requests row"]
-  L --> T["tombstone direct rows:<br/>facts, preferences, entities"]
+  L --> T["tombstone direct rows"]
   T --> C{"provenance within 16 hops?"}
-  C -- no --> E2["ErasureCascadeUnbounded<br/>nothing commits"]
+  C -- "no: ErasureCascadeUnbounded" --> E2(["commit nothing"])
   C -- yes --> M["cascade-mark derived facts"]
-  M --> COMMIT["one local snapshot commit<br/>the verb returns"]
-  COMMIT --> CH["chain entry: request id, reason, counts"]
-  COMMIT --> PHYS["files rewritten or collected within 24 h"]
-  COMMIT -. "best effort" .-> PUSH["bucket push"]
-  COMMIT -- "--fail-closed" --> GATE["restaging marker"]
-  PHYS --> REP["replicas at their next refresh"]
+  M --> COMMIT["commit one local snapshot"]
+  COMMIT --> CH["append a chain entry"]
+  COMMIT -- "within 24 h" --> PHYS["rewrite or collect files"]
+  COMMIT -. "best effort" .-> PUSH["push to the bucket"]
+  COMMIT -- "--fail-closed" --> GATE["set the restaging marker"]
+  PHYS --> REP["refresh the replicas"]
 ```
 
 unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an operator objective, given the engine schedules no replica refresh? owner: disclosure affects: disclosure.erase

@@ -21,26 +21,26 @@ VPC-bound and regulated deployments, and teams already operating on AWS.
 | kind · profiles | orchestrated · full | function · edge | daemon · full |
 | wall-clock cap · excluded | none · nothing | 15 min · first-time-backfill, component-connector | none · nothing |
 
-The `lambda-fargate` shape:
+The `lambda-fargate` shape; the table above names the primitive filling each role:
 
 ```mermaid
 flowchart LR
   CALLER(["caller"])
-  subgraph ACCOUNT["AWS · the deploying account"]
+  subgraph ACCOUNT["deploying AWS account"]
     subgraph CONTROL["control plane"]
-      TICK["cron tick<br/>EventBridge Scheduler"]
-      REC["reconciler<br/>Lambda"]
-      ORCH["durable orchestrator<br/>Step Functions: Standard for backfills, Express for short high-frequency pipelines"]
+      TICK["cron tick"]
+      REC["reconciler"]
+      ORCH["durable orchestrator"]
     end
     subgraph DATA["data plane"]
-      COMP["heavy compute<br/>Fargate task started by Step Functions (ECS RunTask, .sync)"]
-      QF["query face<br/>ALB → warm contextful-full on Fargate"]
+      COMP["heavy compute"]
+      QF["query face"]
     end
     subgraph STATE["durable state"]
-      CAT[("catalog<br/>RDS Postgres via pg-catalog")]
-      OBJ[("object store<br/>S3")]
+      CAT[("catalog")]
+      OBJ[("object store")]
     end
-    SEC["secrets<br/>Secrets Manager through the task role"]
+    SEC["secrets"]
   end
   TICK --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
   COMP -- "land parts + manifest" --> OBJ
@@ -68,26 +68,26 @@ Edge-first deployments on native object storage with near-zero idle cost.
 | kind · profiles | orchestrated · full |
 | wall-clock cap · excluded | none · nothing |
 
-The `worker-container` shape:
+The `worker-container` shape; the table above names the primitive filling each role:
 
 ```mermaid
 flowchart LR
   CALLER(["caller"])
-  subgraph ACCOUNT["Cloudflare · the deploying account"]
+  subgraph ACCOUNT["deploying Cloudflare account"]
     subgraph CONTROL["control plane"]
-      TICK["cron tick<br/>Cron Trigger"]
-      REC["reconciler<br/>Worker"]
-      ORCH["durable orchestrator<br/>Workflows"]
+      TICK["cron tick"]
+      REC["reconciler"]
+      ORCH["durable orchestrator"]
     end
     subgraph DATA["data plane"]
-      COMP["heavy compute<br/>Container"]
-      QF["query face<br/>Worker router → warm contextful-full Container"]
+      COMP["heavy compute"]
+      QF["query face"]
     end
     subgraph STATE["durable state"]
-      CAT[("catalog<br/>Durable Object SQLite, one object per store")]
-      OBJ[("object store<br/>R2")]
+      CAT[("catalog")]
+      OBJ[("object store")]
     end
-    SEC["secrets<br/>Workers Secrets"]
+    SEC["secrets"]
   end
   TICK --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
   COMP -- "land parts + manifest" --> OBJ
@@ -115,26 +115,26 @@ The reference output, development, and air-gapped single-node deployments.
 | kind · profiles | daemon · full |
 | wall-clock cap · excluded | none · nothing |
 
-The `process` shape:
+The `process` shape; the table above names the primitive filling each role:
 
 ```mermaid
 flowchart LR
   CALLER(["caller"])
-  subgraph ACCOUNT["Local (reference) · the deploying account"]
+  subgraph ACCOUNT["deploying Local (reference) account"]
     subgraph CONTROL["control plane"]
-      TICK["cron tick<br/>in-process scheduler"]
-      REC["reconciler<br/>in-process reconcile loop"]
-      ORCH["durable orchestrator<br/>engine journal in the catalog"]
+      TICK["cron tick"]
+      REC["reconciler"]
+      ORCH["durable orchestrator"]
     end
     subgraph DATA["data plane"]
-      COMP["heavy compute<br/>in-process component host"]
-      QF["query face<br/>contextful serve, in process"]
+      COMP["heavy compute"]
+      QF["query face"]
     end
     subgraph STATE["durable state"]
-      CAT[("catalog<br/>local catalog file, one process")]
-      OBJ[("object store<br/>local filesystem under ./.contextful/, optional S3-compatible sync")]
+      CAT[("catalog")]
+      OBJ[("object store")]
     end
-    SEC["secrets<br/>environment and configured secret providers"]
+    SEC["secrets"]
   end
   TICK --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
   COMP -- "land parts + manifest" --> OBJ

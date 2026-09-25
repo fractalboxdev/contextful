@@ -98,39 +98,30 @@ The client library's four shapes, and who holds the credential in each:
 
 ```mermaid
 flowchart LR
-  LIB["client library: search, query, retrieve, recall, ask and kin"]
+  LIB["client library"]
   subgraph host["host backend"]
-    S1["same-origin proxy, injects the token"]
-    S2["same-account: service binding"]
+    S1["same-origin proxy"]
+    S2["service binding"]
   end
   subgraph browser["browser"]
-    S3["engine-direct embed: per-viewer scoped token"]
+    S3["engine-direct embed"]
   end
   subgraph local["local consumer"]
-    S4["spawned engine, newline-framed JSON-RPC"]
-    CK{"credential set and project manifest found"}
-    E1["StdioCredentialMissing"]
-    E2["StoreSelectorAbsent"]
-    CHILD["engine child: one request in flight"]
+    S4["spawned engine child"]
   end
   subgraph engine["engine"]
-    GW["gateway entrypoint: query, mcp, health"]
-    subgraph container["engine container"]
-      ENG["HTTP face: grants of the presented token"]
-    end
+    GW["gateway entrypoint"]
+    ENG["engine HTTP face"]
   end
   LIB --> S1
   LIB --> S2
   LIB --> S3
-  LIB --> S4
-  S1 --> ENG
+  LIB -- "newline-framed JSON-RPC" --> S4
+  S1 -- "injects the token" --> ENG
   S2 --> GW
-  GW -- "injects the container-side credential" --> ENG
-  S3 --> ENG
-  S4 --> CK
-  CK -- "no credential" --> E1
-  CK -- "no manifest" --> E2
-  CK -- "yes" --> CHILD
+  GW -- "container-side credential" --> ENG
+  S3 -- "per-viewer scoped token" --> ENG
+  S4 -. "StdioCredentialMissing, StoreSelectorAbsent" .-> REF(["refuse the spawn"])
 ```
 
 ## speak
@@ -242,24 +233,24 @@ A tool return split into three channels, and the view channel's path to a widget
 flowchart TD
   subgraph server["console server"]
     TR["tool return"] --> G["grounding channel"]
-    TR --> I["internals channel, on request"]
+    TR -- "on request" --> I["internals channel"]
     TR --> V["view channel"]
-    CV["view from a client or the model"] --> E1["ConsoleViewNotServerBuilt"]
-    V --> H{"view hint binds only returned columns"}
+    CV["client or model view"] -- "ConsoleViewNotServerBuilt" --> E1(["refuse the view"])
+    V --> H{"hint binds returned columns?"}
     H -- "yes" --> HC["hinted component"]
-    H -- "no" --> INF["inference: metric, line over 3 distinct days, else table"]
-    HC --> VAL{"valid against the props schema"}
+    H -- "no: metric, line, else table" --> INF["infer the component"]
+    HC --> VAL{"valid against props schema?"}
     INF --> VAL
     VAL -- "no" --> NONE["no widget"]
-    VAL -- "yes" --> WALK["walk: identifier redactor, temporal rewriting"]
+    VAL -- "yes" --> WALK["redact and humanize"]
   end
   subgraph browser["browser"]
     TP["trace panel"]
-    W["widget frame after the prose, one per shape"]
+    W["widget frame"]
   end
   G --> M["model"]
   I --> TP
-  WALK --> W
+  WALK -- "after the prose, one per shape" --> W
 ```
 
 unsettled: What governs adding a member to the component union once transcripts saved under an older client exist? owner: console affects: surface.render
@@ -362,16 +353,16 @@ One turn, from question to rendered answer:
 ```mermaid
 flowchart TD
   Q[Question] --> R[Recall at the vantage]
-  R --> T[Resolve temporal intent to a window]
+  R --> T[Resolve the time window]
   T --> P[Plan against prefetched columns]
   P --> G[Admitted read tools]
-  G --> A{Answered, by the code test?}
+  G --> A{Answered by the code test?}
   A -- no, first round --> P
-  A -- no, second round --> C[Content-token retrieval in code]
+  A -- no, second round --> C[Content-token retrieval]
   A -- yes --> S[Synthesis over grounding]
   C --> S
-  S --> PR[Streamed prose, redacted and humanized]
+  S -- redacted, humanized --> PR[Streamed prose]
   PR --> W[Widget frame]
   PR --> SB[Sources block]
-  PR --> D[Distillation, labels from grounding rows]
+  PR -- labels from grounding rows --> D[Distillation]
 ```

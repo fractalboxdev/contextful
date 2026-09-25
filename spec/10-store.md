@@ -46,17 +46,17 @@ flowchart LR
     RUNS["run parts + run manifest"]
     LOG["cursors/ commit log"]
     FOLD["fold pass"]
-    SNAP["snapshot · parts + sidecars + manifest"]
+    SNAP["snapshot"]
     PTR["_pointer.json"]
     SCHEMA["schema.json"]
-    DERIVED[("derived.sqlite · rebuildable cache")]
-    MACHINE[("machine.sqlite · journal · cursor cache · lease rows")]
+    DERIVED[("derived cache")]
+    MACHINE[("machine database")]
   end
 
   subgraph BUCKET["bucket"]
     BMAN[("&lt;prefix&gt;/manifest.json")]
   end
-  REPLICA["replica · read-only"]
+  REPLICA["read-only replica"]
 
   LAND -- "conditional create _manifest.json" --> RUNS
   LAND -- "leased pipeline" --> LOG

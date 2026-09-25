@@ -68,3 +68,16 @@ fn the_targets_page_is_rendered_from_the_files() {
     let stale = codes(&s.lint("render"), "SpecStaleRender");
     assert!(stale.iter().any(|m| m.contains("spec/targets.md")), "{stale:?}");
 }
+
+#[test]
+fn the_default_shape_diagram_draws_one_role_per_node() {
+    let s = Scratch::copy();
+    assert!(s.cmd(&["state"]).status.success());
+    let page = s.read("spec/targets.md");
+    let mut fences = page.split("```mermaid\n").skip(1).map(|b| b.split("```").next().unwrap());
+    let aws = fences.next().unwrap();
+    assert!(!aws.contains("<br/>") && !aws.contains('·'), "{aws}");
+    assert!(aws.contains("ORCH[\"durable orchestrator\"]") && aws.contains("CAT[(\"catalog\")]"), "{aws}");
+    // the primitive filling each role lives in the table above the diagram
+    assert!(!aws.contains("Step Functions"), "{aws}");
+}

@@ -20,15 +20,15 @@ A credential from its reference to the vendor, keyed throughout by its logical n
 ```mermaid
 flowchart LR
   subgraph TREE["file tree"]
-    DECL["declaration · secret://name, value templates"]
-    REC["operator record · inventory"]
+    DECL["secret declaration"]
+    REC["operator record"]
   end
   subgraph ENGINE["engine process"]
-    RES["resolver · per source, cached"]
-    CHAIN["provider chain · lease, environment, keychain, manager, tunnel"]
-    ROT["rotate · OAuth refresh"]
-    ATT["host attach · one mediated path"]
-    EGR["guest, built-in source, limiter call, exec step"]
+    RES["resolver"]
+    CHAIN["provider chain"]
+    ROT["rotate"]
+    ATT["host attach"]
+    EGR["outbound caller"]
     AUD["run audit"]
   end
   MINT["lease endpoint"]
@@ -36,13 +36,13 @@ flowchart LR
     MGR[("customer-operated manager")]
   end
   VEND["vendor API"]
-  DECL -->|reference| RES
+  DECL -->|"secret://name"| RES
   RES -->|"first hit wins"| CHAIN
   MINT -->|"value + expiry"| CHAIN
   MGR --- CHAIN
-  ROT -->|"blind versioned put"| MGR
+  ROT -->|"OAuth refresh, blind versioned put"| MGR
   CHAIN -->|"material in a redacting wrapper"| ATT
-  EGR --> ATT
+  EGR -->|"guest, source, limiter, exec step"| ATT
   ATT -->|"bound header, one host"| VEND
   RES -->|"answering adapter per name"| AUD
   REC -.->|"logical name"| DECL
@@ -102,15 +102,16 @@ The provider port, the chain and its precedence, hydration timing, the redacting
 
 ```mermaid
 flowchart TD
-  REF["secret://name"] --> L["lease provider · declared names"]
-  L -->|miss| E["process environment · a miss for templates unless opted in"]
-  E -->|miss| K["operating-system keychain"]
+  REF["secret reference"] --> L["lease provider"]
+  L -->|"miss, or an undeclared name"| E["process environment"]
+  E -->|"miss, or a template not opted in"| K["operating-system keychain"]
   K -->|miss| M["customer-operated manager"]
-  M -->|miss| T["tunnel into the customer trust zone"]
-  T -->|miss| U["SecretUnresolvedReference"]
-  L & E & K & M & T -->|"first hit, at first hydration"| SH{"name also answered behind the serving adapter?"}
-  SH -->|yes| X["SecretNameShadowed"]
-  SH -->|no| W["redacting wrapper · cached up to 300 s"]
+  M -->|miss| T["customer trust-zone tunnel"]
+  T -->|"miss: SecretUnresolvedReference"| U(["refused"])
+  L & E & K & M & T -->|"first hit, at first hydration"| SH{"also answered behind adapter?"}
+  SH -->|"yes: SecretNameShadowed"| U
+  SH -->|no| W["redacting wrapper"]
+  W -->|"cached up to 300 s"| C["resolved material"]
 ```
 
 ## lease

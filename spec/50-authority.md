@@ -23,20 +23,20 @@ The path of a credential from issuance to the effects it authorizes:
 ```mermaid
 flowchart LR
   IDP["identity provider"]
-  ADMIN["holder of an admin grant"]
-  LINK["identity links<br/>scim_email · oidc_sub"]
+  ADMIN["admin grant holder"]
+  LINK["identity links"]
   subgraph ISS["issuer"]
     EXCH["exchange"]
-    POL["issuance policy<br/>audience · lifetime ceiling"]
+    POL["issuance policy"]
     PORT["signing port"]
   end
   subgraph HOLD["holder"]
-    CRED["capability credential<br/>subject tuple + grants"]
+    CRED["capability credential"]
     CHILD["child credential"]
   end
   subgraph CPZ["checkpoint"]
-    KEYS["issuer key set<br/>static pins · published route"]
-    REV["denylist · revocation epoch"]
+    KEYS["issuer key set"]
+    REV["denylist"]
     CP{"verify"}
   end
   AA["admitted authority"]
@@ -54,16 +54,16 @@ flowchart LR
   end
   IDP -- "verified assertion" --> EXCH
   IDP -- "directory provisioning" --> LINK
-  LINK --> REACH
+  LINK -- "scim_email, oidc_sub" --> REACH
   ADMIN -- "mint" --> PORT
-  EXCH -- "role_grants · default_grants" --> PORT
-  POL --> PORT
-  PORT --> CRED
+  EXCH -- "role and default grants" --> PORT
+  POL -- "audience, lifetime ceiling" --> PORT
+  PORT -- "subject tuple, grants" --> CRED
   CRED -- "attenuate: append a signed block" --> CHILD
   CRED --> CP
   CHILD --> CP
-  KEYS --> CP
-  REV --> CP
+  KEYS -- "static pins, published route" --> CP
+  REV -- "revocation epoch" --> CP
   CP --> AA
   AA --> RELS
   AA --> RS
@@ -211,21 +211,21 @@ A derivation, from the holder's append to the checkpoint's recheck:
 ```mermaid
 flowchart TD
   subgraph HOLD["holder"]
-    P["parent credential, bytes unchanged"] --> D["append a signed block<br/>no issuer round trip"]
+    P["parent credential"] -- "no issuer round trip" --> D["append a signed block"]
   end
-  D --> W{"broader on actions, tables,<br/>templates or aggregate?"}
-  W -- yes --> R1["AttenuationWidens"]
+  D --> W{"broader than the parent?"}
+  W -- "yes: AttenuationWidens" --> R(["refused"])
   W -- no --> X{"expiry past the parent's?"}
-  X -- yes --> R2["AttenuationExpiryExtended"]
-  X -- no --> T{"tenant scope dropped<br/>or another tenant named?"}
-  T -- yes --> R3["AttenuationTenantDropped"]
+  X -- "yes: AttenuationExpiryExtended" --> R
+  X -- no --> T{"tenant scope changed?"}
+  T -- "yes: AttenuationTenantDropped" --> R
   T -- no --> O{"on_behalf_of differs?"}
-  O -- yes --> R4["AuthoritySubjectRebound"]
-  O -- no --> C["child credential<br/>own revocation identifier"]
+  O -- "yes: AuthoritySubjectRebound" --> R
+  O -- no --> C["child credential"]
   subgraph CPZ["checkpoint"]
-    CP["admission rechecks<br/>the whole chain"]
+    CP["recheck the whole chain"]
   end
-  C --> CP
+  C -- "own revocation identifier" --> CP
 ```
 
 unsettled: What delegation depth does the library format support, and what verification cost does a chain carry at that depth? owner: authority affects: authority.attenuate
@@ -501,22 +501,22 @@ Admission, from transmitted bytes to the value an effect acts under:
 flowchart TD
   A["transmitted bytes"] --> B
   subgraph CPZ["checkpoint"]
-    B{"every block signature<br/>checks against a pinned key"}
-    B -- no --> R1["SignatureInvalid"]
-    B -- yes --> C{"profile names every element"}
-    C -- no --> R2["ProfileElementUnrecognized"]
-    C -- yes --> D{"audience matches"}
-    D -- no --> R3["AudienceMismatch"]
-    D -- yes --> E{"timestamps decode;<br/>expiry after now"}
-    E -- no --> R4["AuthorityExpired"]
-    E -- yes --> F{"request proof checks<br/>against cnf.jkt"}
-    F -- no --> R5["PossessionProofInvalid"]
-    F -- yes --> G{"off the denylist;<br/>epoch current"}
-    G -- no --> R6["AuthorityRevoked"]
+    B{"every block signature verifies?"}
+    B -- "no: SignatureInvalid" --> R(["refused"])
+    B -- yes --> C{"profile names every element?"}
+    C -- "no: ProfileElementUnrecognized" --> R
+    C -- yes --> D{"audience matches?"}
+    D -- "no: AudienceMismatch" --> R
+    D -- yes --> E{"expiry after now?"}
+    E -- "no: AuthorityExpired" --> R
+    E -- yes --> F{"possession proof checks?"}
+    F -- "no: PossessionProofInvalid" --> R
+    F -- yes --> G{"credential still current?"}
+    G -- "no: AuthorityRevoked" --> R
     G -- yes --> H["admitted authority"]
   end
   subgraph SESS["scoped session"]
-    J["each effect re-reads<br/>expiry, epoch, policy version"]
+    J["recheck on each effect"]
   end
-  H --> J
+  H -- "expiry, epoch, policy version" --> J
 ```

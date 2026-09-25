@@ -142,25 +142,23 @@ pub fn page(c: &Corpus) -> String {
         }
         s.push('\n');
         if let Some(d) = t.shape.iter().find(|sh| sh.default) {
-            let r = |k: &str| d.roles.get(k).cloned().unwrap_or_default().replace('"', "'");
-            let _ = write!(s, "\nThe `{}` shape:\n\n```mermaid\nflowchart LR\n", d.name);
-            let node = |id: &str, open: &str, close: &str, role: &str, key: &str| {
-                format!("      {id}{open}\"{role}<br/>{}\"{close}\n", r(key))
-            };
+            // one node per role; the primitive filling it is the role table's cell
+            let _ = write!(s, "\nThe `{}` shape; the table above names the primitive filling each role:\n\n```mermaid\nflowchart LR\n", d.name);
+            let node = |id: &str, open: &str, close: &str, role: &str| format!("      {id}{open}\"{role}\"{close}\n");
             s.push_str("  CALLER([\"caller\"])\n");
-            let _ = writeln!(s, "  subgraph ACCOUNT[\"{} · the deploying account\"]", t.title.replace('"', "'"));
+            let _ = writeln!(s, "  subgraph ACCOUNT[\"deploying {} account\"]", t.title.replace('"', "'"));
             s.push_str("    subgraph CONTROL[\"control plane\"]\n");
-            s.push_str(&node("TICK", "[", "]", "cron tick", "cron_tick"));
-            s.push_str(&node("REC", "[", "]", "reconciler", "reconciler"));
-            s.push_str(&node("ORCH", "[", "]", "durable orchestrator", "orchestrator"));
+            s.push_str(&node("TICK", "[", "]", "cron tick"));
+            s.push_str(&node("REC", "[", "]", "reconciler"));
+            s.push_str(&node("ORCH", "[", "]", "durable orchestrator"));
             s.push_str("    end\n    subgraph DATA[\"data plane\"]\n");
-            s.push_str(&node("COMP", "[", "]", "heavy compute", "compute"));
-            s.push_str(&node("QF", "[", "]", "query face", "query_face"));
+            s.push_str(&node("COMP", "[", "]", "heavy compute"));
+            s.push_str(&node("QF", "[", "]", "query face"));
             s.push_str("    end\n    subgraph STATE[\"durable state\"]\n");
-            s.push_str(&node("CAT", "[(", ")]", "catalog", "catalog"));
-            s.push_str(&node("OBJ", "[(", ")]", "object store", "object_store"));
+            s.push_str(&node("CAT", "[(", ")]", "catalog"));
+            s.push_str(&node("OBJ", "[(", ")]", "object store"));
             s.push_str("    end\n");
-            s.push_str(&node("SEC", "[", "]", "secrets", "secrets").replacen("      ", "    ", 1));
+            s.push_str(&node("SEC", "[", "]", "secrets").replacen("      ", "    ", 1));
             s.push_str("  end\n");
             s.push_str("  TICK --> REC -- \"dispatch a due unit\" --> ORCH -- \"run a step\" --> COMP\n");
             s.push_str("  COMP -- \"land parts + manifest\" --> OBJ\n");

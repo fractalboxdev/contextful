@@ -112,18 +112,20 @@ Profiles, the domain crate they share, and the dependency edges the gates raise 
 
 ```mermaid
 flowchart TD
-  CLI["contextful-cli · the contextful binary · wiring per profile"]
-  CORE["contextful-core · domain types + ports · no I/O"]
+  CLI["contextful binary"]
+  CORE["contextful-core"]
   ADAPT["adapter crates"]
   COMP["component connector"]
 
-  subgraph EDGE["contextful-edge · read replica"]
-    NATIVE["native connectors · bucket sync · read-only SQL"]
+  subgraph EDGE["contextful-edge read replica"]
+    NATIVE["native connectors"]
+    SYNC["bucket sync"]
   end
-  subgraph FULL["contextful-full · daemon"]
-    DAEMON["engine · scheduler · component host<br/>sidecars · tool server · pg-catalog"]
+  subgraph FULL["contextful-full daemon"]
+    ENGINE["engine"]
+    HOST["component host"]
   end
-  subgraph CTRL["contextful-control · control plane"]
+  subgraph CTRL["contextful-control plane"]
     CRDT["CRDT library"]
   end
 
@@ -134,7 +136,7 @@ flowchart TD
   EDGE -. "ProfileDependencyLeak" .-x CRDT
   FULL -. "ProfileDependencyLeak" .-x CRDT
   EDGE -. "ComponentHostMissing" .-x COMP
-  DAEMON -- "component host" --> COMP
+  HOST -- "runs" --> COMP
 ```
 
 unsettled: Does the columnar interchange crate stay whole in the edge profile or ship slimmed? owner: topology affects: topology.package
@@ -157,33 +159,30 @@ against the reference target. Each provider's shapes are data under `spec/target
 
 ```mermaid
 flowchart LR
-  DECL["engine binary + contextful.toml"]
-  UNSUP["TargetShapeUnsupported"]
-  CAP["15 min wall-clock cap · no first-time backfill<br/>no component connector"]
-  PAR["ParityDivergence"]
+  DECL["declaration"]
+  REFUSED(["refused"])
 
-  subgraph TP["target profile · provider primitives per role"]
-    CP["control-plane target · cadence tick · reconciler<br/>durable orchestrator · single-writer catalog"]
-    WK["worker target · accept job · run to completion · report"]
-    FN["function-class target · edge profile only"]
+  subgraph TP["target profile"]
+    CP["control-plane target"]
+    WK["worker target"]
+    FN["function-class target"]
   end
 
   subgraph SELF["self-hosted"]
-    REF["reference target · one process · ./.contextful/"]
+    REF["reference target"]
     CMD["stateless command"]
-    DMN["daemon · SIGHUP reload"]
-    CLU["cluster of daemons · one shared catalog"]
+    DMN["daemon"]
+    CLU["daemon cluster"]
   end
 
   DECL --> TP
-  TP -. "claims a missing shape" .-> UNSUP
+  DECL -- "self-hosted shapes" --> SELF
   CP -- "dispatch" --> WK
   WK -- "report" --> CP
   FN -- "execution runs on" --> WK
-  CAP -. "recorded in" .-> TP
-  DECL -- "self-hosted shapes" --> SELF
-  CP -- "24 h soak · byte compare of parts" --> REF
-  REF -. "first differing part" .-> PAR
+  CP -- "byte compare after 24 h soak" --> REF
+  TP -. "TargetShapeUnsupported" .-> REFUSED
+  REF -. "ParityDivergence" .-> REFUSED
 ```
 
 unsettled: Which role hosts heavy compute on a provider exposing neither a container primitive nor a long-running function? owner: topology affects: topology.deploy
@@ -281,39 +280,30 @@ Every single-writer operation reduces to one linearizable conditional write behi
 ```mermaid
 flowchart LR
   subgraph OPS["single-writer operations"]
-    LROW["lease row · fence plus one"]
+    LA["lease acquire"]
+    PTR["pointer commit"]
+    CL["commit log"]
+    MAN["bucket manifest CAS"]
     CUR["cursor compare-and-swap"]
-    subgraph STOREOPS["store"]
-      PTR["pointer commit"]
-      LA["lease acquire"]
-      CL["commit log"]
-      MAN["bucket manifest CAS"]
-    end
-    subgraph SURFOPS["surface"]
-      APPLY["apply claims a version"]
-    end
+    APPLY["apply claims a version"]
   end
   PRIM["linearizable conditional write"]
   PORT["Catalog port"]
-  subgraph NODE1["single node"]
+  subgraph BACKENDS["catalog backends"]
     LOCAL["local catalog file"]
-  end
-  subgraph CLUSTER["self-hosted cluster"]
     PG["Postgres via pg-catalog"]
-  end
-  subgraph MEDGE["managed edge"]
     SQLITE["per-object SQLite"]
-  end
-  subgraph MCLOUD["managed cloud"]
     MPG["managed Postgres"]
   end
-  WEAK["ConditionalWriteUnsupported at open"]
-  STALE["LeaseFenced"]
+  REFUSED(["refused"])
 
   OPS --> PRIM --> PORT
-  PORT --> LOCAL & PG & SQLITE & MPG
-  PORT -. "update not linearizable" .-> WEAK
-  LROW -. "fenced commit matches nothing" .-> STALE
+  PORT -- "single node" --> LOCAL
+  PORT -- "self-hosted cluster" --> PG
+  PORT -- "managed edge" --> SQLITE
+  PORT -- "managed cloud" --> MPG
+  PORT -. "ConditionalWriteUnsupported at open" .-> REFUSED
+  LA -. "stale fence: LeaseFenced" .-> REFUSED
 ```
 
 unsettled: Is a self-contained clustered catalog worth building behind the `Catalog` port for an operator wanting clustered availability without Postgres? owner: topology affects: topology.coordinate
