@@ -108,15 +108,18 @@ pub struct BucketManifest {
 /// request-ledger file's node. Every other key is unowned.
 pub fn owner_of(key: &str) -> Option<String> {
     let segs: Vec<&str> = key.split('/').collect();
-    if let Some(i) = segs.iter().position(|s| *s == "runs") {
-        if segs.get(i - 1) == Some(&"data") && segs.len() > i + 3 {
-            return Some(segs[i + 2].to_string());
-        }
+    // `<project>/cursors/<pipeline-id>/<node-id>/<seq>.json`: a node's own commit log.
+    if segs.len() == 5 && segs[1] == "cursors" {
+        return Some(segs[3].to_string());
     }
-    if let Some(i) = segs.iter().position(|s| *s == "requests") {
-        let file = segs.get(i + 1)?;
-        let stem = file.strip_suffix(".parquet")?;
-        return stem.split_once('.').map(|(_, node)| node.to_string());
+    // The last `data/runs` pair: `.../data/runs/<run-id>/<node-id>/<file>`.
+    if let Some(i) = segs.windows(2).rposition(|w| w == ["data", "runs"]) {
+        return (segs.len() > i + 4).then(|| segs[i + 3].to_string());
+    }
+    // `.../requests/<run-id>.<node-id>.parquet`, a node id holding no dot.
+    if segs.len() >= 2 && segs[segs.len() - 2] == "requests" {
+        let stem = segs[segs.len() - 1].strip_suffix(".parquet")?;
+        return stem.rsplit_once('.').map(|(_, node)| node.to_string());
     }
     None
 }
@@ -140,7 +143,8 @@ pub struct Merged {
 }
 
 /// Merge this writer's local entries into the remote manifest by a scoped union
-/// (`store.merge`): the remote contributes an entry only where `me` has never written,
+/// (`store.merge`): a local entry counts only for a key `me` owns or an unowned one, and
+/// the remote contributes an entry only where `me` has never written,
 /// so an entry `me` owns and no longer holds leaves with a tombstone. A tombstone naming
 /// another owner's entry refuses and keeps the entry; a tombstone past its TTL leaves. A
 /// commit-log entry whose copies differ refuses outright: a cursor resolves through its
@@ -149,6 +153,10 @@ pub fn merge(remote: &BucketManifest, local: &BTreeMap<String, Entry>, me: &str,
     let mut out = BucketManifest::default();
     let mut refused = Vec::new();
     for (key, entry) in local {
+        // A key another node owns lists the owner's entry, never a local copy of it.
+        if !entry.owner.is_empty() && entry.owner != me {
+            continue;
+        }
         if let Some(theirs) = remote.entries.get(key) {
             if is_commit_log(key) && theirs.sha256 != entry.sha256 {
                 return Err(StoreError::SyncCursorConflict(format!(

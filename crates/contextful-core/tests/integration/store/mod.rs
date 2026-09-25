@@ -25,6 +25,7 @@ pub fn run(id: &str, committed: &str, parts: usize) -> RunManifest {
         pipeline_id: None,
         cursor: None,
         fence: None,
+        logged: false,
     }
 }
 

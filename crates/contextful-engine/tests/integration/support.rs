@@ -147,6 +147,8 @@ pub struct Sink {
     pub die_after_land: bool,
     /// Counts to report instead of the ones the commit carries.
     pub report: Option<Landed>,
+    /// Whether recording a lease's fence refuses.
+    pub refuse_fence: bool,
 }
 
 impl Destination for Sink {
@@ -158,6 +160,13 @@ impl Destination for Sink {
             panic!("the process dies after the commit marker lands");
         }
         Ok(self.report.unwrap_or(Landed { rows, bytes: 0 }))
+    }
+
+    fn open_fence(&mut self, _: &str, _: &str, _: u64) -> Result<(), Failure> {
+        if self.refuse_fence {
+            return Err(Failure::new(contextful_core::run::FailureTag::Storage, "the store refused the fence record"));
+        }
+        Ok(())
     }
 
     fn newest_marker(&self, pipeline_id: &str, table: &str) -> Result<Option<Marker>, Failure> {

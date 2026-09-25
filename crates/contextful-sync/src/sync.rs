@@ -76,6 +76,42 @@ fn syncable(rel: &str) -> bool {
         || name == POINTER_FILE)
 }
 
+/// Conditional puts one key tries before a push reports it moving.
+const PUT_ROUNDS: u32 = 5;
+
+/// How a push treats a key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyClass {
+    /// This node owns it: uploaded and listed by this node alone.
+    Owned,
+    /// Another node owns it: never pushed from here.
+    Foreign,
+    /// Unowned and merged by its rule: a table's `schema.json`.
+    Mergeable,
+    /// Unowned and written once: a snapshot's files.
+    Immutable,
+}
+
+fn class(key: &str, me: &str) -> KeyClass {
+    match owner_of(key) {
+        Some(o) if o == me => KeyClass::Owned,
+        Some(_) => KeyClass::Foreign,
+        None if key.ends_with("/schema.json") => KeyClass::Mergeable,
+        None => KeyClass::Immutable,
+    }
+}
+
+/// The table a key under `<project>/tables/` belongs to: the segments up to the table's
+/// layout (`data`, `requests`, `schema.json` or `_pointer.json`), so a nested name keeps its `/`.
+pub fn table_of(key: &str) -> Option<String> {
+    let segs: Vec<&str> = key.split('/').collect();
+    if segs.get(1) != Some(&"tables") {
+        return None;
+    }
+    let end = segs.iter().enumerate().skip(2).position(|(_, s)| ["data", "requests", "schema.json", POINTER_FILE].contains(s))? + 2;
+    (end > 2).then(|| segs[2..end].join("/"))
+}
+
 /// What a push did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PushReport {
@@ -91,6 +127,8 @@ pub struct PushReport {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PullReport {
     pub downloaded: Vec<String>,
+    /// Local copies a tombstone deleted.
+    pub removed: Vec<String>,
     pub pointers: Vec<String>,
     pub attempts: u32,
 }
@@ -204,31 +242,57 @@ impl Syncer {
         let _guard = PushGuard::take(self.store.root())?;
         let coordination = match self.probe() {
             Ok(c) => c,
-            Err(SyncError::Store(e @ StoreError::SyncProbeInconclusive(_))) if self.config.declares_cas() => return Err(e.into()),
+            // A push declaring single-writer coordination proceeds without the demonstration.
+            Err(SyncError::Store(StoreError::SyncProbeInconclusive(_))) if !self.config.declares_cas() => Coordination::SingleWriter,
             Err(e) => return Err(e),
         };
         coordination.admit(&self.config)?;
         let local = self.local_entries()?;
         let (remote, _) = self.manifest()?;
         let mut report = PushReport::default();
+        // The entries this node commits: keys it owns and immutable unowned keys. A copy of
+        // a key another node owns is never pushed; a shared mergeable key commits by its merge.
+        let mut mine: BTreeMap<String, Entry> = BTreeMap::new();
+        let mut shared: Vec<String> = Vec::new();
         for (key, (entry, path)) in &local {
-            if remote.entries.get(key).is_some_and(|e| e.sha256 == entry.sha256) {
-                continue;
+            let bytes = || std::fs::read(path).map_err(|e| io(path, e));
+            match class(key, &self.node) {
+                KeyClass::Foreign => continue,
+                KeyClass::Mergeable => {
+                    if self.put_merged(key, &bytes()?)? {
+                        report.uploaded.push(key.clone());
+                    }
+                    shared.push(key.clone());
+                }
+                KeyClass::Owned => {
+                    if remote.entries.get(key).is_none_or(|e| e.sha256 != entry.sha256) {
+                        self.put_owned(key, &bytes()?)?;
+                        report.uploaded.push(key.clone());
+                    }
+                    mine.insert(key.clone(), entry.clone());
+                }
+                KeyClass::Immutable => {
+                    if remote.entries.get(key).is_none_or(|e| e.sha256 != entry.sha256) && self.put_immutable(key, &bytes()?, &entry.sha256)? {
+                        report.uploaded.push(key.clone());
+                    }
+                    mine.insert(key.clone(), entry.clone());
+                }
             }
-            let bytes = std::fs::read(path).map_err(|e| io(path, e))?;
-            self.bucket.put(&self.key(key)?, &bytes, Condition::None)?;
-            report.uploaded.push(key.clone());
         }
-        let entries: BTreeMap<String, Entry> = local.into_iter().map(|(k, (e, _))| (k, e)).collect();
         let retries = self.config.push_retries().max(1);
         for round in 1..=retries {
             let (remote, etag) = self.manifest()?;
+            let mut entries = mine.clone();
+            // A shared key lists the object the bucket holds now, whoever merged it last.
+            for key in &shared {
+                if let Some((bytes, _)) = self.bucket.get(&self.key(key)?)? {
+                    entries.insert(key.clone(), Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() });
+                }
+            }
             // Entries of other projects in the bucket pass through untouched.
-            let mut mine = entries.clone();
-            let others: BTreeMap<String, Entry> =
-                remote.entries.iter().filter(|(k, _)| !k.starts_with(&format!("{}/", self.project))).map(|(k, e)| (k.clone(), e.clone())).collect();
-            mine.extend(others);
-            let merged = merge(&remote, &mine, &self.node, now)?;
+            let others = remote.entries.iter().filter(|(k, _)| !k.starts_with(&format!("{}/", self.project))).map(|(k, e)| (k.clone(), e.clone()));
+            entries.extend(others);
+            let merged = merge(&remote, &entries, &self.node, now)?;
             let bytes = serde_json::to_vec_pretty(&merged.manifest).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&self.key(MANIFEST_KEY)?, &bytes, condition)? {
@@ -245,13 +309,63 @@ impl Syncer {
         .into())
     }
 
+    /// Upload a key this node owns: a create where the bucket holds none, else a replace
+    /// on the ETag the bucket holds, so no write lands blind.
+    fn put_owned(&self, key: &str, bytes: &[u8]) -> Result<()> {
+        let k = self.key(key)?;
+        for _ in 0..PUT_ROUNDS {
+            let condition = match self.bucket.get(&k)? {
+                Some((_, etag)) => Condition::IfMatch(etag),
+                None => Condition::IfNoneMatch,
+            };
+            if let Put::Applied(_) = self.bucket.put(&k, bytes, condition)? {
+                return Ok(());
+            }
+        }
+        Err(StoreError::SyncManifestRebaseExhausted(format!("`{key}` moved under every conditional put; run the push again")).into())
+    }
+
+    /// Upload an immutable key: a create only. A different object already under the key refuses.
+    fn put_immutable(&self, key: &str, bytes: &[u8], sha256: &str) -> Result<bool> {
+        let k = self.key(key)?;
+        match self.bucket.put(&k, bytes, Condition::IfNoneMatch)? {
+            Put::Applied(_) => Ok(true),
+            Put::ConditionFailed => match self.bucket.get(&k)? {
+                Some((existing, _)) if sha256_hex(&existing) == sha256 => Ok(false),
+                _ => Err(SyncError::Context(ContextError::Invalid(format!("`{key}` is immutable and the bucket holds another object under it")))),
+            },
+        }
+    }
+
+    /// Merge a shared key into the bucket's copy by its merge rule, replacing on the ETag
+    /// read; a lost condition re-reads and re-merges. Returns whether the object changed.
+    fn put_merged(&self, key: &str, local: &[u8]) -> Result<bool> {
+        let k = self.key(key)?;
+        for _ in 0..PUT_ROUNDS {
+            let (merged, condition) = match self.bucket.get(&k)? {
+                Some((remote, etag)) => {
+                    let merged = merge_schema(&remote, local)?;
+                    if sha256_hex(&merged) == sha256_hex(&remote) {
+                        return Ok(false);
+                    }
+                    (merged, Condition::IfMatch(etag))
+                }
+                None => (local.to_vec(), Condition::IfNoneMatch),
+            };
+            if let Put::Applied(_) = self.bucket.put(&k, &merged, condition)? {
+                return Ok(true);
+            }
+        }
+        Err(StoreError::SyncManifestRebaseExhausted(format!("`{key}` moved under every merge; run the push again")).into())
+    }
+
     fn local_path(&self, key: &str) -> Option<PathBuf> {
         key.strip_prefix(&format!("{}/", self.project)).map(|rel| self.store.root().join(rel))
     }
 
     /// Pull the bucket into the store: download each entry whose digest differs, re-fetching
-    /// the manifest when a key moves beneath the download, then write each table pointer
-    /// after every object it reaches has landed.
+    /// the manifest when a key moves beneath the download, apply each tombstone, then write
+    /// every table pointer the bucket advances, all after every object they reach has landed.
     pub fn pull(&self, scope: &PullScope) -> Result<PullReport> {
         let replica = self.store.replica_of().is_some();
         if replica {
@@ -264,21 +378,24 @@ impl Syncer {
             }
         }
         let reaches = |key: &str| -> bool {
-            let table = key.split('/').nth(2);
-            let under_tables = key.split('/').nth(1) == Some("tables");
-            if !under_tables {
-                return scope.tables.is_empty();
+            match table_of(key) {
+                None => scope.tables.is_empty(),
+                Some(t) => (scope.tables.is_empty() || scope.tables.contains(&t)) && !(replica && scope.replicate_off.contains(&t)),
             }
-            let t = table.unwrap_or_default();
-            (scope.tables.is_empty() || scope.tables.iter().any(|x| x == t)) && !(replica && scope.replicate_off.iter().any(|x| x == t))
         };
+        let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
         let mut report = PullReport::default();
         let mut shortfall: Option<String> = None;
+        let mut manifest = BucketManifest::default();
         for attempt in 1..=PULL_CONVERGENCE {
             report.attempts = attempt;
             shortfall = None;
-            let (manifest, _) = self.manifest()?;
-            for (key, entry) in manifest.entries.iter().filter(|(k, _)| k.starts_with(&format!("{}/", self.project)) && reaches(k)) {
+            manifest = self.manifest()?.0;
+            for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k)) {
+                // This node's own keys are authoritative here.
+                if owner_of(key).as_deref() == Some(self.node.as_str()) {
+                    continue;
+                }
                 let Some(path) = self.local_path(key) else { continue };
                 let local = std::fs::read(&path).ok();
                 if local.as_deref().map(sha256_hex).as_deref() == Some(entry.sha256.as_str()) {
@@ -311,9 +428,19 @@ impl Syncer {
         if let Some(key) = shortfall {
             return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` kept moving across {PULL_CONVERGENCE} attempts; no pointer is written")).into());
         }
-        // Pointers last, each only once every object of its snapshot is home.
-        let pointer_keys = self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?;
-        for bucket_key in pointer_keys.into_iter().filter(|k| is_pointer(k)) {
+        // A tombstone deletes the local copy of the key it names.
+        for key in manifest.tombstones.keys().filter(|k| in_project(k) && reaches(k) && !manifest.entries.contains_key(*k)) {
+            if let Some(path) = self.local_path(key) {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => report.removed.push(key.clone()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(io(&path, e)),
+                }
+            }
+        }
+        // Pointers last: every advancing pointer is verified before any is written.
+        let mut advancing: Vec<(String, PathBuf, Pointer)> = Vec::new();
+        for bucket_key in self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?.into_iter().filter(|k| is_pointer(k)) {
             let rel_key = bucket_key.strip_prefix(&format!("{}/", self.prefix)).unwrap_or(&bucket_key).to_string();
             if !reaches(&rel_key) {
                 continue;
@@ -322,6 +449,14 @@ impl Syncer {
             let pointer: BucketPointer = serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
             let Some(snapshot) = pointer.snapshot_id else { continue };
             let Some(pointer_path) = self.local_path(&rel_key) else { continue };
+            let snapshot_id: SnapshotId = serde_json::from_value(serde_json::Value::String(snapshot.clone())).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
+            let held: Option<Pointer> = std::fs::read(&pointer_path).ok().and_then(|b| serde_json::from_slice(&b).ok());
+            // The bucket's pointer advances a local one only when its fence, then its snapshot, is newer.
+            if let Some(h) = &held {
+                if (h.fence.unwrap_or(0), &h.snapshot_id) >= (pointer.fence, &snapshot_id) {
+                    continue;
+                }
+            }
             let table_dir = pointer_path.parent().map(Path::to_path_buf).unwrap_or_default();
             if let Some(missing) = missing_parts(&table_dir, &snapshot)? {
                 if replica {
@@ -330,11 +465,12 @@ impl Syncer {
                     ))
                     .into());
                 }
-                return Err(StoreError::SyncPullDidNotConverge(format!("snapshot `{snapshot}` lacks `{missing}`; its pointer is not written")).into());
+                return Err(StoreError::SyncPullDidNotConverge(format!("snapshot `{snapshot}` lacks `{missing}`; no pointer is written")).into());
             }
-            let snapshot_id: SnapshotId = serde_json::from_value(serde_json::Value::String(snapshot.clone())).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
-            let local = Pointer { snapshot_id, fence: Some(pointer.fence) };
-            write(&pointer_path, &serde_json::to_vec_pretty(&local).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?)?;
+            advancing.push((rel_key, pointer_path, Pointer { snapshot_id, fence: Some(pointer.fence) }));
+        }
+        for (rel_key, path, pointer) in advancing {
+            write(&path, &serde_json::to_vec_pretty(&pointer).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?)?;
             report.pointers.push(rel_key);
         }
         Ok(report)
@@ -474,9 +610,7 @@ fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
     }
-    let tmp = path.with_file_name(format!(".{}.pull", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
-    std::fs::write(&tmp, bytes).map_err(|e| io(&tmp, e))?;
-    std::fs::rename(&tmp, path).map_err(|e| io(path, e))
+    Ok(contextful_context::store::replace_file(path, bytes)?)
 }
 
 /// The push guard: one push of one store per machine, held by an advisory lock the

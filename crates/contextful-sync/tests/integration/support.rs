@@ -38,13 +38,17 @@ pub fn node(id: &str, bucket: Arc<dyn ObjectStore>, extra_config: &str) -> Node 
 
 impl Node {
     pub fn land(&self, run: &str, rows: serde_json::Value, now: &str) {
+        self.land_into("filings", run, rows, now)
+    }
+
+    pub fn land_into(&self, table: &str, run: &str, rows: serde_json::Value, now: &str) {
         let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
         let ctx = RunContext {
             node: NodeId::parse(&self.syncer.node).unwrap(),
             injection: Injection { run_id: run.into(), site_id: "site".into(), batch_seq: Some(0), authored_by: None },
             committed_at: at(now),
         };
-        land(&self.syncer.store, &TableDecl::named("filings"), &Batch { rows, types: Default::default() }, &ctx).unwrap();
+        land(&self.syncer.store, &TableDecl::named(table), &Batch { rows, types: Default::default() }, &ctx).unwrap();
     }
 
     pub fn root(&self) -> std::path::PathBuf {

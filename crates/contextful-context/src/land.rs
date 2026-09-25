@@ -43,6 +43,8 @@ pub struct Position {
     pub cursor: Option<Value>,
     /// The fence of the lease the commit runs under.
     pub fence: Option<u64>,
+    /// The run commits through its node's commit log, which makes it readable.
+    pub logged: bool,
 }
 
 /// The type a JSON value carries on its own.
@@ -312,6 +314,7 @@ pub fn land_batches(
         pipeline_id: position.pipeline_id.clone(),
         cursor: position.cursor.clone(),
         fence: position.fence,
+        logged: position.logged,
     };
     std::fs::create_dir_all(&node_dir).at(&node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");

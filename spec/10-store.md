@@ -316,7 +316,9 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *P3*
 - `in-flight` — A second push of one store on one machine raises `SyncPushInFlight`, naming the holder of the push guard.
   *A-store*
-- `wire-format` — A push uploads each store file whose digest the bucket manifest lacks under `<prefix>/<project>/<path>`; the machine catalogs, `config.toml`, locks, staging directories and table pointers stay local.
+- `wire-format` — A push uploads each file it owns, or no node owns, whose digest the bucket lacks under `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks, staging directories and table pointers stay local.
+- `schema-cas` — A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and replacing it on the ETag read; no copy overwrites another.
+  *because two nodes landing different columns into one table both keep them*
 - `manifest-commit` — A push commits when the bucket manifest, `<prefix>/manifest.json` listing each key's sha256, size and owner, replaces the copy it read under `If-Match` on that copy's ETag.
   *A-store*
 
@@ -357,6 +359,10 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
 - `unconverged` — Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.
   *P4*
 - `pointer-last` — A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.
+  *A-store*
+- `tombstone-applied` — A pull deletes the local copy of each key a tombstone names and no entry lists.
+  *because a deletion that never reaches a consumer resurrects once its tombstone ages out*
+- `pointer-advance` — A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a later snapshot, and verifies every advancing table before writing any pointer.
   *A-store*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
   *because rows landed locally carry columns the bucket's copy may lack*
@@ -411,9 +417,9 @@ Reconciling one bucket manifest between writers: per-entry ownership, tombstones
   *A-store*
 - `cursor-recency` — Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.
   *A-run*
-- `scoped-union` — A merge takes every local entry, and from the remote only entries this writer does not own; a remote entry it owns and no longer holds leaves with a tombstone.
+- `scoped-union` — A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a remote entry it owns and no longer holds leaves with a tombstone.
   *A-store*
-- `ownership` — A key's owner is read off the key: a run directory's node segment, or a request-ledger file's node. Every other key is unowned and propagates no deletion.
+- `ownership` — A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, or a commit log's node directory. Every other key is unowned and propagates no deletion.
   *A-store*
 
 unsettled: Which key signs a tombstone, given a node id carries no key material? owner: store affects: store.merge
@@ -440,7 +446,7 @@ Single-writer exclusion over a pipeline or a table's compaction: two implementat
   *A-store*
 - `pointer-fence` — Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.
   *A-store*
-- `commit-log` — Under a pipeline lease, a run commits by creating the next `cursors/<pipeline-id>/<seq>.json`, and an acquisition creates one carrying its fence; a fenced run manifest is readable once the log records it.
+- `commit-log` — Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.
   *A-store*
 
 ```mermaid
@@ -478,7 +484,7 @@ The store tree and its bucket mirror:
   derived.sqlite                         not synced
   machine.sqlite                         not synced
   config.toml
-  cursors/<pipeline-id>/<seq>.json       commit log of a leased pipeline
+  cursors/<pipeline-id>/<node-id>/<seq>.json   commit log of a leased pipeline, per node
   tables/<t>/
     schema.json
     _pointer.json

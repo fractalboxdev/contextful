@@ -14,9 +14,10 @@ fn manifest(b: &dyn ObjectStore) -> BucketManifest {
     serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap()
 }
 
-/// A push uploads each store file whose digest the bucket manifest lacks under `<prefix>/<project>/<path>`; the
-/// machine catalogs, `config.toml`, locks, staging directories and table pointers stay local.
-// spec: store.push.wire-format@3a754ee2
+/// A push uploads each file it owns, or no node owns, whose digest the bucket lacks under
+/// `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks, staging directories
+/// and table pointers stay local.
+// spec: store.push.wire-format@eee2b392
 #[test]
 fn a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local() {
     let dir = tempfile::tempdir().unwrap();

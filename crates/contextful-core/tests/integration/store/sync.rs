@@ -46,13 +46,19 @@ fn prefix_and_prefix_from_together_refuse() {
     assert!(matches!(c.resolve_prefix(|_| Some("x".into())), Err(StoreError::SyncPrefixOverspecified(_))));
 }
 
-/// A key's owner is read off the key: a run directory's node segment, or a request-ledger file's node. Every
-/// other key is unowned and propagates no deletion.
-// spec: store.merge.ownership@27a73fc3
+/// A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, or a commit
+/// log's node directory. Every other key is unowned and propagates no deletion.
+// spec: store.merge.ownership@4c2db0b5
 #[test]
 fn a_keys_owner_is_read_off_the_key() {
     assert_eq!(owner_of(RUN_A).as_deref(), Some("ingest-a"));
     assert_eq!(owner_of("research/tables/filings/requests/run-1.ingest-b.parquet").as_deref(), Some("ingest-b"));
+    assert_eq!(owner_of("research/tables/filings/requests/run.2030.01.ingest-b.parquet").as_deref(), Some("ingest-b"), "a dotted run id");
+    assert_eq!(owner_of("research/cursors/feed/ingest-c/00000000000000000001.json").as_deref(), Some("ingest-c"));
+    // A table named `runs`, or nesting `data/runs` in its name, reads its own run directory.
+    assert_eq!(owner_of("research/tables/runs/data/runs/run-1/ingest-d/part-00000.parquet").as_deref(), Some("ingest-d"));
+    assert_eq!(owner_of("runs/x"), None, "a key opening with `runs` has no underflow");
+    assert_eq!(owner_of("research/tables/a/data/runs/run-1/_manifest.json"), None, "a short run path owns nothing");
     for unowned in [SCHEMA, "research/tables/filings/data/snapshots/snapshot-01/part-00000.parquet", "research/cursors/feed/00000000000000000001.json"] {
         assert_eq!(owner_of(unowned), None, "{unowned}");
     }
@@ -62,9 +68,9 @@ fn a_keys_owner_is_read_off_the_key() {
     assert!(m.manifest.entries.contains_key(SCHEMA) && m.manifest.tombstones.is_empty());
 }
 
-/// A merge takes every local entry, and from the remote only entries this writer does not own; a remote entry it
-/// owns and no longer holds leaves with a tombstone.
-// spec: store.merge.scoped-union@99bebb67
+/// A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a
+/// remote entry it owns and no longer holds leaves with a tombstone.
+// spec: store.merge.scoped-union@d0d3b811
 #[test]
 fn a_merge_keeps_every_local_entry_and_only_the_remote_entries_it_does_not_own() {
     let now = at("2030-01-01T00:00:00Z");
@@ -76,6 +82,9 @@ fn a_merge_keeps_every_local_entry_and_only_the_remote_entries_it_does_not_own()
     let local: BTreeMap<String, Entry> = [(RUN_A.to_string(), entry("a", "ingest-a")), (SCHEMA.to_string(), entry("s2", ""))].into();
     let m = merge(&remote, &local, "ingest-a", now).unwrap().manifest;
     assert_eq!(m.entries.keys().collect::<Vec<_>>(), [RUN_A, RUN_B, SCHEMA]);
+    // A local copy of another node's key never replaces the owner's entry.
+    let stale: BTreeMap<String, Entry> = [(RUN_B.to_string(), entry("stale", "ingest-b"))].into();
+    assert_eq!(merge(&remote, &stale, "ingest-a", now).unwrap().manifest.entries[RUN_B].sha256, "b");
     assert_eq!(m.entries[SCHEMA].sha256, "s2", "the local copy wins");
     assert_eq!(m.tombstones.get(gone), Some(&Tombstone { owner: "ingest-a".into(), deleted_at: now }));
 }

@@ -182,6 +182,8 @@ impl Store {
     pub fn committed_runs(&self, table: &str) -> Result<Vec<RunManifest>> {
         let runs_dir = self.table_dir(table)?.join("data").join("runs");
         let mut out = Vec::new();
+        // One read of each (pipeline, node) commit log per call.
+        let mut logs: std::collections::HashMap<(String, String), Vec<commit_log::CommitEntry>> = std::collections::HashMap::new();
         for run_dir in sorted_dirs(&runs_dir)? {
             for node_dir in sorted_dirs(&run_dir)? {
                 let path = node_dir.join(MANIFEST_FILE);
@@ -201,9 +203,15 @@ impl Store {
                     ))
                     .into());
                 }
-                // A fenced run is readable once its pipeline's commit log records it under that fence.
-                if let (Some(fence), Some(pipeline)) = (m.fence, m.pipeline_id.as_deref()) {
-                    if !commit_log::committed(&crate::commit_log::read(self, pipeline)?, table, &m.run_id, fence) {
+                // A run written under the commit-log protocol is readable once its node's log
+                // records it under its fence; a manifest without the mark reads as committed.
+                if let (true, Some(fence), Some(pipeline)) = (m.logged, m.fence, m.pipeline_id.as_deref()) {
+                    let key = (pipeline.to_string(), m.node_id.clone());
+                    if !logs.contains_key(&key) {
+                        let log = crate::commit_log::read(self, pipeline, &m.node_id)?;
+                        logs.insert(key.clone(), log);
+                    }
+                    if !commit_log::committed(&logs[&key], table, &m.run_id, fence) {
                         continue;
                     }
                 }
@@ -410,8 +418,9 @@ pub(crate) fn sorted_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-/// Write to a sibling temporary file, then rename it over `path`.
-pub(crate) fn replace_file(path: &Path, bytes: &[u8]) -> Result<()> {
+/// Replace `path` with `bytes` through a private temporary file and one rename, so a
+/// reader meets the old file or the new one.
+pub fn replace_file(path: &Path, bytes: &[u8]) -> Result<()> {
     let tmp = tmp_sibling(path);
     fs::write(&tmp, bytes).at(&tmp)?;
     fs::rename(&tmp, path).at(path)

@@ -184,7 +184,7 @@ fn compact(s: &Syncer, decls: &[TableDecl], table: &str, lease: &contextful_sync
     let published = s.push(at).and_then(|_| s.publish(table, snapshot_id, lease));
     if let Err(e) = published {
         match before {
-            Some(b) => std::fs::write(&pointer_path, b)?,
+            Some(b) => contextful_context::store::replace_file(&pointer_path, &b)?,
             None => {
                 let _ = std::fs::remove_file(&pointer_path);
             }
@@ -193,6 +193,6 @@ fn compact(s: &Syncer, decls: &[TableDecl], table: &str, lease: &contextful_sync
     }
     // The local pointer carries the fence it was published under, as a pulled one does.
     let published = Pointer { snapshot_id: serde_json::from_value(serde_json::Value::String(snapshot_id.clone()))?, fence: Some(lease.lease.fence) };
-    std::fs::write(&pointer_path, serde_json::to_vec_pretty(&published)?)?;
+    contextful_context::store::replace_file(&pointer_path, &serde_json::to_vec_pretty(&published)?)?;
     Ok(outcome)
 }
