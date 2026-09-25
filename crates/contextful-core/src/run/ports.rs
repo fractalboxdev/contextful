@@ -90,3 +90,18 @@ pub trait Destination {
     /// The newest commit marker `pipeline_id` wrote to `table`.
     fn newest_marker(&self, pipeline_id: &str, table: &str) -> Result<Option<Marker>, Failure>;
 }
+
+/// The stages a recorded batch passes between the journal and the land path: normalize,
+/// the transform chain and write-path redaction (`run.land.stage-order`).
+pub trait Shape {
+    fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, super::RunError>;
+}
+
+/// The shape that passes a batch through unchanged.
+pub struct Unshaped;
+
+impl Shape for Unshaped {
+    fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, super::RunError> {
+        Ok(rows)
+    }
+}

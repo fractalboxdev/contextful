@@ -3,5 +3,6 @@
 mod context;
 mod differential;
 mod formal;
+mod pipeline;
 mod run;
 mod token;

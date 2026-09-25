@@ -3,6 +3,7 @@
 mod cancel;
 mod command;
 mod coordinate;
+mod guard;
 mod journal;
 mod project;
 mod writers;

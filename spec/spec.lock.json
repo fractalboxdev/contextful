@@ -5633,6 +5633,17 @@
       "line": 66
     },
     {
+      "id": "run.declare.table-name-collision",
+      "contract": "run",
+      "operation": "declare",
+      "subject": "table-name-collision",
+      "kind": "refusal",
+      "statement": "Two tables whose destination names fold to one spelling, within one pipeline or across pipelines, raise `PipelineTableNameCollision` at validation, naming both declarations.",
+      "why": "because two tables folding to one name land in one store table and interleave their rows",
+      "file": "spec/31-pipeline.md",
+      "line": 67
+    },
+    {
       "id": "run.declare.unbound-table-name",
       "contract": "run",
       "operation": "declare",
@@ -5641,7 +5652,7 @@
       "statement": "A job target or model reference naming a destination table in a spelling the fold does not produce raises `PipelineUnboundTableName`, printing the expected spelling.",
       "why": "P1",
       "file": "spec/31-pipeline.md",
-      "line": 67
+      "line": 69
     },
     {
       "id": "run.declare.table-entry",
@@ -5652,7 +5663,7 @@
       "statement": "A `tables` entry is a bare name or an object carrying that table's configuration; the two forms mix in one array.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 69
+      "line": 71
     },
     {
       "id": "run.declare.order-by-default",
@@ -5663,7 +5674,7 @@
       "statement": "`order_by` defaults to the injected ingest stamp and is inert on a keyless table; key semantics are {{store.declare.unkeyed-union}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 70
+      "line": 72
     },
     {
       "id": "run.declare.write-mode",
@@ -5674,7 +5685,7 @@
       "statement": "`write_mode` is `append`, the default, or `replace`. Under `append` a run adds rows and no key retires; under `replace` the landing run is the table's whole current state.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 71
+      "line": 73
     },
     {
       "id": "run.declare.replace-unsupported",
@@ -5685,7 +5696,7 @@
       "statement": "`replace` beside a `monotonic` or `opaque-token` cursor, a backfill chunk plan or a seed ceiling raises `PipelineReplaceUnsupported`, naming the table.",
       "why": "P1",
       "file": "spec/31-pipeline.md",
-      "line": 72
+      "line": 74
     },
     {
       "id": "run.declare.config-key",
@@ -5696,7 +5707,7 @@
       "statement": "A source config key outside the set that source enumerates raises `PipelineUnknownConfigKey` before any I/O, naming the key and the accepted keys; request headers and the forwarded guest table are exempt.",
       "why": "P1",
       "file": "spec/31-pipeline.md",
-      "line": 74
+      "line": 76
     },
     {
       "id": "run.declare.lifecycle-verbs",
@@ -5707,7 +5718,7 @@
       "statement": "`plan` diffs desired state against the store with no side effect, `--json` emitting a structured diff; `apply` converges every pipeline or one; `run` fires one pipeline once; `serve` reconciles continuously.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 76
+      "line": 78
     },
     {
       "id": "run.declare.apply-fires-nothing",
@@ -5718,7 +5729,7 @@
       "statement": "Applying a manifest fires nothing of itself; a second `apply` over unchanged sources is a no-op modulo elapsed schedules.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 77
+      "line": 79
     },
     {
       "id": "run.declare.table-error",
@@ -5726,10 +5737,10 @@
       "operation": "declare",
       "subject": "table-error",
       "kind": "behavior",
-      "statement": "`on_table_error` is abort, the default, halting the fire at the first failing table, or continue, recording the failure and returning success with the failed run ids.",
+      "statement": "`on_table_error` is abort, the default, halting the fire at the first failing table, or continue, landing every other table and reporting the failed run ids through {{run.declare.table-error-exit}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 78
+      "line": 80
     },
     {
       "id": "run.declare.table-error-exit",
@@ -5740,7 +5751,7 @@
       "statement": "Under continue, `run` exits non-zero naming the failed runs, `apply` prints a partial line, and a scheduled fire appends its failure count to its log line.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 79
+      "line": 81
     },
     {
       "id": "run.declare.chunked-load",
@@ -5751,7 +5762,7 @@
       "statement": "`on_table_error` governs the single-pass live pull alone; a seed or backfill chunk plan halts the fire on failure under either setting.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 80
+      "line": 82
     },
     {
       "id": "run.declare.incremental-field",
@@ -5762,7 +5773,7 @@
       "statement": "`incremental = \"<field>\"` names the stream clock on the pipeline. Declared, the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}; undeclared, it refetches in full.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 81
+      "line": 83
     },
     {
       "id": "run.compile.authoring-surface",
@@ -5773,7 +5784,7 @@
       "statement": "The authoring surface runs at build time only and emits a content-hashed plan; nothing from it executes where the engine serves, and no build profile embeds a scripting runtime.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 91
+      "line": 93
     },
     {
       "id": "run.compile.plan-node",
@@ -5784,7 +5795,7 @@
       "statement": "A plan is a flat node list with predecessor edges: `step` (connector, optional retry), `sleep` (duration string), `awaitEvent` (optional timeout), `branch` (predicate, label-to-node-id map) and `parallel` (node ids).",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 93
+      "line": 95
     },
     {
       "id": "run.compile.plan-version",
@@ -5795,7 +5806,7 @@
       "statement": "A plan's version is the leading 16 chars of the sha256 over the RFC 8785 canonical JSON of its `{id, nodes}`.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 94
+      "line": 96
     },
     {
       "id": "run.compile.plan-schema",
@@ -5806,7 +5817,7 @@
       "statement": "The plan type is defined once in a schema library; its JSON Schema is the contract every language binds to, and the run path deserializes plan JSON against it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 95
+      "line": 97
     },
     {
       "id": "run.compile.inline-step-body",
@@ -5817,7 +5828,7 @@
       "statement": "A `step` body other than a connector reference raises `PipelineInlineStepBody`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 96
+      "line": 98
     },
     {
       "id": "run.compile.control-flow",
@@ -5828,7 +5839,7 @@
       "statement": "A data-dependent conditional or loop in a workflow body raises `PipelineUndeclaredControlFlow`; branching travels as `branch` and fan-out as `parallel`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 98
+      "line": 100
     },
     {
       "id": "run.compile.node-id-collision",
@@ -5839,7 +5850,7 @@
       "statement": "A node id repeated in one plan raises `PipelineNodeIdCollision`, naming the id and both positions.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 100
+      "line": 102
     },
     {
       "id": "run.compile.lowering",
@@ -5850,7 +5861,7 @@
       "statement": "A plan lowers node by node onto {{run.journal.substrate-port}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 102
+      "line": 104
     },
     {
       "id": "run.transform.chain",
@@ -5861,7 +5872,7 @@
       "statement": "The chain is an ordered list of `select`, `rename`, `cast` and a single-column `filter`, declared once per pipeline and bound to the root table.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 108
+      "line": 110
     },
     {
       "id": "run.transform.arity",
@@ -5872,7 +5883,7 @@
       "statement": "A chain operation emitting more rows than it consumed raises `PipelineTransformArity`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 109
+      "line": 111
     },
     {
       "id": "run.transform.filter",
@@ -5883,7 +5894,7 @@
       "statement": "A filter dropping a root row drops that row's nested children with it.",
       "why": "because a child landing under a parent id no surviving row carries is a dangling reference",
       "file": "spec/31-pipeline.md",
-      "line": 111
+      "line": 113
     },
     {
       "id": "run.transform.column-missing",
@@ -5894,7 +5905,7 @@
       "statement": "A filter or cast naming a column the batch does not carry raises `PipelineTransformColumnMissing`, printing the column and the table.",
       "why": "because a cast over an absent column otherwise lands the batch untransformed",
       "file": "spec/31-pipeline.md",
-      "line": 113
+      "line": 115
     },
     {
       "id": "run.transform.cast",
@@ -5905,7 +5916,7 @@
       "statement": "A cast rewrites one column's type and keeps its name and position.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 115
+      "line": 117
     },
     {
       "id": "run.transform.projection",
@@ -5916,7 +5927,7 @@
       "statement": "`select` fixes the outgoing column set by name, and `rename` maps an incoming name onto an outgoing one.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 116
+      "line": 118
     },
     {
       "id": "run.normalize.host-stage",
@@ -5927,7 +5938,7 @@
       "statement": "Type inference over deferred-typing JSON, struct flattening, list-to-child extraction and id assignment run in engine code; no connector reimplements them and no dataframe library participates.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 124
+      "line": 126
     },
     {
       "id": "run.normalize.normalized-form",
@@ -5938,7 +5949,7 @@
       "statement": "The canonical form is nested Arrow structs and lists; relational shredding is a late projection at the sink, so a source landing in two sinks normalizes once.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 125
+      "line": 127
     },
     {
       "id": "run.normalize.mode",
@@ -5949,7 +5960,7 @@
       "statement": "`native` keeps nesting up to the sink's capability and explodes the rest with a downgrade schema-diff event; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 126
+      "line": 128
     },
     {
       "id": "run.normalize.mode-resolution",
@@ -5960,7 +5971,7 @@
       "statement": "Mode resolves per stream per sink: explicit declaration, then sink capability, then `native`.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 127
+      "line": 129
     },
     {
       "id": "run.normalize.mode-unknown",
@@ -5971,7 +5982,7 @@
       "statement": "A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 128
+      "line": 130
     },
     {
       "id": "run.normalize.identity-columns",
@@ -5982,7 +5993,7 @@
       "statement": "Normalize injects a content-hash row id on every table, a load id on the root, a parent id and list index on each child, and a root id on a child nested deeper than one level.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 130
+      "line": 132
     },
     {
       "id": "run.normalize.row-id",
@@ -5993,7 +6004,7 @@
       "statement": "The row id hashes the row's own content, so a re-run of one input emits byte-identical ids.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 131
+      "line": 133
     },
     {
       "id": "run.normalize.list-index-missing",
@@ -6004,7 +6015,7 @@
       "statement": "A relational child table emitted without the list index that makes its projection reversible raises `PipelineListIndexMissing`, naming the parent and the list.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 132
+      "line": 134
     },
     {
       "id": "run.normalize.nesting-depth",
@@ -6015,7 +6026,7 @@
       "statement": "Recursion stops at the declared depth, default five levels, landing a deeper subtree as one deferred-typing JSON column.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 134
+      "line": 136
     },
     {
       "id": "run.guard-secrets.placement",
@@ -6026,7 +6037,7 @@
       "statement": "The secret guard runs at the one pull path streaming and backfill share, ahead of the recorded pull and the land path, so a replay reintroduces no credential.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 142
+      "line": 144
     },
     {
       "id": "run.guard-secrets.matchers",
@@ -6037,7 +6048,7 @@
       "statement": "Matchers are linear-time and regex-free, covering AWS access-key ids, PEM private keys, GitHub and Slack tokens, and `keyword=<token>` assignments; the pattern catalogue lives in code under a precision and recall fixture test.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 143
+      "line": 145
     },
     {
       "id": "run.guard-secrets.mask-span",
@@ -6048,7 +6059,7 @@
       "statement": "The replacement covers only the matched byte ranges, widened to character boundaries; overlapping spans merge under the higher-priority pattern.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 144
+      "line": 146
     },
     {
       "id": "run.guard-secrets.mask-replacement",
@@ -6059,7 +6070,7 @@
       "statement": "The replacement is the fixed `[REDACTED:secret]` marker, never a shape-preserving transform; an assignment keeps its `key=` prefix.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 145
+      "line": 147
     },
     {
       "id": "run.guard-secrets.mask-only",
@@ -6070,7 +6081,7 @@
       "statement": "The guard is on by default and blocks no run; each pull logs the count of masked cells per column.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 146
+      "line": 148
     },
     {
       "id": "run.guard-secrets.coverage",
@@ -6081,7 +6092,7 @@
       "statement": "The guard reads pre-normalize string cells for plaintext shapes; encoded material and a credential split across two cells pass through.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 147
+      "line": 149
     },
     {
       "id": "run.land.stage-order",
@@ -6092,7 +6103,7 @@
       "statement": "A batch passes pull, the secret guard, the recorded pull, normalize, the transform chain, write-path redaction, shredding and batch write; the run then commits rows and position together through {{run.advance.commit-with-rows}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 155
+      "line": 157
     },
     {
       "id": "run.land.unknown-destination",
@@ -6103,7 +6114,7 @@
       "statement": "The local context store is the only destination, and synthesized artifacts write back through it; any other `destination` raises `PipelineUnknownDestination` at assembly, before any row moves.",
       "why": "A-topology",
       "file": "spec/31-pipeline.md",
-      "line": 156
+      "line": 158
     },
     {
       "id": "run.land.no-host-arm",
@@ -6114,7 +6125,7 @@
       "statement": "The destination world declares no host arm, so a guest supplies no destination.",
       "why": "A-topology",
       "file": "spec/31-pipeline.md",
-      "line": 158
+      "line": 160
     },
     {
       "id": "run.land.batch-write",
@@ -6125,7 +6136,7 @@
       "statement": "A landing table is created on first sight of its schema, {{store.reconcile.first-sight}}; each batch is written durably in its own call, optionally carrying its ordinal as the join key onto the run's request ledger.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 160
+      "line": 162
     },
     {
       "id": "run.land.irreconcilable-schema",
@@ -6136,7 +6147,7 @@
       "statement": "An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 161
+      "line": 163
     },
     {
       "id": "run.land.commit-visibility",
@@ -6147,7 +6158,7 @@
       "statement": "A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 162
+      "line": 164
     },
     {
       "id": "run.land.ingest-tally",
@@ -6158,7 +6169,7 @@
       "statement": "A fire reports `fetched`, `kept`, `skipped`, `failed`, `dropped_low_quality` and a per-source breakdown; a non-zero `failed` exits non-zero.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 163
+      "line": 165
     },
     {
       "id": "run.land.unreadable-input",
@@ -6169,7 +6180,7 @@
       "statement": "Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull.",
       "why": "A-connector",
       "file": "spec/31-pipeline.md",
-      "line": 164
+      "line": 166
     },
     {
       "id": "run.land.partial-parse",
@@ -6180,7 +6191,7 @@
       "statement": "A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts.",
       "why": "A-connector",
       "file": "spec/31-pipeline.md",
-      "line": 166
+      "line": 168
     },
     {
       "id": "run.land.parse-boundary",
@@ -6191,7 +6202,7 @@
       "statement": "A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it killable.",
       "why": "A-connector",
       "file": "spec/31-pipeline.md",
-      "line": 168
+      "line": 170
     },
     {
       "id": "run.land.parse-crashed",
@@ -6202,7 +6213,7 @@
       "statement": "A non-zero exit or fatal signal from the decode process raises `PipelineParseCrashed` naming the input; no input ends the serving process.",
       "why": "A-connector",
       "file": "spec/31-pipeline.md",
-      "line": 170
+      "line": 172
     },
     {
       "id": "run.land.table-failed",
@@ -6213,7 +6224,7 @@
       "statement": "A table whose pull fails raises `PipelineTableFailed` carrying the table, the error kind and the run id; the fire then follows `on_table_error`.",
       "why": "because a failure is answerable by name only when it carries its table and run",
       "file": "spec/31-pipeline.md",
-      "line": 172
+      "line": 174
     },
     {
       "id": "run.backfill.phase",
@@ -6224,7 +6235,7 @@
       "statement": "The catalog records one phase per pipeline: `planning` computes the chunk plan with nothing fetched, `seeding` loads consumer-held history, `backfilling` runs chunks across ticks, `streaming` pulls the incremental delta.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 203
+      "line": 205
     },
     {
       "id": "run.backfill.chunk-plan",
@@ -6235,7 +6246,7 @@
       "statement": "Plan shape follows cursor kind: `monotonic` plans independent time-window or id-range chunks, `opaque-token` one sequential chunk walked in order, `snapshot-id` version ranges sequential per stream and parallel across streams.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 204
+      "line": 206
     },
     {
       "id": "run.backfill.chunk-parallelism",
@@ -6246,7 +6257,7 @@
       "statement": "A sequential chunk plan declared beside a parallelism above one raises `PipelineChunkParallelism`, naming the plan and the value.",
       "why": "because two workers walking one continuation token skip or duplicate pages silently",
       "file": "spec/31-pipeline.md",
-      "line": 205
+      "line": 207
     },
     {
       "id": "run.backfill.chunk",
@@ -6257,7 +6268,7 @@
       "statement": "A chunk row carries pipeline id, chunk id, predicate, status, attempt count, start and completion instants and a cursor-committed flag; an interrupted plan resumes at the first chunk not done.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 207
+      "line": 209
     },
     {
       "id": "run.backfill.chunk-lease",
@@ -6268,7 +6279,7 @@
       "statement": "A worker leases a chunk row, recording node id and attempt, for a 300 s time-to-live renewed every 60 s, and writes under a path segmented by run, node, chunk and attempt.",
       "why": "because an unquantified lease cannot be tested against a paused worker",
       "file": "spec/31-pipeline.md",
-      "line": 208
+      "line": 210
     },
     {
       "id": "run.backfill.fenced-commit",
@@ -6279,7 +6290,7 @@
       "statement": "A chunk commits in one catalog update conditioned on `attempt = :mine AND status != 'done'`; an update matching no row leaves that worker's files uncommitted.",
       "why": "because an expired holder otherwise commits over its successor",
       "file": "spec/31-pipeline.md",
-      "line": 210
+      "line": 212
     },
     {
       "id": "run.backfill.commit-signal",
@@ -6290,7 +6301,7 @@
       "statement": "The catalog row, not directory presence, is the commit signal; files under a path with no done row are collected by a retention window.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 212
+      "line": 214
     },
     {
       "id": "run.backfill.attempt-isolation",
@@ -6301,7 +6312,7 @@
       "statement": "An expired lease lets a second worker claim the chunk, increment the attempt and write under its own path.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 213
+      "line": 215
     },
     {
       "id": "run.backfill.tick",
@@ -6312,7 +6323,7 @@
       "statement": "While a pipeline backfills, a tick dispatches up to the per-tick chunk cap or no-ops when the queue is full; the declared cadence resumes once the position catches up.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 214
+      "line": 216
     },
     {
       "id": "run.backfill.block",
@@ -6323,7 +6334,7 @@
       "statement": "`[pipeline.backfill]` declares `max_chunks`, the bound on a plan's chunk count; `chunk_size`, one clock-ranged chunk's width in cursor units; and `start_from`, the floor, default zero.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 215
+      "line": 217
     },
     {
       "id": "run.backfill.rewind",
@@ -6334,7 +6345,7 @@
       "statement": "A rewind returns every chunk overlapping the half-open range to pending and appends one reason row per rewound chunk to an audit log a catalog rebuild leaves untouched.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 216
+      "line": 218
     },
     {
       "id": "run.backfill.rewind-invalid",
@@ -6345,7 +6356,7 @@
       "statement": "An inverted, empty or scale-incomparable rewind window raises `PipelineRewindWindowInvalid`; a window overlapping no chunk is a no-op.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 217
+      "line": 219
     },
     {
       "id": "run.seed.block",
@@ -6356,7 +6367,7 @@
       "statement": "`[pipeline.seed]` attaches a bulk-load source with a ceiling `below` expressed on the seeded table's `order_by` scale.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 236
+      "line": 238
     },
     {
       "id": "run.seed.one-land-path",
@@ -6367,7 +6378,7 @@
       "statement": "Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded under the `seeding` phase.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 237
+      "line": 239
     },
     {
       "id": "run.seed.declaration-missing",
@@ -6378,7 +6389,7 @@
       "statement": "A seeded table without `primary_key`, or with `order_by` left at the ingest stamp, raises `PipelineSeedDeclarationMissing` at plan and validate.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 238
+      "line": 240
     },
     {
       "id": "run.seed.ceiling-breached",
@@ -6389,7 +6400,7 @@
       "statement": "A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 240
+      "line": 242
     },
     {
       "id": "run.seed.ceiling-point",
@@ -6400,7 +6411,7 @@
       "statement": "The ceiling is evaluated on the root batch after normalize and the chain, before the write.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 242
+      "line": 244
     },
     {
       "id": "run.seed.ceiling-unevaluable",
@@ -6411,7 +6422,7 @@
       "statement": "A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "run.seed.scope",
@@ -6422,7 +6433,7 @@
       "statement": "Seed chunk and cursor state live under a `<table>#seed` scope apart from the live pipeline's.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "run.seed.connector-pin",
@@ -6433,7 +6444,7 @@
       "statement": "A seeding run is exempt from {{run.own.pinned-plan-changed}} and records its connector identity as provenance.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 246
+      "line": 248
     },
     {
       "id": "run.seed.ceiling-binding",
@@ -6444,7 +6455,7 @@
       "statement": "On seed commit, an unset `monotonic` live position takes the ceiling when `below` parses as an integer; under the other cursor kinds the live position stays unset and starts from the source's beginning.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 247
+      "line": 249
     },
     {
       "id": "run.seed.fingerprint",
@@ -6455,7 +6466,7 @@
       "statement": "Each run probes the seed source for a cheap fingerprint, a stat or a HEAD and never a download, and compares it with the one stamped at commit.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 248
+      "line": 250
     },
     {
       "id": "run.seed.source-changed",
@@ -6466,7 +6477,7 @@
       "statement": "A differing fingerprint raises `PipelineSeedSourceChanged` naming both values; an equal one skips the load, and an unavailable one skips with a warning.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 249
+      "line": 251
     },
     {
       "id": "run.seed.commands",
@@ -6477,7 +6488,7 @@
       "statement": "`seed status` prints each seeded table's ceiling, commit state and fingerprint match; `seed reset <pipeline> [--table T]` clears the seed's chunk plan.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 251
+      "line": 253
     },
     {
       "id": "run.seed.parity",
@@ -6488,7 +6499,7 @@
       "statement": "Over keys the vendor still returns, seeding then running live across an overlapping window yields a pure live backfill's row count and per-key winners; a key the vendor stopped returning keeps its seeded value.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 252
+      "line": 254
     },
     {
       "id": "run.seed.parity-audit",
@@ -6499,7 +6510,7 @@
       "statement": "`validate` audits the seed ordering over every landed row, not over the deduped view.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 253
+      "line": 255
     },
     {
       "id": "run.seed.compaction-cadence",
@@ -6510,7 +6521,7 @@
       "statement": "A seeded pipeline declares a scheduled fold covering each seeded table.",
       "why": "because without a snapshot the seeded and live rows for one key both survive the union read",
       "file": "spec/31-pipeline.md",
-      "line": 254
+      "line": 256
     },
     {
       "id": "run.publish.manifest-commit",
@@ -6521,7 +6532,7 @@
       "statement": "A published table's contract identity, freshness and current build ride the snapshot manifest commit that publishes its data; no separate file is authoritative for any of them.",
       "why": "because separately written artifacts make a torn publication representable",
       "file": "spec/31-pipeline.md",
-      "line": 261
+      "line": 263
     },
     {
       "id": "run.publish.contract-identity",
@@ -6532,7 +6543,7 @@
       "statement": "A published table's identity is `contract_version` beside `schema_fingerprint`, taken over the declared columns, their types and the grain.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 263
+      "line": 265
     },
     {
       "id": "run.publish.contract-mismatch",
@@ -6543,7 +6554,7 @@
       "statement": "A materialization whose columns, types or grain miss the declared contract raises `PipelineContractMismatch`, naming the column and the expectation.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "run.publish.staging",
@@ -6554,7 +6565,7 @@
       "statement": "A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "run.publish.history-logs",
@@ -6565,7 +6576,7 @@
       "statement": "`contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests; a log disagreeing with a manifest is regenerated from it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "run.publish.build-entry",
@@ -6576,7 +6587,7 @@
       "statement": "A build entry carries build id, start and completion instants, a status of published, refused or partial, the contract identity, and the partition values it left unfilled.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 269
+      "line": 271
     },
     {
       "id": "run.publish.freshness",
@@ -6587,7 +6598,7 @@
       "statement": "Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness is derived from watermark against `max_lag` and never stored.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "run.publish.hold",
@@ -6598,7 +6609,7 @@
       "statement": "A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 271
+      "line": 273
     },
     {
       "id": "run.publish.manifest-section",
@@ -6609,7 +6620,7 @@
       "statement": "The manifest section carries `{contract_version, schema_fingerprint, build_id, last_built_at, watermark, max_lag, last_build_status, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build, an absent optional key omitted.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "run.publish.semantics-version",
@@ -6620,7 +6631,7 @@
       "statement": "`semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 273
+      "line": 275
     },
     {
       "id": "run.publish.disclosure-digest",
@@ -6631,7 +6642,7 @@
       "statement": "A build records a digest over its declared disclosure policy, set-valued fields sorted, in the manifest and in the build log.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "run.select.required-key",
@@ -16024,6 +16035,10 @@
       "store.declare.unkeyed-union"
     ],
     [
+      "run.declare.table-error",
+      "run.declare.table-error-exit"
+    ],
+    [
       "run.declare.incremental-field",
       "run.advance.watermark-shape"
     ],
@@ -19327,6 +19342,10 @@
           "PipelineTableFailed": {
             "clause": "run.land.table-failed",
             "gloss": "One table's pull failing inside a fire."
+          },
+          "PipelineTableNameCollision": {
+            "clause": "run.declare.table-name-collision",
+            "gloss": "Two tables whose destination names fold to one spelling."
           },
           "PipelineTransformArity": {
             "clause": "run.transform.arity",

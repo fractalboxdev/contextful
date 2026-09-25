@@ -6,6 +6,7 @@ pub mod cancel;
 pub mod catalog;
 pub mod command;
 pub mod fsutil;
+pub mod guard;
 pub mod journal;
 pub mod project;
 pub mod runner;
