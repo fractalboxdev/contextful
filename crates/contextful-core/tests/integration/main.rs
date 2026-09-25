@@ -7,6 +7,7 @@ mod grant;
 mod identify;
 mod issue;
 mod pipeline;
+mod read;
 mod revoke;
 mod run;
 mod store;
