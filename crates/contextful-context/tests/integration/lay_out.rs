@@ -351,3 +351,20 @@ fn two_landings_of_one_run_on_one_node_leave_the_committed_rows_intact() {
         assert_eq!(rows, [[s(&tag.to_string())]], "round {round}: the part holds rows its manifest does not account for");
     }
 }
+
+/// A table name segment the table directory's own layout uses refuses, so no table nests
+/// inside another table's data, ledger or files, and a nested table stays listed.
+#[test]
+fn a_table_name_colliding_with_the_table_layout_refuses() {
+    let f = Fixture::new();
+    f.land(&decl("name = \"a\""), "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    for name in ["a/data", "a/data/runs", "a/requests", "data", "a/schema.json", "a/_pointer.json", "a/_pointer.json.lock", "a/.x.tmp"] {
+        let err = f.store.table_dir(name).expect_err(name);
+        assert!(matches!(err, ContextError::Invalid(_)), "{name}: {err}");
+        let landed = f.land(&decl(&format!("name = \"{name}\"")), "run-2", json!([{"e": 1}]), "2030-01-01T00:00:00Z");
+        assert!(landed.is_err(), "{name} landed");
+    }
+    assert_eq!(f.store.tables().unwrap(), ["a"]);
+    assert_eq!(f.store.committed_runs("a").unwrap().len(), 1);
+    assert!(f.store.table_dir("a/database").is_ok());
+}

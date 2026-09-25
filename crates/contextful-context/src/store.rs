@@ -80,6 +80,7 @@ impl Store {
     /// `tables/<t>/`, for a table name of path-safe segments.
     pub fn table_dir(&self, table: &str) -> Result<PathBuf> {
         check_segment_path(table, "table")?;
+        check_table_layout(table)?;
         Ok(self.root.join("tables").join(table))
     }
 
@@ -388,6 +389,21 @@ fn check_segment_path(name: &str, what: &str) -> Result<()> {
         Ok(())
     } else {
         Err(ContextError::Invalid(format!("{what} name `{name}` is not `/`-separated segments of [A-Za-z0-9._-]")))
+    }
+}
+
+/// Segments a table directory's own layout uses: its data and ledger trees, its files, and
+/// the lock and temporary siblings written beside them (`store.lay-out.table-directory`).
+const TABLE_LAYOUT_SEGMENTS: [&str; 4] = ["data", "requests", SCHEMA_FILE, POINTER_FILE];
+
+/// Refuse a table name one of whose segments the table layout uses, so a nested table never
+/// lands inside another table's tree and [`Store::tables`] lists every table it holds.
+fn check_table_layout(table: &str) -> Result<()> {
+    match table.split('/').find(|seg| TABLE_LAYOUT_SEGMENTS.contains(seg) || seg.starts_with('.') || seg.ends_with(".lock")) {
+        Some(seg) => Err(ContextError::Invalid(format!(
+            "table name `{table}` carries segment `{seg}`, which a table directory's own layout uses"
+        ))),
+        None => Ok(()),
     }
 }
 
