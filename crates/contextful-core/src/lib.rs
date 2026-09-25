@@ -9,6 +9,7 @@ pub mod identify;
 pub mod issue;
 pub mod ports;
 pub mod revoke;
+pub mod store;
 pub mod time;
 
 pub use error::AuthorityError;

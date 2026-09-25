@@ -1,5 +1,6 @@
 //! The `contextful` binary.
 
+mod context;
 mod differential;
 mod formal;
 mod token;
@@ -18,6 +19,9 @@ enum Cmd {
     /// Mint, attenuate, verify, introspect and exchange capability credentials.
     #[command(subcommand)]
     Token(token::TokenCmd),
+    /// Land, list, scan and fold a project's store tables.
+    #[command(subcommand)]
+    Context(context::ContextCmd),
     /// Elaborate and audit the Lean models under `formal/`.
     #[command(subcommand)]
     Formal(formal::FormalCmd),
@@ -27,6 +31,7 @@ fn main() {
     let cli = Cli::parse();
     let result = match cli.cmd {
         Cmd::Token(c) => token::run(c),
+        Cmd::Context(c) => context::run(c),
         Cmd::Formal(c) => formal::run(c),
     };
     if let Err(e) = result {

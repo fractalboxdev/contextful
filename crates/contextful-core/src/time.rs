@@ -55,6 +55,42 @@ impl Instant {
         u64::try_from((later.0 - self.0).whole_seconds()).unwrap_or(0)
     }
 
+    /// Decode nanoseconds since the Unix epoch.
+    pub fn from_unix_nanos(nanos: i128) -> Result<Instant, AuthorityError> {
+        OffsetDateTime::from_unix_timestamp_nanos(nanos)
+            .map(Instant)
+            .map_err(|e| AuthorityError::TimestampMalformed(format!("{nanos} ns is not a representable instant: {e}")))
+    }
+
+    /// Nanoseconds since the Unix epoch.
+    pub fn unix_nanos(self) -> i128 {
+        self.0.unix_timestamp_nanos()
+    }
+
+    /// The instant `secs` seconds earlier, saturating at the smallest representable one.
+    pub fn minus_secs(self, secs: u64) -> Instant {
+        let secs = i64::try_from(secs).unwrap_or(i64::MAX);
+        match self.0.checked_sub(Duration::seconds(secs)) {
+            Some(t) => Instant(t),
+            None => Instant(time::PrimitiveDateTime::MIN.assume_utc()),
+        }
+    }
+
+    /// RFC 3339 in UTC with exactly nine fractional digits and a `Z` suffix.
+    pub fn to_rfc3339_nanos(self) -> String {
+        let t = self.0;
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:09}Z",
+            t.year(),
+            u8::from(t.month()),
+            t.day(),
+            t.hour(),
+            t.minute(),
+            t.second(),
+            t.nanosecond()
+        )
+    }
+
     /// The canonical textual form: RFC 3339 in UTC, `Z`-suffixed.
     pub fn to_rfc3339(self) -> String {
         self.0.format(&Rfc3339).expect("a UTC instant formats as RFC 3339")

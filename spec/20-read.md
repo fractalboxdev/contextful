@@ -332,7 +332,7 @@ CREATE OR REPLACE VIEW orders AS
 SELECT * FROM (
   SELECT *, ROW_NUMBER() OVER (
     PARTITION BY order_id
-    ORDER BY updated_at DESC, _ingested_at DESC
+    ORDER BY updated_at DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC
   ) AS _rn
   FROM read_parquet(
     [ 'tables/orders/data/snapshots/snapshot-01773100800000000000/part-00000.parquet',

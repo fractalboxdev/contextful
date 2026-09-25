@@ -123,11 +123,13 @@ A table's declaration block: its key, ordering column and write mode, and what a
 - `table-block` — A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
 - `two-genres` — A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the engine does not enumerate. Both append, dedupe on content and carry a timestamp.
 - `unkeyed-union` — A table declaring no `primary_key` reads as the byte-identical union of its committed runs.
-- `dedup-view` — A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
+- `dedup-view` — A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
   *because a keyed table read as a union before its first fold inflates every aggregate silently*
 - `order-by-default` — `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
 - `order-by-unknown` — An `order_by` naming a column neither declared nor injected raises `StoreOrderByUnknownColumn` at validation, before the first batch.
   *because an ordering column absent from every file reads as null and picks survivors arbitrarily*
+- `key-unknown` — A `primary_key` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` at validation, before the first batch.
+  *because a key column absent from every file partitions every row into one group and collapses the table to a single row*
 - `write-mode` — `write_mode` is `append`, the default, keeping the last write per key and retiring no key, or `replace`.
 - `replace-frontier` — Under `replace`, a read covers the newest run carrying the source's complete state plus every run committed after it.
 - `replace-retains` — A replacing run leaves the runs it displaced on disk until `retain_runs` passes, writes no erasure receipt and walks no lineage.
@@ -144,6 +146,8 @@ The column and table namespaces the engine holds, the provenance columns it inje
 - `underscore-namespace` — Column names beginning `_` belong to the engine; the injected set and the reserved optional set are its whole content.
 - `injected` — The engine injects `_ingested_at` as a non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_batch_seq` as int32 where a batch scope exists, `_site_id`, and `_authored_by` where an authenticated subject authorized the write, replacing any producer value.
   *because a string instant does not sort by time once fractions or offsets appear*
+- `row-seq` — The engine injects `_row_seq`, a non-null int64 numbering a run's rows from 0 in batch order, replacing any producer value.
+  *because a run's rows share `_ingested_at` and `_run_id`, and keeping the last write per key needs an order among them*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
 - `optional` — A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 - `modality` — `_modality` takes one of text, image, audio, structured or mixed; another value fails validation of its batch.
@@ -185,10 +189,11 @@ Compaction: pass order, triggers, retention, the compaction lease, and the point
 
 - `pass` — A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}.
 - `valid-time-line` — A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line.
-- `includes-runs` — A snapshot's `includes_runs` names the runs it folded; a run committed afterwards reads on top of it.
+- `includes-runs` — A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.
 - `triggers` — A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
 - `retention` — `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
 - `result` — A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass.
+- `collection-failed` — A collection that fails reports its failure: beside `folded` when the pass published, since the snapshot stays published, and as `failed` otherwise; either way the command exits non-zero.
 - `unknown-table` — A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}.
   *P1*
 - `compaction-lease` — A pass holds the table's compaction lease and stamps its fence into the snapshot manifest and the pointer.
@@ -502,7 +507,7 @@ A run manifest, a snapshot manifest and a table pointer:
 
 { "snapshot_id": "snapshot-01742054400000000000", "parent": "snapshot-01741968000000000000",
   "table": "filings", "created_at": "<instant>",
-  "includes_runs": ["run-4812", "run-4813", "run-4814"],
+  "includes_runs": ["run-4812/ingest-a", "run-4813/ingest-a", "run-4814/ingest-b"],
   "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
   "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,
   "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],

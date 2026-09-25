@@ -1,0 +1,14 @@
+//! The store adapter: a project's store root on a filesystem, Parquet table parts, run
+//! and snapshot manifests, the table pointer, the fold, and the scan that resolves a
+//! table's file list and relation.
+
+pub mod error;
+pub mod fold;
+pub mod land;
+pub mod node;
+pub mod parquet_io;
+pub mod scan;
+pub mod store;
+
+pub use error::{ContextError, Result};
+pub use store::Store;

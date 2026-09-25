@@ -57,3 +57,14 @@ fn a_timestamp_outside_the_grammar_is_malformed() {
     // A numeric claim outside the representable range refuses the same way.
     assert!(matches!(Instant::from_unix_secs(i64::MAX), Err(AuthorityError::TimestampMalformed(_))));
 }
+
+#[test]
+fn instants_carry_nanoseconds() {
+    let t = at("2030-01-01T00:00:00.000000123Z");
+    assert_eq!(t.unix_nanos(), 1_893_456_000_000_000_123);
+    assert_eq!(Instant::from_unix_nanos(t.unix_nanos()).unwrap(), t);
+    assert_eq!(t.to_rfc3339_nanos(), "2030-01-01T00:00:00.000000123Z");
+    assert_eq!(at("2030-01-01T01:00:00+01:00").to_rfc3339_nanos(), "2030-01-01T00:00:00.000000000Z");
+    assert_eq!(at("2030-01-01T00:15:00Z").minus_secs(900), at("2030-01-01T00:00:00Z"));
+    assert!(Instant::from_unix_nanos(i128::MAX).is_err());
+}
