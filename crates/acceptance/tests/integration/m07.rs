@@ -60,7 +60,6 @@ fn ask(cf: &std::path::Path, p: &GitRepo, public: &str, token: &str, tool: &str,
 }
 
 #[test]
-#[ignore = "milestone 7 is open"]
 fn m07_memory() {
     let cf = bin("contextful");
     let p = GitRepo::init();
