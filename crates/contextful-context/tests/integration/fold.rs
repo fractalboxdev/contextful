@@ -315,28 +315,66 @@ fn a_failed_collection_does_not_unpublish_the_snapshot() {
     assert!(!run_dir.exists());
 }
 
-/// A pass whose id an earlier lost pass already promoted publishes anyway: what sits at
-/// that id is the lost pass's orphan, which no pointer chain reaches, so the retry is not
-/// wedged by its own earlier attempt.
+/// A pass whose id an earlier lost pass already promoted takes a fresh id and publishes:
+/// what sits at that id is left for collection, never overwritten by the retry.
 #[test]
-fn a_retry_at_the_same_instant_publishes_over_the_lost_passs_orphan() {
+fn a_retry_at_the_same_instant_takes_a_fresh_id_over_the_lost_passs_orphan() {
     let f = Fixture::new();
     let d = decl("name = \"events\"");
     f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
 
     // A pass at this instant loses the pointer and leaves its snapshot promoted. The id
-    // is a function of the instant and the parent, so the retry recomputes the same one.
+    // is a function of the instant and the parent, so the retry computes the same one.
     let now = at("2030-01-01T01:00:00Z");
     let orphan_id = contextful_core::store::lay_out::SnapshotId::next(now, None);
     let orphan = f.store.snapshot_dir("events", &orphan_id).unwrap();
     fs::create_dir_all(&orphan).unwrap();
     fs::write(orphan.join("part-00000.parquet"), b"not a snapshot any pointer reaches").unwrap();
 
-    // The retry at that same instant publishes over it rather than failing to rename.
-    let outcome = fold(&f.store, &d, now).unwrap();
-    let FoldOutcome::Folded { snapshot_id, .. } = outcome else { panic!("the retry was wedged: {outcome:?}") };
-    assert_eq!(snapshot_id, orphan_id.to_string(), "the retry took a different id");
+    // The retry stages under the next id instead, and the orphan is untouched until published over.
+    let retry = staged(&f, &d, "2030-01-01T01:00:00Z");
+    assert!(retry.manifest.snapshot_id > orphan_id, "the retry reused the orphan's id");
+    assert!(orphan.join("part-00000.parquet").is_file());
+    let Committed::Published(m) = commit(&f.store, retry).unwrap() else { panic!("the retry lost") };
+    assert_ne!(m.snapshot_id, orphan_id);
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("1")]]);
+}
+
+/// Two passes staging one table at one instant compute one candidate id; the second
+/// takes the next id, so neither deletes the other's staging and the pointer decides
+/// which publishes.
+#[test]
+fn two_passes_at_one_instant_never_share_a_snapshot_id() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    let a = staged(&f, &d, "2030-01-01T01:00:00Z");
+    let b = staged(&f, &d, "2030-01-01T01:00:00Z");
+    assert_ne!(a.manifest.snapshot_id, b.manifest.snapshot_id);
+    assert!(a.staging.join("_manifest.json").is_file(), "the second pass deleted the first pass's staging");
+    assert!(a.staging.join("part-00000.parquet").is_file());
+    let Committed::Published(m) = commit(&f.store, a).unwrap() else { panic!("the first pass lost") };
+    assert_eq!(commit(&f.store, b).unwrap(), Committed::Lost);
+    assert_eq!(f.store.pointer("events").unwrap().unwrap().0.snapshot_id, m.snapshot_id);
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("1")]]);
+}
+
+/// A commit whose snapshot directory another pass already holds publishes nothing and
+/// leaves that directory as it found it.
+#[test]
+fn a_commit_never_replaces_a_snapshot_directory_in_place() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    let a = staged(&f, &d, "2030-01-01T01:00:00Z");
+    let taken = f.store.snapshot_dir("events", &a.manifest.snapshot_id).unwrap();
+    fs::create_dir_all(&taken).unwrap();
+    fs::write(taken.join("part-00000.parquet"), b"another pass's snapshot").unwrap();
+    let staging = a.staging.clone();
+    assert!(!matches!(commit(&f.store, a), Ok(Committed::Published(_))));
+    assert_eq!(fs::read(taken.join("part-00000.parquet")).unwrap(), b"another pass's snapshot");
+    assert!(f.store.pointer("events").unwrap().is_none());
+    assert!(staging.is_dir(), "the losing pass's staging stays for collection");
 }
 
 /// A pointer lock a live pass holds is contention, not a verdict: the commit waits for it

@@ -141,14 +141,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     }
 
     let parent = state.chain.first().map(|s| s.snapshot_id.clone());
-    let snapshot_id = SnapshotId::next(now, parent.as_ref());
-    let snapshots = table_dir.join("data").join("snapshots");
-    let staging = snapshots.join(format!("{snapshot_id}{STAGING_SUFFIX}"));
-    if staging.exists() {
-        fs::remove_dir_all(&staging).at(&staging)?;
-    }
-    fs::create_dir_all(&staging).at(&staging)?;
-    let in_flight = FileLock::try_acquire(&staging.join(STAGING_LOCK))?.map(std::sync::Arc::new);
+    let (snapshot_id, staging, in_flight) = claim(store, table, SnapshotId::next(now, parent.as_ref()), now)?;
     let mut parts = Vec::new();
     if rows.num_rows() > 0 {
         for (dir, batch) in partition(&rows, decl.partition_by()).map_err(invalid)? {
@@ -179,8 +172,40 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         staging,
         etag,
         runs: unfolded.len(),
-        _in_flight: in_flight,
+        _in_flight: Some(std::sync::Arc::new(in_flight)),
     })))
+}
+
+/// Ids a pass tries past its first candidate before refusing.
+pub const CLAIM_ATTEMPTS: usize = 64;
+
+/// Claim a snapshot id for a pass: the first id from `first` up whose snapshot and staging
+/// directories are both absent, its staging directory created and its in-flight lock held.
+/// A pass removes no directory it did not create, so two passes computing one id each
+/// stage under their own, and the pointer decides which publishes.
+fn claim(store: &Store, table: &str, first: SnapshotId, now: Instant) -> Result<(SnapshotId, PathBuf, FileLock)> {
+    let snapshots = store.table_dir(table)?.join("data").join("snapshots");
+    fs::create_dir_all(&snapshots).at(&snapshots)?;
+    let mut id = first.clone();
+    for _ in 0..CLAIM_ATTEMPTS {
+        let staging = snapshots.join(format!("{id}{STAGING_SUFFIX}"));
+        if !store.snapshot_dir(table, &id)?.exists() {
+            match fs::create_dir(&staging) {
+                // A collection may take the directory before its lock does; the pass moves on.
+                Ok(()) => match FileLock::try_acquire(&staging.join(STAGING_LOCK)) {
+                    Ok(Some(lock)) => return Ok((id, staging, lock)),
+                    Ok(None) | Err(ContextError::Io { .. }) => {}
+                    Err(e) => return Err(e),
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(ContextError::Io { path: staging, source: e }),
+            }
+        }
+        id = SnapshotId::next(now, Some(&id));
+    }
+    Err(ContextError::Invalid(format!(
+        "table `{table}`: {CLAIM_ATTEMPTS} snapshot ids from {first} are taken by other passes; nothing was staged"
+    )))
 }
 
 /// Publish a staged snapshot: check it is whole, move it out of staging, and replace
@@ -214,12 +239,14 @@ pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
     staged._in_flight = None;
     let _ = fs::remove_file(staged.staging.join(STAGING_LOCK));
 
-    // A pass whose id a lost pass already promoted finds that directory in place. The id
-    // exceeds every snapshot the chain reaches, so what sits there is that pass's orphan
-    // and no reader's snapshot; it goes, and the rename lands.
+    // A directory already at the id belongs to another pass; this one publishes nothing
+    // and leaves both directories for collection.
     let final_dir = store.snapshot_dir(table, &staged.manifest.snapshot_id)?;
     if final_dir.exists() {
-        fs::remove_dir_all(&final_dir).at(&final_dir)?;
+        return Err(ContextError::Invalid(format!(
+            "table `{table}`: snapshot {} is already in place from another pass; nothing was published",
+            staged.manifest.snapshot_id
+        )));
     }
     fs::rename(&staged.staging, &final_dir).at(&final_dir)?;
 
@@ -253,13 +280,19 @@ fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest]) -
         if reachable.contains(&name) {
             continue;
         }
-        if name.ends_with(STAGING_SUFFIX) && FileLock::try_acquire(&dir.join(STAGING_LOCK))?.is_none() {
+        let id = SnapshotId::try_from(name.trim_end_matches(STAGING_SUFFIX).to_string()).ok();
+        if id.is_some_and(|id| id >= current.snapshot_id) {
             continue;
         }
-        let id = SnapshotId::try_from(name.trim_end_matches(STAGING_SUFFIX).to_string()).ok();
-        if id.is_none_or(|id| id < current.snapshot_id) {
-            fs::remove_dir_all(&dir).at(&dir)?;
-        }
+        let _held = if name.ends_with(STAGING_SUFFIX) {
+            match FileLock::try_acquire(&dir.join(STAGING_LOCK))? {
+                Some(lock) => Some(lock),
+                None => continue,
+            }
+        } else {
+            None
+        };
+        fs::remove_dir_all(&dir).at(&dir)?;
     }
     Ok(())
 }
