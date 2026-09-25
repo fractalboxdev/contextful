@@ -146,6 +146,13 @@ pub struct Pointer {
     pub fence: Option<u64>,
 }
 
+/// Whether `s` is one path segment the store interpolates into a path or key: non-empty,
+/// of `[A-Za-z0-9._-]`, and neither `.` nor `..`. Run ids, node ids and each segment of a
+/// table or project name hold to it.
+pub fn is_path_segment(s: &str) -> bool {
+    !s.is_empty() && s != "." && s != ".." && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
 /// A validated node id.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeId(String);
@@ -154,10 +161,7 @@ impl NodeId {
     /// Hold a resolved node id to its shape before any path, key or lease carries it
     /// (`store.lay-out.node-id-shape`).
     pub fn parse(s: &str) -> Result<NodeId, StoreError> {
-        let shaped = !s.is_empty()
-            && s.len() <= NODE_ID_MAX_LEN
-            && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
-        if !shaped || s == "." || s == ".." {
+        if s.len() > NODE_ID_MAX_LEN || !is_path_segment(s) {
             return Err(StoreError::StoreNodeIdInvalid(format!(
                 "node id `{s}` is not 1 to {NODE_ID_MAX_LEN} chars of ^[A-Za-z0-9._-]+$"
             )));

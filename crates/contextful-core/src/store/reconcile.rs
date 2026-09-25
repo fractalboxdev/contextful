@@ -131,7 +131,11 @@ pub struct Schema {
     pub columns: Vec<Column>,
 }
 
-const JSON_EXTENSION: &str = "arrow.json";
+/// The Arrow field metadata key naming an extension type.
+pub const EXTENSION_NAME: &str = "ARROW:extension:name";
+
+/// The canonical Arrow extension a JSON column carries.
+pub const JSON_EXTENSION: &str = "arrow.json";
 
 impl Schema {
     pub fn get(&self, name: &str) -> Option<&Column> {
@@ -186,7 +190,7 @@ impl Schema {
             .map(|c| {
                 let mut f = json!({"name": c.name, "nullable": c.nullable, "type": c.ty.arrow_json(), "children": []});
                 if c.ty == ColumnType::Json {
-                    f["metadata"] = json!([{"key": "ARROW:extension:name", "value": JSON_EXTENSION}]);
+                    f["metadata"] = json!([{"key": EXTENSION_NAME, "value": JSON_EXTENSION}]);
                 }
                 f
             })

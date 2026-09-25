@@ -4,7 +4,7 @@
 use crate::error::{ContextError, IoPath, Result};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{
-    store_root, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
+    is_path_segment, store_root, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
 };
 use contextful_core::store::reconcile::Schema;
 use contextful_core::store::resolve::TableState;
@@ -349,8 +349,12 @@ fn same_file(_: &fs::Metadata, _: &fs::Metadata) -> bool {
 }
 
 pub(crate) fn etag(bytes: &[u8]) -> String {
-    let d = Sha256::digest(bytes);
-    d.iter().map(|b| format!("{b:02x}")).collect()
+    hex(&Sha256::digest(bytes))
+}
+
+/// Lowercase hex of `bytes`.
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn file_name(p: &Path) -> String {
@@ -399,21 +403,13 @@ pub(crate) fn create_new_file(path: &Path, bytes: &[u8]) -> Result<bool> {
 fn tmp_sibling(path: &Path) -> PathBuf {
     let mut nonce = [0u8; 8];
     getrandom::fill(&mut nonce).expect("the platform supplies randomness");
-    let hex: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
-    let name = format!(".{}.{hex}.tmp", file_name(path));
+    let name = format!(".{}.{}.tmp", file_name(path), hex(&nonce));
     path.with_file_name(name)
 }
 
 /// A table or project name: `/`-separated segments of `[A-Za-z0-9._-]`, none `.` or `..`.
 fn check_segment_path(name: &str, what: &str) -> Result<()> {
-    let ok = !name.is_empty()
-        && name.split('/').all(|seg| {
-            !seg.is_empty()
-                && seg != "."
-                && seg != ".."
-                && seg.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
-        });
-    if ok {
+    if name.split('/').all(is_path_segment) {
         Ok(())
     } else {
         Err(ContextError::Invalid(format!("{what} name `{name}` is not `/`-separated segments of [A-Za-z0-9._-]")))

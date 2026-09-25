@@ -13,7 +13,7 @@ use arrow_select::take::take_record_batch;
 use contextful_core::store::declare::{TableDecl, WriteMode};
 use contextful_core::store::fold::FoldOutcome;
 use contextful_core::store::lay_out::{
-    part_name, PartEntry, Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, STAGING_SUFFIX,
+    part_name, PartEntry, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, STAGING_SUFFIX,
 };
 use contextful_core::store::reserve::TIEBREAK;
 use contextful_core::store::StoreError;
@@ -96,14 +96,15 @@ pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome
 pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared> {
     let table = decl.name.as_str();
     // The pointer, then the runs, then the schema: a landing writes its schema before
-    // its manifest, so every run read here has its columns in the schema read after.
+    // its manifest, so every run read here has its columns in the schema read after. A
+    // table no schema declares refuses there, whatever the runs read found.
     let etag = store.pointer_etag(table)?;
-    store.schema(table)?;
     let state = store.state(decl)?;
     let schema = store.schema(table)?;
     decl.validate(&schema)?;
 
-    let unfolded: Vec<String> = state.unfolded_runs().iter().map(|r| r.key()).collect();
+    let unfolded_runs = state.unfolded_runs();
+    let unfolded: Vec<String> = unfolded_runs.iter().map(|r| r.key()).collect();
     if unfolded.is_empty() {
         return Ok(Prepared::NothingLanded);
     }
@@ -115,7 +116,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
             if let Some(s) = state.chain.first() {
                 files.extend(s.parts.iter().map(|p| format!("data/snapshots/{}/{}", s.snapshot_id, p.name)));
             }
-            for r in state.unfolded_runs() {
+            for r in &unfolded_runs {
                 files.extend(r.parts.iter().map(|p| format!("data/runs/{}/{}/{}", r.run_id, r.node_id, p.name)));
             }
             files
@@ -309,7 +310,8 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
     let cutoff = now.minus_secs(window);
     let (chain, _) = store.chain(table)?;
     collect_unreachable(store, table, &chain)?;
-    let runs = store.committed_runs(table)?;
+    let runs: BTreeMap<String, RunManifest> = store.committed_runs(table)?.into_iter().map(|r| (r.key(), r)).collect();
+    let runs_dir = store.table_dir(table)?.join("data").join("runs");
     for pair in chain.windows(2) {
         let (successor, superseded) = (&pair[0], &pair[1]);
         if successor.created_at <= cutoff {
@@ -323,16 +325,14 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
         if s.created_at > cutoff {
             continue;
         }
-        for key in &s.includes_runs {
-            for r in runs.iter().filter(|r| &r.key() == key) {
-                let dir = store.table_dir(table)?.join("data").join("runs").join(&r.run_id);
-                let node = dir.join(&r.node_id);
-                if node.exists() {
-                    fs::remove_dir_all(&node).at(&node)?;
-                }
-                if fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_none()) {
-                    fs::remove_dir(&dir).at(&dir)?;
-                }
+        for r in s.includes_runs.iter().filter_map(|key| runs.get(key)) {
+            let dir = runs_dir.join(&r.run_id);
+            let node = dir.join(&r.node_id);
+            if node.exists() {
+                fs::remove_dir_all(&node).at(&node)?;
+            }
+            if fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_none()) {
+                fs::remove_dir(&dir).at(&dir)?;
             }
         }
     }

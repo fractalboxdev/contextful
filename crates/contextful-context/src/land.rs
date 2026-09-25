@@ -7,7 +7,7 @@ use crate::store::{create_new_file, FileLock, Store, LOCK_WAIT_SECS};
 use arrow_array::builder::{BooleanBuilder, Float64Builder, Int32Builder, Int64Builder, StringBuilder, TimestampNanosecondBuilder};
 use arrow_array::{ArrayRef, NullArray, RecordBatch};
 use contextful_core::store::declare::TableDecl;
-use contextful_core::store::lay_out::{part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
+use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
 use contextful_core::store::reconcile::{supertype, Column, ColumnType, Schema};
 use contextful_core::store::reserve::{
     optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, INGESTED_AT, ROW_SEQ,
@@ -148,12 +148,7 @@ fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
 }
 
 fn check_run_id(run_id: &str) -> Result<()> {
-    let ok = !run_id.is_empty()
-        && run_id.len() <= 128
-        && run_id != "."
-        && run_id != ".."
-        && run_id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
-    if ok {
+    if run_id.len() <= 128 && is_path_segment(run_id) {
         Ok(())
     } else {
         Err(ContextError::Invalid(format!("run id `{run_id}` is not 1 to 128 chars of [A-Za-z0-9._-]")))

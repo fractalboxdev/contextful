@@ -3,7 +3,7 @@
 use crate::error::{ContextError, IoPath, Result};
 use arrow_array::{new_null_array, Array, ArrayRef, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema as ArrowSchema, TimeUnit};
-use contextful_core::store::reconcile::{Column, ColumnType, Schema};
+use contextful_core::store::reconcile::{Column, ColumnType, Schema, EXTENSION_NAME, JSON_EXTENSION};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
@@ -13,8 +13,6 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
-const EXTENSION_NAME: &str = "ARROW:extension:name";
-const JSON_EXTENSION: &str = "arrow.json";
 
 pub fn data_type(ty: ColumnType) -> DataType {
     match ty {

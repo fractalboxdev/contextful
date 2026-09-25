@@ -41,7 +41,7 @@ pub fn persisted_node_id(dir: &Path) -> Option<String> {
     std::fs::create_dir_all(dir).ok()?;
     let mut bytes = [0u8; 4];
     getrandom::fill(&mut bytes).ok()?;
-    let id = format!("node-{}", bytes.iter().map(|b| format!("{b:02x}")).collect::<String>());
+    let id = format!("node-{}", crate::store::hex(&bytes));
     match crate::store::create_new_file(&path, format!("{id}\n").as_bytes()) {
         Ok(true) => Some(id),
         // Another process generated one first; take it.
