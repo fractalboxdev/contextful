@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
-import { remarkCorpus, rehypeCorpus } from "./src/lib/markdown.mjs";
+import rehypeMerlion from "@fractalbox/merlion-rehype";
+import { diagramGate, remarkCorpus, rehypeCorpus } from "./src/lib/markdown.mjs";
 
 // The dev server answers localhost alone. DOCS_ALLOWED_HOSTS names the exact
 // hosts, comma-separated, that may reach it: it serves the repository root, and a
@@ -8,15 +9,19 @@ const allowedHosts = (process.env.DOCS_ALLOWED_HOSTS ?? "").split(",").filter(Bo
 
 export default defineConfig({
   trailingSlash: "always",
+  integrations: [diagramGate],
   markdown: {
     syntaxHighlight: { type: "shiki", excludeLangs: ["mermaid"] },
     shikiConfig: { themes: { light: "github-light", dark: "github-dark" } },
     remarkPlugins: [remarkCorpus],
-    rehypePlugins: [rehypeCorpus],
+    // Merlion draws every mermaid fence to inline SVG at build time; diagramGate fails the
+    // build on a fence it leaves as code.
+    rehypePlugins: [
+      [rehypeMerlion, { width: 720, source: "none", viewer: false, fontCss: true, cacheDir: ".merlion" }],
+      rehypeCorpus,
+    ],
   },
   vite: {
     server: { allowedHosts, fs: { allow: ["../.."] } },
-    // mermaid is loaded on demand, only on pages that carry a diagram.
-    build: { chunkSizeWarningLimit: 3000 },
   },
 });

@@ -1,6 +1,8 @@
 ---
 import type { MarkdownHeading } from "astro";
 import { navigation } from "../lib/nav";
+import "@fractalbox/merlion-themes/merlion-themes.css";
+import "@fractalbox/merlion-themes/merlion-font.css";
 import "../styles/site.css";
 
 interface Props {
@@ -106,24 +108,6 @@ const pageTitle = here === "/" ? title : `${title} · Contextful spec`;
       <div class="diagram-stage"></div>
     </dialog>
     <script>
-      const blocks = [...document.querySelectorAll<HTMLElement>("pre.mermaid")];
-      const drawDiagrams = async () => {
-        for (const b of blocks) b.dataset.source = b.textContent ?? "";
-        const { default: mermaid } = await import("mermaid");
-        const dark = window.matchMedia("(prefers-color-scheme: dark)");
-        const draw = async () => {
-          mermaid.initialize({ startOnLoad: false, theme: dark.matches ? "dark" : "default", securityLevel: "strict" });
-          for (const b of blocks) {
-            b.removeAttribute("data-processed");
-            b.textContent = b.dataset.source ?? "";
-          }
-          await mermaid.run({ nodes: blocks });
-        };
-        await draw();
-        dark.addEventListener("change", () => void draw());
-      };
-      if (blocks.length) void drawDiagrams();
-
       // A diagram opens in a dialog scaled to the viewport width, at most 2x its drawn
       // size. Zoom steps by 1.25x between 0.1x and 4x; wider than the viewport, it scrolls.
       // Escape, Close or a click on the backdrop dismisses it.
@@ -139,10 +123,10 @@ const pageTitle = here === "/" ? title : `${title} · Contextful spec`;
         if (view) view.style.width = `${Math.round(natural * scale)}px`;
       };
       const open = (figure: HTMLElement) => {
-        const svg = figure.querySelector<SVGSVGElement>("pre.mermaid svg");
+        const svg = figure.querySelector<SVGSVGElement>(":scope > svg");
         if (!svg) return;
         view = svg.cloneNode(true) as SVGSVGElement;
-        // Mermaid sizes its SVG to 100% with a max-width; the viewBox carries the drawn size.
+        // The viewBox carries the drawn size; the page CSS scales the inline copy.
         view.removeAttribute("width");
         view.style.maxWidth = "none";
         view.style.height = "auto";
