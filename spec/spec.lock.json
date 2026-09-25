@@ -724,7 +724,7 @@
       "statement": "One Cargo workspace compiles both halves. Neither half ships as its own binary, package scope or release; \"read path\" and \"run path\" name a boundary, not a product.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 100
+      "line": 57
     },
     {
       "id": "topology.compose.read-path",
@@ -735,7 +735,7 @@
       "statement": "The read path holds data at rest and its retrieval: the context store, the catalog, query and ranking, memory queries, bucket sync, and the capability check a record passes before it lands.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 101
+      "line": 58
     },
     {
       "id": "topology.compose.run-path",
@@ -746,7 +746,7 @@
       "statement": "The run path holds execution: the journal, the scheduler, cursor commit, awakeables, and every connector invoked as a journaled step. It owns no store and no ranking.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 102
+      "line": 59
     },
     {
       "id": "topology.compose.three-crossings",
@@ -757,7 +757,7 @@
       "statement": "Exactly three contracts cross between the halves: the connector interface world, the columnar-part-plus-manifest layout, and the capability-token format. No general internal call surface joins the halves.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 103
+      "line": 60
     },
     {
       "id": "topology.compose.crossing-version",
@@ -768,7 +768,7 @@
       "statement": "Each crossing carries its own version and a conformance suite both sides run. A member added to a crossing passes a security review before admission.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 105
+      "line": 62
     },
     {
       "id": "topology.compose.undeclared-crossing",
@@ -779,7 +779,7 @@
       "statement": "A run-path crate reaches a read-path crate only through a crate carrying one of the three crossings; {{assurance.gate.crate-graph}} checks every edge.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 106
+      "line": 63
     },
     {
       "id": "topology.compose.run-path-droppable",
@@ -790,7 +790,7 @@
       "statement": "A build linking no execution core, scheduler or component host serves reads of data a full daemon produced, over the identical part-and-manifest layout and connector contract.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 108
+      "line": 65
     },
     {
       "id": "topology.compose.cli-binary",
@@ -801,7 +801,7 @@
       "statement": "The system ships one command binary, `contextful`, and one package scope, `@contextful/*`. The smallest deployable build is a profile, not a crate.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 109
+      "line": 66
     },
     {
       "id": "topology.compose.mediation",
@@ -812,7 +812,7 @@
       "statement": "Every function returning or releasing a stored row takes the enforcement stack's admission value as a parameter ({{assurance.gate.row-token}}), so a row path that skips enforcement does not type-check. No operator switch disables mediation.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 110
+      "line": 67
     },
     {
       "id": "topology.compose.enforcement-span",
@@ -823,7 +823,7 @@
       "statement": "The enforcement stack spans both halves: capability allowlists and the journal on the run path; the statement guard, visibility semi-join, row and column restriction, masking and the audit chain on the read path.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 112
+      "line": 69
     },
     {
       "id": "topology.compose.semantic-layer",
@@ -834,7 +834,7 @@
       "statement": "Enforcement interprets no content. Retrieval, memory synthesis, the analyst surface and inference placement interpret content and reach enforcement through the three crossings alone.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 113
+      "line": 70
     },
     {
       "id": "topology.compose.one-tree",
@@ -845,7 +845,7 @@
       "statement": "Laptop through cluster runs from one source tree. A single-node or edge deployment runs no external queue, cache or coordination process; a multi-node deployment adds one shared database.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 114
+      "line": 71
     },
     {
       "id": "topology.compose.connector-pillar",
@@ -856,7 +856,7 @@
       "statement": "A connector is an interface world run in a sandboxed component host that mediates every capability. A native connector, the first-party path for stateful sources, satisfies the same schema, record and cursor contract.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 115
+      "line": 72
     },
     {
       "id": "topology.compose.open-store",
@@ -867,7 +867,7 @@
       "statement": "Table data sits in columnar parts with a JSON manifest and a rebuildable catalog on plain object storage, readable by standard SQL tooling. No proprietary container or opaque blob holds table data.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 116
+      "line": 73
     },
     {
       "id": "topology.compose.inference-egress",
@@ -878,7 +878,7 @@
       "statement": "Model access leaves the process through one operator-configured endpoint speaking OpenAI-compatible HTTP. The one provider-shaped step serializes a tool's parameter schema into the provider's envelope.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 117
+      "line": 74
     },
     {
       "id": "topology.compose.vendor-sdk",
@@ -889,7 +889,7 @@
       "statement": "The dependency audit raises `VendorSdkLinked`, naming the crate and the dependency, for a crate declaring a model-vendor SDK or a second outbound path to a model.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 119
+      "line": 76
     },
     {
       "id": "topology.compose.local-first",
@@ -900,7 +900,7 @@
       "statement": "Pipelines need no network beyond their sources, and bucket sync is opt-in per deployment. The engine makes no control-plane callback, no license check, and sends no telemetry to its authors.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 121
+      "line": 78
     },
     {
       "id": "topology.compose.script-runtime",
@@ -911,7 +911,7 @@
       "statement": "A JavaScript runtime linked into any profile raises `ScriptRuntimeLinked`. The authoring surface is a build-time compiler emitting a serialized, content-hashed plan.",
       "why": "A-run",
       "file": "spec/01-topology.md",
-      "line": 122
+      "line": 79
     },
     {
       "id": "topology.compose.memory-substrate",
@@ -922,7 +922,7 @@
       "statement": "Synthesized memory's episode, fact, entity and preference tables are ordinary store tables, and its synthesis pipeline is an ordinary run-path workflow on the same journal, cursor and retry machinery.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 124
+      "line": 81
     },
     {
       "id": "topology.compose.two-spines",
@@ -933,7 +933,7 @@
       "statement": "The run record answers what happened on the write side and the request ledger on the read side. No third surface merges them.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 125
+      "line": 82
     },
     {
       "id": "topology.package.crate-map",
@@ -944,7 +944,7 @@
       "statement": "Thirteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 131
+      "line": 88
     },
     {
       "id": "topology.package.domain-crate",
@@ -955,7 +955,7 @@
       "statement": "`contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 132
+      "line": 89
     },
     {
       "id": "topology.package.domain-impurity",
@@ -966,7 +966,7 @@
       "statement": "`contextful-core` declaring an async runtime, a component host, an HTTP client or a columnar-format implementation raises `DomainCrateImpurity`, naming the dependency and the feature that pulled it.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 134
+      "line": 91
     },
     {
       "id": "topology.package.dependency-direction",
@@ -977,7 +977,7 @@
       "statement": "A dependency edge from `contextful-core` toward an adapter crate raises `TopologyDependencyInversion`, naming both crates and the manifest line.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 136
+      "line": 93
     },
     {
       "id": "topology.package.profile",
@@ -988,7 +988,7 @@
       "statement": "Three profiles compile from the workspace, each a Cargo feature bundle selected at build time: `contextful-edge`, `contextful-full`, `contextful-control`. Each links the dependencies its role names and nothing else.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 138
+      "line": 95
     },
     {
       "id": "topology.package.fixed-at-build",
@@ -999,7 +999,7 @@
       "statement": "No run-time detection widens a running binary into another profile's feature set. Build, release and automation tooling links into no profile.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 140
+      "line": 97
     },
     {
       "id": "topology.package.edge-profile",
@@ -1010,7 +1010,7 @@
       "statement": "`contextful-edge` is the read replica: it pulls native connectors, syncs parts and manifests from a bucket, and serves a read-only SQL replica. It links no scheduler, script runtime or component host.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 142
+      "line": 99
     },
     {
       "id": "topology.package.edge-eligibility",
@@ -1021,7 +1021,7 @@
       "statement": "The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 143
+      "line": 100
     },
     {
       "id": "topology.package.full-profile",
@@ -1032,7 +1032,7 @@
       "statement": "`contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars, the tool server, and `pg-catalog`.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 144
+      "line": 101
     },
     {
       "id": "topology.package.control-profile",
@@ -1043,7 +1043,7 @@
       "statement": "`contextful-control` is the self-hosted control plane: team state, the edit-time configuration document and identity. It materializes canonical TOML on apply and is the one profile linking the CRDT library.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 145
+      "line": 102
     },
     {
       "id": "topology.package.component-host",
@@ -1054,7 +1054,7 @@
       "statement": "A component connector runs where a component host is linked: the full profile and the container or worker shapes built from it. The edge profile runs native connectors.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 147
+      "line": 104
     },
     {
       "id": "topology.package.host-missing",
@@ -1065,7 +1065,7 @@
       "statement": "Dispatching a component connector on a profile with no component host raises `ComponentHostMissing`, naming the connector and the profile, with no fallback to a similarly named native source.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 149
+      "line": 106
     },
     {
       "id": "topology.package.crdt-leak",
@@ -1076,7 +1076,7 @@
       "statement": "The CRDT library in the resolved dependency graph of the edge or full profile raises `ProfileDependencyLeak`, naming the profile and the path that pulled it. A daemon or replica reads materialized text.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 151
+      "line": 108
     },
     {
       "id": "topology.deploy.unsupported-shape",
@@ -1087,7 +1087,7 @@
       "statement": "A target profile claiming a shape its provider does not provide raises `TargetShapeUnsupported`, naming the shape and the missing primitive.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 189
+      "line": 146
     },
     {
       "id": "topology.deploy.wall-clock-cap",
@@ -1098,7 +1098,7 @@
       "statement": "A target capping per-invocation wall clock at 15 min hosts neither a first-time backfill nor a component connector, and its target profile records both exclusions.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 191
+      "line": 148
     },
     {
       "id": "topology.deploy.parity",
@@ -1109,7 +1109,7 @@
       "statement": "One declaration run on every control-plane target produces byte-identical table parts, compared against the reference target inside each target's object store after a 24 h soak.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 192
+      "line": 149
     },
     {
       "id": "topology.deploy.parity-divergence",
@@ -1120,7 +1120,7 @@
       "statement": "A byte difference from the reference output raises `ParityDivergence`, naming the target, the table and the first differing part.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 194
+      "line": 151
     },
     {
       "id": "topology.publish-hostname.posture-mismatch",
@@ -1131,7 +1131,7 @@
       "statement": "A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and fails the deploy.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 238
+      "line": 195
     },
     {
       "id": "topology.publish-hostname.probe-table",
@@ -1142,7 +1142,7 @@
       "statement": "A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before the deploy runs, naming the hostname and the side missing it.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 240
+      "line": 197
     },
     {
       "id": "topology.publish-hostname.unknown-field",
@@ -1153,7 +1153,7 @@
       "statement": "A descriptor decodes with excess properties refused; an unmodelled key raises `DescriptorUnknownField`, naming the key and the contract version.",
       "why": "P1",
       "file": "spec/01-topology.md",
-      "line": 242
+      "line": 199
     },
     {
       "id": "topology.publish-hostname.unconfigured-gateway",
@@ -1164,7 +1164,7 @@
       "statement": "A routing hop with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.",
       "why": "P3",
       "file": "spec/01-topology.md",
-      "line": 244
+      "line": 201
     },
     {
       "id": "topology.publish-hostname.issuer-key",
@@ -1175,7 +1175,7 @@
       "statement": "The engine's HTTP face refuses to start without a verification key that resolves and parses, raising `IssuerKeyUnusable` and naming the input; no generated key substitutes.",
       "why": "P3",
       "file": "spec/01-topology.md",
-      "line": 246
+      "line": 203
     },
     {
       "id": "topology.publish-hostname.container-readiness",
@@ -1186,7 +1186,7 @@
       "statement": "A retrieval container reaches readiness within 8 s of a cold start, before its snapshot-set hydration completes.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 248
+      "line": 205
     },
     {
       "id": "topology.coordinate.primitive",
@@ -1197,7 +1197,7 @@
       "statement": "Coordination rests on one property: a linearizable conditional write. No component depends on a stronger one, and the tree ships no consensus implementation or external coordination service.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 292
+      "line": 249
     },
     {
       "id": "topology.coordinate.inventory",
@@ -1208,7 +1208,7 @@
       "statement": "The single-writer operations are the lease row, the cursor compare-and-swap, {{store.fold.pointer-commit}}, a lease acquisition, a leased pipeline's commit-log entry, the bucket manifest commit and a configuration apply's version claim. No other operation needs a single writer.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 294
+      "line": 251
     },
     {
       "id": "topology.coordinate.lease-row",
@@ -1219,7 +1219,7 @@
       "statement": "A lease row is keyed by a pipeline, a source partition, a table's compaction or a deployment's cadence, and carries a holder, an expiry instant and a fence taken by one conditional update.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 296
+      "line": 253
     },
     {
       "id": "topology.coordinate.catalog-clock",
@@ -1230,7 +1230,7 @@
       "statement": "The catalog evaluates a lease row's expiry against its own clock, never a caller-supplied instant.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 298
+      "line": 255
     },
     {
       "id": "topology.coordinate.fence-advances",
@@ -1241,7 +1241,7 @@
       "statement": "Each acquisition of a lease row increments its fence, and release keeps the fence, so the fence never repeats for a key.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 300
+      "line": 257
     },
     {
       "id": "topology.coordinate.fenced-commit",
@@ -1252,7 +1252,7 @@
       "statement": "A commit under a lease is a conditional write predicated on the holder's fence; a predicate matching nothing is {{store.lease.stale-fence}}.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 302
+      "line": 259
     },
     {
       "id": "topology.coordinate.cursor-cas",
@@ -1263,7 +1263,7 @@
       "statement": "A cursor compare-and-swap is one conditional update predicated on the stored version, read back by its affected-row count.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 304
+      "line": 261
     },
     {
       "id": "topology.coordinate.cadence-lease-ttl",
@@ -1274,7 +1274,7 @@
       "statement": "A cadence lease is granted for 90 s.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 306
+      "line": 263
     },
     {
       "id": "topology.coordinate.cadence-lease-renewal",
@@ -1285,7 +1285,7 @@
       "statement": "The reconciler renews a cadence lease every 30 s while its applied document schedules a dispatchable unit.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 308
+      "line": 265
     },
     {
       "id": "topology.coordinate.cadence-fallback",
@@ -1296,7 +1296,7 @@
       "statement": "A deployment's fallback cron fires only after taking the cadence lease itself, so one fire holds the current fence.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 310
+      "line": 267
     },
     {
       "id": "topology.coordinate.catalog-port",
@@ -1307,7 +1307,7 @@
       "statement": "Every catalog backend is reached through the `Catalog` port, and code above the port names no backend. Swapping a backend is a wiring change in `contextful-cli`.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 312
+      "line": 269
     },
     {
       "id": "topology.coordinate.backends",
@@ -1318,7 +1318,7 @@
       "statement": "Single-node self-hosting uses a local catalog file owned by one process; a self-hosted cluster uses Postgres via `pg-catalog`; a managed edge deployment uses per-object SQLite; a managed cloud deployment uses managed Postgres.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 314
+      "line": 271
     },
     {
       "id": "topology.coordinate.weak-backend",
@@ -1329,7 +1329,7 @@
       "statement": "A catalog backend whose conditional update is not linearizable refuses at open with {{surface.apply.weak-conditional-backend}}.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 316
+      "line": 273
     },
     {
       "id": "topology.coordinate.cluster-availability",
@@ -1340,7 +1340,7 @@
       "statement": "Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 318
+      "line": 275
     },
     {
       "id": "topology.coordinate.air-gap",
@@ -1351,7 +1351,7 @@
       "statement": "Single-node and edge deployments reach no process outside themselves for coordination, and run air-gapped with only their sources reachable.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 319
+      "line": 276
     },
     {
       "id": "store.lay-out.components",

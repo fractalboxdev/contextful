@@ -8,10 +8,27 @@ contract: assurance
 
 **Contextful** makes claims a buyer acts on: a reader receives only the rows policy
 admits, and a stale lease holder never commits. Assurance decides what evidence stands
-behind each claim and keeps the claim no wider than that evidence. It has three layers.
-Lean models prove properties of the specification. A differential harness ties each model
-to the code that runs. Engineering gates and a quality harness turn the tree's discipline
-and the read path's quality into a red or green verdict.
+behind each claim and keeps the claim no wider than that evidence: Lean models prove the
+specification, a differential harness ties each model to the running code, and gates turn
+discipline and retrieval quality into a red or green verdict.
+
+## In plain words
+
+Think of **Contextful** as a librarian who makes two promises: you only get the books
+your card allows, and two librarians never stamp the same book at once. Assurance is how
+anyone checks those promises without taking the librarian's word for it.
+
+- **The math check.** A proof assistant reads the rulebook, not the code, and proves the
+  promises follow from it. An auditor confirms no proof hides a skipped step, like a
+  teacher marking the working, not just the answer.
+- **The twin check.** A small reference program built from the proofs and the real engine
+  answer the same made-up questions. A disagreement shrinks to its smallest form and is
+  saved, so every later run asks it first.
+- **The house rules.** Every code change arrives with a test that failed before it, the
+  gate runs its stages in a fixed order, and search results are scored against rows that
+  must never appear.
+
+The promise printed on the box is never bigger than what these checks show.
 
 ## How it works
 
@@ -32,9 +49,8 @@ flowchart LR
   EVAL["quality harness"] --> GATE
 ```
 
-The models are written from the specification text, not the engine source
-({{assurance.model.from-the-spec}}), so a theorem checks the specification rather than
-restating the code. The policy package depends on no external library
+Models follow the specification text, not the engine source
+({{assurance.model.from-the-spec}}). The policy package depends on no external library
 ({{assurance.model.declared-dependency}}), pins its toolchain
 ({{assurance.model.toolchain-drift}}), and keeps every definition total
 ({{assurance.model.total-definitions}}). The protocol package models lease, compare-and-swap
@@ -48,8 +64,8 @@ The theorems cover layer composition ({{assurance.prove.composition-sound}}), na
 ({{assurance.prove.order-is-specified}}). Each carries its negative space, the premises it
 leaves open ({{assurance.prove.negative-space}}).
 
-A proof counts only if the audit accepts it. The verdict reads the elaborated environment
-and the inventory alone ({{assurance.audit-assumptions.verdict-input}}), because a build exits
+A proof counts only if the audit accepts it, reading the elaborated environment and the
+inventory alone ({{assurance.audit-assumptions.verdict-input}}), because a build exits
 zero over a hole. Each required constant's assumption footprint is read transitively
 ({{assurance.audit-assumptions.transitive-audit}}) against a fixed allowlist
 ({{assurance.audit-assumptions.allowlist}}), and its statement must match the inventory
@@ -74,18 +90,17 @@ store ({{assurance.evaluate.through-the-store}}) under policy labels
 A contributor changes the engine's layer composition so that masking runs before
 filtering.
 
-The change alters Rust source, so it carries a test that fails against the base commit;
-without one the test-first stage stops it. The gate then reaches the formal stage
+It carries a test failing against the base commit, or the test-first stage stops it. The
+gate then reaches the formal stage
 ({{assurance.gate.formal-stage}}).
 
-Suppose the contributor also edits the Lean statement of the composition theorem to
-match. The inventory is edited apart from the declarations
-({{assurance.audit-assumptions.inventory}}), so the elaborated statement no longer matches its
-expected text and the check command fails ({{assurance.audit-assumptions.check-command}}). A
+If the contributor also edits the composition theorem's Lean statement to match, the
+inventory, edited apart from the declarations ({{assurance.audit-assumptions.inventory}}), no
+longer matches and the check command fails ({{assurance.audit-assumptions.check-command}}). A
 proof finished with a hole fails on its footprint
 ({{assurance.audit-assumptions.hole-assumption}}), whatever the syntax spells.
 
-Suppose instead the Lean side stays untouched. The differential harness feeds generated
+Otherwise the differential harness feeds generated
 cases to the reference binary and the engine ({{assurance.differential-test.harness}}).
 A case where a masked column meets a row filter decides differently, shrinks to a minimal
 form ({{assurance.differential-test.minimized}}), enters the counterexample corpus
@@ -93,7 +108,7 @@ form ({{assurance.differential-test.minimized}}), enters the counterexample corp
 on every later run ({{assurance.differential-test.corpus-replay}}), reproducible from the
 recorded seed ({{assurance.differential-test.seed}}).
 
-Suppose finally the reorder survives both. The evaluation run still fails if a
+If the reorder survives both, evaluation still fails if a
 must-not-retrieve row appears ({{assurance.evaluate.forbidden-row-rate}}).
 
 The published claim never outruns this evidence. The composition theorem is not a

@@ -45,8 +45,8 @@ flowchart LR
 A subject is a tuple of agent, host, principal, task, zone and incognito flag
 ({{authority.identify.subject-tuple}}). Only the principal is verified, at the mint against
 the identity provider ({{authority.identify.on-behalf-of}}); the rest render as asserted
-({{authority.identify.attestation}}). A credential is a chain-signed token under a versioned
-profile that names every admitted element ({{authority.profile.delegation-profile}}). Its
+({{authority.identify.attestation}}). A credential is a chain-signed Biscuit token under a
+versioned profile that names every admitted element ({{authority.profile.delegation-profile}}). Its
 grants name actions, table patterns and optional tenant, template and aggregate bounds
 ({{authority.grant.fields}}), over a four-word action vocabulary
 ({{authority.grant.actions}}).

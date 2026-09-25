@@ -17,80 +17,37 @@ the crossings, the profiles, where a build is deployed, how a published hostname
 its posture, the single-writer operations and the catalog that serializes them, and where
 the engine ends and an application begins.
 
-The system: the parties outside it, eight runtime contracts placed on the two halves, and
-the three crossings joining them; `corpus` governs this text and appears in no process.
+The system: the parties outside it, the contracts each half holds, and the three crossings
+joining them.
 
 ```mermaid
 flowchart LR
-  OPER(["operator"])
-  CALLER(["agent · analyst · application"])
   SRC[("sources")]
-  MODEL(["inference endpoint<br/>OpenAI-compatible HTTP"])
-  BUCKET[("S3-compatible bucket")]
+  BUCKET[("object storage")]
+  CALLER(["agent"])
+  MODEL(["inference endpoint"])
 
-  subgraph ENGINE["engine workspace"]
-    subgraph SURF["surface · contextful-control profile"]
-      direction TB
-      CADENCE["cadence tick · reconciler · dispatch"]
-      CONSOLE["analyst console"]
-    end
-
-    subgraph RUNP["run path · contextful-full"]
-      direction TB
-      subgraph RUN["run"]
-        JOURNAL["journal · scheduler · cursor commit"]
-      end
-      subgraph CONN["connector"]
-        HOST["component host + native connectors"]
-      end
-      subgraph AUTHR["authority"]
-        ALLOW["capability allowlists"]
-      end
-    end
-
-    subgraph CROSS["the three crossings"]
-      direction TB
-      X1["1 · connector interface world"]
-      X2["2 · columnar parts + manifest"]
-      X3["3 · capability-token format"]
-    end
-
-    subgraph READP["read path · contextful-edge + contextful-full"]
-      direction TB
-      subgraph READ["read"]
-        FACE["read face · query · ranking · memory"]
-      end
-      subgraph ENFC["authority + disclosure"]
-        ENF["enforcement stack"]
-      end
-      subgraph STOREC["store"]
-        STORE["parts · manifests · catalog"]
-      end
-    end
-
-    subgraph ASSURE["assurance"]
-      GATE["crate-graph gate"]
-    end
+  subgraph RUNP["run path"]
+    HOST["component host"] -- "journaled step" --> JOURNAL["journal"]
   end
 
-  OPER --> CADENCE
-  CADENCE -- "dispatch a unit" --> JOURNAL
-  JOURNAL -- "journaled step" --> HOST
-  HOST -- "pull" --> SRC
-  ALLOW -. "mediates" .- HOST
+  subgraph CROSS["the three crossings"]
+    X1["connector interface"]
+    X2["parts and manifest"]
+    X3["capability token"]
+  end
+
+  subgraph READP["read path"]
+    STORE["catalog"] --> ENF["enforcement stack"] -- "admitted rows" --> FACE["query face"]
+  end
+
+  SRC -- "pull" --> HOST
   HOST --- X1
-  JOURNAL -- "land" --> X2
-  ALLOW --- X3
-  X1 --- READP
-  X2 --> STORE
-  X3 --- ENF
-  CALLER -- "tool protocol · SQL · HTTP" --> FACE
-  CONSOLE --> FACE
-  FACE -- "admission value" --> ENF
-  ENF -- "row path" --> STORE
-  FACE -- "inference egress" --> MODEL
+  JOURNAL -- "land" --> X2 --> STORE
+  X3 --> ENF
   STORE <-- "push · pull" --> BUCKET
-  GATE -. "checks every edge" .-> CROSS
+  FACE -- "tool protocol, SQL, HTTP" --> CALLER
+  FACE -- "inference egress" --> MODEL
 ```
 
 ## compose
