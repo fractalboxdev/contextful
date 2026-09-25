@@ -1,0 +1,24 @@
+[package]
+name = "contextful-sync"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Bucket push and pull: the object-store adapters, the bucket manifest commit, fenced
+# bucket leases and pointer publication, the conditional-write probe and replica refresh.
+
+[dependencies]
+contextful-context = { path = "../contextful-context" }
+contextful-core = { path = "../contextful-core" }
+getrandom = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"

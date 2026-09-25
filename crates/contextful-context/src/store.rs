@@ -8,6 +8,7 @@ use contextful_core::store::lay_out::{
 };
 use contextful_core::store::reconcile::Schema;
 use contextful_core::store::resolve::TableState;
+use contextful_core::store::commit_log;
 use contextful_core::store::StoreError;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -26,6 +27,16 @@ pub struct StoreConfig {
     /// Bucket sync, read by the sync adapter.
     #[serde(default)]
     pub sync: Option<toml::Value>,
+    /// Present on a consuming replica: the canonical store it reads from.
+    #[serde(default)]
+    pub replica: Option<ReplicaConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReplicaConfig {
+    /// The canonical store a replica answers for.
+    pub of: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -45,6 +56,7 @@ pub struct EncryptionConfig {
 pub struct Store {
     root: PathBuf,
     config_node_id: Option<String>,
+    replica_of: Option<String>,
 }
 
 impl Store {
@@ -65,11 +77,24 @@ impl Store {
         if let Some(enc) = &config.encryption {
             check_key_source(&enc.key_source)?;
         }
-        Ok(Store { root, config_node_id: config.node.and_then(|n| n.id) })
+        Ok(Store { root, config_node_id: config.node.and_then(|n| n.id), replica_of: config.replica.map(|r| r.of) })
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The canonical store this store replicates, if it is a replica.
+    pub fn replica_of(&self) -> Option<&str> {
+        self.replica_of.as_deref()
+    }
+
+    /// Refuse a write verb on a replica, naming the canonical store (`store.replicate.write-refused`).
+    pub fn check_writable(&self, verb: &str) -> Result<()> {
+        match &self.replica_of {
+            Some(canonical) => Err(StoreError::ReplicaWriteRefused(format!("`{verb}` writes, and this store is a read-only replica of `{canonical}`")).into()),
+            None => Ok(()),
+        }
     }
 
     /// `[node] id` from the store's configuration.
@@ -175,6 +200,12 @@ impl Store {
                         m.run_id, m.node_id, m.table
                     ))
                     .into());
+                }
+                // A fenced run is readable once its pipeline's commit log records it under that fence.
+                if let (Some(fence), Some(pipeline)) = (m.fence, m.pipeline_id.as_deref()) {
+                    if !commit_log::committed(&crate::commit_log::read(self, pipeline)?, table, &m.run_id, fence) {
+                        continue;
+                    }
                 }
                 out.push(m);
             }

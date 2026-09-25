@@ -323,6 +323,7 @@ impl Engine {
             let lease = self.catalog.acquire(&key, &spec.run_id, OWNER_LEASE_TTL_SECS)?.ok_or_else(|| {
                 Failure::new(FailureTag::Transient, format!("another run holds the `{}` cursor lease of `{pipeline_id}`/`{table}`", plan.cursor_kind.name()))
             })?;
+            dest.open_fence(pipeline_id, table, lease.fence)?;
             *held.lock().unwrap_or_else(|e| e.into_inner()) = Some(lease);
         }
 

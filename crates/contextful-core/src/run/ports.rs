@@ -87,6 +87,11 @@ pub trait Destination {
     /// Land every batch as one atomic commit carrying `commit.cursor`. `precommit` runs
     /// immediately before the commit point; a refusal there lands nothing.
     fn land(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure>;
+    /// Record that a single-writer lease on `table` was taken under `fence`, so a commit
+    /// carrying a lower fence loses its condition at the store.
+    fn open_fence(&mut self, _pipeline_id: &str, _table: &str, _fence: u64) -> Result<(), Failure> {
+        Ok(())
+    }
     /// The newest commit marker `pipeline_id` wrote to `table`.
     fn newest_marker(&self, pipeline_id: &str, table: &str) -> Result<Option<Marker>, Failure>;
 }

@@ -191,6 +191,7 @@ pub fn land_batches(
     position: &Position,
     precommit: &dyn Fn() -> Result<()>,
 ) -> Result<RunManifest> {
+    store.check_writable("land")?;
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
     let mut types: HashMap<String, ColumnType> = HashMap::new();
     for b in batches {

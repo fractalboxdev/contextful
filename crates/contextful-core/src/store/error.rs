@@ -59,4 +59,61 @@ pub enum StoreError {
     /// A valid-time-bounded read names a table declaring no pair. (`store.bound-time.valid-time-undeclared`)
     #[error("StoreValidTimeUndeclared: {0}")]
     StoreValidTimeUndeclared(String),
+    /// A cursor whose kind takes no lease reached `cursors/`. (`store.lease.cursor-kind`)
+    #[error("LeaseCursorKindMismatch: {0}")]
+    LeaseCursorKindMismatch(String),
+    /// A run or pass found an unexpired lease another node holds. (`store.lease.held`)
+    #[error("LeaseHeld: {0}")]
+    LeaseHeld(String),
+    /// A bucket lease was attempted under the reserved node id `local`. (`store.lease.local-node`)
+    #[error("LeaseNodeIdLocal: {0}")]
+    LeaseNodeIdLocal(String),
+    /// A release was attempted against a lease another node holds. (`store.lease.not-held`)
+    #[error("LeaseNotHeld: {0}")]
+    LeaseNotHeld(String),
+    /// A query needs a sidecar or partition the replica lacks. (`store.replicate.missing-index`)
+    #[error("ReplicaMissingIndex: {0}")]
+    ReplicaMissingIndex(String),
+    /// A replica holds a strict subset of a snapshot's data files. (`store.replicate.partial-parquet`)
+    #[error("ReplicaPartialParquet: {0}")]
+    ReplicaPartialParquet(String),
+    /// A refresh requested a replicate-off table. (`store.replicate.sensitive-refused`)
+    #[error("ReplicaSensitiveTable: {0}")]
+    ReplicaSensitiveTable(String),
+    /// A write verb was invoked against a replica. (`store.replicate.write-refused`)
+    #[error("ReplicaWriteRefused: {0}")]
+    ReplicaWriteRefused(String),
+    /// `cas` is declared against a backend the probe did not demonstrate. (`store.probe.unproven`)
+    #[error("SyncCoordinationUnproven: {0}")]
+    SyncCoordinationUnproven(String),
+    /// A cursor was resolved by recency instead of through its commit. (`store.merge.cursor-recency`)
+    #[error("SyncCursorConflict: {0}")]
+    SyncCursorConflict(String),
+    /// The bucket manifest commit lost its race past the retry bound. (`store.merge.exhausted`)
+    #[error("SyncManifestRebaseExhausted: {0}")]
+    SyncManifestRebaseExhausted(String),
+    /// A downloaded object's digest differs from its entry. (`store.pull.digest-mismatch`)
+    #[error("SyncObjectDigestMismatch: {0}")]
+    SyncObjectDigestMismatch(String),
+    /// A key resolved outside the configured prefix. (`store.push.prefix-escape`)
+    #[error("SyncPrefixEscape: {0}")]
+    SyncPrefixEscape(String),
+    /// `prefix` and `prefix_from` are declared together. (`store.push.prefix-overspecified`)
+    #[error("SyncPrefixOverspecified: {0}")]
+    SyncPrefixOverspecified(String),
+    /// The variable named by `prefix_from` is unset at startup. (`store.push.prefix-unbound`)
+    #[error("SyncPrefixUnbound: {0}")]
+    SyncPrefixUnbound(String),
+    /// The conditional-write probe met an unsupported method, a forbidden response or a transport error. (`store.probe.inconclusive`)
+    #[error("SyncProbeInconclusive: {0}")]
+    SyncProbeInconclusive(String),
+    /// A pull exhausted its retries against keys moving beneath it. (`store.pull.unconverged`)
+    #[error("SyncPullDidNotConverge: {0}")]
+    SyncPullDidNotConverge(String),
+    /// A second push of one store started on a machine already pushing it. (`store.push.in-flight`)
+    #[error("SyncPushInFlight: {0}")]
+    SyncPushInFlight(String),
+    /// A tombstone names an entry another node owns. (`store.merge.tombstone-owner`)
+    #[error("SyncTombstoneForeign: {0}")]
+    SyncTombstoneForeign(String),
 }
