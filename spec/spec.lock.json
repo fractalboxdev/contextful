@@ -3999,7 +3999,7 @@
       "operation": "synthesize",
       "subject": "pass-cursor",
       "kind": "behavior",
-      "statement": "A pass reads the source's committed runs its cursor has not recorded, through the writing credential's own session, and records them once their claims commit.",
+      "statement": "A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under a prompt bound, recording each batch once its claims commit.",
       "why": "",
       "file": "spec/21-memory.md",
       "line": 86

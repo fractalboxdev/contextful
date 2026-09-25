@@ -24,6 +24,7 @@ use contextful_core::time::Instant;
 use contextful_policy::enforce::session::Session;
 use duckdb::types::Value as Engine;
 use serde_json::{json, Map, Value};
+use std::collections::BTreeMap;
 
 /// Default number of rows a ranked read returns.
 pub const DEFAULT_LIMIT: u64 = 10;
@@ -157,7 +158,7 @@ impl Face {
         let engine = SqlEngine::open(session)?;
         let anchor = request.anchor;
         let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();
-        let mut suppressed: std::collections::BTreeMap<&'static str, u64> = std::collections::BTreeMap::new();
+        let mut suppressed: BTreeMap<&'static str, u64> = BTreeMap::new();
         let mut recalled = false;
         let mut rows: Vec<Row> = Vec::new();
         for table in &arms {
@@ -174,79 +175,51 @@ impl Face {
                 .find(|p| schema.iter().any(|c| c.name == **p && matches!(c.ty, ColumnType::Timestamp | ColumnType::Utf8)))
                 .map_or(INGESTED_AT, |p| *p)
                 .to_string();
-            let sql = format!(
-                "SELECT * FROM {} ORDER BY {} DESC, {} DESC, {} DESC LIMIT {window}",
-                ident(table),
-                ident(INGESTED_AT),
-                ident(RUN_ID),
-                ident(ROW_SEQ)
-            );
-            let (columns, values) = engine.run_values(&sql, &[], None)?;
-            let at = |name: &str| columns.iter().position(|c| c == name);
             let claims = self.memory().table(table).is_some_and(|t| t.shape == Shape::Facts);
             recalled |= claims;
-            for v in values {
-                let get = |name: &str| at(name).map(|i| &v[i]);
-                if claims {
-                    // Recall serves a claim only while live, and only when every evidence
-                    // row reads through this session (`read.recall.ranked-arm`).
-                    let superseded = get("superseded_by").and_then(text_of).is_some();
-                    let ended = match get("valid_to").map(|x| cell(x.clone())) {
-                        Some(Cell::Timestamp(end)) => end <= anchor,
-                        Some(Cell::Null) | None => false,
-                        Some(other) => Publication::cast(match other.to_json() {
-                            Value::String(s) => Some(s),
-                            _ => None,
-                        }
-                        .as_deref())
-                        .instant()
-                        .is_none_or(|end| end <= anchor),
-                    };
-                    if superseded || ended {
-                        continue;
-                    }
-                    let evidence = get("evidence").and_then(text_of);
-                    if let Err(e) = gate(evidence.as_deref(), &memory_tables, |r| self.evidence_read(&engine, session, r)) {
-                        *suppressed.entry(e.identifier()).or_insert(0) += 1;
-                        continue;
-                    }
-                }
-                let snippet_text: Vec<String> = snippet.iter().filter_map(|c| get(c).and_then(text_of)).collect();
-                let snippet_text = (!snippet.is_empty()).then(|| snippet_text.join(" — "));
-                let publication = match get(&basis).map(|p| cell(p.clone())) {
-                    Some(Cell::Timestamp(t)) => Publication::At(t),
-                    Some(Cell::Null) | None => Publication::Null,
-                    Some(other) => Publication::cast(match other.to_json() {
-                        Value::String(s) => Some(s),
-                        _ => None,
-                    }
-                    .as_deref()),
-                };
-                let ingested = match get(INGESTED_AT).map(|p| cell(p.clone())) {
-                    Some(Cell::Timestamp(t)) => Some(t),
-                    _ => None,
-                };
-                let vector = match (&request.query_embedding, get(EMBEDDING_COLUMN).and_then(vector_of)) {
-                    (Some(q), Some(row)) => cosine(q, &row),
-                    _ => None,
-                };
-                let id = format!(
-                    "{table}\u{1f}{}\u{1f}{}",
-                    get(RUN_ID).and_then(text_of).unwrap_or_default(),
-                    get(ROW_SEQ).and_then(text_of).unwrap_or_default()
+            // A claims arm keeps only live claims in SQL, ahead of the window, so retired and
+            // expired claims never take a live claim's place; the evidence gate runs on each
+            // page read, and pages continue until the window fills with served claims.
+            let (live, parameters) = if claims {
+                let live = format!(
+                    " WHERE {} IS NULL AND ({} IS NULL OR TRY_CAST({} AS TIMESTAMPTZ) > ?)",
+                    ident("superseded_by"),
+                    ident("valid_to"),
+                    ident("valid_to")
                 );
-                let values = columns.iter().zip(&v).map(|(c, x)| (c.clone(), cell(x.clone()).to_json())).collect();
-                rows.push(Row {
-                    table: table.clone(),
-                    id,
-                    lexical: lexical_score(&tokens, snippet_text.as_deref()),
-                    snippet: snippet_text,
-                    vector,
-                    publication,
-                    basis_column: basis.clone(),
-                    ingested,
-                    values,
-                });
+                (live, vec![Bound::Timestamp(anchor)])
+            } else {
+                (String::new(), Vec::new())
+            };
+            let (mut kept, mut offset) = (0u64, 0u64);
+            loop {
+                let sql = format!(
+                    "SELECT * FROM {}{live} ORDER BY {} DESC, {} DESC, {} DESC LIMIT {window} OFFSET {offset}",
+                    ident(table),
+                    ident(INGESTED_AT),
+                    ident(RUN_ID),
+                    ident(ROW_SEQ)
+                );
+                let (columns, values) = engine.run_values(&sql, &parameters, None)?;
+                let page = values.len() as u64;
+                let cx = ArmContext {
+                    engine: &engine,
+                    session,
+                    table,
+                    claims,
+                    anchor,
+                    window,
+                    snippet: &snippet,
+                    basis: &basis,
+                    tokens: &tokens,
+                    request,
+                    memory_tables: &memory_tables,
+                };
+                self.arm_rows(&cx, &columns, values, &mut kept, &mut rows, &mut suppressed);
+                offset += window;
+                if !claims || page < window || kept >= window {
+                    break;
+                }
             }
         }
         let prefloor = rows.len() as u64;
@@ -368,6 +341,104 @@ impl Face {
             EvidenceRead::Masked
         } else {
             EvidenceRead::Readable
+        }
+    }
+}
+
+/// What one arm's rows are read against.
+struct ArmContext<'a> {
+    engine: &'a SqlEngine,
+    session: &'a Session,
+    table: &'a str,
+    claims: bool,
+    anchor: Instant,
+    window: u64,
+    snippet: &'a [String],
+    basis: &'a str,
+    tokens: &'a [String],
+    request: &'a RetrieveRequest,
+    memory_tables: &'a [String],
+}
+
+impl Face {
+    /// Take one page of an arm's rows as candidates, up to the window.
+    fn arm_rows(
+        &self,
+        cx: &ArmContext<'_>,
+        columns: &[String],
+        values: Vec<Vec<Engine>>,
+        kept: &mut u64,
+        rows: &mut Vec<Row>,
+        suppressed: &mut BTreeMap<&'static str, u64>,
+    ) {
+        let at = |name: &str| columns.iter().position(|c| c == name);
+        for v in values {
+            if *kept == cx.window {
+                break;
+            }
+            let get = |name: &str| at(name).map(|i| &v[i]);
+            if cx.claims {
+                // Recall serves a claim only while live, and only when every evidence
+                // row reads through this session (`read.recall.ranked-arm`).
+                let superseded = get("superseded_by").and_then(text_of).is_some();
+                let ended = match get("valid_to").map(|x| cell(x.clone())) {
+                    Some(Cell::Timestamp(end)) => end <= cx.anchor,
+                    Some(Cell::Null) | None => false,
+                    Some(other) => Publication::cast(match other.to_json() {
+                        Value::String(s) => Some(s),
+                        _ => None,
+                    }
+                    .as_deref())
+                    .instant()
+                    .is_none_or(|end| end <= cx.anchor),
+                };
+                if superseded || ended {
+                    continue;
+                }
+                let evidence = get("evidence").and_then(text_of);
+                if let Err(e) = gate(evidence.as_deref(), cx.memory_tables, |r| self.evidence_read(cx.engine, cx.session, r)) {
+                    *suppressed.entry(e.identifier()).or_insert(0) += 1;
+                    continue;
+                }
+            }
+            let snippet_text: Vec<String> = cx.snippet.iter().filter_map(|c| get(c).and_then(text_of)).collect();
+            let snippet_text = (!cx.snippet.is_empty()).then(|| snippet_text.join(" — "));
+            let publication = match get(cx.basis).map(|p| cell(p.clone())) {
+                Some(Cell::Timestamp(t)) => Publication::At(t),
+                Some(Cell::Null) | None => Publication::Null,
+                Some(other) => Publication::cast(match other.to_json() {
+                    Value::String(s) => Some(s),
+                    _ => None,
+                }
+                .as_deref()),
+            };
+            let ingested = match get(INGESTED_AT).map(|p| cell(p.clone())) {
+                Some(Cell::Timestamp(t)) => Some(t),
+                _ => None,
+            };
+            let vector = match (&cx.request.query_embedding, get(EMBEDDING_COLUMN).and_then(vector_of)) {
+                (Some(q), Some(row)) => cosine(q, &row),
+                _ => None,
+            };
+            let id = format!(
+                "{}\u{1f}{}\u{1f}{}",
+                cx.table,
+                get(RUN_ID).and_then(text_of).unwrap_or_default(),
+                get(ROW_SEQ).and_then(text_of).unwrap_or_default()
+            );
+            let values = columns.iter().zip(&v).map(|(c, x)| (c.clone(), cell(x.clone()).to_json())).collect();
+            *kept += 1;
+            rows.push(Row {
+                table: cx.table.to_string(),
+                id,
+                lexical: lexical_score(cx.tokens, snippet_text.as_deref()),
+                snippet: snippet_text,
+                vector,
+                publication,
+                basis_column: cx.basis.to_string(),
+                ingested,
+                values,
+            });
         }
     }
 }

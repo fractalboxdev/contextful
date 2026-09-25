@@ -12,6 +12,7 @@ use contextful_core::store::lay_out::NodeId;
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
+use contextful_core::AuthorityError;
 use contextful_policy::enforce::session::Session;
 use contextful_policy::verify::AdmittedAuthority;
 use serde_json::{json, Map, Value};
@@ -106,11 +107,19 @@ fn claim_types() -> HashMap<String, ColumnType> {
     types
 }
 
-/// Where and when a write lands.
+/// The effect-boundary re-check a landing runs just before it writes.
+pub type Boundary<'a> = dyn Fn() -> Result<(), AuthorityError> + 'a;
+
+/// One commit: where and when it lands, who writes it, the run it lands as, and the
+/// re-check of the writer's authority just before it writes.
 pub struct Landing<'a> {
     pub node: &'a NodeId,
     pub at: Instant,
     pub writer: &'a Writer,
+    /// The run every table of this commit lands as. A retry of the same batch lands as
+    /// the same run, and a table already holding it lands nothing again.
+    pub run_id: String,
+    pub boundary: &'a Boundary<'a>,
 }
 
 impl Landing<'_> {
@@ -118,7 +127,7 @@ impl Landing<'_> {
         RunContext {
             node: self.node.clone(),
             injection: Injection {
-                run_id: format!("memory-{}", self.at.unix_nanos()),
+                run_id: self.run_id.clone(),
                 site_id: "memory".into(),
                 batch_seq: Some(0),
                 authored_by: self.writer.on_behalf_of.clone(),
@@ -127,24 +136,23 @@ impl Landing<'_> {
         }
     }
 
-    /// Land claims as one run; a later version of a claim replaces the earlier on read.
-    pub fn claims(&self, face: &Face, table: &str, claims: &[Claim]) -> Result<(), MemoryFault> {
-        if claims.is_empty() {
-            return Ok(());
-        }
-        let batch = Batch { rows: claims.iter().map(row).collect(), types: claim_types() };
-        land(face.store(), &face.decl(table), &batch, &self.context())?;
-        Ok(())
+    fn committed(&self, face: &Face, table: &str) -> Result<bool, MemoryFault> {
+        Ok(face.store().committed_runs(table)?.iter().any(|m| m.run_id == self.run_id))
     }
 
-    /// Land dead-lettered items into `<table>_dead_letter`.
-    pub fn dead_letters(&self, face: &Face, table: &str, items: &[Value]) -> Result<(), MemoryFault> {
-        if items.is_empty() {
-            return Ok(());
+    /// Land claims into `table` and dead letters beside it, as one run of each table,
+    /// after re-reading the writer's authority (`authority.verify.effect-boundary`).
+    pub fn commit(&self, face: &Face, table: &str, claims: &[Claim], dead: &[Value]) -> Result<(), MemoryFault> {
+        (self.boundary)()?;
+        if !claims.is_empty() && !self.committed(face, table)? {
+            let batch = Batch { rows: claims.iter().map(row).collect(), types: claim_types() };
+            land(face.store(), &face.decl(table), &batch, &self.context())?;
         }
-        let rows = items.iter().filter_map(|v| v.as_object().cloned()).collect();
-        let name = dead_letter_table(table);
-        land(face.store(), &face.decl(&name), &Batch { rows, types: HashMap::new() }, &self.context())?;
+        let letters = dead_letter_table(table);
+        if !dead.is_empty() && !self.committed(face, &letters)? {
+            let rows = dead.iter().filter_map(|v| v.as_object().cloned()).collect();
+            land(face.store(), &face.decl(&letters), &Batch { rows, types: HashMap::new() }, &self.context())?;
+        }
         Ok(())
     }
 }

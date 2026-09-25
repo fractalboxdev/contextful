@@ -120,16 +120,19 @@ pub struct Revision {
     pub retired: Vec<Claim>,
 }
 
-/// Revise `live` with `new`. A live prior on the same subject, predicate and scope with
-/// the same object is restated and nothing lands. A contradicting prior is on the new
-/// claim's validity line when both are open-ended or both start at one instant; there a
-/// claim of equal or higher tier retires it — its `valid_to` becomes the new claim's
-/// `valid_from` and `superseded_by` names the new claim — and a lower-tier claim lands
-/// with a bounded validity end instead (`read.revise.supersede`).
+/// Revise `live` with `new`. Only claims live at the new claim's `valid_from` take part.
+/// A live prior on the same subject, predicate, object and scope is restated: nothing
+/// lands unless the new claim stands higher, which re-lands the claim at its tier. A
+/// contradicting prior is on the new claim's validity line when both are open-ended or
+/// both start at one instant; there a claim of equal or higher tier retires it — its
+/// `valid_to` becomes the new claim's `valid_from` and `superseded_by` names the new
+/// claim — and a lower-tier claim lands with a bounded validity end instead
+/// (`read.revise.supersede`).
 pub fn revise(new: Claim, live: &[Claim]) -> Revision {
-    let line: Vec<&Claim> = live.iter().filter(|p| p.superseded_by.is_none() && p.same_line(&new)).collect();
-    if line.iter().any(|p| p.object == new.object) {
-        return Revision { landed: None, retired: Vec::new() };
+    let line: Vec<&Claim> = live.iter().filter(|p| p.live_at(new.valid_from) && p.same_line(&new)).collect();
+    if let Some(same) = line.iter().find(|p| p.object == new.object) {
+        let promoted = (new.tier > same.tier).then_some(new);
+        return Revision { landed: promoted, retired: Vec::new() };
     }
     let mut new = new;
     let mut retired = Vec::new();

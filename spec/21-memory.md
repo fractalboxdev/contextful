@@ -66,7 +66,7 @@ Extract, Resolve and Consolidate; the dedup key, evidence support, the audit rec
 - `extract-attempts` — A schema-invalid response is re-prompted with its validation feedback, at most 3 attempts per batch in total.
 - `dead-letter` — A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced.
   *A-read*
-- `pass-cursor` — A pass reads the source's committed runs its cursor has not recorded, through the writing credential's own session, and records them once their claims commit.
+- `pass-cursor` — A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under a prompt bound, recording each batch once its claims commit.
 - `attribution` — Every landed claim carries `grant_id`, the chain-final revocation identifier of the credential that wrote it, `agent`, that credential's agent member, and `_authored_by`, its on-behalf-of principal.
   *because a reader weighs a conclusion by which grant could have produced it*
 

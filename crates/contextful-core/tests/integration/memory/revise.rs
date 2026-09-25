@@ -64,8 +64,21 @@ fn an_equal_or_higher_claim_retires_its_prior_on_one_line() {
     assert!(revise(lee.clone(), &[bounded]).retired.is_empty());
 
     // Another scope is another line.
-    let scoped = Claim { scope: Some("emea".into()), ..dana };
-    assert!(revise(lee, &[scoped]).retired.is_empty());
+    let scoped = Claim { scope: Some("emea".into()), ..dana.clone() };
+    assert!(revise(lee.clone(), &[scoped]).retired.is_empty());
+
+    // An expired prior is no longer live: it is neither retired nor restated.
+    let expired = Claim { valid_to: Some(at("2030-01-20T00:00:00Z")), ..dana.clone() };
+    let after = revise(lee, std::slice::from_ref(&expired));
+    assert!(after.retired.is_empty() && after.landed.is_some());
+    let again_after = revise(claim("Dana", Tier::Derived, "2030-02-01T00:00:00Z"), &[expired]);
+    assert!(again_after.landed.is_some(), "restating an expired claim lands it anew");
+
+    // A higher-tier restatement promotes the claim: it re-lands at the higher tier.
+    let promoted = revise(claim("Dana", Tier::Curated, "2030-02-01T00:00:00Z"), std::slice::from_ref(&dana));
+    assert_eq!(promoted.landed.map(|c| (c.claim_id, c.tier)), Some((dana.claim_id.clone(), Tier::Curated)));
+    let demoted = revise(claim("Dana", Tier::Researched, "2030-02-01T00:00:00Z"), std::slice::from_ref(&dana));
+    assert_eq!(demoted.landed, None);
 }
 
 /// The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.

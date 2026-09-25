@@ -86,19 +86,26 @@ pub fn validate(content: &str) -> Result<Extraction, String> {
     let extraction: Extraction =
         serde_json::from_value(value).map_err(|e| format!("the response does not match the output schema: {e}"))?;
     for (i, c) in extraction.claims.iter().enumerate() {
-        for (field, v) in [("subject", &c.subject), ("predicate", &c.predicate), ("object", &c.object)] {
-            if v.trim().is_empty() {
-                return Err(format!("claim {i}: `{field}` is empty"));
-            }
-        }
-        if !(0.0..=1.0).contains(&c.confidence) {
-            return Err(format!("claim {i}: confidence {} is outside [0, 1]", c.confidence));
-        }
-        if c.evidence.iter().any(|e| e.seq < 0) {
-            return Err(format!("claim {i}: an evidence `seq` is negative"));
-        }
+        validate_claim(c).map_err(|why| format!("claim {i}: {why}"))?;
     }
     Ok(extraction)
+}
+
+/// Validate one claim, whichever path proposes it: non-empty subject, predicate and
+/// object, a confidence in [0, 1], and no negative evidence sequence.
+pub fn validate_claim(c: &CandidateClaim) -> Result<(), String> {
+    for (field, v) in [("subject", &c.subject), ("predicate", &c.predicate), ("object", &c.object)] {
+        if v.trim().is_empty() {
+            return Err(format!("`{field}` is empty"));
+        }
+    }
+    if !(0.0..=1.0).contains(&c.confidence) {
+        return Err(format!("confidence {} is outside [0, 1]", c.confidence));
+    }
+    if c.evidence.iter().any(|e| e.seq < 0) {
+        return Err("an evidence `seq` is negative".into());
+    }
+    Ok(())
 }
 
 /// What one extract attempt yields.

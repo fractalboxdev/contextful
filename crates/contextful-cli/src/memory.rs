@@ -10,6 +10,7 @@ use clap::Subcommand;
 use contextful_context::node;
 use contextful_core::memory::synthesize::CandidateClaim;
 use contextful_core::ports::Clock;
+use contextful_policy::verify::{effect_boundary, Admission};
 use contextful_memory::synthesize::Pass;
 use contextful_memory::write::write_claim;
 use contextful_runtime::infer::Endpoint;
@@ -65,7 +66,8 @@ fn state_dir(project: &str) -> Result<PathBuf> {
 pub fn run(cmd: MemoryCmd) -> Result<()> {
     match cmd {
         MemoryCmd::Synthesize { project, source, into, endpoint, model } => {
-            let (authority, _) = project.admit.admit("a synthesis pass")?;
+            let (authority, revocation) = project.admit.admit("a synthesis pass")?;
+            let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
             let face = face(&project.project, &project.declaration)?;
             let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
             let inference = Endpoint::new(&endpoint, &model, std::env::var(INFERENCE_KEY_VAR).ok()).map_err(anyhow::Error::msg)?;
@@ -79,6 +81,7 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
                 state: &state,
                 node: &node,
                 now: SystemClock.now(),
+                boundary: &boundary,
             }
             .run()?;
             if report.runs.is_empty() {
@@ -97,10 +100,11 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
         }
         MemoryCmd::Write { project, into, claim } => {
             let candidate: CandidateClaim = serde_json::from_str(&claim).context("`--claim` is one claim as JSON")?;
-            let (authority, _) = project.admit.admit("the direct write")?;
+            let (authority, revocation) = project.admit.admit("the direct write")?;
+            let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
             let face = face(&project.project, &project.declaration)?;
             let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
-            let written = write_claim(&face, &authority, &into, candidate, &node, SystemClock.now())?;
+            let written = write_claim(&face, &authority, &into, candidate, &node, SystemClock.now(), &boundary)?;
             match written.claim {
                 Some(c) => println!("{into}: landed {} ({}), retired {}", c.claim_id, c.tier.name(), written.retired.len()),
                 None => println!("{into}: restates a live claim; nothing landed"),

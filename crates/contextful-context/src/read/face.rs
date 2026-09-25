@@ -15,7 +15,7 @@ use contextful_core::read::ReadError;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::declare::{DeclareError, MemoryDeclarations};
 use contextful_core::store::bound_time::Bounds;
-use contextful_core::store::declare::TableDecl;
+use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
 use contextful_core::store::reconcile::{Column, ColumnType};
 use contextful_core::store::relation::{ident, relation};
 use contextful_core::store::reserve::{INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
@@ -69,6 +69,12 @@ impl Face {
             DeclareError::Malformed(m) => ReadFault::Policy(m.into()),
         })?;
         parsed.extend(memory.tables.iter().map(|t| t.table_decl()));
+        // One name has one declaration: a second would replace the first's masks, zone and
+        // predicate.
+        let mut names = BTreeSet::new();
+        if let Some(d) = parsed.iter().find(|d| !names.insert(d.name.clone())) {
+            return Err(ReadFault::Policy(DeclarationMalformed(format!("table `{}` is declared more than once", d.name)).into()));
+        }
         let mut decls = BTreeMap::new();
         let mut policies = BTreeMap::new();
         for d in parsed {

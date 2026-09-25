@@ -17,6 +17,11 @@ pub enum MemoryFault {
     Read(#[from] ReadFault),
     #[error(transparent)]
     Store(#[from] ContextError),
+    #[error(transparent)]
+    Authority(#[from] contextful_core::AuthorityError),
+    /// A claim that fails validation.
+    #[error("{0}")]
+    Invalid(String),
     /// The credential holds no grant for the named action on the named table.
     #[error("{0}")]
     Denied(String),

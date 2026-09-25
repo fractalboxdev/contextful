@@ -80,7 +80,7 @@ fn project() -> (tempfile::TempDir, String, String) {
     let token = stdout(&run(
         p,
         &[
-            "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://synthesizer",
+            "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://synthesizer", "--zone", "on-prem:hq",
             "--action", "read", "--action", "write", "--table", "research/*", "--table", "memory/*", "--ttl", "600",
         ],
         &[],
