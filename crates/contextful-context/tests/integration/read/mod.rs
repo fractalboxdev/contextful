@@ -214,10 +214,6 @@ pub fn column(r: &Response, name: &str) -> Vec<Value> {
     r.rows.iter().map(|row| row[i].clone()).collect()
 }
 
-pub fn strings(v: &[Value]) -> Vec<&str> {
-    v.iter().map(|x| x.as_str().unwrap_or("<null>")).collect()
-}
-
 /// The refusal a read returned, by identifier and message.
 pub fn refusal<T: std::fmt::Debug>(r: Result<T, ReadFault>) -> (String, String) {
     match r {

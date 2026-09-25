@@ -124,7 +124,7 @@ impl Face {
         let mut sources = Vec::new();
         for t in self.tables()? {
             if raw_read_covers(authority.grants(), &t) {
-                sources.push(self.source(&t, bounds.clone())?);
+                sources.push(self.source(&t, bounds)?);
             }
         }
         Ok(Session::open(authority, request, sources, &self.pepper)?)
@@ -262,7 +262,7 @@ impl Face {
             if self.store.try_schema(r.name())?.is_none() {
                 continue;
             }
-            for f in scan(&self.store, &self.decl(r.name()), bounds.clone())?.files {
+            for f in scan(&self.store, &self.decl(r.name()), bounds)?.files {
                 rows.push(vec![json!(r.name()), json!(f)]);
             }
         }
