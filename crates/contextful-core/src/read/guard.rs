@@ -20,7 +20,7 @@ pub struct Admitted {
     pub relations: BTreeSet<String>,
     /// Common table expressions the statement declares.
     pub ctes: BTreeSet<String>,
-    /// Positional parameters the statement carries.
+    /// Distinct parameters the statement carries.
     pub parameters: usize,
 }
 
@@ -79,6 +79,7 @@ pub fn admit(serialized: &Value, registered: impl Fn(&str) -> bool) -> Result<Ad
     objects(statement, &mut nodes);
     let ctes = cte_names(&nodes);
     let mut admitted = Admitted { ctes: ctes.clone(), ..Admitted::default() };
+    let mut parameters = BTreeSet::new();
     for o in &nodes {
         match o.get("type").and_then(Value::as_str) {
             Some("TABLE_FUNCTION") => {
@@ -107,8 +108,9 @@ pub fn admit(serialized: &Value, registered: impl Fn(&str) -> bool) -> Result<Ad
             _ => {}
         }
         if o.get("class").and_then(Value::as_str) == Some("PARAMETER") {
-            admitted.parameters += 1;
+            parameters.insert(o.get("identifier").and_then(Value::as_str).unwrap_or_default().to_string());
         }
     }
+    admitted.parameters = parameters.len();
     Ok(admitted)
 }
