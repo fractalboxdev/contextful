@@ -111,7 +111,7 @@ impl Store {
     pub fn lock_schema(&self, table: &str) -> Result<FileLock> {
         let dir = self.table_dir(table)?;
         fs::create_dir_all(&dir).at(&dir)?;
-        FileLock::acquire(&dir.join(format!("{SCHEMA_FILE}.lock")), std::time::Duration::from_secs(LOCK_STALE_SECS))
+        FileLock::acquire(&dir.join(format!("{SCHEMA_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))
     }
 
     /// Replace `schema.json` with the merged schema (`store.lay-out.schema-file`).
@@ -260,36 +260,37 @@ impl Store {
 
 pub const ABSENT_ETAG: &str = "absent";
 
-/// Age past which a lock file is taken as left by a crashed process and removed.
-pub const LOCK_STALE_SECS: u64 = 30;
+/// How long a landing waits for a lock another landing holds before refusing.
+pub const LOCK_WAIT_SECS: u64 = 30;
 
-/// An exclusive lock file, removed on drop: the filesystem's stand-in for a
-/// conditional write. A lock older than [`LOCK_STALE_SECS`] was left by a crashed
-/// holder and is cleared.
+/// An exclusive lock: a lock file holding an advisory lock of the operating system,
+/// the filesystem's stand-in for a conditional write. The kernel releases the lock when
+/// its holder exits, so a crashed holder's file blocks nobody, a live holder is never
+/// mistaken for a crashed one however long it works, and no waiter takes a lock beside
+/// its holder. The holder removes the file on drop, and only while it still names the
+/// file the holder locked.
 #[derive(Debug)]
-pub struct FileLock(PathBuf);
+pub struct FileLock {
+    path: PathBuf,
+    file: fs::File,
+}
 
 impl FileLock {
     /// Take the lock, or `None` while a live holder has it.
     pub fn try_acquire(path: &Path) -> Result<Option<FileLock>> {
-        for _ in 0..2 {
-            match fs::OpenOptions::new().write(true).create_new(true).open(path) {
-                Ok(_) => return Ok(Some(FileLock(path.to_path_buf()))),
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    let stale = fs::metadata(path)
-                        .and_then(|m| m.modified())
-                        .ok()
-                        .and_then(|t| t.elapsed().ok())
-                        .is_some_and(|age| age.as_secs() >= LOCK_STALE_SECS);
-                    if !stale {
-                        return Ok(None);
-                    }
-                    let _ = fs::remove_file(path);
-                }
-                Err(e) => return Err(ContextError::Io { path: path.to_path_buf(), source: e }),
+        loop {
+            let file = fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path).at(path)?;
+            match file.try_lock() {
+                Ok(()) => {}
+                Err(fs::TryLockError::WouldBlock) => return Ok(None),
+                Err(fs::TryLockError::Error(e)) => return Err(ContextError::Io { path: path.to_path_buf(), source: e }),
+            }
+            // A releasing holder removes the file between this open and this lock; the lock
+            // then covers a file no path names, and the next open meets the current one.
+            if names_file(path, &file)? {
+                return Ok(Some(FileLock { path: path.to_path_buf(), file }));
             }
         }
-        Ok(None)
     }
 
     /// Take the lock, waiting up to `wait` for a live holder to release it, or `None`
@@ -315,9 +316,36 @@ impl FileLock {
 }
 
 impl Drop for FileLock {
+    /// Remove the file while still holding its lock, so a waiter that opened it finds no
+    /// path naming it and reopens; the lock releases when the handle closes.
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
+        if names_file(&self.path, &self.file).unwrap_or(false) {
+            let _ = fs::remove_file(&self.path);
+        }
     }
+}
+
+/// Whether `path` still names the file `file` opened.
+fn names_file(path: &Path, file: &fs::File) -> Result<bool> {
+    let at_path = match fs::metadata(path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(ContextError::Io { path: path.to_path_buf(), source: e }),
+    };
+    let held = file.metadata().at(path)?;
+    Ok(same_file(&at_path, &held))
+}
+
+#[cfg(unix)]
+fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    a.dev() == b.dev() && a.ino() == b.ino()
+}
+
+/// A platform without inode identity removes no open file, so the path names the held one.
+#[cfg(not(unix))]
+fn same_file(_: &fs::Metadata, _: &fs::Metadata) -> bool {
+    true
 }
 
 pub(crate) fn etag(bytes: &[u8]) -> String {

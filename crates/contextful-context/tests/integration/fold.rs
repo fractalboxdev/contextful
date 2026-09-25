@@ -2,6 +2,7 @@
 
 use crate::support::{at, decl, s, Fixture};
 use contextful_context::fold::{commit, fold, prepare, Committed, Prepared};
+use contextful_context::store::FileLock;
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::store::fold::FoldOutcome;
 use contextful_core::store::StoreError;
@@ -143,10 +144,10 @@ fn the_pointer_replace_is_conditioned_on_the_etag_read_at_pass_start() {
     assert_eq!(ptr.snapshot_id, m.snapshot_id);
     assert_eq!(etag.len(), 64);
 
-    // A held lock is a lost condition, never a wait.
+    // A lock held past the commit's wait is a lost condition.
     f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T02:00:00Z").unwrap();
     let b = staged(&f, &d, "2030-01-01T03:00:00Z");
-    fs::write(f.table_dir("events").join("_pointer.json.lock"), b"").unwrap();
+    let _held = FileLock::try_acquire(&f.table_dir("events").join("_pointer.json.lock")).unwrap().expect("a free lock");
     assert_eq!(commit(&f.store, b).unwrap(), Committed::Lost);
     assert_eq!(f.store.pointer("events").unwrap().unwrap().0.snapshot_id, m.snapshot_id);
 }
@@ -230,9 +231,10 @@ fn a_new_snapshot_supersedes_without_deleting() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT v FROM t"), [[s("2")]]);
 }
 
-/// A pointer lock a crashed pass left behind stops no later pass once it is stale.
+/// A pointer lock file a crashed pass left behind stops no later pass: no live process
+/// holds it, whatever its age.
 #[test]
-fn a_stale_pointer_lock_is_cleared() {
+fn a_crashed_passs_pointer_lock_is_cleared() {
     let f = Fixture::new();
     let d = decl("name = \"events\"");
     f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
@@ -348,14 +350,11 @@ fn a_busy_pointer_lock_is_waited_for_rather_than_read_as_a_moved_pointer() {
     let lock = f.table_dir("events").join("_pointer.json.lock");
 
     // A holder that releases well inside the wait: the pass publishes, not fails.
-    fs::write(&lock, b"").unwrap();
-    let releaser = {
-        let lock = lock.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(40));
-            fs::remove_file(&lock).unwrap();
-        })
-    };
+    let held = FileLock::try_acquire(&lock).unwrap().expect("a free lock");
+    let releaser = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(40));
+        drop(held);
+    });
     let st = staged(&f, &d, "2030-01-01T01:00:00Z");
     assert!(matches!(commit(&f.store, st).unwrap(), Committed::Published(_)), "contention was read as a lost pointer");
     releaser.join().unwrap();
@@ -363,9 +362,9 @@ fn a_busy_pointer_lock_is_waited_for_rather_than_read_as_a_moved_pointer() {
     // A holder that outlasts the wait is still a lost condition, so a commit terminates.
     f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T02:00:00Z").unwrap();
     let st = staged(&f, &d, "2030-01-01T03:00:00Z");
-    fs::write(&lock, b"").unwrap();
+    let held = FileLock::try_acquire(&lock).unwrap().expect("a free lock");
     assert_eq!(commit(&f.store, st).unwrap(), Committed::Lost);
-    fs::remove_file(&lock).unwrap();
+    drop(held);
 }
 
 /// A staging directory whose pass still holds its lock is in flight, whatever id it
@@ -391,4 +390,26 @@ fn a_collection_leaves_an_in_flight_staging_directory_alone() {
     f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T03:00:00Z").unwrap();
     fold(&f.store, &d, at("2030-01-01T04:00:00Z")).unwrap();
     assert!(!early_staging.exists());
+}
+
+/// A lock is held for exactly as long as its holder lives, whatever its file's age: a
+/// long-running holder is never read as crashed, so no second process takes the lock
+/// beside it, and dropping it removes nothing another holder owns.
+#[test]
+fn a_lock_stays_held_while_its_holder_lives_however_old_its_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("schema.json.lock");
+    let held = FileLock::try_acquire(&path).unwrap().expect("a free lock");
+    fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
+        .unwrap();
+    assert!(FileLock::try_acquire(&path).unwrap().is_none(), "a live holder's lock was taken for its file's age");
+    drop(held);
+    let next = FileLock::try_acquire(&path).unwrap().expect("a released lock is free");
+    assert!(FileLock::try_acquire(&path).unwrap().is_none());
+    drop(next);
+    assert!(!path.exists(), "the last holder leaves no lock file");
 }

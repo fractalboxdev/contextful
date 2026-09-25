@@ -3,7 +3,7 @@
 
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
-use crate::store::{create_new_file, FileLock, Store, LOCK_STALE_SECS};
+use crate::store::{create_new_file, FileLock, Store, LOCK_WAIT_SECS};
 use arrow_array::builder::{BooleanBuilder, Float64Builder, Int32Builder, Int64Builder, StringBuilder, TimestampNanosecondBuilder};
 use arrow_array::{ArrayRef, NullArray, RecordBatch};
 use contextful_core::store::declare::TableDecl;
@@ -190,7 +190,9 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
             }
         }
     }
-    let _schema_lock = store.lock_schema(table)?;
+    // The schema lock spans the read-merge-replace of `schema.json` alone; the Parquet
+    // write runs outside it, so a large batch holds up no other landing on the table.
+    let schema_lock = store.lock_schema(table)?;
     let stored = store.try_schema(table)?.unwrap_or_default();
     let injected: Vec<Column> = ctx
         .injection
@@ -210,14 +212,17 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
         c.nullable = false;
     }
     decl.validate(&merged)?;
+    // Every refusal of the batch has fired. The schema commits before the manifest, so
+    // a fold reading a run finds its columns in the schema it reads after.
+    store.write_schema(table, &merged)?;
+    drop(schema_lock);
 
-    // Every refusal has fired, so the tree may be written. The part carries the name the
-    // manifest names, so two landings of one run on one node serialize from here to the
-    // manifest: without the lock the loser rewrites the part the winner's manifest
+    // The part carries the name the manifest names, so two landings of one run on one
+    // node serialize from here to the manifest: without the lock the loser rewrites the part the winner's manifest
     // already describes, and the run reads rows no manifest accounts for.
     std::fs::create_dir_all(&node_dir).at(&node_dir)?;
     let _run_lock =
-        FileLock::acquire(&node_dir.join(format!("{MANIFEST_FILE}.lock")), std::time::Duration::from_secs(LOCK_STALE_SECS))?;
+        FileLock::acquire(&node_dir.join(format!("{MANIFEST_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
     if manifest_path.exists() {
         return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
     }
@@ -253,8 +258,7 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
         parts.push(PartEntry { name, key_version: 0 });
     }
 
-    // Commit: the schema first, then the manifest, created only if absent.
-    store.write_schema(table, &merged)?;
+    // Commit: the manifest, created only if absent.
     let manifest = RunManifest {
         run_id: run_id.to_string(),
         table: table.to_string(),
