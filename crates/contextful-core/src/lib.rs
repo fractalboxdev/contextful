@@ -9,6 +9,7 @@ pub mod error;
 pub mod exchange;
 pub mod grant;
 pub mod identify;
+pub mod memory;
 pub mod issue;
 pub mod pipeline;
 pub mod ports;

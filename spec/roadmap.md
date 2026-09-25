@@ -117,8 +117,6 @@ Acceptance: `contextful_acceptance::m06::m06_sync`
 
 Reach: A synthesized belief supersedes its predecessor on new evidence, and a reader sees which grant produced it.
 
-Depth: operation
-
 Acceptance: `contextful_acceptance::m07::m07_memory`
 
 ## 8 — Accountability
