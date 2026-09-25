@@ -658,6 +658,7 @@ name = "contextful-acceptance"
 version = "0.1.0"
 dependencies = [
  "parquet",
+ "serde_json",
  "tempfile",
 ]
 
