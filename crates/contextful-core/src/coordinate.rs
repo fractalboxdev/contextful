@@ -79,6 +79,23 @@ impl LeaseRow {
         }
     }
 
+    /// Renew a held lease for `ttl_secs` from `now`: the conditional update matches only
+    /// while `lease` still holds the row's current fence and holder, and keeps the fence.
+    pub fn renew(&mut self, lease: &Lease, now: Instant, ttl_secs: u64) -> Option<Lease> {
+        if self.fence != lease.fence || self.holder.as_deref() != Some(lease.holder.as_str()) {
+            return None;
+        }
+        let expires_at = now.plus_secs(ttl_secs);
+        self.expires_at = Some(expires_at);
+        Some(Lease { expires_at, ..lease.clone() })
+    }
+
+    /// Whether `lease` still holds this row at `now`: its fence and holder current and its
+    /// expiry ahead.
+    pub fn held_by(&self, lease: &Lease, now: Instant) -> bool {
+        self.fence == lease.fence && self.holder.as_deref() == Some(lease.holder.as_str()) && self.expires_at.is_some_and(|e| now < e)
+    }
+
     /// Whether a commit predicated on `fence` matches this row
     /// (`topology.coordinate.fenced-commit`).
     pub fn admits(&self, fence: u64) -> bool {
@@ -119,6 +136,10 @@ pub trait Catalog {
     /// Take the lease on `key` for `ttl_secs`, or `None` while another holder has it.
     fn acquire(&self, key: &LeaseKey, holder: &str, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
     fn release(&self, lease: &Lease) -> Result<(), Failure>;
+    /// Extend a held lease; `None` once a later acquisition took the row.
+    fn renew(&self, lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
+    /// Whether `lease` still holds its row on the catalog's clock.
+    fn lease_holds(&self, lease: &Lease) -> Result<bool, Failure>;
     fn lease_row(&self, key: &LeaseKey) -> Result<LeaseRow, Failure>;
 
     /// The cursor row of a pipeline's table.
@@ -130,10 +151,11 @@ pub trait Catalog {
     /// The pending execution owner of a pipeline's table.
     fn owner(&self, pipeline_id: &str, table: &str) -> Result<Option<ExecutionOwner>, Failure>;
     fn put_owner(&self, owner: &ExecutionOwner) -> Result<(), Failure>;
-    /// Retire the owner holding `execution_id` and cache the position its commit reached,
-    /// in one transaction (`run.own.retirement`), predicated on the holder's fence when
-    /// the cursor moves under a lease. Its journal is unreachable once this applies.
-    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
+    /// Retire the owner holding `execution_id` and, given a cursor row and the version it
+    /// was read at, cache the position its commit reached, in one transaction
+    /// (`run.own.retirement`). The update is conditional on that version and, under a
+    /// lease, on the holder's fence; the owner's journal is unreachable once it applies.
+    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
 
     fn put_run(&self, row: &RunRow) -> Result<(), Failure>;
     fn run(&self, run_id: &str) -> Result<Option<RunRow>, Failure>;

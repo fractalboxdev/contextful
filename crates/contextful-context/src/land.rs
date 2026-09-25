@@ -41,6 +41,8 @@ pub struct RunContext {
 pub struct Position {
     pub pipeline_id: Option<String>,
     pub cursor: Option<Value>,
+    /// The fence of the lease the commit runs under.
+    pub fence: Option<u64>,
 }
 
 /// The type a JSON value carries on its own.
@@ -58,13 +60,19 @@ fn value_type(v: &Value) -> ColumnType {
 /// The batch's own schema: columns in order of first appearance, each typed by the
 /// producer or by the lattice supertype of its values. Producer columns are nullable.
 pub fn batch_schema(batch: &Batch) -> Result<Schema> {
+    rows_schema(batch.rows.iter(), &batch.types)
+}
+
+/// The schema of `rows` read in order, each column typed by `types` or by the lattice
+/// supertype of its values.
+fn rows_schema<'a>(rows: impl Iterator<Item = &'a Map<String, Value>>, types: &HashMap<String, ColumnType>) -> Result<Schema> {
     let mut columns: Vec<Column> = Vec::new();
-    for row in &batch.rows {
+    for row in rows {
         for (name, v) in row {
             let seen = value_type(v);
             match columns.iter_mut().find(|c| &c.name == name) {
                 Some(c) => {
-                    if batch.types.contains_key(name) {
+                    if types.contains_key(name) {
                         continue;
                     }
                     c.ty = supertype(c.ty, seen).ok_or_else(|| {
@@ -76,7 +84,7 @@ pub fn batch_schema(batch: &Batch) -> Result<Schema> {
                     })?;
                 }
                 None => {
-                    let ty = batch.types.get(name).copied().unwrap_or(seen);
+                    let ty = types.get(name).copied().unwrap_or(seen);
                     columns.push(Column::new(name.clone(), ty, true));
                 }
             }
@@ -167,20 +175,28 @@ fn check_run_id(run_id: &str) -> Result<()> {
 /// reserved name, an incompatible or widened type, an unknown ordering column —
 /// fires before any Parquet is written; the run is visible once its manifest exists.
 pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) -> Result<RunManifest> {
-    land_batches(store, decl, std::slice::from_ref(batch), ctx, &Position::default())
+    land_batches(store, decl, std::slice::from_ref(batch), ctx, &Position::default(), &|| Ok(()))
 }
 
 /// Land `batches` as one run commit: a part per non-empty batch in order, each row's
 /// `_batch_seq` its batch's ordinal when the run carries one per batch, `_row_seq`
 /// numbering the run's rows across parts, and the manifest carrying `position`.
-pub fn land_batches(store: &Store, decl: &TableDecl, batches: &[Batch], ctx: &RunContext, position: &Position) -> Result<RunManifest> {
+/// `precommit` runs immediately before the manifest is created; a refusal there leaves
+/// the run uncommitted, joining no file list.
+pub fn land_batches(
+    store: &Store,
+    decl: &TableDecl,
+    batches: &[Batch],
+    ctx: &RunContext,
+    position: &Position,
+    precommit: &dyn Fn() -> Result<()>,
+) -> Result<RunManifest> {
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
-    let mut all = Batch { rows: Vec::new(), types: HashMap::new() };
+    let mut types: HashMap<String, ColumnType> = HashMap::new();
     for b in batches {
-        all.rows.extend(b.rows.iter().cloned());
-        all.types.extend(b.types.iter().map(|(k, v)| (k.clone(), *v)));
+        types.extend(b.types.iter().map(|(k, v)| (k.clone(), *v)));
     }
-    let batch = &all;
+    let all_rows = || batches.iter().flat_map(|b| b.rows.iter());
     let table = decl.name.as_str();
     let run_id = ctx.injection.run_id.as_str();
     check_run_id(run_id)?;
@@ -192,11 +208,11 @@ pub fn land_batches(store: &Store, decl: &TableDecl, batches: &[Batch], ctx: &Ru
     }
 
     // Reconcile: the producer's columns, held to the namespace, merged into the stored shape.
-    let arriving = producer_columns(&batch_schema(batch)?)?;
+    let arriving = producer_columns(&rows_schema(all_rows(), &types)?)?;
     // An optional column's value is held to its vocabulary whatever JSON type it arrives
     // as: a number reads as its text, so `{"_modality": 7}` refuses like `"7"` would.
     for c in arriving.columns.iter().filter(|c| c.name.starts_with('_')) {
-        for row in &batch.rows {
+        for row in all_rows() {
             let text = match row.get(&c.name) {
                 None | Some(Value::Null) => continue,
                 Some(Value::String(v)) => v.clone(),
@@ -294,10 +310,11 @@ pub fn land_batches(store: &Store, decl: &TableDecl, batches: &[Batch], ctx: &Ru
         committed_at: ctx.committed_at,
         pipeline_id: position.pipeline_id.clone(),
         cursor: position.cursor.clone(),
-        fence: None,
+        fence: position.fence,
     };
     std::fs::create_dir_all(&node_dir).at(&node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
+    precommit()?;
     if !create_new_file(&manifest_path, &bytes)? {
         return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
     }

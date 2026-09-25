@@ -71,8 +71,8 @@ pub enum RunCmd {
         #[command(flatten)]
         project: ProjectArgs,
         /// `run` halts this run; `pipeline` halts every in-flight run of its pipeline.
-        #[arg(long, default_value = "run")]
-        scope: String,
+        #[arg(long, value_enum, default_value_t = StopScope::Run)]
+        scope: StopScope,
         #[arg(long)]
         reason: Option<String>,
     },
@@ -110,6 +110,13 @@ pub enum RunCmd {
     },
 }
 
+/// A stop's grain as the command line spells it; any other spelling refuses.
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum StopScope {
+    Run,
+    Pipeline,
+}
+
 /// The system clock.
 struct SystemClock;
 
@@ -139,7 +146,7 @@ fn wire(args: &ProjectArgs) -> Result<Wired> {
     let journal = Journal::open(&root);
     let catalog = Arc::new(LocalCatalog::open(&root, clock.clone()));
     let registry = Registry::open(&root, journal.clone());
-    Ok(Wired { engine: Engine { catalog, journal, cadence: Cadence::default() }, registry, clock })
+    Ok(Wired { engine: Engine { catalog, journal, cadence: Cadence::default(), emitter: None }, registry, clock })
 }
 
 /// The boot identity of this machine: a process id means nothing across boots.
@@ -186,22 +193,24 @@ fn store_failure(e: ContextError) -> Failure {
 }
 
 impl Destination for StoreDestination {
-    fn land(&mut self, commit: &Commit) -> Result<Landed, Failure> {
+    fn land(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
         let decl = self.decls.iter().find(|d| d.name == commit.table).cloned().unwrap_or_else(|| TableDecl::named(&commit.table));
-        let batches: Vec<Batch> = commit.batches.iter().map(|rows| Batch { rows: rows.clone(), types: Default::default() }).collect();
+        let rows: u64 = commit.batches.iter().map(|b| b.len() as u64).sum();
+        let batches: Vec<Batch> = commit.batches.into_iter().map(|rows| Batch { rows, types: Default::default() }).collect();
         let ctx = RunContext {
             node: self.node.clone(),
             injection: Injection { run_id: commit.run_id.clone(), site_id: commit.site_id.clone(), batch_seq: None, authored_by: None },
             committed_at: commit.committed_at,
         };
-        let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone() };
-        let manifest = land_batches(&self.store, &decl, &batches, &ctx, &position).map_err(store_failure)?;
+        let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence };
+        let precommit = || precommit().map_err(|f| ContextError::Invalid(f.to_string()));
+        let manifest = land_batches(&self.store, &decl, &batches, &ctx, &position, &precommit).map_err(store_failure)?;
         let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join("data").join("runs").join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;
         for p in &manifest.parts {
             bytes += std::fs::metadata(dir.join(&p.name)).map(|m| m.len()).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
         }
-        Ok(Landed { rows: commit.batches.iter().map(|b| b.len() as u64).sum(), bytes })
+        Ok(Landed { rows, bytes })
     }
 
     fn newest_marker(&self, pipeline_id: &str, table: &str) -> Result<Option<Marker>, Failure> {
@@ -266,7 +275,11 @@ pub fn run(cmd: RunCmd) -> Result<()> {
         }
         RunCmd::Cancel { run_id, project, scope, reason } => {
             let w = wire(&project)?;
-            for id in w.engine.cancel(&run_id, Scope::read(&scope), reason)? {
+            let scope = match scope {
+                StopScope::Run => Scope::Run,
+                StopScope::Pipeline => Scope::Pipeline,
+            };
+            for id in w.engine.cancel(&run_id, scope, reason)? {
                 println!("{id}: stop requested");
             }
             Ok(())

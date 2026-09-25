@@ -103,6 +103,13 @@ impl Plan {
                 self.spec.redact.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ")
             )));
         }
+        if !self.spec.redact.is_empty() {
+            return Err(RunError::Invalid(format!(
+                "pipeline `{}` declares write-path redaction of {}; this build links no write-path redaction and refuses rather than landing the values unredacted",
+                self.spec.pipeline,
+                self.spec.redact.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ")
+            )));
+        }
         Ok(())
     }
 

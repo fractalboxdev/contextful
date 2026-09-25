@@ -23,9 +23,17 @@ fn redaction_over_a_journaling_source_is_refused_at_validation() {
         Err(RunError::JournalRedactionConflict(m)) => assert!(m.contains("ssn") && m.contains("feed"), "{m}"),
         other => panic!("{other:?}"),
     }
-    let opted_out = format!("redact = [\"ssn\"]\njournal = false\n{PLAN}");
-    let mut p = Plan::compile(opted_out.as_bytes()).unwrap();
     // Run open validates again: a plan altered after compile refuses there.
-    p.spec.journal = true;
+    let mut p = Plan::compile(PLAN.as_bytes()).unwrap();
+    p.spec.redact = vec!["ssn".into()];
     assert!(matches!(p.validate(), Err(RunError::JournalRedactionConflict(_))));
+}
+
+#[test]
+fn declared_redaction_this_build_cannot_apply_refuses_rather_than_landing_cleartext() {
+    let opted_out = format!("redact = [\"ssn\"]\njournal = false\n{PLAN}");
+    match Plan::compile(opted_out.as_bytes()) {
+        Err(RunError::Invalid(m)) => assert!(m.contains("`ssn`") && m.contains("no write-path redaction"), "{m}"),
+        other => panic!("{other:?}"),
+    }
 }

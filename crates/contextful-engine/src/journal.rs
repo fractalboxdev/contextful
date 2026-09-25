@@ -204,7 +204,8 @@ impl Journal {
                 std::fs::remove_file(&path).map_err(|e| storage(&path, e))?;
             }
         }
-        let _ = std::fs::remove_file(path.with_extension("lock"));
+        // The lock file stays: unlinking it under the lock lets a later caller lock a new
+        // inode while this holder still holds the old one.
         Ok(())
     }
 

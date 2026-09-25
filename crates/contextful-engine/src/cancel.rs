@@ -2,12 +2,12 @@
 //! before the run's first await, then one every 500 ms, with the owner lease renewed on
 //! its own cadence.
 
-use contextful_core::coordinate::Catalog;
+use contextful_core::coordinate::{Catalog, Lease};
 use contextful_core::run::cancel::POLL_INTERVAL_MS;
 use contextful_core::run::ports::Cancellation;
-use contextful_core::run::record::OWNER_LEASE_RENEWAL_SECS;
+use contextful_core::run::record::{OWNER_LEASE_RENEWAL_SECS, OWNER_LEASE_TTL_SECS};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -61,6 +61,12 @@ impl Keeper {
     /// Poll once before returning, so the run's first await already sees a stop written
     /// before it opened, then keep polling and renewing on `cadence`.
     pub fn start(catalog: Arc<dyn Catalog + Send + Sync>, run_id: &str, token: CancelToken, cadence: Cadence) -> Keeper {
+        Keeper::start_holding(catalog, run_id, token, cadence, Arc::default())
+    }
+
+    /// [`Keeper::start`], renewing the single-writer lease in `held` on the owner lease's
+    /// cadence as well, so a run holding it past one time-to-live keeps it.
+    pub fn start_holding(catalog: Arc<dyn Catalog + Send + Sync>, run_id: &str, token: CancelToken, cadence: Cadence, held: Arc<Mutex<Option<Lease>>>) -> Keeper {
         poll(catalog.as_ref(), run_id, &token);
         let stop = Arc::new(AtomicBool::new(false));
         let (flag, id) = (stop.clone(), run_id.to_string());
@@ -78,10 +84,23 @@ impl Keeper {
                 if since_renew >= cadence.renew {
                     since_renew = Duration::ZERO;
                     renew(catalog.as_ref(), &id);
+                    renew_lease(catalog.as_ref(), &held);
                 }
             }
         });
         Keeper { stop, handle: Some(handle) }
+    }
+}
+
+/// Renew the single-writer lease in `held`. A lease a later acquisition took stays in the
+/// slot, where the fenced commit refuses it.
+pub fn renew_lease(catalog: &dyn Catalog, held: &Mutex<Option<Lease>>) {
+    let mut slot = held.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(lease) = slot.clone() else { return };
+    match catalog.renew(&lease, OWNER_LEASE_TTL_SECS) {
+        Ok(Some(renewed)) => *slot = Some(renewed),
+        Ok(None) => eprintln!("warning: lease `{}` passed to a later holder; this run's commit is fenced", lease.key),
+        Err(f) => eprintln!("warning: renewing lease `{}`: {f}", lease.key),
     }
 }
 

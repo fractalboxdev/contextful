@@ -195,3 +195,13 @@ fn a_failed_effect_releases_its_claim_and_an_unjournaled_value_leaves_no_row() {
     assert_eq!(empty, Resolved::Unrecorded(b"{\"rows\":[]}".to_vec()));
     assert!(j.row(&key()).unwrap().is_none());
 }
+
+#[test]
+fn a_released_claim_keeps_its_lock_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let j = Journal::open(dir.path());
+    let failed = j.step(&key(), "run-a", &live, &Never, &always, &mut || Err(Failure::new(contextful_core::run::FailureTag::Transient, "reset")));
+    assert!(failed.is_err());
+    let lock = dir.path().join("journal/x-1").join(format!("{}.lock", key().digest()));
+    assert!(lock.exists(), "a lock file unlinked under its lock lets two holders each lock their own inode");
+}

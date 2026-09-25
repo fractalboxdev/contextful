@@ -88,7 +88,7 @@ fn a_commit_carrying_a_superseded_fence_is_refused() {
         other => panic!("{other:?}"),
     }
     assert_eq!(c.cursor("feed", "filings").unwrap(), CursorRow::default(), "the stale commit applied nothing");
-    assert!(matches!(c.retire("feed", "filings", "x-1", next.clone(), Some(&stale)).unwrap(), Cas::Fenced(_)));
+    assert!(matches!(c.retire("feed", "filings", "x-1", Some((next.clone(), 0)), Some(&stale)).unwrap(), Cas::Fenced(_)));
     assert_eq!(c.cursor_cas("feed", "filings", 0, next, Some(&current)).unwrap(), Cas::Applied);
     assert_eq!(c.cursor("feed", "filings").unwrap().position, Some(json!("p9")));
 }

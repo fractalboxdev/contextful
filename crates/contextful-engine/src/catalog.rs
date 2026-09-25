@@ -110,6 +110,22 @@ impl Catalog for LocalCatalog {
         replace(&path, &to_json(&row)?)
     }
 
+    fn renew(&self, lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure> {
+        let _lock = self.lock()?;
+        let path = self.root.join("leases").join(format!("{}.json", lease.key));
+        let mut row: LeaseRow = read_json(&path)?.unwrap_or_default();
+        let renewed = row.renew(lease, self.clock.now(), ttl_secs);
+        if renewed.is_some() {
+            replace(&path, &to_json(&row)?)?;
+        }
+        Ok(renewed)
+    }
+
+    fn lease_holds(&self, lease: &Lease) -> Result<bool, Failure> {
+        let row: LeaseRow = read_json(&self.root.join("leases").join(format!("{}.json", lease.key)))?.unwrap_or_default();
+        Ok(row.held_by(lease, self.clock.now()))
+    }
+
     fn lease_row(&self, key: &LeaseKey) -> Result<LeaseRow, Failure> {
         Ok(read_json(&self.lease_path(key))?.unwrap_or_default())
     }
@@ -143,16 +159,21 @@ impl Catalog for LocalCatalog {
         replace(&self.scope_path(&owner.pipeline_id, &owner.table), &to_json(&scope)?)
     }
 
-    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> {
+    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> {
         let _lock = self.lock()?;
         if let Some(fenced) = self.fenced(pipeline_id, table, fence)? {
             return Ok(fenced);
         }
         let mut scope = self.scope(pipeline_id, table)?;
+        if let Some((next, expected)) = cursor {
+            if scope.cursor.version != expected {
+                return Ok(Cas::VersionMoved);
+            }
+            scope.cursor = CursorRow { version: expected + 1, ..next };
+        }
         if scope.owner.as_ref().is_some_and(|o| o.execution_id == execution_id) {
             scope.owner = None;
         }
-        scope.cursor = CursorRow { version: scope.cursor.version + 1, ..cursor };
         replace(&self.scope_path(pipeline_id, table), &to_json(&scope)?)?;
         Ok(Cas::Applied)
     }

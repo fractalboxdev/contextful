@@ -63,6 +63,8 @@ pub struct Commit {
     pub batches: Vec<Vec<Row>>,
     pub cursor: Option<Value>,
     pub committed_at: Instant,
+    /// The fence of the single-writer lease the commit runs under.
+    pub fence: Option<u64>,
 }
 
 /// What a commit landed, measured at the destination.
@@ -82,8 +84,9 @@ pub struct Marker {
 
 /// The land path a run commits through.
 pub trait Destination {
-    /// Land every batch as one atomic commit carrying `commit.cursor`.
-    fn land(&mut self, commit: &Commit) -> Result<Landed, Failure>;
+    /// Land every batch as one atomic commit carrying `commit.cursor`. `precommit` runs
+    /// immediately before the commit point; a refusal there lands nothing.
+    fn land(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure>;
     /// The newest commit marker `pipeline_id` wrote to `table`.
     fn newest_marker(&self, pipeline_id: &str, table: &str) -> Result<Option<Marker>, Failure>;
 }

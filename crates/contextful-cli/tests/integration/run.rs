@@ -105,3 +105,13 @@ fn every_run_surface_raises_its_refusal_by_name() {
     std::fs::write(dir.path().join("redacting.toml"), format!("redact = [\"ssn\"]\n{}", std::fs::read_to_string(dir.path().join("feed-a.toml")).unwrap())).unwrap();
     refused(&start(dir.path(), "redacting.toml", "r1", "2030-01-01T00:00:00Z"), "JournalRedactionConflict");
 }
+
+#[test]
+fn an_unknown_stop_scope_is_refused() {
+    let dir = project();
+    ok(&start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z"));
+    let out = cf(dir.path(), &["run", "cancel", "a1", "--project", "research", "--scope", "fire"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("fire") && stderr.contains("pipeline"), "{stderr}");
+}

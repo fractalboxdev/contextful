@@ -5,6 +5,7 @@ mod command;
 mod coordinate;
 mod journal;
 mod project;
+mod writers;
 mod runner;
 mod support;
 mod suspend;

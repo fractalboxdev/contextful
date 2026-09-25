@@ -60,3 +60,17 @@ fn a_stop_signals_and_reaps_the_whole_process_group() {
     let grandchild: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
     assert!(!alive(grandchild), "the pull returned while grandchild {grandchild} still ran");
 }
+
+#[test]
+fn a_finished_pull_reaps_what_its_command_left_running() {
+    let dir = tempfile::tempdir().unwrap();
+    // The command answers and exits, leaving a sleeper that holds its stdout open.
+    let script = "sh -c 'echo $$ > leftover.pid; exec sleep 30' & sleep 0.2; printf '{\"rows\":[]}'";
+    let mut src = CommandSource { argv: vec!["sh".into(), "-c".into(), script.into()], cwd: dir.path().to_path_buf() };
+    let started = std::time::Instant::now();
+    let out = src.pull(&request(), &CancelToken::default()).unwrap();
+    assert!(started.elapsed() < Duration::from_secs(10), "the pull waited on the leftover's pipe: {:?}", started.elapsed());
+    assert_eq!(out, br#"{"rows":[]}"#);
+    let leftover: i32 = std::fs::read_to_string(dir.path().join("leftover.pid")).unwrap().trim().parse().unwrap();
+    assert!(!alive(leftover), "leftover {leftover} still runs");
+}

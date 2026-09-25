@@ -55,7 +55,7 @@ impl Rig {
         let clock = SetClock::new(T0);
         let journal = Journal::open(dir.path());
         let catalog = Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock.clone())));
-        let engine = Engine { catalog, journal, cadence: Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) } };
+        let engine = Engine { catalog, journal, cadence: Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }, emitter: None };
         Rig { dir, clock, engine }
     }
 
@@ -150,12 +150,14 @@ pub struct Sink {
 }
 
 impl Destination for Sink {
-    fn land(&mut self, commit: &Commit) -> Result<Landed, Failure> {
-        self.commits.push(commit.clone());
+    fn land(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
+        precommit()?;
+        let rows = commit.batches.iter().map(|b| b.len() as u64).sum();
+        self.commits.push(commit);
         if std::mem::take(&mut self.die_after_land) {
             panic!("the process dies after the commit marker lands");
         }
-        Ok(self.report.unwrap_or(Landed { rows: commit.batches.iter().map(|b| b.len() as u64).sum(), bytes: 0 }))
+        Ok(self.report.unwrap_or(Landed { rows, bytes: 0 }))
     }
 
     fn newest_marker(&self, pipeline_id: &str, table: &str) -> Result<Option<Marker>, Failure> {

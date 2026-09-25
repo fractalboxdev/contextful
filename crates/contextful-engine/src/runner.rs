@@ -3,21 +3,23 @@
 //! position, retires the owner, and closes the run row.
 
 use crate::cancel::{Cadence, CancelToken, Keeper};
+use crate::project::Emitter;
 use crate::fsutil::sleep_unless;
 use crate::journal::{Journal, Resolved, StepError};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey};
-use contextful_core::run::advance::{admits, advance, frontier, open_watermark, watermark, CursorKind};
+use contextful_core::run::advance::{admits, advance, frontier, open_watermark, resolve_concurrent, watermark, CursorKind};
 use contextful_core::run::cancel::{mark, Scope};
 use contextful_core::run::journal::{sha256_hex, EntryKey};
 use contextful_core::run::own::{releases, ConnectorPin, ExecutionOwner, Pins};
 use contextful_core::run::plan::{Plan, NATIVE_WORLD};
 use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Pull, PullRequest, Row, Source};
+use contextful_core::run::project::{Change, StepPatch, StepStatus};
 use contextful_core::run::record::{cap_error, select_history, HistoryPage, Owner, Phase, RunRow, RunStatus, Window, OWNER_LEASE_TTL_SECS};
 use contextful_core::run::retry::{decide, Decision};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::topology::TopologyError;
 use serde_json::Value;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Why a run could not open, or a call on the engine refused.
@@ -50,6 +52,8 @@ pub struct Engine {
     pub catalog: Arc<dyn Catalog + Send + Sync>,
     pub journal: Journal,
     pub cadence: Cadence,
+    /// The live projection's emitter; every event follows the durable change it reports.
+    pub emitter: Option<Emitter>,
 }
 
 /// A failure the body of a run closes on.
@@ -167,7 +171,8 @@ impl Engine {
             marker_run_id: Some(marker.run_id.clone()),
             marker_committed_at: Some(marker.committed_at),
         };
-        self.catalog.retire(pipeline_id, table, producer.as_deref().unwrap_or_default(), cursor, None)?;
+        // A version moved by a concurrent writer means that writer reconciled or committed first.
+        self.catalog.retire(pipeline_id, table, producer.as_deref().unwrap_or_default(), Some((cursor, cached.version)), None)?;
         if let Some(execution_id) = producer {
             self.journal.collect(&execution_id)?;
         }
@@ -222,12 +227,15 @@ impl Engine {
             stop: None,
         };
         self.catalog.put_run(&row)?;
+        self.emit(spec, Change::Status { status: RunStatus::Running, at: Some(now), error: None });
 
         let token = CancelToken::default();
-        let keeper = Keeper::start(self.catalog.clone(), &spec.run_id, token.clone(), self.cadence);
-        let mut lease = None;
-        let outcome = self.body(spec, &execution_id, pending, &token, &mut lease, source, dest);
+        let held: Arc<Mutex<Option<Lease>>> = Arc::default();
+        let keeper = Keeper::start_holding(self.catalog.clone(), &spec.run_id, token.clone(), self.cadence, held.clone());
+        let mut owned = false;
+        let outcome = self.body(spec, &execution_id, pending, &token, &held, &mut owned, source, dest);
         drop(keeper);
+        let lease = held.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(l) = &lease {
             self.catalog.release(l)?;
         }
@@ -257,12 +265,35 @@ impl Engine {
             Some(Ok(r)) => r,
             _ => row,
         };
-        if row.status != RunStatus::Success && releases(row.status, self.journal.recorded(&execution_id)?) {
-            let cursor = self.catalog.cursor(pipeline_id, table)?;
-            self.catalog.retire(pipeline_id, table, &execution_id, cursor, None)?;
+        let error = row.error_kind.map(|tag| Failure::new(tag, row.error_message.clone().unwrap_or_default()));
+        self.emit(spec, Change::Status { status: row.status, at: row.ended_at, error });
+        if row.status != RunStatus::Success && owned && releases(row.status, self.journal.recorded(&execution_id)?) && !self.shared_with_a_live_attempt(pipeline_id, table, &execution_id, &spec.run_id)? {
+            self.catalog.retire(pipeline_id, table, &execution_id, None, None)?;
             self.journal.collect(&execution_id)?;
         }
         Ok(row)
+    }
+
+    /// Emit one projection event; emission never blocks and is no journal step.
+    fn emit(&self, spec: &RunSpec, change: Change) {
+        if let Some(e) = &self.emitter {
+            e.emit(&spec.run_id, &spec.plan.spec.pipeline, change);
+        }
+    }
+
+    /// Whether the pending owner of the table holds `execution_id` under another attempt
+    /// still in flight on a live owner lease; such an execution is never retired or collected.
+    fn shared_with_a_live_attempt(&self, pipeline_id: &str, table: &str, execution_id: &str, run_id: &str) -> Result<bool, Failure> {
+        let Some(owner) = self.catalog.owner(pipeline_id, table)? else { return Ok(false) };
+        if owner.execution_id != execution_id {
+            return Ok(true);
+        }
+        for attempt in owner.attempts.iter().filter(|a| a.as_str() != run_id) {
+            if self.holder_live(attempt)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -272,12 +303,23 @@ impl Engine {
         execution_id: &str,
         pending: Option<ExecutionOwner>,
         token: &CancelToken,
-        lease: &mut Option<Lease>,
+        held: &Arc<Mutex<Option<Lease>>>,
+        owned: &mut bool,
         source: &mut dyn Source,
         dest: &mut dyn Destination,
     ) -> Result<(Landed, u64), Close> {
         let plan = &spec.plan;
         let (pipeline_id, table) = (plan.spec.pipeline.as_str(), plan.spec.table.as_str());
+
+        // The single-writer lease comes first: a run that cannot take it touches no owner.
+        if plan.cursor_kind.single_writer() {
+            let key = LeaseKey::Pipeline(format!("{pipeline_id}/{table}"));
+            let lease = self.catalog.acquire(&key, &spec.run_id, OWNER_LEASE_TTL_SECS)?.ok_or_else(|| {
+                Failure::new(FailureTag::Transient, format!("another run holds the `{}` cursor lease of `{pipeline_id}`/`{table}`", plan.cursor_kind.name()))
+            })?;
+            *held.lock().unwrap_or_else(|e| e.into_inner()) = Some(lease);
+        }
+
         let cached = self.catalog.cursor(pipeline_id, table)?;
         let pins = Pins { connector: spec.connector.clone(), content_hash: plan.content_hash.clone(), input_hash: sha256_hex(&json_bytes(&cached.position)) };
         let mut owner = match pending {
@@ -296,13 +338,7 @@ impl Engine {
         };
         owner.attempts.push(spec.run_id.clone());
         self.catalog.put_owner(&owner)?;
-
-        if plan.cursor_kind.single_writer() {
-            let key = LeaseKey::Pipeline(format!("{pipeline_id}/{table}"));
-            *lease = Some(self.catalog.acquire(&key, &spec.run_id, OWNER_LEASE_TTL_SECS)?.ok_or_else(|| {
-                Failure::new(FailureTag::Transient, format!("another run holds the `{}` cursor lease of `{pipeline_id}`/`{table}`", plan.cursor_kind.name()))
-            })?);
-        }
+        *owned = true;
 
         let field = plan.spec.cursor.field.clone().unwrap_or_default();
         let mut position = cached.position.clone();
@@ -353,35 +389,69 @@ impl Engine {
             }
         }
 
-        // The land path carries no stop check.
+        // The land path carries no stop check. Under a lease, the commit point re-reads the
+        // lease: a writer a later acquisition fenced out lands nothing.
+        let lease = held.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let moved = position != cached.position;
-        let landed = if !batches.is_empty() || moved {
-            dest.land(&Commit {
-                pipeline_id: pipeline_id.to_string(),
-                table: table.to_string(),
-                run_id: spec.run_id.clone(),
-                site_id: spec.site_id.clone(),
-                batches: batches.clone(),
-                cursor: position.clone(),
-                committed_at: self.catalog.now()?,
-            })?
+        let batch_count = batches.len() as u64;
+        let committed_at = self.catalog.now()?;
+        let landed = if batch_count > 0 || moved {
+            let precommit = || -> Result<(), Failure> {
+                let Some(l) = held.lock().unwrap_or_else(|e| e.into_inner()).clone() else { return Ok(()) };
+                if self.catalog.lease_holds(&l)? {
+                    Ok(())
+                } else {
+                    Err(Failure::new(
+                        FailureTag::Storage,
+                        contextful_core::store::StoreError::LeaseFenced(format!("lease `{}` at fence {} no longer holds; the commit lands nothing", l.key, l.fence)).to_string(),
+                    ))
+                }
+            };
+            dest.land(
+                Commit {
+                    pipeline_id: pipeline_id.to_string(),
+                    table: table.to_string(),
+                    run_id: spec.run_id.clone(),
+                    site_id: spec.site_id.clone(),
+                    batches,
+                    cursor: position.clone(),
+                    committed_at,
+                    fence: lease.as_ref().map(|l| l.fence),
+                },
+                &precommit,
+            )?
         } else {
             Landed::default()
         };
-        let committed = batches.is_empty() && !moved;
-        let cursor = CursorRow {
+        let committed = batch_count > 0 || moved;
+        let mut next = CursorRow {
             position,
             version: 0,
-            marker_run_id: if committed { cached.marker_run_id.clone() } else { Some(spec.run_id.clone()) },
-            marker_committed_at: if committed { cached.marker_committed_at } else { Some(self.catalog.now()?) },
+            marker_run_id: if committed { Some(spec.run_id.clone()) } else { cached.marker_run_id.clone() },
+            marker_committed_at: if committed { Some(committed_at) } else { cached.marker_committed_at },
         };
-        match self.catalog.retire(pipeline_id, table, execution_id, cursor, lease.as_ref())? {
-            Cas::Applied => {}
-            Cas::VersionMoved => return Err(Close::Failed(Failure::new(FailureTag::Storage, "the cursor row moved under the retiring run"))),
-            Cas::Fenced(e) => return Err(Close::Failed(Failure::new(FailureTag::Storage, e.to_string()))),
+        let mut expected = cached.version;
+        loop {
+            match self.catalog.retire(pipeline_id, table, execution_id, Some((next.clone(), expected)), lease.as_ref())? {
+                Cas::Applied => break,
+                Cas::Fenced(e) => return Err(Close::Failed(Failure::new(FailureTag::Storage, e.to_string()))),
+                Cas::VersionMoved if plan.cursor_kind == CursorKind::Monotonic => {
+                    // A concurrent monotonic writer committed first: the highest position wins.
+                    let current = self.catalog.cursor(pipeline_id, table)?;
+                    if let (Some(theirs), Some(ours)) = (&current.position, &next.position) {
+                        if resolve_concurrent(CursorKind::Monotonic, theirs, ours)? == *theirs && theirs != ours {
+                            next = CursorRow { version: 0, ..current.clone() };
+                        }
+                    } else if next.position.is_none() {
+                        next = CursorRow { version: 0, ..current.clone() };
+                    }
+                    expected = current.version;
+                }
+                Cas::VersionMoved => return Err(Close::Failed(Failure::new(FailureTag::Storage, "the cursor row moved under the retiring run's lease"))),
+            }
         }
         self.journal.collect(execution_id)?;
-        Ok((landed, batches.len() as u64))
+        Ok((landed, batch_count))
     }
 
     /// Resolve one pull through the journal under the plan's retry schedule.
@@ -391,23 +461,32 @@ impl Engine {
         let journal_it = |bytes: &[u8]| journaled && Pull::decode(bytes).is_ok_and(|p| !p.rows.is_empty());
         let holder_live = |run: &str| self.holder_live(run);
         let mut attempt = 1;
+        let label = request.step_label.as_str();
         loop {
+            self.emit(spec, Change::Step(StepPatch { attempts: Some(attempt), ..StepPatch::new(label).status(StepStatus::Running) }));
             let failure = match self.journal.step(key, &spec.run_id, &holder_live, token, &journal_it, &mut || source.pull(request, token)) {
-                Ok(r) => return Ok(r),
+                Ok(r) => {
+                    self.emit(spec, Change::Step(StepPatch::new(label).status(StepStatus::Completed)));
+                    return Ok(r);
+                }
                 Err(StepError::Failed(f)) => f,
                 Err(e) => return Err(e.into()),
             };
             if failure.tag == FailureTag::Canceled {
                 return Err(Close::Failed(failure));
             }
-            match decide(&spec.plan.schedule, &request.step_label, attempt, &failure, seed(&spec.run_id)) {
+            match decide(&spec.plan.schedule, label, attempt, &failure, seed(&spec.run_id)) {
                 Decision::Retry { delay_ms } => {
+                    self.emit(spec, Change::Step(StepPatch { failure: Some(failure.clone()), ..StepPatch::new(label).status(StepStatus::Retrying) }));
                     if !sleep_unless(Duration::from_millis(delay_ms), &|| token.requested()) {
-                        return Err(Close::Failed(Failure::canceled(format!("stopped during the retry sleep of `{}`", request.step_label))));
+                        return Err(Close::Failed(Failure::canceled(format!("stopped during the retry sleep of `{label}`"))));
                     }
                     attempt += 1;
                 }
-                Decision::Fail { error, .. } | Decision::Reschedule { error, .. } => return Err(Close::Refused(error)),
+                Decision::Fail { error, .. } | Decision::Reschedule { error, .. } => {
+                    self.emit(spec, Change::Step(StepPatch { failure: Some(failure), ..StepPatch::new(label).status(StepStatus::Failed) }));
+                    return Err(Close::Refused(error));
+                }
             }
         }
     }

@@ -196,7 +196,9 @@ impl Catalog for Flaky {
         cursor_cas(pipeline_id: &str, table: &str, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
         owner(pipeline_id: &str, table: &str) -> Result<Option<ExecutionOwner>, Failure>;
         put_owner(owner: &ExecutionOwner) -> Result<(), Failure>;
-        retire(pipeline_id: &str, table: &str, execution_id: &str, cursor: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        retire(pipeline_id: &str, table: &str, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        renew(lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
+        lease_holds(lease: &Lease) -> Result<bool, Failure>;
         put_run(row: &RunRow) -> Result<(), Failure>;
         runs(pipeline_id: Option<&str>) -> Result<Vec<RunRow>, Failure>;
         update_run(run_id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure>;
