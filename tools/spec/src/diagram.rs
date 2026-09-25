@@ -533,8 +533,9 @@ fn node(x: &mut Ctx, rel: &str, f: &Flowchart) {
 fn shape(x: &mut Ctx, rel: &str, f: &Flowchart) {
     for n in &f.nodes {
         let text = plain(&n.label);
-        let last = text.split_whitespace().last().unwrap_or("").to_lowercase();
-        if (SNAKE.is_match(&text) || STORAGE.contains(&last.as_str())) && n.shape != Shape::Cylinder {
+        // a capitalized last word is a proper name, such as a milestone, not storage
+        let last = text.split_whitespace().last().unwrap_or("");
+        if (SNAKE.is_match(&text) || STORAGE.contains(&last)) && n.shape != Shape::Cylinder {
             x.push(rel, n.line, "SpecDiagramShape", format!("node `{}` is a table or store; draw it as a cylinder `[( )]`", n.label));
         }
         if text.ends_with('?') && n.shape != Shape::Decision {

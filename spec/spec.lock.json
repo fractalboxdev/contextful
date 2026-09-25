@@ -15090,7 +15090,7 @@
       "statement": "An evaluation run ingests, indexes, retrieves, reads, judges and scores through the surfaces a caller uses, and the harness adds no storage or runtime primitive.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 209
+      "line": 218
     },
     {
       "id": "assurance.evaluate.through-the-store",
@@ -15101,7 +15101,7 @@
       "statement": "The corpus loads through the real store, and the retriever under test calls {{read.retrieve.ranked-call}} with the options a caller passes.",
       "why": "because an unordered full-scan retriever cannot go red when ranking breaks",
       "file": "spec/81-engineering.md",
-      "line": 210
+      "line": 219
     },
     {
       "id": "assurance.evaluate.policy-labels",
@@ -15112,7 +15112,7 @@
       "statement": "An evaluation corpus carries zone and row-policy labels, and a run reads it through the access-control path.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 212
+      "line": 221
     },
     {
       "id": "assurance.evaluate.unlabeled-corpus",
@@ -15123,7 +15123,7 @@
       "statement": "A run over a corpus carrying neither labels nor an explicit local zone raises `EvalCorpusUnlabeled`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 214
+      "line": 223
     },
     {
       "id": "assurance.evaluate.case-format",
@@ -15134,7 +15134,7 @@
       "statement": "A case carries an id, a corpus reference, a question, tags, and an expected block of answer, artifacts, edges, entities, must-cite, must-abstain and time anchor.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 216
+      "line": 225
     },
     {
       "id": "assurance.evaluate.converter",
@@ -15145,7 +15145,7 @@
       "statement": "Each benchmark and application ground truth converts once into the case format through its own converter, and the runner reads nothing else.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 217
+      "line": 226
     },
     {
       "id": "assurance.evaluate.deterministic-tier",
@@ -15156,7 +15156,7 @@
       "statement": "Recall@k, R-precision, hit-rate@k, reciprocal rank and nDCG@k run with no model call, reported per leg — lexical, vector, hybrid — and per slice.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 218
+      "line": 227
     },
     {
       "id": "assurance.evaluate.distinct-top-k",
@@ -15167,7 +15167,7 @@
       "statement": "Membership in the top k is distinct, and a repeated id counts once.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 219
+      "line": 228
     },
     {
       "id": "assurance.evaluate.absent-truth",
@@ -15178,7 +15178,7 @@
       "statement": "A ranked metric over a case with no relevant set is NaN and drops out of every aggregate; an empty ranking against a non-empty relevant set scores zero.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 220
+      "line": 229
     },
     {
       "id": "assurance.evaluate.precision-floor",
@@ -15189,7 +15189,7 @@
       "statement": "Precision at rank min(k, R), R being the relevant-set size, holds at or above 60 percent.",
       "why": "because precision@k caps at R/k, below the floor whenever R is small",
       "file": "spec/81-engineering.md",
-      "line": 221
+      "line": 230
     },
     {
       "id": "assurance.evaluate.forbidden-row-rate",
@@ -15200,7 +15200,7 @@
       "statement": "A row named in a must-not-retrieve set holds at 0 percent of a regression case's returned rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 223
+      "line": 232
     },
     {
       "id": "assurance.evaluate.duplicate-row-rate",
@@ -15211,7 +15211,7 @@
       "statement": "A repeated table-and-row-key pair holds at 0 percent of the ranking.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 224
+      "line": 233
     },
     {
       "id": "assurance.evaluate.in-window-rate",
@@ -15222,7 +15222,7 @@
       "statement": "A case declaring a recency bound holds its in-window rate at or above 95 percent.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 225
+      "line": 234
     },
     {
       "id": "assurance.evaluate.abstention",
@@ -15233,7 +15233,7 @@
       "statement": "A must-abstain case returns zero rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 226
+      "line": 235
     },
     {
       "id": "assurance.evaluate.truth-per-surface",
@@ -15244,7 +15244,7 @@
       "statement": "Expected artifacts score the artifact retriever and expected edges score the edge retriever, reported apart; edge truth with no edge surface configured counts in an unscored tally.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 227
+      "line": 236
     },
     {
       "id": "assurance.evaluate.judged-dimensions",
@@ -15255,7 +15255,7 @@
       "statement": "The reading stage adds four judged dimensions: answer accuracy; abstention, as correct-refusal and hallucination-on-unknown rates; citation faithfulness; and temporal correctness against the bitemporal columns.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 228
+      "line": 237
     },
     {
       "id": "assurance.evaluate.grounded-reader",
@@ -15266,7 +15266,7 @@
       "statement": "The harness reader answers from retrieved rows alone, and the deterministic tier substitutes a stub reader.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 229
+      "line": 238
     },
     {
       "id": "assurance.evaluate.model-endpoint",
@@ -15277,7 +15277,7 @@
       "statement": "The judge and the reader reach a model through {{connector.infer.model-endpoint}}, and the harness holds no credential.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 230
+      "line": 239
     },
     {
       "id": "assurance.evaluate.judge",
@@ -15288,7 +15288,7 @@
       "statement": "The judge is one pinned open-weights instruct model, called once per judged item at temperature zero; a judge swap is a full re-baseline.",
       "why": "because a majority vote at temperature zero samples one mode and adds cost without reducing variance",
       "file": "spec/81-engineering.md",
-      "line": 231
+      "line": 240
     },
     {
       "id": "assurance.evaluate.systems-metrics",
@@ -15299,7 +15299,7 @@
       "statement": "Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 233
+      "line": 242
     },
     {
       "id": "assurance.evaluate.checkpoint",
@@ -15310,7 +15310,7 @@
       "statement": "A run appends each case's result as JSONL, and a crash re-runs the in-flight case.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 234
+      "line": 243
     },
     {
       "id": "assurance.evaluate.run-report",
@@ -15321,7 +15321,7 @@
       "statement": "A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 235
+      "line": 244
     },
     {
       "id": "assurance.baseline.file",
@@ -15332,7 +15332,7 @@
       "statement": "A baseline file carries a reserved run block `{k, tier, model, samples}` and one entry per gated metric: a bare number at the run's dead band, or an object overriding the band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 241
+      "line": 250
     },
     {
       "id": "assurance.baseline.default-dead-band",
@@ -15343,7 +15343,7 @@
       "statement": "A rate-valued entry with no override gates at a 2 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 242
+      "line": 251
     },
     {
       "id": "assurance.baseline.rank-quality-dead-band",
@@ -15354,7 +15354,7 @@
       "statement": "The ranked-quality entry gates at a 3 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 243
+      "line": 252
     },
     {
       "id": "assurance.baseline.band-units",
@@ -15365,7 +15365,7 @@
       "statement": "A band carries its metric's own units, and a count entry is pinned at zero with no band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 244
+      "line": 253
     },
     {
       "id": "assurance.baseline.metric-path",
@@ -15376,7 +15376,7 @@
       "statement": "An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `slices.<tag>.<metric>`, `latency_ms` or `n_cases`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 245
+      "line": 254
     },
     {
       "id": "assurance.baseline.sample-count",
@@ -15387,7 +15387,7 @@
       "statement": "Every mean-valued path takes a `.n` suffix naming its sample count.",
       "why": "because blanking one case's truth lifts a NaN-filtered mean without moving the case count",
       "file": "spec/81-engineering.md",
-      "line": 246
+      "line": 255
     },
     {
       "id": "assurance.baseline.unresolvable-path",
@@ -15398,7 +15398,7 @@
       "statement": "A path resolving to nothing, a mean over fewer than 30 cases, a malformed entry or a non-finite band raises `BaselinePathUnresolved` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 248
+      "line": 257
     },
     {
       "id": "assurance.baseline.run-stamp-drift",
@@ -15409,7 +15409,7 @@
       "statement": "A run block differing from the run's own configuration raises `BaselineRunStampMismatch` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 250
+      "line": 259
     },
     {
       "id": "assurance.baseline.interval",
@@ -15420,7 +15420,7 @@
       "statement": "Each judged figure reports a 95 percent percentile-bootstrap interval over cases from 1000 resamples.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 252
+      "line": 261
     },
     {
       "id": "assurance.baseline.raise-only",
@@ -15431,7 +15431,7 @@
       "statement": "A baseline update runs after every gate and floor passes, moves each improved entry to its measured value, moves none in the worse direction, and adds no path.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 253
+      "line": 262
     },
     {
       "id": "assurance.baseline.floors-are-absolute",
@@ -15442,7 +15442,7 @@
       "statement": "An absolute floor gates independently of every committed value.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 254
+      "line": 263
     },
     {
       "id": "assurance.baseline.offline",
@@ -15453,7 +15453,7 @@
       "statement": "The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 255
+      "line": 264
     },
     {
       "id": "assurance.baseline.trace-store",
@@ -15464,7 +15464,7 @@
       "statement": "A trace store records run history and curation staging, and decides no verdict.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 256
+      "line": 265
     },
     {
       "id": "assurance.baseline.golden-custody",
@@ -15475,7 +15475,7 @@
       "statement": "Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 257
+      "line": 266
     },
     {
       "id": "assurance.baseline.answer-key-in-the-store",
@@ -15486,7 +15486,7 @@
       "statement": "An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 259
+      "line": 268
     },
     {
       "id": "assurance.baseline.generated-redaction",
@@ -15497,7 +15497,7 @@
       "statement": "A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 261
+      "line": 270
     },
     {
       "id": "assurance.baseline.promotion-source",
@@ -15508,7 +15508,7 @@
       "statement": "Only an adjudicated outcome label promotes into a golden set; a self-rated row does not.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 263
+      "line": 272
     },
     {
       "id": "assurance.baseline.generators",
@@ -15519,7 +15519,7 @@
       "statement": "Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 264
+      "line": 273
     },
     {
       "id": "assurance.baseline.held-out",
@@ -15530,7 +15530,7 @@
       "statement": "Retrieval and synthesis are tuned on no gate input.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 265
+      "line": 274
     },
     {
       "id": "assurance.baseline.rotation",
@@ -15541,7 +15541,7 @@
       "statement": "The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 266
+      "line": 275
     },
     {
       "id": "assurance.baseline.native-gate",
@@ -15552,7 +15552,7 @@
       "statement": "A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 267
+      "line": 276
     },
     {
       "id": "assurance.baseline.trace-export",
@@ -15563,7 +15563,7 @@
       "statement": "A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 268
+      "line": 277
     }
   ],
   "owns": {

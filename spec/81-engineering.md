@@ -175,7 +175,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `surface-check-failed` — A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.
   *P7*
 
-The stage order, under the container's ceilings:
+The stages, numbered in run order, under the container's ceilings:
 
 ```mermaid
 flowchart LR
@@ -185,12 +185,21 @@ flowchart LR
   subgraph forge["pull-request workflow"]
     WF["one remote check per stage"]
   end
-  LOCAL -->|"local run"| S1
-  WF -->|"remote run"| S1
+  LOCAL -->|"local run"| C
+  WF -->|"remote run"| C
   subgraph C["gate container, 12 GiB memory and 18 GiB disk"]
-    S1["pins"] -->|"pass"| S2["toolchain"] -->|"pass"| S3["schema"] -->|"pass"| S4["test-first"]
-    S4 -->|"pass"| S5["workspace"] -->|"pass"| S6["acceptance"] -->|"pass"| S7["features"] -->|"pass"| S8["crate graph"]
-    S8 -->|"pass"| S9["connectors"] -->|"pass"| S10["TypeScript surfaces"] -->|"pass"| S11["formal"] -->|"pass"| S12["budget"]
+    S1["1 pins"]
+    S2["2 toolchain"]
+    S3["3 schema"]
+    S4["4 test-first"]
+    S5["5 workspace"]
+    S6["6 acceptance"]
+    S7["7 features"]
+    S8["8 crate graph"]
+    S9["9 connectors"]
+    S10["10 TypeScript surfaces"]
+    S11["11 formal"]
+    S12["12 budget"]
   end
   S3 -.->|"runs"| LINT["contextful-spec lint"]
   S8 -.->|"runs"| DENY["cargo-deny per profile"]

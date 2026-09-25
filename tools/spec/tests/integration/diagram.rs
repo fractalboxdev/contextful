@@ -52,7 +52,8 @@ fn a_node_bundling_attributes_naming_an_error_or_an_operation_is_a_diagram_findi
 // spec: corpus.diagram.shape@9c4aeb73
 #[test]
 fn a_table_drawn_as_a_box_or_a_question_drawn_as_a_box_is_a_shape_finding() {
-    let clean = "flowchart LR\n  A([\"caller\"]) -->|\"rows\"| T[(memory_facts)]\n  T -->|\"entries\"| L[(\"audit log\")]\n  L -->|\"checked\"| Q{\"chain intact?\"}\n  Q -->|\"yes\"| K[(\"object store\")]\n  Q -->|\"no\"| A\n";
+    let clean = "flowchart LR\n  A([\"caller\"]) -->|\"rows\"| T[(memory_facts)]\n  T -->|\"entries\"| L[(\"audit log\")]\n  L -->|\"checked\"| Q{\"chain intact?\"}\n  Q -->|\"yes\"| K[(\"object store\")]\n  Q -->|\"no\"| A\n  A -->|\"unlocks\"| M[\"2 Store\"]\n";
+    // a capitalized word is a proper name, such as a milestone or contract, not storage
     assert!(added(clean, "SpecDiagramShape").is_empty(), "{:?}", added(clean, "SpecDiagramShape"));
     let wrong = "flowchart LR\n  A([\"caller\"]) -->|\"rows\"| T[memory_facts]\n  T -->|\"rows\"| U[\"dead-letter table\"]\n  U -->|\"checked\"| Q[\"chain intact?\"]\n";
     let found = added(wrong, "SpecDiagramShape");

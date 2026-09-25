@@ -17,7 +17,7 @@ the line when the milestone opens admits behavior clauses again.
 ```mermaid
 flowchart LR
   Z[0 Test-first gate] -->|unlocks| A
-  A[1 Authority core] -->|unlocks| B[2 Store engine]
+  A[1 Authority core] -->|unlocks| B[2 Store]
   B -->|unlocks| C[3 Run path]
   C -->|unlocks| D[4 Ingest]
   B -->|unlocks| E[5 Read face]
