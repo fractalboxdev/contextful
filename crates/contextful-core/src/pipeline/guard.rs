@@ -31,7 +31,7 @@ fn find_all<'a>(hay: &'a str, needle: &'a str) -> impl Iterator<Item = usize> + 
 }
 
 fn run_len(bytes: &[u8], from: usize, ok: impl Fn(u8) -> bool) -> usize {
-    bytes[from..].iter().take_while(|b| ok(**b)).count()
+    bytes[from.min(bytes.len())..].iter().take_while(|b| ok(**b)).count()
 }
 
 fn aws(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
@@ -39,7 +39,8 @@ fn aws(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
     for prefix in ["AKIA", "ASIA"] {
         for i in find_all(s, prefix) {
             let before_ok = i == 0 || !upper_alnum(b[i - 1]);
-            let tail = run_len(b, i + 4, upper_alnum);
+            // At most 17 bytes are read: the 16 of the id and one proving it ends.
+            let tail = b[(i + 4).min(b.len())..].iter().take(17).take_while(|c| upper_alnum(**c)).count();
             if before_ok && tail == 16 {
                 out.push((Kind::AwsAccessKeyId, i..i + 20));
             }
@@ -64,15 +65,25 @@ fn pem(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
 fn github(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
     let b = s.as_bytes();
     for prefix in ["ghp_", "gho_", "ghu_", "ghs_", "ghr_"] {
+        let mut floor = 0;
         for i in find_all(s, prefix) {
+            if i < floor {
+                continue;
+            }
             let n = run_len(b, i + 4, |c| c.is_ascii_alphanumeric());
+            floor = i + 4 + n;
             if n >= 36 {
                 out.push((Kind::GithubToken, i..i + 4 + n));
             }
         }
     }
+    let mut floor = 0;
     for i in find_all(s, "github_pat_") {
+        if i < floor {
+            continue;
+        }
         let n = run_len(b, i + 11, |c| c.is_ascii_alphanumeric() || c == b'_');
+        floor = i + 11 + n;
         if n >= 22 {
             out.push((Kind::GithubToken, i..i + 11 + n));
         }
@@ -82,8 +93,13 @@ fn github(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
 fn slack(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
     let b = s.as_bytes();
     for prefix in ["xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-"] {
+        let mut floor = 0;
         for i in find_all(s, prefix) {
+            if i < floor {
+                continue;
+            }
             let n = run_len(b, i + 5, |c| c.is_ascii_alphanumeric() || c == b'-');
+            floor = i + 5 + n;
             if n >= 10 {
                 out.push((Kind::SlackToken, i..i + 5 + n));
             }
@@ -95,7 +111,12 @@ fn assignment(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
     let lower = s.to_ascii_lowercase();
     let b = s.as_bytes();
     for k in KEYWORDS {
+        // A later keyword inside a value already scanned starts no scan of its own, so each byte is read once per keyword.
+        let mut floor = 0;
         for i in find_all(&lower, k) {
+            if i < floor {
+                continue;
+            }
             // The keyword is a whole word ending in `=` or `:`.
             if i > 0 && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_') {
                 continue;
@@ -109,6 +130,7 @@ fn assignment(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
             j += run_len(b, j, |c| c == b' ' || c == b'"' || c == b'\'');
             let n = run_len(b, j, |c| !(c.is_ascii_whitespace() || c == b'"' || c == b'\'' || c == b',' || c == b';' || c == b'&'));
             let mut end = j + n;
+            floor = end;
             while !s.is_char_boundary(end) {
                 end += 1;
             }

@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 13 | 175 | 46 | 18 | 13 | 49 | 0 | 49 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 91 | 0 | 91 |
-| `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
-| `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
+| `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
+| `corpus` | 1 | 9 | 65 | 26 | 7 | 0 | 25 | 0 | 25 |
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 14 | 16 | 0 | 0 | 0 |
-| `run` | 3 | 24 | 278 | 79 | 34 | 24 | 78 | 0 | 78 |
+| `run` | 3 | 24 | 278 | 79 | 34 | 24 | 102 | 0 | 102 |
 | `store` | 1 | 14 | 140 | 37 | 12 | 8 | 75 | 0 | 75 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1415 | 460 | 161 | 101 | 342 | 0 | |
+| **total** | 19 | 144 | 1404 | 449 | 161 | 101 | 408 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 114 | 75 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
-| 4 — Ingest | 22 | 328 | 0 | absent |
+| 4 — Ingest | 22 | 328 | 78 | passing |
 | 5 — The read face under enforcement | 16 | 203 | 0 | absent |
 | 6 — Sync and replicas | 6 | 26 | 0 | absent |
 | 7 — Memory | 6 | 13 | 0 | absent |
@@ -39,7 +39,7 @@ Decision records: 18.
 | 13 — Disclosure | 5 | 21 | 0 | absent |
 | 14 — Assurance | 5 | 85 | 4 | open |
 
-Unscheduled operations: 10.
+Unscheduled operations: 9.
 
 ## Pins
 
@@ -185,22 +185,64 @@ Unscheduled operations: 10.
 | `authority.verify.replay-window` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_older_than_the_replay_window_refuses_and_nonces_live_for_that_window` | performed |
 | `authority.verify.replayed-nonce` | `crates/contextful-policy/tests/integration/possession.rs::a_nonce_repeating_inside_the_window_raises_possession_proof_replayed` | performed |
 | `authority.verify.timestamps` | `crates/contextful-core/tests/integration/time.rs::timestamps_decode_into_utc_instants_and_compare_as_instants` | performed |
+| `connector.attach.cleartext-endpoint` | `crates/contextful-runtime/tests/integration/attach.rs::a_credential_never_travels_in_cleartext_outside_loopback` | performed |
+| `connector.attach.credential-in-a-url` | `crates/contextful-core/tests/integration/connector/attach.rs::an_endpoint_carrying_userinfo_is_refused` | performed |
+| `connector.attach.landed-origin` | `crates/contextful-runtime/tests/integration/attach.rs::the_body_that_lands_comes_from_the_configured_origin` | performed |
+| `connector.attach.redirect-pinning` | `crates/contextful-runtime/tests/integration/attach.rs::a_hop_is_followed_only_within_the_configured_origin` | performed |
+| `connector.attach.referer-off` | `crates/contextful-runtime/tests/integration/attach.rs::no_request_carries_a_referer` | performed |
+| `connector.attach.sensitive-header-record` | `crates/contextful-runtime/tests/integration/attach.rs::the_client_records_credential_header_names_and_no_value` | performed |
+| `connector.attach.unpermitted-request` | `crates/contextful-runtime/tests/integration/attach.rs::a_request_to_an_uncovered_host_fails_before_any_socket` | performed |
+| `connector.attach.url-scrubbing` | `crates/contextful-runtime/tests/integration/attach.rs::a_failed_requests_message_carries_no_query_or_fragment` | performed |
+| `connector.attach.weakened-hop` | `crates/contextful-runtime/tests/integration/attach.rs::a_hop_off_the_origin_or_down_to_cleartext_is_refused` | performed |
+| `connector.declare-capability.allowlist-shape` | `crates/contextful-core/tests/integration/connector/attach.rs::a_malformed_allowlist_is_refused` | performed |
+| `connector.declare-capability.host-allowlist` | `crates/contextful-core/tests/integration/connector/attach.rs::exact_hosts_and_subdomain_wildcards_match_as_suffixes` | performed |
+| `connector.lease.bootstrap-declared-leased` | `crates/contextful-runtime/tests/integration/lease.rs::the_bootstrap_name_cannot_be_leased` | performed |
+| `connector.lease.bootstrap-non-recursion` | `crates/contextful-runtime/tests/integration/lease.rs::the_mint_credential_comes_from_the_adapters_behind_the_provider` | performed |
+| `connector.lease.bootstrap-unserved` | `crates/contextful-runtime/tests/integration/lease.rs::an_unanswered_bootstrap_refuses_before_any_mint` | performed |
+| `connector.lease.cache-window` | `crates/contextful-runtime/tests/integration/lease.rs::a_leased_entry_retires_by_the_tighter_bound` | performed |
+| `connector.lease.calls-per-resolver` | `crates/contextful-runtime/tests/integration/lease.rs::one_mint_per_name_per_window` | performed |
+| `connector.lease.empty-scope-set` | `crates/contextful-runtime/tests/integration/lease.rs::the_lease_backend_with_no_scope_refuses_at_assembly` | performed |
+| `connector.lease.endpoint` | `crates/contextful-runtime/tests/integration/lease.rs::a_mint_is_a_bearer_post_naming_the_scope` | performed |
+| `connector.lease.head-of-chain` | `crates/contextful-runtime/tests/integration/lease.rs::the_lease_provider_answers_a_declared_name_ahead_of_every_adapter` | performed |
+| `connector.lease.lease` | `crates/contextful-runtime/tests/integration/lease.rs::a_lease_is_evicted_at_its_expiry_and_reminted` | performed |
+| `connector.lease.malformed-lease` | `crates/contextful-core/tests/integration/connector/lease.rs::a_lease_without_a_future_expiry_is_malformed_and_transient` | performed |
+| `connector.lease.mint-rejected` | `crates/contextful-runtime/tests/integration/lease.rs::a_rejected_mint_credential_is_auth_expired` | performed |
+| `connector.lease.mint-transport` | `crates/contextful-runtime/tests/integration/lease.rs::the_mint_endpoint_is_tls_or_loopback_and_bypasses_the_proxy` | performed |
+| `connector.lease.rate-limited` | `crates/contextful-runtime/tests/integration/lease.rs::a_throttled_mint_carries_its_retry_after` | performed |
+| `connector.lease.redirect` | `crates/contextful-runtime/tests/integration/lease.rs::a_redirected_mint_refuses_and_the_target_sees_nothing` | performed |
+| `connector.lease.request-rejected` | `crates/contextful-runtime/tests/integration/lease.rs::another_client_error_is_a_permanent_configuration_fault` | performed |
+| `connector.lease.response` | `crates/contextful-core/tests/integration/connector/lease.rs::a_lease_reads_three_expiry_spellings_at_two_levels` | performed |
+| `connector.lease.retirement-margin` | `crates/contextful-core/tests/integration/connector/lease.rs::a_lease_retires_a_tenth_of_its_window_early_at_most_30_s` | performed |
+| `connector.lease.transient-class` | `crates/contextful-runtime/tests/integration/lease.rs::server_and_transport_failures_are_transient_and_tried_once` | performed |
+| `connector.lease.undeclared-name-defers` | `crates/contextful-runtime/tests/integration/lease.rs::an_undeclared_name_passes_the_provider_by` | performed |
+| `connector.lease.unknown-scope` | `crates/contextful-runtime/tests/integration/lease.rs::an_unknown_scope_is_a_configuration_fault_with_no_fallthrough` | performed |
+| `connector.reference.environment-is-a-miss` | `crates/contextful-runtime/tests/integration/resolve.rs::the_environment_answers_no_template` | performed |
+| `connector.reference.foreign-placeholder` | `crates/contextful-core/tests/integration/connector/reference.rs::an_environment_or_bare_placeholder_is_foreign` | performed |
+| `connector.reference.malformed-placeholder` | `crates/contextful-core/tests/integration/connector/reference.rs::an_unclosed_empty_or_nested_placeholder_is_malformed` | performed |
+| `connector.reference.material-in-a-declaration` | `crates/contextful-core/tests/integration/connector/reference.rs::a_credential_literal_in_a_declaration_is_refused` | performed |
+| `connector.reference.reference-scheme` | `crates/contextful-core/tests/integration/connector/reference.rs::a_reference_is_a_lowercase_logical_name_of_at_most_128_chars` | performed |
+| `connector.reference.value-template` | `crates/contextful-core/tests/integration/connector/reference.rs::a_template_is_literal_text_and_secret_placeholders` | performed |
+| `connector.resolve.cache-ttl` | `crates/contextful-runtime/tests/integration/resolve.rs::a_cached_value_retires_at_300_s` | performed |
+| `connector.resolve.first-hit-wins` | `crates/contextful-runtime/tests/integration/resolve.rs::the_earliest_answer_serves_and_later_adapters_are_left_alone` | performed |
+| `connector.resolve.provider-port` | `crates/contextful-runtime/tests/integration/resolve.rs::the_backend_variable_selects_the_adapters` | performed |
+| `connector.resolve.redacting-wrapper` | `crates/contextful-runtime/tests/integration/resolve.rs::a_hydrated_value_prints_as_the_sentinel` | performed |
+| `connector.resolve.resolver-per-source` | `crates/contextful-runtime/tests/integration/resolve.rs::concurrent_first_hydrations_make_one_call_and_resolvers_share_no_cache` | performed |
+| `connector.resolve.shadowed-name` | `crates/contextful-runtime/tests/integration/resolve.rs::a_name_two_adapters_answer_is_refused_at_first_hydration` | performed |
+| `connector.resolve.unresolved-name` | `crates/contextful-runtime/tests/integration/resolve.rs::an_unanswered_reference_refuses_at_preflight_and_at_the_call` | performed |
+| `connector.source.delimited-cell` | `crates/contextful-connectors/tests/integration/decode.rs::delimited_cells_land_as_strings_and_empty_unquoted_fields_as_null` | performed |
+| `connector.source.format-key-mismatch` | `crates/contextful-connectors/tests/integration/http.rs::a_json_key_on_another_format_is_refused_at_build` | performed |
+| `connector.source.http-headers` | `crates/contextful-connectors/tests/integration/http.rs::header_templates_hydrate_onto_each_read` | performed |
+| `connector.source.next-link-origin` | `crates/contextful-connectors/tests/integration/http.rs::a_next_link_off_the_configured_origin_fails_the_read` | performed |
+| `connector.source.page-cap` | `crates/contextful-connectors/tests/integration/http.rs::a_walk_stops_at_1000_requests` | performed |
+| `connector.source.page-loop` | `crates/contextful-connectors/tests/integration/http.rs::a_repeated_token_is_a_page_loop` | performed |
+| `connector.source.pagination` | `crates/contextful-connectors/tests/integration/http.rs::each_pagination_shape_walks_to_its_end` | performed |
+| `connector.source.pagination-ambiguity` | `crates/contextful-connectors/tests/integration/http.rs::two_pagination_shapes_are_refused` | performed |
+| `connector.source.placeholder-unbound` | `crates/contextful-connectors/tests/integration/http.rs::a_placeholder_other_than_the_table_is_refused_at_build` | performed |
+| `connector.source.table-pattern` | `crates/contextful-cli/tests/integration/pipeline.rs::each_table_binds_its_segment_and_keeps_its_own_position` | performed |
 | `corpus.address.clause-id` | `tools/spec/tests/integration/readable.rs::a_clause_item_takes_its_contract_and_operation_from_its_file_and_section` | performed |
 | `corpus.anatomy.bad-anatomy` | `tools/spec/tests/integration/readable.rs::an_item_outside_the_clause_shape_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.clause-list` | `tools/spec/tests/integration/readable.rs::a_clause_list_split_by_prose_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.lede` | `tools/spec/tests/integration/readable.rs::the_lede_lands_in_the_lock_and_its_absence_is_an_anatomy_finding` | performed |
-| `corpus.diagram.boundary` | `tools/spec/tests/integration/diagram.rs::a_flowchart_node_standing_for_a_contract_or_boundary_is_a_diagram_finding` | performed |
-| `corpus.diagram.branch` | `tools/spec/tests/integration/diagram.rs::a_box_branching_on_a_condition_is_a_branch_finding` | performed |
-| `corpus.diagram.connected` | `tools/spec/tests/integration/diagram.rs::a_node_no_edge_reaches_is_an_orphan` | performed |
-| `corpus.diagram.decision` | `tools/spec/tests/integration/diagram.rs::a_decision_without_labelled_exits_or_with_a_long_label_is_a_decision_finding` | performed |
-| `corpus.diagram.edge` | `tools/spec/tests/integration/diagram.rs::an_unlabelled_two_way_or_bundled_edge_is_an_edge_finding` | performed |
-| `corpus.diagram.layout` | `tools/spec/tests/integration/diagram.rs::a_chart_without_direction_too_deep_or_too_large_is_a_layout_finding` | performed |
-| `corpus.diagram.message` | `tools/spec/tests/integration/diagram.rs::a_long_message_or_note_is_a_message_finding` | performed |
-| `corpus.diagram.node` | `tools/spec/tests/integration/diagram.rs::a_node_bundling_attributes_naming_an_error_or_an_operation_is_a_diagram_finding` | performed |
-| `corpus.diagram.sequence` | `tools/spec/tests/integration/diagram.rs::a_sequence_with_undeclared_or_too_many_parts_is_a_sequence_finding` | performed |
-| `corpus.diagram.shape` | `tools/spec/tests/integration/diagram.rs::a_table_drawn_as_a_box_or_a_question_drawn_as_a_box_is_a_shape_finding` | performed |
-| `corpus.diagram.state` | `tools/spec/tests/integration/diagram.rs::a_state_diagram_with_two_starts_a_dead_end_or_a_long_label_is_a_state_finding` | performed |
-| `corpus.diagram.unique-label` | `tools/spec/tests/integration/diagram.rs::two_nodes_sharing_a_label_are_a_duplicate` | performed |
 | `corpus.guide.bad-guide` | `tools/spec/tests/integration/readable.rs::a_contract_without_a_guide_is_a_guide_finding` | performed |
 | `corpus.guide.file` | `tools/spec/tests/integration/readable.rs::a_guide_over_its_length_or_off_its_title_is_a_guide_finding` | performed |
 | `corpus.guide.non-normative` | `tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding` | performed |
@@ -236,6 +278,22 @@ Unscheduled operations: 10.
 | `run.cancel.poll-interval` | `crates/contextful-engine/tests/integration/cancel.rs::the_token_reads_the_catalog_before_the_first_await_and_every_500_ms` | performed |
 | `run.cancel.re-mark` | `crates/contextful-core/tests/integration/run/cancel.rs::a_second_mark_overwrites_the_first` | performed |
 | `run.cancel.storage-blip` | `crates/contextful-engine/tests/integration/cancel.rs::a_failed_poll_keeps_polling` | performed |
+| `run.declare.config-key` | `crates/contextful-connectors/tests/integration/http.rs::an_unknown_config_key_is_refused_naming_the_accepted_keys` | performed |
+| `run.declare.content-hash` | `crates/contextful-core/tests/integration/pipeline/declare.rs::an_explicit_default_hashes_as_its_absence` | performed |
+| `run.declare.duplicate-id` | `crates/contextful-cli/tests/integration/pipeline.rs::one_id_declared_twice_names_both_declarations` | performed |
+| `run.declare.manifest-file` | `crates/contextful-cli/tests/integration/pipeline.rs::specifications_come_from_the_project_manifest_then_the_pipelines_directory` | performed |
+| `run.declare.pipeline-spec` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_specification_carries_three_required_and_eleven_optional_keys` | performed |
+| `run.declare.replace-unsupported` | `crates/contextful-core/tests/integration/pipeline/declare.rs::replace_beside_a_windowed_load_is_refused` | performed |
+| `run.declare.source-block` | `crates/contextful-core/tests/integration/pipeline/declare.rs::source_and_destination_are_a_name_and_a_config_object` | performed |
+| `run.declare.spec-invalid` | `crates/contextful-core/tests/integration/pipeline/declare.rs::an_undeserializable_manifest_names_file_key_path_and_value` | performed |
+| `run.declare.table-entry` | `crates/contextful-core/tests/integration/pipeline/declare.rs::bare_names_and_table_blocks_mix` | performed |
+| `run.declare.table-name` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_destination_table_folds_the_pipeline_and_table_names` | performed |
+| `run.guard-secrets.coverage` | `crates/contextful-core/tests/integration/pipeline/guard.rs::encoded_or_split_credentials_pass_through` | performed |
+| `run.guard-secrets.mask-only` | `crates/contextful-engine/tests/integration/guard.rs::each_pull_reports_masked_cells_and_the_run_proceeds` | performed |
+| `run.guard-secrets.mask-replacement` | `crates/contextful-core/tests/integration/pipeline/guard.rs::the_marker_is_fixed_and_an_assignment_keeps_its_key` | performed |
+| `run.guard-secrets.mask-span` | `crates/contextful-core/tests/integration/pipeline/guard.rs::only_the_matched_range_is_replaced_and_overlaps_merge` | performed |
+| `run.guard-secrets.matchers` | `crates/contextful-core/tests/integration/pipeline/guard.rs::the_catalogue_holds_its_precision_and_recall_fixture` | performed |
+| `run.guard-secrets.placement` | `crates/contextful-engine/tests/integration/guard.rs::the_journal_records_the_masked_pull_and_a_replay_lands_it_masked` | performed |
 | `run.journal.blob-sweep` | `crates/contextful-engine/tests/integration/journal.rs::the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day` | performed |
 | `run.journal.blob-write` | `crates/contextful-engine/tests/integration/journal.rs::concurrent_blob_writers_converge_on_one_file` | performed |
 | `run.journal.claim-takeover` | `crates/contextful-engine/tests/integration/journal.rs::a_claim_whose_holder_lapsed_is_taken_over` | performed |
@@ -247,6 +305,9 @@ Unscheduled operations: 10.
 | `run.journal.redacting-source` | `crates/contextful-core/tests/integration/run/plan.rs::redaction_over_a_journaling_source_is_refused_at_validation` | performed |
 | `run.journal.replay-lands` | `crates/contextful-engine/tests/integration/runner.rs::a_resumed_run_lands_what_an_uninterrupted_one_lands` | performed |
 | `run.journal.step-output` | `crates/contextful-engine/tests/integration/journal.rs::a_crash_before_the_write_re_enters_and_the_record_then_stands` | performed |
+| `run.land.table-failed` | `crates/contextful-cli/tests/integration/pipeline.rs::a_failing_table_is_named_with_its_kind_and_run` | performed |
+| `run.land.unknown-destination` | `crates/contextful-cli/tests/integration/pipeline.rs::another_destination_is_refused_before_any_request` | performed |
+| `run.land.unreadable-input` | `crates/contextful-connectors/tests/integration/http.rs::an_unreadable_body_refuses_naming_path_and_position` | performed |
 | `run.own.execution-id-keys-the-journal` | `crates/contextful-engine/tests/integration/runner.rs::a_second_attempt_under_one_owner_replays_the_firsts_recorded_pulls` | performed |
 | `run.own.marker-reconciles` | `crates/contextful-engine/tests/integration/runner.rs::a_marker_the_catalog_missed_retires_its_owner_before_replay` | performed |
 | `run.own.one-commit-per-run` | `crates/contextful-engine/tests/integration/runner.rs::a_run_commits_once_and_a_crash_commits_nothing` | performed |
@@ -300,6 +361,11 @@ Unscheduled operations: 10.
 | `run.suspend.survives-restart` | `crates/contextful-engine/tests/integration/suspend.rs::a_restart_keeps_every_pending_callback` | performed |
 | `run.suspend.timeout-is-sticky` | `crates/contextful-core/tests/integration/run/suspend.rs::a_timeout_sticks_under_any_later_instant` | performed |
 | `run.suspend.unknown-token` | `crates/contextful-engine/tests/integration/suspend.rs::an_unknown_token_is_refused_and_writes_nothing` | performed |
+| `run.transform.arity` | `crates/contextful-core/tests/integration/pipeline/transform.rs::an_operation_emitting_more_rows_than_it_consumed_is_refused` | performed |
+| `run.transform.cast` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_cast_rewrites_the_type_in_place` | performed |
+| `run.transform.chain` | `crates/contextful-core/tests/integration/pipeline/transform.rs::the_chain_runs_its_four_operations_in_order` | performed |
+| `run.transform.column-missing` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_filter_or_cast_over_an_absent_column_is_refused` | performed |
+| `run.transform.projection` | `crates/contextful-core/tests/integration/pipeline/transform.rs::select_fixes_the_column_set_and_rename_maps_a_name` | performed |
 | `store.bound-time.as-of` | `crates/contextful-core/tests/integration/store/bound_time.rs::as_of_resolves_to_the_newest_snapshot_at_or_before_it_plus_omitted_runs` | performed |
 | `store.bound-time.as-of-unretained` | `crates/contextful-core/tests/integration/store/bound_time.rs::an_as_of_before_collected_history_is_unretained` | performed |
 | `store.bound-time.covering-versions` | `crates/contextful-context/tests/integration/bound_time.rs::an_unkeyed_table_returns_every_covering_version` | performed |

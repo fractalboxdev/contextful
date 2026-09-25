@@ -49,7 +49,6 @@ fn landed(p: &GitRepo, listed: &str, run: &str) -> Vec<(String, String)> {
 }
 
 #[test]
-#[ignore = "milestone 4 is open"]
 fn m04_ingest() {
     let cf = bin("contextful");
     // The vendor: rows by `updated_at`, served at or after `since`, one per page.

@@ -53,11 +53,11 @@
 [floor]
 assurance = 49
 authority = 91
-connector = 0
-corpus = 37
+connector = 54
+corpus = 25
 disclosure = 0
 read = 0
-run = 78
+run = 102
 store = 75
 surface = 0
 topology = 12
