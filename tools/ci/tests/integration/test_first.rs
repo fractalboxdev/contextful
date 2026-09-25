@@ -90,3 +90,22 @@ fn a_refactor_commit_does_not_exempt_the_rest_of_the_range() {
     assert!(!o.status.success(), "an untested commit rode on a refactor trailer");
     assert!(stderr(&o).contains("TestNotFirst"), "{}", stderr(&o));
 }
+
+#[test]
+fn a_new_package_counts_red_alone_and_leaves_the_base_workspace_loadable() {
+    let r = Repo::init();
+    let base = r.head();
+    // A new package with its own tests, beside a green-on-base test for a source change in `demo`.
+    r.write("crates/fresh/Cargo.toml", &crate::manifest("fresh", ""));
+    r.write("crates/fresh/src/lib.rs", "pub fn one() -> i32 {\n    1\n}\n");
+    r.write("crates/fresh/tests/integration/main.rs", "#[test]\nfn one() {\n    assert_eq!(fresh::one(), 1);\n}\n");
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() {\n    assert_eq!(demo::double(3), 6);\n}\n");
+    r.commit("a new package, and a demo test that specifies nothing new");
+    let o = r.gate(&["--stage", "test-first", "--base", &base]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("crates/fresh (absent at base)"), "{err}");
+    assert!(!err.contains("crates/demo"), "demo's test passes at base and counts green: {err}");
+    assert!(!err.contains("failed to load manifest"), "{err}");
+}

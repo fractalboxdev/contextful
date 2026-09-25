@@ -375,24 +375,31 @@ fn test_first(root: &Path, base: &str) -> Result<()> {
 }
 
 /// Overlay the change's test files on the base tree; return each package whose tests fail there.
+///
+/// A package the base lacks counts red by construction and none of its files is copied,
+/// so a test directory with no manifest never stops the base workspace from loading and
+/// every package that exists at base is judged by its own tests alone.
 fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str]) -> Result<Vec<String>> {
     let mut packages: Vec<&str> = Vec::new();
+    let mut red = Vec::new();
     for t in tests {
+        let pkg = t.split("/tests/").next().unwrap_or(t);
+        if !tree.join(pkg).join("Cargo.toml").exists() {
+            let entry = format!("{pkg} (absent at base)");
+            if !red.contains(&entry) {
+                red.push(entry);
+            }
+            continue;
+        }
         let dest = tree.join(t);
         std::fs::create_dir_all(dest.parent().unwrap())?;
         std::fs::copy(root.join(t), &dest).with_context(|| format!("overlaying {t}"))?;
-        let pkg = t.split("/tests/").next().unwrap();
         if !packages.contains(&pkg) {
             packages.push(pkg);
         }
     }
-    let mut red = Vec::new();
     for pkg in packages {
         let manifest = tree.join(pkg).join("Cargo.toml");
-        if !manifest.exists() {
-            red.push(format!("{pkg} (absent at base)"));
-            continue;
-        }
         let status = Command::new("cargo")
             .args(["test", "-q", "--tests", "--manifest-path"])
             .arg(&manifest)
