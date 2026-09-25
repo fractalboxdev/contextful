@@ -2,6 +2,7 @@
 
 mod admit;
 mod context;
+mod derive;
 mod differential;
 mod formal;
 mod mcp;
@@ -28,6 +29,9 @@ enum Cmd {
     /// Land, list, scan and fold a project's store tables.
     #[command(subcommand)]
     Context(context::ContextCmd),
+    /// Run one derive engine outside a pipeline.
+    #[command(subcommand)]
+    Derive(derive::DeriveCmd),
     /// Validate and fire declared pipelines.
     #[command(subcommand)]
     Pipeline(pipeline::PipelineCmd),
@@ -56,6 +60,7 @@ fn main() {
         Cmd::Sync(c) => sync::run(c),
         Cmd::Pipeline(c) => pipeline::run(c),
         Cmd::Mcp(c) => mcp::run(c),
+        Cmd::Derive(c) => derive::run(c),
         Cmd::Memory(c) => memory::run(c),
         Cmd::Formal(c) => formal::run(c),
     };

@@ -699,6 +699,7 @@ dependencies = [
  "contextful-policy",
  "contextful-runtime",
  "contextful-sync",
+ "getrandom 0.3.4",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -714,6 +715,8 @@ version = "0.1.0"
 dependencies = [
  "contextful-core",
  "contextful-runtime",
+ "getrandom 0.3.4",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",

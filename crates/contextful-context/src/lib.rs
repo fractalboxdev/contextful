@@ -9,6 +9,7 @@ pub mod land;
 pub mod node;
 pub mod parquet_io;
 pub mod read;
+pub mod rows;
 pub mod scan;
 pub mod store;
 
