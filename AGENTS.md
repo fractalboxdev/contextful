@@ -25,8 +25,10 @@ file before editing anything under `spec/`.
 - Each contract has a guide under [`spec/guide/`](./spec/guide/) that teaches the flow
   and reaches rules only by `{{id}}`, and a generated card under
   [`spec/cards/`](./spec/cards/) listing its operations, refusals and bounds.
-- A flowchart node names one entity or one process, in at most 5 words; attributes,
-  limits and errors go on edge labels or in prose.
+- A diagram obeys `corpus.diagram`: a flowchart node is a noun of at most 5 words
+  (tables and stores as cylinders, outside parties as stadiums, questions as `{ }`
+  decisions), operations, limits and errors ride labelled one-way edges, and every
+  decision exit names its outcome.
 - Literature and practice live in [`references/`](./references/), which points into
   the spec by operation. The spec never cites.
 

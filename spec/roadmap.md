@@ -16,21 +16,21 @@ the line when the milestone opens admits behavior clauses again.
 
 ```mermaid
 flowchart LR
-  Z[0 Test-first gate] --> A
-  A[1 Authority core] --> B[2 Store]
-  B --> C[3 Run path]
-  C --> D[4 Ingest]
-  B --> E[5 Read face]
-  A --> E
-  E --> F[6 Sync]
-  E --> G[7 Memory]
-  E --> H[8 Accountability]
-  H --> I[9 Visibility]
-  D --> J[10 Cadence]
-  B --> K[11 Derive]
-  E --> L[12 Console]
-  I --> M[13 Disclosure]
-  A --> N[14 Assurance]
+  Z[0 Test-first gate] -->|unlocks| A
+  A[1 Authority core] -->|unlocks| B[2 Store engine]
+  B -->|unlocks| C[3 Run path]
+  C -->|unlocks| D[4 Ingest]
+  B -->|unlocks| E[5 Read face]
+  A -->|unlocks| E
+  E -->|unlocks| F[6 Sync]
+  E -->|unlocks| G[7 Memory]
+  E -->|unlocks| H[8 Accountability]
+  H -->|unlocks| I[9 Visibility]
+  D -->|unlocks| J[10 Cadence]
+  B -->|unlocks| K[11 Derive]
+  E -->|unlocks| L[12 Console]
+  I -->|unlocks| M[13 Disclosure]
+  A -->|unlocks| N[14 Assurance]
 ```
 
 ## 0 — The test-first gate

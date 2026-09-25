@@ -22,12 +22,10 @@ The path of a credential from issuance to the effects it authorizes:
 
 ```mermaid
 flowchart LR
-  IDP["identity provider"]
-  ADMIN["admin grant holder"]
-  LINK["identity links"]
+  IDP(["identity provider"])
+  ADMIN(["admin grant holder"])
   subgraph ISS["issuer"]
-    EXCH["exchange"]
-    POL["issuance policy"]
+    EXCH["token exchange"]
     PORT["signing port"]
   end
   subgraph HOLD["holder"]
@@ -37,37 +35,25 @@ flowchart LR
   subgraph CPZ["checkpoint"]
     KEYS["issuer key set"]
     REV["denylist"]
-    CP{"verify"}
+    CP{"chain verifies?"}
   end
   AA["admitted authority"]
+  NO["refused credential"]
   subgraph ENF["enforcement"]
     RELS["registered relations"]
   end
-  subgraph READ["read"]
-    RS["read surfaces"]
-  end
-  subgraph RUN["run"]
-    RLE["row-landing effects"]
-  end
-  subgraph DISC["disclosure"]
-    REACH["reachable set"]
-  end
   IDP -- "verified assertion" --> EXCH
-  IDP -- "directory provisioning" --> LINK
-  LINK -- "scim_email, oidc_sub" --> REACH
   ADMIN -- "mint" --> PORT
   EXCH -- "role and default grants" --> PORT
-  POL -- "audience, lifetime ceiling" --> PORT
   PORT -- "subject tuple, grants" --> CRED
-  CRED -- "attenuate: append a signed block" --> CHILD
-  CRED --> CP
-  CHILD --> CP
+  CRED -- "attenuate: append a block" --> CHILD
+  CRED -- "presented" --> CP
+  CHILD -- "presented" --> CP
   KEYS -- "static pins, published route" --> CP
   REV -- "revocation epoch" --> CP
-  CP --> AA
-  AA --> RELS
-  AA --> RS
-  AA --> RLE
+  CP -- "yes" --> AA
+  CP -- "no" --> NO
+  AA -- "reads and row-landing effects" --> RELS
 ```
 
 ## identify
@@ -209,21 +195,21 @@ Deriving a narrower child offline, and the narrowing legality of each grant dime
 A derivation, from the holder's append to the checkpoint's recheck:
 
 ```mermaid
-flowchart TD
+flowchart LR
   subgraph HOLD["holder"]
-    P["parent credential"] -- "no issuer round trip" --> D["append a signed block"]
+    P["parent credential"]
   end
-  D --> W{"broader than the parent?"}
-  W -- "yes: AttenuationWidens" --> R(["refused"])
-  W -- no --> X{"expiry past the parent's?"}
+  P -- "append signed block offline" --> W{"broader than the parent?"}
+  W -- "yes: AttenuationWidens" --> R["refused child"]
+  W -- "no" --> X{"expiry past the parent's?"}
   X -- "yes: AttenuationExpiryExtended" --> R
-  X -- no --> T{"tenant scope changed?"}
+  X -- "no" --> T{"tenant scope changed?"}
   T -- "yes: AttenuationTenantDropped" --> R
-  T -- no --> O{"on_behalf_of differs?"}
+  T -- "no" --> O{"on_behalf_of differs?"}
   O -- "yes: AuthoritySubjectRebound" --> R
-  O -- no --> C["child credential"]
+  O -- "no" --> C["child credential"]
   subgraph CPZ["checkpoint"]
-    CP["recheck the whole chain"]
+    CP["chain recheck"]
   end
   C -- "own revocation identifier" --> CP
 ```
@@ -353,7 +339,7 @@ stateDiagram-v2
     Current --> Retiring: rotation every 90 d
     Retiring --> Retired: grace window lapses
     Retiring --> Retired: immediate retirement
-    Current --> Retired: suspected compromise, with a project-wide epoch bump
+    Current --> Retired: compromise, project-wide epoch bump
     Retired --> [*]: checkpoints drop it at the next refresh
 ```
 
@@ -406,7 +392,7 @@ sequenceDiagram
         X-->>App: ExchangeAssertionInvalid, nothing minted
     else verified
         X->>X: map subject_map, tenant_claim, role_grants or default_grants
-        X-->>App: credential for this reader, 900 s default, clamped to 3600 s
+        X-->>App: credential, 900 s default, capped 3600 s
     end
     App->>CP: read as the reader
 ```
@@ -498,25 +484,25 @@ tables  = ["research/filings"]
 Admission, from transmitted bytes to the value an effect acts under:
 
 ```mermaid
-flowchart TD
-  A["transmitted bytes"] --> B
+flowchart LR
+  A["transmitted bytes"] -- "presented" --> B
   subgraph CPZ["checkpoint"]
     B{"every block signature verifies?"}
-    B -- "no: SignatureInvalid" --> R(["refused"])
-    B -- yes --> C{"profile names every element?"}
+    B -- "no: SignatureInvalid" --> R["refused credential"]
+    B -- "yes" --> C{"profile names every element?"}
     C -- "no: ProfileElementUnrecognized" --> R
-    C -- yes --> D{"audience matches?"}
+    C -- "yes" --> D{"audience matches?"}
     D -- "no: AudienceMismatch" --> R
-    D -- yes --> E{"expiry after now?"}
+    D -- "yes" --> E{"expiry after now?"}
     E -- "no: AuthorityExpired" --> R
-    E -- yes --> F{"possession proof checks?"}
+    E -- "yes" --> F{"possession proof checks?"}
     F -- "no: PossessionProofInvalid" --> R
-    F -- yes --> G{"credential still current?"}
+    F -- "yes" --> G{"credential still current?"}
     G -- "no: AuthorityRevoked" --> R
-    G -- yes --> H["admitted authority"]
+    G -- "yes" --> H["admitted authority"]
   end
   subgraph SESS["scoped session"]
-    J["recheck on each effect"]
+    J["per-effect recheck"]
   end
   H -- "expiry, epoch, policy version" --> J
 ```

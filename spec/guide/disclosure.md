@@ -22,31 +22,29 @@ An empty answer then always means an empty corpus, never a quiet failure.
 
 ```mermaid
 flowchart LR
-  PACK["pack: access mapping"]
+  PACK["connector pack"]
   subgraph VIS["visibility"]
-    SWEEP["sweep"]
+    SWEEPER["ACL sweep job"]
     AT[("access tables")]
-    REACH["reach: reachable set"]
   end
-  READ["read, inside the budget"]
+  READER(["reader"])
   subgraph AGG["disclosure"]
-    REL["release"]
-    SUP["suppress"]
+    RELJOB["release job"]
     PUB[("published aggregate")]
   end
   subgraph ACC["accountability"]
-    CHAIN["audit chain"]
-    FORGET["erase"]
-    RCPT["receipt"]
+    CHAINLOG[("audit chain")]
+    ERASER["erasure cascade"]
+    RCPT["purge receipt"]
   end
-  PACK --> SWEEP
-  SWEEP --> AT
-  AT --> REACH
-  REACH --> READ
-  READ --> CHAIN
-  REL --> SUP --> PUB
-  FORGET --> RCPT
-  FORGET --> CHAIN
+  PACK -->|"access mapping"| SWEEPER
+  SWEEPER -->|"copied grants"| AT
+  AT -->|"reachable rows, within budget"| READER
+  READER -->|"recorded read"| CHAINLOG
+  RELJOB -->|"suppressed, noised figures"| PUB
+  PUB -->|"cohort answer"| READER
+  ERASER -->|"signed"| RCPT
+  ERASER -->|"erasure entry"| CHAINLOG
 ```
 
 Visibility runs in three steps. A pack lands a source with an access mapping

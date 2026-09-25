@@ -34,19 +34,19 @@ The promise printed on the box is never bigger than what these checks show.
 
 ```mermaid
 flowchart LR
-  SPEC["specification"] --> MODEL
+  SPEC["specification"] -->|"modelled clauses"| MODEL
   subgraph lean["Lean packages"]
     MODEL["Lean models"]
   end
   subgraph rust["Rust engine"]
-    ENGINE["engine and store"]
+    ENGINE["store engine"]
   end
-  MODEL --> AUDIT["assumption audit"]
-  MODEL --> DIFF["differential harness"]
-  ENGINE --> DIFF
-  AUDIT --> GATE["gate"]
-  DIFF --> GATE
-  EVAL["quality harness"] --> GATE
+  MODEL -->|"theorems and assumptions"| AUDIT["assumption audit"]
+  MODEL -->|"reference answers"| DIFF["differential harness"]
+  ENGINE -->|"engine answers"| DIFF
+  AUDIT -->|"audit verdict"| GATE["CI gate"]
+  DIFF -->|"agreement verdict"| GATE
+  EVAL["quality harness"] -->|"retrieval scores"| GATE
 ```
 
 Models follow the specification text, not the engine source

@@ -28,7 +28,7 @@ flowchart LR
   MODEL(["inference endpoint"])
 
   subgraph RUNP["run path"]
-    HOST["component host"] -- "journaled step" --> JOURNAL["journal"]
+    HOST["component host"] -- "journaled step" --> JOURNAL[("run journal")]
   end
 
   subgraph CROSS["the three crossings"]
@@ -38,14 +38,15 @@ flowchart LR
   end
 
   subgraph READP["read path"]
-    STORE["catalog"] --> ENF["enforcement stack"] -- "admitted rows" --> FACE["query face"]
+    STORE["catalog"] -- "snapshot rows" --> ENF["enforcement stack"] -- "admitted rows" --> FACE["query face"]
   end
 
   SRC -- "pull" --> HOST
-  HOST --- X1
-  JOURNAL -- "land" --> X2 --> STORE
-  X3 --> ENF
-  STORE <-- "push · pull" --> BUCKET
+  X1 -- "connector calls" --> HOST
+  JOURNAL -- "land" --> X2 -- "commit" --> STORE
+  X3 -- "presented grants" --> ENF
+  STORE -- "push" --> BUCKET
+  BUCKET -- "pull" --> STORE
   FACE -- "tool protocol, SQL, HTTP" --> CALLER
   FACE -- "inference egress" --> MODEL
 ```
@@ -130,7 +131,7 @@ flowchart TD
   end
 
   CLI -- "build-time feature bundle" --> EDGE & FULL & CTRL
-  EDGE & FULL & CTRL --> CORE
+  EDGE & FULL & CTRL -- "depends on" --> CORE
   ADAPT -- "implements ports" --> CORE
   CORE -. "TopologyDependencyInversion" .-x ADAPT
   EDGE -. "ProfileDependencyLeak" .-x CRDT
@@ -175,12 +176,12 @@ flowchart LR
     CLU["daemon cluster"]
   end
 
-  DECL --> TP
+  DECL -- "managed shapes" --> TP
   DECL -- "self-hosted shapes" --> SELF
   CP -- "dispatch" --> WK
   WK -- "report" --> CP
   FN -- "execution runs on" --> WK
-  CP -- "byte compare after 24 h soak" --> REF
+  CP -- "compare bytes after soak" --> REF
   TP -. "TargetShapeUnsupported" .-> REFUSED
   REF -. "ParityDivergence" .-> REFUSED
 ```
@@ -282,28 +283,34 @@ flowchart LR
   subgraph OPS["single-writer operations"]
     LA["lease acquire"]
     PTR["pointer commit"]
-    CL["commit log"]
+    CL[("commit log")]
     MAN["bucket manifest CAS"]
     CUR["cursor compare-and-swap"]
     APPLY["apply claims a version"]
   end
   PRIM["linearizable conditional write"]
   PORT["Catalog port"]
+  CW{"conditional write supported?"}
+  SHAPE{"deployment shape?"}
   subgraph BACKENDS["catalog backends"]
-    LOCAL["local catalog file"]
-    PG["Postgres via pg-catalog"]
-    SQLITE["per-object SQLite"]
-    MPG["managed Postgres"]
+    LOCAL[("local catalog file")]
+    PG[("Postgres via pg-catalog")]
+    SQLITE[("per-object SQLite")]
+    MPG[("managed Postgres")]
   end
-  REFUSED(["refused"])
+  NOOPEN(["refused open"])
+  FENCED(["fenced writer"])
 
-  OPS --> PRIM --> PORT
-  PORT -- "single node" --> LOCAL
-  PORT -- "self-hosted cluster" --> PG
-  PORT -- "managed edge" --> SQLITE
-  PORT -- "managed cloud" --> MPG
-  PORT -. "ConditionalWriteUnsupported at open" .-> REFUSED
-  LA -. "stale fence: LeaseFenced" .-> REFUSED
+  OPS -- "each needs" --> PRIM
+  PRIM -- "served through" --> PORT
+  PORT -- "opens backend" --> CW
+  CW -- "no: ConditionalWriteUnsupported" --> NOOPEN
+  CW -- "yes" --> SHAPE
+  SHAPE -- "single node" --> LOCAL
+  SHAPE -- "self-hosted cluster" --> PG
+  SHAPE -- "managed edge" --> SQLITE
+  SHAPE -- "managed cloud" --> MPG
+  LA -. "stale fence: LeaseFenced" .-> FENCED
 ```
 
 unsettled: Is a self-contained clustered catalog worth building behind the `Catalog` port for an operator wanting clustered availability without Postgres? owner: topology affects: topology.coordinate

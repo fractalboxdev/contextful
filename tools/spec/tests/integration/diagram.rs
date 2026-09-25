@@ -40,7 +40,7 @@ fn a_flowchart_node_standing_for_a_contract_or_boundary_is_a_diagram_finding() {
 // spec: corpus.diagram.node@b0a97cc8
 #[test]
 fn a_node_bundling_attributes_naming_an_error_or_an_operation_is_a_diagram_finding() {
-    let clean = "flowchart LR\n  subgraph ENGINE[\"engine · store\"]\n    W[\"writer\"] -->|\"StorePartialSnapshot · 409\"| R([\"operator\"])\n    W -- \"8 hops, 10000 nodes\" --> C[(catalog)]\n  end\n";
+    let clean = "flowchart LR\n  subgraph ENGINE[\"engine · store\"]\n    W[\"writer\"] -->|\"StorePartialSnapshot · 409\"| R([\"operator\"])\n    W -- \"8 hops, 10000 nodes\" --> C[(catalog)]\n  end\n  C -->|\"listing\"| B[\"bucket &lt;prefix&gt;\"]\n";
     assert!(added(clean, "SpecDiagramNode").is_empty(), "{:?}", added(clean, "SpecDiagramNode"));
     let bundled = "flowchart LR\n  D[\"engine · scheduler\"] -->|\"a\"| B[\"writer<br/>reader\"]\n  B -->|\"b\"| W[the snapshot and every declared sidecar]\n  W -->|\"c\"| E([StorePartialSnapshot])\n  E -->|\"d\"| L[\"lease: holder, epoch\"]\n  L -->|\"e\"| F[fold]\n  F -->|\"f\"| G[\"write the manifest\"]\n";
     let found = added(bundled, "SpecDiagramNode");

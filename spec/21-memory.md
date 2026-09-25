@@ -20,15 +20,9 @@ Memory's tables and what moves rows between them; each edge names the operation,
 
 ```mermaid
 flowchart LR
-  APP(["application"])
-  subgraph RUNC["run"]
-    ROWS[("landed rows")]
-  end
-  subgraph READC["read"]
-    SYN["synthesis pass"]
-    FACE["read face"]
-  end
-  subgraph STOREC["store"]
+  ROWS[("landed rows")]
+  SYN["synthesis pass"]
+  subgraph STOREC["memory tables"]
     FACTS[("memory_facts")]
     ENT[("memory_entities")]
     EDGES[("memory_edges")]
@@ -37,9 +31,9 @@ flowchart LR
     OUT[("outcomes")]
     LAB[("outcome_labels")]
   end
-  subgraph DISC["disclosure"]
-    ERASER["erasure cascade"]
-  end
+  ERASER["erasure cascade"]
+  FACE["read face"]
+  APP(["application"])
   ROWS -->|"extract since cursor"| SYN
   SYN -->|"resolve mentions"| ENT
   SYN -->|"relate entities"| EDGES

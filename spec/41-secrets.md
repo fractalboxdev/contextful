@@ -26,20 +26,20 @@ flowchart LR
   subgraph ENGINE["engine process"]
     RES["resolver"]
     CHAIN["provider chain"]
-    ROT["rotate"]
+    ROT["rotator"]
     ATT["host attach"]
     EGR["outbound caller"]
     AUD["run audit"]
   end
-  MINT["lease endpoint"]
+  MINT(["lease endpoint"])
   subgraph CUST["customer"]
     MGR[("customer-operated manager")]
   end
-  VEND["vendor API"]
+  VEND(["vendor API"])
   DECL -->|"secret://name"| RES
   RES -->|"first hit wins"| CHAIN
   MINT -->|"value + expiry"| CHAIN
-  MGR --- CHAIN
+  MGR -->|"stored secrets"| CHAIN
   ROT -->|"OAuth refresh, blind versioned put"| MGR
   CHAIN -->|"material in a redacting wrapper"| ATT
   EGR -->|"guest, source, limiter, exec step"| ATT
@@ -101,16 +101,16 @@ The provider port, the chain and its precedence, hydration timing, the redacting
   *A-connector*
 
 ```mermaid
-flowchart TD
-  REF["secret reference"] --> L["lease provider"]
-  L -->|"miss, or an undeclared name"| E["process environment"]
-  E -->|"miss, or a template not opted in"| K["operating-system keychain"]
-  K -->|miss| M["customer-operated manager"]
-  M -->|miss| T["customer trust-zone tunnel"]
-  T -->|"miss: SecretUnresolvedReference"| U(["refused"])
-  L & E & K & M & T -->|"first hit, at first hydration"| SH{"also answered behind adapter?"}
-  SH -->|"yes: SecretNameShadowed"| U
-  SH -->|no| W["redacting wrapper"]
+flowchart LR
+  REF["secret reference"] -->|"lookup"| L["lease provider"]
+  L -->|"miss or undeclared name"| E["process environment"]
+  E -->|"miss or template not opted"| K["operating-system keychain"]
+  K -->|"miss"| M[("customer-operated manager")]
+  M -->|"miss"| T["customer trust-zone tunnel"]
+  T -->|"miss everywhere"| U["unresolved reference"]
+  L & E & K & M & T -->|"first hit, first hydration"| SH{"also answered behind adapter?"}
+  SH -->|"yes: SecretNameShadowed"| SHADOW["shadowed name"]
+  SH -->|"no"| W["redacting wrapper"]
   W -->|"cached up to 300 s"| C["resolved material"]
 ```
 
@@ -168,10 +168,10 @@ sequenceDiagram
   participant P as mint endpoint
   R->>B: hydrate the bootstrap mint reference
   B-->>R: mint credential
-  R->>P: POST /leases · scope, bearer mint credential, TLS or loopback
+  R->>P: POST /leases: scope, mint credential, TLS
   alt success
     P-->>R: value + one expiry
-    R->>R: hold in memory, retire 10 percent of the window early, margin capped at 30 s
+    R->>R: hold in memory, retire 10 percent early
   else 404
     P-->>R: SecretLeaseScopeUnknown
   else 401 or 403

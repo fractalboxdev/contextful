@@ -22,20 +22,21 @@ The three layers of the reference monitor and the contracts feeding each:
 
 ```mermaid
 flowchart LR
-  SRC["source values"]
+  SRC(["source system"])
   AA["admitted authority"]
   ZONE["caller zone"]
   subgraph L1["write-time removal"]
-    W["writer"] --> RED["redact"]
-  end
-  subgraph L2["redistribution bound"]
-    PUSH["push"] --> WH{"redistribution flag cleared?"}
-  end
-  subgraph L3["query-time restriction"]
-    REL["registered relation"]
+    W["writer"]
+    GUARD{"credential-shaped value?"}
   end
   subgraph STORE["store"]
     PARTS[("columnar parts")]
+  end
+  subgraph L2["redistribution bound"]
+    WH{"redistribution flag cleared?"}
+  end
+  subgraph L3["query-time restriction"]
+    REL["registered relation"]
   end
   subgraph DISC["disclosure"]
     SJ["permission semi-join"]
@@ -45,16 +46,19 @@ flowchart LR
   end
   BKT[("bucket")]
   EDGE["serving edge"]
-  SRC --> W
-  W -- "credential-shaped value" --> RES(["refused"])
-  RED -- "rule set per pipeline" --> PARTS
-  PARTS --> PUSH
-  WH -- "yes: withheld" --> OUT["kept out of the bucket"]
-  WH -- no --> BKT
-  BKT -- "filtered by the puller's grants" --> EDGE
-  PARTS --> REL
-  AA --> REL
-  SJ --> REL
+  REFUSED["refused write"]
+  KEPT[("withheld table")]
+  SRC -- "source values" --> W
+  W -- "each value" --> GUARD
+  GUARD -- "yes" --> REFUSED
+  GUARD -- "no, redacted per pipeline" --> PARTS
+  PARTS -- "push" --> WH
+  WH -- "yes: withheld" --> KEPT
+  WH -- "no" --> BKT
+  BKT -- "filtered by puller grants" --> EDGE
+  PARTS -- "rows" --> REL
+  AA -- "grants" --> REL
+  SJ -- "permitted subjects" --> REL
   ZONE -- "per request" --> REL
   REL -- "filter rows, mask, place" --> RS
 ```
@@ -248,17 +252,16 @@ The per-table licence bound applied at push, the root-object allowlist, and the 
 One push under the bound:
 
 ```mermaid
-flowchart TD
-  P["push"] --> C1{"left-behind check"}
-  C1 -- "withheld table has uploaded objects" --> E1(["refused, nothing deleted"])
-  C1 -- clean --> X["exclude withheld tables"]
-  X --> D["compute the object diff"]
-  D --> RA{"root object allowlisted?"}
-  RA -- "no, table withheld" --> E2(["refused"])
-  RA -- yes --> U["upload loop"]
-  U --> C2{"left-behind check"}
-  C2 -- "stale objects" --> E1
-  C2 -- clean --> M["bucket manifest"]
+flowchart LR
+  PARTS[("local parts")] -- "push" --> C1{"withheld objects uploaded?"}
+  C1 -- "yes, nothing deleted" --> E1["refused push"]
+  C1 -- "no, exclude withheld" --> DIFF["object diff"]
+  DIFF -- "planned uploads" --> RA{"root object allowlisted?"}
+  RA -- "no, table withheld" --> E2["refused upload"]
+  RA -- "yes" --> U["upload loop"]
+  U -- "uploaded objects" --> C2{"stale objects left behind?"}
+  C2 -- "yes" --> E1
+  C2 -- "no" --> M[("bucket manifest")]
 ```
 
 ## place
@@ -321,19 +324,19 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
 Resolving one served row against the session's zone:
 
 ```mermaid
-flowchart TD
-  CZ["caller zone"] --> INC{"incognito?"}
-  INC -- no --> Z["session zone"]
-  INC -- yes --> PIN{"asserted zone too wide?"}
-  PIN -- "wider than local:device, on-prem:*" --> E1(["refused"])
-  PIN -- no --> Z
-  TS["table allow-set"] -- "fail-closed pair when undeclared" --> FL["apply the phi floor"]
-  FL --> TE{"table set admits zone?"}
-  Z --> TE
-  TE -- "no, narrowed by the author's set" --> DROP["drop the row"]
-  TE -- yes --> CE{"column set admits zone?"}
-  CE -- no --> NUL["null the cell"]
-  CE -- yes --> SRV["serve the masked cell"]
+flowchart LR
+  CZ["caller zone"] -- "per request" --> INC{"incognito?"}
+  INC -- "no" --> Z["session zone"]
+  INC -- "yes" --> PIN{"asserted zone too wide?"}
+  PIN -- "yes, wider than local" --> E1["refused session"]
+  PIN -- "no" --> Z
+  TS["table allow-set"] -- "fail-closed pair if undeclared" --> FL["phi floor"]
+  FL -- "floored allow-set" --> TE{"table set admits zone?"}
+  Z -- "zone" --> TE
+  TE -- "no, author's set narrows" --> DROP["dropped row"]
+  TE -- "yes" --> CE{"column set admits zone?"}
+  CE -- "no" --> NUL["nulled cell"]
+  CE -- "yes" --> SRV["served masked cell"]
   DROP -- "removed count" --> ENV["response envelope"]
   NUL -- "masked column" --> ENV
 ```
@@ -356,15 +359,14 @@ The paths that stay closed to an injected instruction.
 The order a registered relation applies, one table, one session:
 
 ```mermaid
-flowchart TD
-  T[(table)] --> M[mirrored permission semi-join]
-  M --> TEN[tenant byte equality]
-  TEN -- "via the subject relation" --> RP[credential predicate]
-  RP -- "overrides replace one predicate" --> TP[table policy]
-  TP --> DEF[project default]
-  DEF --> ZONE[drop rows by zone]
-  ZONE --> PROJ[project the columns]
-  PROJ -- "zone nulls, masks, quote bound" --> V[[registered relation]]
+flowchart LR
+  T[("table")] -- "mirrored permission semi-join" --> M["permitted rows"]
+  M -- "tenant byte equality" --> TEN["tenant rows"]
+  TEN -- "credential predicate" --> RP["subject rows"]
+  RP -- "table policy override" --> TP["policy rows"]
+  TP -- "project default" --> DEF["default-filtered rows"]
+  DEF -- "drop rows by zone" --> ZR["zone-admitted rows"]
+  ZR -- "project columns, null, mask" --> V[["registered relation"]]
 ```
 
 The class registry. The width ceiling assumes the default `crowd`:

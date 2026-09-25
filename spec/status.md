@@ -8,7 +8,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `assurance` | 2 | 13 | 175 | 46 | 18 | 13 | 49 | 0 | 49 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 91 | 0 | 91 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
-| `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 27 |
+| `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 14 | 16 | 0 | 0 | 0 |
 | `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |

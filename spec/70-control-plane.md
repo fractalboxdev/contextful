@@ -22,20 +22,19 @@ The path from an operator's edit to a dispatched unit, and where it meets topolo
 
 ```mermaid
 flowchart LR
+  OP(["operator"])
   subgraph plane["operator plane"]
-    direction LR
-    ED["edit the control document"] -- "CRDT" --> AP["apply a version"]
-    AP -- "claim manifest@vN, swap pointer" --> SNAP[("snapshot store")]
-    SNAP -- "poll" --> RC["reconciler"]
-    RC -- "diff, armed cursor" --> ARM["armed set"]
-    JOBS["operator-local job blocks"] --> ARM
-    TRG["trigger adapter"] -- "in-process or external" --> ARM
-    ARM -- "due entries" --> FI["fire"]
-    FI -- "job kind, target" --> DI["dispatch pool"]
-    RS["region allow-set"] -.->|"EnforceRegionMismatch at startup"| RC
+    DOC["control document"]
+    SNAP[("snapshot store")]
+    RC["reconciler"]
+    JOBS["operator-local job blocks"]
+    TRG["trigger adapter"]
+    ARM["armed set"]
+    DI["dispatch pool"]
+    RS["region allow-set"]
   end
   subgraph topology["topology contract"]
-    CAT["catalog lease rows"]
+    CAT[("catalog lease rows")]
   end
   subgraph run["run contract"]
     RUN["durable orchestrator instance"]
@@ -43,9 +42,17 @@ flowchart LR
   subgraph workers["workers"]
     WK["worker target"]
   end
-  DI --> RUN
-  DI --> WK
+  OP -- "CRDT edits" --> DOC
+  DOC -- "apply: claim manifest@vN" --> SNAP
+  SNAP -- "poll" --> RC
+  RC -- "diff, armed cursor" --> ARM
+  JOBS -- "local jobs" --> ARM
+  TRG -- "tick" --> ARM
+  ARM -- "fire due entries" --> DI
+  DI -- "orchestrated job" --> RUN
+  DI -- "worker job" --> WK
   CAT -.->|"cadence lease, exclusion keys"| DI
+  RS -.->|"EnforceRegionMismatch at startup"| RC
 ```
 
 ## arm
@@ -65,20 +72,29 @@ The schedule grammar and cron dialect, the trigger adapter and its durability, t
 Both trigger adapters reach one due-ness function:
 
 ```mermaid
-flowchart TD
+flowchart LR
   subgraph platform["platform"]
     EXT["external adapter"]
   end
   subgraph plane["operator plane"]
-    SCH["schedule string"] -- "unreadable: ScheduleUnreadable" --> E1(["skip that entry"])
-    SCH -- "readable" --> SET["armed set"]
-    IP["in-process adapter"] -- "every 500 ms" --> DUE["due-ness function"]
-    WAKE["wake over HTTP"] --> DUE
-    SET --> DUE
-    DUE --> FIRE["fire due entries"]
-    FIRE -- "within 25 s" --> ANS["answer the wake"]
+    SCH["schedule string"]
+    OK{"schedule readable?"}
+    SKIP["skipped entry"]
+    SET["armed set"]
+    IP["in-process adapter"]
+    WAKE["wake endpoint"]
+    DUE["due-ness function"]
+    FIRED["fired entries"]
   end
-  EXT --> WAKE
+  SCH -- "parse" --> OK
+  OK -- "no: ScheduleUnreadable" --> SKIP
+  OK -- "yes" --> SET
+  IP -- "tick every 500 ms" --> DUE
+  EXT -- "HTTP wake" --> WAKE
+  WAKE -- "wake" --> DUE
+  SET -- "armed entries" --> DUE
+  DUE -- "due entries" --> FIRED
+  FIRED -- "answer within 25 s" --> EXT
 ```
 
 ## reconcile

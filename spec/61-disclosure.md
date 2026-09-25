@@ -19,24 +19,17 @@ A derived result, from the deployment's setting to the published rows:
 
 ```mermaid
 flowchart LR
-  MODE{"set-mode"} -- "single operator" --> SO["write-time disclosure policy"]
-  MODE -- "clean room" --> CR["per-owner partitions"]
-  CALLER["releasing principal"] -- "template id + typed arguments" --> TPL["reviewed template"]
-  subgraph AUTH["authority"]
-    TA["template allowlist"]
-  end
-  subgraph RUN["run: journaled"]
-    REL["release job"]
-  end
-  UNITS["contributing units"]
-  TA --> TPL
-  SO --> REL
-  CR --> REL
-  TPL --> REL
-  UNITS --> REL
-  REL -- "size floor, dominance" --> SUP["suppress small groups"]
-  SUP -- "noised figures" --> PUB[("published derived table")]
-  PUB --> COH["bound the cohort"]
+  OP(["operator"]) -->|"chosen setting"| MODE{"deployment setting?"}
+  MODE -->|"single operator"| SO["write-time disclosure policy"]
+  MODE -->|"clean room"| CR["per-owner partitions"]
+  CALLER(["releasing principal"]) -->|"template id, arguments"| TA["template allowlist"]
+  TA -->|"reviewed template"| REL["release job"]
+  SO -->|"policy"| REL
+  CR -->|"partitions"| REL
+  UNITS[("contributing units")] -->|"reserved budgets"| REL
+  REL -->|"size floor, dominance"| SUPP["suppression pass"]
+  SUPP -->|"noised figures"| PUB[("published derived table")]
+  PUB -->|"cohort read, floor applied"| CONS(["asking party"])
 ```
 
 ## set-mode
@@ -94,16 +87,16 @@ The group-size floor, the contributor-share ceiling, and the single signal a wit
 The decision over one group:
 
 ```mermaid
-flowchart TD
-  G["group"] -- "noised contributor count" --> SZ{"clears min_group_size?"}
-  SZ -- no --> S["__suppressed__ sentinel"]
-  SZ -- yes --> SH{"share constraint declared?"}
-  SH -- no --> P["published row"]
-  SH -- yes --> AV{"per-contributor masses available?"}
-  AV -- "no: DisclosureDominanceUnverifiable" --> S
-  AV -- yes --> DOM{"above max_contributor_share?"}
-  DOM -- yes --> S
-  DOM -- no --> P
+flowchart LR
+  G["group"] -->|"noised contributor count"| SZ{"clears min_group_size?"}
+  SZ -->|"no"| S["__suppressed__ sentinel"]
+  SZ -->|"yes"| SH{"share constraint declared?"}
+  SH -->|"no"| P["published row"]
+  SH -->|"yes"| AV{"per-contributor masses available?"}
+  AV -->|"no: DisclosureDominanceUnverifiable"| S
+  AV -->|"yes"| DOM{"above max_contributor_share?"}
+  DOM -->|"yes"| S
+  DOM -->|"no"| P
 ```
 
 ## template

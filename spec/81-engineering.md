@@ -20,21 +20,22 @@ The tree, the checks over it, and the two verdicts they produce:
 
 ```mermaid
 flowchart LR
-  SRC["source tree"] -- "three profiles" --> BUILD["build"]
-  SRC -- "one binary per crate" --> TESTS["tests"]
-  AUTO["typed subcommands"] --> GATE["gate"]
-  BUILD --> GATE
-  TESTS --> GATE
-  FORMAL["formal model"] --> GATE
-  GATE -- "one status check per stage" --> PR["pull request"]
-  BUILD -- "archive, checksum, SBOM, image" --> ART["release artifacts"]
+  SRC["source tree"] -->|"three profiles"| BUILD["build pipeline"]
+  SRC -->|"one binary per crate"| TESTS["test suites"]
+  AUTO["typed subcommands"] -->|"stage commands"| GATE["CI gate"]
+  BUILD -->|"built binaries"| GATE
+  TESTS -->|"test results"| GATE
+  FORMAL["formal model"] -->|"proof check"| GATE
+  GATE -->|"one check per stage"| PR["pull request"]
+  BUILD -->|"archive, checksum, SBOM, image"| ART["release artifacts"]
   subgraph read["read contract"]
     STORE[("real store")]
   end
-  CASES["evals/cases JSONL"] --> EVAL["quality harness"]
-  STORE -- "ranked retrieval" --> EVAL
-  EVAL --> BASE{"within baselines and floors?"}
-  BASE --> V["red or green"]
+  CASES[("evals/cases JSONL")] -->|"cases"| EVAL["quality harness"]
+  STORE -->|"ranked retrieval"| EVAL
+  EVAL -->|"scores"| BASE{"within baselines and floors?"}
+  BASE -->|"yes"| GREEN["green verdict"]
+  BASE -->|"no"| REDV["red verdict"]
 ```
 
 ## structure-tree
@@ -95,16 +96,15 @@ Assertion construction, guard validation, suite placement, test-first and accept
 The test-first check over one commit in a change's range:
 
 ```mermaid
-flowchart TD
-  CH["commit altering Rust source"] --> TR{"refactor trailer?"}
-  TR -- yes --> WS["workspace stage"]
-  TR -- no --> T{"adds or alters a test?"}
-  T -- "no: TestNotFirst" --> E1(["refuse the change"])
-  T -- yes --> B{"test fails on base?"}
-  B -- "no: TestNotFirst" --> E1
-  B -- yes --> OK["test-first stage passes"]
-  OK --> WS
-  OK --> WS2["workspace stage"]
+flowchart LR
+  CH["commit altering Rust source"] -->|"trailers read"| TR{"refactor trailer?"}
+  TR -->|"yes"| WS["workspace stage"]
+  TR -->|"no"| T{"adds or alters a test?"}
+  T -->|"no: TestNotFirst"| AUTH(["change author"])
+  T -->|"yes"| B{"test fails on base?"}
+  B -->|"no: TestNotFirst"| AUTH
+  B -->|"yes"| OK["test-first stage"]
+  OK -->|"passing change"| WS
 ```
 
 unsettled: Does a suite contending process-global state declare that state in its module, or acquire a named lock the integration binary owns? owner: build affects: assurance.test
@@ -185,17 +185,17 @@ flowchart LR
   subgraph forge["pull-request workflow"]
     WF["one remote check per stage"]
   end
-  LOCAL --> S1
-  WF --> S1
-  subgraph C["gate container · 12 GiB memory · 18 GiB disk"]
-    S1["pins"] --> S2["toolchain"] --> S3["schema"] --> S4["test-first"]
-    S4 --> S5["workspace"] --> S6["acceptance"] --> S7["features"] --> S8["crate graph"]
-    S8 --> S9["connectors"] --> S10["TypeScript surfaces"] --> S11["formal"] --> S12["budget"]
+  LOCAL -->|"local run"| S1
+  WF -->|"remote run"| S1
+  subgraph C["gate container, 12 GiB memory and 18 GiB disk"]
+    S1["pins"] -->|"pass"| S2["toolchain"] -->|"pass"| S3["schema"] -->|"pass"| S4["test-first"]
+    S4 -->|"pass"| S5["workspace"] -->|"pass"| S6["acceptance"] -->|"pass"| S7["features"] -->|"pass"| S8["crate graph"]
+    S8 -->|"pass"| S9["connectors"] -->|"pass"| S10["TypeScript surfaces"] -->|"pass"| S11["formal"] -->|"pass"| S12["budget"]
   end
-  S3 -.-> LINT["contextful-spec lint"]
-  S8 -.-> DENY["cargo-deny per profile"]
-  S11 -.-> FORM["formal check"]
-  S12 -.->|"12 GiB total"| SIZE["measure the build size"]
+  S3 -.->|"runs"| LINT["contextful-spec lint"]
+  S8 -.->|"runs"| DENY["cargo-deny per profile"]
+  S11 -.->|"runs"| FORM["formal check"]
+  S12 -.->|"measures, 12 GiB cap"| SIZE["build size"]
 ```
 
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate

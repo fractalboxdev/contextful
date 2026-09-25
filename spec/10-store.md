@@ -39,38 +39,37 @@ flowchart LR
     ENF["enforcement stack"]
   end
   subgraph TOPO["topology"]
-    COORD["coordinate"]
+    COORD["coordination port"]
   end
-
-  subgraph ROOT["store root · .contextful/context/&lt;project&gt;/"]
-    RUNS["run parts + run manifest"]
-    LOG["cursors/ commit log"]
+  subgraph ROOT["store root"]
+    RUNS[("run parts")]
+    LOG[("commit log")]
     FOLD["fold pass"]
-    SNAP["snapshot"]
-    PTR["_pointer.json"]
-    SCHEMA["schema.json"]
+    SNAP[("snapshot")]
+    PTR[("_pointer.json")]
+    SCHEMA[("schema.json")]
     DERIVED[("derived cache")]
     MACHINE[("machine database")]
   end
-
   subgraph BUCKET["bucket"]
-    BMAN[("&lt;prefix&gt;/manifest.json")]
+    BMAN[("bucket manifest")]
   end
   REPLICA["read-only replica"]
 
-  LAND -- "conditional create _manifest.json" --> RUNS
-  LAND -- "leased pipeline" --> LOG
-  RUNS --> FOLD
-  FOLD -- "staging, then If-Match" --> SNAP
-  FOLD --> PTR
-  PTR -- "names current snapshot + fence" --> SNAP
-  RUNS -. "merged schema" .-> SCHEMA
-  PTR & RUNS & SCHEMA -. "rebuild-catalog" .-> DERIVED
-  MACHINE -. "lease port" .- COORD
-  QFACE -- "explicit sorted file list" --> PTR
-  QFACE -- "admission value" --> ENF
-  BUCKET <-- "push · pull by digest" --> ROOT
-  BUCKET -- "refresh" --> REPLICA
+  LAND -->|"conditional create"| RUNS
+  LAND -->|"leased cursor"| LOG
+  RUNS -->|"omitted runs"| FOLD
+  FOLD -->|"staged, then If-Match"| SNAP
+  FOLD -->|"new pointer"| PTR
+  PTR -->|"names snapshot and fence"| SNAP
+  RUNS -.->|"merged schema"| SCHEMA
+  PTR & RUNS & SCHEMA -.->|"rebuild catalog"| DERIVED
+  COORD -->|"leases through"| MACHINE
+  QFACE -->|"sorted file list"| PTR
+  QFACE -->|"admission value"| ENF
+  ROOT -->|"push by digest"| BMAN
+  BMAN -->|"pull by digest"| ROOT
+  BMAN -->|"refresh"| REPLICA
 ```
 
 ## lay-out
@@ -226,8 +225,8 @@ sequenceDiagram
     L-->>F: LeaseHeld, pass skipped
   else acquired
     F->>P: read ETag
-    F->>F: select omitted runs, dedupe or union, reconcile, sort, partition
-    F->>S: Parquet + every declared sidecar, fence N in manifest
+    F->>F: select omitted runs, merge, sort, partition
+    F->>S: Parquet and sidecars, fence N
     F->>P: replace If-Match ETag, fence N
     alt condition holds
       P-->>R: new snapshot for statements starting after the commit
@@ -334,7 +333,7 @@ sequenceDiagram
     W->>B: upload under the prefix
   end
   loop up to push_retries, default 5
-    W->>W: merge own entries from local tree, others from remote
+    W->>W: merge own entries with remote ones
     W->>M: replace If-Match ETag
     alt condition holds
       M-->>W: push committed
@@ -378,7 +377,7 @@ sequenceDiagram
     end
   end
   Note over P: exhausted retries raise SyncPullDidNotConverge and write no pointer
-  P->>P: write each table pointer after every object it reaches
+  P->>P: write table pointers after their objects
 ```
 
 unsettled: What recovers a pull whose retries are exhausted by pushes arriving faster than the re-fetch shrinks the shortfall? owner: store affects: store.pull
@@ -430,8 +429,8 @@ Single-writer exclusion over a pipeline or a table's compaction: two implementat
 stateDiagram-v2
     [*] --> Unheld
     Unheld --> Held: If-None-Match create, fence 1
-    Released --> Held: If-Match replace, fence plus one, commit-log entry
-    Expired --> Held: If-Match replace after grant plus skew, fence plus one
+    Released --> Held: If-Match, fence plus one, logged
+    Expired --> Held: If-Match past grant plus skew
     Held --> Held: If-Match renew every 200 s
     Held --> Released: holder null, fence kept
     Held --> Expired: no renewal within the grant

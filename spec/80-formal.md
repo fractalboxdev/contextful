@@ -32,27 +32,28 @@ flowchart LR
   end
   subgraph engine["Rust engine"]
     ENG["engine decision functions"]
-    RUST["Rust store"]
+    RUST["Rust storage layer"]
   end
   subgraph gate["gate: formal stage"]
-    AUD["audit the assumptions"]
+    AUD["assumption audit"]
     DIFF["differential harness"]
     MC["bounded invariant check"]
   end
-  SPEC -- "Layer, Placement, Authority" --> LEAN
-  SPEC -- "lease, compare-and-swap, fence" --> PROT
-  LEAN -- "lake build" --> ENV
-  INV --> AUD
-  ENV --> AUD
-  AUD -- "recheck" --> REC["rebuild and re-audit"]
-  LEAN --> REF
-  REF --> DIFF
-  ENG --> DIFF
-  PROT -- "3 nodes, 4 lease generations" --> MC
-  PROT -- "invariant theorems" --> AUD
-  PROT -- "lean_exe" --> PEXE
-  PEXE --> DIFF
-  RUST --> DIFF
+  REPORT["audit report"]
+  SPEC -->|"Layer, Placement, Authority"| LEAN
+  SPEC -->|"lease, compare-and-swap, fence"| PROT
+  LEAN -->|"lake build"| ENV
+  INV -->|"required constants"| AUD
+  ENV -->|"assumption footprints"| AUD
+  AUD -->|"row verdicts"| REPORT
+  LEAN -->|"compiled"| REF
+  REF -->|"decisions"| DIFF
+  ENG -->|"decisions"| DIFF
+  PROT -->|"3 nodes, 4 lease generations"| MC
+  PROT -->|"invariant theorems"| AUD
+  PROT -->|"lean_exe"| PEXE
+  PEXE -->|"protocol traces"| DIFF
+  RUST -->|"protocol traces"| DIFF
 ```
 
 ## model
@@ -153,19 +154,18 @@ The assumption allowlist, the transitive footprint audit over the elaborated env
 The verdict over one inventory row:
 
 ```mermaid
-flowchart TD
-  C["required constant"] --> P{"in the environment?"}
-  P -- "no: TheoremConstantMissing" --> X(["fail the row"])
-  P -- yes --> S{"statement matches?"}
-  S -- "no: TheoremStatementDrift" --> X
-  S -- yes --> F["collect the assumption footprint"]
-  F --> H{"hole assumption?"}
-  H -- "yes: ProofHoleAssumption" --> X
-  H -- no --> N{"native-evaluation assumption?"}
-  N -- "yes: NativeEvaluationAssumption" --> X
-  N -- no --> A{"within the allowlist?"}
-  A -- "no: AssumptionOutsideAllowlist" --> X
-  A -- yes --> OK(["write the passing row"])
+flowchart LR
+  C["required constant"] -->|"lookup"| P{"in the environment?"}
+  P -->|"no: TheoremConstantMissing"| X["failing row"]
+  P -->|"yes"| S{"statement matches?"}
+  S -->|"no: TheoremStatementDrift"| X
+  S -->|"yes, collect footprint"| H{"hole assumption?"}
+  H -->|"yes: ProofHoleAssumption"| X
+  H -->|"no"| N{"native-evaluation assumption?"}
+  N -->|"yes: NativeEvaluationAssumption"| X
+  N -->|"no"| A{"within the allowlist?"}
+  A -->|"no: AssumptionOutsideAllowlist"| X
+  A -->|"yes"| OK["passing row"]
 ```
 
 unsettled: Which review admits a new assumption to the allowlist, and where is it recorded beside the constant that draws on it? owner: formal affects: assurance.audit-assumptions

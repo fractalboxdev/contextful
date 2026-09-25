@@ -26,28 +26,22 @@ flowchart LR
     OUT[("derive output table")]
   end
   subgraph RUNC["run contract"]
-    SEL["select outstanding rows"]
-    BIND["bind the derive"]
+    SEL["outstanding row set"]
     EXEC["exec driver"]
     FETCH["fetch driver"]
-    PC["parse cues"]
-    EMIT["emit rows and markers"]
     LAND["land path"]
   end
   subgraph CONN["connector contract"]
     RES["resolver"]
     MED["host mediation"]
   end
-  PT --> SEL
+  PT -->|"landed rows"| SEL
   OUT -.->|"rows and markers"| SEL
-  SEL --> BIND
-  BIND -->|transcribe| EXEC
-  BIND -->|link_preview| FETCH
-  EXEC --> PC
-  PC --> EMIT
-  FETCH --> EMIT
-  EMIT --> LAND
-  LAND --> OUT
+  SEL -->|"transcribe binding"| EXEC
+  SEL -->|"link_preview binding"| FETCH
+  EXEC -->|"parsed cues"| LAND
+  FETCH -->|"link rows"| LAND
+  LAND -->|"append rows, markers"| OUT
   EXEC -.->|"credential references"| RES
   FETCH -.->|"mediated client"| MED
 ```
@@ -150,8 +144,8 @@ sequenceDiagram
   end
   T->>E: argument array over the last media
   E-->>T: cues as vtt, srt or contextful-json
-  Note over T,E: non-zero exit raises DeriveStepExit · no output file DeriveStepProducedNothing · past 8 MiB DeriveOutputCap
-  Note over T,E: past 1800 s DeriveStepTimeout · deadline or run stop signals the group, and the unit settles after the reap
+  Note over T,E: failures: DeriveStepExit, DeriveStepProducedNothing, DeriveOutputCap past 8 MiB
+  Note over T,E: past 1800 s: DeriveStepTimeout, the group signalled, then reaped
 ```
 
 unsettled: Does a vendor engine reached over HTTP need a deadline of its own, separate from the chain deadline? owner: derive affects: run.exec
@@ -177,23 +171,21 @@ Following a link a third party wrote: host and address guards, redirects, the he
   *A-connector*
 
 ```mermaid
-flowchart TD
-  A["address from the row"] --> S{"http or https?"}
-  S -->|"no: DeriveSchemeUnsupported"| X(["refused"])
-  S -->|yes| L{"address literal?"}
-  L -->|"yes: DeriveAddressLiteral"| X
-  L -->|no| H{"host in allow_hosts?"}
-  H -->|"no: SecretUnpermittedRequest"| X
-  H -->|yes| P{"public address?"}
-  P -->|"no: ConnectorPrivateAddress"| X
-  P -->|"yes, 20 s per hop"| G["GET the page"]
-  G -->|"redirect, up to 5 hops"| H
-  G -->|"1 MiB prefix"| D["scan the head"]
-  D --> C{"UTF-8?"}
-  C -->|"no: DeriveCharsetUnsupported, DeriveBytesNotUtf8"| X
-  C -->|yes| F["collect picture candidates"]
-  F -->|"64 KiB range"| PR["probe each picture"]
-  PR -->|"probe_status per candidate"| ROW["write link rows"]
+flowchart LR
+  PT[("landed parent table")] -->|"link address"| FORM{"address form?"}
+  FORM -->|"other scheme: DeriveSchemeUnsupported"| BAD["rejected address"]
+  FORM -->|"literal: DeriveAddressLiteral"| BAD
+  FORM -->|"http or https host"| HOST{"host allowed and public?"}
+  HOST -->|"unlisted: SecretUnpermittedRequest"| BLOCK["blocked host"]
+  HOST -->|"private: ConnectorPrivateAddress"| BLOCK
+  HOST -->|"yes, 20 s per hop"| SITE(["third-party site"])
+  SITE -->|"redirect, up to 5"| HOST
+  SITE -->|"1 MiB prefix"| TEXT{"document UTF-8?"}
+  TEXT -->|"other charset: DeriveCharsetUnsupported"| UNREAD["unreadable document"]
+  TEXT -->|"invalid: DeriveBytesNotUtf8"| UNREAD
+  TEXT -->|"yes, head scanned"| PICS["picture candidates"]
+  PICS -->|"64 KiB range each"| IMG(["image host"])
+  IMG -->|"probe_status per candidate"| ROWS[("link rows")]
 ```
 
 ## emit
@@ -272,14 +264,14 @@ request_timeout_secs = 20
 One tick:
 
 ```mermaid
-flowchart TD
-  A["scan the parent table"] --> C["anti-join own output, markers included"]
-  C --> D["truncate to max_rows_per_run"]
-  D --> E{"per unit"}
-  E --> F["engine call"]
-  F -->|passages| G["content rows, cue_seq 0..N"]
-  F -->|typed error or silence| H["marker, cue_seq -1"]
-  G --> I["land path"]
-  H --> I
-  E -->|wall clock elapsed| I
+flowchart LR
+  PT[("parent table")] -->|"scan, truncated per run"| SEL["outstanding units"]
+  OUT[("derive output table")] -->|"anti-join, markers included"| SEL
+  SEL -->|"engine call per unit"| UNIT{"engine answer?"}
+  UNIT -->|"passages"| ROWS["content rows"]
+  UNIT -->|"typed error or silence"| MARK["marker row"]
+  UNIT -->|"wall clock elapsed"| LAND["land path"]
+  ROWS -->|"cue_seq 0..N"| LAND
+  MARK -->|"cue_seq -1"| LAND
+  LAND -->|"append"| OUT
 ```

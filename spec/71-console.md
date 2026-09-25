@@ -27,43 +27,34 @@ The console between a reader and a store, and where it meets the read contract a
 
 ```mermaid
 flowchart LR
-  RD["reader"] --> PER["identity perimeter"]
+  RD(["reader"]) -->|"request"| PER(["identity perimeter"])
+  PER -->|"authenticated session"| PAGE
+  OPS(["operator"]) -->|"register stores"| CRED
   subgraph browser["browser"]
     PAGE["console page"]
   end
-  PER --> PAGE
   subgraph server["console server"]
-    REGY["store registry"]
-    CRED["one credential resolver"]
-    PACKS["capability packs"]
-    TURN["turn: recall, plan, rounds, synthesis"]
-    CH["render: grounding, view, internals"]
-    RED["redactor, temporal humanizer"]
+    CRED["credential resolver"]
+    TURN["turn loop"]
+    RED["redactor"]
   end
   subgraph read["read contract"]
     STORE["store engine"]
-    MEM["memory tables"]
-  end
-  subgraph topology["topology contract"]
-    MODEL["model endpoint"]
+    MEM[("memory tables")]
   end
   subgraph thirdparty["third-party page"]
-    LIB["client library: four shapes"]
+    LIB["client library"]
   end
-  PAGE -- "same-origin routes" --> TURN
-  REGY --> CRED
-  PACKS --> TURN
-  TURN -- "admitted read tools" --> STORE
-  CRED --> STORE
-  STORE --> CH
-  CH -- "grounding" --> MODEL
-  MODEL --> RED
-  RED --> PAGE
-  CH -- "view" --> PAGE
-  TURN -- "distilled conclusions" --> MEM
-  LIB --> STORE
-  OPS["operator surface"] --> REGY
-  PAGE -- "deliberate share" --> AUD["surface with an audience"]
+  PAGE -->|"question"| TURN
+  CRED -->|"per-reader credential"| STORE
+  TURN -->|"admitted read tools"| STORE
+  STORE -->|"governed rows"| TURN
+  TURN -->|"grounding"| MODEL(["model endpoint"])
+  MODEL -->|"draft prose"| RED
+  RED -->|"redacted answer"| PAGE
+  TURN -->|"distilled conclusions"| MEM
+  LIB -->|"search and ask"| STORE
+  PAGE -->|"deliberate share"| AUD(["audience"])
 ```
 
 ## register-store
@@ -113,15 +104,18 @@ flowchart LR
     GW["gateway entrypoint"]
     ENG["engine HTTP face"]
   end
-  LIB --> S1
-  LIB --> S2
-  LIB --> S3
-  LIB -- "newline-framed JSON-RPC" --> S4
-  S1 -- "injects the token" --> ENG
-  S2 --> GW
-  GW -- "container-side credential" --> ENG
-  S3 -- "per-viewer scoped token" --> ENG
-  S4 -. "StdioCredentialMissing, StoreSelectorAbsent" .-> REF(["refuse the spawn"])
+  LIB -->|"host request"| S1
+  LIB -->|"bound call"| S2
+  LIB -->|"viewer request"| S3
+  LIB -->|"newline-framed JSON-RPC"| S4
+  S1 -->|"injects the token"| ENG
+  S2 -->|"forwarded call"| GW
+  GW -->|"container-side credential"| ENG
+  S3 -->|"per-viewer scoped token"| ENG
+  S4 -->|"on spawn"| CK{"credential and manifest found?"}
+  CK -->|"yes, answers"| LIB
+  CK -->|"no credential: StdioCredentialMissing"| LIB
+  CK -->|"no manifest: StoreSelectorAbsent"| LIB
 ```
 
 ## speak
@@ -180,7 +174,7 @@ sequenceDiagram
   S->>S: pick tool and arguments from the admitted packs
   S->>E: read tool call under the reader's credential
   E-->>S: rows through enforced relations
-  S-->>B: grounded prose, then a source list of 8 entries or fewer
+  S-->>B: grounded prose and its source list
 ```
 
 ## plan-turn
@@ -230,27 +224,30 @@ The three channels, the component union, deterministic component choice, view hi
 A tool return split into three channels, and the view channel's path to a widget:
 
 ```mermaid
-flowchart TD
+flowchart LR
   subgraph server["console server"]
-    TR["tool return"] --> G["grounding channel"]
-    TR -- "on request" --> I["internals channel"]
-    TR --> V["view channel"]
-    CV["client or model view"] -- "ConsoleViewNotServerBuilt" --> E1(["refuse the view"])
-    V --> H{"hint binds returned columns?"}
-    H -- "yes" --> HC["hinted component"]
-    H -- "no: metric, line, else table" --> INF["infer the component"]
-    HC --> VAL{"valid against props schema?"}
-    INF --> VAL
-    VAL -- "no" --> NONE["no widget"]
-    VAL -- "yes" --> WALK["redact and humanize"]
+    TR["tool return"]
+    SV{"built from a result?"}
+    H{"hint binds returned columns?"}
+    VAL{"props valid?"}
+    WALK["redactor"]
+    NONE["prose only"]
   end
   subgraph browser["browser"]
     TP["trace panel"]
     W["widget frame"]
   end
-  G --> M["model"]
-  I --> TP
-  WALK -- "after the prose, one per shape" --> W
+  TR -->|"grounding"| M(["model endpoint"])
+  TR -->|"internals, on request"| TP
+  TR -->|"view rows"| SV
+  CV(["client or model"]) -->|"authored view"| SV
+  SV -->|"yes"| H
+  SV -->|"no: ConsoleViewNotServerBuilt"| CV
+  H -->|"yes, hinted component"| VAL
+  H -->|"no, inferred component"| VAL
+  VAL -->|"no"| NONE
+  VAL -->|"yes"| WALK
+  WALK -->|"one frame per shape"| W
 ```
 
 unsettled: What governs adding a member to the component union once transcripts saved under an older client exist? owner: console affects: surface.render
@@ -351,18 +348,16 @@ The catch-up payload one greeting renders from:
 One turn, from question to rendered answer:
 
 ```mermaid
-flowchart TD
-  Q[Question] --> R[Recall at the vantage]
-  R --> T[Resolve the time window]
-  T --> P[Plan against prefetched columns]
-  P --> G[Admitted read tools]
-  G --> A{Answered by the code test?}
-  A -- no, first round --> P
-  A -- no, second round --> C[Content-token retrieval]
-  A -- yes --> S[Synthesis over grounding]
-  C --> S
-  S -- redacted, humanized --> PR[Streamed prose]
-  PR --> W[Widget frame]
-  PR --> SB[Sources block]
-  PR -- labels from grounding rows --> D[Distillation]
+flowchart LR
+  RDR(["reader"]) -->|"question"| PLAN["planner"]
+  MEM[("memory tables")] -->|"recall at vantage"| PLAN
+  PLAN -->|"plan over time window"| TOOLS["admitted read tools"]
+  TOOLS -->|"grounding rows"| A{"answered by the code test?"}
+  A -->|"no, first round"| PLAN
+  A -->|"no, second round"| RET["content-token retrieval"]
+  A -->|"yes"| SYN["synthesizer"]
+  RET -->|"retrieved passages"| SYN
+  SYN -->|"redacted, humanized prose"| PAGE["console page"]
+  PAGE -->|"prose, widget, sources"| RDR
+  SYN -->|"distilled conclusions"| MEM
 ```

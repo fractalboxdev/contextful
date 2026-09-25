@@ -385,10 +385,12 @@ fn bound(c: &Corpus, name: &str, fallback: i64) -> usize {
 }
 
 static BREAK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<br\s*/?>").unwrap());
+static ENTITY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&#?[A-Za-z0-9]+;").unwrap());
 
 /// A label as a reader sees it: line breaks as spaces, markup and quotes removed.
 fn plain(label: &str) -> String {
-    BREAK.replace_all(label, " ").replace(['`', '*', '"'], "").trim().to_string()
+    let text = BREAK.replace_all(label, " ");
+    ENTITY.replace_all(&text, "").replace(['`', '*', '"'], "").trim().to_string()
 }
 
 fn words(label: &str) -> usize {
@@ -474,7 +476,8 @@ fn node(x: &mut Ctx, rel: &str, f: &Flowchart) {
         let text = plain(&n.label);
         let lower = text.to_lowercase().replace('-', " ");
         let second = lower.split_whitespace().nth(1).unwrap_or("");
-        let why = if let Some(t) = ["·", ",", ";", ": "].iter().find(|t| n.label.contains(**t)) {
+        let bare = ENTITY.replace_all(&n.label, "");
+        let why = if let Some(t) = ["·", ",", ";", ": "].iter().find(|t| bare.contains(**t)) {
             Some(format!("bundles attributes with `{}`", t.trim()))
         } else if BREAK.is_match(&n.label) {
             Some("stacks lines with `<br/>`".into())
