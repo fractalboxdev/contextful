@@ -77,7 +77,7 @@ fn the_default_shape_diagram_draws_one_role_per_node() {
     let mut fences = page.split("```mermaid\n").skip(1).map(|b| b.split("```").next().unwrap());
     let aws = fences.next().unwrap();
     assert!(!aws.contains("<br/>") && !aws.contains('·'), "{aws}");
-    assert!(aws.contains("ORCH[\"durable orchestrator\"]") && aws.contains("CAT[(\"catalog\")]"), "{aws}");
+    assert!(aws.contains("ORCH[\"durable orchestrator\"]") && aws.contains("CAT[(\"single-writer catalog\")]") && aws.contains("QF[\"hot-path query face\"]"), "{aws}");
     // the primitive filling each role lives in the table above the diagram
     assert!(!aws.contains("Step Functions"), "{aws}");
 }

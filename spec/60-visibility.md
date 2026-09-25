@@ -92,8 +92,8 @@ flowchart LR
   S(["subject"]) -->|"identity links"| SP["source principals"]
   SP -->|"group edges"| DEPTH{"closure within 8 hops, 10000 nodes?"}
   DEPTH -->|"no: VisibilityClosureDepth"| S
-  DEPTH -->|"yes, closure and public"| GR["read-conferring grants"]
-  GR -->|"known classes only"| RSET["reachable set"]
+  DEPTH -->|"yes, read-conferring grants"| RES["resources"]
+  RES -->|"known classes only"| RSET["reachable set"]
   TOMB[("tombstones")] -->|"subtracted"| RSET
   RSET -->|"keyed by three epochs"| CACHE[("reachable-set cache")]
 ```

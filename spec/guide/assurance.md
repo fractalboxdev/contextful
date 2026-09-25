@@ -19,14 +19,16 @@ your card allows, and two librarians never stamp the same book at once. Assuranc
 anyone checks those promises without taking the librarian's word for it.
 
 - **The math check.** A proof assistant reads the rulebook, not the code, and proves the
-  promises follow from it. An auditor confirms no proof hides a skipped step, like a
-  teacher marking the working, not just the answer.
+  promises follow from it. An auditor confirms no proof hides a skipped step
+  ({{assurance.audit-assumptions.hole-assumption}}), like a teacher marking the working.
 - **The twin check.** A small reference program built from the proofs and the real engine
-  answer the same made-up questions. A disagreement shrinks to its smallest form and is
-  saved, so every later run asks it first.
-- **The house rules.** Every code change arrives with a test that failed before it, the
-  gate runs its stages in a fixed order, and search results are scored against rows that
-  must never appear.
+  answer the same made-up questions ({{assurance.differential-test.harness}}). A
+  disagreement shrinks and is saved, so every later run asks it first
+  ({{assurance.differential-test.corpus-replay}}).
+- **The house rules.** Every code change arrives with a test that failed before it
+  ({{assurance.test.test-first}}), the gate runs its stages in a fixed order
+  ({{assurance.gate.stage-sequence}}), and search results are scored against rows that
+  must never appear ({{assurance.evaluate.forbidden-row-rate}}).
 
 The promise printed on the box is never bigger than what these checks show.
 

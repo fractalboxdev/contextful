@@ -17,7 +17,7 @@ the crossings, the profiles, where a build is deployed, how a published hostname
 its posture, the single-writer operations and the catalog that serializes them, and where
 the engine ends and an application begins.
 
-The system: the parties outside it, the contracts each half holds, and the three crossings
+The system: the parties outside it, the components on each half, and the three crossings
 joining them.
 
 ```mermaid
@@ -28,26 +28,26 @@ flowchart LR
   MODEL(["inference endpoint"])
 
   subgraph RUNP["run path"]
-    HOST["component host"] -- "journaled step" --> JOURNAL[("run journal")]
+    JOURNAL[("run journal")] -- "dispatch step" --> HOST["component host"]
   end
 
   subgraph CROSS["the three crossings"]
     X1["connector interface"]
-    X2["parts and manifest"]
+    X2["manifest wire format"]
     X3["capability token"]
   end
 
   subgraph READP["read path"]
-    STORE["catalog"] -- "snapshot rows" --> ENF["enforcement stack"] -- "admitted rows" --> FACE["query face"]
+    PARTS[("parts and manifests")] -- "rebuild" --> CAT["catalog"] -- "snapshot rows" --> ENF["enforcement stack"] -- "admitted rows" --> FACE["query face"]
   end
 
   SRC -- "pull" --> HOST
   X1 -- "connector calls" --> HOST
-  JOURNAL -- "land" --> X2 -- "commit" --> STORE
+  HOST -- "land" --> X2 -- "commit" --> PARTS
   X3 -- "presented grants" --> ENF
-  STORE -- "push" --> BUCKET
-  BUCKET -- "pull" --> STORE
-  FACE -- "tool protocol, SQL, HTTP" --> CALLER
+  PARTS -- "push" --> BUCKET
+  BUCKET -- "pull" --> PARTS
+  CALLER -- "query" --> FACE
   FACE -- "inference egress" --> MODEL
 ```
 
@@ -310,7 +310,7 @@ flowchart LR
   SHAPE -- "self-hosted cluster" --> PG
   SHAPE -- "managed edge" --> SQLITE
   SHAPE -- "managed cloud" --> MPG
-  LA -. "stale fence: LeaseFenced" .-> FENCED
+  PTR -. "stale fence: LeaseFenced" .-> FENCED
 ```
 
 unsettled: Is a self-contained clustered catalog worth building behind the `Catalog` port for an operator wanting clustered availability without Postgres? owner: topology affects: topology.coordinate

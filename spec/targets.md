@@ -34,10 +34,10 @@ flowchart LR
     end
     subgraph DATA["data plane"]
       COMP["heavy compute"]
-      QF["query face"]
+      QF["hot-path query face"]
     end
     subgraph STATE["durable state"]
-      CAT[("catalog")]
+      CAT[("single-writer catalog")]
       OBJ[("object store")]
     end
     SEC["secrets"]
@@ -81,10 +81,10 @@ flowchart LR
     end
     subgraph DATA["data plane"]
       COMP["heavy compute"]
-      QF["query face"]
+      QF["hot-path query face"]
     end
     subgraph STATE["durable state"]
-      CAT[("catalog")]
+      CAT[("single-writer catalog")]
       OBJ[("object store")]
     end
     SEC["secrets"]
@@ -128,10 +128,10 @@ flowchart LR
     end
     subgraph DATA["data plane"]
       COMP["heavy compute"]
-      QF["query face"]
+      QF["hot-path query face"]
     end
     subgraph STATE["durable state"]
-      CAT[("catalog")]
+      CAT[("single-writer catalog")]
       OBJ[("object store")]
     end
     SEC["secrets"]

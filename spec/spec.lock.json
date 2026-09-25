@@ -612,7 +612,7 @@
       "subject": "boundary",
       "kind": "refusal",
       "statement": "A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.",
-      "why": "because a boundary drawn as a node hides which components sit inside it and which edges cross it",
+      "why": "P8",
       "file": "spec/00-corpus.md",
       "line": 201
     },

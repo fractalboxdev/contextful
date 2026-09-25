@@ -130,7 +130,7 @@ pub fn parse(lines: &[(usize, &str)]) -> Model {
 
 static NODE_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_]+").unwrap());
 static LINK_TEXT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"^(<)?(?:--|==|-\.)\s+("[^"]*"|[^"]*?)\s+(?:-{2,}[>ox]?|={2,}[>ox]?|\.-+[>ox]?)(?:\s|$)"#).unwrap()
+    Regex::new(r#"^(<)?(?:--|==|-\.)\s+("[^"]*"|[^"]*?)\s+(?:-{2,}[>ox]?|={2,}[>ox]?|\.-+[>ox]?)"#).unwrap()
 });
 static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(<)?(?:-{2,}|={2,}|-\.+-|~~~)[>ox]?").unwrap());
 static PIPE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*\|([^|]*)\|").unwrap());
@@ -380,9 +380,22 @@ fn state_machine(first: usize, lines: &[(usize, &str)]) -> StateMachine {
 
 // ---------------------------------------------------------------- rules
 
-fn bound(c: &Corpus, name: &str, fallback: i64) -> usize {
-    c.reg.fragments.get("corpus").and_then(|fr| fr.limit.get(name)).and_then(|l| l.value.as_integer()).unwrap_or(fallback) as usize
-}
+/// Every named bound the diagram clauses read from `spec/terms/corpus.toml`.
+const BOUNDS: [&str; 13] = [
+    "corpus-node-words",
+    "corpus-edge-words",
+    "corpus-decision-words",
+    "corpus-subgraph-depth",
+    "corpus-chart-nodes",
+    "corpus-chart-edges",
+    "corpus-participants",
+    "corpus-messages",
+    "corpus-self-messages",
+    "corpus-fragment-depth",
+    "corpus-message-words",
+    "corpus-note-words",
+    "corpus-transition-words",
+];
 
 static BREAK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<br\s*/?>").unwrap());
 static ENTITY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&#?[A-Za-z0-9]+;").unwrap());
@@ -412,12 +425,17 @@ static SNAKE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9]*(_[
 
 struct Ctx<'a> {
     c: &'a Corpus,
+    bounds: BTreeMap<&'static str, usize>,
     operations: BTreeSet<String>,
     boundary: Regex,
     out: Vec<Finding>,
 }
 
 impl Ctx<'_> {
+    fn bound(&self, name: &str) -> usize {
+        self.bounds[name]
+    }
+
     fn push(&mut self, file: &str, line: usize, code: &str, msg: String) {
         self.out.push(Finding::new("diagram", file, line, code, msg));
     }
@@ -425,8 +443,22 @@ impl Ctx<'_> {
 
 pub fn check(c: &Corpus) -> Vec<Finding> {
     let names: Vec<String> = c.reg.contracts.keys().map(|k| regex::escape(k)).collect();
+    let mut bounds = BTreeMap::new();
+    let mut missing = Vec::new();
+    for name in BOUNDS {
+        match c.reg.fragments.get("corpus").and_then(|fr| fr.limit.get(name)).and_then(|l| l.value.as_integer()) {
+            Some(v) => {
+                bounds.insert(name, v as usize);
+            }
+            None => missing.push(Finding::new("diagram", "spec/terms/corpus.toml", 0, "SpecRegistry", format!("bound `{name}` is missing; the diagram clauses read it"))),
+        }
+    }
+    if !missing.is_empty() {
+        return missing;
+    }
     let mut x = Ctx {
         c,
+        bounds,
         operations: c.reg.fragments.values().flat_map(|f| f.operation.keys().map(|o| o.replace('-', " "))).collect(),
         boundary: Regex::new(&format!(r"(?i)\b(({}) contract|boundary)\b", names.join("|"))).unwrap(),
         out: Vec::new(),
@@ -471,7 +503,7 @@ fn boundary(x: &mut Ctx, rel: &str, f: &Flowchart) {
 }
 
 fn node(x: &mut Ctx, rel: &str, f: &Flowchart) {
-    let cap = bound(x.c, "corpus-node-words", 5);
+    let cap = x.bound("corpus-node-words");
     for n in f.nodes.iter().filter(|n| n.shape != Shape::Decision) {
         let text = plain(&n.label);
         let lower = text.to_lowercase().replace('-', " ");
@@ -516,7 +548,7 @@ fn is_decision(f: &Flowchart, id: &str) -> bool {
 }
 
 fn edge(x: &mut Ctx, rel: &str, f: &Flowchart) {
-    let cap = bound(x.c, "corpus-edge-words", 5);
+    let cap = x.bound("corpus-edge-words");
     for e in &f.edges {
         let name = format!("{} → {}", e.from, e.to);
         if e.two_way {
@@ -534,7 +566,7 @@ fn edge(x: &mut Ctx, rel: &str, f: &Flowchart) {
 }
 
 fn decision(x: &mut Ctx, rel: &str, f: &Flowchart) {
-    let cap = bound(x.c, "corpus-decision-words", 8);
+    let cap = x.bound("corpus-decision-words");
     for n in f.nodes.iter().filter(|n| n.shape == Shape::Decision) {
         let outs: Vec<&Edge> = f.edges.iter().filter(|e| e.from == n.id).collect();
         let mut why = Vec::new();
@@ -614,11 +646,11 @@ fn layout(x: &mut Ctx, rel: &str, f: &Flowchart) {
     for &l in &f.direction_lines {
         x.push(rel, l, "SpecDiagramLayout", "subgraph declares its own `direction`".into());
     }
-    let depth = bound(x.c, "corpus-subgraph-depth", 2);
+    let depth = x.bound("corpus-subgraph-depth");
     for s in f.subgraphs.iter().filter(|s| s.depth > depth) {
         x.push(rel, s.line, "SpecDiagramLayout", format!("subgraph `{}` nests {} levels, over {depth}", s.id, s.depth));
     }
-    let (nodes, edges) = (bound(x.c, "corpus-chart-nodes", 20), bound(x.c, "corpus-chart-edges", 25));
+    let (nodes, edges) = (x.bound("corpus-chart-nodes"), x.bound("corpus-chart-edges"));
     if f.nodes.len() > nodes || f.edges.len() > edges {
         x.push(rel, f.header_line, "SpecDiagramLayout", format!("flowchart holds {} nodes and {} edges, over {nodes} and {edges}", f.nodes.len(), f.edges.len()));
     }
@@ -635,8 +667,7 @@ fn sequence_rules(x: &mut Ctx, rel: &str, s: &Sequence) {
     for (p, line) in s.declared.iter().filter(|(p, _)| !used.contains(p.as_str())) {
         out.push((*line, format!("participant `{p}` is declared but never messaged")));
     }
-    let b = |name, fallback| bound(x.c, name, fallback);
-    let (parts, msgs, selfs, depth) = (b("corpus-participants", 6), b("corpus-messages", 15), b("corpus-self-messages", 2), b("corpus-fragment-depth", 2));
+    let (parts, msgs, selfs, depth) = (x.bound("corpus-participants"), x.bound("corpus-messages"), x.bound("corpus-self-messages"), x.bound("corpus-fragment-depth"));
     if declared.union(&used).count() > parts {
         out.push((s.header_line, format!("{} participants, over {parts}", declared.union(&used).count())));
     }
@@ -653,7 +684,7 @@ fn sequence_rules(x: &mut Ctx, rel: &str, s: &Sequence) {
     for (line, msg) in out {
         x.push(rel, line, "SpecDiagramSequence", msg);
     }
-    let (mw, nw) = (bound(x.c, "corpus-message-words", 8), bound(x.c, "corpus-note-words", 12));
+    let (mw, nw) = (x.bound("corpus-message-words"), x.bound("corpus-note-words"));
     for (_, _, label, line) in s.messages.iter().filter(|m| words(&m.2) > mw) {
         x.push(rel, *line, "SpecDiagramMessage", format!("message `{label}` holds {} words, over {mw}", words(label)));
     }
@@ -683,7 +714,7 @@ fn state_rules(x: &mut Ctx, rel: &str, m: &StateMachine) {
             x.push(rel, *line, "SpecDiagramState", format!("state `{s}` has no outgoing transition"));
         }
     }
-    let cap = bound(x.c, "corpus-transition-words", 6);
+    let cap = x.bound("corpus-transition-words");
     for (_, _, label, line) in m.transitions.iter().filter(|t| words(&t.2) > cap) {
         x.push(rel, *line, "SpecDiagramState", format!("transition `{label}` holds {} words, over {cap}", words(label)));
     }

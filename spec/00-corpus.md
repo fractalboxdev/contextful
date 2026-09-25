@@ -199,7 +199,7 @@ The fenced diagram, and the shape every flowchart, sequence and state diagram ke
 - `fence` — A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.
   *P8*
 - `boundary` — A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.
-  *because a boundary drawn as a node hides which components sit inside it and which edges cross it*
+  *P8*
 - `node` — A flowchart node names one thing in at most 5 words: its label holds no `·`, `<br/>`, `,`, `;`, `: ` or error identifier, is no operation name, and sets no article second. A breach raises `SpecDiagramNode`.
   *because a box of bundled attributes or a verb hides the things and what flows between them; operations, limits and errors ride the edges*
 - `shape` — A node labelled with a snake_case identifier or a phrase ending `table`, `store`, `log` or `queue` is a cylinder `[( )]`, and a label ending `?` is a decision `{ }`. A breach raises `SpecDiagramShape`.

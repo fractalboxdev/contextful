@@ -151,3 +151,27 @@ fn a_state_diagram_with_two_starts_a_dead_end_or_a_long_label_is_a_state_finding
     let found = added(wrong, "SpecDiagramState");
     assert_eq!(found.len(), 4, "{found:?}");
 }
+
+#[test]
+fn the_parser_reads_trapezoids_quoted_pipes_and_ids_after_edge_operators() {
+    // a trapezoid closes on either slash, so the node after it still parses
+    let trapezoid = "flowchart LR\n  A[/\"writer\"\\] -->|\"rows\"| B[\\\"reader\"/] -->|\"rows\"| C[\"x · y\"]\n";
+    assert!(names(&added(trapezoid, "SpecDiagramNode"), "x · y"));
+    // pipes and inline-edge text inside a quoted label stay part of the label
+    let quoted = "flowchart LR\n  A[\"a | b · c | d e f g\"] -->|\"rows\"| B[\"reader\"]\n";
+    assert!(names(&added(quoted, "SpecDiagramNode"), "a | b · c | d e f g"));
+    // an id right after an edge operator is a node
+    let glued = "flowchart LR\n  A[\"writer\"]-.-B[\"p · q\"]\n  A -- \"go\" ---C[\"r · s\"]\n";
+    let found = added(glued, "SpecDiagramNode");
+    assert!(names(&found, "p · q") && names(&found, "r · s"), "{found:?}");
+}
+
+#[test]
+fn a_missing_diagram_bound_is_a_finding_not_a_default() {
+    let s = Scratch::copy();
+    let fragment = s.read("spec/terms/corpus.toml");
+    let line = fragment.lines().find(|l| l.starts_with("corpus-node-words")).unwrap().to_string();
+    s.write("spec/terms/corpus.toml", &fragment.replacen(&format!("{line}\n"), "", 1));
+    let found = s.lint("diagram");
+    assert!(found.iter().any(|(_, m)| m.contains("corpus-node-words")), "{found:?}");
+}
