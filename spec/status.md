@@ -34,7 +34,7 @@ Decision records: 18.
 | 8 — Accountability | 5 | 22 | 0 | absent |
 | 9 — Visibility | 6 | 22 | 0 | absent |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
-| 11 — The derive tier | 7 | 58 | 0 | absent |
+| 11 — The derive tier | 7 | 58 | 0 | open |
 | 12 — The console | 11 | 30 | 0 | absent |
 | 13 — Disclosure | 5 | 21 | 0 | absent |
 | 14 — Assurance | 5 | 86 | 20 | open |
