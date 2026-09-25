@@ -10,7 +10,8 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
 use contextful_core::store::reconcile::{supertype, Column, ColumnType, Schema};
 use contextful_core::store::reserve::{
-    optional_value_problem, producer_columns, Injection, AUTHORED_BY, BATCH_SEQ, INGESTED_AT, RUN_ID, SITE_ID,
+    optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, INGESTED_AT, RUN_ID,
+    SITE_ID,
 };
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -195,14 +196,18 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
         .columns()
         .into_iter()
         .map(|mut c| {
-            // Paths without a batch scope or a subject omit these, so the table's column is nullable.
-            c.nullable = c.name == BATCH_SEQ || c.name == AUTHORED_BY;
+            // Paths without a batch scope or a subject omit the others, so their column is nullable.
+            c.nullable = !ALWAYS_INJECTED.contains(&c.name.as_str());
             c
         })
         .collect();
-    let merged = stored
+    let mut merged = stored
         .merge(&arriving, decl.primary_key())?
         .merge(&Schema { columns: injected }, decl.primary_key())?;
+    // A column joining a non-empty schema merges as nullable; these are in every file.
+    for c in merged.columns.iter_mut().filter(|c| ALWAYS_INJECTED.contains(&c.name.as_str())) {
+        c.nullable = false;
+    }
     decl.validate(&merged)?;
 
     // Every refusal has fired, so the tree may be written. The part carries the name the

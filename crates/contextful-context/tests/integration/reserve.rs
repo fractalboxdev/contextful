@@ -81,3 +81,34 @@ fn a_reserved_table_name_refuses_the_landing() {
     let err = f.land(&decl("name = \"_runs\""), "run-1", json!([{"id": "a"}]), "2030-01-01T00:00:00Z").unwrap_err();
     assert!(matches!(err.store(), Some(StoreError::StoreReservedTableName(_))), "{err}");
 }
+
+/// The injected columns every landing carries stay non-null in `schema.json`, whichever
+/// batch reached the table first and whatever columns later batches add.
+#[test]
+fn injected_columns_stay_non_null_in_the_merged_schema() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"");
+    let nullability = |f: &Fixture| -> Vec<(String, bool)> {
+        let doc: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(f.table_dir("filings").join("schema.json")).unwrap()).unwrap();
+        doc["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| ["_ingested_at", "_run_id", "_site_id"].contains(&c["name"].as_str().unwrap()))
+            .map(|c| (c["name"].as_str().unwrap().to_string(), c["nullable"].as_bool().unwrap()))
+            .collect()
+    };
+    let expected = [("_ingested_at".to_string(), false), ("_run_id".to_string(), false), ("_site_id".to_string(), false)];
+
+    f.land(&d, "run-1", json!([{"id": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+    assert_eq!(nullability(&f), expected, "after the first landing");
+    f.land(&d, "run-2", json!([{"id": "b", "title": "t"}]), "2030-01-01T00:01:00Z").unwrap();
+    assert_eq!(nullability(&f), expected, "after a landing adding a column");
+
+    // A table whose first run landed zero rows merges the injected columns into an empty schema.
+    let g = Fixture::new();
+    g.land(&d, "run-1", json!([]), "2030-01-01T00:00:00Z").unwrap();
+    g.land(&d, "run-2", json!([{"id": "a"}]), "2030-01-01T00:01:00Z").unwrap();
+    assert_eq!(nullability(&g), expected, "after an empty first run");
+}

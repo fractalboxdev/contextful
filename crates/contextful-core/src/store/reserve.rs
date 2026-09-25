@@ -13,6 +13,10 @@ pub const AUTHORED_BY: &str = "_authored_by";
 /// Columns the engine injects, replacing any producer value (`store.reserve.injected`).
 pub const INJECTED: [&str; 5] = [INGESTED_AT, RUN_ID, BATCH_SEQ, SITE_ID, AUTHORED_BY];
 
+/// Injected columns every write path carries, so no file lacks them and each is non-null
+/// in the merged schema whichever landing created it.
+pub const ALWAYS_INJECTED: [&str; 3] = [INGESTED_AT, RUN_ID, SITE_ID];
+
 /// Columns a producer may set inside the `_` namespace (`store.reserve.optional`).
 pub const OPTIONAL: [&str; 4] = ["_modality", "_lang", "_provenance", "_prompt_hash"];
 
