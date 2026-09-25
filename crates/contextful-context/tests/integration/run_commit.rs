@@ -92,6 +92,9 @@ fn a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable() {
     assert_eq!(readable(&f), ["run-new"]);
 }
 
+/// Under a pipeline lease, a run commits by creating the next `cursors/<pipeline-id>/<seq>.json`, and an
+/// acquisition creates one carrying its fence; a fenced run manifest is readable once the log records it.
+// spec: store.lease.commit-log@720879bd
 #[test]
 fn a_commit_created_before_the_next_acquisition_stands() {
     let f = Fixture::new();
@@ -100,6 +103,9 @@ fn a_commit_created_before_the_next_acquisition_stands() {
     commit(&f, "run-first", 1).unwrap();
     contextful_context::commit_log::open_fence(&f.store, "feed", "filings", 2).unwrap();
     assert_eq!(readable(&f), ["run-first"], "the commit point preceded the successor's acquisition");
+    let names: Vec<String> = contextful_context::commit_log::read_numbered(&f.store, "feed").unwrap().iter().map(|(s, e)| format!("{s}:{:?}:{}", e.kind, e.fence)).collect();
+    assert_eq!(names, ["1:Acquire:1", "2:Commit:1", "3:Acquire:2"]);
+    assert!(f.store.root().join("cursors/feed/00000000000000000002.json").exists());
     // Another table of the pipeline holds its own fences.
     let other = contextful_core::store::commit_log::CommitEntry {
         kind: contextful_core::store::commit_log::Kind::Acquire, table: "refunds".into(), run_id: None, cursor: None, fence: 9,

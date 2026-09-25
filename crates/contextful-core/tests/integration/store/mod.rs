@@ -6,6 +6,7 @@ mod fold;
 mod lay_out;
 mod reconcile;
 mod reserve;
+mod sync;
 
 use contextful_core::store::lay_out::{PartEntry, RunManifest, SnapshotId, SnapshotManifest};
 use contextful_core::time::Instant;

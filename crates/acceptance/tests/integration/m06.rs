@@ -47,7 +47,6 @@ fn sync(p: &GitRepo, cf: &Path, args: &[&str]) -> Output {
 }
 
 #[test]
-#[ignore = "milestone 6 is open"]
 fn m06_sync() {
     let cf = bin("contextful");
     let bucket = tempfile::tempdir().unwrap();
