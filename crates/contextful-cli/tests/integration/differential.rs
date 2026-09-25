@@ -423,13 +423,17 @@ fn a_disagreement_the_corpus_cannot_hold_is_discarded_loudly() {
 #[test]
 fn a_run_past_its_budget_stops() {
     let s = Scratch::new();
-    let slow = s.script("slow.sh", &format!("sleep 1\nexec '{BIN}' formal differential --decide"));
+    // Each reference call records itself, then takes at least 1 s.
+    let calls = s.path("calls");
+    let slow = s.script("slow.sh", &format!("echo call >> '{}'\nsleep 1\nexec '{BIN}' formal differential --decide", calls.display()));
     s.write_corpus(&[agreeing_entry(0), agreeing_entry(1), agreeing_entry(2)]);
-    let started = std::time::Instant::now();
     let out = s.run(&slow, &["--seed", "1", "--cases", "50", "--budget-secs", "2"]);
     assert!(!out.status.success(), "a run past its budget fails");
     assert!(stderr(&out).contains("budget"), "{}", stderr(&out));
-    assert!(started.elapsed().as_secs() < 10, "the run stops at its budget");
+    // Against a 2 s budget and calls of at least 1 s, the harness issues at most 3 of the
+    // 53 calls the run holds, however slowly the machine serves them.
+    let made = std::fs::read_to_string(&calls).unwrap_or_default().lines().count();
+    assert!((1..=3).contains(&made), "the run stops at its budget after {made} reference calls");
     let help = Command::new(BIN).args(["formal", "differential", "--help"]).output().unwrap();
     assert!(!stdout(&help).contains("budget"), "the budget override is hidden");
     let over = s.run(&s.agreeing(), &["--seed", "1", "--cases", "1", "--budget-secs", "301"]);
