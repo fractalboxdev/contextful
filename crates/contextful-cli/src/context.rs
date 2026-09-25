@@ -11,7 +11,7 @@ use contextful_context::scan::scan;
 use contextful_context::{node, Store};
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::store::declare::TableDecl;
-use contextful_core::store::fold::{due, FoldOutcome};
+use contextful_core::store::fold::{scheduled, FoldOutcome};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
@@ -180,13 +180,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             let mut failed = 0;
             for t in tables {
                 let decl = o.decl(&t);
-                let scheduled = |decl: &TableDecl| -> contextful_context::Result<bool> {
-                    let state = o.store.state(decl)?;
-                    let unfolded = state.unfolded_runs();
-                    let since = state.chain.first().map(|s| s.created_at).or(unfolded.first().map(|r| r.committed_at));
-                    Ok(unfolded.is_empty() || due(unfolded.len(), since, at))
-                };
-                let outcome = match table.is_none().then(|| scheduled(&decl)) {
+                let outcome = match table.is_none().then(|| o.store.state(&decl).map(|s| scheduled(&s, at))) {
                     Some(Ok(false)) => {
                         println!("{t}: not due");
                         continue;
