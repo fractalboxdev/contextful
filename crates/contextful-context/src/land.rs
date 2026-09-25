@@ -10,8 +10,8 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
 use contextful_core::store::reconcile::{supertype, Column, ColumnType, Schema};
 use contextful_core::store::reserve::{
-    optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, INGESTED_AT, RUN_ID,
-    SITE_ID,
+    optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, INGESTED_AT, ROW_SEQ,
+    RUN_ID, SITE_ID,
 };
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -239,6 +239,7 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
             let array: ArrayRef = match c.name.as_str() {
                 INGESTED_AT => Arc::new(arrow_array::TimestampNanosecondArray::from(vec![at; n]).with_timezone("UTC")),
                 RUN_ID => Arc::new(arrow_array::StringArray::from(vec![run_id; n])),
+                ROW_SEQ => Arc::new(arrow_array::Int64Array::from_iter_values(0..n as i64)),
                 BATCH_SEQ => Arc::new(arrow_array::Int32Array::from(vec![ctx.injection.batch_seq.unwrap_or_default(); n])),
                 SITE_ID => Arc::new(arrow_array::StringArray::from(vec![ctx.injection.site_id.as_str(); n])),
                 AUTHORED_BY => Arc::new(arrow_array::StringArray::from(vec![ctx.injection.authored_by.as_deref().unwrap_or_default(); n])),

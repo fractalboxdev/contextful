@@ -38,6 +38,7 @@ fn a_missing_scope_omits_its_column() {
         [
             ("_ingested_at".to_string(), ColumnType::Timestamp, false),
             ("_run_id".to_string(), ColumnType::Utf8, false),
+            ("_row_seq".to_string(), ColumnType::Int64, false),
             ("_batch_seq".to_string(), ColumnType::Int32, false),
             ("_site_id".to_string(), ColumnType::Utf8, false),
             ("_authored_by".to_string(), ColumnType::Utf8, false),
@@ -45,7 +46,7 @@ fn a_missing_scope_omits_its_column() {
     );
     let bare = Injection { batch_seq: None, authored_by: None, ..full };
     let bare_names: Vec<String> = bare.columns().into_iter().map(|c| c.name).collect();
-    assert_eq!(bare_names, ["_ingested_at", "_run_id", "_site_id"]);
+    assert_eq!(bare_names, ["_ingested_at", "_run_id", "_row_seq", "_site_id"]);
 }
 
 /// A producer column inside the `_` namespace and outside the optional set raises `StoreReservedColumnName` at reconciliation, before any Parquet.

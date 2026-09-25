@@ -25,8 +25,8 @@ fn an_unkeyed_table_reads_as_the_union_of_its_runs() {
     assert_eq!(from_view, direct);
 }
 
-/// A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
-// spec: store.declare.dedup-view@82752c58
+/// A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
+// spec: store.declare.dedup-view@3304b346
 #[test]
 fn a_keyed_table_reads_one_row_per_key_before_and_after_a_fold() {
     let f = Fixture::new();
@@ -35,7 +35,7 @@ fn a_keyed_table_reads_one_row_per_key_before_and_after_a_fold() {
     // An older revision landing later does not win: `order_by` decides, then `_ingested_at`.
     f.land(&d, "run-2", json!([{"doc": "a", "rev": 3, "title": "final"}, {"doc": "b", "rev": 0, "title": "stale"}]), "2030-01-01T00:01:00Z").unwrap();
     let rel = f.scan(&d, Bounds::default()).unwrap().relation;
-    assert!(rel.contains("ROW_NUMBER() OVER (PARTITION BY \"doc\" ORDER BY \"rev\" DESC, \"_ingested_at\" DESC)"), "{rel}");
+    assert!(rel.contains("ROW_NUMBER() OVER (PARTITION BY \"doc\" ORDER BY \"rev\" DESC, \"_ingested_at\" DESC, \"_run_id\" DESC, \"_row_seq\" DESC)"), "{rel}");
     let before = f.query(&d, Bounds::default(), "SELECT doc, title FROM t ORDER BY doc");
     assert_eq!(before, [[s("a"), s("final")], [s("b"), s("memo")]]);
 
@@ -53,6 +53,29 @@ fn a_keyed_table_reads_one_row_per_key_before_and_after_a_fold() {
     assert_eq!(tie, [[s("final, relanded")]]);
 }
 
+/// The engine injects `_row_seq`, a non-null int64 numbering a run's rows from 0 in batch order, replacing any producer value.
+// spec: store.reserve.row-seq@36ae3e0e
+#[test]
+fn the_last_write_per_key_wins_within_a_run_and_across_runs_at_one_instant() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"\nprimary_key = [\"doc\"]");
+    let titles = |f: &Fixture| f.query(&d, Bounds::default(), "SELECT doc, title FROM t ORDER BY doc");
+
+    // One run writes a key three times: the last row in the batch is the write that stands.
+    f.land(&d, "run-1", json!([{"doc": "a", "title": "one"}, {"doc": "a", "title": "two"}, {"doc": "a", "title": "three", "_row_seq": -1}]), "2030-01-01T00:00:00Z").unwrap();
+    // Two runs commit at one instant: the later in run order, `run-3`, stands.
+    f.land(&d, "run-3", json!([{"doc": "b", "title": "later"}]), "2030-01-01T00:01:00Z").unwrap();
+    f.land(&d, "run-2", json!([{"doc": "b", "title": "earlier"}, {"doc": "b", "title": "earlier, last"}]), "2030-01-01T00:01:00Z").unwrap();
+    let expected = [[s("a"), s("three")], [s("b"), s("later")]];
+    assert_eq!(titles(&f), expected, "before a fold");
+
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    assert!(f.scan(&d, Bounds::default()).unwrap().files.iter().all(|p| p.contains("/data/snapshots/")));
+    assert_eq!(titles(&f), expected, "after a fold");
+    let seq = f.query(&d, Bounds::default(), "SELECT _row_seq FROM t WHERE doc = 'a'");
+    assert_eq!(seq, [[s("2")]]);
+}
+
 /// A run landing zero rows commits a manifest with no parts and replaces nothing; a table with no rows registers as a zero-row relation over its declared and injected columns.
 // spec: store.declare.empty-run@c261166b
 #[test]
@@ -66,7 +89,7 @@ fn a_zero_row_run_commits_no_parts_and_an_empty_table_registers() {
         "SELECT column_name FROM (DESCRIBE {}) ORDER BY column_name",
         f.scan(&d, Bounds::default()).unwrap().relation
     ));
-    assert_eq!(cols, [[s("_batch_seq")], [s("_ingested_at")], [s("_run_id")], [s("_site_id")]]);
+    assert_eq!(cols, [[s("_batch_seq")], [s("_ingested_at")], [s("_row_seq")], [s("_run_id")], [s("_site_id")]]);
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("0")]]);
 
     // Under `replace`, a later zero-row run leaves the last non-empty state in place.

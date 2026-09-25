@@ -15,7 +15,7 @@ use contextful_core::store::fold::FoldOutcome;
 use contextful_core::store::lay_out::{
     part_name, PartEntry, Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, STAGING_SUFFIX,
 };
-use contextful_core::store::reserve::INGESTED_AT;
+use contextful_core::store::reserve::TIEBREAK;
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
 use std::collections::{BTreeMap, BTreeSet};
@@ -351,8 +351,9 @@ fn sort(b: &RecordBatch, keys: &[String]) -> std::result::Result<RecordBatch, ar
     take_record_batch(b, &idx)
 }
 
-/// Keep one row per `line`: the greatest `order_by`, then the greatest `_ingested_at`,
-/// nulls losing — the same survivor the dedup view picks (`store.declare.dedup-view`).
+/// Keep one row per `line`: the greatest `order_by`, then the greatest of each tiebreak
+/// column in turn, nulls losing — the same survivor the dedup view picks
+/// (`store.declare.dedup-view`).
 fn dedupe(b: &RecordBatch, line: &[String], order_by: &str) -> std::result::Result<RecordBatch, arrow_schema::ArrowError> {
     let asc = SortOptions { descending: false, nulls_first: false };
     let desc = SortOptions { descending: true, nulls_first: false };
@@ -361,8 +362,8 @@ fn dedupe(b: &RecordBatch, line: &[String], order_by: &str) -> std::result::Resu
         cols.push(SortColumn { values: column(b, k)?.clone(), options: Some(asc) });
     }
     cols.push(SortColumn { values: column(b, order_by)?.clone(), options: Some(desc) });
-    if order_by != INGESTED_AT {
-        cols.push(SortColumn { values: column(b, INGESTED_AT)?.clone(), options: Some(desc) });
+    for c in TIEBREAK.into_iter().filter(|c| *c != order_by) {
+        cols.push(SortColumn { values: column(b, c)?.clone(), options: Some(desc) });
     }
     let idx = lexsort_to_indices(&cols, None)?;
     let sorted = take_record_batch(b, &idx)?;

@@ -51,8 +51,8 @@ pub fn relation(
             pk.push(ident(&vt.from));
         }
         let mut order = vec![format!("{} DESC", ident(decl.order_by()))];
-        if decl.order_by() != super::reserve::INGESTED_AT {
-            order.push(format!("{} DESC", ident(super::reserve::INGESTED_AT)));
+        for c in super::reserve::TIEBREAK.into_iter().filter(|c| *c != decl.order_by()) {
+            order.push(format!("{} DESC", ident(c)));
         }
         format!(
             "SELECT * EXCLUDE (__contextful_rn) FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY {} ORDER BY {}) AS __contextful_rn FROM ({base})) WHERE __contextful_rn = 1",

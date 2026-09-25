@@ -6,16 +6,17 @@ use super::StoreError;
 
 pub const INGESTED_AT: &str = "_ingested_at";
 pub const RUN_ID: &str = "_run_id";
+pub const ROW_SEQ: &str = "_row_seq";
 pub const BATCH_SEQ: &str = "_batch_seq";
 pub const SITE_ID: &str = "_site_id";
 pub const AUTHORED_BY: &str = "_authored_by";
 
 /// Columns the engine injects, replacing any producer value (`store.reserve.injected`).
-pub const INJECTED: [&str; 5] = [INGESTED_AT, RUN_ID, BATCH_SEQ, SITE_ID, AUTHORED_BY];
+pub const INJECTED: [&str; 6] = [INGESTED_AT, RUN_ID, ROW_SEQ, BATCH_SEQ, SITE_ID, AUTHORED_BY];
 
 /// Injected columns every write path carries, so no file lacks them and each is non-null
 /// in the merged schema whichever landing created it.
-pub const ALWAYS_INJECTED: [&str; 3] = [INGESTED_AT, RUN_ID, SITE_ID];
+pub const ALWAYS_INJECTED: [&str; 4] = [INGESTED_AT, RUN_ID, ROW_SEQ, SITE_ID];
 
 /// Columns a producer may set inside the `_` namespace (`store.reserve.optional`).
 pub const OPTIONAL: [&str; 4] = ["_modality", "_lang", "_provenance", "_prompt_hash"];
@@ -47,6 +48,7 @@ impl Injection {
         let mut cols = vec![
             Column::new(INGESTED_AT, ColumnType::Timestamp, false),
             Column::new(RUN_ID, ColumnType::Utf8, false),
+            Column::new(ROW_SEQ, ColumnType::Int64, false),
         ];
         if self.batch_seq.is_some() {
             cols.push(Column::new(BATCH_SEQ, ColumnType::Int32, false));
@@ -58,6 +60,11 @@ impl Injection {
         cols
     }
 }
+
+/// The order a keyed read ranks rows sharing a key by, each descending after `order_by`:
+/// the transaction time, then the run, then the row's place in its batch, so the last
+/// write per key survives (`store.declare.dedup-view`).
+pub const TIEBREAK: [&str; 3] = [INGESTED_AT, RUN_ID, ROW_SEQ];
 
 /// Whether a column name is one the engine injects.
 pub fn is_injected(name: &str) -> bool {

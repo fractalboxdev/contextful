@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 14 | 16 | 0 | 0 | 0 |
 | `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |
-| `store` | 1 | 14 | 138 | 37 | 12 | 8 | 73 | 0 | 72 |
+| `store` | 1 | 14 | 139 | 37 | 12 | 8 | 74 | 0 | 72 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 144 | 1402 | 449 | 161 | 101 | 238 | 0 | |
+| **total** | 19 | 144 | 1403 | 449 | 161 | 101 | 239 | 0 | |
 
 Decision records: 18.
 
@@ -25,7 +25,7 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 15 | 3 | passing |
 | 1 — The authority core | 14 | 191 | 133 | passing |
-| 2 — The store | 8 | 112 | 73 | passing |
+| 2 — The store | 8 | 113 | 74 | passing |
 | 3 — The run path | 11 | 169 | 0 | absent |
 | 4 — Ingest | 22 | 328 | 0 | absent |
 | 5 — The read face under enforcement | 16 | 203 | 0 | absent |
@@ -281,5 +281,6 @@ Unscheduled operations: 9.
 | `store.reserve.ledger-path` | `crates/contextful-core/tests/integration/store/reserve.rs::the_ledger_path_is_disjoint_per_run_and_node` | performed |
 | `store.reserve.modality` | `crates/contextful-core/tests/integration/store/reserve.rs::modality_takes_five_values` | performed |
 | `store.reserve.no-placeholder` | `crates/contextful-core/tests/integration/store/reserve.rs::a_missing_scope_omits_its_column` | performed |
+| `store.reserve.row-seq` | `crates/contextful-context/tests/integration/declare.rs::the_last_write_per_key_wins_within_a_run_and_across_runs_at_one_instant` | performed |
 | `store.reserve.table-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_table_inside_a_reserved_namespace_is_refused` | performed |
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |

@@ -123,7 +123,7 @@ A table's declaration block: its key, ordering column and write mode, and what a
 - `table-block` — A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
 - `two-genres` — A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the engine does not enumerate. Both append, dedupe on content and carry a timestamp.
 - `unkeyed-union` — A table declaring no `primary_key` reads as the byte-identical union of its committed runs.
-- `dedup-view` — A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
+- `dedup-view` — A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
   *because a keyed table read as a union before its first fold inflates every aggregate silently*
 - `order-by-default` — `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
 - `order-by-unknown` — An `order_by` naming a column neither declared nor injected raises `StoreOrderByUnknownColumn` at validation, before the first batch.
@@ -146,6 +146,8 @@ The column and table namespaces the engine holds, the provenance columns it inje
 - `underscore-namespace` — Column names beginning `_` belong to the engine; the injected set and the reserved optional set are its whole content.
 - `injected` — The engine injects `_ingested_at` as a non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_batch_seq` as int32 where a batch scope exists, `_site_id`, and `_authored_by` where an authenticated subject authorized the write, replacing any producer value.
   *because a string instant does not sort by time once fractions or offsets appear*
+- `row-seq` — The engine injects `_row_seq`, a non-null int64 numbering a run's rows from 0 in batch order, replacing any producer value.
+  *because a run's rows share `_ingested_at` and `_run_id`, and keeping the last write per key needs an order among them*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
 - `optional` — A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 - `modality` — `_modality` takes one of text, image, audio, structured or mixed; another value fails validation of its batch.
