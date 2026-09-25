@@ -6,9 +6,9 @@
 use contextful_core::connector::reference::Template;
 use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec};
 use contextful_core::run::derive::cues::{parse, passages};
-use contextful_core::run::derive::emit::{marker_row, passage_rows, select, Unit, UnitStatus};
+use contextful_core::run::derive::emit::{document_status, marker_row, passage_rows, select, Unit, UnitStatus, OUTPUT_COLUMNS};
 use contextful_core::run::derive::exec::{
-    engine_id, excerpt, expand, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
+    engine_id, excerpt, expand, is_url, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
@@ -37,7 +37,7 @@ pub struct Step {
     pub args: Vec<String>,
     pub output_path: Option<String>,
     pub output_format: Option<OutputFormat>,
-    pub when: Option<String>,
+    pub when: Option<Condition>,
 }
 
 fn search_path(name: &str) -> Option<PathBuf> {
@@ -83,7 +83,15 @@ pub fn resolve_step(engine: &str, label: &str, spec: &StepSpec, cwd: &Path) -> R
             Some(_) => {}
         }
     }
-    Ok(Step { binary, digest, args: args.to_vec(), output_path: spec.output_path.clone(), output_format: spec.output_format, when: spec.when.clone() })
+    let when = match spec.when.as_deref() {
+        None => None,
+        Some(name) => Some(Condition::parse(name).ok_or_else(|| {
+            RunError::DeriveStepConditionUnknown(format!(
+                "engine `{engine}` step `{label}` runs `when = \"{name}\"`; the conditions are `media_is_url` and `engine_requires_pcm16_wav`"
+            ))
+        })?),
+    };
+    Ok(Step { binary, digest, args: args.to_vec(), output_path: spec.output_path.clone(), output_format: spec.output_format, when })
 }
 
 /// A binding's chain, resolved once per run: its steps, its environment and its identity.
@@ -120,7 +128,33 @@ impl Chain {
     }
 }
 
-/// Read a pipe to its end, keeping at most `cap` bytes and counting the rest.
+/// Why a unit's chain produced no document: a typed error the unit lands as a marker, or
+/// a run stop, which lands nothing and charges no attempt (`run.emit.canceled-unit`).
+#[derive(Debug)]
+pub enum ChainError {
+    Unit(RunError),
+    Canceled,
+}
+
+impl From<RunError> for ChainError {
+    fn from(e: RunError) -> ChainError {
+        ChainError::Unit(e)
+    }
+}
+
+impl std::fmt::Display for ChainError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChainError::Unit(e) => e.fmt(f),
+            ChainError::Canceled => f.write_str("the run was stopped; the step's process group is reaped"),
+        }
+    }
+}
+
+impl std::error::Error for ChainError {}
+
+/// Read a pipe to its end, keeping bytes while the streams' shared `total` is under `cap`
+/// and counting the rest.
 fn drain(mut pipe: impl Read + Send + 'static, cap: u64, total: Arc<AtomicU64>) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {
         let mut kept = Vec::new();
@@ -150,11 +184,26 @@ fn kill_group(pgid: u32) {
 #[cfg(not(unix))]
 fn kill_group(_pgid: u32) {}
 
-/// Why one unit's chain failed.
-pub type UnitError = RunError;
+/// Refuse a binary whose bytes no longer match the digest resolved at run start.
+fn verify(label: &str, step: &Step) -> Result<(), RunError> {
+    let bytes = std::fs::read(&step.binary).map_err(|e| RunError::DeriveBinaryMissing(format!("step `{label}`: `{}`: {e}", step.binary.display())))?;
+    let digest = sha256_hex(&bytes);
+    if digest != step.digest {
+        return Err(RunError::DeriveDigestMismatch(format!(
+            "step `{label}`: `{}` digests to `{digest}`, resolved at run start as `{}`",
+            step.binary.display(),
+            step.digest
+        )));
+    }
+    Ok(())
+}
 
 /// Run one step to completion within `deadline`, returning its standard output.
-fn run_step(label: &str, step: &Step, files: &StepFiles, env: &[(String, String)], max_output: u64, deadline: Instant, cancel: &dyn Cancellation) -> Result<Vec<u8>, UnitError> {
+fn run_step(label: &str, step: &Step, files: &StepFiles, env: &[(String, String)], max_output: u64, deadline: Instant, cancel: &dyn Cancellation) -> Result<Vec<u8>, ChainError> {
+    if cancel.requested() {
+        return Err(ChainError::Canceled);
+    }
+    verify(label, step)?;
     let args: Vec<String> = step.args.iter().map(|a| expand(a, files)).collect();
     let mut cmd = Command::new(&step.binary);
     cmd.args(&args).env_clear().envs(env.iter().map(|(k, v)| (k, v))).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -162,54 +211,78 @@ fn run_step(label: &str, step: &Step, files: &StepFiles, env: &[(String, String)
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
     let mut child = cmd.spawn().map_err(|e| RunError::DeriveBinaryMissing(format!("step `{label}`: {e}")))?;
     let pgid = child.id();
-    let (out_n, err_n) = (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0)));
-    let out = drain(child.stdout.take().ok_or_else(|| RunError::Invalid("no stdout".into()))?, max_output, out_n.clone());
-    let err = drain(child.stderr.take().ok_or_else(|| RunError::Invalid("no stderr".into()))?, max_output, err_n.clone());
+    // One counter spans both streams: the bound is on standard output and error together.
+    let produced = Arc::new(AtomicU64::new(0));
+    let out = drain(child.stdout.take().ok_or_else(|| RunError::Invalid("no stdout".into()))?, max_output, produced.clone());
+    let err = drain(child.stderr.take().ok_or_else(|| RunError::Invalid("no stderr".into()))?, max_output, produced.clone());
+    let over = |n: u64| RunError::DeriveOutputCap(format!("step `{label}` wrote {n} bytes past its {max_output}-byte bound; it is stopped"));
+    // Stopping reaps the group before the drains join, so they end once the pipes close.
+    let stop = |child: &mut std::process::Child| {
+        kill_group(pgid);
+        let _ = child.wait();
+    };
     let status = loop {
-        let produced = out_n.load(Ordering::SeqCst).max(err_n.load(Ordering::SeqCst));
-        if produced > max_output {
-            kill_group(pgid);
-            let _ = child.wait();
-            // The drains keep reading until the pipes close, so the child never blocks on a full pipe.
+        if produced.load(Ordering::SeqCst) > max_output {
+            stop(&mut child);
             let _ = (out.join(), err.join());
-            return Err(RunError::DeriveOutputCap(format!(
-                "step `{label}` wrote {} bytes past its {max_output}-byte bound; it is stopped",
-                out_n.load(Ordering::SeqCst).max(err_n.load(Ordering::SeqCst))
-            )));
+            return Err(over(produced.load(Ordering::SeqCst)).into());
         }
-        if Instant::now() >= deadline || cancel.requested() {
-            kill_group(pgid);
-            let _ = child.wait();
-            return Err(RunError::DeriveStepTimeout(format!("step `{label}` was running when the chain's deadline passed; its process group is reaped")));
+        if cancel.requested() {
+            stop(&mut child);
+            let _ = (out.join(), err.join());
+            return Err(ChainError::Canceled);
+        }
+        if Instant::now() >= deadline {
+            stop(&mut child);
+            let _ = (out.join(), err.join());
+            return Err(RunError::DeriveStepTimeout(format!("step `{label}` was running when the chain's deadline passed; its process group is reaped")).into());
         }
         match child.try_wait() {
             Ok(Some(s)) => break s,
             Ok(None) => std::thread::sleep(WAIT_TICK),
-            Err(e) => return Err(RunError::Invalid(format!("waiting on step `{label}`: {e}"))),
+            Err(e) => return Err(RunError::Invalid(format!("waiting on step `{label}`: {e}")).into()),
         }
     };
     // Whatever the step left in its group ends with it.
     kill_group(pgid);
     let stdout = out.join().unwrap_or_default();
     let stderr = err.join().unwrap_or_default();
+    let total = produced.load(Ordering::SeqCst);
+    if total > max_output {
+        return Err(over(total).into());
+    }
     if !status.success() {
-        return Err(RunError::DeriveStepExit(format!("step `{label}` exited {status}: {}", excerpt(&stderr))));
+        return Err(RunError::DeriveStepExit(format!("step `{label}` exited {status}: {}", excerpt(&stderr))).into());
     }
     Ok(stdout)
 }
 
+/// The leading bytes of a local input, enough to read a WAV header's `fmt ` chunk.
+fn head(input: &Path) -> Option<Vec<u8>> {
+    let mut buf = Vec::with_capacity(4096);
+    std::fs::File::open(input).ok()?.take(4096).read_to_end(&mut buf).ok()?;
+    Some(buf)
+}
+
 /// Run a unit's chain over `media` and return the engine's cue document.
-pub fn run_chain(chain: &Chain, media: &Path, env: &[(String, String)], scratch: &Path, cancel: &dyn Cancellation) -> Result<String, UnitError> {
+pub fn run_chain(chain: &Chain, media: &Path, env: &[(String, String)], scratch: &Path, cancel: &dyn Cancellation) -> Result<String, ChainError> {
     let deadline = Instant::now() + chain.deadline;
     let mut input = media.to_path_buf();
     for (i, step) in chain.preprocess.iter().enumerate() {
         let label = format!("preprocess-{i}");
+        if let Some(condition) = step.when {
+            let name = input.to_string_lossy();
+            let bytes = if is_url(&name) { None } else { head(&input) };
+            if !condition.holds(&name, bytes.as_deref()) {
+                continue;
+            }
+        }
         let stem = scratch.join(format!("step-{i}"));
         let output = step.output_path.as_deref().map(|p| p.replace("{output_stem}", &stem.to_string_lossy())).unwrap_or_else(|| stem.to_string_lossy().into_owned());
         let files = StepFiles { input: input.to_string_lossy().into_owned(), output: output.clone(), output_stem: stem.to_string_lossy().into_owned() };
         run_step(&label, step, &files, env, chain.max_output, deadline, cancel)?;
         if !Path::new(&output).is_file() {
-            return Err(RunError::DeriveStepProducedNothing(format!("step `{label}` exited zero and wrote no `{output}`")));
+            return Err(RunError::DeriveStepProducedNothing(format!("step `{label}` exited zero and wrote no `{output}`")).into());
         }
         input = PathBuf::from(output);
     }
@@ -225,7 +298,7 @@ pub fn run_chain(chain: &Chain, media: &Path, env: &[(String, String)], scratch:
         Some(path) => std::fs::read(&path).map_err(|_| RunError::DeriveStepProducedNothing(format!("the engine exited zero and wrote no `{path}`")))?,
         None => stdout,
     };
-    String::from_utf8(bytes).map_err(|_| RunError::Invalid("the engine's cue document is not UTF-8".into()))
+    Ok(String::from_utf8(bytes).map_err(|_| RunError::Invalid("the engine's cue document is not UTF-8".into()))?)
 }
 
 /// The derive source of one pipeline.
@@ -242,10 +315,11 @@ pub struct DeriveSource {
 }
 
 impl DeriveSource {
-    /// Resolve media to a local file: an address declines unless a step handles it, and a
-    /// value that is neither refuses for that unit alone.
-    fn media_path(&self, media: &str) -> Result<PathBuf, UnitError> {
-        if media.starts_with("http://") || media.starts_with("https://") {
+    /// Resolve media to a local file under the media root: an address declines unless a step
+    /// handles it, a path escaping the root refuses, and a value that is neither refuses, each
+    /// for that unit alone.
+    fn media_path(&self, media: &str) -> Result<PathBuf, RunError> {
+        if is_url(media) {
             if !self.binding.preprocess.iter().any(|s| s.when.as_deref() == Some("media_is_url")) {
                 return Err(RunError::DeriveRemoteUrlUnsupported(format!(
                     "engine `{}` reads local files; declare a preprocess step with `when = \"media_is_url\"` to fetch an address",
@@ -254,46 +328,48 @@ impl DeriveSource {
             }
             return Ok(PathBuf::from(media));
         }
-        let p = self.cwd.join(media);
-        if std::fs::File::open(&p).is_err() {
-            return Err(RunError::DeriveMediaUnreadable(format!("media `{media}` is neither an address nor a readable local file")));
+        let unreadable = || RunError::DeriveMediaUnreadable(format!("media `{media}` is neither an address nor a readable local file"));
+        let declared = self.cwd.join(self.binding.media_root.as_deref().unwrap_or("."));
+        let root = declared.canonicalize().map_err(|e| RunError::DeriveMediaUnreadable(format!("media root `{}`: {e}", declared.display())))?;
+        // Canonicalizing resolves `..` and every symbolic link, so containment is checked on the file itself.
+        let p = root.join(media).canonicalize().map_err(|_| unreadable())?;
+        if !p.starts_with(&root) {
+            return Err(RunError::DeriveMediaOutsideRoot(format!("media `{media}` resolves outside the media root `{}`", root.display())));
+        }
+        if !p.is_file() || std::fs::File::open(&p).is_err() {
+            return Err(unreadable());
         }
         Ok(p)
     }
 
-    /// Derive one unit into its rows.
-    fn derive_unit(&self, chain: &Chain, env: &[(String, String)], unit: &Unit, cancel: &dyn Cancellation) -> Vec<Row> {
-        let outcome = self.media_path(&unit.media).and_then(|media| {
-            let mut nonce = [0u8; 8];
-            let _ = getrandom::fill(&mut nonce);
-            let scratch = std::env::temp_dir().join(format!("contextful-derive-{}", nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()));
-            std::fs::create_dir_all(&scratch).map_err(|e| RunError::Invalid(e.to_string()))?;
-            let doc = run_chain(chain, &media, env, &scratch, cancel);
-            let _ = std::fs::remove_dir_all(&scratch);
-            doc
+    /// Derive one unit into its rows; a run stop yields none.
+    fn derive_unit(&self, chain: &Chain, env: &[(String, String)], unit: &Unit, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
+        let outcome = self.media_path(&unit.media).map_err(ChainError::Unit).and_then(|media| {
+            let scratch = tempfile::Builder::new().prefix("contextful-derive-").tempdir().map_err(|e| RunError::Invalid(format!("scratch directory: {e}")))?;
+            run_chain(chain, &media, env, scratch.path(), cancel)
         });
-        match outcome {
+        Ok(match outcome {
             Ok(doc) => {
                 let parsed = parse(&doc);
                 for d in &parsed.defects {
                     eprintln!("{}: {d}", unit.key);
                 }
-                let ps = passages(&parsed.cues);
-                if ps.is_empty() {
-                    vec![marker_row(unit, UnitStatus::Empty, None, false, &chain.id)]
-                } else {
-                    passage_rows(unit, &ps, &chain.id)
+                match document_status(&doc, &parsed) {
+                    UnitStatus::Empty => vec![marker_row(unit, UnitStatus::Empty, None, false, &chain.id)],
+                    UnitStatus::Ok => passage_rows(unit, &passages(&parsed.cues), &chain.id),
+                    _ => vec![marker_row(unit, UnitStatus::Unavailable, None, true, &chain.id)],
                 }
             }
-            Err(e) => vec![marker_row(unit, UnitStatus::Failed, Some(&e.to_string()), true, &chain.id)],
-        }
+            Err(ChainError::Canceled) => return Err(Failure::canceled(format!("stopped while deriving `{}`; its process group is reaped", unit.key))),
+            Err(ChainError::Unit(e)) => vec![marker_row(unit, UnitStatus::Failed, Some(&e.to_string()), true, &chain.id)],
+        })
     }
 }
 
 impl Source for DeriveSource {
     fn pull(&mut self, _request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
-        let parents = self.reader.rows(&self.config.source_table)?;
-        let derived = self.reader.rows(&self.output_table)?;
+        let parents = self.reader.rows(&self.config.source_table, &[&self.config.parent_id_column, &self.config.media_column])?;
+        let derived = self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)?;
         let sel = select(&parents, &derived, &self.config);
         for e in &sel.incomplete {
             eprintln!("{}: {e}", self.pipeline_id);
@@ -307,10 +383,13 @@ impl Source for DeriveSource {
         let budget = self.config.max_seconds_per_run.map(Duration::from_secs);
         let mut rows = Vec::new();
         for unit in &sel.outstanding {
-            if cancel.requested() || budget.is_some_and(|b| started.elapsed() >= b) {
+            if cancel.requested() {
+                return Err(Failure::canceled("stopped between units"));
+            }
+            if budget.is_some_and(|b| started.elapsed() >= b) {
                 break;
             }
-            rows.extend(self.derive_unit(&chain, &env, unit, cancel));
+            rows.extend(self.derive_unit(&chain, &env, unit, cancel)?);
         }
         serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }

@@ -1,38 +1,95 @@
-//! A table's rows as JSON objects, read off its current file list.
+//! A table's rows as JSON objects, read off its current file list and projected to the
+//! columns a caller names.
 
-use crate::error::Result;
+use crate::error::{ContextError, Result};
 use crate::parquet_io;
 use crate::scan::scan;
 use crate::store::Store;
 use arrow_array::cast::AsArray;
-use arrow_array::types::{Float64Type, Int32Type, Int64Type, TimestampNanosecondType};
-use arrow_array::Array;
-use arrow_schema::DataType;
+use arrow_array::types::{
+    Float16Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimestampMicrosecondType,
+    TimestampMillisecondType, TimestampNanosecondType, TimestampSecondType, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+};
+use arrow_array::{Array, RecordBatch};
+use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_schema::{DataType, TimeUnit};
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::time::Instant;
 use serde_json::{Map, Value};
 
-fn cell(array: &dyn Array, i: usize) -> Value {
-    if array.is_null(i) {
-        return Value::Null;
-    }
-    match array.data_type() {
-        DataType::Utf8 => Value::String(array.as_string::<i32>().value(i).to_string()),
-        DataType::Int64 => Value::from(array.as_primitive::<Int64Type>().value(i)),
-        DataType::Int32 => Value::from(array.as_primitive::<Int32Type>().value(i)),
-        DataType::Float64 => Value::from(array.as_primitive::<Float64Type>().value(i)),
-        DataType::Boolean => Value::Bool(array.as_boolean().value(i)),
-        DataType::Timestamp(_, _) => Instant::from_unix_nanos(i128::from(array.as_primitive::<TimestampNanosecondType>().value(i)))
-            .map(|t| Value::String(t.to_rfc3339()))
-            .unwrap_or(Value::Null),
-        _ => Value::Null,
-    }
+const DAY_NANOS: i128 = 86_400 * 1_000_000_000;
+
+fn number(x: f64) -> Value {
+    serde_json::Number::from_f64(x).map(Value::Number).unwrap_or_else(|| Value::String(x.to_string()))
 }
 
-/// Every row of `decl`'s table across its current file list, each column as JSON. A table
-/// with no `schema.json` reads as no rows.
-pub fn table_rows(store: &Store, decl: &TableDecl) -> Result<Vec<Map<String, Value>>> {
+/// An instant as fixed-width RFC 3339 with nanoseconds, so text order is time order.
+fn instant(column: &str, nanos: i128) -> Result<String> {
+    Instant::from_unix_nanos(nanos)
+        .map(Instant::to_rfc3339_nanos)
+        .map_err(|e| ContextError::Invalid(format!("column `{column}`: {e}")))
+}
+
+fn cell(column: &str, array: &dyn Array, i: usize) -> Result<Value> {
+    if array.is_null(i) {
+        return Ok(Value::Null);
+    }
+    Ok(match array.data_type() {
+        DataType::Utf8 => Value::String(array.as_string::<i32>().value(i).to_string()),
+        DataType::LargeUtf8 => Value::String(array.as_string::<i64>().value(i).to_string()),
+        DataType::Utf8View => Value::String(array.as_string_view().value(i).to_string()),
+        DataType::Boolean => Value::Bool(array.as_boolean().value(i)),
+        DataType::Int8 => Value::from(array.as_primitive::<Int8Type>().value(i)),
+        DataType::Int16 => Value::from(array.as_primitive::<Int16Type>().value(i)),
+        DataType::Int32 => Value::from(array.as_primitive::<Int32Type>().value(i)),
+        DataType::Int64 => Value::from(array.as_primitive::<Int64Type>().value(i)),
+        DataType::UInt8 => Value::from(array.as_primitive::<UInt8Type>().value(i)),
+        DataType::UInt16 => Value::from(array.as_primitive::<UInt16Type>().value(i)),
+        DataType::UInt32 => Value::from(array.as_primitive::<UInt32Type>().value(i)),
+        DataType::UInt64 => Value::from(array.as_primitive::<UInt64Type>().value(i)),
+        DataType::Float16 => number(f64::from(array.as_primitive::<Float16Type>().value(i).to_f32())),
+        DataType::Float32 => number(f64::from(array.as_primitive::<Float32Type>().value(i))),
+        DataType::Float64 => number(array.as_primitive::<Float64Type>().value(i)),
+        DataType::Timestamp(unit, _) => {
+            let nanos = match unit {
+                TimeUnit::Second => i128::from(array.as_primitive::<TimestampSecondType>().value(i)) * 1_000_000_000,
+                TimeUnit::Millisecond => i128::from(array.as_primitive::<TimestampMillisecondType>().value(i)) * 1_000_000,
+                TimeUnit::Microsecond => i128::from(array.as_primitive::<TimestampMicrosecondType>().value(i)) * 1_000,
+                TimeUnit::Nanosecond => i128::from(array.as_primitive::<TimestampNanosecondType>().value(i)),
+            };
+            Value::String(instant(column, nanos)?)
+        }
+        DataType::Date32 => {
+            let days = i128::from(array.as_primitive::<arrow_array::types::Date32Type>().value(i));
+            Value::String(instant(column, days * DAY_NANOS)?[..10].to_string())
+        }
+        DataType::Date64 => {
+            let millis = i128::from(array.as_primitive::<arrow_array::types::Date64Type>().value(i));
+            Value::String(instant(column, millis.div_euclid(86_400_000) * DAY_NANOS)?[..10].to_string())
+        }
+        DataType::Decimal32(..) | DataType::Decimal64(..) | DataType::Decimal128(..) | DataType::Decimal256(..) => {
+            let f = ArrayFormatter::try_new(array, &FormatOptions::default()).map_err(|e| ContextError::Invalid(format!("column `{column}`: {e}")))?;
+            Value::String(f.value(i).to_string())
+        }
+        other => return Err(ContextError::ColumnType { column: column.to_string(), data_type: other.to_string() }),
+    })
+}
+
+/// The rows of one batch, each holding the named columns the batch carries. A named
+/// column of a type no row value represents refuses; an unnamed one is never read.
+pub fn batch_rows(batch: &RecordBatch, columns: &[&str]) -> Result<Vec<Map<String, Value>>> {
+    let schema = batch.schema();
+    let present: Vec<(&str, &dyn Array)> =
+        columns.iter().filter_map(|c| schema.index_of(c).ok().map(|i| (*c, batch.column(i).as_ref()))).collect();
+    (0..batch.num_rows())
+        .map(|i| present.iter().map(|(c, a)| Ok((c.to_string(), cell(c, *a, i)?))).collect())
+        .collect()
+}
+
+/// Every row of `decl`'s table across its current file list, holding the named columns.
+/// A table with no `schema.json` reads as no rows.
+pub fn table_rows(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<Vec<Map<String, Value>>> {
     if store.try_schema(&decl.name)?.is_none() {
         return Ok(Vec::new());
     }
@@ -40,14 +97,7 @@ pub fn table_rows(store: &Store, decl: &TableDecl) -> Result<Vec<Map<String, Val
     let mut out = Vec::new();
     for f in &s.files {
         for batch in parquet_io::read(&store.root().join(f))? {
-            let schema = batch.schema();
-            for i in 0..batch.num_rows() {
-                let mut row = Map::new();
-                for (c, field) in batch.columns().iter().zip(schema.fields()) {
-                    row.insert(field.name().clone(), cell(c.as_ref(), i));
-                }
-                out.push(row);
-            }
+            out.extend(batch_rows(&batch, columns)?);
         }
     }
     Ok(out)

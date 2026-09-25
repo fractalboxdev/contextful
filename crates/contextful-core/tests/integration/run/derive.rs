@@ -2,7 +2,7 @@
 
 use contextful_core::run::derive::config::{bind, bindings, check_env_name, check_output_table, DeriveConfig, Task, ATTEMPTS_PER_UNIT, LINK_SECONDS_PER_RUN, ROWS_PER_RUN};
 use contextful_core::run::derive::cues::{parse, passages, Cue, PASSAGES_PER_DOCUMENT, PASSAGE_BYTES, PASSAGE_CHARS, PASSAGE_SPAN_MS};
-use contextful_core::run::derive::emit::{marker_row, select, Unit, UnitStatus, EMPTY_ATTEMPTS};
+use contextful_core::run::derive::emit::{document_status, marker_row, select, Unit, UnitStatus, EMPTY_ATTEMPTS};
 use contextful_core::run::derive::exec::{engine_id, excerpt, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS, STEP_ERROR_EXCERPT_BYTES};
 use contextful_core::run::ports::Row;
 use contextful_core::run::RunError;
@@ -131,6 +131,31 @@ fn the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker() {
     let sel = select(&parents, &derived, &c);
     assert_eq!(sel.outstanding.iter().map(|u| u.key.as_str()).collect::<Vec<_>>(), ["retry", "new"]);
     assert!(matches!(&sel.incomplete[..], [RunError::DeriveUnitIncomplete(_)]));
+}
+
+/// A unit's standing is its latest marker by `_ingested_at`, `_run_id` and `_row_seq`, never its highest attempt
+/// count.
+// spec: run.select.latest-marker@aeaa79d2
+#[test]
+fn a_units_latest_marker_decides_its_standing() {
+    let c = cfg(base()).unwrap();
+    let parents = rows(json!([{"doc_id": "settled", "path": "p"}, {"doc_id": "retrying", "path": "p"}, {"doc_id": "same-instant", "path": "p"}]));
+    let derived = rows(json!([
+        {"unit_ref": "settled", "kind": "marker", "unit_status": "failed", "attempts": 2, "retryable": true,
+         "_ingested_at": "2026-01-01T00:00:00.000000000Z", "_run_id": "r1", "_row_seq": 0},
+        {"unit_ref": "settled", "kind": "marker", "unit_status": "empty", "attempts": 1, "retryable": false,
+         "_ingested_at": "2026-01-02T00:00:00.000000000Z", "_run_id": "r2", "_row_seq": 0},
+        {"unit_ref": "retrying", "kind": "marker", "unit_status": "unavailable", "attempts": 2, "retryable": true,
+         "_ingested_at": "2026-01-03T00:00:00.000000000Z", "_run_id": "r3", "_row_seq": 0},
+        {"unit_ref": "retrying", "kind": "marker", "unit_status": "unavailable", "attempts": 1, "retryable": true,
+         "_ingested_at": "2026-01-02T00:00:00.000000000Z", "_run_id": "r2", "_row_seq": 1},
+        {"unit_ref": "same-instant", "kind": "marker", "unit_status": "empty", "attempts": 1, "retryable": false,
+         "_ingested_at": "2026-01-02T00:00:00.000000000Z", "_run_id": "r2", "_row_seq": 3},
+        {"unit_ref": "same-instant", "kind": "marker", "unit_status": "failed", "attempts": 2, "retryable": true,
+         "_ingested_at": "2026-01-02T00:00:00.000000000Z", "_run_id": "r2", "_row_seq": 2}
+    ]));
+    let sel = select(&parents, &derived, &c);
+    assert_eq!(sel.outstanding, [Unit { key: "retrying".into(), media: "p".into(), prior_attempts: 2 }]);
 }
 
 /// An engine with no `[derive.<name>]` block raises `DeriveEngineUnbound`, naming the pipeline, the engine, the
@@ -273,6 +298,20 @@ fn a_unit_without_passages_lands_one_marker_row() {
     assert_eq!(m["unit_status"], "failed");
     assert_eq!(m["retryable"], true);
     assert_eq!(m["last_error"], "fetching https://host.example/a failed", "the address is redacted");
+}
+
+/// Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty
+/// output, or blocks none of which parse, lands `unavailable`.
+// spec: run.emit.empty-document@03c908ae
+#[test]
+fn only_a_well_formed_webvtt_without_cues_is_empty() {
+    let status = |doc: &str| document_status(doc, &parse(doc));
+    assert_eq!(status("WEBVTT\n\nNOTE nothing was spoken\n\nSTYLE\n::cue { color: red }\n"), UnitStatus::Empty);
+    assert_eq!(status("WEBVTT - silence\n"), UnitStatus::Empty);
+    for silent in ["", "  \n\n", "garbled output\n\nmore of it\n", "WEBVTT\n\n00:01.000 --> nonsense\ntext\n", "1\n00:00:01,000 --> 00:00:02,000\n\n"] {
+        assert_eq!(status(silent), UnitStatus::Unavailable, "{silent:?}");
+    }
+    assert_eq!(status("1\n00:00:01,000 --> 00:00:02,000\nhello\n"), UnitStatus::Ok);
 }
 
 /// A derive output table without `primary_key` `["unit_ref", "cue_seq"]` raises `DerivePrimaryKeyMissing`.

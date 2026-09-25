@@ -6788,6 +6788,17 @@
       "line": 80
     },
     {
+      "id": "run.select.latest-marker",
+      "contract": "run",
+      "operation": "select",
+      "subject": "latest-marker",
+      "kind": "behavior",
+      "statement": "A unit's standing is its latest marker by `_ingested_at`, `_run_id` and `_row_seq`, never its highest attempt count.",
+      "why": "because an `empty` marker records 1 attempt, so ranking by count lets an older retry revive a settled unit",
+      "file": "spec/32-derive.md",
+      "line": 82
+    },
+    {
       "id": "run.bind.unbound-engine",
       "contract": "run",
       "operation": "bind",
@@ -6796,7 +6807,7 @@
       "statement": "An engine with no `[derive.<name>]` block raises `DeriveEngineUnbound`, naming the pipeline, the engine, the file to edit and every bound engine.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 91
+      "line": 93
     },
     {
       "id": "run.bind.command-in-manifest",
@@ -6807,7 +6818,7 @@
       "statement": "`command`, `preprocess`, `env` or `allow_hosts` inside `[pipeline.source.config]` raises `DeriveCommandInManifest`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 93
+      "line": 95
     },
     {
       "id": "run.bind.unknown-task",
@@ -6818,7 +6829,7 @@
       "statement": "`task` is `transcribe`, the default, or `link_preview`; any other value raises `DeriveUnknownTask`, printing both.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 95
+      "line": 97
     },
     {
       "id": "run.bind.driver-mismatch",
@@ -6829,7 +6840,7 @@
       "statement": "`driver` is `exec` or `\"none\"` behind `transcribe` and `fetch` behind `link_preview`; any other pairing raises `DeriveDriverMismatch`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 97
+      "line": 99
     },
     {
       "id": "run.bind.endpoint-host-bare",
@@ -6840,7 +6851,7 @@
       "statement": "An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 99
+      "line": 101
     },
     {
       "id": "run.bind.remote-url-unsupported",
@@ -6851,7 +6862,7 @@
       "statement": "An `http` or `https` media value for an engine declining remote addresses raises `DeriveRemoteUrlUnsupported`, naming the `when = \"media_is_url\"` preprocess step.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 101
+      "line": 103
     },
     {
       "id": "run.bind.media-unreadable",
@@ -6862,7 +6873,18 @@
       "statement": "A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing that unit alone.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 103
+      "line": 105
+    },
+    {
+      "id": "run.bind.media-root",
+      "contract": "run",
+      "operation": "bind",
+      "subject": "media-root",
+      "kind": "refusal",
+      "statement": "A local media value resolves, canonicalized, under the binding's `media_root`, the working directory by default; a path escaping it raises `DeriveMediaOutsideRoot`, failing that unit alone.",
+      "why": "because a parent row is third-party data, and an unconfined path reads any file the machine's user can",
+      "file": "spec/32-derive.md",
+      "line": 107
     },
     {
       "id": "run.bind.confidence-range",
@@ -6873,7 +6895,7 @@
       "statement": "A `confidence` outside `0.0..=1.0` after adapter normalization raises `DeriveConfidenceOutOfRange` and lands null.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 105
+      "line": 109
     },
     {
       "id": "run.bind.upstream-excerpt",
@@ -6884,7 +6906,7 @@
       "statement": "An `Upstream` excerpt holds at most 4 KiB and no request body.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 107
+      "line": 111
     },
     {
       "id": "run.bind.engine-unavailable",
@@ -6895,7 +6917,7 @@
       "statement": "`EngineUnavailable` from a transcriber ends the run; from a `LinkReader` it raises `DeriveLinkEngineUnavailable` and costs that one unit.",
       "why": "P6",
       "file": "spec/32-derive.md",
-      "line": 108
+      "line": 112
     },
     {
       "id": "run.bind.advisory-zone",
@@ -6906,7 +6928,7 @@
       "statement": "A row zone taken from the binding's advisory `zone` key raises `DeriveAdvisoryZone`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 110
+      "line": 114
     },
     {
       "id": "run.exec.shell-command",
@@ -6917,7 +6939,7 @@
       "statement": "`command` is an argument array run with no shell; a `command` given as one string raises `DeriveShellCommand`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 119
+      "line": 123
     },
     {
       "id": "run.exec.env-name",
@@ -6928,7 +6950,7 @@
       "statement": "An allowlist name that is not ASCII alphanumeric or underscore, or that leads with a digit, raises `DeriveEnvNameInvalid`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 121
+      "line": 125
     },
     {
       "id": "run.exec.chain-deadline",
@@ -6939,7 +6961,7 @@
       "statement": "`timeout_secs` bounds one unit's whole chain at 1800 s by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 123
+      "line": 127
     },
     {
       "id": "run.exec.captured-output",
@@ -6950,7 +6972,7 @@
       "statement": "`max_output_bytes` bounds each step's captured standard output and error at 8 MiB by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 124
+      "line": 128
     },
     {
       "id": "run.exec.audit-entries",
@@ -6961,7 +6983,7 @@
       "statement": "A chain contributes at most 64 entries of captured output to the run record.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 125
+      "line": 129
     },
     {
       "id": "run.exec.step-error-excerpt",
@@ -6972,7 +6994,7 @@
       "statement": "A failing step's error text carries at most 4 KiB of its standard error.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 126
+      "line": 130
     },
     {
       "id": "run.exec.non-zero-exit",
@@ -6983,7 +7005,7 @@
       "statement": "A step exiting non-zero raises `DeriveStepExit` carrying its bounded error text into the run audit.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 127
+      "line": 131
     },
     {
       "id": "run.exec.deadline-elapsed",
@@ -6994,7 +7016,7 @@
       "statement": "A chain outrunning its deadline raises `DeriveStepTimeout`, naming the running step.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 129
+      "line": 133
     },
     {
       "id": "run.exec.output-cap",
@@ -7005,7 +7027,7 @@
       "statement": "Output past the bound is counted and discarded, never buffered; crossing it kills the step and raises `DeriveOutputCap` with the byte count, draining continuing so the child never blocks.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 131
+      "line": 135
     },
     {
       "id": "run.exec.silent-step",
@@ -7016,7 +7038,7 @@
       "statement": "A preprocess step exiting zero without writing its output file raises `DeriveStepProducedNothing`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 133
+      "line": 137
     },
     {
       "id": "run.exec.missing-binary",
@@ -7027,7 +7049,7 @@
       "statement": "A `command[0]` that is not an executable file on this machine raises `DeriveBinaryMissing`, naming the binary and the step.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 135
+      "line": 139
     },
     {
       "id": "run.exec.unpinned-path",
@@ -7038,7 +7060,7 @@
       "statement": "A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the digest just computed; a bare search-path name carries none.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 137
+      "line": 141
     },
     {
       "id": "run.exec.digest-mismatch",
@@ -7049,7 +7071,7 @@
       "statement": "A pinned file whose bytes differ from its recorded digest raises `DeriveDigestMismatch`.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 139
+      "line": 143
     },
     {
       "id": "run.exec.no-shell",
@@ -7060,7 +7082,29 @@
       "statement": "A step runs as its argument array with no shell, in a process group of its own, under a cleared environment holding only the binding's `env` table.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 141
+      "line": 145
+    },
+    {
+      "id": "run.exec.step-condition",
+      "contract": "run",
+      "operation": "exec",
+      "subject": "step-condition",
+      "kind": "refusal",
+      "statement": "A preprocess step runs only while its `when` holds: `media_is_url` for an `http` or `https` input, `engine_requires_pcm16_wav` for an input other than 16-bit PCM WAV; another name raises `DeriveStepConditionUnknown`.",
+      "why": "because a misspelled condition otherwise skips or runs its step silently",
+      "file": "spec/32-derive.md",
+      "line": 147
+    },
+    {
+      "id": "run.exec.verified-spawn",
+      "contract": "run",
+      "operation": "exec",
+      "subject": "verified-spawn",
+      "kind": "behavior",
+      "statement": "Each spawn re-reads its step's binary and runs it only while those bytes match the digest resolved at run start, else {{run.exec.digest-mismatch}}.",
+      "why": "",
+      "file": "spec/32-derive.md",
+      "line": 149
     },
     {
       "id": "run.exec.engine-id",
@@ -7071,7 +7115,7 @@
       "statement": "An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 143
+      "line": 150
     },
     {
       "id": "run.fetch.scheme",
@@ -7082,7 +7126,7 @@
       "statement": "An address whose scheme is neither `http` nor `https` raises `DeriveSchemeUnsupported` before any socket opens.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 171
+      "line": 178
     },
     {
       "id": "run.fetch.address-literal",
@@ -7093,7 +7137,7 @@
       "statement": "A host written as an address literal raises `DeriveAddressLiteral`.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 173
+      "line": 180
     },
     {
       "id": "run.fetch.redirect-chain",
@@ -7104,7 +7148,7 @@
       "statement": "A redirect chain runs to at most 5 hops.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 175
+      "line": 182
     },
     {
       "id": "run.fetch.binding-key",
@@ -7115,7 +7159,7 @@
       "statement": "`env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key.",
       "why": "because a silently ignored key leaves an operator believing a fetch carries a credential or runs a process",
       "file": "spec/32-derive.md",
-      "line": 176
+      "line": 183
     },
     {
       "id": "run.fetch.document-prefix",
@@ -7126,7 +7170,7 @@
       "statement": "`max_document_bytes` bounds the scanned document prefix at 1 MiB by default, dropping the remainder.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 178
+      "line": 185
     },
     {
       "id": "run.fetch.probe-prefix",
@@ -7137,7 +7181,7 @@
       "statement": "`max_probe_bytes` bounds one picture range request at 64 KiB by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 179
+      "line": 186
     },
     {
       "id": "run.fetch.hop-timeout",
@@ -7148,7 +7192,7 @@
       "statement": "`request_timeout_secs` bounds one hop at 20 s by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 180
+      "line": 187
     },
     {
       "id": "run.fetch.retry-after-default",
@@ -7159,7 +7203,7 @@
       "statement": "A `429` without a usable `Retry-After` maps to `RateLimited` carrying 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 181
+      "line": 188
     },
     {
       "id": "run.fetch.charset",
@@ -7170,7 +7214,7 @@
       "statement": "A declared character set other than UTF-8 raises `DeriveCharsetUnsupported`, naming the value.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 182
+      "line": 189
     },
     {
       "id": "run.fetch.not-utf8",
@@ -7181,7 +7225,7 @@
       "statement": "A document declaring no character set and failing UTF-8 validation raises `DeriveBytesNotUtf8`; a character split at the byte bound is tolerated.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 184
+      "line": 191
     },
     {
       "id": "run.emit.failure-off-table",
@@ -7192,7 +7236,7 @@
       "statement": "Per-unit failure state recorded outside the output table raises `DeriveFailureOffTable`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 211
+      "line": 218
     },
     {
       "id": "run.emit.unit-status",
@@ -7203,7 +7247,7 @@
       "statement": "`unit_status` is `ok`, `empty` where the engine established nothing to derive, `unavailable` where it returned nothing and stated no reason, or `failed` on a typed error; any other value raises `DeriveUnitStatusUnknown`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 213
+      "line": 220
     },
     {
       "id": "run.emit.reserved-discriminator",
@@ -7214,7 +7258,7 @@
       "statement": "A derive table declaring a column named `kind` raises `DeriveReservedDiscriminator`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 215
+      "line": 222
     },
     {
       "id": "run.emit.settled-revived",
@@ -7225,7 +7269,7 @@
       "statement": "A settled unit re-entering the outstanding set raises `DeriveSettledUnitRevived`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 217
+      "line": 224
     },
     {
       "id": "run.emit.attempts",
@@ -7236,7 +7280,7 @@
       "statement": "`attempts` is the prior count plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 219
+      "line": 226
     },
     {
       "id": "run.emit.unredacted-error",
@@ -7247,7 +7291,7 @@
       "statement": "A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.",
       "why": "A-authority",
       "file": "spec/32-derive.md",
-      "line": 220
+      "line": 227
     },
     {
       "id": "run.emit.primary-key",
@@ -7258,7 +7302,7 @@
       "statement": "A derive output table without `primary_key` `[\"unit_ref\", \"cue_seq\"]` raises `DerivePrimaryKeyMissing`.",
       "why": "because a re-derived unit otherwise lands duplicate passages beside the originals",
       "file": "spec/32-derive.md",
-      "line": 222
+      "line": 229
     },
     {
       "id": "run.emit.marker-row",
@@ -7269,7 +7313,29 @@
       "statement": "A unit yielding no passage lands one marker row, `cue_seq` -1 and `kind` `marker`, carrying its status, attempts, last error and whether it retries.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 224
+      "line": 231
+    },
+    {
+      "id": "run.emit.empty-document",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "empty-document",
+      "kind": "behavior",
+      "statement": "Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty output, or blocks none of which parse, lands `unavailable`.",
+      "why": "",
+      "file": "spec/32-derive.md",
+      "line": 233
+    },
+    {
+      "id": "run.emit.canceled-unit",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "canceled-unit",
+      "kind": "behavior",
+      "statement": "A unit whose chain a run stop interrupts lands no row and charges no attempt; the pull ends `Canceled` once {{run.cancel.child-reaped}}.",
+      "why": "",
+      "file": "spec/32-derive.md",
+      "line": 234
     },
     {
       "id": "run.parse-cues.backward-cue",
@@ -7280,7 +7346,7 @@
       "statement": "A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.",
       "why": "P4",
       "file": "spec/32-derive.md",
-      "line": 237
+      "line": 246
     },
     {
       "id": "run.parse-cues.passage-chars",
@@ -7291,7 +7357,7 @@
       "statement": "A passage stays open while it holds fewer than 600 chars.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 239
+      "line": 248
     },
     {
       "id": "run.parse-cues.passage-span",
@@ -7302,7 +7368,7 @@
       "statement": "A passage stays open while it spans less than 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 240
+      "line": 249
     },
     {
       "id": "run.parse-cues.passage-bytes",
@@ -7313,7 +7379,7 @@
       "statement": "One passage's text holds at most 8 KiB.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 241
+      "line": 250
     },
     {
       "id": "run.parse-cues.passages-per-document",
@@ -7324,7 +7390,7 @@
       "statement": "One document yields at most 2000 rows of passages.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 242
+      "line": 251
     },
     {
       "id": "run.parse-cues.grammar",
@@ -7335,7 +7401,7 @@
       "statement": "SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 243
+      "line": 252
     },
     {
       "id": "run.test-engine.unsupported-driver",
@@ -7346,7 +7412,7 @@
       "statement": "A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.",
       "why": "because the verb drives a transcriber over media, and a link engine takes no media",
       "file": "spec/32-derive.md",
-      "line": 249
+      "line": 258
     },
     {
       "id": "connector.export.authoring-path",
@@ -16150,8 +16216,16 @@
       "run.publish.manifest-commit"
     ],
     [
+      "run.exec.verified-spawn",
+      "run.exec.digest-mismatch"
+    ],
+    [
       "run.emit.attempts",
       "run.select.attempts-per-unit"
+    ],
+    [
+      "run.emit.canceled-unit",
+      "run.cancel.child-reaped"
     ],
     [
       "connector.infer.vendor-sdk",
@@ -19111,6 +19185,10 @@
             "clause": "run.bind.engine-unavailable",
             "gloss": "A link engine returning the engine-unavailable variant."
           },
+          "DeriveMediaOutsideRoot": {
+            "clause": "run.bind.media-root",
+            "gloss": "A local media path escaping the binding's media root."
+          },
           "DeriveMediaUnreadable": {
             "clause": "run.bind.media-unreadable",
             "gloss": "A media value neither an address nor a readable local file."
@@ -19150,6 +19228,10 @@
           "DeriveShellCommand": {
             "clause": "run.exec.shell-command",
             "gloss": "A step command given as a string, not an argument array."
+          },
+          "DeriveStepConditionUnknown": {
+            "clause": "run.exec.step-condition",
+            "gloss": "A preprocess condition naming no known condition."
           },
           "DeriveStepExit": {
             "clause": "run.exec.non-zero-exit",

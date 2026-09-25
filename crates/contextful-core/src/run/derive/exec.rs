@@ -51,3 +51,53 @@ pub fn excerpt(stderr: &[u8]) -> String {
     }
     text[..end].trim().to_string()
 }
+
+/// A preprocess step's `when` condition (`run.exec.step-condition`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Condition {
+    /// The step's input is an `http` or `https` address.
+    MediaIsUrl,
+    /// The step's input is anything but 16-bit PCM WAV.
+    EngineRequiresPcm16Wav,
+}
+
+impl Condition {
+    pub fn parse(name: &str) -> Option<Condition> {
+        match name {
+            "media_is_url" => Some(Condition::MediaIsUrl),
+            "engine_requires_pcm16_wav" => Some(Condition::EngineRequiresPcm16Wav),
+            _ => None,
+        }
+    }
+
+    /// Whether the condition holds for an input named `input` whose leading bytes are
+    /// `head` (none for an address).
+    pub fn holds(self, input: &str, head: Option<&[u8]>) -> bool {
+        match self {
+            Condition::MediaIsUrl => is_url(input),
+            Condition::EngineRequiresPcm16Wav => !head.is_some_and(is_pcm16_wav),
+        }
+    }
+}
+
+/// An `http` or `https` address.
+pub fn is_url(media: &str) -> bool {
+    media.starts_with("http://") || media.starts_with("https://")
+}
+
+/// RIFF/WAVE bytes whose `fmt ` chunk declares PCM (format 1, or extensible) at 16 bits per sample.
+pub fn is_pcm16_wav(head: &[u8]) -> bool {
+    if head.len() < 12 || &head[..4] != b"RIFF" || &head[8..12] != b"WAVE" {
+        return false;
+    }
+    let u16_at = |i: usize| head.get(i..i + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
+    let mut at = 12;
+    while let Some(id) = head.get(at..at + 4) {
+        let Some(size) = head.get(at + 4..at + 8).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize) else { return false };
+        if id == b"fmt " {
+            return matches!(u16_at(at + 8), Some(1 | 0xFFFE)) && u16_at(at + 22) == Some(16);
+        }
+        at = at.saturating_add(8).saturating_add(size + size % 2);
+    }
+    false
+}

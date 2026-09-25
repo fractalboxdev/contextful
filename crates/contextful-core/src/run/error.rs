@@ -63,6 +63,9 @@ pub enum RunError {
     /// A derive pipeline configured to journal its pulls. (`run.select.journaled-pull`)
     #[error("DeriveJournaledPull: {0}")]
     DeriveJournaledPull(String),
+    /// A local media path escaping the binding's media root. (`run.bind.media-root`)
+    #[error("DeriveMediaOutsideRoot: {0}")]
+    DeriveMediaOutsideRoot(String),
     /// A media value neither an address nor a readable local file. (`run.bind.media-unreadable`)
     #[error("DeriveMediaUnreadable: {0}")]
     DeriveMediaUnreadable(String),
@@ -108,6 +111,9 @@ pub enum RunError {
     /// A `task` outside the supported pair. (`run.bind.unknown-task`)
     #[error("DeriveUnknownTask: {0}")]
     DeriveUnknownTask(String),
+    /// A preprocess condition naming no known condition. (`run.exec.step-condition`)
+    #[error("DeriveStepConditionUnknown: {0}")]
+    DeriveStepConditionUnknown(String),
     /// A path-form command with no content digest. (`run.exec.unpinned-path`)
     #[error("DeriveUnpinnedPath: {0}")]
     DeriveUnpinnedPath(String),

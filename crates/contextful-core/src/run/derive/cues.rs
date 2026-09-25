@@ -20,11 +20,21 @@ pub struct Cue {
     pub text: String,
 }
 
-/// A parsed document: its cues in order, and the refusals for the blocks it dropped.
+/// A parsed document: its cues in order, the refusals for the blocks it dropped, and
+/// whether it is WebVTT with every block a header, note, style, region or cue.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Parsed {
     pub cues: Vec<Cue>,
     pub defects: Vec<RunError>,
+    /// Non-blank blocks that are neither a cue nor WebVTT metadata.
+    pub unread: usize,
+    /// The document opens with a `WEBVTT` header.
+    pub webvtt: bool,
+}
+
+/// A WebVTT block carrying no cue: the header, a note, a style or a region.
+fn metadata(first_line: &str, webvtt: bool) -> bool {
+    webvtt && ["WEBVTT", "NOTE", "STYLE", "REGION"].iter().any(|k| first_line == *k || first_line.starts_with(&format!("{k} ")) || first_line.starts_with(&format!("{k}\t")))
 }
 
 /// `HH:MM:SS,mmm`, `HH:MM:SS.mmm` or `MM:SS.mmm` in milliseconds.
@@ -46,14 +56,26 @@ fn stamp(s: &str) -> Option<u64> {
 pub fn parse(document: &str) -> Parsed {
     let mut out = Parsed::default();
     let text = document.strip_prefix('\u{feff}').unwrap_or(document).replace("\r\n", "\n");
+    out.webvtt = text.trim_start().lines().next().is_some_and(|l| metadata(l.trim_end(), true) && l.starts_with("WEBVTT"));
     for block in text.split("\n\n") {
         let lines: Vec<&str> = block.lines().filter(|l| !l.trim().is_empty()).collect();
-        let Some(timing) = lines.iter().position(|l| l.contains("-->")) else { continue };
+        let Some(first) = lines.first() else { continue };
+        if metadata(first.trim(), out.webvtt) {
+            continue;
+        }
+        let Some(timing) = lines.iter().position(|l| l.contains("-->")) else {
+            out.unread += 1;
+            continue;
+        };
         let Some((a, b)) = lines[timing].split_once("-->") else { continue };
         let end_field = b.split_whitespace().next().unwrap_or_default();
-        let (Some(start_ms), Some(end_ms)) = (stamp(a), stamp(end_field)) else { continue };
+        let (Some(start_ms), Some(end_ms)) = (stamp(a), stamp(end_field)) else {
+            out.unread += 1;
+            continue;
+        };
         let body: Vec<&str> = lines[timing + 1..].iter().map(|l| l.trim()).collect();
         if body.is_empty() {
+            out.unread += 1;
             continue;
         }
         if out.cues.last().is_some_and(|c| start_ms < c.start_ms) {

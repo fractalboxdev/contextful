@@ -2,7 +2,7 @@
 //! tick, and the rows a unit lands as — passages, or one marker.
 
 use super::config::DeriveConfig;
-use super::cues::Cue;
+use super::cues::{Cue, Parsed};
 use crate::connector::attach::scrub_text;
 use crate::run::ports::Row;
 use crate::run::RunError;
@@ -74,11 +74,23 @@ fn text(v: Option<&Value>) -> Option<String> {
     }
 }
 
+/// The columns of the output table `select` reads.
+pub const OUTPUT_COLUMNS: [&str; 8] = ["unit_ref", KIND, "attempts", "unit_status", "retryable", "_ingested_at", "_run_id", "_row_seq"];
+
+/// A marker's place in landing order: `_ingested_at` (fixed-width RFC 3339), `_run_id`,
+/// `_row_seq`, then its position in the read.
+type Recency = (String, String, i64, usize);
+
+fn recency(r: &Row, position: usize) -> Recency {
+    let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+    (s("_ingested_at"), s("_run_id"), r.get("_row_seq").and_then(Value::as_i64).unwrap_or(0), position)
+}
+
 /// The attempts a unit's latest marker records and whether it settled, per unit.
 fn markers(derived: &[Row], max_attempts: i64) -> (BTreeMap<String, (i64, bool)>, BTreeMap<String, ()>) {
-    let mut marked: BTreeMap<String, (i64, bool)> = BTreeMap::new();
+    let mut marked: BTreeMap<String, (Recency, i64, bool)> = BTreeMap::new();
     let mut derived_units = BTreeMap::new();
-    for r in derived {
+    for (position, r) in derived.iter().enumerate() {
         let Some(unit) = text(r.get("unit_ref")) else { continue };
         if r.get(KIND).and_then(Value::as_str) != Some("marker") {
             derived_units.insert(unit, ());
@@ -88,12 +100,12 @@ fn markers(derived: &[Row], max_attempts: i64) -> (BTreeMap<String, (i64, bool)>
         let status = r.get("unit_status").and_then(Value::as_str).and_then(|s| UnitStatus::parse(s).ok()).unwrap_or(UnitStatus::Failed);
         let permanent = r.get("retryable").and_then(Value::as_bool) == Some(false);
         let settled = matches!(status, UnitStatus::Ok | UnitStatus::Empty) || permanent || attempts >= max_attempts;
-        let entry = marked.entry(unit).or_insert((attempts, settled));
-        if attempts >= entry.0 {
-            *entry = (attempts, settled);
+        let at = recency(r, position);
+        if marked.get(&unit).is_none_or(|(latest, _, _)| at > *latest) {
+            marked.insert(unit, (at, attempts, settled));
         }
     }
-    (marked, derived_units)
+    (marked.into_iter().map(|(u, (_, a, s))| (u, (a, s))).collect(), derived_units)
 }
 
 /// Recompute the outstanding set: every parent row not already holding passages or a
@@ -123,6 +135,18 @@ pub fn select(parents: &[Row], derived: &[Row], config: &DeriveConfig) -> Select
     }
     sel.outstanding.truncate(usize::try_from(config.max_rows_per_run).unwrap_or(usize::MAX));
     sel
+}
+
+/// What a unit's cue document establishes: `ok` when it yields passages, `empty` only for
+/// WebVTT whose blocks are all metadata, and `unavailable` for anything else.
+pub fn document_status(_document: &str, parsed: &Parsed) -> UnitStatus {
+    if !parsed.cues.is_empty() {
+        UnitStatus::Ok
+    } else if parsed.webvtt && parsed.unread == 0 {
+        UnitStatus::Empty
+    } else {
+        UnitStatus::Unavailable
+    }
 }
 
 /// A failure's text as it lands: every address reduced to scheme, host, port and path.

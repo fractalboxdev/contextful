@@ -12,6 +12,9 @@ pub enum ContextError {
     Io { path: PathBuf, source: std::io::Error },
     #[error("{}: parquet: {message}", path.display())]
     Parquet { path: PathBuf, message: String },
+    /// A column read as row values whose type no row value represents.
+    #[error("column `{column}` holds {data_type}, which a row value does not represent")]
+    ColumnType { column: String, data_type: String },
     /// A batch, request or configuration that fails validation before anything lands.
     #[error("{0}")]
     Invalid(String),

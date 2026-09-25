@@ -12,7 +12,7 @@ use contextful_connectors::http::{HttpConfig, HttpSource};
 use contextful_core::run::derive::config::{bind, bindings, check_output_table, Binding, DeriveConfig};
 use contextful_core::run::ports::{Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag};
-use contextful_context::{node, Store};
+use contextful_context::{node, ContextError, Store};
 use contextful_core::pipeline::declare::{collect, Declared, ManifestFile, PipelineSpec};
 use contextful_core::pipeline::transform::Chain;
 use contextful_core::run::advance::CursorKind;
@@ -115,9 +115,12 @@ struct StoreReader {
 }
 
 impl TableReader for StoreReader {
-    fn rows(&self, table: &str) -> Result<Vec<Row>, Failure> {
+    fn rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure> {
         let decl = self.decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table));
-        contextful_context::rows::table_rows(&self.store, &decl).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))
+        contextful_context::rows::table_rows(&self.store, &decl, columns).map_err(|e| match e {
+            ContextError::ColumnType { .. } => Failure::deterministic(FailureTag::SchemaIncompatible, format!("`{table}`: {e}")),
+            e => Failure::new(FailureTag::Storage, e.to_string()),
+        })
     }
 }
 

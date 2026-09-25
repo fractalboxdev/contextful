@@ -56,10 +56,9 @@ pub fn run(cmd: DeriveCmd) -> Result<()> {
             for (k, t) in &chain.env {
                 env.push((k.clone(), resolver.render(t)?.reveal().to_string()));
             }
-            let scratch = tempfile_dir()?;
-            let doc = run_chain(&chain, &cwd.join(&file), &env, &scratch, &Never);
-            let _ = std::fs::remove_dir_all(&scratch);
-            let parsed = parse(&doc?);
+            let scratch = tempfile::Builder::new().prefix("contextful-test-engine-").tempdir()?;
+            let doc = run_chain(&chain, &cwd.join(&file), &env, scratch.path(), &Never)?;
+            let parsed = parse(&doc);
             for d in &parsed.defects {
                 eprintln!("{d}");
             }
@@ -70,12 +69,4 @@ pub fn run(cmd: DeriveCmd) -> Result<()> {
             Ok(())
         }
     }
-}
-
-fn tempfile_dir() -> Result<PathBuf> {
-    let mut nonce = [0u8; 8];
-    getrandom::fill(&mut nonce).map_err(|e| anyhow::anyhow!("{e}"))?;
-    let dir = std::env::temp_dir().join(format!("contextful-test-engine-{}", nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()));
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir)
 }

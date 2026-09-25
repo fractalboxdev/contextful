@@ -19,17 +19,14 @@ contextful-policy = { path = "../contextful-policy" }
 contextful-runtime = { path = "../contextful-runtime" }
 contextful-sync = { path = "../contextful-sync" }
 anyhow = "1"
-getrandom = "0.3"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+tempfile = "3"
 thiserror = "2"
 toml = "0.8"
 toml_edit = "0.22"
-
-[dev-dependencies]
-tempfile = "3"
 
 [[test]]
 name = "integration"

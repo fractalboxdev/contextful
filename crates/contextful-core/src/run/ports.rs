@@ -120,5 +120,6 @@ impl Shape for Unshaped {
 /// Read access to landed tables for a source that derives from the store: every row of a
 /// table's current file list. An unknown table reads as no rows.
 pub trait TableReader {
-    fn rows(&self, table: &str) -> Result<Vec<Row>, Failure>;
+    /// Every row of `table`, holding the named columns it carries.
+    fn rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure>;
 }

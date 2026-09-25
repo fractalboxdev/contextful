@@ -162,6 +162,9 @@ pub struct Binding {
     /// Advisory: the adapter, not this key, writes a row's zone.
     #[serde(default)]
     pub zone: Option<String>,
+    /// The directory local media resolves under, relative to the working directory.
+    #[serde(default)]
+    pub media_root: Option<String>,
     #[serde(default)]
     pub preprocess: Vec<StepSpec>,
     #[serde(default)]
