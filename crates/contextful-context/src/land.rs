@@ -126,7 +126,8 @@ fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
         ColumnType::Json => {
             let mut b = StringBuilder::new();
             for v in vals {
-                b.append_option(v.map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())));
+                // Every value is its JSON encoding, a string included, so each is a JSON document.
+                b.append_option(v.map(Value::to_string));
             }
             Arc::new(b.finish())
         }

@@ -1,7 +1,7 @@
 //! Parquet files and the Arrow types behind a store schema.
 
 use crate::error::{ContextError, IoPath, Result};
-use arrow_array::{new_null_array, RecordBatch};
+use arrow_array::{new_null_array, Array, ArrayRef, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema as ArrowSchema, TimeUnit};
 use contextful_core::store::reconcile::{Column, ColumnType, Schema};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -71,6 +71,20 @@ pub fn columns(path: &Path) -> Result<Vec<String>> {
     Ok(b.schema().fields().iter().map(|f| f.name().clone()).collect())
 }
 
+fn is_json(f: &Field) -> bool {
+    f.metadata().get(EXTENSION_NAME).is_some_and(|v| v == JSON_EXTENSION)
+}
+
+/// A text column a later batch promoted to JSON, each string replaced by its JSON
+/// encoding, so every value of a JSON column is a JSON document.
+fn encode_json(c: &ArrayRef) -> Result<ArrayRef> {
+    let text = arrow_cast::cast(c, &DataType::Utf8).map_err(|e| ContextError::Invalid(e.to_string()))?;
+    let text = text.as_any().downcast_ref::<StringArray>().expect("cast to Utf8");
+    let encoded: StringArray =
+        text.iter().map(|v| v.map(|s| serde_json::Value::String(s.to_string()).to_string())).collect();
+    Ok(Arc::new(encoded))
+}
+
 /// Conform a batch to `target`: each column cast to its reconciled type, and each
 /// column the batch predates backfilled with nulls (`store.reconcile.fold-never-narrows`).
 /// A column the target lacks refuses rather than being dropped.
@@ -85,6 +99,7 @@ pub fn conform(batch: &RecordBatch, target: &Arc<ArrowSchema>) -> Result<RecordB
     let mut cols = Vec::with_capacity(target.fields().len());
     for f in target.fields() {
         let col = match batch.column_by_name(f.name()) {
+            Some(c) if is_json(f) && !batch.schema().field_with_name(f.name()).is_ok_and(is_json) => encode_json(c)?,
             Some(c) if c.data_type() == f.data_type() => c.clone(),
             Some(c) => arrow_cast::cast(c, f.data_type()).map_err(|e| {
                 ContextError::Invalid(format!("column `{}` does not widen from {} to {}: {e}", f.name(), c.data_type(), f.data_type()))

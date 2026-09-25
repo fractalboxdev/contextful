@@ -178,3 +178,39 @@ fn concurrent_landings_keep_every_column() {
         }
     }
 }
+
+/// Every value of a JSON column is a JSON document: a string landing beside an object in
+/// one batch, and a string column a later batch promotes to JSON, both read back encoded.
+#[test]
+fn every_value_of_a_json_column_is_a_json_document() {
+    use arrow_array::{Array, StringArray};
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    let values = |path: std::path::PathBuf| -> Vec<String> {
+        let mut out = Vec::new();
+        for b in parquet_io::read(&path).unwrap() {
+            let c = b.column_by_name("x").unwrap().as_any().downcast_ref::<StringArray>().unwrap().clone();
+            out.extend((0..c.len()).filter(|i| !c.is_null(*i)).map(|i| c.value(i).to_string()));
+        }
+        out
+    };
+
+    // One batch: a string and an object share the column, so it lands as JSON.
+    f.land(&d, "run-1", json!([{"x": {"a": 1}}, {"x": "plain"}]), "2030-01-01T00:00:00Z").unwrap();
+    let written = values(f.table_dir("events").join("data/runs/run-1/ingest-a/part-00000.parquet"));
+    assert_eq!(written, [r#"{"a":1}"#, r#""plain""#]);
+
+    // Two batches: a string column, then an object promoting it; the fold encodes the strings.
+    let g = Fixture::new();
+    g.land(&d, "run-1", json!([{"x": "plain"}]), "2030-01-01T00:00:00Z").unwrap();
+    g.land(&d, "run-2", json!([{"x": [1, 2]}]), "2030-01-01T00:01:00Z").unwrap();
+    fold(&g.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (chain, _) = g.store.chain("events").unwrap();
+    let snapshot = g.store.snapshot_dir("events", &chain[0].snapshot_id).unwrap().join("part-00000.parquet");
+    let mut folded = values(snapshot);
+    folded.sort();
+    assert_eq!(folded, [r#""plain""#, "[1,2]"]);
+    for v in folded {
+        serde_json::from_str::<serde_json::Value>(&v).unwrap_or_else(|e| panic!("`{v}` is not JSON: {e}"));
+    }
+}
