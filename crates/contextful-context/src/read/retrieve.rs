@@ -5,7 +5,11 @@
 use super::engine::{cell, SqlEngine};
 use super::face::Face;
 use super::fault::ReadFault;
+use contextful_core::memory::declare::Shape;
+use contextful_core::memory::recall::{gate, EvidenceRead};
+use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::read::embed::cosine;
+use contextful_core::read::template::Bound;
 use contextful_core::read::rank::{
     candidate_window, fuse, min_max, order, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
     Timeframe,
@@ -151,6 +155,10 @@ impl Face {
         let floor = relevance_floor(&tokens, request.min_score);
         let window = candidate_window(limit);
         let engine = SqlEngine::open(session)?;
+        let anchor = request.anchor;
+        let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();
+        let mut suppressed: std::collections::BTreeMap<&'static str, u64> = std::collections::BTreeMap::new();
+        let mut recalled = false;
         let mut rows: Vec<Row> = Vec::new();
         for table in &arms {
             let schema = self.store.try_schema(table)?.map(|s| s.columns).unwrap_or_default();
@@ -175,8 +183,34 @@ impl Face {
             );
             let (columns, values) = engine.run_values(&sql, &[], None)?;
             let at = |name: &str| columns.iter().position(|c| c == name);
+            let claims = self.memory().table(table).is_some_and(|t| t.shape == Shape::Facts);
+            recalled |= claims;
             for v in values {
                 let get = |name: &str| at(name).map(|i| &v[i]);
+                if claims {
+                    // Recall serves a claim only while live, and only when every evidence
+                    // row reads through this session (`read.recall.ranked-arm`).
+                    let superseded = get("superseded_by").and_then(text_of).is_some();
+                    let ended = match get("valid_to").map(|x| cell(x.clone())) {
+                        Some(Cell::Timestamp(end)) => end <= anchor,
+                        Some(Cell::Null) | None => false,
+                        Some(other) => Publication::cast(match other.to_json() {
+                            Value::String(s) => Some(s),
+                            _ => None,
+                        }
+                        .as_deref())
+                        .instant()
+                        .is_none_or(|end| end <= anchor),
+                    };
+                    if superseded || ended {
+                        continue;
+                    }
+                    let evidence = get("evidence").and_then(text_of);
+                    if let Err(e) = gate(evidence.as_deref(), &memory_tables, |r| self.evidence_read(&engine, session, r)) {
+                        *suppressed.entry(e.identifier()).or_insert(0) += 1;
+                        continue;
+                    }
+                }
                 let snippet_text: Vec<String> = snippet.iter().filter_map(|c| get(c).and_then(text_of)).collect();
                 let snippet_text = (!snippet.is_empty()).then(|| snippet_text.join(" — "));
                 let publication = match get(&basis).map(|p| cell(p.clone())) {
@@ -302,6 +336,38 @@ impl Face {
         if let Some(b) = bounds.echo() {
             response = response.with_block("bounds", b);
         }
+        if recalled {
+            // Counts per identifier; no suppressed claim is named (`read.recall.suppression-count`).
+            let counts: Map<String, Value> = ["MemoryEvidenceUnresolved", "MemoryEvidenceOverflow"]
+                .iter()
+                .map(|id| (id.to_string(), json!(suppressed.get(id).copied().unwrap_or(0))))
+                .collect();
+            response = response.with_block("recall", json!({ "suppressed": counts }));
+        }
         Ok(response)
+    }
+
+    /// How one evidence row reads through the caller's session: its table registered, the
+    /// row visible through the relation, and no cell of the table masked or nulled by zone.
+    fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef) -> EvidenceRead {
+        let Some(relation) = session.relation(&r.table) else { return EvidenceRead::UnknownTable };
+        let sql = format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation.name()), ident(RUN_ID), ident(ROW_SEQ));
+        let found = engine
+            .run(&sql, &[Bound::Text(r.run.clone()), Bound::Integer(r.seq)], None)
+            .ok()
+            .and_then(|(_, rows)| rows.first().and_then(|row| row.first().cloned()))
+            .is_some_and(|c| matches!(c, Cell::Integer { value, .. } if value > 0));
+        if !found {
+            return EvidenceRead::Unreadable;
+        }
+        let masked = session.policy(&r.table).is_some_and(|p| {
+            p.columns.values().any(|c| c.mask.is_some())
+                || p.columns.keys().any(|c| !p.column_set(c).admits(session.zone()))
+        });
+        if masked {
+            EvidenceRead::Masked
+        } else {
+            EvidenceRead::Readable
+        }
     }
 }
