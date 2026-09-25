@@ -71,10 +71,11 @@ pub struct TableDecl {
 
 #[derive(Deserialize)]
 struct PipelineFile {
+    #[serde(default)]
     pipeline: PipelineTables,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct PipelineTables {
     #[serde(default)]
     tables: Vec<TableDecl>,
@@ -91,13 +92,36 @@ impl TableDecl {
         TableDecl { name: name.into(), ..TableDecl::default() }
     }
 
-    /// Every `[[pipeline.tables]]` block of a pipeline manifest.
+    /// Every table block of a pipeline manifest: the `[[pipeline.tables]]` of a
+    /// `[pipeline]` table as named, and those of each `[[pipeline]]` specification under
+    /// its destination name `<pipeline id>_<table name>` (`run.declare.table-name`).
     pub fn parse_pipeline(toml_text: &str) -> Result<Vec<TableDecl>, DeclarationMalformed> {
-        let file: PipelineFile = toml::from_str(toml_text).map_err(|e| DeclarationMalformed(e.to_string()))?;
-        for t in &file.pipeline.tables {
+        let value: toml::Value = toml::from_str(toml_text).map_err(|e| DeclarationMalformed(e.to_string()))?;
+        let tables = match value.get("pipeline") {
+            Some(toml::Value::Array(specs)) => {
+                let mut out = Vec::new();
+                for spec in specs {
+                    let id = spec.get("id").and_then(toml::Value::as_str).ok_or_else(|| DeclarationMalformed("a `[[pipeline]]` block carries no `id`".into()))?;
+                    for entry in spec.get("tables").and_then(toml::Value::as_array).into_iter().flatten() {
+                        let mut decl = match entry {
+                            toml::Value::String(name) => TableDecl::named(name.clone()),
+                            other => other.clone().try_into().map_err(|e: toml::de::Error| DeclarationMalformed(e.to_string()))?,
+                        };
+                        decl.name = crate::pipeline::declare::table_name(id, &decl.name);
+                        out.push(decl);
+                    }
+                }
+                out
+            }
+            _ => {
+                let file: PipelineFile = value.try_into().map_err(|e: toml::de::Error| DeclarationMalformed(e.to_string()))?;
+                file.pipeline.tables
+            }
+        };
+        for t in &tables {
             t.retain_runs_secs()?;
         }
-        Ok(file.pipeline.tables)
+        Ok(tables)
     }
 
     /// The canonical serialization: JSON with every unset key absent.

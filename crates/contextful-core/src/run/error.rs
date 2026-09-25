@@ -42,6 +42,33 @@ pub enum RunError {
     /// Write-path redaction declared over a source whose pulls are journaled. (`run.journal.redacting-source`)
     #[error("JournalRedactionConflict: {0}")]
     JournalRedactionConflict(String),
+    /// One pipeline id declared twice. (`run.declare.duplicate-id`)
+    #[error("PipelineDuplicateId: {0}")]
+    PipelineDuplicateId(String),
+    /// The replacing write mode beside a windowed or chunked load. (`run.declare.replace-unsupported`)
+    #[error("PipelineReplaceUnsupported: {0}")]
+    PipelineReplaceUnsupported(String),
+    /// A manifest file the canonical type cannot deserialize. (`run.declare.spec-invalid`)
+    #[error("PipelineSpecInvalid: {0}")]
+    PipelineSpecInvalid(String),
+    /// One table's pull failing inside a fire. (`run.land.table-failed`)
+    #[error("PipelineTableFailed: {0}")]
+    PipelineTableFailed(String),
+    /// A chain operation emitting more rows than it consumed. (`run.transform.arity`)
+    #[error("PipelineTransformArity: {0}")]
+    PipelineTransformArity(String),
+    /// A chain operation naming a column the batch lacks. (`run.transform.column-missing`)
+    #[error("PipelineTransformColumnMissing: {0}")]
+    PipelineTransformColumnMissing(String),
+    /// A source config key outside the set the source enumerates. (`run.declare.config-key`)
+    #[error("PipelineUnknownConfigKey: {0}")]
+    PipelineUnknownConfigKey(String),
+    /// A destination other than the local store. (`run.land.unknown-destination`)
+    #[error("PipelineUnknownDestination: {0}")]
+    PipelineUnknownDestination(String),
+    /// Input a parser cannot read, named by path and position. (`run.land.unreadable-input`)
+    #[error("PipelineUnreadableInput: {0}")]
+    PipelineUnreadableInput(String),
     /// A snapshot metadata write past its serialized bound. (`run.project.metadata-too-large`)
     #[error("RunMetadataTooLarge: {0}")]
     RunMetadataTooLarge(String),

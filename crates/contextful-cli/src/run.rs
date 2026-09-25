@@ -31,10 +31,10 @@ pub struct ProjectArgs {
     /// The project whose store root is `.contextful/context/<project>/` and whose run
     /// state is `.contextful/run/<project>/`.
     #[arg(long)]
-    project: String,
+    pub(crate) project: String,
     /// The evaluation instant (RFC 3339); absent reads the system clock.
     #[arg(long)]
-    now: Option<String>,
+    pub(crate) now: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -118,7 +118,7 @@ pub enum StopScope {
 }
 
 /// The system clock.
-struct SystemClock;
+pub(crate) struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&self) -> Instant {
@@ -127,20 +127,20 @@ impl Clock for SystemClock {
     }
 }
 
-fn clock(now: &Option<String>) -> Result<Arc<dyn Clock + Send + Sync>> {
+pub(crate) fn clock(now: &Option<String>) -> Result<Arc<dyn Clock + Send + Sync>> {
     Ok(match now {
         Some(s) => Arc::new(FixedClock(Instant::parse(s)?)),
         None => Arc::new(SystemClock),
     })
 }
 
-struct Wired {
-    engine: Engine,
-    registry: Registry,
-    clock: Arc<dyn Clock + Send + Sync>,
+pub(crate) struct Wired {
+    pub(crate) engine: Engine,
+    pub(crate) registry: Registry,
+    pub(crate) clock: Arc<dyn Clock + Send + Sync>,
 }
 
-fn wire(args: &ProjectArgs) -> Result<Wired> {
+pub(crate) fn wire(args: &ProjectArgs) -> Result<Wired> {
     let root = std::env::current_dir()?.join(".contextful").join("run").join(&args.project);
     let clock = clock(&args.now)?;
     let journal = Journal::open(&root);
@@ -150,7 +150,7 @@ fn wire(args: &ProjectArgs) -> Result<Wired> {
 }
 
 /// The boot identity of this machine: a process id means nothing across boots.
-fn boot_id() -> String {
+pub(crate) fn boot_id() -> String {
     if let Ok(id) = std::fs::read_to_string("/proc/sys/kernel/random/boot_id") {
         return id.trim().to_string();
     }
@@ -178,10 +178,10 @@ fn artifact_hash(argv: &[String], cwd: &Path) -> String {
 }
 
 /// The store as a run's destination.
-struct StoreDestination {
-    store: Store,
-    decls: Vec<TableDecl>,
-    node: contextful_core::store::lay_out::NodeId,
+pub(crate) struct StoreDestination {
+    pub(crate) store: Store,
+    pub(crate) decls: Vec<TableDecl>,
+    pub(crate) node: contextful_core::store::lay_out::NodeId,
 }
 
 fn store_failure(e: ContextError) -> Failure {

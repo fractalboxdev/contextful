@@ -2,12 +2,14 @@
 
 pub mod attenuate;
 pub mod claims;
+pub mod connector;
 pub mod coordinate;
 pub mod error;
 pub mod exchange;
 pub mod grant;
 pub mod identify;
 pub mod issue;
+pub mod pipeline;
 pub mod ports;
 pub mod revoke;
 pub mod run;

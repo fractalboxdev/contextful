@@ -9,10 +9,12 @@ name = "contextful"
 path = "src/main.rs"
 
 [dependencies]
+contextful-connectors = { path = "../contextful-connectors" }
 contextful-context = { path = "../contextful-context" }
 contextful-core = { path = "../contextful-core" }
 contextful-engine = { path = "../contextful-engine" }
 contextful-policy = { path = "../contextful-policy" }
+contextful-runtime = { path = "../contextful-runtime" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

@@ -12,7 +12,7 @@ use contextful_core::run::cancel::{mark, Scope};
 use contextful_core::run::journal::{sha256_hex, EntryKey};
 use contextful_core::run::own::{releases, ConnectorPin, ExecutionOwner, Pins};
 use contextful_core::run::plan::{Plan, NATIVE_WORLD};
-use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Pull, PullRequest, Row, Source};
+use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Pull, PullRequest, Row, Shape, Source, Unshaped};
 use contextful_core::run::project::{Change, StepPatch, StepStatus};
 use contextful_core::run::record::{cap_error, select_history, HistoryPage, Owner, Phase, RunRow, RunStatus, Window, OWNER_LEASE_TTL_SECS};
 use contextful_core::run::retry::{decide, Decision};
@@ -182,6 +182,11 @@ impl Engine {
     /// Execute one run. A run that opened closes on a status its row records; the row is
     /// returned whatever that status. A run that cannot open refuses with no row.
     pub fn run(&self, spec: &RunSpec, source: &mut dyn Source, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
+        self.run_with(spec, source, &Unshaped, dest)
+    }
+
+    /// Execute one run, passing each recorded batch through `shape` before it lands.
+    pub fn run_with(&self, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
         let plan = &spec.plan;
         plan.validate()?;
         if plan.spec.connector.world != NATIVE_WORLD {
@@ -233,7 +238,7 @@ impl Engine {
         let held: Arc<Mutex<Option<Lease>>> = Arc::default();
         let keeper = Keeper::start_holding(self.catalog.clone(), &spec.run_id, token.clone(), self.cadence, held.clone());
         let mut owned = false;
-        let outcome = self.body(spec, &execution_id, pending, &token, &held, &mut owned, source, dest);
+        let outcome = self.body(spec, &execution_id, pending, &token, &held, &mut owned, source, shape, dest);
         drop(keeper);
         let lease = held.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(l) = &lease {
@@ -306,6 +311,7 @@ impl Engine {
         held: &Arc<Mutex<Option<Lease>>>,
         owned: &mut bool,
         source: &mut dyn Source,
+        shape: &dyn Shape,
         dest: &mut dyn Destination,
     ) -> Result<(Landed, u64), Close> {
         let plan = &spec.plan;
@@ -381,6 +387,7 @@ impl Engine {
                     (pull.rows, !pull.more)
                 }
             };
+            let rows = shape.shape(rows)?;
             if !rows.is_empty() {
                 batches.push(rows);
             }
