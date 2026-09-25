@@ -695,6 +695,7 @@ dependencies = [
  "contextful-context",
  "contextful-core",
  "contextful-engine",
+ "contextful-memory",
  "contextful-policy",
  "contextful-runtime",
  "serde",
