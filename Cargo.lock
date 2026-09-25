@@ -681,6 +681,7 @@ dependencies = [
  "clap",
  "contextful-context",
  "contextful-core",
+ "contextful-engine",
  "contextful-policy",
  "serde",
  "serde_json",

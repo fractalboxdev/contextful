@@ -295,7 +295,7 @@ pub fn check(root: &Path) -> Result<()> {
         eprintln!("{code}: {message}");
     }
     if let Some((code, _)) = found.first() {
-        return Err(crate::refuse(*code, format!("{} topology finding(s)", found.len())));
+        return Err(crate::refuse(code, format!("{} topology finding(s)", found.len())));
     }
     let n = g.packages.values().filter(|p| p.workspace).count();
     let domain = if g.id_of(DOMAIN).is_some() { format!("; `{DOMAIN}` is pure and depends on no adapter") } else { String::new() };

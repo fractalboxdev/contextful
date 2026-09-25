@@ -98,3 +98,5 @@ impl std::fmt::Display for Failure {
         write!(f, "{}: {}", self.tag, self.message)
     }
 }
+
+impl std::error::Error for Failure {}

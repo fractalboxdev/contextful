@@ -131,13 +131,14 @@ pub trait Catalog {
     fn owner(&self, pipeline_id: &str, table: &str) -> Result<Option<ExecutionOwner>, Failure>;
     fn put_owner(&self, owner: &ExecutionOwner) -> Result<(), Failure>;
     /// Retire the owner holding `execution_id` and cache the position its commit reached,
-    /// in one transaction (`run.own.retirement`). Its journal is unreachable once this
-    /// returns.
-    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: CursorRow) -> Result<(), Failure>;
+    /// in one transaction (`run.own.retirement`), predicated on the holder's fence when
+    /// the cursor moves under a lease. Its journal is unreachable once this applies.
+    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
 
     fn put_run(&self, row: &RunRow) -> Result<(), Failure>;
     fn run(&self, run_id: &str) -> Result<Option<RunRow>, Failure>;
     fn runs(&self, pipeline_id: Option<&str>) -> Result<Vec<RunRow>, Failure>;
-    /// Apply `f` to a run row under the catalog's write serialization.
-    fn update_run(&self, run_id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Result<RunRow, RunError>, Failure>;
+    /// Apply `f` to a run row under the catalog's write serialization; `None` when no
+    /// row carries `run_id`, and the row unchanged when `f` refuses.
+    fn update_run(&self, run_id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure>;
 }

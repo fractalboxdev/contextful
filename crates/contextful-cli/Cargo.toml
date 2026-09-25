@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 contextful-context = { path = "../contextful-context" }
 contextful-core = { path = "../contextful-core" }
+contextful-engine = { path = "../contextful-engine" }
 contextful-policy = { path = "../contextful-policy" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

@@ -13,5 +13,6 @@ pub mod revoke;
 pub mod run;
 pub mod store;
 pub mod time;
+pub mod topology;
 
 pub use error::AuthorityError;
