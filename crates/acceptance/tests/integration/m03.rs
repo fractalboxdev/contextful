@@ -83,7 +83,6 @@ fn rows(path: &std::path::Path) -> Vec<(String, String, i32, String)> {
 }
 
 #[test]
-#[ignore = "milestone 3 is open"]
 fn m03_run_path() {
     let cf = bin("contextful");
     let p = GitRepo::init();

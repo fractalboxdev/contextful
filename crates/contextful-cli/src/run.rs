@@ -240,6 +240,8 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             for reaped in w.engine.reap_orphans()? {
                 eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");
             }
+            let referenced = w.registry.referenced_blobs()?;
+            w.engine.journal.sweep_if_due(&referenced, w.clock.now().unix_secs())?;
             let run_id = match run_id {
                 Some(id) => id,
                 None => format!("run-{}", &sha256_hex(format!("{}{}", w.clock.now().unix_nanos(), std::process::id()).as_bytes())[..12]),

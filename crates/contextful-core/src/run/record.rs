@@ -312,16 +312,16 @@ pub fn mask_credentials(text: &str) -> String {
     for w in words {
         let trimmed = w.trim_end();
         let tail = &w[trimmed.len()..];
-        if mask_next && !trimmed.is_empty() {
-            out.push_str(MASK);
-            out.push_str(tail);
-            mask_next = false;
-            continue;
-        }
         let lower = trimmed.to_ascii_lowercase();
         if lower == "bearer" || lower == "basic" {
             mask_next = true;
             out.push_str(w);
+            continue;
+        }
+        if mask_next && !trimmed.is_empty() {
+            out.push_str(MASK);
+            out.push_str(tail);
+            mask_next = false;
             continue;
         }
         if SECRET_KEYS.iter().any(|k| lower.trim_end_matches(':') == *k) && trimmed.ends_with(':') {

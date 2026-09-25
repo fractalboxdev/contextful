@@ -95,6 +95,10 @@ impl Registry {
     /// cutoff in the blob store, and the registry row references it.
     pub fn resolve(&self, token: &str, payload: &[u8], now: Instant) -> Result<Vec<u8>, AwakeError> {
         let path = self.path(token).ok_or_else(|| AwakeError::Refused(unknown(token)))?;
+        // An unknown token allocates nothing, the lock file included.
+        if !path.exists() {
+            return Err(AwakeError::Refused(unknown(token)));
+        }
         let _lock = FileLock::acquire(&path.with_extension("lock"))?;
         let mut row: Awakeable = read_json(&path)?.ok_or_else(|| AwakeError::Refused(unknown(token)))?;
         let before = row.state;

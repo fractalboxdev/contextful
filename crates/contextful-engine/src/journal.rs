@@ -6,7 +6,7 @@
 //! ```
 
 use crate::fsutil::{self, create_new, read_json, replace, sleep_unless, storage, to_json, FileLock};
-use contextful_core::run::journal::{sweepable, EntryKey, Row, Stored};
+use contextful_core::run::journal::{sweep_due, sweepable, EntryKey, Row, Stored};
 use contextful_core::run::ports::Cancellation;
 use contextful_core::run::{Failure, RunError};
 use std::path::{Path, PathBuf};
@@ -297,5 +297,18 @@ impl Journal {
             }
         }
         Ok(deleted)
+    }
+
+    /// Run a sweep when the previous one ran at least 24 h before `now_unix`, recording
+    /// this pass's instant. `None` when no pass was due.
+    pub fn sweep_if_due(&self, also_referenced: &[String], now_unix: i64) -> Result<Option<Vec<String>>, Failure> {
+        let stamp = self.blob_dir().join(".swept");
+        let last: Option<i64> = read_json(&stamp)?;
+        if !sweep_due(last.map(|l| u64::try_from(now_unix - l).unwrap_or(0))) {
+            return Ok(None);
+        }
+        let deleted = self.sweep(also_referenced, now_unix)?;
+        replace(&stamp, &to_json(&now_unix)?)?;
+        Ok(Some(deleted))
     }
 }

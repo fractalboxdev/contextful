@@ -17,6 +17,8 @@ use std::time::Duration;
 
 /// Interval at which a running child is checked for exit and for a stop.
 const WAIT_TICK: Duration = Duration::from_millis(10);
+/// How long a signalled group has to exit on `SIGTERM` before it is killed.
+const TERM_GRACE: Duration = Duration::from_millis(500);
 
 pub struct CommandSource {
     pub argv: Vec<String>,
@@ -55,6 +57,26 @@ fn group_alive(pgid: u32) -> bool {
     }
 }
 
+/// Signal the group `SIGTERM`, escalate to `SIGKILL` past the grace period, and return
+/// once the child is reaped and no process of the group remains.
+fn reap_group(child: &mut std::process::Child, pgid: u32) {
+    signal_group(pgid, libc::SIGTERM);
+    let started = std::time::Instant::now();
+    let mut reaped = false;
+    loop {
+        if !reaped {
+            reaped = !matches!(child.try_wait(), Ok(None));
+        }
+        if reaped && !group_alive(pgid) {
+            return;
+        }
+        if started.elapsed() >= TERM_GRACE {
+            signal_group(pgid, libc::SIGKILL);
+        }
+        std::thread::sleep(WAIT_TICK);
+    }
+}
+
 impl Source for CommandSource {
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
         let (program, args) = self.argv.split_first().ok_or_else(|| Failure::deterministic(FailureTag::Config, "the connector names no command"))?;
@@ -90,13 +112,7 @@ impl Source for CommandSource {
         });
         let status = loop {
             if cancel.requested() {
-                // A stop signals the whole chain and returns only once the group is reaped.
-                signal_group(pgid, libc::SIGTERM);
-                let _ = child.wait();
-                while group_alive(pgid) {
-                    std::thread::sleep(WAIT_TICK);
-                    signal_group(pgid, libc::SIGKILL);
-                }
+                reap_group(&mut child, pgid);
                 return Err(Failure::canceled(format!("stopped during `{}`; its process group is reaped", request.step_label)));
             }
             match child.try_wait() {
