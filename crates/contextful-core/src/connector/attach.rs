@@ -34,6 +34,14 @@ impl Allowlist {
             if t == "*" || t == "*." {
                 return reject("a bare wildcard admits every host".into());
             }
+            // A bracketed IPv6 literal is a host; its colons are no port.
+            if let Some(inner) = t.strip_prefix('[').and_then(|x| x.strip_suffix(']')) {
+                if inner.parse::<std::net::Ipv6Addr>().is_ok() {
+                    out.push(HostEntry::Exact(format!("[{}]", inner.to_ascii_lowercase())));
+                    continue;
+                }
+                return reject(format!("entry `{t}` is not a bracketed IPv6 literal"));
+            }
             if t.contains("://") || t.contains('/') || t.contains(':') || t.contains('?') || t.contains('@') {
                 return reject(format!("entry `{t}` carries a scheme, port or path; an entry is a host"));
             }
@@ -106,7 +114,8 @@ pub fn scrub_text(raw: &str) -> String {
     }
 }
 
-/// Whether `host` names the local machine by a loopback name or literal.
+/// Whether `host` names the local machine: the name `localhost`, an IPv4 address in
+/// 127.0.0.0/8, or `::1`. Every loopback exemption reads this one predicate.
 pub fn is_loopback_host(host: &str) -> bool {
     let h = host.trim_start_matches('[').trim_end_matches(']');
     h.eq_ignore_ascii_case("localhost") || h.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
@@ -152,11 +161,10 @@ pub fn check_hop(configured: &Url, next: &Url) -> Result<(), ConnectorError> {
     }
 }
 
-/// Refuse a credential-bearing header bound for a cleartext endpoint outside IPv4 and
-/// IPv6 loopback (`connector.attach.cleartext-endpoint`).
+/// Refuse a credential-bearing header bound for a cleartext endpoint off loopback
+/// (`connector.attach.cleartext-endpoint`).
 pub fn check_transport(url: &Url, header: &str) -> Result<(), ConnectorError> {
-    let literal_loopback = url.host_str().map(|h| h.trim_start_matches('[').trim_end_matches(']')).and_then(|h| h.parse::<IpAddr>().ok()).is_some_and(|ip| ip.is_loopback());
-    if url.scheme() != "https" && !literal_loopback {
+    if url.scheme() != "https" && !url.host_str().is_some_and(is_loopback_host) {
         return Err(ConnectorError::SecretCleartextEndpoint(format!("header `{header}` carries a credential and `{}` is cleartext", scrub(url))));
     }
     Ok(())

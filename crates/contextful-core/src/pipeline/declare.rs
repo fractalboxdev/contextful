@@ -237,11 +237,32 @@ pub fn read_manifest(f: &ManifestFile) -> Result<Vec<Declared>, RunError> {
                 })
                 .collect()
         }
-        // A `[pipeline]` table holding only `tables` is a store declaration, not a specification.
+        // A `[pipeline]` table holding only `tables` is a store declaration; one carrying a
+        // specification's keys is a `[[pipeline]]` block written as a table.
+        Some(toml::Value::Table(t)) if ["id", "source"].iter().any(|k| t.contains_key(*k)) => {
+            Err(invalid(&f.path, "pipeline", "a specification is declared as `[[pipeline]]`, an array of tables; `[pipeline]` holds store tables alone"))
+        }
         Some(_) => Ok(Vec::new()),
         None if value.get("id").is_some() => Ok(vec![Declared { spec: from_toml(&f.path, value, "")?, file: f.path.clone(), line: 1 }]),
         None => Ok(Vec::new()),
     }
+}
+
+/// Refuse two tables folding to one destination name, within one pipeline or across
+/// pipelines (`run.declare.table-name-collision`).
+pub fn check_destinations(declared: &[Declared]) -> Result<(), RunError> {
+    let mut seen: Vec<(String, String)> = Vec::new();
+    for d in declared {
+        for t in &d.spec.tables {
+            let name = d.spec.table_name(t.name());
+            let here = format!("pipeline `{}` table `{}` ({}:{})", d.spec.id, t.name(), d.file, d.line);
+            if let Some((_, first)) = seen.iter().find(|(n, _)| *n == name) {
+                return Err(RunError::PipelineTableNameCollision(format!("{first} and {here} both land in `{name}`")));
+            }
+            seen.push((name, here));
+        }
+    }
+    Ok(())
 }
 
 /// Collect every specification by `id` across the manifest files, in order. One id
@@ -259,5 +280,6 @@ pub fn collect(files: &[ManifestFile]) -> Result<Vec<Declared>, RunError> {
             all.push(d);
         }
     }
+    check_destinations(&all)?;
     Ok(all)
 }

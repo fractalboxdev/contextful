@@ -36,12 +36,26 @@ fn a_template_is_literal_text_and_secret_placeholders() {
 // spec: connector.reference.foreign-placeholder@b4e26f61
 #[test]
 fn an_environment_or_bare_placeholder_is_foreign() {
-    for (value, span) in [("Bearer ${env://VENDOR_TOKEN}", "${env://VENDOR_TOKEN}"), ("Bearer ${VENDOR_TOKEN}", "${VENDOR_TOKEN}")] {
-        match Template::parse(value) {
-            Err(ConnectorError::SecretForeignPlaceholder(m)) => assert!(m.contains(value) && m.contains(span), "{m}"),
+    for (value, span) in [("Bearer ${env://VENDOR_TOKEN}", "bytes 7..28"), ("Bearer ${VENDOR_TOKEN}", "bytes 7..22")] {
+        match check_material("headers.Authorization", value) {
+            Err(ConnectorError::SecretForeignPlaceholder(m)) => {
+                assert!(m.contains("headers.Authorization") && m.contains(span), "{m}");
+                assert!(!m.contains("VENDOR_TOKEN"), "the placeholder's text is not repeated: {m}");
+            }
             other => panic!("{value}: {other:?}"),
         }
     }
+}
+
+#[test]
+fn no_parse_refusal_repeats_the_text_it_refused() {
+    let token = "ghp_0123456789abcdefghijABCDEFGHIJ012345";
+    for value in [format!("Bearer ${{secret://{token}}}"), format!("Bearer ${{{token}"), format!("${{env://{token}}}")] {
+        let e = check_material("headers.Authorization", &value).unwrap_err().to_string();
+        assert!(!e.contains(token), "{e}");
+    }
+    let e = SecretName::parse("Sk-Live-Token").unwrap_err().to_string();
+    assert!(!e.contains("Sk-Live-Token"), "{e}");
 }
 
 /// An unclosed, empty or nested placeholder raises `SecretMalformedTemplate` while the declaration is read, ahead

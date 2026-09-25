@@ -312,3 +312,14 @@ fn a_redirected_mint_refuses_and_the_target_sees_nothing() {
     assert!(f.message.starts_with("SecretLeaseRedirect"), "{f}");
     assert!(server.received("/elsewhere").is_empty());
 }
+
+#[test]
+fn a_provider_named_localhost_mints_over_loopback() {
+    let server = leased(600);
+    let clock = SetClock::new();
+    let mut vars = env(&server, "vendor-token");
+    vars.insert("CONTEXTFUL_LEASE_PROVIDER_URL".into(), server.url("").replace("127.0.0.1", "localhost"));
+    let r = assemble(&vars, Arc::new(clock)).unwrap();
+    assert_eq!(r.hydrate(&name("vendor-token")).unwrap().reveal(), "leased-value");
+    assert_eq!(mints(&server), 1);
+}

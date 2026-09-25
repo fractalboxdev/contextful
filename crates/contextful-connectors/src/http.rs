@@ -141,23 +141,30 @@ impl HttpConfig {
                 headers.insert(name.clone(), check_material(&format!("headers.{name}"), v)?);
             }
         }
-        let parsed = endpoint(NAME, &endpoint_raw.replace("{table}", "table"))?;
-        if let Some(open) = endpoint_raw.find('{') {
-            let close = endpoint_raw[open..].find('}').map(|c| open + c).unwrap_or(endpoint_raw.len());
-            let placeholder = &endpoint_raw[open..=close.min(endpoint_raw.len() - 1)];
+        // Every placeholder is `{table}`; any other has no pattern to bind it.
+        let mut rest = endpoint_raw.as_str();
+        while let Some(open) = rest.find('{') {
+            let placeholder = match rest[open..].find('}') {
+                Some(close) => &rest[open..=open + close],
+                None => &rest[open..],
+            };
             if placeholder != "{table}" {
-                return Err(ConnectorError::ConnectorPlaceholderUnbound(format!("`{placeholder}` in `{}` has no table pattern to bind it", scrub(&parsed))).into());
+                return Err(ConnectorError::ConnectorPlaceholderUnbound(format!(
+                    "the endpoint's placeholder `{placeholder}` has no table pattern to bind it; `{{table}}` is the one placeholder"
+                ))
+                .into());
             }
+            rest = &rest[open + placeholder.len()..];
         }
         let c = HttpConfig { endpoint: endpoint_raw, format, records, headers, pagination, since_param: text(cfg, "since_param")? };
-        c.allowlist()?;
+        c.table_url("table")?;
         Ok(c)
     }
 
-    /// The hosts this source reaches: its endpoint's host. A source binding a credential
-    /// holds to one exact host.
-    pub fn allowlist(&self) -> Result<Allowlist, ConnectorError> {
-        let url = endpoint(NAME, &self.endpoint.replace("{table}", "table"))?;
+    /// The hosts this source reaches for `table`: its endpoint's host with the table bound.
+    /// A source binding a credential holds to one exact host.
+    pub fn allowlist(&self, table: &str) -> Result<Allowlist, ConnectorError> {
+        let url = self.table_url(table)?;
         let allow = Allowlist::parse(&[url.host_str().unwrap_or_default()])?;
         if self.headers.values().any(Template::has_reference) {
             allow.check_bound()?;
@@ -186,7 +193,7 @@ pub struct HttpSource {
 impl HttpSource {
     pub fn new(config: HttpConfig, table: &str, resolver: Arc<Resolver>) -> Result<HttpSource, ConnectorError> {
         let origin = config.table_url(table)?;
-        let client = Arc::new(Client::new(config.allowlist()?, origin));
+        let client = Arc::new(Client::new(config.allowlist(table)?, origin));
         Ok(HttpSource { config, table: table.to_string(), resolver, client })
     }
 
@@ -210,7 +217,6 @@ impl HttpSource {
             };
             url.query_pairs_mut().append_pair(param, &v);
         }
-        let headers = self.headers(&request.idempotency_key)?;
         let mut rows = Vec::new();
         let mut seen: Vec<String> = Vec::new();
         let mut page = match &self.config.pagination {
@@ -226,6 +232,9 @@ impl HttpSource {
             if let Pagination::Page { param, .. } = &self.config.pagination {
                 current.query_pairs_mut().append_pair(param, &page.to_string());
             }
+            // Hydrated per request: the resolver's cache retires a lease ahead of its expiry,
+            // so a long walk re-hydrates rather than sending an expired credential.
+            let headers = self.headers(&request.idempotency_key)?;
             let resp = self.client.send("GET", &current, &headers, None)?;
             if !(200..300).contains(&resp.status) {
                 let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());

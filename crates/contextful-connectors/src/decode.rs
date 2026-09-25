@@ -76,52 +76,75 @@ pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -
     }
 }
 
-/// One delimited field: its text, and whether it was quoted.
-fn fields(line: &str, n: usize, input: &str) -> Result<Vec<(String, bool)>, Failure> {
+/// A delimited body's records under RFC 4180: a quoted field may hold commas, doubled
+/// quotes and line breaks. Each record carries the line it starts on and its fields,
+/// each with whether it was quoted; an empty line is no record.
+/// One record: the line it starts on, and each field with whether it was quoted.
+type Record = (usize, Vec<(String, bool)>);
+
+fn records(text: &str, input: &str) -> Result<Vec<Record>, Failure> {
     let mut out = Vec::new();
-    let mut chars = line.chars().peekable();
-    loop {
-        let mut field = String::new();
-        let mut quoted = false;
-        if chars.peek() == Some(&'"') {
-            quoted = true;
-            chars.next();
-            loop {
-                match chars.next() {
-                    Some('"') if chars.peek() == Some(&'"') => {
-                        chars.next();
-                        field.push('"');
-                    }
-                    Some('"') => break,
-                    Some(c) => field.push(c),
-                    None => return Err(unreadable(input, format!("line {n}"), "a quoted field is unclosed")),
+    let mut fields: Vec<(String, bool)> = Vec::new();
+    let (mut field, mut quoted, mut in_quotes) = (String::new(), false, false);
+    let (mut line, mut record_line) = (1usize, 1usize);
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if in_quotes {
+            match c {
+                '"' if chars.peek() == Some(&'"') => {
+                    chars.next();
+                    field.push('"');
                 }
+                '"' => in_quotes = false,
+                '\n' => {
+                    line += 1;
+                    field.push(c);
+                }
+                _ => field.push(c),
             }
+            continue;
         }
-        while let Some(&c) = chars.peek() {
-            if c == ',' {
-                break;
+        match c {
+            '"' if field.is_empty() && !quoted => {
+                quoted = true;
+                in_quotes = true;
             }
-            field.push(c);
-            chars.next();
-        }
-        out.push((field, quoted));
-        if chars.next().is_none() {
-            return Ok(out);
+            ',' => fields.push((std::mem::take(&mut field), std::mem::replace(&mut quoted, false))),
+            '\r' if chars.peek() == Some(&'\n') => {}
+            '\n' => {
+                fields.push((std::mem::take(&mut field), std::mem::replace(&mut quoted, false)));
+                let blank = fields.len() == 1 && fields[0].0.is_empty() && !fields[0].1;
+                let done = std::mem::take(&mut fields);
+                if !blank {
+                    out.push((record_line, done));
+                }
+                line += 1;
+                record_line = line;
+            }
+            _ => field.push(c),
         }
     }
+    if in_quotes {
+        return Err(unreadable(input, format!("line {record_line}"), "a quoted field is unclosed"));
+    }
+    if !field.is_empty() || quoted || !fields.is_empty() {
+        fields.push((field, quoted));
+        out.push((record_line, fields));
+    }
+    Ok(out)
 }
 
-/// A header row, then one record per line: every cell a string, an empty unquoted field null.
+/// A header record, then one row per record: every cell a string, an empty unquoted
+/// field null. A leading UTF-8 byte-order mark is no part of the first column's name.
 fn csv(text: &str, input: &str) -> Result<Vec<Row>, Failure> {
-    let mut lines = text.lines().enumerate().filter(|(_, l)| !l.is_empty());
-    let Some((_, header)) = lines.next() else { return Ok(Vec::new()) };
-    let names: Vec<String> = fields(header, 1, input)?.into_iter().map(|(f, _)| f).collect();
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut recs = records(text, input)?.into_iter();
+    let Some((_, header)) = recs.next() else { return Ok(Vec::new()) };
+    let names: Vec<String> = header.into_iter().map(|(f, _)| f).collect();
     let mut rows = Vec::new();
-    for (i, line) in lines {
-        let cells = fields(line, i + 1, input)?;
+    for (line, cells) in recs {
         if cells.len() > names.len() {
-            return Err(unreadable(input, format!("line {}", i + 1), format!("{} cells under a {}-column header", cells.len(), names.len())));
+            return Err(unreadable(input, format!("line {line}"), format!("{} cells under a {}-column header", cells.len(), names.len())));
         }
         let mut row = Row::new();
         for (name, (cell, quoted)) in names.iter().zip(cells) {

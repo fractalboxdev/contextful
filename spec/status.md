@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 9 | 65 | 26 | 7 | 0 | 25 | 0 | 25 |
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 14 | 16 | 0 | 0 | 0 |
-| `run` | 3 | 24 | 278 | 79 | 34 | 24 | 102 | 0 | 102 |
+| `run` | 3 | 24 | 279 | 80 | 34 | 24 | 104 | 0 | 104 |
 | `store` | 1 | 14 | 140 | 37 | 12 | 8 | 75 | 0 | 75 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 144 | 1404 | 449 | 161 | 101 | 408 | 0 | |
+| **total** | 19 | 144 | 1405 | 450 | 161 | 101 | 410 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 114 | 75 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
-| 4 — Ingest | 22 | 328 | 78 | passing |
+| 4 — Ingest | 22 | 329 | 80 | passing |
 | 5 — The read face under enforcement | 16 | 203 | 0 | absent |
 | 6 — Sync and replicas | 6 | 26 | 0 | absent |
 | 7 — Memory | 6 | 13 | 0 | absent |
@@ -287,7 +287,9 @@ Unscheduled operations: 9.
 | `run.declare.source-block` | `crates/contextful-core/tests/integration/pipeline/declare.rs::source_and_destination_are_a_name_and_a_config_object` | performed |
 | `run.declare.spec-invalid` | `crates/contextful-core/tests/integration/pipeline/declare.rs::an_undeserializable_manifest_names_file_key_path_and_value` | performed |
 | `run.declare.table-entry` | `crates/contextful-core/tests/integration/pipeline/declare.rs::bare_names_and_table_blocks_mix` | performed |
+| `run.declare.table-error` | `crates/contextful-cli/tests/integration/pipeline.rs::abort_halts_at_the_first_failure_and_continue_runs_the_rest` | performed |
 | `run.declare.table-name` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_destination_table_folds_the_pipeline_and_table_names` | performed |
+| `run.declare.table-name-collision` | `crates/contextful-core/tests/integration/pipeline/declare.rs::tables_folding_to_one_destination_name_are_refused` | performed |
 | `run.guard-secrets.coverage` | `crates/contextful-core/tests/integration/pipeline/guard.rs::encoded_or_split_credentials_pass_through` | performed |
 | `run.guard-secrets.mask-only` | `crates/contextful-engine/tests/integration/guard.rs::each_pull_reports_masked_cells_and_the_run_proceeds` | performed |
 | `run.guard-secrets.mask-replacement` | `crates/contextful-core/tests/integration/pipeline/guard.rs::the_marker_is_fixed_and_an_assignment_keeps_its_key` | performed |

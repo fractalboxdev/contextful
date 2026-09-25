@@ -157,6 +157,19 @@ fn a_placeholder_other_than_the_table_is_refused_at_build() {
     }
     let c = HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/v1/{table}/items"})).unwrap();
     assert_eq!(c.table_url("sales orders").unwrap().path(), "/v1/sales%20orders/items");
+    // Every placeholder is checked, not the first alone.
+    match HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/v1/{table}/{account}"})) {
+        Err(ConfigError::Connector(ConnectorError::ConnectorPlaceholderUnbound(m))) => assert!(m.contains("{account}"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn the_allowlist_is_the_host_each_table_reaches() {
+    let c = HttpConfig::parse(&json!({"endpoint": "https://{table}.vendor.example/v1"})).unwrap();
+    assert!(c.allowlist("eu").unwrap().permits("eu.vendor.example"));
+    assert!(!c.allowlist("eu").unwrap().permits("us.vendor.example"));
+    assert!(!c.allowlist("eu").unwrap().permits("table.vendor.example"));
 }
 
 /// A source config key outside the set that source enumerates raises `PipelineUnknownConfigKey` before any I/O,
@@ -187,4 +200,59 @@ fn an_unreadable_body_refuses_naming_path_and_position() {
     assert!(f.message.contains("/v1/items") && f.message.contains("line 3"), "{f}");
     assert_eq!(f.tag, FailureTag::Permanent);
     assert!(f.deterministic, "a parse refusal spends no retry");
+}
+
+/// A lease provider minting `lease-<n>` for 20 s at a time on a clock the vendor moves.
+struct Minting {
+    clock: std::sync::Arc<std::sync::atomic::AtomicI64>,
+    minted: std::sync::atomic::AtomicUsize,
+}
+
+impl contextful_core::connector::resolve::Provider for Minting {
+    fn name(&self) -> &str {
+        "lease"
+    }
+
+    fn answer(&self, _: &contextful_core::connector::reference::SecretName) -> Result<Option<contextful_core::connector::resolve::Answer>, contextful_core::run::Failure> {
+        let n = self.minted.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let now = contextful_core::time::Instant::from_unix_secs(self.clock.load(std::sync::atomic::Ordering::SeqCst)).unwrap();
+        Ok(Some(contextful_core::connector::resolve::Answer {
+            value: contextful_core::connector::reference::Hydrated::new(format!("lease-{n}")),
+            expires_at: Some(now.plus_secs(20)),
+        }))
+    }
+}
+
+struct Ticking(std::sync::Arc<std::sync::atomic::AtomicI64>);
+
+impl contextful_core::ports::Clock for Ticking {
+    fn now(&self) -> contextful_core::time::Instant {
+        contextful_core::time::Instant::from_unix_secs(self.0.load(std::sync::atomic::Ordering::SeqCst)).unwrap()
+    }
+}
+
+#[test]
+fn a_long_walk_rehydrates_a_lease_before_it_expires() {
+    use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    let clock = Arc::new(AtomicI64::new(1_900_000_000));
+    let moved = clock.clone();
+    let server = Server::start(move |r| {
+        // Every page takes 30 s of the clock, longer than one lease lives.
+        moved.fetch_add(30, Ordering::SeqCst);
+        let page: usize = r.query("page").and_then(|p| p.parse().ok()).unwrap_or(1);
+        let body = if page <= 3 { format!("[{{\"id\":{page}}}]") } else { "[]".to_string() };
+        Response::json(200, &body)
+    });
+    let provider = Arc::new(Minting { clock: clock.clone(), minted: AtomicUsize::new(0) });
+    let resolver = Arc::new(contextful_runtime::Resolver::new(vec![provider], false, Arc::new(Ticking(clock))));
+    let config = HttpConfig::parse(&json!({
+        "endpoint": server.url("/v1/items"), "page_param": "page",
+        "headers": {"Authorization": "Bearer ${secret://vendor-token}"}
+    }))
+    .unwrap();
+    let mut src = contextful_connectors::http::HttpSource::new(config, "t", resolver).unwrap();
+    src.pull(&request(None), &Never).unwrap();
+    let sent: Vec<String> = server.requests.lock().unwrap().iter().map(|r| r.header("authorization").unwrap_or_default().to_string()).collect();
+    assert_eq!(sent, ["Bearer lease-1", "Bearer lease-2", "Bearer lease-3", "Bearer lease-4"], "each page carries a live lease");
 }

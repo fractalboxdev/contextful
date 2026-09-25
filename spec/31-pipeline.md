@@ -64,6 +64,8 @@ The pipeline specification, its serializations, manifest discovery, the content 
 - `content-hash` — `content_hash` is the sha256 of the specification's RFC 8785 canonical JSON with every optional field at its default elided, so an explicit default hashes as its absence.
   *because a replay pin that moves on a no-op edit strands pending work*
 - `table-name` — A destination table is named `<pipeline id>_<table name>`, each non-alphanumeric character folded to `_` and each ASCII uppercase letter lowered.
+- `table-name-collision` — Two tables whose destination names fold to one spelling, within one pipeline or across pipelines, raise `PipelineTableNameCollision` at validation, naming both declarations.
+  *because two tables folding to one name land in one store table and interleave their rows*
 - `unbound-table-name` — A job target or model reference naming a destination table in a spelling the fold does not produce raises `PipelineUnboundTableName`, printing the expected spelling.
   *P1*
 - `table-entry` — A `tables` entry is a bare name or an object carrying that table's configuration; the two forms mix in one array.
@@ -75,7 +77,7 @@ The pipeline specification, its serializations, manifest discovery, the content 
   *P1*
 - `lifecycle-verbs` — `plan` diffs desired state against the store with no side effect, `--json` emitting a structured diff; `apply` converges every pipeline or one; `run` fires one pipeline once; `serve` reconciles continuously.
 - `apply-fires-nothing` — Applying a manifest fires nothing of itself; a second `apply` over unchanged sources is a no-op modulo elapsed schedules.
-- `table-error` — `on_table_error` is abort, the default, halting the fire at the first failing table, or continue, recording the failure and returning success with the failed run ids.
+- `table-error` — `on_table_error` is abort, the default, halting the fire at the first failing table, or continue, landing every other table and reporting the failed run ids through {{run.declare.table-error-exit}}.
 - `table-error-exit` — Under continue, `run` exits non-zero naming the failed runs, `apply` prints a partial line, and a scheduled fire appends its failure count to its log line.
 - `chunked-load` — `on_table_error` governs the single-pass live pull alone; a seed or backfill chunk plan halts the fire on failure under either setting.
 - `incremental-field` — `incremental = "<field>"` names the stream clock on the pipeline. Declared, the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}; undeclared, it refetches in full.

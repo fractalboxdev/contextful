@@ -158,8 +158,9 @@ fn a_failing_table_is_named_with_its_kind_and_run() {
     assert!(vendor.targets().iter().all(|t| t.starts_with("/v1/bad")), "abort halts the fire: {:?}", vendor.targets());
 }
 
-/// Abort, the default, halts the fire at the first failing table; continue runs the remaining tables and
-/// names the failed runs.
+/// `on_table_error` is abort, the default, halting the fire at the first failing table, or continue, landing
+/// every other table and reporting the failed run ids through {{run.declare.table-error-exit}}.
+// spec: run.declare.table-error@86b78a63
 #[test]
 fn abort_halts_at_the_first_failure_and_continue_runs_the_rest() {
     let serve = |t: &str| if t.starts_with("/v1/bad") { (404, "{}".to_string()) } else { (200, "[{\"id\":\"g\"}]".to_string()) };
@@ -175,8 +176,16 @@ fn abort_halts_at_the_first_failure_and_continue_runs_the_rest() {
     assert!(String::from_utf8_lossy(&out.stdout).contains("shop_good: r1.shop_good success"), "{}", String::from_utf8_lossy(&out.stdout));
     assert!(stderr(&out).contains("1 table(s) failed: r1.shop_bad"), "{}", stderr(&out));
     assert_eq!(vendor.targets(), ["/v1/bad", "/v1/good"]);
+    assert!(!out.status.success(), "a continued fire with a failed table exits non-zero");
     let listed = ok(&cf(dir.path(), &["context", "files", "shop_good", "--project", "research"]));
     assert_eq!(listed.lines().count(), 1, "the continuing table landed");
+
+    // A table the engine refuses to open is a failed table too: under continue, the fire reaches the next one.
+    let again = fire(dir.path(), "shop", "r1", "2030-01-01T00:01:00Z");
+    assert!(!again.status.success());
+    let err = stderr(&again);
+    assert_eq!(err.matches("PipelineTableFailed").count(), 2, "{err}");
+    assert!(err.contains("2 table(s) failed: r1.shop_bad, r1.shop_good"), "{err}");
 }
 
 /// A table pattern binds table-name segments into the request URL, percent-encoded, and each table holds its own

@@ -51,3 +51,12 @@ fn a_bound_credential_holds_to_one_exact_host() {
     assert_eq!(Allowlist::parse(&["api.vendor.example"]).unwrap().check_bound().unwrap(), "api.vendor.example");
     assert!(matches!(Allowlist::parse(&["*.vendor.example"]).unwrap().check_bound(), Err(ConnectorError::SecretWildcardHost(_))));
 }
+
+#[test]
+fn a_bracketed_ipv6_literal_is_an_allowlist_host() {
+    let a = Allowlist::parse(&["[::1]"]).unwrap();
+    assert!(a.permits("[::1]"));
+    assert!(!a.permits("[::2]"));
+    assert!(Allowlist::parse(&["[::1]:8080"]).is_err());
+    assert!(Allowlist::parse(&["[not-an-address]"]).is_err());
+}

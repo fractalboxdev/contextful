@@ -8,7 +8,8 @@ use contextful_core::connector::reference::Hydrated;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag};
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ureq::config::Config;
 use ureq::unversioned::resolver::{ResolvedSocketAddrs, Resolver};
@@ -54,17 +55,45 @@ impl Response {
     }
 }
 
-/// A resolver answering one pre-vetted address, so the connect uses the address the
-/// check judged, with no second lookup (`connector.attach.resolve-once`).
-#[derive(Debug)]
-struct Pinned(SocketAddr);
+/// A resolver answering the address the client vetted for each host and port, so the
+/// connect uses the address the check judged, with no second lookup
+/// (`connector.attach.resolve-once`). A host the client never vetted resolves to nothing.
+#[derive(Debug, Clone, Default)]
+struct Vetted(Arc<Mutex<HashMap<String, Vec<SocketAddr>>>>);
 
-impl Resolver for Pinned {
-    fn resolve(&self, _: &ureq::http::Uri, _: &Config, _: NextTimeout) -> Result<ResolvedSocketAddrs, ureq::Error> {
+impl Vetted {
+    fn key(host: &str, port: u16) -> String {
+        format!("{}:{port}", host.to_ascii_lowercase())
+    }
+
+    fn pin(&self, host: &str, port: u16, addrs: Vec<SocketAddr>) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).insert(Vetted::key(host, port), addrs);
+    }
+}
+
+impl Resolver for Vetted {
+    fn resolve(&self, uri: &ureq::http::Uri, _: &Config, _: NextTimeout) -> Result<ResolvedSocketAddrs, ureq::Error> {
+        let host = uri.host().unwrap_or_default();
+        let port = uri.port_u16().unwrap_or(if uri.scheme_str() == Some("https") { 443 } else { 80 });
+        let pinned = self.0.lock().unwrap_or_else(|e| e.into_inner()).get(&Vetted::key(host, port)).cloned().unwrap_or_default();
+        if pinned.is_empty() {
+            return Err(ureq::Error::HostNotFound);
+        }
         let mut v = self.empty();
-        v.push(self.0);
+        for addr in pinned.into_iter().take(16) {
+            v.push(addr);
+        }
         Ok(v)
     }
+}
+
+fn agent(vetted: &Vetted, hardened: bool) -> ureq::Agent {
+    let mut builder = Config::builder().max_redirects(0).http_status_as_error(false).timeout_global(Some(REQUEST_TIMEOUT)).save_redirect_history(false);
+    if hardened {
+        // A request carrying a declared header takes the hardened client, which bypasses the system proxy.
+        builder = builder.proxy(None);
+    }
+    ureq::Agent::with_parts(builder.build(), DefaultConnector::new(), vetted.clone())
 }
 
 fn deny(e: ConnectorError) -> Failure {
@@ -92,11 +121,25 @@ pub struct Client {
     origin: Url,
     /// Header names that carried a credential on any request, by name only.
     sensitive: Mutex<Vec<String>>,
+    vetted: Vetted,
+    /// The largest response body a request reads.
+    max_body: u64,
+    /// One agent per proxy posture, reused across every request of the client's life.
+    hardened: ureq::Agent,
+    proxied: ureq::Agent,
 }
 
 impl Client {
     pub fn new(allow: Allowlist, origin: Url) -> Client {
-        Client { allow, origin, sensitive: Mutex::default() }
+        let vetted = Vetted::default();
+        let (hardened, proxied) = (agent(&vetted, true), agent(&vetted, false));
+        Client { allow, origin, sensitive: Mutex::default(), vetted, max_body: MAX_BODY_BYTES, hardened, proxied }
+    }
+
+    /// The client with a lower body ceiling than [`MAX_BODY_BYTES`].
+    pub fn with_body_limit(mut self, bytes: u64) -> Client {
+        self.max_body = bytes.min(MAX_BODY_BYTES);
+        self
     }
 
     /// Header names that carried a credential (`connector.attach.sensitive-header-record`).
@@ -104,8 +147,8 @@ impl Client {
         self.sensitive.lock().map(|v| v.clone()).unwrap_or_default()
     }
 
-    /// Judge `url` against the declaration and vet the one address its host resolves to.
-    fn admit(&self, url: &Url, headers: &[(String, HeaderValue)]) -> Result<SocketAddr, Failure> {
+    /// Judge `url` against the declaration and vet every address its host resolves to.
+    fn admit(&self, url: &Url, headers: &[(String, HeaderValue)]) -> Result<Vec<SocketAddr>, Failure> {
         let host = url.host_str().unwrap_or_default();
         if !self.allow.permits(host) {
             return Err(deny(ConnectorError::SecretUnpermittedRequest(format!("`{}` is not a host the declaration covers", scrub(url)))));
@@ -121,11 +164,13 @@ impl Client {
             .to_socket_addrs()
             .map_err(|e| Failure::new(FailureTag::Transient, format!("resolving `{host}`: {e}")))?
             .collect();
-        let first = addrs.first().copied().ok_or_else(|| Failure::new(FailureTag::Transient, format!("`{host}` resolves to no address")))?;
+        if addrs.is_empty() {
+            return Err(Failure::new(FailureTag::Transient, format!("`{host}` resolves to no address")));
+        }
         for a in &addrs {
             vet_address(self.origin.host_str().unwrap_or_default(), a.ip()).map_err(deny)?;
         }
-        Ok(first)
+        Ok(addrs)
     }
 
     /// Send one request, following same-origin hops.
@@ -143,12 +188,8 @@ impl Client {
         check_hop(&self.origin, &current).map_err(deny)?;
         for _ in 0..=MAX_HOPS {
             let addr = self.admit(&current, headers)?;
-            let mut builder = Config::builder().max_redirects(0).http_status_as_error(false).timeout_global(Some(REQUEST_TIMEOUT)).save_redirect_history(false);
-            if !headers.is_empty() {
-                // A source declaring any header takes the hardened client, which bypasses the system proxy.
-                builder = builder.proxy(None);
-            }
-            let agent = ureq::Agent::with_parts(builder.build(), DefaultConnector::new(), Pinned(addr));
+            self.vetted.pin(current.host_str().unwrap_or_default(), current.port_or_known_default().unwrap_or(443), addr);
+            let agent = if headers.is_empty() { &self.proxied } else { &self.hardened };
             let mut req = ureq::http::Request::builder().method(method).uri(current.as_str());
             for (name, v) in headers {
                 req = req.header(name.as_str(), v.text());
@@ -174,12 +215,13 @@ impl Client {
                     continue;
                 }
             }
-            let body = resp
-                .body_mut()
-                .with_config()
-                .limit(MAX_BODY_BYTES)
-                .read_to_vec()
-                .map_err(|e| Failure::new(FailureTag::Transient, format!("reading `{}`: {}", scrub(&current), transport_error(&e))))?;
+            let body = resp.body_mut().with_config().limit(self.max_body).read_to_vec().map_err(|e| match e {
+                // A body past the ceiling is past it on every retry.
+                ureq::Error::BodyExceedsLimit(_) => {
+                    Failure::deterministic(FailureTag::Permanent, format!("`{}` answered a body over {} bytes", scrub(&current), self.max_body))
+                }
+                other => Failure::new(FailureTag::Transient, format!("reading `{}`: {}", scrub(&current), transport_error(&other))),
+            })?;
             return Ok(Response { status, headers: headers_out, body, url: current });
         }
         Err(Failure::new(FailureTag::Permanent, format!("`{}` redirected more than {MAX_HOPS} times", scrub(url))))

@@ -45,6 +45,7 @@ RunMetadataTooLarge            = { clause = "run.project.metadata-too-large", gl
 RunStreamUnauthorized          = { clause = "run.project.unauthenticated-upgrade", gloss = "A run-stream request with no valid credential before the upgrade." }
 PipelineDuplicateId            = { clause = "run.declare.duplicate-id", gloss = "One pipeline id declared twice." }
 PipelineSpecInvalid            = { clause = "run.declare.spec-invalid", gloss = "A manifest file the canonical type cannot deserialize." }
+PipelineTableNameCollision     = { clause = "run.declare.table-name-collision", gloss = "Two tables whose destination names fold to one spelling." }
 PipelineUnboundTableName       = { clause = "run.declare.unbound-table-name", gloss = "A destination table named in a spelling the fold does not produce." }
 PipelineReplaceUnsupported     = { clause = "run.declare.replace-unsupported", gloss = "The replacing write mode beside a windowed or chunked load." }
 PipelineUnknownConfigKey       = { clause = "run.declare.config-key", gloss = "A source config key outside the set the source enumerates." }

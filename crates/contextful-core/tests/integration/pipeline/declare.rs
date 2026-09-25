@@ -146,3 +146,32 @@ fn an_undeserializable_manifest_names_file_key_path_and_value() {
     // A store-only manifest declares no pipeline.
     assert!(collect(&[manifest("contextful.toml", "[[pipeline.tables]]\nname = \"filings\"\n")]).unwrap().is_empty());
 }
+
+/// Two tables whose destination names fold to one spelling, within one pipeline or across pipelines, raise
+/// `PipelineTableNameCollision` at validation, naming both declarations.
+// spec: run.declare.table-name-collision@584c7c4c
+#[test]
+fn tables_folding_to_one_destination_name_are_refused() {
+    let within = "[[pipeline]]\nid = \"shop\"\ntables = [\"a-b\", \"a_b\"]\n[pipeline.source]\nname = \"http\"\n";
+    match collect(&[manifest("contextful.toml", within)]) {
+        Err(RunError::PipelineTableNameCollision(m)) => assert!(m.contains("`a-b`") && m.contains("`a_b`") && m.contains("shop_a_b"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    let across = "[[pipeline]]\nid = \"x_y\"\ntables = [\"z\"]\n[pipeline.source]\nname = \"http\"\n\n[[pipeline]]\nid = \"x\"\ntables = [\"y_z\"]\n[pipeline.source]\nname = \"http\"\n";
+    match collect(&[manifest("contextful.toml", across)]) {
+        Err(RunError::PipelineTableNameCollision(m)) => assert!(m.contains("`x_y`") && m.contains("`x`") && m.contains("contextful.toml:1") && m.contains("contextful.toml:7"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(collect(&[manifest("contextful.toml", &within.replace("\"a_b\"", "\"c\""))]).unwrap().len(), 1);
+}
+
+#[test]
+fn a_specification_written_as_a_single_pipeline_table_is_refused() {
+    let typo = "[pipeline]\nid = \"orders\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\n";
+    match read_manifest(&manifest("contextful.toml", typo)) {
+        Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains("[[pipeline]]"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    // A `[pipeline]` holding store tables alone declares no specification.
+    assert!(read_manifest(&manifest("contextful.toml", "[[pipeline.tables]]\nname = \"filings\"\n")).unwrap().is_empty());
+}

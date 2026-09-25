@@ -51,6 +51,9 @@ pub enum RunError {
     /// A manifest file the canonical type cannot deserialize. (`run.declare.spec-invalid`)
     #[error("PipelineSpecInvalid: {0}")]
     PipelineSpecInvalid(String),
+    /// Two tables whose destination names fold to one spelling. (`run.declare.table-name-collision`)
+    #[error("PipelineTableNameCollision: {0}")]
+    PipelineTableNameCollision(String),
     /// One table's pull failing inside a fire. (`run.land.table-failed`)
     #[error("PipelineTableFailed: {0}")]
     PipelineTableFailed(String),
