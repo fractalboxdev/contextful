@@ -16,48 +16,42 @@ are about, the relationships between them, and whether a claim it emitted turned
 It lives on the same tables, commit and enforcement as ingested data, and is reached through
 its own doors. Erasure of a memory subject is the disclosure contract's `erase` operation.
 
-Memory's operations over the five tables, and where they meet the run path, the read face and erasure:
+Memory's tables and what moves rows between them; each edge names the operation, each cylinder a table:
 
 ```mermaid
 flowchart LR
   APP(["application"])
-
   subgraph RUNC["run"]
-    ROWS["landed rows"]
-    COMMIT["post-run commit"]
+    ROWS[("landed rows")]
   end
-
   subgraph READC["read"]
-    DECL["declare shapes"]
-    SYN["synthesize"]
-    RES["resolve entities"]
-    DW["write claims directly"]
-    REV["revise"]
-    REC["recall"]
-    SET["settle outcomes"]
-    READ["enforced relations"]
+    SYN["synthesis pass"]
+    FACE["read face"]
   end
-
   subgraph STOREC["store"]
-    TBL[("memory tables")]
+    FACTS[("memory_facts")]
+    ENT[("memory_entities")]
+    EDGES[("memory_edges")]
+    DL[("dead-letter table")]
+    PRED[("predictions")]
+    OUT[("outcomes")]
+    LAB[("outcome_labels")]
   end
-
   subgraph DISC["disclosure"]
-    ERASE["erase"]
+    ERASER["erasure cascade"]
   end
-
-  ROWS -- "since the pass cursor" --> SYN
-  SYN <--> RES
-  SYN --> REV
-  DW --> REV
-  REV --> COMMIT
-  DECL --> TBL
-  COMMIT --> TBL
-  ERASE -- "tombstones" --> TBL
-  TBL --> REC
-  REC -- "evidence through the caller's session" --> READ
-  REC -- "grounded turn" --> APP
-  APP -- "registrations, observations" --> SET
+  ROWS -->|"extract since cursor"| SYN
+  SYN -->|"resolve mentions"| ENT
+  SYN -->|"relate entities"| EDGES
+  SYN -->|"consolidate, supersede"| FACTS
+  SYN -->|"failed batch"| DL
+  APP -->|"write claims directly"| FACTS
+  FACTS -->|"recall with evidence"| FACE
+  FACE -->|"grounded turn"| APP
+  APP -->|"register prediction"| PRED
+  APP -->|"observe outcome"| OUT
+  PRED & OUT -->|"settle by join"| LAB
+  ERASER -->|"tombstone subject"| FACTS
 ```
 
 ## declare
@@ -79,24 +73,20 @@ Extract, Resolve and Consolidate; the dedup key, evidence support, the audit rec
 - `dead-letter` — A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced.
   *A-read*
 
-One synthesis pass and its dead-letter exits:
+One synthesis batch, from landed rows to a committed claim or the dead-letter table:
 
 ```mermaid
-flowchart TD
-  CUR["pass cursor"] --> EX["extract"]
-  EX --> VAL{"valid against the schema?"}
-  VAL -- "no, attempts left" --> EX
-  VAL -- "MemoryExtractExhausted" --> DL(["dead letter"])
-  VAL -- "yes" --> RS["resolve mentions"]
-  RS -- "MemoryEntityAmbiguous" --> DL
-  RS -- "MemoryEdgeEndpointUnresolved" --> DL
-  RS -- "MemoryUndeclaredRelation" --> DL
-  RS --> CO["consolidate"]
-  CO --> RV["revise"]
-  subgraph RUNW["run write path"]
-    CM["post-run commit"]
-  end
-  RV --> CM
+flowchart LR
+  ROWS[("landed rows")] -->|"batch since cursor"| MODEL(["extraction model"])
+  MODEL -->|"response"| VAL{"output valid?"}
+  VAL -->|"no, attempts left"| MODEL
+  VAL -->|"no: MemoryExtractExhausted"| DL[("dead-letter table")]
+  VAL -->|"yes"| RES{"mentions resolved?"}
+  RES -->|"ambiguous: MemoryEntityAmbiguous"| DL
+  RES -->|"endpoint missing: MemoryEdgeEndpointUnresolved"| DL
+  RES -->|"yes"| REL{"relation type declared?"}
+  REL -->|"no: MemoryUndeclaredRelation"| DL
+  REL -->|"yes, consolidate and commit"| FACTS[("memory_facts")]
 ```
 
 unsettled: What sets the synthesis cadence per shape, and does a shape default give way to a deployment override? owner: memory affects: read.synthesize
@@ -126,11 +116,11 @@ Serving live memory at present time: the two clocks, tier-first ordering, the sc
 The evidence check a claim passes on its way to a grounded turn:
 
 ```mermaid
-flowchart TD
-  M[("memory tables")] --> EV{"evidence readable in session?"}
-  EV -- "MemoryEvidenceOverflow" --> NO(["refused"])
-  EV -- "MemoryEvidenceUnresolved" --> NO
-  EV -- "yes" --> INJ["ground the turn"]
+flowchart LR
+  FACTS[("memory_facts")] -->|"live claim"| EV{"evidence readable in session?"}
+  EV -->|"yes, grounded turn"| APP(["application"])
+  EV -->|"overflow: MemoryEvidenceOverflow"| HELD["withheld claim"]
+  EV -->|"unreadable: MemoryEvidenceUnresolved"| HELD
 ```
 
 unsettled: What supplies a read-side usage ledger, so retention can ask whether a claim was ever recalled rather than whether something cited it? owner: memory affects: read.recall
@@ -164,14 +154,15 @@ Registration, observation and the label view:
 
 ```mermaid
 flowchart LR
-  REG["registration"] -- "OutcomeRegistrationInvalid" --> NO(["refused"])
-  REG --> P[("predictions")]
-  OBS["observation"] -- "OutcomeSourceMismatch" --> NO
-  OBS -- "OutcomeCitationMissing" --> NO
-  OBS --> O[("outcomes")]
-  P --> J["join on prediction id"]
-  O --> J
-  J -- "after the grace period" --> L[("outcome_labels")]
+  APP(["application"]) -->|"registration"| RV{"registration well formed?"}
+  RV -->|"yes"| PRED[("predictions")]
+  RV -->|"no: OutcomeRegistrationInvalid"| APP
+  SRC(["resolution source"]) -->|"observation"| OV{"source and citation match?"}
+  OV -->|"yes"| OUT[("outcomes")]
+  OV -->|"source differs: OutcomeSourceMismatch"| SRC
+  OV -->|"no citation: OutcomeCitationMissing"| SRC
+  PRED -->|"joined within grace"| LAB[("outcome_labels")]
+  OUT -->|"joined within grace"| LAB
 ```
 
 unsettled: At what grain are calibration and confidence reported to a consumer, and which figures derive from the scored view? owner: memory affects: read.settle

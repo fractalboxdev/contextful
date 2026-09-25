@@ -4,6 +4,7 @@
 mod cards;
 mod checks;
 mod corpus;
+mod diagram;
 mod slice;
 mod targets;
 mod scaffold;

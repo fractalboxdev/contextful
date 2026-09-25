@@ -81,3 +81,22 @@ fn the_default_shape_diagram_draws_one_role_per_node() {
     // the primitive filling each role lives in the table above the diagram
     assert!(!aws.contains("Step Functions"), "{aws}");
 }
+
+#[test]
+fn the_default_shape_diagrams_obey_the_diagram_rules() {
+    let s = Scratch::copy();
+    assert!(s.cmd(&["state"]).status.success());
+    let page = s.read("spec/targets.md");
+    let before = s.lint("diagram");
+    let fences: Vec<&str> = page.split("```mermaid\n").skip(1).map(|b| b.split("```").next().unwrap()).collect();
+    let guide = s.read("spec/guide/store.md");
+    let appended: String = fences.iter().map(|f| format!("\n```mermaid\n{f}```\n")).collect();
+    s.write("spec/guide/store.md", &format!("{guide}{appended}"));
+    let mut after = s.lint("diagram");
+    for f in before {
+        if let Some(i) = after.iter().position(|a| *a == f) {
+            after.remove(i);
+        }
+    }
+    assert!(after.is_empty(), "{after:?}");
+}

@@ -35,3 +35,7 @@ resamples = { gloss = "bootstrap resamples" }
 nodes    = { gloss = "graph nodes" }
 runs     = { gloss = "committed runs" }
 times    = { gloss = "multiples of a stated base quantity" }
+edges    = { gloss = "flowchart edges" }
+levels   = { gloss = "nesting levels" }
+participants = { gloss = "sequence diagram participants" }
+messages = { gloss = "sequence diagram messages" }

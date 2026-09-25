@@ -42,10 +42,10 @@ flowchart LR
     end
     SEC["secrets"]
   end
-  TICK --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
+  TICK -- "due tick" --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
   COMP -- "land parts + manifest" --> OBJ
   REC & ORCH & COMP -- "conditional write" --> CAT
-  CALLER --> QF -- "snapshot set" --> OBJ
+  CALLER -- "query" --> QF -- "snapshot set" --> OBJ
   QF -- "catalog read" --> CAT
   SEC -. "credentials by reference" .-> COMP
 ```
@@ -89,10 +89,10 @@ flowchart LR
     end
     SEC["secrets"]
   end
-  TICK --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
+  TICK -- "due tick" --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
   COMP -- "land parts + manifest" --> OBJ
   REC & ORCH & COMP -- "conditional write" --> CAT
-  CALLER --> QF -- "snapshot set" --> OBJ
+  CALLER -- "query" --> QF -- "snapshot set" --> OBJ
   QF -- "catalog read" --> CAT
   SEC -. "credentials by reference" .-> COMP
 ```
@@ -136,10 +136,10 @@ flowchart LR
     end
     SEC["secrets"]
   end
-  TICK --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
+  TICK -- "due tick" --> REC -- "dispatch a due unit" --> ORCH -- "run a step" --> COMP
   COMP -- "land parts + manifest" --> OBJ
   REC & ORCH & COMP -- "conditional write" --> CAT
-  CALLER --> QF -- "snapshot set" --> OBJ
+  CALLER -- "query" --> QF -- "snapshot set" --> OBJ
   QF -- "catalog read" --> CAT
   SEC -. "credentials by reference" .-> COMP
 ```

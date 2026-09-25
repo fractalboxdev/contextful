@@ -160,10 +160,10 @@ pub fn page(c: &Corpus) -> String {
             s.push_str("    end\n");
             s.push_str(&node("SEC", "[", "]", "secrets").replacen("      ", "    ", 1));
             s.push_str("  end\n");
-            s.push_str("  TICK --> REC -- \"dispatch a due unit\" --> ORCH -- \"run a step\" --> COMP\n");
+            s.push_str("  TICK -- \"due tick\" --> REC -- \"dispatch a due unit\" --> ORCH -- \"run a step\" --> COMP\n");
             s.push_str("  COMP -- \"land parts + manifest\" --> OBJ\n");
             s.push_str("  REC & ORCH & COMP -- \"conditional write\" --> CAT\n");
-            s.push_str("  CALLER --> QF -- \"snapshot set\" --> OBJ\n");
+            s.push_str("  CALLER -- \"query\" --> QF -- \"snapshot set\" --> OBJ\n");
             s.push_str("  QF -- \"catalog read\" --> CAT\n");
             s.push_str("  SEC -. \"credentials by reference\" .-> COMP\n");
             s.push_str("```\n");
