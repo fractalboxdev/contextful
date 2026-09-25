@@ -188,7 +188,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
                     Some(Err(e)) => FoldOutcome::Failed(e.to_string()),
                     Some(Ok(true)) | None => fold(&o.store, &decl, at).unwrap_or_else(|e| FoldOutcome::Failed(e.to_string())),
                 };
-                if matches!(outcome, FoldOutcome::Failed(_)) {
+                if outcome.is_failure() {
                     failed += 1;
                 }
                 println!("{t}: {outcome}");

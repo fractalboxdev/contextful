@@ -35,18 +35,33 @@ pub fn scheduled(state: &TableState, now: Instant) -> bool {
 /// A pass's outcome for one table (`store.fold.result`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FoldOutcome {
-    /// A snapshot was published.
-    Folded { snapshot_id: String, runs: usize, rows: u64 },
+    /// A snapshot was published; `collection` carries why the collection after it failed,
+    /// which leaves the snapshot published (`store.fold.collection-failed`).
+    Folded { snapshot_id: String, runs: usize, rows: u64, collection: Option<String> },
     /// No committed run was left to fold.
     NothingLanded,
     /// The pass failed for this table; the others continue.
     Failed(String),
 }
 
+impl FoldOutcome {
+    /// Whether the command reporting this outcome exits non-zero: the pass failed, or it
+    /// published and its collection failed (`store.fold.collection-failed`).
+    pub fn is_failure(&self) -> bool {
+        matches!(self, FoldOutcome::Failed(_) | FoldOutcome::Folded { collection: Some(_), .. })
+    }
+}
+
 impl std::fmt::Display for FoldOutcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FoldOutcome::Folded { snapshot_id, runs, rows } => write!(f, "folded {snapshot_id} ({runs} runs, {rows} rows)"),
+            FoldOutcome::Folded { snapshot_id, runs, rows, collection } => {
+                write!(f, "folded {snapshot_id} ({runs} runs, {rows} rows)")?;
+                match collection {
+                    Some(e) => write!(f, "; collection failed: {e}"),
+                    None => Ok(()),
+                }
+            }
             FoldOutcome::NothingLanded => f.write_str("nothing-landed"),
             FoldOutcome::Failed(e) => write!(f, "failed: {e}"),
         }

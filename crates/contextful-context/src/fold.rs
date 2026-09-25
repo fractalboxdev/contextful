@@ -65,22 +65,24 @@ pub enum Committed {
 
 /// One pass over one table: stage, publish, then collect what retention and earlier
 /// passes left behind. Retention ages from the fold, not from a landing
-/// (`store.fold.retention`), so a pass with nothing to fold still collects; and a
-/// collection that fails leaves the published snapshot published, since the pointer
-/// has already moved.
+/// (`store.fold.retention`), so a pass with nothing to fold still collects. A collection
+/// that fails is reported, beside a published snapshot that stays published, since the
+/// pointer has already moved (`store.fold.collection-failed`).
 pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome> {
     match prepare(store, decl, now)? {
-        Prepared::NothingLanded => {
-            collect(store, decl, now).ok();
-            Ok(FoldOutcome::NothingLanded)
-        }
+        Prepared::NothingLanded => Ok(match collect(store, decl, now) {
+            Ok(()) => FoldOutcome::NothingLanded,
+            Err(e) => FoldOutcome::Failed(format!("nothing to fold; collection failed: {e}")),
+        }),
         Prepared::Staged(staged) => {
             let runs = staged.runs;
             match commit(store, *staged)? {
-                Committed::Published(m) => {
-                    collect(store, decl, now).ok();
-                    Ok(FoldOutcome::Folded { snapshot_id: m.snapshot_id.to_string(), runs, rows: m.row_count })
-                }
+                Committed::Published(m) => Ok(FoldOutcome::Folded {
+                    snapshot_id: m.snapshot_id.to_string(),
+                    runs,
+                    rows: m.row_count,
+                    collection: collect(store, decl, now).err().map(|e| e.to_string()),
+                }),
                 Committed::Lost => Ok(FoldOutcome::Failed("the pointer moved during the pass; nothing was published".into())),
             }
         }

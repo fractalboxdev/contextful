@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 14 | 16 | 0 | 0 | 0 |
 | `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |
-| `store` | 1 | 14 | 139 | 37 | 12 | 8 | 74 | 0 | 72 |
+| `store` | 1 | 14 | 140 | 37 | 12 | 8 | 75 | 0 | 72 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 144 | 1403 | 449 | 161 | 101 | 239 | 0 | |
+| **total** | 19 | 144 | 1404 | 449 | 161 | 101 | 240 | 0 | |
 
 Decision records: 18.
 
@@ -25,7 +25,7 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 15 | 3 | passing |
 | 1 — The authority core | 14 | 191 | 133 | passing |
-| 2 — The store | 8 | 113 | 74 | passing |
+| 2 — The store | 8 | 114 | 75 | passing |
 | 3 — The run path | 11 | 169 | 0 | absent |
 | 4 — Ingest | 22 | 328 | 0 | absent |
 | 5 — The read face under enforcement | 16 | 203 | 0 | absent |
@@ -232,6 +232,7 @@ Unscheduled operations: 9.
 | `store.declare.unkeyed-union` | `crates/contextful-context/tests/integration/declare.rs::an_unkeyed_table_reads_as_the_union_of_its_runs` | performed |
 | `store.declare.write-mode` | `crates/contextful-core/tests/integration/store/declare.rs::write_mode_is_append_by_default_or_replace` | performed |
 | `store.encrypt.key-unbound` | `crates/contextful-context/tests/integration/encrypt.rs::an_unbound_key_source_refuses_to_open_the_store` | performed |
+| `store.fold.collection-failed` | `crates/contextful-context/tests/integration/fold.rs::a_failed_collection_does_not_unpublish_the_snapshot` | performed |
 | `store.fold.includes-runs` | `crates/contextful-context/tests/integration/fold.rs::a_snapshot_names_the_runs_it_folded` | performed |
 | `store.fold.lost-pointer` | `crates/contextful-context/tests/integration/fold.rs::a_pass_losing_the_pointer_publishes_nothing` | performed |
 | `store.fold.partial-snapshot` | `crates/contextful-context/tests/integration/fold.rs::a_snapshot_missing_a_file_it_names_is_not_published` | performed |

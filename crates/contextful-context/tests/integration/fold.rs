@@ -285,8 +285,8 @@ fn an_idle_table_still_collects_what_retention_allows() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("2")]]);
 }
 
-/// A collection that fails leaves the published snapshot published: the pointer has
-/// already moved, so the pass reports what it did, not what retention could not finish.
+/// A collection that fails reports its failure: beside `folded` when the pass published, since the snapshot stays published, and as `failed` otherwise; either way the command exits non-zero.
+// spec: store.fold.collection-failed@6ed6a40e
 #[test]
 fn a_failed_collection_does_not_unpublish_the_snapshot() {
     let f = Fixture::new();
@@ -304,14 +304,23 @@ fn a_failed_collection_does_not_unpublish_the_snapshot() {
     assert!(run_dir.is_dir());
 
     let outcome = fold(&f.store, &broken, at("2030-01-03T00:00:00Z")).unwrap();
-    assert!(matches!(outcome, FoldOutcome::Folded { .. }), "retention failure reported as {outcome:?}");
+    let FoldOutcome::Folded { collection: Some(why), .. } = &outcome else { panic!("retention failure reported as {outcome:?}") };
+    assert!(why.contains("retain_runs"), "{why}");
+    assert!(outcome.is_failure());
+    assert!(outcome.to_string().starts_with("folded snapshot-") && outcome.to_string().contains("collection failed"), "{outcome}");
     let (chain, _) = f.store.chain("events").unwrap();
     assert_eq!(chain.len(), 2, "the pointer did not move");
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("2")]]);
     assert!(run_dir.is_dir(), "the collection ran despite its window");
 
+    // A pass with nothing to fold whose collection fails reports the table failed.
+    let idle = fold(&f.store, &broken, at("2030-01-03T00:30:00Z")).unwrap();
+    assert!(matches!(&idle, FoldOutcome::Failed(why) if why.contains("retain_runs")), "{idle:?}");
+
     // The same pass with a window that parses collects what it could not before.
-    fold(&f.store, &d, at("2030-01-03T01:00:00Z")).unwrap();
+    let clean = fold(&f.store, &d, at("2030-01-03T01:00:00Z")).unwrap();
+    assert_eq!(clean, FoldOutcome::NothingLanded);
+    assert!(!clean.is_failure());
     assert!(!run_dir.exists());
 }
 
