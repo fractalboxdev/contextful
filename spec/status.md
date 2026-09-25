@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `assurance` | 2 | 13 | 175 | 46 | 18 | 13 | 49 | 0 | 49 |
 | `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 91 | 0 | 91 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 0 | 0 | 0 |
-| `corpus` | 1 | 9 | 65 | 26 | 7 | 0 | 25 | 0 | 25 |
+| `corpus` | 1 | 9 | 66 | 27 | 7 | 0 | 27 | 0 | 27 |
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 14 | 16 | 0 | 0 | 0 |
 | `run` | 3 | 24 | 278 | 79 | 34 | 24 | 0 | 0 | 0 |
 | `store` | 1 | 14 | 140 | 37 | 12 | 8 | 75 | 0 | 75 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 0 | 0 | 0 |
-| **total** | 19 | 144 | 1404 | 449 | 161 | 101 | 240 | 0 | |
+| **total** | 19 | 144 | 1405 | 450 | 161 | 101 | 242 | 0 | |
 
 Decision records: 18.
 
@@ -194,6 +194,8 @@ Unscheduled operations: 9.
 | `corpus.guide.non-normative` | `tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding` | performed |
 | `corpus.rationale.contract-adr` | `spec/pins.toml` | performed |
 | `corpus.render.card` | `tools/spec/tests/integration/readable.rs::state_writes_a_card_per_contract_and_a_stale_card_is_a_render_finding` | performed |
+| `corpus.render.diagram-boundary` | `tools/spec/tests/integration/readable.rs::a_flowchart_node_standing_for_a_contract_or_boundary_is_a_diagram_finding` | performed |
+| `corpus.render.diagram-node` | `tools/spec/tests/integration/readable.rs::a_flowchart_node_bundling_attributes_or_naming_an_error_is_a_diagram_finding` | performed |
 | `corpus.state.acceptance` | `spec/pins.toml` | performed |
 | `corpus.state.acceptance-first` | `spec/pins.toml` | performed |
 | `corpus.state.deferred-depth` | `spec/pins.toml` | performed |

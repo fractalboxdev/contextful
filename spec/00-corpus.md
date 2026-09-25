@@ -195,7 +195,8 @@ The generated files, and the vocabulary no authored file carries.
   *P8*
 - `diagram-boundary` — A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.
   *because a boundary drawn as a node hides which components sit inside it and which edges cross it*
-  *P8*
+- `diagram-node` — A flowchart node names one entity or one process: its label holds at most 5 words and no `·` separator, `<br/>` or error identifier. A node breaking this raises `SpecDiagramNode`.
+  *because a box of bundled attributes hides the entities and the flow between them; a limit, an error or an attribute rides an edge label or the prose*
 
 
 ## targets

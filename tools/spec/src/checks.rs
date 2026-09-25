@@ -1196,6 +1196,57 @@ static DATED: LazyLock<Regex> = LazyLock::new(|| {
 static COUNTERFACTUAL: LazyLock<Regex> = LazyLock::new(|| word_re(&["will", "would", "shall"]));
 static BANNED: LazyLock<Regex> = LazyLock::new(|| word_re(&["seam", "seams", "load-bearing", "wedge", "rung", "rungs", "land-grab", "axiom", "axioms"]));
 
+static BREAK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<br\s*/?>").unwrap());
+static EDGE_PIPE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\|[^|]*\|").unwrap());
+static EDGE_INLINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\s(?:--|==|-\.)\s+(?:"[^"]*"|[^"]*?)\s+(?:-->|==>|\.->|---|===|-\.-)(\s|$)"#).unwrap());
+static NODE_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|[^\w-])[A-Za-z_](?:[\w-]*\w)?(\(\[|\[\[|\[\(|\(\(|\{\{|\[/|\[\\|\[|\(|\{|>)").unwrap());
+
+/// The label of every node a flowchart line declares, edge labels removed first. A
+/// `subgraph` title is a container, not a node, and a directive line declares none.
+pub fn flowchart_nodes(line: &str) -> Vec<String> {
+    let t = line.trim();
+    let head = t.split_whitespace().next().unwrap_or("");
+    let directive = ["subgraph", "end", "direction", "classDef", "class", "style", "linkStyle", "click"];
+    if t.starts_with("%%") || directive.contains(&head) {
+        return Vec::new();
+    }
+    let t = EDGE_PIPE.replace_all(t, "");
+    let t = EDGE_INLINE.replace_all(&t, " --> $1");
+    let mut out = Vec::new();
+    let mut at = 0;
+    while let Some(m) = NODE_OPEN.captures_at(&t, at) {
+        let open = m.get(1).unwrap();
+        let close = match open.as_str() {
+            "([" => "])",
+            "[[" => "]]",
+            "[(" => ")]",
+            "((" => "))",
+            "{{" => "}}",
+            "[/" => "/]",
+            "[\\" => "\\]",
+            "[" | ">" => "]",
+            "(" => ")",
+            _ => "}",
+        };
+        let rest = &t[open.end()..];
+        let (label, used) = match rest.strip_prefix('"') {
+            Some(q) => match q.find('"') {
+                Some(e) => (&q[..e], e + 2 + q[e + 1..].find(close).map_or(0, |x| x + close.len())),
+                None => (q, rest.len()),
+            },
+            None => match rest.find(close) {
+                Some(e) => (&rest[..e], e + close.len()),
+                None => (rest, rest.len()),
+            },
+        };
+        out.push(label.trim().to_string());
+        at = open.end() + used.max(1);
+    }
+    out
+}
+
 fn render(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
     let mut generated = vec![
@@ -1213,10 +1264,15 @@ fn render(c: &Corpus) -> Vec<Finding> {
             out.push(f("render", rel, 0, "SpecStaleRender", format!("{rel} differs from regeneration; run `contextful-spec state` and `extract`")));
         }
     }
-    // a flowchart node label: a quoted string opening a node shape, never an edge label
-    let node_label = Regex::new(r#"[\[({>]"([^"]*)""#).unwrap();
     let names: Vec<String> = c.reg.contracts.keys().map(|k| regex::escape(k)).collect();
     let boundary = Regex::new(&format!(r"(?i)\b(({}) contract|boundary)\b", names.join("|"))).unwrap();
+    let node_words = c
+        .reg
+        .fragments
+        .get("corpus")
+        .and_then(|fr| fr.limit.get("corpus-node-words"))
+        .and_then(|l| l.value.as_integer())
+        .unwrap_or(5) as usize;
     for d in &c.docs {
         let mut flowchart = false;
         let mut first = false;
@@ -1234,12 +1290,29 @@ fn render(c: &Corpus) -> Vec<Finding> {
                 first = false;
                 continue;
             }
-            if !flowchart || l.trim_start().starts_with("subgraph") {
+            if !flowchart {
                 continue;
             }
-            for m in node_label.captures_iter(l) {
-                if let Some(b) = boundary.find(&m[1]) {
-                    out.push(f("render", &d.rel, n, "SpecDiagramBoundary", format!("node `{}` stands for `{}`; draw it as a `subgraph` holding its components", &m[1], b.as_str())));
+            for label in flowchart_nodes(l) {
+                if let Some(b) = boundary.find(&label) {
+                    out.push(f("render", &d.rel, n, "SpecDiagramBoundary", format!("node `{label}` stands for `{}`; draw it as a `subgraph` holding its components", b.as_str())));
+                }
+                let flat = BREAK.replace_all(&label, " ");
+                let words = flat.split_whitespace().count();
+                let error = flat.split(|ch: char| !ch.is_alphanumeric() && ch != '_').find(|w| c.reg.error_owner(w).is_some());
+                let why = if label.contains('·') {
+                    Some("bundles attributes with `·`".to_string())
+                } else if BREAK.is_match(&label) {
+                    Some("stacks lines with `<br/>`".to_string())
+                } else if let Some(e) = error {
+                    Some(format!("names error `{e}`; an error rides the edge that raises it"))
+                } else if words > node_words {
+                    Some(format!("holds {words} words, over {node_words}"))
+                } else {
+                    None
+                };
+                if let Some(why) = why {
+                    out.push(f("render", &d.rel, n, "SpecDiagramNode", format!("node `{label}` {why}; a node names one entity or process")));
                 }
             }
         }

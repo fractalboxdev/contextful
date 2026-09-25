@@ -137,6 +137,7 @@ fn an_unbackticked_axiom_is_a_banned_word_and_a_lean_identifier_is_not() {
     assert_eq!(codes(&s.lint("render"), "SpecBannedWord").len(), 1);
 }
 
+// spec: corpus.render.diagram-boundary@e86f00e0
 #[test]
 fn a_flowchart_node_standing_for_a_contract_or_boundary_is_a_diagram_finding() {
     let s = Scratch::copy();
@@ -147,4 +148,24 @@ fn a_flowchart_node_standing_for_a_contract_or_boundary_is_a_diagram_finding() {
     let squeezed = "```mermaid\nflowchart LR\n  F[\"fold\"] -- \"read contract\" --> Q[\"read contract:<br/>query face\"]\n  Q --> T{\"trust boundary\"}\n```\n";
     s.write(GUIDE, &format!("{text}\n{squeezed}"));
     assert_eq!(codes(&s.lint("render"), "SpecDiagramBoundary").len(), 2);
+}
+
+// spec: corpus.render.diagram-node@b820d37c
+#[test]
+fn a_flowchart_node_bundling_attributes_or_naming_an_error_is_a_diagram_finding() {
+    let s = Scratch::copy();
+    let text = s.read(GUIDE);
+    let clean = "```mermaid\nflowchart LR\n  subgraph ENGINE[\"engine · store\"]\n    F[\"fold the table\"] -->|\"StoreStaleFence · 409\"| R([refused])\n    F -- \"8 hops, 10000 nodes\" --> Q{clears the floor?}\n  end\n  Q --> C[(catalog)]\n```\n";
+    s.write(GUIDE, &format!("{text}\n{clean}"));
+    let found = codes(&s.lint("render"), "SpecDiagramNode");
+    for label in ["fold the table", "refused", "clears the floor?", "catalog", "engine · store", "8 hops", "409"] {
+        assert!(!found.iter().any(|m| m.contains(&format!("`{label}`"))), "`{label}` is no bundled node: {found:?}");
+    }
+    let bundled = "```mermaid\nflowchart LR\n  D[\"engine · scheduler\"] --> B[\"fold<br/>compact\"]\n  B --> W[write the snapshot and every declared sidecar]\n  W --> E([StorePartialSnapshot])\n  E --> OK((done))\n```\n";
+    s.write(GUIDE, &format!("{text}\n{bundled}"));
+    let found = codes(&s.lint("render"), "SpecDiagramNode");
+    for label in ["engine · scheduler", "fold<br/>compact", "write the snapshot and every declared sidecar", "StorePartialSnapshot"] {
+        assert!(found.iter().any(|m| m.contains(label)), "no finding for `{label}`: {found:?}");
+    }
+    assert!(!found.iter().any(|m| m.contains("`done`")), "{found:?}");
 }

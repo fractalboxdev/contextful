@@ -37,6 +37,7 @@ SpecBannedWord         = { clause = "corpus.render.banned-vocabulary", gloss = "
 SpecLocalPath          = { clause = "corpus.render.local-path", gloss = "An absolute path from a local machine." }
 SpecAsciiDiagram       = { clause = "corpus.render.diagram", gloss = "Box-drawing outside a mermaid fence." }
 SpecDiagramBoundary    = { clause = "corpus.render.diagram-boundary", gloss = "A flowchart node standing for a contract or a boundary instead of a container." }
+SpecDiagramNode        = { clause = "corpus.render.diagram-node", gloss = "A flowchart node bundling attributes, a limit or an error instead of naming one entity or process." }
 SpecGuide              = { clause = "corpus.guide.bad-guide", gloss = "A missing or malformed guide, or one restating a rule." }
 
 [limit]
@@ -46,4 +47,5 @@ corpus-file-lines       = { clause = "corpus.anatomy.file-length", value = 900, 
 corpus-because-words    = { clause = "corpus.rationale.why-cell", value = 30, unit = "words", basis = "chosen", gloss = "Longest `because` cell." }
 corpus-record-words     = { clause = "corpus.rationale.record-anatomy", value = 400, unit = "words", basis = "chosen", gloss = "Longest principle record." }
 corpus-adr-section-words = { clause = "corpus.rationale.contract-adr", value = 250, unit = "words", basis = "chosen", gloss = "Longest section of a contract ADR." }
+corpus-node-words       = { clause = "corpus.render.diagram-node", value = 5, unit = "words", basis = "chosen", gloss = "Longest flowchart node label." }
 corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "words", basis = "chosen", gloss = "Longest guide, diagrams excluded." }
