@@ -35,7 +35,7 @@ pub enum PipelineCmd {
         /// The project manifest; `pipelines/*.toml` and `pipelines/*.json` beside it are read too.
         #[arg(long, default_value = "contextful.toml")]
         declaration: PathBuf,
-        /// The run id of the fire; a pipeline with several tables suffixes it with each table.
+        /// The run id of the fire; a pipeline with several tables suffixes it with each destination table name.
         #[arg(long)]
         run_id: Option<String>,
         #[arg(long)]
@@ -153,7 +153,8 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
             let mut failed: Vec<String> = Vec::new();
             for t in &spec.tables {
                 let table = spec.table_name(t.name());
-                let run_id = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{}", t.name()) };
+                // The destination name is path-safe, so a run id built from it is too.
+                let run_id = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{table}") };
                 let plan = plan(&spec, t.name())?;
                 let connector: ConnectorPin = plan.connector_pin(&artifact);
                 let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
