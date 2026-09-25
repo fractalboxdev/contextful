@@ -22,35 +22,31 @@ From declaration to a published table, and the contracts each step meets:
 
 ```mermaid
 flowchart LR
-  MF["contextful.toml, pipelines/*.toml, pipelines/*.json"] -->|declare| SPEC
+  MF[("pipeline manifests")] -->|"declare"| SPEC
   subgraph CONN["connector contract"]
-    SRC["source"]
+    SRC["connector source"]
   end
   subgraph RUNC["run contract"]
-    subgraph P31["31-pipeline"]
-      SPEC["PipelineSpec · content_hash"]
-      PLAN["plan · flat node list"]
-      ST["secret guard, normalize, transform chain"]
-      LAND["land · batch write, commit"]
-    end
-    subgraph R30["30-run"]
-      RUN["run substrate"]
-    end
+    SPEC["PipelineSpec"]
+    PLAN["plan"]
+    RUN["run substrate"]
+    ST["staging area"]
+    LAND["land path"]
   end
   subgraph STORE["store contract"]
-    CH[("chunk plan · catalog")]
+    CH[("chunk plan")]
     CS[("context store")]
-    MAN["snapshot manifest · contract identity, freshness, build"]
+    MAN[("snapshot manifest")]
   end
-  SPEC -->|compile| PLAN
-  PLAN -->|"lowering"| RUN
+  SPEC -->|"compile"| PLAN
+  PLAN -->|"lower"| RUN
   SPEC -->|"backfill, seed"| CH
-  CH --> RUN
-  SRC --> RUN
-  RUN --> ST
-  ST --> LAND
-  LAND --> CS
-  LAND -->|publish| MAN
+  CH -->|"chunks"| RUN
+  SRC -->|"batches"| RUN
+  RUN -->|"stage batch"| ST
+  ST -->|"staged batch"| LAND
+  LAND -->|"batch write, commit"| CS
+  LAND -->|"publish"| MAN
 ```
 
 ## declare
@@ -179,21 +175,21 @@ The stage order from pull to commit, the one destination, the ingest tally and c
 ```mermaid
 flowchart LR
   subgraph RUNC["run contract"]
-    P[pull] --> G[secret guard]
-    G --> J[(recorded pull)]
-    J --> N[normalize]
-    N --> T[transform chain]
-    T --> R[write-path redaction]
-    R --> S{sink capability}
-    S -->|native| W[batch write]
-    S -->|relational| X[shred to child tables] --> W
+    SRC["connector source"] -->|"pulled batch"| G["secret guard"]
+    G -->|"guarded batch"| J[("recorded pull")]
+    J -->|"normalize"| T["transform chain"]
+    T -->|"transformed rows"| R["write-path redaction"]
+    R -->|"redacted rows"| S{"sink capability"}
+    S -->|"native"| W["batch writer"]
+    S -->|"relational"| X["child-table shredder"]
+    X -->|"child rows"| W
   end
   subgraph STORE["store contract"]
-    C["commit marker · rows + position"]
-    K[(catalog cache)]
+    C["commit marker"]
+    K[("catalog cache")]
   end
-  W --> C
-  C --> K
+  W -->|"rows + position"| C
+  C -->|"cached position"| K
 ```
 
 unsettled: Which process carries the parse boundary, a child per input or one long-lived extractor, and what wall-clock and memory budget does one input receive? owner: pipeline affects: run.land
@@ -280,16 +276,16 @@ A published table's contract identity, build, freshness and holds, committed wit
 ```mermaid
 flowchart LR
   subgraph RUNC["run contract"]
-    B["build"] --> ST["materialize into staging"]
-    ST --> CK{"columns, types, grain match the declared contract?"}
-    CK -->|no| REF["PipelineContractMismatch · last published state keeps serving"]
-    HOLD["hold · build id, principal, expiry"]
+    B["pipeline build"] -->|"materialize"| ST[("staging tables")]
+    ST -->|"staged tables"| CK{"matches the declared contract?"}
+    CK -->|"no: PipelineContractMismatch"| KEEP["last published state"]
+    HOLD["collection hold"]
   end
   subgraph STORE["store contract"]
-    MC["snapshot manifest commit · data, contract identity, freshness, build"]
+    MC[("snapshot manifest")]
   end
-  CK -->|yes| MC
-  MC --> LOGS["contract-history, builds, holds logs · derived from manifests"]
+  CK -->|"yes, commit"| MC
+  MC -->|"derives"| LOGS[("history logs")]
   HOLD -.->|"collection skips"| MC
 ```
 

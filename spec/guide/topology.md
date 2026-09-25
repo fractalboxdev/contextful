@@ -31,26 +31,24 @@ flowchart LR
   ANALYST(["analyst"])
   BUCKET[("bucket")]
 
-  subgraph SERVER["one server"]
+  subgraph SERVER["one server running contextful-full"]
     TICK["cadence tick"]
-    subgraph FULL["contextful-full"]
-      STEP["journaled connector step"]
-    end
-    STORE["store"]
+    STEP["journaled connector step"]
+    STORE[("store")]
   end
 
   subgraph PROV["function-class provider"]
     HOP["routing hop"]
     RET["retrieval container"]
-    EDGE["contextful-edge · function-class target"]
+    EDGE["contextful-edge"]
   end
 
-  TICK --> STEP
+  TICK -- "due connector" --> STEP
   STEP -- "parts + manifest" --> STORE
   STORE -- "push" --> BUCKET
   BUCKET -- "pull" --> EDGE
-  ANALYST --> HOP --> RET
-  RET --> EDGE
+  ANALYST -- "query + credential" --> HOP -- "same credential" --> RET
+  RET -- "reads snapshot" --> EDGE
 ```
 
 - The cadence tick fires. The reconciler holds the deployment's cadence lease and renews it on a fixed interval ({{topology.coordinate.cadence-lease-renewal}}). The fallback cron fires only after taking that same lease ({{topology.coordinate.cadence-fallback}}), so two schedulers never dispatch one unit twice.

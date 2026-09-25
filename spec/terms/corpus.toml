@@ -9,6 +9,7 @@ rationale = {}
 state     = {}
 targets   = {}
 render    = {}
+diagram   = {}
 guide     = {}
 
 [error]
@@ -35,8 +36,19 @@ SpecDatedProse         = { clause = "corpus.render.dated-prose", gloss = "Build-
 SpecCounterfactual     = { clause = "corpus.render.counterfactual", gloss = "Future or conditional mood in a contract file." }
 SpecBannedWord         = { clause = "corpus.render.banned-vocabulary", gloss = "A banned noun, refused name or provenance link." }
 SpecLocalPath          = { clause = "corpus.render.local-path", gloss = "An absolute path from a local machine." }
-SpecAsciiDiagram       = { clause = "corpus.render.diagram", gloss = "Box-drawing outside a mermaid fence." }
-SpecDiagramBoundary    = { clause = "corpus.render.diagram-boundary", gloss = "A flowchart node standing for a contract or a boundary instead of a container." }
+SpecAsciiDiagram       = { clause = "corpus.diagram.fence", gloss = "Box-drawing outside a mermaid fence." }
+SpecDiagramBoundary    = { clause = "corpus.diagram.boundary", gloss = "A flowchart node standing for a contract or a boundary instead of a container." }
+SpecDiagramNode        = { clause = "corpus.diagram.node", gloss = "A flowchart node bundling attributes, naming an error or an operation, or over its word bound." }
+SpecDiagramShape       = { clause = "corpus.diagram.shape", gloss = "A table, store, log or queue drawn other than as a cylinder, or a question drawn other than as a decision." }
+SpecDiagramEdge        = { clause = "corpus.diagram.edge", gloss = "A two-way edge, an unlabelled edge between non-decision nodes, or an edge label over its bound." }
+SpecDiagramDecision    = { clause = "corpus.diagram.decision", gloss = "A decision node with a long label, an error name, no incoming edge, or exits not each labelled with a distinct outcome." }
+SpecDiagramBranch      = { clause = "corpus.diagram.branch", gloss = "A non-decision node branching on a condition through its edge labels." }
+SpecDiagramOrphan      = { clause = "corpus.diagram.connected", gloss = "A flowchart node no edge reaches, directly or through its subgraph." }
+SpecDiagramDuplicate   = { clause = "corpus.diagram.unique-label", gloss = "Two nodes of one flowchart carrying one label." }
+SpecDiagramLayout      = { clause = "corpus.diagram.layout", gloss = "A flowchart without a direction, with a subgraph direction, nested too deep, or over its size." }
+SpecDiagramSequence    = { clause = "corpus.diagram.sequence", gloss = "A sequence diagram with undeclared or unused participants, or over a size bound." }
+SpecDiagramMessage     = { clause = "corpus.diagram.message", gloss = "A sequence message or note over its word bound." }
+SpecDiagramState       = { clause = "corpus.diagram.state", gloss = "A state diagram without one start, with an unreachable or dead-end state, or a long transition label." }
 SpecGuide              = { clause = "corpus.guide.bad-guide", gloss = "A missing or malformed guide, or one restating a rule." }
 
 [limit]
@@ -46,4 +58,17 @@ corpus-file-lines       = { clause = "corpus.anatomy.file-length", value = 900, 
 corpus-because-words    = { clause = "corpus.rationale.why-cell", value = 30, unit = "words", basis = "chosen", gloss = "Longest `because` cell." }
 corpus-record-words     = { clause = "corpus.rationale.record-anatomy", value = 400, unit = "words", basis = "chosen", gloss = "Longest principle record." }
 corpus-adr-section-words = { clause = "corpus.rationale.contract-adr", value = 250, unit = "words", basis = "chosen", gloss = "Longest section of a contract ADR." }
+corpus-node-words       = { clause = "corpus.diagram.node", value = 5, unit = "words", basis = "chosen", gloss = "Longest flowchart node label." }
+corpus-edge-words       = { clause = "corpus.diagram.edge", value = 5, unit = "words", basis = "chosen", gloss = "Longest flowchart edge label." }
+corpus-decision-words   = { clause = "corpus.diagram.decision", value = 8, unit = "words", basis = "chosen", gloss = "Longest decision node label." }
+corpus-subgraph-depth   = { clause = "corpus.diagram.layout", value = 2, unit = "levels", basis = "chosen", gloss = "Deepest subgraph nesting." }
+corpus-chart-nodes      = { clause = "corpus.diagram.layout", value = 20, unit = "nodes", basis = "chosen", gloss = "Most nodes in one flowchart." }
+corpus-chart-edges      = { clause = "corpus.diagram.layout", value = 25, unit = "edges", basis = "chosen", gloss = "Most edges in one flowchart." }
+corpus-participants     = { clause = "corpus.diagram.sequence", value = 6, unit = "participants", basis = "chosen", gloss = "Most participants in one sequence diagram." }
+corpus-messages         = { clause = "corpus.diagram.sequence", value = 15, unit = "messages", basis = "chosen", gloss = "Most messages in one sequence diagram." }
+corpus-self-messages    = { clause = "corpus.diagram.sequence", value = 2, unit = "messages", basis = "chosen", gloss = "Most messages from a participant to itself." }
+corpus-fragment-depth   = { clause = "corpus.diagram.sequence", value = 2, unit = "levels", basis = "chosen", gloss = "Deepest fragment nesting." }
+corpus-message-words    = { clause = "corpus.diagram.message", value = 8, unit = "words", basis = "chosen", gloss = "Longest sequence message label." }
+corpus-note-words       = { clause = "corpus.diagram.message", value = 12, unit = "words", basis = "chosen", gloss = "Longest sequence note." }
+corpus-transition-words = { clause = "corpus.diagram.state", value = 6, unit = "words", basis = "chosen", gloss = "Longest state transition label." }
 corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "words", basis = "chosen", gloss = "Longest guide, diagrams excluded." }

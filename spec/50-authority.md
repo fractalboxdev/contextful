@@ -22,52 +22,38 @@ The path of a credential from issuance to the effects it authorizes:
 
 ```mermaid
 flowchart LR
-  IDP["identity provider"]
-  ADMIN["holder of an admin grant"]
-  LINK["identity links<br/>scim_email · oidc_sub"]
+  IDP(["identity provider"])
+  ADMIN(["admin grant holder"])
   subgraph ISS["issuer"]
-    EXCH["exchange"]
-    POL["issuance policy<br/>audience · lifetime ceiling"]
+    EXCH["token exchange"]
     PORT["signing port"]
   end
   subgraph HOLD["holder"]
-    CRED["capability credential<br/>subject tuple + grants"]
+    CRED["capability credential"]
     CHILD["child credential"]
   end
   subgraph CPZ["checkpoint"]
-    KEYS["issuer key set<br/>static pins · published route"]
-    REV["denylist · revocation epoch"]
-    CP{"verify"}
+    KEYS["issuer key set"]
+    REV["denylist"]
+    CP{"chain verifies?"}
   end
   AA["admitted authority"]
+  NO["refused credential"]
   subgraph ENF["enforcement"]
     RELS["registered relations"]
   end
-  subgraph READ["read"]
-    RS["read surfaces"]
-  end
-  subgraph RUN["run"]
-    RLE["row-landing effects"]
-  end
-  subgraph DISC["disclosure"]
-    REACH["reachable set"]
-  end
   IDP -- "verified assertion" --> EXCH
-  IDP -- "directory provisioning" --> LINK
-  LINK --> REACH
   ADMIN -- "mint" --> PORT
-  EXCH -- "role_grants · default_grants" --> PORT
-  POL --> PORT
-  PORT --> CRED
-  CRED -- "attenuate: append a signed block" --> CHILD
-  CRED --> CP
-  CHILD --> CP
-  KEYS --> CP
-  REV --> CP
-  CP --> AA
-  AA --> RELS
-  AA --> RS
-  AA --> RLE
+  EXCH -- "role and default grants" --> PORT
+  PORT -- "subject tuple, grants" --> CRED
+  CRED -- "attenuate: append a block" --> CHILD
+  CRED -- "presented" --> CP
+  CHILD -- "presented" --> CP
+  KEYS -- "static pins, published route" --> CP
+  REV -- "revocation epoch" --> CP
+  CP -- "yes" --> AA
+  CP -- "no" --> NO
+  AA -- "reads and row-landing effects" --> RELS
 ```
 
 ## identify
@@ -209,23 +195,23 @@ Deriving a narrower child offline, and the narrowing legality of each grant dime
 A derivation, from the holder's append to the checkpoint's recheck:
 
 ```mermaid
-flowchart TD
+flowchart LR
   subgraph HOLD["holder"]
-    P["parent credential, bytes unchanged"] --> D["append a signed block<br/>no issuer round trip"]
+    P["parent credential"]
   end
-  D --> W{"broader on actions, tables,<br/>templates or aggregate?"}
-  W -- yes --> R1["AttenuationWidens"]
-  W -- no --> X{"expiry past the parent's?"}
-  X -- yes --> R2["AttenuationExpiryExtended"]
-  X -- no --> T{"tenant scope dropped<br/>or another tenant named?"}
-  T -- yes --> R3["AttenuationTenantDropped"]
-  T -- no --> O{"on_behalf_of differs?"}
-  O -- yes --> R4["AuthoritySubjectRebound"]
-  O -- no --> C["child credential<br/>own revocation identifier"]
+  P -- "append signed block offline" --> W{"broader than the parent?"}
+  W -- "yes: AttenuationWidens" --> R["refused child"]
+  W -- "no" --> X{"expiry past the parent's?"}
+  X -- "yes: AttenuationExpiryExtended" --> R
+  X -- "no" --> T{"tenant scope changed?"}
+  T -- "yes: AttenuationTenantDropped" --> R
+  T -- "no" --> O{"on_behalf_of differs?"}
+  O -- "yes: AuthoritySubjectRebound" --> R
+  O -- "no" --> C["child credential"]
   subgraph CPZ["checkpoint"]
-    CP["admission rechecks<br/>the whole chain"]
+    CP["chain recheck"]
   end
-  C --> CP
+  C -- "own revocation identifier" --> CP
 ```
 
 unsettled: What delegation depth does the library format support, and what verification cost does a chain carry at that depth? owner: authority affects: authority.attenuate
@@ -353,7 +339,7 @@ stateDiagram-v2
     Current --> Retiring: rotation every 90 d
     Retiring --> Retired: grace window lapses
     Retiring --> Retired: immediate retirement
-    Current --> Retired: suspected compromise, with a project-wide epoch bump
+    Current --> Retired: compromise, project-wide epoch bump
     Retired --> [*]: checkpoints drop it at the next refresh
 ```
 
@@ -406,7 +392,7 @@ sequenceDiagram
         X-->>App: ExchangeAssertionInvalid, nothing minted
     else verified
         X->>X: map subject_map, tenant_claim, role_grants or default_grants
-        X-->>App: credential for this reader, 900 s default, clamped to 3600 s
+        X-->>App: credential, 900 s default, capped 3600 s
     end
     App->>CP: read as the reader
 ```
@@ -498,25 +484,25 @@ tables  = ["research/filings"]
 Admission, from transmitted bytes to the value an effect acts under:
 
 ```mermaid
-flowchart TD
-  A["transmitted bytes"] --> B
+flowchart LR
+  A["transmitted bytes"] -- "presented" --> B
   subgraph CPZ["checkpoint"]
-    B{"every block signature<br/>checks against a pinned key"}
-    B -- no --> R1["SignatureInvalid"]
-    B -- yes --> C{"profile names every element"}
-    C -- no --> R2["ProfileElementUnrecognized"]
-    C -- yes --> D{"audience matches"}
-    D -- no --> R3["AudienceMismatch"]
-    D -- yes --> E{"timestamps decode;<br/>expiry after now"}
-    E -- no --> R4["AuthorityExpired"]
-    E -- yes --> F{"request proof checks<br/>against cnf.jkt"}
-    F -- no --> R5["PossessionProofInvalid"]
-    F -- yes --> G{"off the denylist;<br/>epoch current"}
-    G -- no --> R6["AuthorityRevoked"]
-    G -- yes --> H["admitted authority"]
+    B{"every block signature verifies?"}
+    B -- "no: SignatureInvalid" --> R["refused credential"]
+    B -- "yes" --> C{"profile names every element?"}
+    C -- "no: ProfileElementUnrecognized" --> R
+    C -- "yes" --> D{"audience matches?"}
+    D -- "no: AudienceMismatch" --> R
+    D -- "yes" --> E{"expiry after now?"}
+    E -- "no: AuthorityExpired" --> R
+    E -- "yes" --> F{"possession proof checks?"}
+    F -- "no: PossessionProofInvalid" --> R
+    F -- "yes" --> G{"credential still current?"}
+    G -- "no: AuthorityRevoked" --> R
+    G -- "yes" --> H["admitted authority"]
   end
   subgraph SESS["scoped session"]
-    J["each effect re-reads<br/>expiry, epoch, policy version"]
+    J["per-effect recheck"]
   end
-  H --> J
+  H -- "expiry, epoch, policy version" --> J
 ```

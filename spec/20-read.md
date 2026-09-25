@@ -22,46 +22,36 @@ The read face's operations, and where it meets the store, authority and memory:
 
 ```mermaid
 flowchart LR
-  TOK(["capability-token caller"])
-  OPR(["operator text: CLI, templates, engine-composed reads"])
-
+  TOK(["token caller"])
+  OPR(["operator"])
   subgraph READC["read"]
-    subgraph FACE["read face"]
-      GRD["guard: one read-only SELECT"]
-      PIN["resolve-pin: pin map, transaction-time bound"]
-      REG["register: one view per manifest table"]
-      RET["retrieve: content tokens, per-table arms"]
-      EMB["embed: embedding port"]
-      RNK["rank: cosine, BM25, fusion"]
-      RSP["respond: one projection"]
-      CCH["cache: opt-in result cache"]
-    end
-    subgraph MEMS["memory"]
-      MEM["recall"]
-    end
+    GRD["statement guard"]
+    REG["view registry"]
+    RET["candidate generator"]
+    EMB["query embedder"]
+    RNK["ranker"]
+    CCH[("result cache")]
+    MEM["memory recall"]
   end
-
   subgraph STOREC["store"]
-    PARTS["parts, manifests, sidecars"]
+    PARTS[("parts and manifests")]
   end
   subgraph AUTHC["authority"]
     RESTR["composed restriction"]
   end
-
-  TOK --> GRD
-  OPR -- "raw" --> REG
-  GRD --> REG
-  PIN --> REG
-  PARTS --> REG
-  RESTR --> REG
-  REG --> RET
-  MEM -- "composed by corpus.retrieve" --> RET
-  EMB --> RNK
-  RET --> RNK
-  RNK --> RSP
-  REG --> RSP
-  PARTS -- "snapshot commit invalidates" --> CCH
-  CCH -- "hit" --> RSP
+  TOK -->|"statement"| GRD
+  OPR -->|"raw SQL, templates"| REG
+  GRD -->|"admitted statement"| REG
+  PARTS -->|"pinned snapshot"| REG
+  RESTR -->|"row restriction"| REG
+  REG -->|"raw result"| OPR
+  REG -->|"registered views"| RET
+  MEM -->|"claims as candidates"| RET
+  RET -->|"candidates"| RNK
+  EMB -->|"query vector"| RNK
+  RNK -->|"ranked response"| TOK
+  PARTS -->|"commit invalidates"| CCH
+  CCH -->|"cache hit"| TOK
 ```
 
 ## register
@@ -126,24 +116,22 @@ Admission of caller-written SQL: what parses, what a base relation names, whose 
 Admission of one statement, by provenance, and of one template:
 
 ```mermaid
-flowchart TD
-  T["statement text"] --> P{"authored by"}
-  P -- "operator" --> RAW["runs raw, from no network face"]
-  P -- "capability token" --> PARSE["the engine's own parse tree"]
-  PARSE --> ONE{"exactly one read-only SELECT"}
-  ONE -- "no" --> E1["StatementNotReadOnly"]
-  ONE -- "yes" --> WALK["whole-tree walk, CTE names gathered first"]
-  WALK --> TF{"table function or system-catalog reach"}
-  TF -- "yes" --> E2["TableFunctionRefused"]
-  TF -- "no" --> REL{"every base relation registered or a declared CTE"}
-  REL -- "no" --> E3["authority.refuse.ungranted-table"]
-  REL -- "yes" --> EXEC["execute over registered relations"]
-  RAW --> EXEC
-  TPL["template"] --> START{"startup: store tables only, no prefix collision"}
-  START -- "no" --> E4["TemplateNamesForeignRelation"]
-  START -- "yes" --> BIND{"arguments match declared parameters"}
-  BIND -- "no" --> E5["TemplateArgumentRejected"]
-  BIND -- "yes" --> EXEC
+flowchart LR
+  OPR(["operator"]) -->|"raw statement"| EXEC["executor"]
+  TOK(["token caller"]) -->|"statement text"| ONE{"one read-only SELECT?"}
+  ONE -->|"no: StatementNotReadOnly"| TOK
+  ONE -->|"yes"| TF{"reaches a table function?"}
+  TF -->|"yes: TableFunctionRefused"| TOK
+  TF -->|"no"| REL{"every relation registered?"}
+  REL -->|"no: ungranted table"| TOK
+  REL -->|"yes"| EXEC
+  OPR -->|"authors at startup"| TPL["query template"]
+  TPL -->|"checked once"| START{"names store tables only?"}
+  START -->|"no: TemplateNamesForeignRelation"| OPR
+  START -->|"yes"| BIND{"arguments match parameters?"}
+  TOK -->|"template arguments"| BIND
+  BIND -->|"no: TemplateArgumentRejected"| TOK
+  BIND -->|"yes"| EXEC
 ```
 
 ## respond
@@ -215,26 +203,22 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 Candidate generation for one ranked read:
 
 ```mermaid
-flowchart TD
-  Q["query text"] --> TOK["content tokens: lowercased, split, stop tokens dropped, cap 12"]
-  F["filter"] --> BUD{"inside the filter budget, 256 entries"}
-  BUD -- "no" --> E1["FilterBudgetExceeded"]
-  BUD -- "yes" --> ARMS["one arm per table under the prefix"]
-  TOK --> ARMS
-  ARMS -- "table lacks a filter column" --> DROP["arm drops"]
-  ARMS --> WIN["recency window: max of 8 x limit and 200"]
-  ARMS --> SC{"sidecar preconditions hold, under 64 MiB"}
-  SC -- "yes" --> PROBE["probe: max of 4 x limit and 64, x4 under restriction"]
-  SC -- "no" --> EXACT["exact scan"]
+flowchart LR
+  CALLER(["token caller"]) -->|"query and filter"| BUD{"inside the filter budget?"}
+  BUD -->|"no: FilterBudgetExceeded"| CALLER
+  BUD -->|"yes, one arm per table"| COL{"table has the filter column?"}
+  COL -->|"no"| DROPPED["dropped arm"]
+  COL -->|"yes"| SC{"sidecar preconditions hold?"}
+  SC -->|"yes, probe"| SIDE[("index sidecar")]
+  SC -->|"no, scan exactly"| TBL[("table parts")]
   subgraph AUTHC["authority"]
-    REJ["re-join through authority.compose.vector-arm"]
+    REJ["composed restriction"]
   end
-  PROBE --> REJ
-  REJ --> WIN
-  EXACT --> WIN
-  WIN --> FLOOR["relevance floor: lexical null or past the floor, or vector above 0"]
-  FLOOR --> DEDUP["one row per table and row key, newest ingestion"]
-  DEDUP --> RANK["rank"]
+  SIDE -->|"candidate rows"| REJ
+  REJ -->|"permitted rows"| WIN["recency window"]
+  TBL -->|"exact rows"| WIN
+  WIN -->|"above relevance floor"| DEDUP["row-key deduplicator"]
+  DEDUP -->|"unique candidates"| RANK["ranker"]
 ```
 
 unsettled: What adaptive over-fetch policy holds where rows a reader cannot see cluster near a query point and the visibility estimate under-fills the requested top-K? owner: read-path affects: read.retrieve
@@ -269,15 +253,14 @@ The ranking legs, their fallback, and the ordering they feed:
 
 ```mermaid
 flowchart LR
-  C["candidate set"] --> V["cosine leg, clamped 0..1, from query_embedding"]
-  C --> L{"lexical backend linked"}
-  L -- "yes" --> B["BM25 leg, min-max over the window"]
-  L -- "no" --> TF["token fallback over the snippet, recency breaks ties"]
-  V --> FU["fusion: 0.6 vector + 0.4 lexical, ties by identifier"]
-  B --> FU
-  FU --> ORD["order: in-window flag first, then score"]
-  TF --> ORD
-  ORD --> BLK["contextful.retrieval block, integer score per row"]
+  C["candidate set"] -->|"cosine, weight 0.6"| FU["score fusion"]
+  C -->|"query terms"| L{"lexical backend linked?"}
+  L -->|"yes"| B["BM25 backend"]
+  L -->|"no"| TF["token fallback"]
+  B -->|"BM25, weight 0.4"| FU
+  FU -->|"fused scores"| ORD["window-first ordering"]
+  TF -->|"token scores"| ORD
+  ORD -->|"retrieval block"| OUT(["token caller"])
 ```
 
 unsettled: What replaces min-max window normalization as a cross-index score calibration, given one bounded leg and one corpus-relative unbounded leg? owner: read-path affects: read.rank
@@ -383,16 +366,14 @@ max_rows   = 500
 The path one ranked read takes:
 
 ```mermaid
-flowchart TD
-  A[tool call or SQL text] --> B{authored by whom}
-  B -- capability token --> C[statement guard over the whole tree]
-  B -- operator --> D[raw execution]
-  C --> F[registered relations for this connection]
-  D --> F
-  F --> G[candidate generation: content tokens, floor, per-table arms]
-  G --> H[sidecar probe widens the window]
-  H --> I[restriction in one pass]
-  I --> J[three legs and fusion]
-  J --> K[row-key dedup, in-window tier, top-K]
-  K --> L[one response projection]
+flowchart LR
+  CALLER(["token caller"]) -->|"tool call or SQL"| GRD["statement guard"]
+  OPR(["operator"]) -->|"raw SQL"| REG["view registry"]
+  GRD -->|"admitted statement"| REG
+  REG -->|"registered relations"| GEN["candidate generator"]
+  GEN -->|"sidecar probe"| SIDE[("index sidecar")]
+  SIDE -->|"candidate rows"| RESTR["composed restriction"]
+  RESTR -->|"permitted rows"| FUSE["three-leg fusion"]
+  FUSE -->|"top-K rows"| PROJ["response projection"]
+  PROJ -->|"one response"| CALLER
 ```

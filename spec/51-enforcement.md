@@ -22,44 +22,45 @@ The three layers of the reference monitor and the contracts feeding each:
 
 ```mermaid
 flowchart LR
-  SRC["source values"]
+  SRC(["source system"])
   AA["admitted authority"]
-  ZONE["caller zone, per request"]
-  subgraph RM["reference monitor"]
-    direction TB
-    subgraph L1["write-time removal"]
-      W["writer"] --> RED["redact: rule set per pipeline"]
-    end
-    subgraph L2["redistribution bound"]
-      PUSH["push"] --> WH{"redistribution flag cleared?"}
-    end
-    subgraph L3["query-time restriction"]
-      REL["registered relation<br/>filter-rows · mask · place"]
-    end
+  ZONE["caller zone"]
+  subgraph L1["write-time removal"]
+    W["writer"]
+    GUARD{"credential-shaped value?"}
   end
   subgraph STORE["store"]
     PARTS[("columnar parts")]
   end
+  subgraph L2["redistribution bound"]
+    WH{"redistribution flag cleared?"}
+  end
+  subgraph L3["query-time restriction"]
+    REL["registered relation"]
+  end
   subgraph DISC["disclosure"]
-    SJ["mirrored permission semi-join"]
+    SJ["permission semi-join"]
   end
   subgraph READ["read"]
-    RS["statements · retrieval arms"]
+    RS["read surfaces"]
   end
   BKT[("bucket")]
-  EDGE["serving edge: filter by<br/>the pulling credential's grants"]
-  SRC --> W
-  W -- "credential-shaped value" --> RES["EnforceCredentialShapedValue"]
-  RED --> PARTS
-  PARTS --> PUSH
-  WH -- "yes: withheld, no manifest entry" --> OUT["not in the bucket"]
-  WH -- no --> BKT
-  BKT --> EDGE
-  PARTS --> REL
-  AA --> REL
-  SJ --> REL
-  ZONE --> REL
-  REL --> RS
+  EDGE["serving edge"]
+  REFUSED["refused write"]
+  KEPT[("withheld table")]
+  SRC -- "source values" --> W
+  W -- "each value" --> GUARD
+  GUARD -- "yes" --> REFUSED
+  GUARD -- "no, redacted per pipeline" --> PARTS
+  PARTS -- "push" --> WH
+  WH -- "yes: withheld" --> KEPT
+  WH -- "no" --> BKT
+  BKT -- "filtered by puller grants" --> EDGE
+  PARTS -- "rows" --> REL
+  AA -- "grants" --> REL
+  SJ -- "permitted subjects" --> REL
+  ZONE -- "per request" --> REL
+  REL -- "filter rows, mask, place" --> RS
 ```
 
 ## redact
@@ -251,17 +252,16 @@ The per-table licence bound applied at push, the root-object allowlist, and the 
 One push under the bound:
 
 ```mermaid
-flowchart TD
-  P["push"] --> C1{"left-behind check"}
-  C1 -- "withheld table has uploaded objects" --> E1["EnforceStaleRedistributedObjects<br/>names each object, deletes none"]
-  C1 -- clean --> X["exclude withheld tables"]
-  X --> D["compute the object diff"]
-  D --> RA{"table withheld: root-level<br/>object on the allowlist?"}
-  RA -- no --> E2["EnforceRootObjectNotAllowlisted"]
-  RA -- yes --> U["upload loop"]
-  U --> C2{"left-behind check"}
-  C2 -- "stale objects" --> E1
-  C2 -- clean --> M["bucket manifest naming<br/>no withheld table"]
+flowchart LR
+  PARTS[("local parts")] -- "push" --> C1{"withheld objects uploaded?"}
+  C1 -- "yes, nothing deleted" --> E1["refused push"]
+  C1 -- "no, exclude withheld" --> DIFF["object diff"]
+  DIFF -- "planned uploads" --> RA{"root object allowlisted?"}
+  RA -- "no, table withheld" --> E2["refused upload"]
+  RA -- "yes" --> U["upload loop"]
+  U -- "uploaded objects" --> C2{"stale objects left behind?"}
+  C2 -- "yes" --> E1
+  C2 -- "no" --> M[("bucket manifest")]
 ```
 
 ## place
@@ -324,21 +324,21 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
 Resolving one served row against the session's zone:
 
 ```mermaid
-flowchart TD
-  CZ["caller zone, declared per request"] --> INC{"incognito?"}
-  INC -- no --> Z["session zone"]
-  INC -- yes --> PIN{"asserted zone wider than<br/>local:device, on-prem:*?"}
-  PIN -- yes --> E1["EnforceIncognitoWidening"]
-  PIN -- no --> Z
-  TS["table allow-set, or the<br/>fail-closed pair when undeclared"] --> FL["phi floor at the fail-closed pair"]
-  FL --> TE{"table set, narrowed by the authoring<br/>principal's set, admits the zone?"}
-  Z --> TE
-  TE -- no --> DROP["row leaves the result"]
-  TE -- yes --> CE{"column set admits the zone?"}
-  CE -- no --> NUL["cell arrives null"]
-  CE -- yes --> SRV["cell served under its mask"]
-  DROP --> ENV["response envelope:<br/>removed counts, masked columns"]
-  NUL --> ENV
+flowchart LR
+  CZ["caller zone"] -- "per request" --> INC{"incognito?"}
+  INC -- "no" --> Z["session zone"]
+  INC -- "yes" --> PIN{"asserted zone too wide?"}
+  PIN -- "yes, wider than local" --> E1["refused session"]
+  PIN -- "no" --> Z
+  TS["table allow-set"] -- "fail-closed pair if undeclared" --> FL["phi floor"]
+  FL -- "floored allow-set" --> TE{"table set admits zone?"}
+  Z -- "zone" --> TE
+  TE -- "no, author's set narrows" --> DROP["dropped row"]
+  TE -- "yes" --> CE{"column set admits zone?"}
+  CE -- "no" --> NUL["nulled cell"]
+  CE -- "yes" --> SRV["served masked cell"]
+  DROP -- "removed count" --> ENV["response envelope"]
+  NUL -- "masked column" --> ENV
 ```
 
 unsettled: What fixes the completeness of the evidence list a synthesized row's floor intersects over, given that an empty list intersects to everything? owner: authority affects: authority.place
@@ -359,15 +359,14 @@ The paths that stay closed to an injected instruction.
 The order a registered relation applies, one table, one session:
 
 ```mermaid
-flowchart TD
-  T[(table)] --> M[mirrored permission semi-join]
-  M --> TEN[tenant byte equality]
-  TEN --> RP[credential predicate via the subject relation]
-  RP --> TP[table policy, overrides replace one predicate]
-  TP --> DEF[project default]
-  DEF --> ZONE[table zone: row drop]
-  ZONE --> PROJ[projection: column and principal zone nulls, masks, quote bound]
-  PROJ --> V[[registered relation]]
+flowchart LR
+  T[("table")] -- "mirrored permission semi-join" --> M["permitted rows"]
+  M -- "tenant byte equality" --> TEN["tenant rows"]
+  TEN -- "credential predicate" --> RP["subject rows"]
+  RP -- "table policy override" --> TP["policy rows"]
+  TP -- "project default" --> DEF["default-filtered rows"]
+  DEF -- "drop rows by zone" --> ZR["zone-admitted rows"]
+  ZR -- "project columns, null, mask" --> V[["registered relation"]]
 ```
 
 The class registry. The width ceiling assumes the default `crowd`:

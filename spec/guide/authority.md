@@ -16,37 +16,39 @@ flag or a second secret.
 
 ```mermaid
 flowchart LR
-  IDP["identity provider"]
+  IDP(["identity provider"])
   subgraph ISS["issuer"]
-    X["exchange or mint"]
+    X["token exchange"]
   end
   subgraph HOLD["holder"]
     CRED["credential"]
     CHILD["narrower child"]
   end
   subgraph CPZ["checkpoint"]
-    V{"verify"}
+    V{"signature and caveats hold?"}
   end
   AA["admitted authority"]
+  NO(["rejected request"])
   subgraph ENF["enforcement"]
     REL["registered relation"]
   end
   READ["read surfaces"]
-  IDP --> X
-  X --> CRED
+  IDP -->|"verified assertion"| X
+  X -->|"signed credential"| CRED
   CRED -->|"append a block"| CHILD
-  CRED --> V
-  CHILD --> V
-  V --> AA
-  AA --> REL
-  REL --> READ
+  CRED -->|"presented"| V
+  CHILD -->|"presented"| V
+  V -->|"yes"| AA
+  V -->|"no"| NO
+  AA -->|"grants"| REL
+  REL -->|"admitted rows"| READ
 ```
 
 A subject is a tuple of agent, host, principal, task, zone and incognito flag
 ({{authority.identify.subject-tuple}}). Only the principal is verified, at the mint against
 the identity provider ({{authority.identify.on-behalf-of}}); the rest render as asserted
-({{authority.identify.attestation}}). A credential is a chain-signed token under a versioned
-profile that names every admitted element ({{authority.profile.delegation-profile}}). Its
+({{authority.identify.attestation}}). A credential is a chain-signed Biscuit token under a
+versioned profile that names every admitted element ({{authority.profile.delegation-profile}}). Its
 grants name actions, table patterns and optional tenant, template and aggregate bounds
 ({{authority.grant.fields}}), over a four-word action vocabulary
 ({{authority.grant.actions}}).

@@ -22,36 +22,35 @@ One run, the durable state around it, and the contracts it meets:
 
 ```mermaid
 flowchart LR
-  PLAN["plan reference · content-hashed"] --> RUN
+  PLAN["plan reference"] -->|"content-hashed plan"| RUN
   subgraph CONN["connector contract"]
-    SRC["source"]
+    SRC["connector source"]
   end
   subgraph RUNC["run contract"]
     RUN["runner"]
-    J[("journal + blob store")]
-    AW["POST /awake/:token"]
-    HUB["live projection · wire snapshot"]
-    subgraph PIPE["31-pipeline"]
-      LAND["land path"]
-    end
+    J[("journal and blob store")]
+    AW["awake endpoint"]
+    HUB["live projection"]
+    LAND["land path"]
   end
   subgraph STORE["store contract"]
     MARK["run commit marker"]
     CUR[("catalog cursor cache")]
-    STOP["stop mark on the run row"]
-    REC[("run record · reserved table")]
+    STOP["stop mark"]
+    REC[("run record")]
   end
-  SRC -->|"batches, pulled"| RUN
-  RUN <-->|"record · replay"| J
+  SRC -->|"pulled batches"| RUN
+  RUN -->|"record step"| J
+  J -->|"replay steps"| RUN
   AW -->|"resume payload"| J
-  RUN --> LAND
-  LAND --> MARK
-  MARK --> CUR
+  RUN -->|"batches"| LAND
+  LAND -->|"rows and position"| MARK
+  MARK -->|"advance cursor"| CUR
   STOP -->|"polled every 500 ms"| RUN
-  RUN --> REC
-  RUN -. "events after durable change" .-> HUB
-  REC -->|"terminal status reconciles"| HUB
-  HUB --> SUB["run-stream subscribers"]
+  RUN -->|"terminal status"| REC
+  RUN -.->|"events after durable change"| HUB
+  REC -->|"reconciles status"| HUB
+  HUB -->|"wire snapshot"| SUB(["run-stream subscribers"])
 ```
 
 ## journal
@@ -103,9 +102,9 @@ sequenceDiagram
   J-->>B: wait for the recorded value
   A->>V: effect, idempotency key derived from the entry key
   V-->>A: response
-  A->>J: record value, inline up to 1 MiB, else a sha256-named blob
+  A->>J: record value, inline or sha256 blob
   J-->>B: recorded value
-  Note over A,V: a crash before the write re-enters the effect under the same idempotency key
+  Note over A,V: a crash before the write re-enters under the same key
   Note over A,J: a pending claim whose owner lease expired passes to the next caller
 ```
 
@@ -238,19 +237,18 @@ The execution owner a scope holds and the connector build it pins while pending.
 - `one-commit-per-run` — One run produces one atomic commit per table; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step.
 
 ```mermaid
-flowchart TD
-  O["run open"] --> M{"commit marker newer than the cached position?"}
-  M -->|yes| RET["retire the pending owner that produced it"]
-  M -->|no| P{"pending owner?"}
-  RET --> FRESH["fresh execution id"]
-  P -->|no| FRESH
-  P -->|yes| PIN{"connector identity, world, content_hash unchanged?"}
-  PIN -->|no| ERR["ExecutionPinMismatch · terminal"]
-  PIN -->|yes| REPLAY["replay recorded steps under the owner"]
-  REPLAY --> CLOSE{"close status"}
-  FRESH --> CLOSE
-  CLOSE -->|"success, or a failure landing zero batches"| REL["release the owner"]
-  CLOSE -->|"any other status"| HOLD["hold the owner"]
+flowchart LR
+  O["run open"] -->|"cached position"| M{"marker past cached position?"}
+  M -->|"yes, retire pending owner"| FRESH["fresh execution id"]
+  M -->|"no"| P{"pending owner?"}
+  P -->|"no"| FRESH
+  P -->|"yes"| PIN{"pinned identity unchanged?"}
+  PIN -->|"no: ExecutionPinMismatch"| ERR["terminal failure"]
+  PIN -->|"yes"| REPLAY["recorded step replay"]
+  REPLAY -->|"replayed run"| CLOSE{"close status"}
+  FRESH -->|"new run"| CLOSE
+  CLOSE -->|"success or zero batches"| REL["released owner"]
+  CLOSE -->|"any other status"| HOLD["held owner"]
 ```
 
 
@@ -301,7 +299,7 @@ sequenceDiagram
   C-->>R: cancellation token fires on every await
   R->>G: signal the process group
   G-->>R: reaped
-  R->>C: record canceled · Canceled tag, ledger settled, position unchanged
+  R->>C: record canceled, ledger settled, position unchanged
 ```
 
 ## record

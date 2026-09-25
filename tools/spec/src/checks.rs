@@ -7,7 +7,7 @@ use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::LazyLock;
 
-pub const CHECKS: [&str; 9] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render", "targets", "guide"];
+pub const CHECKS: [&str; 10] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render", "diagram", "targets", "guide"];
 
 pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
     match name {
@@ -18,6 +18,7 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
         "rationale" => rationale(c),
         "state" => state(c),
         "render" => render(c),
+        "diagram" => crate::diagram::check(c),
         "targets" => crate::targets::check(c),
         "guide" => guide(c),
         other => vec![Finding::new("lint", "", 0, "SpecUnknownCheck", format!("no check named `{other}`"))],
@@ -1213,54 +1214,14 @@ fn render(c: &Corpus) -> Vec<Finding> {
             out.push(f("render", rel, 0, "SpecStaleRender", format!("{rel} differs from regeneration; run `contextful-spec state` and `extract`")));
         }
     }
-    // a flowchart node label: a quoted string opening a node shape, never an edge label
-    let node_label = Regex::new(r#"[\[({>]"([^"]*)""#).unwrap();
-    let names: Vec<String> = c.reg.contracts.keys().map(|k| regex::escape(k)).collect();
-    let boundary = Regex::new(&format!(r"(?i)\b(({}) contract|boundary)\b", names.join("|"))).unwrap();
-    for d in &c.docs {
-        let mut flowchart = false;
-        let mut first = false;
-        for (n, l, k) in d.each() {
-            if k == LineKind::Fence {
-                first = l.trim().starts_with("```mermaid");
-                flowchart = false;
-                continue;
-            }
-            if k != LineKind::Code {
-                continue;
-            }
-            if first {
-                flowchart = l.trim().starts_with("flowchart") || l.trim().starts_with("graph");
-                first = false;
-                continue;
-            }
-            if !flowchart || l.trim_start().starts_with("subgraph") {
-                continue;
-            }
-            for m in node_label.captures_iter(l) {
-                if let Some(b) = boundary.find(&m[1]) {
-                    out.push(f("render", &d.rel, n, "SpecDiagramBoundary", format!("node `{}` stands for `{}`; draw it as a `subgraph` holding its components", &m[1], b.as_str())));
-                }
-            }
-        }
-    }
     let local = Regex::new(r"(/Users/|/home/|\$HOME/|(^|[\s(`])~/)").unwrap();
-    let boxes = |s: &str| s.chars().any(|ch| ('\u{2500}'..='\u{257F}').contains(&ch));
     for d in &c.docs {
-        let mut fence_lang_mermaid = false;
         for (n, l, k) in d.each() {
-            if k == LineKind::Fence {
-                fence_lang_mermaid = l.trim().starts_with("```mermaid");
-            }
             if local.is_match(&without_ticks(l)) {
                 out.push(f("render", &d.rel, n, "SpecLocalPath", "absolute local path".into()));
             }
             if matches!(k, LineKind::Code | LineKind::Fence | LineKind::Front) {
-                let _ = fence_lang_mermaid;
                 continue;
-            }
-            if boxes(l) {
-                out.push(f("render", &d.rel, n, "SpecAsciiDiagram", "box-drawing outside a mermaid fence".into()));
             }
             let plain = without_ticks(l);
             if d.role != Role::Plan && (DATED.is_match(&plain) || ISO_DATE.is_match(&plain)) {

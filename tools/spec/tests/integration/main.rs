@@ -1,6 +1,7 @@
 //! The checker's one integration binary. Each suite copies the live corpus into a
 //! scratch root, applies one change, and runs the built `contextful-spec` against it.
 
+mod diagram;
 mod grammar;
 mod lean;
 mod rationale;

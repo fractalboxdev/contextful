@@ -21,38 +21,33 @@ The chain, what appends to it, and what reads it back:
 ```mermaid
 flowchart LR
   subgraph READ["read"]
-    RD["a read"]
+    RD["read face"]
   end
   subgraph CHAIN["audit chain"]
-    ENTRY["audit entry<br/>seq · prev_hash · entry_hash"]
-    SEG[("segment, 4096 entries<br/>closed by a signed root")]
+    ENTRY["audit entry"]
+    SEG[("chain segment")]
   end
   subgraph STORE["store"]
     SNAP[("snapshot commit")]
   end
-  SPAN["span"]
-  TEL["telemetry projection<br/>stderr JSON or OTLP"]
+  TEL(["telemetry collector"])
   BKT[("replication bucket")]
-  VER["attest: contextful audit verify"]
+  VER(["offline verifier"])
   ACC[("access tables")]
-  EXPL["explain: VISIBLE or DENIED"]
-  FORGET["erase: contextful context forget"]
+  EXPLAINER["decision explainer"]
+  ERASER["erasure cascade"]
   LEDGER[("forget_requests ledger")]
-  RCPT["receipt: signed, per tenant purge"]
-  AUDITOR["verifier, offline"]
-  RD --> SPAN
-  SPAN --> ENTRY
-  SPAN --> TEL
-  ENTRY --> SEG
-  SEG -- "every 10 min" --> BKT
-  SEG --> VER
-  ACC --> EXPL
-  EXPL --> ENTRY
-  FORGET --> LEDGER
-  FORGET --> SNAP
-  FORGET --> ENTRY
-  LEDGER --> RCPT
-  RCPT --> AUDITOR
+  RD -->|"span, hash-linked"| ENTRY
+  RD -->|"span"| TEL
+  ENTRY -->|"4096 per signed root"| SEG
+  SEG -->|"every 10 min"| BKT
+  SEG -->|"chain to verify"| VER
+  ACC -->|"grants behind a decision"| EXPLAINER
+  EXPLAINER -->|"VISIBLE or DENIED"| ENTRY
+  ERASER -->|"forget request"| LEDGER
+  ERASER -->|"tombstones"| SNAP
+  ERASER -->|"erasure entry"| ENTRY
+  LEDGER -->|"signed purge receipt"| VER
 ```
 
 ## record
@@ -136,21 +131,19 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, the re
 A subject erasure:
 
 ```mermaid
-flowchart TD
-  V["forget --subject"] --> G{"forget grant?"}
-  G -- no --> E1["ErasureUngranted"]
-  G -- yes --> PS["key to HMAC-SHA256 pseudonym"]
-  PS --> L["open the forget_requests row"]
-  L --> T["tombstone direct rows:<br/>facts, preferences, entities"]
-  T --> C{"provenance within 16 hops?"}
-  C -- no --> E2["ErasureCascadeUnbounded<br/>nothing commits"]
-  C -- yes --> M["cascade-mark derived facts"]
-  M --> COMMIT["one local snapshot commit<br/>the verb returns"]
-  COMMIT --> CH["chain entry: request id, reason, counts"]
-  COMMIT --> PHYS["files rewritten or collected within 24 h"]
-  COMMIT -. "best effort" .-> PUSH["bucket push"]
-  COMMIT -- "--fail-closed" --> GATE["restaging marker"]
-  PHYS --> REP["replicas at their next refresh"]
+flowchart LR
+  REQ(["requester"]) -->|"forget --subject"| G{"forget grant?"}
+  G -->|"no: ErasureUngranted"| REQ
+  G -->|"yes, pseudonymize subject"| LEDGER[("forget_requests ledger")]
+  LEDGER -->|"open request"| CASC["erasure cascade"]
+  CASC -->|"tombstoned direct rows"| C{"provenance within 16 hops?"}
+  C -->|"no, nothing commits: ErasureCascadeUnbounded"| REQ
+  C -->|"yes, derived facts marked"| SNAP[("local snapshot")]
+  SNAP -->|"chain entry"| CHAINLOG[("audit chain")]
+  SNAP -->|"rewritten within 24 h"| FILES[("run files")]
+  SNAP -.->|"best-effort push"| BKT[("replication bucket")]
+  SNAP -->|"--fail-closed"| MARK["restaging marker"]
+  FILES -->|"refreshed copies"| REP[("replicas")]
 ```
 
 unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an operator objective, given the engine schedules no replica refresh? owner: disclosure affects: disclosure.erase
@@ -177,17 +170,17 @@ sequenceDiagram
     participant O as store owner
     box Contextful
         participant P as purge
+        participant S as store files
         participant L as forget_requests ledger
     end
     participant V as verifier
     O->>P: forget --tenant, no capability token
-    P->>P: rewrite run files, compaction snapshots, model builds, memory mirror
-    P->>P: tenant_hash over a fresh salt and the tenant identifier
-    P->>P: sign the canonical payload
+    P->>S: rewrite run files, snapshots, builds, memory mirror
+    P->>P: hash tenant with fresh salt, sign payload
     P->>L: store the receipt against request_id
-    P-->>O: receipt, prior_request_id naming the last completed request
+    P-->>O: receipt with prior_request_id
     O->>V: receipt and the tenant identifier
-    V->>V: recompute payload_hash, check the signature, recompute tenant_hash
+    V->>V: recompute hashes, check the signature
 ```
 
 unsettled: Does the replication bucket fall inside the receipt claim once the object interface gains a delete? owner: disclosure affects: disclosure.receipt

@@ -20,21 +20,22 @@ The tree, the checks over it, and the two verdicts they produce:
 
 ```mermaid
 flowchart LR
-  SRC["source tree<br/>one home per capability"] --> BUILD["build: three profiles,<br/>cross-compiled targets"]
-  SRC --> TESTS["tests: one integration binary per crate<br/>acceptance drives a built binary"]
-  AUTO["typed subcommands, tools/ci"] --> GATE["gate: ordered stages"]
-  BUILD --> GATE
-  TESTS --> GATE
-  FORMAL["formal model:<br/>check · differential · protocol"] --> GATE
-  GATE -- "one status check per stage" --> PR["pull request"]
-  BUILD --> ART["release artifacts<br/>archive · checksum · SBOM · image"]
+  SRC["source tree"] -->|"three profiles"| BUILD["build pipeline"]
+  SRC -->|"one binary per crate"| TESTS["test suites"]
+  AUTO["typed subcommands"] -->|"stage commands"| GATE["CI gate"]
+  BUILD -->|"built binaries"| GATE
+  TESTS -->|"test results"| GATE
+  FORMAL["formal model"] -->|"proof check"| GATE
+  GATE -->|"one check per stage"| PR["pull request"]
+  BUILD -->|"archive, checksum, SBOM, image"| ART["release artifacts"]
   subgraph read["read contract"]
-    STORE[("real store<br/>ranked retrieval")]
+    STORE[("real store")]
   end
-  CASES["evals/cases JSONL"] --> EVAL["quality harness"]
-  STORE --> EVAL
-  EVAL --> BASE{"in-tree baselines and floors"}
-  BASE --> V["red or green"]
+  CASES[("evals/cases JSONL")] -->|"cases"| EVAL["quality harness"]
+  STORE -->|"ranked retrieval"| EVAL
+  EVAL -->|"scores"| BASE{"within baselines and floors?"}
+  BASE -->|"yes"| GREEN["green verdict"]
+  BASE -->|"no"| REDV["red verdict"]
 ```
 
 ## structure-tree
@@ -95,15 +96,15 @@ Assertion construction, guard validation, suite placement, test-first and accept
 The test-first check over one commit in a change's range:
 
 ```mermaid
-flowchart TD
-  CH["commit altering Rust source<br/>under crates/ or tools/"] --> TR{"trailer Test-First: refactor?"}
-  TR -- yes --> WS["workspace stage alone holds it"]
-  TR -- no --> T{"adds or alters a test<br/>under a package's tests/?"}
-  T -- no --> E1["TestNotFirst"]
-  T -- yes --> B{"that test fails against<br/>the base commit's source?"}
-  B -- no --> E1
-  B -- yes --> OK["test-first stage passes"]
-  OK --> WS2["workspace stage"]
+flowchart LR
+  CH["commit altering Rust source"] -->|"trailers read"| TR{"refactor trailer?"}
+  TR -->|"yes"| WS["workspace stage"]
+  TR -->|"no"| T{"adds or alters a test?"}
+  T -->|"no: TestNotFirst"| AUTH(["change author"])
+  T -->|"yes"| B{"test fails on base?"}
+  B -->|"no: TestNotFirst"| AUTH
+  B -->|"yes"| OK["test-first stage"]
+  OK -->|"passing change"| WS
 ```
 
 unsettled: Does a suite contending process-global state declare that state in its module, or acquire a named lock the integration binary owns? owner: build affects: assurance.test
@@ -174,7 +175,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `surface-check-failed` — A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.
   *P7*
 
-The stage order, under the container's ceilings:
+The stages, numbered in run order, under the container's ceilings:
 
 ```mermaid
 flowchart LR
@@ -184,17 +185,26 @@ flowchart LR
   subgraph forge["pull-request workflow"]
     WF["one remote check per stage"]
   end
-  LOCAL --> S1
-  WF --> S1
-  subgraph C["gate container · 12 GiB memory · 18 GiB disk"]
-    S1["pins"] --> S2["toolchain"] --> S3["schema"] --> S4["test-first"]
-    S4 --> S5["workspace"] --> S6["acceptance"] --> S7["features"] --> S8["crate graph"]
-    S8 --> S9["connectors"] --> S10["TypeScript surfaces"] --> S11["formal"] --> S12["budget"]
+  LOCAL -->|"local run"| C
+  WF -->|"remote run"| C
+  subgraph C["gate container, 12 GiB memory and 18 GiB disk"]
+    S1["1 pins"]
+    S2["2 toolchain"]
+    S3["3 schema"]
+    S4["4 test-first"]
+    S5["5 workspace"]
+    S6["6 acceptance"]
+    S7["7 features"]
+    S8["8 crate graph"]
+    S9["9 connectors"]
+    S10["10 TypeScript surfaces"]
+    S11["11 formal"]
+    S12["12 budget"]
   end
-  S3 -.-> LINT["contextful-spec lint"]
-  S8 -.-> DENY["cargo-deny per profile"]
-  S11 -.-> FORM["formal check · differential · protocol"]
-  S12 -.-> SIZE["total build size 12 GiB"]
+  S3 -.->|"runs"| LINT["contextful-spec lint"]
+  S8 -.->|"runs"| DENY["cargo-deny per profile"]
+  S11 -.->|"runs"| FORM["formal check"]
+  S12 -.->|"measures, 12 GiB cap"| SIZE["build size"]
 ```
 
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate

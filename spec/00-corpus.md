@@ -8,6 +8,7 @@ owns:
   - rationale
   - state
   - render
+  - diagram
   - targets
   - guide
 ---
@@ -191,12 +192,36 @@ The generated files, and the vocabulary no authored file carries.
   *P8*
 - `local-path` — A path beginning `/Users/`, `/home/`, `$HOME/` or `~/` raises `SpecLocalPath`.
   *P8*
-- `diagram` — A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.
-  *P8*
-- `diagram-boundary` — A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.
-  *because a boundary drawn as a node hides which components sit inside it and which edges cross it*
-  *P8*
+## diagram
 
+The fenced diagram, and the shape every flowchart, sequence and state diagram keeps so a reader sees the parts and what flows between them.
+
+- `fence` — A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.
+  *P8*
+- `boundary` — A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.
+  *P8*
+- `node` — A flowchart node names one thing in at most 5 words: its label holds no `·`, `<br/>`, `,`, `;`, `: ` or error identifier, is no operation name, and sets no article second. A breach raises `SpecDiagramNode`.
+  *because a box of bundled attributes or a verb hides the things and what flows between them; operations, limits and errors ride the edges*
+- `shape` — A node labelled with a snake_case identifier or a phrase ending `table`, `store`, `log` or `queue` is a cylinder `[( )]`, and a label ending `?` is a decision `{ }`. A breach raises `SpecDiagramShape`.
+  *because one shape meaning one kind lets a reader tell data from the parts acting on it at a glance*
+- `edge` — A flowchart edge points one way; its label holds at most 5 words and no `·`, and an edge touching no decision node carries one. A breach raises `SpecDiagramEdge`.
+  *because an unlabelled line says two things relate without saying how, and a two-way line hides which side acts*
+- `decision` — A decision node asks a question or names a condition in at most 8 words and no error identifier, has an incoming edge, and has two or more outgoing edges each labelled with a distinct outcome. A breach raises `SpecDiagramDecision`.
+  *because a branch without a guard on each exit leaves the reader to guess which path a case takes*
+- `branch` — A non-decision node with an outgoing edge labelled `yes` or `no`, an outgoing error identifier beside another exit, or two exits opening `if`, `when`, `over`, `under` or `else` raises `SpecDiagramBranch`; a branch is a decision node.
+  *because a condition hidden in edge labels off a box reads as parallel flow*
+- `connected` — Every flowchart node, or a subgraph enclosing it, is an edge endpoint. A breach raises `SpecDiagramOrphan`.
+  *because an unconnected element asserts nothing about the system*
+- `unique-label` — No two nodes of one flowchart carry the same label; a second mention reuses the node id. A breach raises `SpecDiagramDuplicate`.
+  *because one label naming two nodes leaves the reader to decide whether they are one thing*
+- `layout` — A flowchart header declares `LR`, `TB` or `TD`, no subgraph declares `direction`, subgraphs nest at most 2 levels, and the chart holds at most 20 nodes and 25 edges. A breach raises `SpecDiagramLayout`.
+  *because one reading direction keeps the flow followable, and a chart past that size or depth is two diagrams*
+- `sequence` — A sequence diagram declares each participant it messages and messages each it declares, and holds at most 6 participants, 15 messages, 2 messages from a participant to itself and fragments nested 2 levels. A breach raises `SpecDiagramSequence`.
+  *because a sequence diagram shows one scenario's interactions, and branching logic past that belongs in a flowchart*
+- `message` — A sequence message label holds at most 8 words and a note at most 12 words. A breach raises `SpecDiagramMessage`.
+  *because a message names one call; its parameters and bounds belong in clauses*
+- `state` — A state diagram has one top-level `[*]` start reaching every state, every state has an outgoing transition, `[*]` counting as a target, and a transition label holds at most 6 words. A breach raises `SpecDiagramState`.
+  *because an unreachable or dead-end state is a lifecycle the system cannot run*
 
 ## targets
 

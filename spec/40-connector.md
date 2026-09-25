@@ -21,31 +21,32 @@ The two connector forms, the host between them and the outside, and the contract
 
 ```mermaid
 flowchart LR
-  PKG["package · in-tree, path, https, oci + pin"] --> GUEST
+  PKG["connector package"] -->|"pinned install"| GUEST
+  subgraph SANDBOX["component sandbox"]
+    GUEST["component guest"]
+  end
   subgraph ENGINE["engine process"]
-    subgraph SANDBOX["component sandbox"]
-      GUEST["component guest"]
-    end
     NATIVE["compiled-in source"]
     MED["host mediation point"]
-    subgraph RUNC["run contract"]
-      RUN["runner"]
-      LAND["land path"]
-    end
+  end
+  subgraph RUNC["run contract"]
+    RUN["runner"]
+    LAND["land path"]
   end
   LIM["limiter"]
-  VEND["vendor API"]
+  VEND(["vendor API"])
   subgraph TOPO["topology contract"]
     MODEL["model endpoint"]
   end
   GUEST -->|"outgoing HTTP, logging, wall clock"| MED
-  NATIVE --> MED
-  MED <-->|"acquire, report"| LIM
-  MED -->|"allowlist, attach · 41-secrets"| VEND
-  MED -->|"infer · fenced data"| MODEL
+  NATIVE -->|"outgoing requests"| MED
+  MED -->|"acquire, report"| LIM
+  LIM -->|"permits"| MED
+  MED -->|"allowlist, attach credentials"| VEND
+  MED -->|"infer on fenced data"| MODEL
   GUEST -->|"batches + position"| RUN
   NATIVE -->|"batches + position"| RUN
-  RUN --> LAND
+  RUN -->|"committed batches"| LAND
 ```
 
 ## export
@@ -125,19 +126,20 @@ The manifest's statement of host access and the scope probe judging a bound cred
   *P3*
 
 ```mermaid
-flowchart TD
-  M["manifest · allow_hosts, env, clock"] --> A{"allowlist shape valid?"}
-  A -->|no| R1["ConnectorAllowlistRejected"]
-  A -->|yes| U{"code reaches only listed access?"}
-  U -->|no| R2["ConnectorUndeclaredAccess"]
-  U -->|yes| B{"every _from binding supplied, on shape?"}
-  B -->|no| R3["ConnectorBindingUnbound"]
-  B -->|yes| SP{"scope probe declared?"}
-  SP -->|no| OPEN["session opens"]
-  SP -->|yes| CALL["call the identity endpoint with the bound credential"]
-  CALL -->|"no granted-scopes header"| R4["ConnectorScopeUnverified"]
-  CALL -->|"scope outside the expectation"| R5["ConnectorScopeExceeded"]
-  CALL -->|"within the expectation"| OPEN
+flowchart LR
+  M["connector manifest"] -->|"declared capabilities"| A{"allowlist shape valid?"}
+  A -->|"no: ConnectorAllowlistRejected"| REJ["rejected manifest"]
+  A -->|"yes"| U{"only listed access?"}
+  U -->|"no: ConnectorUndeclaredAccess"| REJ
+  U -->|"yes"| B{"bindings supplied on shape?"}
+  B -->|"no: ConnectorBindingUnbound"| REJ
+  B -->|"yes"| SP{"scope probe declared?"}
+  SP -->|"no"| SESS["connector session"]
+  SP -->|"yes, probe"| IDP(["identity endpoint"])
+  IDP -->|"granted scopes"| SC{"scopes within expectation?"}
+  SC -->|"no header: ConnectorScopeUnverified"| NOSESS["refused session"]
+  SC -->|"exceeded: ConnectorScopeExceeded"| NOSESS
+  SC -->|"yes"| SESS
 ```
 
 unsettled: Does a community-distributed connector need a signing and transparency layer above the content pin, and who runs the log? owner: connector affects: connector.declare-capability
@@ -201,7 +203,7 @@ sequenceDiagram
   else limiter unreachable or unbound
     H-->>G: ConnectorUnmetered
   end
-  H->>L: POST report · granted, spent, responses, run id, at-least-once
+  H->>L: POST report: granted, spent, responses, run id
 ```
 
 ## infer
@@ -262,19 +264,19 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 A connector striking a declared bound follows {{run.retry.bound-hit-is-transient}}.
 
 ```mermaid
-flowchart TD
-  NAME["connector name"] --> K{"on the built-in list?"}
-  K -->|yes| NATIVE["compiled-in source"]
-  K -->|no| FORM{"distribution form"}
-  FORM -->|"https:// or oci://"| REMOTE{"64-hex pin?"}
-  FORM -->|"http://"| IH["ConnectorInsecureArtifact"]
-  FORM -->|local path| LOCAL{"pin switch set?"}
-  REMOTE -->|no| RU["ConnectorRemoteUnpinned"]
-  REMOTE -->|yes| HASH["re-hash bytes"]
-  LOCAL -->|yes, no digest| LU["ConnectorLocalUnpinned"]
-  LOCAL -->|no| HASH
-  HASH -->|differs| DM["ConnectorDigestMismatch"]
-  HASH -->|matches| INST["instantiate against the pinned world"]
+flowchart LR
+  NAME["connector name"] -->|"lookup"| K{"on the built-in list?"}
+  K -->|"yes"| NATIVE["compiled-in source"]
+  K -->|"no"| FORM{"distribution form?"}
+  FORM -->|"http: ConnectorInsecureArtifact"| REFUSE["refused install"]
+  FORM -->|"https or oci"| REMOTE{"64-hex pin?"}
+  FORM -->|"local path"| LOCAL{"pin switch set?"}
+  REMOTE -->|"no: ConnectorRemoteUnpinned"| REFUSE
+  REMOTE -->|"yes"| HASH{"re-hashed bytes match?"}
+  LOCAL -->|"yes, no digest: ConnectorLocalUnpinned"| REFUSE
+  LOCAL -->|"no"| HASH
+  HASH -->|"no: ConnectorDigestMismatch"| REFUSE
+  HASH -->|"yes, instantiate"| INST["component instance"]
 ```
 
 unsettled: Which generation of the sandbox interface does the guest world target, and what does native async change about the per-call deadline and the reservation bridge? owner: connector affects: connector.package
@@ -465,40 +467,34 @@ One outbound request, end to end:
 
 ```mermaid
 flowchart LR
+  subgraph SANDBOX["component sandbox"]
+    G["guest source"]
+  end
   subgraph ENGINE["engine process"]
-    subgraph SANDBOX["component sandbox"]
-      G["guest source"]
-    end
     N["compiled-in source"]
     M["host mediation point"]
     A{"host on allowlist?"}
-    R1["SecretUnpermittedRequest"]
     D{"address public?"}
-    R0["ConnectorPrivateAddress"]
     L{"limiter declared?"}
-    Q["acquire permit"]
-    R2["synthesized 429"]
-    R3["ConnectorUnmetered"]
-    H["attach bound headers"]
+    Q{"permit granted?"}
     S{"TLS or loopback?"}
-    R4["SecretCleartextEndpoint"]
-    P["origin check on every hop"]
   end
-  V["vendor, at the vetted address"]
-  G -->|outgoing-http| M
-  N --> M
-  M --> A
-  A -->|no| R1
-  A -->|yes| D
-  D -->|no| R0
-  D -->|yes| L
-  L -->|no| H
-  L -->|yes| Q
-  Q -->|denied| R2
-  Q -->|unreachable| R3
-  Q -->|granted| H
-  H --> S
-  S -->|no| R4
-  S -->|yes| V
-  V --> P
+  V(["vendor"])
+  BLOCK["blocked destination"]
+  THROTTLE["throttled request"]
+  G -->|"outgoing-http"| M
+  N -->|"outgoing request"| M
+  M -->|"request"| A
+  A -->|"no: SecretUnpermittedRequest"| BLOCK
+  A -->|"yes"| D
+  D -->|"no: ConnectorPrivateAddress"| BLOCK
+  D -->|"yes"| L
+  L -->|"no, headers attached"| S
+  L -->|"yes, acquire"| Q
+  Q -->|"denied: synthesized 429"| THROTTLE
+  Q -->|"unreachable: ConnectorUnmetered"| THROTTLE
+  Q -->|"granted, headers attached"| S
+  S -->|"no: SecretCleartextEndpoint"| BLOCK
+  S -->|"yes, vetted address"| V
+  V -.->|"off origin: SecretRedirectOffOrigin"| BLOCK
 ```

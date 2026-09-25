@@ -20,29 +20,29 @@ A credential from its reference to the vendor, keyed throughout by its logical n
 ```mermaid
 flowchart LR
   subgraph TREE["file tree"]
-    DECL["declaration · secret://name, value templates"]
-    REC["operator record · inventory"]
+    DECL["secret declaration"]
+    REC["operator record"]
   end
   subgraph ENGINE["engine process"]
-    RES["resolver · per source, cached"]
-    CHAIN["provider chain · lease, environment, keychain, manager, tunnel"]
-    ROT["rotate · OAuth refresh"]
-    ATT["host attach · one mediated path"]
-    EGR["guest, built-in source, limiter call, exec step"]
+    RES["resolver"]
+    CHAIN["provider chain"]
+    ROT["rotator"]
+    ATT["host attach"]
+    EGR["outbound caller"]
     AUD["run audit"]
   end
-  MINT["lease endpoint"]
+  MINT(["lease endpoint"])
   subgraph CUST["customer"]
     MGR[("customer-operated manager")]
   end
-  VEND["vendor API"]
-  DECL -->|reference| RES
+  VEND(["vendor API"])
+  DECL -->|"secret://name"| RES
   RES -->|"first hit wins"| CHAIN
   MINT -->|"value + expiry"| CHAIN
-  MGR --- CHAIN
-  ROT -->|"blind versioned put"| MGR
+  MGR -->|"stored secrets"| CHAIN
+  ROT -->|"OAuth refresh, blind versioned put"| MGR
   CHAIN -->|"material in a redacting wrapper"| ATT
-  EGR --> ATT
+  EGR -->|"guest, source, limiter, exec step"| ATT
   ATT -->|"bound header, one host"| VEND
   RES -->|"answering adapter per name"| AUD
   REC -.->|"logical name"| DECL
@@ -101,16 +101,17 @@ The provider port, the chain and its precedence, hydration timing, the redacting
   *A-connector*
 
 ```mermaid
-flowchart TD
-  REF["secret://name"] --> L["lease provider · declared names"]
-  L -->|miss| E["process environment · a miss for templates unless opted in"]
-  E -->|miss| K["operating-system keychain"]
-  K -->|miss| M["customer-operated manager"]
-  M -->|miss| T["tunnel into the customer trust zone"]
-  T -->|miss| U["SecretUnresolvedReference"]
-  L & E & K & M & T -->|"first hit, at first hydration"| SH{"name also answered behind the serving adapter?"}
-  SH -->|yes| X["SecretNameShadowed"]
-  SH -->|no| W["redacting wrapper · cached up to 300 s"]
+flowchart LR
+  REF["secret reference"] -->|"lookup"| L["lease provider"]
+  L -->|"miss or undeclared name"| E["process environment"]
+  E -->|"miss or template not opted"| K["operating-system keychain"]
+  K -->|"miss"| M[("customer-operated manager")]
+  M -->|"miss"| T["customer trust-zone tunnel"]
+  T -->|"miss everywhere"| U["unresolved reference"]
+  L & E & K & M & T -->|"first hit, first hydration"| SH{"also answered behind adapter?"}
+  SH -->|"yes: SecretNameShadowed"| SHADOW["shadowed name"]
+  SH -->|"no"| W["redacting wrapper"]
+  W -->|"cached up to 300 s"| C["resolved material"]
 ```
 
 ## lease
@@ -167,10 +168,10 @@ sequenceDiagram
   participant P as mint endpoint
   R->>B: hydrate the bootstrap mint reference
   B-->>R: mint credential
-  R->>P: POST /leases · scope, bearer mint credential, TLS or loopback
+  R->>P: POST /leases: scope, mint credential, TLS
   alt success
     P-->>R: value + one expiry
-    R->>R: hold in memory, retire 10 percent of the window early, margin capped at 30 s
+    R->>R: hold in memory, retire 10 percent early
   else 404
     P-->>R: SecretLeaseScopeUnknown
   else 401 or 403

@@ -17,80 +17,38 @@ the crossings, the profiles, where a build is deployed, how a published hostname
 its posture, the single-writer operations and the catalog that serializes them, and where
 the engine ends and an application begins.
 
-The system: the parties outside it, eight runtime contracts placed on the two halves, and
-the three crossings joining them; `corpus` governs this text and appears in no process.
+The system: the parties outside it, the components on each half, and the three crossings
+joining them.
 
 ```mermaid
 flowchart LR
-  OPER(["operator"])
-  CALLER(["agent · analyst · application"])
   SRC[("sources")]
-  MODEL(["inference endpoint<br/>OpenAI-compatible HTTP"])
-  BUCKET[("S3-compatible bucket")]
+  BUCKET[("object storage")]
+  CALLER(["agent"])
+  MODEL(["inference endpoint"])
 
-  subgraph ENGINE["engine workspace"]
-    subgraph SURF["surface · contextful-control profile"]
-      direction TB
-      CADENCE["cadence tick · reconciler · dispatch"]
-      CONSOLE["analyst console"]
-    end
-
-    subgraph RUNP["run path · contextful-full"]
-      direction TB
-      subgraph RUN["run"]
-        JOURNAL["journal · scheduler · cursor commit"]
-      end
-      subgraph CONN["connector"]
-        HOST["component host + native connectors"]
-      end
-      subgraph AUTHR["authority"]
-        ALLOW["capability allowlists"]
-      end
-    end
-
-    subgraph CROSS["the three crossings"]
-      direction TB
-      X1["1 · connector interface world"]
-      X2["2 · columnar parts + manifest"]
-      X3["3 · capability-token format"]
-    end
-
-    subgraph READP["read path · contextful-edge + contextful-full"]
-      direction TB
-      subgraph READ["read"]
-        FACE["read face · query · ranking · memory"]
-      end
-      subgraph ENFC["authority + disclosure"]
-        ENF["enforcement stack"]
-      end
-      subgraph STOREC["store"]
-        STORE["parts · manifests · catalog"]
-      end
-    end
-
-    subgraph ASSURE["assurance"]
-      GATE["crate-graph gate"]
-    end
+  subgraph RUNP["run path"]
+    JOURNAL[("run journal")] -- "dispatch step" --> HOST["component host"]
   end
 
-  OPER --> CADENCE
-  CADENCE -- "dispatch a unit" --> JOURNAL
-  JOURNAL -- "journaled step" --> HOST
-  HOST -- "pull" --> SRC
-  ALLOW -. "mediates" .- HOST
-  HOST --- X1
-  JOURNAL -- "land" --> X2
-  ALLOW --- X3
-  X1 --- READP
-  X2 --> STORE
-  X3 --- ENF
-  CALLER -- "tool protocol · SQL · HTTP" --> FACE
-  CONSOLE --> FACE
-  FACE -- "admission value" --> ENF
-  ENF -- "row path" --> STORE
+  subgraph CROSS["the three crossings"]
+    X1["connector interface"]
+    X2["manifest wire format"]
+    X3["capability token"]
+  end
+
+  subgraph READP["read path"]
+    PARTS[("parts and manifests")] -- "rebuild" --> CAT["catalog"] -- "snapshot rows" --> ENF["enforcement stack"] -- "admitted rows" --> FACE["query face"]
+  end
+
+  SRC -- "pull" --> HOST
+  X1 -- "connector calls" --> HOST
+  HOST -- "land" --> X2 -- "commit" --> PARTS
+  X3 -- "presented grants" --> ENF
+  PARTS -- "push" --> BUCKET
+  BUCKET -- "pull" --> PARTS
+  CALLER -- "query" --> FACE
   FACE -- "inference egress" --> MODEL
-  STORE <-- "push · pull" --> BUCKET
-  GATE -. "checks every edge" .-> CROSS
 ```
 
 ## compose
@@ -155,29 +113,31 @@ Profiles, the domain crate they share, and the dependency edges the gates raise 
 
 ```mermaid
 flowchart TD
-  CLI["contextful-cli · the contextful binary · wiring per profile"]
-  CORE["contextful-core · domain types + ports · no I/O"]
+  CLI["contextful binary"]
+  CORE["contextful-core"]
   ADAPT["adapter crates"]
   COMP["component connector"]
 
-  subgraph EDGE["contextful-edge · read replica"]
-    NATIVE["native connectors · bucket sync · read-only SQL"]
+  subgraph EDGE["contextful-edge read replica"]
+    NATIVE["native connectors"]
+    SYNC["bucket sync"]
   end
-  subgraph FULL["contextful-full · daemon"]
-    DAEMON["engine · scheduler · component host<br/>sidecars · tool server · pg-catalog"]
+  subgraph FULL["contextful-full daemon"]
+    ENGINE["engine"]
+    HOST["component host"]
   end
-  subgraph CTRL["contextful-control · control plane"]
+  subgraph CTRL["contextful-control plane"]
     CRDT["CRDT library"]
   end
 
   CLI -- "build-time feature bundle" --> EDGE & FULL & CTRL
-  EDGE & FULL & CTRL --> CORE
+  EDGE & FULL & CTRL -- "depends on" --> CORE
   ADAPT -- "implements ports" --> CORE
   CORE -. "TopologyDependencyInversion" .-x ADAPT
   EDGE -. "ProfileDependencyLeak" .-x CRDT
   FULL -. "ProfileDependencyLeak" .-x CRDT
   EDGE -. "ComponentHostMissing" .-x COMP
-  DAEMON -- "component host" --> COMP
+  HOST -- "runs" --> COMP
 ```
 
 unsettled: Does the columnar interchange crate stay whole in the edge profile or ship slimmed? owner: topology affects: topology.package
@@ -200,33 +160,30 @@ against the reference target. Each provider's shapes are data under `spec/target
 
 ```mermaid
 flowchart LR
-  DECL["engine binary + contextful.toml"]
-  UNSUP["TargetShapeUnsupported"]
-  CAP["15 min wall-clock cap · no first-time backfill<br/>no component connector"]
-  PAR["ParityDivergence"]
+  DECL["declaration"]
+  REFUSED(["refused"])
 
-  subgraph TP["target profile · provider primitives per role"]
-    CP["control-plane target · cadence tick · reconciler<br/>durable orchestrator · single-writer catalog"]
-    WK["worker target · accept job · run to completion · report"]
-    FN["function-class target · edge profile only"]
+  subgraph TP["target profile"]
+    CP["control-plane target"]
+    WK["worker target"]
+    FN["function-class target"]
   end
 
   subgraph SELF["self-hosted"]
-    REF["reference target · one process · ./.contextful/"]
+    REF["reference target"]
     CMD["stateless command"]
-    DMN["daemon · SIGHUP reload"]
-    CLU["cluster of daemons · one shared catalog"]
+    DMN["daemon"]
+    CLU["daemon cluster"]
   end
 
-  DECL --> TP
-  TP -. "claims a missing shape" .-> UNSUP
+  DECL -- "managed shapes" --> TP
+  DECL -- "self-hosted shapes" --> SELF
   CP -- "dispatch" --> WK
   WK -- "report" --> CP
   FN -- "execution runs on" --> WK
-  CAP -. "recorded in" .-> TP
-  DECL -- "self-hosted shapes" --> SELF
-  CP -- "24 h soak · byte compare of parts" --> REF
-  REF -. "first differing part" .-> PAR
+  CP -- "compare bytes after soak" --> REF
+  TP -. "TargetShapeUnsupported" .-> REFUSED
+  REF -. "ParityDivergence" .-> REFUSED
 ```
 
 unsettled: Which role hosts heavy compute on a provider exposing neither a container primitive nor a long-running function? owner: topology affects: topology.deploy
@@ -324,39 +281,36 @@ Every single-writer operation reduces to one linearizable conditional write behi
 ```mermaid
 flowchart LR
   subgraph OPS["single-writer operations"]
-    LROW["lease row · fence plus one"]
+    LA["lease acquire"]
+    PTR["pointer commit"]
+    CL[("commit log")]
+    MAN["bucket manifest CAS"]
     CUR["cursor compare-and-swap"]
-    subgraph STOREOPS["store"]
-      PTR["pointer commit"]
-      LA["lease acquire"]
-      CL["commit log"]
-      MAN["bucket manifest CAS"]
-    end
-    subgraph SURFOPS["surface"]
-      APPLY["apply claims a version"]
-    end
+    APPLY["apply claims a version"]
   end
   PRIM["linearizable conditional write"]
   PORT["Catalog port"]
-  subgraph NODE1["single node"]
-    LOCAL["local catalog file"]
+  CW{"conditional write supported?"}
+  SHAPE{"deployment shape?"}
+  subgraph BACKENDS["catalog backends"]
+    LOCAL[("local catalog file")]
+    PG[("Postgres via pg-catalog")]
+    SQLITE[("per-object SQLite")]
+    MPG[("managed Postgres")]
   end
-  subgraph CLUSTER["self-hosted cluster"]
-    PG["Postgres via pg-catalog"]
-  end
-  subgraph MEDGE["managed edge"]
-    SQLITE["per-object SQLite"]
-  end
-  subgraph MCLOUD["managed cloud"]
-    MPG["managed Postgres"]
-  end
-  WEAK["ConditionalWriteUnsupported at open"]
-  STALE["LeaseFenced"]
+  NOOPEN(["refused open"])
+  FENCED(["fenced writer"])
 
-  OPS --> PRIM --> PORT
-  PORT --> LOCAL & PG & SQLITE & MPG
-  PORT -. "update not linearizable" .-> WEAK
-  LROW -. "fenced commit matches nothing" .-> STALE
+  OPS -- "each needs" --> PRIM
+  PRIM -- "served through" --> PORT
+  PORT -- "opens backend" --> CW
+  CW -- "no: ConditionalWriteUnsupported" --> NOOPEN
+  CW -- "yes" --> SHAPE
+  SHAPE -- "single node" --> LOCAL
+  SHAPE -- "self-hosted cluster" --> PG
+  SHAPE -- "managed edge" --> SQLITE
+  SHAPE -- "managed cloud" --> MPG
+  PTR -. "stale fence: LeaseFenced" .-> FENCED
 ```
 
 unsettled: Is a self-contained clustered catalog worth building behind the `Catalog` port for an operator wanting clustered availability without Postgres? owner: topology affects: topology.coordinate
