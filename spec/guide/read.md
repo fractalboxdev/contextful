@@ -14,11 +14,83 @@ Each connection starts by registering one view per table the manifests name ({{r
 
 Caller-written SQL passes the guard. The guard reads the engine's own parse tree ({{read.guard.engine-own-parse}}), admits exactly one read-only SELECT ({{read.guard.single-read-only-statement}}), and walks the whole tree ({{read.guard.whole-tree-walk}}), checking every base relation against the registered set ({{read.guard.relation-allowlist}}). Authorship decides whether the guard runs at all: operator text runs raw, token-holder text is gated ({{read.guard.statement-provenance}}). Templates are checked once at startup ({{read.guard.startup-time-check}}) and bind arguments with no coercion ({{read.guard.template-binding}}).
 
+```mermaid
+sequenceDiagram
+  participant A as agent
+  box read
+    participant T as tool server
+    participant G as statement guard
+    participant V as caller views
+  end
+  participant S as store
+  A->>T: context.query with a token
+  T->>V: register one view per table
+  T->>G: parse and walk the statement
+  alt write, table function or unregistered name
+    G-->>A: refusal naming only the request
+  else one read-only SELECT
+    G->>V: run over restricted relations
+    V->>S: scan committed parts
+    S-->>V: rows
+    V-->>T: admitted rows and cells
+    T-->>A: one envelope, exact truncated flag
+  end
+```
+
 Ranked reads go through `corpus.retrieve` ({{read.retrieve.ranked-call}}), which works as a funnel. Query text becomes content tokens ({{read.retrieve.content-tokens}}). Each table contributes an arm over a recency-ordered candidate window ({{read.retrieve.candidate-window}}); a vector sidecar widens that window without changing any row's score ({{read.retrieve.sidecar-generates-candidates}}); a relevance floor drops noise ({{read.retrieve.relevance-floor}}). Ranking fuses exact cosine with BM25 ({{read.rank.fusion}}), and a question's timeframe leads the ordering as a tier rather than a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend changes the order, never whether the read answers ({{read.rank.degradation-not-error}}).
+
+```mermaid
+sequenceDiagram
+  participant A as agent
+  box read
+    participant R as retrieval
+    participant W as table arm
+    participant X as vector sidecar
+  end
+  A->>R: corpus.retrieve with query and filter
+  R->>R: split query into content tokens
+  loop each registered table
+    R->>W: recency-ordered candidate window
+    opt sidecar under its size cap
+      W->>X: nearest neighbours
+      X-->>W: candidates re-joined through enforcement
+    end
+    W-->>R: candidates above the relevance floor
+  end
+  R->>R: fuse cosine and BM25, window first
+  R-->>A: ranked rows with the retrieval block
+```
 
 Every transport serializes one projection ({{read.respond.one-projection}}). `truncated` is exact, set by an over-fetched probe row ({{read.respond.truncation-is-exact}}), and zero rows is a success ({{read.respond.zero-rows-is-success}}). A caller may pin tables to published builds, and a pin never silently widens to the latest state ({{read.resolve-pin.unknown-build}}).
 
 Memory keeps episodes, facts, entities, edges and preferences as ordinary store tables ({{topology.compose.memory-substrate}}). Synthesis extracts, resolves and consolidates. An extraction failing validation is re-prompted a bounded number of times ({{read.synthesize.extract-attempts}}), then dead-lettered with the cursor held ({{read.synthesize.dead-letter}}). An ambiguous entity mention dead-letters instead of merging ({{read.resolve-entity.ambiguous-mention}}). Recall serves a claim only when all of its evidence reads through the caller's own session ({{read.recall.evidence-unresolved}}), so memory never tells a caller what that caller could not read directly. Settlement scores registered predictions against observed outcomes ({{read.settle.registration}}).
+
+```mermaid
+sequenceDiagram
+  box run
+    participant P as synthesis pass
+  end
+  participant M as model endpoint
+  box store
+    participant T as memory tables
+  end
+  box read
+    participant R as recall
+  end
+  participant A as agent
+  P->>M: extract from rows since the cursor
+  M-->>P: extracted claims
+  alt invalid after bounded attempts
+    P->>T: dead-letter, cursor held
+  else valid
+    P->>T: commit resolved, consolidated facts
+  end
+  A->>R: recall about a vendor
+  R->>T: read candidate facts
+  T-->>R: facts with evidence references
+  R->>R: read evidence through the caller's session
+  R-->>A: facts whose evidence the caller reads
+```
 
 ## Worked example
 
