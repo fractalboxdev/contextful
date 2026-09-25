@@ -45,7 +45,6 @@ fn rows(p: &GitRepo, cf: &std::path::Path, table: &str) -> Vec<BTreeMap<String, 
 }
 
 #[test]
-#[ignore = "milestone 11 is open"]
 fn m11_derive() {
     let cf = bin("contextful");
     let p = GitRepo::init();

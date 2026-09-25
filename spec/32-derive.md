@@ -67,6 +67,8 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-connector*
 - `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
   *A-connector*
+- `anti-join` — Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker in the pipeline's own output table.
+  *A-run*
 
 unsettled: At what parent-table size does the in-memory scan stop fitting, and what replaces it? owner: derive affects: run.select
 
@@ -126,6 +128,8 @@ Operator-declared argv chains against local binaries: resolution, pinning, envir
   *A-connector*
 - `digest-mismatch` — A pinned file whose bytes differ from its recorded digest raises `DeriveDigestMismatch`.
   *A-connector*
+- `no-shell` — A step runs as its argument array with no shell, in a process group of its own, under a cleared environment holding only the binding's `env` table.
+  *A-run*
 - `engine-id` — An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments.
 
 ```mermaid
@@ -205,6 +209,8 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
   *A-authority*
 - `primary-key` — A derive output table without `primary_key` `["unit_ref", "cue_seq"]` raises `DerivePrimaryKeyMissing`.
   *because a re-derived unit otherwise lands duplicate passages beside the originals*
+- `marker-row` — A unit yielding no passage lands one marker row, `cue_seq` -1 and `kind` `marker`, carrying its status, attempts, last error and whether it retries.
+  *A-run*
 
 unsettled: What validated domain does `_modality` carry, and which value does a passage derived from a video row take? owner: derive affects: run.emit
 
@@ -222,6 +228,7 @@ Reading a caption document into passages: one grammar, defect accounting, coales
 - `passage-span` — A passage stays open while it spans less than 60 s.
 - `passage-bytes` — One passage's text holds at most 8 KiB.
 - `passages-per-document` — One document yields at most 2000 rows of passages.
+- `grammar` — SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.
 
 ## test-engine
 
