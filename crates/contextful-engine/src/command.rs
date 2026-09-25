@@ -14,12 +14,16 @@ use std::io::Read;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Interval at which a running child is checked for exit and for a stop.
 const WAIT_TICK: Duration = Duration::from_millis(10);
 /// How long a signalled group has to exit on `SIGTERM` before it is killed.
 const TERM_GRACE: Duration = Duration::from_millis(500);
+/// How long a killed group has to disappear before the pull fails instead of waiting on.
+const KILL_CEILING: Duration = Duration::from_secs(5);
+/// How long the output pipes have to reach end-of-file once the group is gone.
+const PIPE_CEILING: Duration = Duration::from_secs(5);
 
 pub struct CommandSource {
     pub argv: Vec<String>,
@@ -54,8 +58,29 @@ mod group {
         }
     }
 
-    /// Whether any process of group `pgid` still exists.
+    /// Whether any process of group `pgid` still runs. A zombie does not: once its
+    /// parent exits it waits on PID 1, which under a container runtime may never reap it.
+    #[cfg(target_os = "linux")]
     pub fn alive(pgid: u32) -> bool {
+        let Ok(entries) = std::fs::read_dir("/proc") else { return exists(pgid) };
+        entries.flatten().any(|e| {
+            let Ok(stat) = std::fs::read_to_string(e.path().join("stat")) else { return false };
+            // `pid (comm) state ppid pgrp …`; `comm` may hold spaces and parentheses.
+            let Some((_, rest)) = stat.rsplit_once(')') else { return false };
+            let mut fields = rest.split_whitespace();
+            let state = fields.next().unwrap_or("Z");
+            let pgrp = fields.nth(1).and_then(|f| f.parse::<u32>().ok());
+            pgrp == Some(pgid) && !matches!(state, "Z" | "X" | "x")
+        })
+    }
+
+    /// Whether any process of group `pgid` still runs; the host's init reaps orphans.
+    #[cfg(not(target_os = "linux"))]
+    pub fn alive(pgid: u32) -> bool {
+        exists(pgid)
+    }
+
+    fn exists(pgid: u32) -> bool {
         match libc::pid_t::try_from(pgid) {
             // SAFETY: signal 0 checks existence and delivers nothing.
             Ok(pgid) => unsafe { libc::kill(-pgid, 0) == 0 },
@@ -78,17 +103,18 @@ mod group {
 }
 
 /// Signal the group to terminate, escalate to a kill past the grace period, and return
-/// once the child is reaped and no process of the group remains.
-fn reap_group(child: &mut std::process::Child, pgid: u32) {
+/// once the child is reaped and no process of the group runs. A group still running
+/// `KILL_CEILING` after the kill fails the pull.
+fn reap_group(child: &mut std::process::Child, pgid: u32, step: &str) -> Result<(), Failure> {
     group::signal(pgid, group::TERM);
-    let started = std::time::Instant::now();
+    let started = Instant::now();
     let mut reaped = false;
     loop {
         if !reaped {
             reaped = !matches!(child.try_wait(), Ok(None));
         }
         if reaped && !group::alive(pgid) {
-            return;
+            return Ok(());
         }
         if started.elapsed() >= TERM_GRACE {
             group::signal(pgid, group::KILL);
@@ -96,31 +122,50 @@ fn reap_group(child: &mut std::process::Child, pgid: u32) {
                 let _ = child.kill();
             }
         }
+        if started.elapsed() >= TERM_GRACE + KILL_CEILING {
+            return Err(Failure::new(
+                FailureTag::Transient,
+                format!("process group {pgid} of `{step}` still runs {} s after SIGKILL", KILL_CEILING.as_secs()),
+            ));
+        }
         std::thread::sleep(WAIT_TICK);
     }
 }
 
-/// Read a pipe to its end on a thread of its own, delivering the bytes over a channel.
+/// Read a pipe on a thread of its own, delivering each chunk over a channel; the channel
+/// disconnects at end-of-file.
 fn drain(pipe: Option<impl Read + Send + 'static>) -> Receiver<Vec<u8>> {
     let (tx, rx) = channel();
     std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(mut p) = pipe {
-            let _ = p.read_to_end(&mut buf);
+        let Some(mut p) = pipe else { return };
+        let mut buf = [0u8; 8192];
+        while let Ok(n) = p.read(&mut buf) {
+            if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                break;
+            }
         }
-        let _ = tx.send(buf);
     });
     rx
 }
 
-/// Wait for a drained pipe, observing the stop token.
-fn collect(rx: &Receiver<Vec<u8>>, cancel: &dyn Cancellation, step: &str) -> Result<Vec<u8>, Failure> {
+/// Gather a drained pipe to end-of-file within `PIPE_CEILING`, observing the stop token. A
+/// pipe still open past the ceiling is held by a process outside the reaped group, and
+/// fails the pull rather than blocking it.
+fn collect(rx: &Receiver<Vec<u8>>, cancel: &dyn Cancellation, step: &str, stream: &str) -> Result<Vec<u8>, Failure> {
+    let deadline = Instant::now() + PIPE_CEILING;
+    let mut bytes = Vec::new();
     loop {
         match rx.recv_timeout(WAIT_TICK) {
-            Ok(bytes) => return Ok(bytes),
-            Err(RecvTimeoutError::Disconnected) => return Ok(Vec::new()),
+            Ok(chunk) => bytes.extend_from_slice(&chunk),
+            Err(RecvTimeoutError::Disconnected) => return Ok(bytes),
             Err(RecvTimeoutError::Timeout) if cancel.requested() => {
                 return Err(Failure::canceled(format!("stopped while reading the output of `{step}`")));
+            }
+            Err(RecvTimeoutError::Timeout) if Instant::now() >= deadline => {
+                return Err(Failure::new(
+                    FailureTag::Transient,
+                    format!("the {stream} of `{step}` stays open {} s after its process group is gone; a process outside the group holds it", PIPE_CEILING.as_secs()),
+                ));
             }
             Err(RecvTimeoutError::Timeout) => {}
         }
@@ -148,7 +193,7 @@ impl Source for CommandSource {
         let err = drain(child.stderr.take());
         let status = loop {
             if cancel.requested() {
-                reap_group(&mut child, pgid);
+                reap_group(&mut child, pgid, &request.step_label)?;
                 return Err(Failure::canceled(format!("stopped during `{}`; its process group is reaped", request.step_label)));
             }
             match child.try_wait() {
@@ -159,9 +204,9 @@ impl Source for CommandSource {
         };
         // A process the child left behind in its group is signalled and reaped too, which
         // also closes any pipe it held open.
-        reap_group(&mut child, pgid);
-        let stdout = collect(&out, cancel, &request.step_label)?;
-        let stderr = collect(&err, cancel, &request.step_label)?;
+        reap_group(&mut child, pgid, &request.step_label)?;
+        let stdout = collect(&out, cancel, &request.step_label, "stdout")?;
+        let stderr = collect(&err, cancel, &request.step_label, "stderr")?;
         if status.success() {
             return Ok(stdout);
         }
