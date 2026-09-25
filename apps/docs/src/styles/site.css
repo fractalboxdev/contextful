@@ -216,7 +216,6 @@ li.clause:target .clause-anchor code { color: var(--accent); }
 .clause-ref code { color: var(--accent); }
 .record-ref { font-family: var(--font-mono); font-size: 0.86em; }
 
-
 /* Merlion diagrams draw on the page's own background, ink and accent, in both schemes. */
 :root:not([data-theme]) {
   --merlion-bg: var(--bg);
@@ -227,13 +226,12 @@ li.clause:target .clause-anchor code { color: var(--accent); }
 figure.merlion-figure {
   display: flex;
   justify-content: center;
+  margin: 1rem 0;
   padding: 0.5rem;
   border: 1px solid var(--border);
 }
-figure.merlion-figure { margin: 1rem 0; }
 figure.merlion-figure > merlion-view { display: block; width: 100%; }
 figure.merlion-figure svg { max-width: 100%; height: auto; }
-
 
 .index-list { list-style: none; padding: 0; }
 .index-list li { margin: 0.2rem 0; }
