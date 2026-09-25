@@ -53,7 +53,6 @@ fn column(result: &Value, name: &str) -> Vec<Value> {
 }
 
 #[test]
-#[ignore = "milestone 5 is open"]
 fn m05_read_face() {
     let cf = bin("contextful");
     let p = GitRepo::init();

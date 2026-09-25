@@ -14,8 +14,8 @@ fn sorted(mut v: Vec<Value>) -> Vec<Value> {
     v
 }
 
-/// A registered relation applies, in order: mirrored permission semi-join, tenant equality, credential predicate, table policy, project default, table zone, then the column projection carrying masks and zone nulls.
-// spec: authority.compose.relation-order@fb165986
+// Of the relation's steps, the tenant equality precedes the table policy, and the
+// projection masks rows the predicates selected; the zone step then removes rows.
 #[test]
 fn the_relation_applies_tenant_policy_zone_then_projection() {
     let r = Reads::new();
@@ -52,8 +52,7 @@ fn each_added_step_only_removes_rows() {
     assert_eq!(both_ids, [json!("c1"), json!("c2")]);
 }
 
-/// Protection is a rewrite in the data plane: predicates compiled into the statement, rewritten projections, a per-credential filter at the sync edge, zone floors. Admission decides entry alone.
-// spec: authority.compose.protection-is-a-rewrite@7e5cd474
+// The predicates and the masked projection are compiled into the relation text.
 #[test]
 fn protection_is_compiled_into_the_relation() {
     let r = Reads::new();
@@ -176,8 +175,7 @@ fn drop_nulls_a_cell_or_empties_a_string() {
     assert!(column(&rows, "age").iter().all(Value::is_null));
 }
 
-/// Both layers compute the keyed digest natively; the query layer calls a scalar function holding the pepper in process memory, and a value masked at either layer joins the other.
-// spec: authority.mask.native-digest@29d59e18
+// The query layer's scalar function and the mask's own application agree on a digest.
 #[test]
 fn a_digest_from_either_layer_joins_the_other() {
     let r = Reads::new();
@@ -191,8 +189,7 @@ fn a_digest_from_either_layer_joins_the_other() {
     assert_eq!(column(&joined, "contact_id"), [json!("c1"), json!("c2")]);
 }
 
-/// One environment variable supplies the key for `hash` and `tokenize`, read by both layers as one resolved value.
-// spec: authority.mask.pepper@48c78b9d
+// The query layer's digests are keyed by the one resolved pepper.
 #[test]
 fn one_resolved_pepper_keys_both_layers() {
     let r = Reads::new();
@@ -203,8 +200,7 @@ fn one_resolved_pepper_keys_both_layers() {
     assert_ne!(queried[0], json!(other.digest("h4")));
 }
 
-/// A column mask is one value whose primary and combine halves are private; it drives both the write-time and query-time layers, and no consumer applies the primary alone.
-// spec: authority.mask.one-value@337bf787
+// The mask applies primary and combine together, as the query layer does.
 #[test]
 fn a_mask_applies_primary_and_combine_together_in_both_layers() {
     let r = Reads::new();
