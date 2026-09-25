@@ -1,6 +1,8 @@
 //! The acceptance harness: builds a workspace binary once and runs it the way a caller
 //! does, against scratch state it owns.
 
+pub mod http;
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Mutex;
@@ -70,6 +72,31 @@ impl GitRepo {
 
     /// Run a built binary with this repository as its working directory.
     pub fn run(&self, bin: &Path, args: &[&str]) -> Output {
-        Command::new(bin).args(args).current_dir(&self.root).env_remove("CARGO_TARGET_DIR").output().unwrap()
+        self.run_env(bin, args, &[])
+    }
+
+    /// Run a built binary with extra environment variables.
+    pub fn run_env(&self, bin: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+        Command::new(bin).args(args).current_dir(&self.root).env_remove("CARGO_TARGET_DIR").envs(env.iter().copied()).output().unwrap()
+    }
+
+    /// Every file under the repository whose bytes contain `needle`, as paths relative to the root.
+    pub fn files_containing(&self, needle: &[u8]) -> Vec<String> {
+        let mut hits = Vec::new();
+        let mut stack = vec![self.root.clone()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.file_name().is_some_and(|n| n == ".git") {
+                    continue;
+                }
+                if path.is_dir() {
+                    stack.push(path);
+                } else if std::fs::read(&path).unwrap().windows(needle.len()).any(|w| w == needle) {
+                    hits.push(path.strip_prefix(&self.root).unwrap().to_string_lossy().into_owned());
+                }
+            }
+        }
+        hits
     }
 }
