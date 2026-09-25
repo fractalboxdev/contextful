@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 13 | 175 | 46 | 18 | 13 | 49 | 0 | 49 |
-| `authority` | 2 | 16 | 223 | 59 | 27 | 7 | 154 | 0 | 154 |
+| `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
 | `corpus` | 1 | 9 | 65 | 26 | 7 | 0 | 25 | 0 | 25 |
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
-| `read` | 2 | 14 | 109 | 21 | 14 | 16 | 55 | 0 | 55 |
+| `read` | 2 | 14 | 109 | 21 | 14 | 16 | 54 | 0 | 54 |
 | `run` | 3 | 24 | 279 | 80 | 34 | 24 | 104 | 0 | 104 |
 | `store` | 1 | 14 | 140 | 37 | 12 | 8 | 75 | 0 | 75 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 144 | 1405 | 450 | 161 | 101 | 528 | 0 | |
+| **total** | 19 | 144 | 1406 | 451 | 161 | 101 | 528 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ Decision records: 18.
 | 2 — The store | 8 | 114 | 75 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
 | 4 — Ingest | 22 | 329 | 80 | passing |
-| 5 — The read face under enforcement | 16 | 203 | 118 | passing |
+| 5 — The read face under enforcement | 16 | 204 | 118 | passing |
 | 6 — Sync and replicas | 6 | 26 | 0 | absent |
 | 7 — Memory | 6 | 13 | 0 | absent |
 | 8 — Accountability | 5 | 22 | 0 | absent |
@@ -182,6 +182,7 @@ Unscheduled operations: 9.
 | `authority.mask.unknown-class` | `crates/contextful-policy/tests/integration/enforce/mask.rs::an_unknown_class_is_refused` | performed |
 | `authority.place.allow-set-entries` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_allow_set_holds_at_most_32_entries` | performed |
 | `authority.place.allow-set-entry` | `crates/contextful-policy/tests/integration/enforce/zone.rs::allow_set_entries_take_six_forms` | performed |
+| `authority.place.asserted-zone` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_asserted_zone_never_replaces_the_signed_one` | performed |
 | `authority.place.caller-zone` | `crates/contextful-context/tests/integration/read/enforce.rs::the_zone_is_declared_per_request` | performed |
 | `authority.place.disjunctive` | `crates/contextful-policy/tests/integration/enforce/zone.rs::any_matching_entry_admits_the_zone` | performed |
 | `authority.place.evidence-floor` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_synthesized_row_resolves_to_its_evidence_intersection` | performed |
@@ -346,7 +347,6 @@ Unscheduled operations: 9.
 | `read.rank.flat-window-full-credit` | `crates/contextful-core/tests/integration/read/rank.rs::a_flat_window_awards_full_credit` | performed |
 | `read.rank.fusion` | `crates/contextful-core/tests/integration/read/rank.rs::fusion_weights_clamps_and_breaks_ties_by_identifier` | performed |
 | `read.rank.internal-score-stays-internal` | `crates/contextful-context/tests/integration/read/retrieve.rs::only_the_integer_score_crosses` | performed |
-| `read.rank.lexical-index-cache` | `crates/contextful-core/tests/integration/read/rank.rs::lexical_indexes_cache_by_fingerprint_in_a_fifo` | performed |
 | `read.rank.lexical-leg-matches-only` | `crates/contextful-core/tests/integration/read/rank.rs::the_lexical_leg_holds_matching_documents_alone` | performed |
 | `read.rank.ordering-casts-first` | `crates/contextful-core/tests/integration/read/rank.rs::publication_text_casts_to_an_instant_before_comparison` | performed |
 | `read.rank.question-window-is-a-tier` | `crates/contextful-core/tests/integration/read/rank.rs::the_in_window_flag_leads_and_an_out_of_window_row_stays` | performed |

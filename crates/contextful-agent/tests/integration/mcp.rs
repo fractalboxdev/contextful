@@ -99,7 +99,8 @@ fn call(server: &Server<'_>, tool: &str, arguments: Value) -> Value {
 #[test]
 fn the_tool_list_is_the_closed_read_set() {
     let f = fixture();
-    let server = Server::new(&f.face, f.authority.clone(), &current).unwrap();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert_eq!(names, ["context.describe", "context.query", "context.execute_query", "context.files", "context.file", "corpus.retrieve"]);
@@ -112,7 +113,8 @@ fn the_tool_list_is_the_closed_read_set() {
 #[test]
 fn a_refusal_arrives_in_band() {
     let f = fixture();
-    let server = Server::new(&f.face, f.authority.clone(), &current).unwrap();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
     let refused = call(&server, "context.query", json!({ "sql": "SELECT * FROM \"hr/salaries\"" }));
     assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
     assert_eq!(refused["result"]["structuredContent"]["error"]["identifier"], json!("EnforceUnknownRelation"));
@@ -127,7 +129,8 @@ fn a_refusal_arrives_in_band() {
 #[test]
 fn the_handshake_reports_the_build_and_refuses_an_absent_face() {
     let f = fixture();
-    let server = Server::new(&f.face, f.authority.clone(), &current).unwrap();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
     let init = ask(&server, 1, "initialize", json!({ "protocolVersion": "2025-06-18", "require": ["duckdb"] }));
     assert_eq!(init["result"]["contextful.build"]["backends"], json!(["duckdb", "fts"]));
     let absent = ask(&server, 2, "initialize", json!({ "require": ["hnsw"] }));
@@ -139,7 +142,8 @@ fn the_handshake_reports_the_build_and_refuses_an_absent_face() {
 fn every_call_re_reads_the_authority() {
     let f = fixture();
     let boundary = |_: &AdmittedAuthority| Err(AuthorityError::AuthorityExpired("expired at 2030-01-01T00:15:00Z".into()));
-    let server = Server::new(&f.face, f.authority.clone(), &boundary).unwrap();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &boundary, &clock).unwrap();
     let stopped = call(&server, "context.query", json!({ "sql": "SELECT note_id FROM \"research/notes\"" }));
     assert_eq!(stopped["result"]["isError"], json!(true));
     assert!(stopped["result"]["content"][0]["text"].as_str().unwrap().contains("AuthorityExpired"));

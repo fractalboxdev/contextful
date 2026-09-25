@@ -38,27 +38,17 @@ pub fn single_statement(serialized: &Value) -> Result<&Value, ReadError> {
     }
 }
 
-/// Every object in the tree, depth first.
-fn objects<'a>(v: &'a Value, out: &mut Vec<&'a serde_json::Map<String, Value>>) {
-    match v {
-        Value::Object(o) => {
-            out.push(o);
-            o.values().for_each(|c| objects(c, out));
-        }
-        Value::Array(a) => a.iter().for_each(|c| objects(c, out)),
-        _ => {}
-    }
+/// The CTE names an object declares for itself and every node beneath it.
+fn declared(o: &serde_json::Map<String, Value>) -> impl Iterator<Item = &str> {
+    o.get("cte_map").and_then(|m| m["map"].as_array()).into_iter().flatten().filter_map(|e| e["key"].as_str())
 }
 
-/// Common-table-expression names declared anywhere in the tree.
-fn cte_names(nodes: &[&serde_json::Map<String, Value>]) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    for o in nodes {
-        if let Some(map) = o.get("cte_map").and_then(|m| m["map"].as_array()) {
-            names.extend(map.iter().filter_map(|e| e["key"].as_str()).map(str::to_string));
-        }
-    }
-    names
+/// Unqualified names of the engine's own catalog relations.
+fn catalog_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    ["sqlite_master", "sqlite_schema", "sqlite_temp_master", "sqlite_temp_schema", "information_schema"].contains(&n.as_str())
+        || n.starts_with("duckdb_")
+        || n.starts_with("pg_")
 }
 
 fn qualifier(o: &serde_json::Map<String, Value>) -> Option<String> {
@@ -69,48 +59,64 @@ fn qualifier(o: &serde_json::Map<String, Value>) -> Option<String> {
 
 /// Admit one caller statement: exactly one read-only `SELECT`, no table function or
 /// system-catalog reach anywhere in the tree, and every base relation a view registered
-/// for this caller or a common table expression the statement declares. The walk covers
-/// the whole tree and gathers every CTE name before judging any base relation
-/// (`read.guard.whole-tree-walk`). An unregistered relation is refused as ungranted,
-/// echoing the statement's own spelling (`read.guard.unregistered-relation`).
+/// for this caller or a common table expression declared in a scope enclosing it. The
+/// walk covers the whole tree, and a CTE name resolves only within the scope that
+/// declares it (`read.guard.whole-tree-walk`). An unregistered relation is refused as
+/// ungranted, echoing the statement's own spelling (`read.guard.unregistered-relation`).
 pub fn admit(serialized: &Value, registered: impl Fn(&str) -> bool) -> Result<Admitted, Refusal> {
     let statement = single_statement(serialized)?;
-    let mut nodes = Vec::new();
-    objects(statement, &mut nodes);
-    let ctes = cte_names(&nodes);
-    let mut admitted = Admitted { ctes: ctes.clone(), ..Admitted::default() };
+    let mut admitted = Admitted::default();
     let mut parameters = BTreeSet::new();
-    for o in &nodes {
-        match o.get("type").and_then(Value::as_str) {
-            Some("TABLE_FUNCTION") => {
-                let name = o
-                    .get("function")
-                    .and_then(|f| f["function_name"].as_str())
-                    .unwrap_or("a table function");
-                return Err(ReadError::TableFunctionRefused(format!("`{name}` is a table function")).into());
-            }
-            Some("BASE_TABLE") => {
-                let name = o.get("table_name").and_then(Value::as_str).unwrap_or_default();
-                if let Some(q) = qualifier(o) {
-                    if q.split('.').any(|part| SYSTEM_SCHEMAS.contains(&part.to_ascii_lowercase().as_str())) {
-                        return Err(ReadError::TableFunctionRefused(format!("`{q}.{name}` reaches the engine's catalog")).into());
-                    }
-                    return Err(EnforceError::UnknownRelation(format!("`{q}.{name}`")).into());
-                }
-                if ctes.contains(name) {
-                    continue;
-                }
-                if !registered(name) {
-                    return Err(EnforceError::UnknownRelation(format!("`{name}`")).into());
-                }
-                admitted.relations.insert(name.to_string());
-            }
-            _ => {}
-        }
-        if o.get("class").and_then(Value::as_str) == Some("PARAMETER") {
-            parameters.insert(o.get("identifier").and_then(Value::as_str).unwrap_or_default().to_string());
-        }
-    }
+    walk(statement, &BTreeSet::new(), &registered, &mut admitted, &mut parameters)?;
     admitted.parameters = parameters.len();
     Ok(admitted)
+}
+
+fn walk(
+    v: &Value,
+    scope: &BTreeSet<String>,
+    registered: &impl Fn(&str) -> bool,
+    admitted: &mut Admitted,
+    parameters: &mut BTreeSet<String>,
+) -> Result<(), Refusal> {
+    match v {
+        Value::Array(a) => a.iter().try_for_each(|c| walk(c, scope, registered, admitted, parameters)),
+        Value::Object(o) => {
+            let mut inner = scope.clone();
+            for name in declared(o) {
+                inner.insert(name.to_string());
+                admitted.ctes.insert(name.to_string());
+            }
+            match o.get("type").and_then(Value::as_str) {
+                Some("TABLE_FUNCTION") => {
+                    let name = o.get("function").and_then(|f| f["function_name"].as_str()).unwrap_or("a table function");
+                    return Err(ReadError::TableFunctionRefused(format!("`{name}` is a table function")).into());
+                }
+                Some("BASE_TABLE") => {
+                    let name = o.get("table_name").and_then(Value::as_str).unwrap_or_default();
+                    if let Some(q) = qualifier(o) {
+                        if q.split('.').any(|part| SYSTEM_SCHEMAS.contains(&part.to_ascii_lowercase().as_str())) {
+                            return Err(ReadError::TableFunctionRefused(format!("`{q}.{name}` reaches the engine's catalog")).into());
+                        }
+                        return Err(EnforceError::UnknownRelation(format!("`{q}.{name}`")).into());
+                    }
+                    if !scope.contains(name) {
+                        if catalog_name(name) {
+                            return Err(ReadError::TableFunctionRefused(format!("`{name}` is the engine's catalog")).into());
+                        }
+                        if !registered(name) {
+                            return Err(EnforceError::UnknownRelation(format!("`{name}`")).into());
+                        }
+                        admitted.relations.insert(name.to_string());
+                    }
+                }
+                _ => {}
+            }
+            if o.get("class").and_then(Value::as_str) == Some("PARAMETER") {
+                parameters.insert(o.get("identifier").and_then(Value::as_str).unwrap_or_default().to_string());
+            }
+            o.values().try_for_each(|c| walk(c, &inner, registered, admitted, parameters))
+        }
+        _ => Ok(()),
+    }
 }

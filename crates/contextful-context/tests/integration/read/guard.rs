@@ -72,8 +72,8 @@ fn base_relations_are_registered_views_or_declared_ctes() {
     assert!(message.contains("part-00000.parquet"), "{message}");
 }
 
-/// The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and gathers common-table-expression names across the tree before checking any base relation.
-// spec: read.guard.whole-tree-walk@4f71069a
+/// The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and a common-table-expression name resolves only within the scope that declares it and the scopes beneath.
+// spec: read.guard.whole-tree-walk@d78811bc
 #[test]
 fn the_walk_covers_every_subtree() {
     let r = Reads::new();
@@ -87,10 +87,56 @@ fn the_walk_covers_every_subtree() {
         let message = refused_with(r.query(&s, text), "EnforceUnknownRelation");
         assert!(message.contains("hr/salaries"), "{text}: {message}");
     }
-    // A CTE declared deeper in the tree than its first use still counts as declared.
-    let text = r#"SELECT (SELECT count(*) FROM later) FROM (WITH later AS (SELECT 1 AS x) SELECT * FROM later)"#;
-    let tree = r.face.serialize(text).unwrap();
-    assert!(admit(&tree, |_| false).is_ok());
+    // A CTE resolves in the scope declaring it and beneath; a sibling scope reaching its
+    // name reaches a base relation.
+    let nested = r.query(&s, r#"WITH acme AS (SELECT * FROM "research/notes") SELECT (SELECT count(*) FROM acme) AS n"#).unwrap();
+    assert_eq!(column(&nested, "n"), [json!("4")]);
+    let tree = r.face.serialize(r#"SELECT (SELECT count(*) FROM later) FROM (WITH later AS (SELECT 1 AS x) SELECT * FROM later)"#).unwrap();
+    assert!(admit(&tree, |_| false).is_err());
+}
+
+/// Regression: a CTE declared in one subquery never admits a base relation of the same
+/// name in another, whatever that name reaches — a store file by path, the engine's
+/// catalog, or another caller's table.
+#[test]
+fn a_cte_name_in_one_scope_admits_nothing_in_another() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], None, None);
+    let part = format!("{}/tables/hr/salaries/data/runs/run-0001/ingest-a/part-00000.parquet", r.store.root().display());
+    for (name, error) in [
+        (part.as_str(), "EnforceUnknownRelation"),
+        ("sqlite_master", "TableFunctionRefused"),
+        ("duckdb_tables", "TableFunctionRefused"),
+        ("hr/salaries", "EnforceUnknownRelation"),
+    ] {
+        let text = format!(r#"SELECT * FROM (WITH "{name}" AS (SELECT 1 AS x) SELECT x FROM "{name}") s, "{name}""#);
+        refused_with(r.query(&s, &text), error);
+    }
+}
+
+/// Regression: the engine a caller's statement runs on reaches no file, extension or
+/// setting beyond the session's relations, whatever the guard admits.
+#[test]
+fn the_session_engine_is_closed_to_files_and_settings() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], None, None);
+    let part = format!("{}/tables/hr/salaries/data/runs/run-0001/ingest-a/part-00000.parquet", r.store.root().display());
+    for text in [
+        format!("SELECT * FROM '{part}'"),
+        format!("SELECT * FROM \"{part}\""),
+        format!("SELECT * FROM (SELECT * FROM read_parquet('{part}'))"),
+        "SELECT * FROM sqlite_master".to_string(),
+        "SELECT * FROM duckdb_views()".to_string(),
+        "SELECT * FROM information_schema.tables".to_string(),
+        "SELECT * FROM pg_catalog.pg_class".to_string(),
+        "SELECT * FROM main.sqlite_master".to_string(),
+    ] {
+        let (id, _) = refusal(r.query(&s, &text));
+        assert!(["EnforceUnknownRelation", "TableFunctionRefused"].contains(&id.as_str()), "{text}: {id}");
+    }
+    // Operator-composed reads run on the same locked connection: a template naming a
+    // store table still reads, and no statement reopens the configuration.
+    refused_with(r.query(&s, "SET enable_external_access = true"), "StatementNotReadOnly");
 }
 
 /// A base relation naming nothing this connection registered is refused by {{authority.refuse.ungranted-table}}, echoing what the statement asked for and no relation of another caller.

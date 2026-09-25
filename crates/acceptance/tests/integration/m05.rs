@@ -161,5 +161,18 @@ name = "hr/salaries"
         "TableFunctionRefused",
     );
 
+    // A scope declared in one subquery admits nothing of that name in another.
+    refused(
+        client.query(r#"SELECT * FROM (WITH "hr/salaries" AS (SELECT 1 AS x) SELECT x FROM "hr/salaries") s, "hr/salaries""#),
+        "EnforceUnknownRelation",
+    );
+    refused(client.query(r#"SELECT * FROM (WITH sqlite_master AS (SELECT 1 AS x) SELECT x FROM sqlite_master) s, sqlite_master"#), "TableFunctionRefused");
+
+    // An unsigned zone argument never widens the credential's signed zone.
+    refused(
+        client.call("corpus.retrieve", json!({ "prefix": "research/vendor", "query": "solar battery storage", "zone": "public-cloud:us-east-1" })),
+        "EnforceZoneAssertionWidens",
+    );
+
     assert!(client.session.close().success());
 }

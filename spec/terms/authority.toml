@@ -71,6 +71,7 @@ EnforceUnknownRelation               = { clause = "authority.refuse.ungranted-ta
 EnforceRootObjectNotAllowlisted      = { clause = "authority.bound-redistribution.root-not-allowlisted", gloss = "A root-level object pushed outside the allowlist while a table is withheld." }
 EnforceStaleRedistributedObjects     = { clause = "authority.bound-redistribution.left-behind", gloss = "Objects an earlier push left addressable for a now-withheld table." }
 EnforceZonePatternUnparsed           = { clause = "authority.place.unparsed-pattern", gloss = "An allow-set entry matching no entry form." }
+EnforceZoneAssertionWidens           = { clause = "authority.place.asserted-zone", gloss = "A request asserted a zone its credential does not sign." }
 EnforcePermissiveZoneDefault         = { clause = "authority.place.permissive-default", gloss = "A wildcard zone default in a store with several principals." }
 EnforceProtectedFloorWidened         = { clause = "authority.place.floor-widened", gloss = "A protected-class surface widened past its floor with no override." }
 EnforceRemovalWithPublicCloud        = { clause = "authority.place.removal-with-public-cloud", gloss = "Write-time removal and a public-cloud allow-set on one surface." }

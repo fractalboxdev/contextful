@@ -5,11 +5,12 @@
 //! server. Every value is resolved before the first protocol line is written, so a
 //! process that cannot serve exits with nothing on standard output.
 
+use crate::run::SystemClock;
 use anyhow::{bail, Context, Result};
 use contextful_agent::mcp::Server;
 use contextful_context::read::Face;
 use contextful_context::Store;
-use contextful_core::time::Instant;
+use contextful_core::ports::Clock;
 use contextful_core::AuthorityError;
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::keyset::{KeySource, StaticPins};
@@ -42,11 +43,6 @@ pub struct McpArgs {
     denylist: Option<PathBuf>,
 }
 
-fn now() -> Result<Instant> {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
-    Ok(Instant::from_unix_nanos(i128::try_from(nanos)?)?)
-}
-
 pub fn run(args: McpArgs) -> Result<()> {
     let Some(token) = std::env::var(TOKEN_VAR).ok().filter(|t| !t.trim().is_empty()) else {
         bail!("{TOKEN_VAR} is unset: the tool server admits one capability credential and serves nothing without it");
@@ -57,7 +53,8 @@ pub fn run(args: McpArgs) -> Result<()> {
         let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         revocation.denylist = parse_denylist(&text, STATIC_KEY_VERSION);
     }
-    let mut admission = Admission::new(now()?, &revocation);
+    let clock = SystemClock;
+    let mut admission = Admission::new(clock.now(), &revocation);
     if let Some(aud) = args.audience.as_deref() {
         admission = admission.expecting(aud);
     }
@@ -72,11 +69,8 @@ pub fn run(args: McpArgs) -> Result<()> {
         eprintln!("{signal}");
     }
 
-    let boundary = |a: &AdmittedAuthority| -> Result<(), AuthorityError> {
-        let at = now().map_err(|e| AuthorityError::TimestampMalformed(e.to_string()))?;
-        effect_boundary(a, &Admission::new(at, &revocation))
-    };
-    let server = Server::new(&face, authority, &boundary).map_err(anyhow::Error::msg)?;
+    let boundary = |a: &AdmittedAuthority| -> Result<(), AuthorityError> { effect_boundary(a, &Admission::new(clock.now(), &revocation)) };
+    let server = Server::new(&face, authority, &boundary, &clock).map_err(anyhow::Error::msg)?;
     server.serve(std::io::stdin().lock(), std::io::stdout().lock())?;
     Ok(())
 }

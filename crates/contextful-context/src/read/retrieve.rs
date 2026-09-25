@@ -7,7 +7,7 @@ use super::face::Face;
 use super::fault::ReadFault;
 use contextful_core::read::embed::cosine;
 use contextful_core::read::rank::{
-    candidate_window, fingerprint, fuse, min_max, order, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
+    candidate_window, fuse, min_max, order, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
     Timeframe,
 };
 use contextful_core::read::respond::{Cell, Response};
@@ -23,6 +23,10 @@ use serde_json::{json, Map, Value};
 
 /// Default number of rows a ranked read returns.
 pub const DEFAULT_LIMIT: u64 = 10;
+
+/// Most rows one ranked read returns, whatever its limit and ceilings; it bounds the
+/// candidate window every arm reads.
+pub const MAX_LIMIT: u64 = 1000;
 
 /// Label-priority columns, which lead a snippet (`read.retrieve.snippet`).
 const LABEL_COLUMNS: [&str; 8] = ["title", "headline", "name", "subject", "summary", "abstract", "description", "thesis"];
@@ -40,7 +44,7 @@ const RESERVED_PROJECTED: [(&str, &str); 4] =
 const EMBEDDING_COLUMN: &str = "embedding";
 
 /// What a ranked read asks for.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RetrieveRequest {
     pub prefix: String,
     pub query: String,
@@ -49,10 +53,26 @@ pub struct RetrieveRequest {
     /// The question's lower bound on publication.
     pub since: Option<Instant>,
     /// The instant the question is asked at; the timeframe's anchor.
-    pub anchor: Option<Instant>,
+    pub anchor: Instant,
     /// A caller minimum overriding the relevance floor.
     pub min_score: Option<u32>,
     pub internals: bool,
+}
+
+impl RetrieveRequest {
+    /// A ranked read of `query` across `prefix`, asked at `anchor`, with every option unset.
+    pub fn new(prefix: impl Into<String>, query: impl Into<String>, anchor: Instant) -> RetrieveRequest {
+        RetrieveRequest {
+            prefix: prefix.into(),
+            query: query.into(),
+            query_embedding: None,
+            limit: None,
+            since: None,
+            anchor,
+            min_score: None,
+            internals: false,
+        }
+    }
 }
 
 /// Whether a column names an identifier or an instant, which never enter a snippet
@@ -120,14 +140,18 @@ impl Face {
     /// registered relation, so restriction completes before the cut
     /// (`authority.compose.before-the-cut`).
     pub fn retrieve(&self, session: &Session, request: &RetrieveRequest, bounds: Bounds) -> Result<Response, ReadFault> {
-        let limit = request.limit.unwrap_or(DEFAULT_LIMIT);
+        let arms: Vec<String> =
+            session.relations().map(|r| r.name().to_string()).filter(|n| n.starts_with(&request.prefix)).collect();
+        // The same least row ceiling a statement meets: grants, the request and every arm's
+        // published `limits.max_rows` (`read.respond.row-ceiling`), capped at MAX_LIMIT.
+        let asked = request.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+        let touched: std::collections::BTreeSet<String> = arms.iter().cloned().collect();
+        let limit = self.ceiling(session, &touched, Some(asked), None).unwrap_or(asked);
         let tokens = content_tokens(&request.query);
         let floor = relevance_floor(&tokens, request.min_score);
         let window = candidate_window(limit);
         let engine = SqlEngine::open(session)?;
         let mut rows: Vec<Row> = Vec::new();
-        let arms: Vec<String> =
-            session.relations().map(|r| r.name().to_string()).filter(|n| n.starts_with(&request.prefix)).collect();
         for table in &arms {
             let schema = self.store.try_schema(table)?.map(|s| s.columns).unwrap_or_default();
             let policy = session.policy(table);
@@ -195,22 +219,12 @@ impl Face {
         rows.retain(|r| passes_floor(floor, r.lexical, r.vector));
         let candidates = rows.len() as u64;
 
-        let key = fingerprint(
-            [bounds.echo().map(|b| b.to_string()).unwrap_or_default(), arms.join("\u{1e}")]
-                .iter()
-                .map(String::as_str)
-                .chain(rows.iter().flat_map(|r| [r.id.as_str(), r.snippet.as_deref().unwrap_or("")]))
-                .collect::<Vec<_>>(),
-        );
-        let index = {
-            let mut cache = self.lexical.lock().expect("the lexical cache lock is not poisoned");
-            cache.get_or_build(&key, || LexicalIndex::build(&rows.iter().map(|r| r.snippet.as_deref()).collect::<Vec<_>>()))
-        };
+        let index = LexicalIndex::build(&rows.iter().map(|r| r.snippet.as_deref()).collect::<Vec<_>>());
         let bm25 = index.bm25(&tokens);
         let matched = bm25.iter().filter(|s| s.is_some()).count() as u64;
         let lexical = min_max(&bm25);
         let ranking_empty = matched == 0 && rows.iter().all(|r| r.vector.is_none());
-        let timeframe = request.since.map(|since| Timeframe { since: Some(since), anchor: request.anchor.unwrap_or_else(now) });
+        let timeframe = request.since.map(|since| Timeframe { since: Some(since), anchor: request.anchor });
         let mut ranked: Vec<(Candidate, usize)> = rows
             .iter()
             .enumerate()
@@ -227,8 +241,10 @@ impl Face {
             .collect();
         let mut order_only: Vec<Candidate> = ranked.iter().map(|(c, _)| c.clone()).collect();
         order(&mut order_only, ranking_empty);
-        ranked.sort_by_key(|(c, _)| order_only.iter().position(|o| o.id == c.id));
-        ranked.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
+        let rank: std::collections::HashMap<&str, usize> = order_only.iter().enumerate().map(|(i, c)| (c.id.as_str(), i)).collect();
+        ranked.sort_by_key(|(c, _)| rank[c.id.as_str()]);
+        // One probe row past the ceiling sets `truncated` (`read.respond.truncation-is-exact`).
+        ranked.truncate(usize::try_from(limit).unwrap_or(usize::MAX).saturating_add(1));
 
         let columns: Vec<String> = [
             "_table", "_row", "_snippet", "_score", "_vscore", "_in_window", "_date_basis", "_run_id", "_ingested_at", "_authored_by",
@@ -237,12 +253,11 @@ impl Face {
         .map(|s| s.to_string())
         .chain(RESERVED_PROJECTED.iter().map(|(out, _)| out.to_string()))
         .collect();
-        let mut in_window = 0;
+        let in_window = ranked.iter().take(usize::try_from(limit).unwrap_or(usize::MAX)).filter(|(c, _)| c.in_window).count() as u64;
         let out_rows: Vec<Vec<Value>> = ranked
             .iter()
             .map(|(c, i)| {
                 let r = &rows[*i];
-                in_window += u64::from(c.in_window);
                 let own: Map<String, Value> =
                     r.values.iter().filter(|(k, _)| !k.starts_with('_') && k != EMBEDDING_COLUMN).cloned().collect();
                 let field = |name: &str| r.values.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone()).unwrap_or(Value::Null);
@@ -269,28 +284,24 @@ impl Face {
                 row
             })
             .collect();
+        let response = Response::cut(columns, out_rows, Some(limit));
         let block = RetrievalBlock {
             window,
             candidates_prefloor: prefloor,
             candidates,
             matched,
-            returned: out_rows.len() as u64,
+            returned: response.rows.len() as u64,
             in_window,
             deduped: 0,
             padded: 0,
             floor,
             since: request.since.map(|s| s.to_rfc3339()),
         };
-        let mut response = Response::cut(columns, out_rows, None)
+        let mut response = response
             .with_block("retrieval", serde_json::to_value(block).expect("the retrieval block serializes"));
         if let Some(b) = bounds.echo() {
             response = response.with_block("bounds", b);
         }
         Ok(response)
     }
-}
-
-fn now() -> Instant {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
-    Instant::from_unix_nanos(nanos as i128).expect("the system clock reads a representable instant")
 }

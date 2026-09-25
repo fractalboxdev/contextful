@@ -9,7 +9,6 @@ use crate::store::Store;
 use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers};
 use contextful_core::read::face::TOOLS;
 use contextful_core::read::guard::{admit, Admitted};
-use contextful_core::read::rank::LexicalIndexCache;
 use contextful_core::read::respond::{Cell, Internals, Response};
 use contextful_core::read::template::{parse_templates, Bound, QueryTemplate};
 use contextful_core::read::ReadError;
@@ -27,7 +26,6 @@ use contextful_policy::verify::AdmittedAuthority;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Mutex;
 
 /// What a read asks for beside its statement.
 #[derive(Debug, Clone, Copy, Default)]
@@ -45,7 +43,6 @@ pub struct Face {
     policies: BTreeMap<String, TablePolicy>,
     templates: Vec<QueryTemplate>,
     pepper: Pepper,
-    pub(crate) lexical: Mutex<LexicalIndexCache>,
 }
 
 /// The columns a table with no landed batch registers over: the injected columns every
@@ -76,7 +73,7 @@ impl Face {
             decls.insert(d.name.clone(), d);
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
-        let face = Face { store, decls, policies, templates, pepper, lexical: Mutex::new(LexicalIndexCache::default()) };
+        let face = Face { store, decls, policies, templates, pepper };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {
@@ -108,14 +105,23 @@ impl Face {
             Some(p) => p.clone(),
             None => TablePolicy::from_decl(&decl)?,
         };
-        let (base, columns) = match self.store.try_schema(table)? {
-            Some(schema) => (scan(&self.store, &decl, bounds)?.relation, schema.columns),
+        Ok(match self.store.try_schema(table)? {
+            Some(schema) => {
+                let s = scan(&self.store, &decl, bounds)?;
+                let files = s.files.iter().map(|f| self.absolute(f)).collect();
+                TableSource { decl, policy, base: s.relation, files, columns: schema.columns, landed: true }
+            }
             None => {
                 let columns = injected_columns();
-                (relation(&TableDecl::named(table), &[], &columns, &[], None)?, columns)
+                let base = relation(&TableDecl::named(table), &[], &columns, &[], None)?;
+                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false }
             }
-        };
-        Ok(TableSource { decl, policy, base, columns })
+        })
+    }
+
+    /// A store-root-relative path as the absolute path a relation reads.
+    fn absolute(&self, rel: &str) -> String {
+        self.store.root().join(rel).to_string_lossy().into_owned()
     }
 
     /// Open a session for an admitted authority: one relation per table its read grants
@@ -137,7 +143,7 @@ impl Face {
 
     /// The least row ceiling over the grants, the request, a template and every touched
     /// table's published `limits.max_rows` (`read.respond.row-ceiling`).
-    fn ceiling(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>) -> Option<u64> {
+    pub(crate) fn ceiling(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>) -> Option<u64> {
         let grant = session.grants().iter().filter_map(|g| g.max_rows).min();
         let table = touched.iter().filter_map(|t| session.policy(t).and_then(|p| p.max_rows)).min();
         least_row_ceiling([grant, request, template, table])
@@ -273,18 +279,31 @@ impl Face {
     /// part, a traversal, an absolute path or a ledger file resolves to no table
     /// (`read.register.file-preview-target`).
     pub fn file(&self, session: &Session, path: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
-        let (table, run) = preview_target(path)?;
-        let r = self.registered(session, &table)?;
+        let table = preview_target(path)?;
+        self.registered(session, &table)?;
+        let decl = self.decl(&table);
+        if !scan(&self.store, &decl, Bounds::default())?.files.iter().any(|f| f == path) {
+            return Err(ReadError::FilePreviewNotATable(format!("`{path}` is no committed data file of `{table}`")).into());
+        }
+        let file = self.absolute(path);
+        let schema = self.store.schema(&table)?;
+        let carried = crate::parquet_io::columns(std::path::Path::new(&file))?;
+        let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
+        let base = relation(&decl, std::slice::from_ref(&file), &schema.columns, &absent, None)?;
+        let preview = session.relation_over(&table, &base, vec![file]).expect("a registered table carries its source");
         let engine = SqlEngine::open(session)?;
-        let sql = format!("SELECT * FROM {} WHERE {} = ?", ident(r.name()), ident(RUN_ID));
+        engine.register(PREVIEW_RELATION, preview.sql())?;
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
-        self.respond(&engine, &sql, &[Bound::Text(run)], ceiling, opts)
+        self.respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &[], ceiling, opts)
     }
 }
 
-/// `(table, run_id)` of a committed run file's store-root-relative path.
-fn preview_target(path: &str) -> Result<(String, String), ReadError> {
+/// The relation one preview reads: the named file under its table's every step.
+const PREVIEW_RELATION: &str = "__contextful_preview";
+
+/// The table a run file's store-root-relative path belongs to.
+fn preview_target(path: &str) -> Result<String, ReadError> {
     let refuse = |why: &str| ReadError::FilePreviewNotATable(format!("`{path}` {why}"));
     if path.starts_with('/') || path.contains('\\') || path.split('/').any(|s| s == ".." || s == "." || s.is_empty()) {
         return Err(refuse("is not a store-root-relative path"));
@@ -298,7 +317,7 @@ fn preview_target(path: &str) -> Result<(String, String), ReadError> {
     }
     let (table, run_part) = rest.split_once("/data/runs/").ok_or_else(|| refuse("is no run file"))?;
     match run_part.split('/').collect::<Vec<_>>().as_slice() {
-        [run, _node, file] if file.ends_with(".parquet") => Ok((table.to_string(), run.to_string())),
+        [_run, _node, file] if file.ends_with(".parquet") => Ok(table.to_string()),
         _ => Err(refuse("is no run part")),
     }
 }

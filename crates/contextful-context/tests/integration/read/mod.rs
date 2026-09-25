@@ -78,6 +78,24 @@ predicate = "true"
 [[pipeline.tables]]
 name = "research/quiet"
 
+[pipeline.tables.policy.columns]
+secret = { strategy = "drop" }
+
+[[pipeline.tables]]
+name = "lab/masks"
+
+[pipeline.tables.policy.columns]
+h = { strategy = "hash" }
+hc = { strategy = "hash", combine = "truncate:6" }
+k = { strategy = "tokenize" }
+kc = { strategy = "tokenize", combine = "truncate:4" }
+tr = { strategy = "truncate:3" }
+b = { strategy = "bucket:5" }
+r = { strategy = "range:5" }
+d = { strategy = "drop" }
+n = { strategy = "bucket:5" }
+dn = { strategy = "drop" }
+
 [[pipeline.tables]]
 name = "hr/salaries"
 
@@ -161,6 +179,16 @@ impl Reads {
             ]),
         );
         land_rows(&store, "hr/salaries", "run-0001", json!([{ "employee": "e1", "title": "Battery storage engineer salary" }]));
+        land_rows(
+            &store,
+            "lab/masks",
+            "run-0001",
+            json!([
+                { "id": "m1", "h": "12.7", "hc": "12.7", "k": "12.7", "kc": "12.7", "tr": "Zürich", "b": "12.7", "r": "12.7", "d": "x", "n": 12.7, "dn": 40 },
+                { "id": "m2", "h": null, "hc": "a", "k": null, "kc": "a", "tr": "ab", "b": "-3", "r": "-3", "d": null, "n": -3.5, "dn": null },
+                { "id": "m3", "h": "", "hc": "", "k": "", "kc": "", "tr": "", "b": "n/a", "r": "n/a", "d": "", "n": 0.0, "dn": 1 },
+            ]),
+        );
         let face = Face::open(store.clone(), manifest, pepper()).unwrap();
         Reads { _dir: dir, store, face, signer: SeedSigner::generate(SignatureAlgorithm::Ed25519) }
     }
@@ -178,10 +206,11 @@ impl Reads {
         verify(&token, &keys, &Admission::new(at("2030-01-01T00:05:00Z"), &revocation).expecting(AUD)).unwrap()
     }
 
-    /// A session for dana's research loop reading `tables`, under `zone`.
+    /// A session for `subject` holding `grants`, its credential signing `zone` where given.
     pub fn session_for(&self, subject: Subject, grants: Vec<Grant>, zone: Option<&str>) -> Session {
+        let subject = Subject { zone: zone.map(str::to_string).or(subject.zone), ..subject };
         let authority = self.authority(subject, grants);
-        self.face.session(&authority, &Request { zone }, Bounds::default()).unwrap()
+        self.face.session(&authority, &Request::default(), Bounds::default()).unwrap()
     }
 
     pub fn session(&self, tables: &[&str], tenant: Option<(&str, &str)>, zone: Option<&str>) -> Session {

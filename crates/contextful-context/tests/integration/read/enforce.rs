@@ -78,7 +78,7 @@ fn every_row_path_takes_the_session() {
     let described = r.face.describe(&s, Some("research/contacts")).unwrap();
     let ranked = r
         .face
-        .retrieve(&s, &contextful_context::read::RetrieveRequest { prefix: "research/contacts".into(), query: String::new(), ..Default::default() }, Bounds::default())
+        .retrieve(&s, &contextful_context::read::RetrieveRequest::new("research/contacts", "", at("2030-02-01T00:00:00Z")), Bounds::default())
         .unwrap();
     assert_eq!(sorted(column(&preview, "contact_id")), statement);
     assert_eq!(described["row_count"], json!(statement.len().to_string()));
@@ -184,7 +184,7 @@ fn a_digest_from_either_layer_joins_the_other() {
         &TableDecl::parse_pipeline(MANIFEST).unwrap().into_iter().find(|d| d.name == "research/contacts").unwrap(),
     )
     .unwrap();
-    let written = policy.columns["handle"].mask.as_ref().unwrap().apply(&pepper(), "h1").unwrap();
+    let written = policy.columns["handle"].mask.as_ref().unwrap().apply(&pepper(), Some("h1"), contextful_core::store::reconcile::ColumnType::Utf8).unwrap();
     let joined = contacts(&r, &s, &format!("WHERE handle IN (SELECT '{written}') ORDER BY contact_id"));
     assert_eq!(column(&joined, "contact_id"), [json!("c1"), json!("c2")]);
 }
@@ -210,7 +210,7 @@ fn a_mask_applies_primary_and_combine_together_in_both_layers() {
         &TableDecl::parse_pipeline(MANIFEST).unwrap().into_iter().find(|d| d.name == "research/contacts").unwrap(),
     )
     .unwrap();
-    let written = policy.columns["email"].mask.as_ref().unwrap().apply(&pepper(), "dana@acme.example").unwrap();
+    let written = policy.columns["email"].mask.as_ref().unwrap().apply(&pepper(), Some("dana@acme.example"), contextful_core::store::reconcile::ColumnType::Utf8).unwrap();
     assert_eq!(written.len(), 5);
     assert_eq!(queried, [json!(written)]);
     assert!(pepper().digest("dana@acme.example").starts_with(&written));
@@ -335,14 +335,16 @@ fn a_drifted_scope_reads_empty() {
 #[test]
 fn the_zone_is_declared_per_request() {
     let r = Reads::new();
-    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&["research/*"], None)]);
-    let vendor = |zone: Option<&str>| {
-        let s = r.face.session(&authority, &Request { zone }, Bounds::default()).unwrap();
-        r.query(&s, r#"SELECT item_id FROM "research/vendor""#).unwrap().rows.len()
+    let vendor = |signed: &str, asserted: Option<&str>| {
+        let subject = Subject { zone: Some(signed.to_string()), ..loop_subject("agent://research-loop") };
+        let authority = r.authority(subject, vec![read(&["research/*"], None)]);
+        let s = r.face.session(&authority, &Request { zone: asserted }, Bounds::default())?;
+        Ok::<usize, ReadFault>(r.query(&s, r#"SELECT item_id FROM "research/vendor""#)?.rows.len())
     };
-    assert_eq!(vendor(None), 0, "the credential's on-prem zone");
-    assert_eq!(vendor(Some("public-cloud:us-east-1")), 1);
-    assert_eq!(vendor(Some("on-prem:hq")), 0);
+    assert_eq!(vendor("on-prem:hq", None).unwrap(), 0, "the credential's on-prem zone");
+    assert_eq!(vendor("on-prem:hq", Some("on-prem:hq")).unwrap(), 0);
+    assert_eq!(vendor("public-cloud:us-east-1", Some("public-cloud:us-east-1")).unwrap(), 1);
+    refused_with(vendor("on-prem:hq", Some("public-cloud:us-east-1")), "EnforceZoneAssertionWidens");
 }
 
 /// Where the table's effective set omits the session's zone, the row leaves the result.
@@ -370,15 +372,49 @@ fn a_cell_outside_its_column_set_arrives_null() {
     assert_eq!(column(&rows, "case_notes"), [json!("chest pain, stable")]);
 }
 
-// An incognito session with no asserted zone serves under `local:device`, and a wider
-// assertion refuses.
+// An incognito session with no zone serves under `local:device`, and one signing a zone
+// outside the fail-closed pair refuses.
 #[test]
 fn an_incognito_session_serves_under_the_fail_closed_pair() {
     let r = Reads::new();
     let subject = Subject { incognito: true, zone: None, ..loop_subject("agent://research-loop") };
-    let authority = r.authority(subject, vec![read(&["research/*"], None)]);
+    let authority = r.authority(subject.clone(), vec![read(&["research/*"], None)]);
     let s = r.face.session(&authority, &Request { zone: None }, Bounds::default()).unwrap();
     assert!(r.query(&s, r#"SELECT * FROM "research/notes""#).unwrap().rows.len() == 3);
-    let widened = r.face.session(&authority, &Request { zone: Some("public-cloud:us-east-1") }, Bounds::default());
-    refused_with(widened, "EnforceIncognitoWidening");
+    let cloud = Subject { zone: Some("public-cloud:us-east-1".into()), ..subject };
+    let wide = r.authority(cloud, vec![read(&["research/*"], None)]);
+    refused_with(r.face.session(&wide, &Request::default(), Bounds::default()), "EnforceIncognitoWidening");
+}
+
+/// Regression: every strategy yields one value in both layers — the write layer's
+/// application and the query layer's projection agree cell for cell, nulls and
+/// unparseable numbers included.
+#[test]
+fn each_strategy_yields_one_value_in_both_layers() {
+    let r = Reads::new();
+    let s = r.session_for(loop_subject("agent://research-loop"), vec![read(&["lab/*"], None)], None);
+    let decl = TableDecl::parse_pipeline(MANIFEST).unwrap().into_iter().find(|d| d.name == "lab/masks").unwrap();
+    let policy = contextful_policy::enforce::policy::TablePolicy::from_decl(&decl).unwrap();
+    let schema = r.store.schema("lab/masks").unwrap();
+    let raw = [
+        json!({ "h": "12.7", "hc": "12.7", "k": "12.7", "kc": "12.7", "tr": "Zürich", "b": "12.7", "r": "12.7", "d": "x", "n": "12.7", "dn": "40" }),
+        json!({ "h": null, "hc": "a", "k": null, "kc": "a", "tr": "ab", "b": "-3", "r": "-3", "d": null, "n": "-3.5", "dn": null }),
+        json!({ "h": "", "hc": "", "k": "", "kc": "", "tr": "", "b": "n/a", "r": "n/a", "d": "", "n": "0", "dn": "1" }),
+    ];
+    let masked = r.query(&s, r#"SELECT * FROM "lab/masks" ORDER BY id"#).unwrap();
+    for (i, source) in raw.iter().enumerate() {
+        for (column, p) in &policy.columns {
+            let ty = schema.columns.iter().find(|c| &c.name == column).unwrap().ty;
+            let written = p.mask.as_ref().unwrap().apply(&pepper(), source[column].as_str(), ty);
+            let queried = column_at(&masked, column, i);
+            assert_eq!(queried, written.map_or(Value::Null, Value::String), "{column} row {i}");
+        }
+    }
+    assert_eq!(column_at(&masked, "b", 1), json!("-5"));
+    assert_eq!(column_at(&masked, "r", 0), json!("10-15"));
+    assert_eq!(column_at(&masked, "n", 0), json!("10"));
+}
+
+fn column_at(r: &Response, name: &str, row: usize) -> Value {
+    column(r, name)[row].clone()
 }

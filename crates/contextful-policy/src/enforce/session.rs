@@ -29,13 +29,19 @@ pub const RELATIONS_PER_SESSION: usize = 1024;
 pub const TENANT_RELATION: &str = "__contextful_tenant";
 
 /// One table as the store resolves it for this request: its declaration and policy, the
-/// FROM-source over its explicit file list, and its schema.
+/// FROM-source over its explicit file list, the files that list names, its schema, and
+/// whether any batch has landed.
 #[derive(Debug, Clone)]
 pub struct TableSource {
     pub decl: TableDecl,
     pub policy: TablePolicy,
     pub base: String,
+    /// Absolute paths of the data files `base` reads.
+    pub files: Vec<String>,
     pub columns: Vec<Column>,
+    /// Whether the table has a landed schema; a quiet table registers over its injected
+    /// columns, and its masks meet their columns once they land.
+    pub landed: bool,
 }
 
 /// The relation one granted table registers as, bound to the table's bare name
@@ -44,11 +50,17 @@ pub struct TableSource {
 pub struct RegisteredRelation {
     name: String,
     sql: String,
+    files: Vec<String>,
 }
 
 impl RegisteredRelation {
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// The absolute paths of the data files the relation reads, and no other.
+    pub fn files(&self) -> &[String] {
+        &self.files
     }
 
     pub fn sql(&self) -> &str {
@@ -75,6 +87,7 @@ pub struct Session {
     tenants: BTreeMap<String, (String, Vec<String>)>,
     relations: BTreeMap<String, RegisteredRelation>,
     policies: BTreeMap<String, TablePolicy>,
+    sources: BTreeMap<String, TableSource>,
     pepper: Pepper,
 }
 
@@ -115,12 +128,20 @@ impl Session {
             tenants: BTreeMap::new(),
             relations: BTreeMap::new(),
             policies: BTreeMap::new(),
+            sources: BTreeMap::new(),
             pepper: pepper.clone(),
         };
         for t in granted {
-            let relation = session.compile(&t)?;
+            if let Some(scope) = session.tenant_values(&t.decl)? {
+                session.tenants.insert(t.decl.name.clone(), scope);
+            }
+            if t.landed {
+                t.policy.check_schema(&t.decl.name, &t.columns)?;
+            }
+            let relation = session.compile(&t, &t.base, t.files.clone());
             session.relations.insert(t.decl.name.clone(), relation);
-            session.policies.insert(t.decl.name.clone(), t.policy);
+            session.policies.insert(t.decl.name.clone(), t.policy.clone());
+            session.sources.insert(t.decl.name.clone(), t);
         }
         Ok(session)
     }
@@ -154,20 +175,18 @@ impl Session {
     /// (`authority.compose.relation-order`) — each a conjunct of one `WHERE`, so a step
     /// removes rows and adds none (`authority.compose.conjunctive-narrowing`). Protection
     /// is this rewrite (`authority.compose.protection-is-a-rewrite`).
-    fn compile(&mut self, t: &TableSource) -> Result<RegisteredRelation, PolicyError> {
+    fn compile(&self, t: &TableSource, base: &str, files: Vec<String>) -> RegisteredRelation {
         let name = &t.decl.name;
-        t.policy.check_schema(name, &t.columns)?;
         let mut conjuncts = Vec::new();
-        if let Some((column, values)) = self.tenant_values(&t.decl)? {
+        if let Some((column, _)) = self.tenants.get(name) {
             // The values reach the engine as parameters into the tenant relation; the text
             // names only the column and the table (`authority.filter-rows.tenant-equality`).
             conjuncts.push(format!(
                 "CAST({} AS VARCHAR) IN (SELECT \"value\" FROM {} WHERE \"table\" = {})",
-                ident(&column),
+                ident(column),
                 ident(TENANT_RELATION),
                 literal(name)
             ));
-            self.tenants.insert(name.clone(), (column, values));
         }
         if let Some(rows) = &t.policy.rows {
             conjuncts.push(rows.sql());
@@ -191,10 +210,17 @@ impl Session {
             .collect();
         let projection = if projection.is_empty() { "*".to_string() } else { projection.join(", ") };
         let filter = if conjuncts.is_empty() { "true".to_string() } else { conjuncts.join(" AND ") };
-        Ok(RegisteredRelation {
+        RegisteredRelation {
             name: name.clone(),
-            sql: format!("SELECT {projection} FROM ({}) AS \"__contextful_base\" WHERE {filter}", t.base),
-        })
+            sql: format!("SELECT {projection} FROM ({base}) AS \"__contextful_base\" WHERE {filter}"),
+            files,
+        }
+    }
+
+    /// The table's relation compiled over another FROM-source of the same table — one of
+    /// its committed files — under every step its registered relation applies.
+    pub fn relation_over(&self, table: &str, base: &str, files: Vec<String>) -> Option<RegisteredRelation> {
+        self.sources.get(table).map(|t| self.compile(t, base, files))
     }
 
     /// Whether a table has a registered relation in this session.

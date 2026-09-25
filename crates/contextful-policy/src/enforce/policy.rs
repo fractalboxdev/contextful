@@ -32,8 +32,9 @@ struct RawPolicy {
 #[serde(deny_unknown_fields)]
 struct RawZone {
     allow: Vec<String>,
+    /// Protected classes or columns whose floor this declaration lifts, each by name.
     #[serde(default)]
-    protected_class_override: bool,
+    protected_class_override: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,6 +90,8 @@ impl RowPolicy {
 pub struct TablePolicy {
     pub columns: BTreeMap<String, ColumnPolicy>,
     pub placement: Placement,
+    /// The classes and columns the zone declaration's override names.
+    pub overrides: Vec<String>,
     pub rows: Option<RowPolicy>,
     pub replicate: Option<bool>,
     /// The per-table row ceiling published as `limits.max_rows`.
@@ -122,10 +125,11 @@ impl TablePolicy {
             Some(Value::String(c)) => Some(super::mask::class(c)?),
             Some(other) => return Err(DeclarationMalformed(format!("table `{}`: class {other} is not a string", decl.name)).into()),
         };
-        let (declared, protected_override) = match raw.zone {
+        let (declared, overrides) = match raw.zone {
             Some(z) => (Some(AllowSet::parse(&z.allow)?), z.protected_class_override),
-            None => (None, false),
+            None => (None, Vec::new()),
         };
+        let protected_override = table_class.is_some_and(|c| overrides.iter().any(|o| o == c.name));
         let placement = Placement { declared, protected: table_class.is_some_and(|c| c.protected()), protected_override };
         placement.check(&format!("table {}", decl.name))?;
         let rows = raw
@@ -152,6 +156,7 @@ impl TablePolicy {
         Ok(TablePolicy {
             columns,
             placement,
+            overrides,
             rows,
             replicate: raw.redistribution.map(|r| r.replicate),
             max_rows: raw.limits.and_then(|l| l.max_rows),
@@ -171,10 +176,16 @@ impl TablePolicy {
 
     /// The set a column's cells serve under: the table's, narrowed to the protected floor
     /// for a protected-class column, which declares no set of its own and so resolves down
-    /// at serve time (`authority.place.protected-floor`).
+    /// at serve time unless the override names its class or the column itself
+    /// (`authority.place.protected-floor`).
     pub fn column_set(&self, column: &str) -> AllowSet {
         let protected = self.columns.get(column).and_then(|c| c.class).is_some_and(|c| c.protected());
-        let column = Placement { protected: protected || self.placement.protected, ..self.placement.clone() };
+        let named = self.overrides.iter().any(|o| o == "phi" || o == column);
+        let column = Placement {
+            protected: protected || self.placement.protected,
+            protected_override: if protected { named } else { self.placement.protected_override },
+            ..self.placement.clone()
+        };
         super::zone::narrowest(&self.placement.effective(), Some(&column.effective()), None)
     }
 }

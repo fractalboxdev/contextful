@@ -8,7 +8,7 @@ use contextful_core::read::template::Bound;
 use contextful_core::time::Instant;
 use contextful_policy::enforce::mask::{Pepper, HASH_FUNCTION, TOKEN_FUNCTION};
 use contextful_policy::enforce::session::{Session, TENANT_RELATION};
-use contextful_core::store::relation::ident;
+use contextful_core::store::relation::{ident, literal};
 use duckdb::core::{DataChunkHandle, Inserter, LogicalTypeId};
 use duckdb::ffi::duckdb_string_t;
 use duckdb::types::{DuckString, TimeUnit, Value as Engine};
@@ -79,7 +79,7 @@ fn fault(e: duckdb::Error) -> ReadFault {
 
 impl SqlEngine {
     /// A connection loading no extension, installing none, with no relation registered.
-    pub fn bare() -> Result<SqlEngine, ReadFault> {
+    fn connect() -> Result<SqlEngine, ReadFault> {
         let config = Config::default()
             .enable_autoload_extension(false)
             .and_then(|c| c.with("autoinstall_known_extensions", "false"))
@@ -87,12 +87,32 @@ impl SqlEngine {
         Ok(SqlEngine { conn: Connection::open_in_memory_with_flags(config).map_err(fault)? })
     }
 
+    /// Close the connection to everything outside it but `files`: no file, extension or
+    /// other external state is reachable from SQL — a replacement scan included — and the
+    /// configuration locks so no statement reopens it.
+    fn lock(&self, files: &[String]) -> Result<(), ReadFault> {
+        let allowed: Vec<String> = files.iter().map(|f| literal(f)).collect();
+        self.conn
+            .execute_batch(&format!(
+                "SET allowed_paths = [{}]; SET enable_external_access = false; SET lock_configuration = true;",
+                allowed.join(", ")
+            ))
+            .map_err(fault)
+    }
+
+    /// A locked connection with no relation registered, for serialization alone.
+    pub fn bare() -> Result<SqlEngine, ReadFault> {
+        let engine = SqlEngine::connect()?;
+        engine.lock(&[])?;
+        Ok(engine)
+    }
+
     /// A connection for one session: the mask functions holding the pepper, the subject
     /// and tenant relations filled through parameters, and one create-or-replace view per
     /// registered relation. No view directory exists on disk
     /// (`read.register.connection-views`).
     pub fn open(session: &Session) -> Result<SqlEngine, ReadFault> {
-        let engine = SqlEngine::bare()?;
+        let engine = SqlEngine::connect()?;
         let conn = &engine.conn;
         conn.register_scalar_function_with_state::<MaskHash>(HASH_FUNCTION, session.pepper()).map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskToken>(TOKEN_FUNCTION, session.pepper()).map_err(fault)?;
@@ -117,7 +137,15 @@ impl SqlEngine {
         for r in session.relations() {
             conn.execute_batch(&format!("CREATE OR REPLACE TEMP VIEW {} AS {}", ident(r.name()), r.sql())).map_err(fault)?;
         }
+        let files: Vec<String> = session.relations().flat_map(|r| r.files().iter().cloned()).collect();
+        engine.lock(&files)?;
         Ok(engine)
+    }
+
+    /// Register one more relation on an open connection under `name`, reading only files
+    /// the connection already admits.
+    pub fn register(&self, name: &str, sql: &str) -> Result<(), ReadFault> {
+        self.conn.execute_batch(&format!("CREATE OR REPLACE TEMP VIEW {} AS {sql}", ident(name))).map_err(fault)
     }
 
     /// The engine's own serialization of `sql`, which the guard walks

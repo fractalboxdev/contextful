@@ -59,18 +59,21 @@ fn the_class_registry_holds_five_classes() {
 // spec: authority.mask.unknown-class@d07fb887
 #[test]
 fn an_unknown_class_is_refused() {
-    assert!(matches!(refused("x = { class = \"emial\", strategy = \"tokenize\" }"), EnforceError::UnknownClass(w) if w.contains("emial")));
+    assert!(matches!(refused("x = { class = \"emial\", strategy = \"hash\" }"), EnforceError::UnknownClass(w) if w.contains("emial")));
 }
 
-/// `hash` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.
-// spec: authority.mask.digest-alone@49cbd142
+/// `hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.
+// spec: authority.mask.digest-alone@efcea9bc
 #[test]
 fn a_bare_digest_over_an_exhaustible_class_is_refused() {
-    for c in ["ssn", "phone", "email", "mrn"] {
-        let e = refused(&format!("x = {{ class = \"{c}\", strategy = \"hash\" }}"));
-        assert!(matches!(e, EnforceError::DigestAloneOnExhaustibleClass(_)), "{c}: {e:?}");
+    for strategy in ["hash", "tokenize"] {
+        for c in ["ssn", "phone", "email", "mrn"] {
+            let e = refused(&format!("x = {{ class = \"{c}\", strategy = \"{strategy}\" }}"));
+            assert!(matches!(e, EnforceError::DigestAloneOnExhaustibleClass(_)), "{strategy} {c}: {e:?}");
+        }
     }
-    assert!(policy("x = { class = \"email\", strategy = \"tokenize\" }").is_ok());
+    assert!(policy("x = { class = \"email\", strategy = \"tokenize\", combine = \"truncate:4\" }").is_ok());
+    assert!(policy("x = { class = \"phi\", strategy = \"tokenize\" }").is_ok(), "phi is not exhaustible");
 }
 
 /// A column of random identifiers or opaque tokens carries `hash` with no combine.
@@ -131,15 +134,19 @@ fn the_crowd_is_at_least_1000_and_defaults_to_it() {
     assert!(matches!(policy("x = { strategy = \"hash\", crowd = 999 }"), Err(PolicyError::Malformed(_))));
 }
 
-/// Behind `hash` over an exhaustible class, a `truncate` width above floor(log16(domain ÷ `crowd`)), with domain from the class registry, raises `EnforceTruncationTooWide`.
-// spec: authority.mask.truncation-ceiling@db6562a6
+/// Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.
+// spec: authority.mask.truncation-ceiling@612f331a
 #[test]
 fn a_truncation_past_the_class_ceiling_is_refused() {
     assert_eq!(
-        [truncation_ceiling(1e9, 1000), truncation_ceiling(1e10, 1000), truncation_ceiling(1e8, 1000)],
+        [truncation_ceiling(1e9, 1000, 16), truncation_ceiling(1e10, 1000, 16), truncation_ceiling(1e8, 1000, 16)],
         [4, 5, 4]
     );
-    assert_eq!(truncation_ceiling(1e10, 1_000_000), 3);
+    assert_eq!(truncation_ceiling(1e10, 1_000_000, 16), 3);
+    assert_eq!([truncation_ceiling(1e10, 1000, 36), truncation_ceiling(1e9, 1000, 36)], [4, 3]);
+    assert!(policy("x = { class = \"email\", strategy = \"tokenize\", combine = \"truncate:4\" }").is_ok());
+    let e = refused("x = { class = \"email\", strategy = \"tokenize\", combine = \"truncate:5\" }");
+    assert!(matches!(e, EnforceError::TruncationTooWide(_)), "a 5-char token covers 36^5 values: {e:?}");
     assert!(policy("x = { class = \"email\", strategy = \"hash\", combine = \"truncate:5\" }").is_ok());
     let e = refused("x = { class = \"email\", strategy = \"hash\", combine = \"truncate:6\" }");
     assert!(matches!(e, EnforceError::TruncationTooWide(_)), "{e:?}");
@@ -194,7 +201,7 @@ fn a_table_carries_at_most_128_masks() {
 // spec: authority.mask.absent-column@04c44ecc
 #[test]
 fn a_mask_on_an_absent_column_is_refused() {
-    let p = policy("contact_email = { class = \"email\", strategy = \"tokenize\" }").unwrap();
+    let p = policy("contact_email = { class = \"email\", strategy = \"tokenize\", combine = \"truncate:4\" }").unwrap();
     let schema = [Column::new("patient_id", ColumnType::Utf8, true)];
     match p.check_schema("patients", &schema) {
         Err(EnforceError::MaskOnAbsentColumn(why)) => assert!(why.contains("contact_email"), "{why}"),

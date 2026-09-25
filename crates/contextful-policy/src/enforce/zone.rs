@@ -264,17 +264,28 @@ pub fn narrowest(table: &AllowSet, column: Option<&AllowSet>, principal: Option<
     set
 }
 
-/// The session zone a request serves under. The calling process declares its zone per
-/// request, falling back to its credential's subject zone (`authority.place.caller-zone`).
-/// Incognito pins the session to the fail-closed pair: no declared zone resolves to
-/// `local:device`, and an asserted zone outside the pair refuses
-/// (`authority.place.incognito`, `authority.place.incognito-widening`).
-pub fn session_zone(asserted: Option<&str>, subject_zone: Option<&str>, incognito: bool) -> Result<Zone, EnforceError> {
-    let declared = asserted.or(subject_zone).map(Zone::parse);
-    if !incognito {
-        return Ok(declared.unwrap_or(Zone::Undeclared));
+/// The session zone a request serves under. The credential signs its zone; the calling
+/// process declares it per request (`authority.place.caller-zone`), and an assertion
+/// stands only where it equals the signed zone, since an unsigned argument never widens
+/// placement (`authority.place.asserted-zone`). Incognito pins the session to the
+/// fail-closed pair: no zone resolves to `local:device`, and a zone outside the pair
+/// refuses (`authority.place.incognito`, `authority.place.incognito-widening`).
+pub fn session_zone(asserted: Option<&str>, signed: Option<&str>, incognito: bool) -> Result<Zone, EnforceError> {
+    let signed_zone = signed.map(Zone::parse);
+    if let Some(a) = asserted {
+        let a = Zone::parse(a);
+        if signed_zone.as_ref() != Some(&a) {
+            return Err(EnforceError::ZoneAssertionWidens(format!(
+                "the request asserts `{}`; the credential signs {}",
+                a.label(),
+                signed_zone.as_ref().map_or("no zone".to_string(), |z| format!("`{}`", z.label()))
+            )));
+        }
     }
-    match declared {
+    if !incognito {
+        return Ok(signed_zone.unwrap_or(Zone::Undeclared));
+    }
+    match signed_zone {
         None => Ok(Zone::LocalDevice),
         Some(z) if AllowSet::fail_closed().admits(&z) => Ok(z),
         Some(z) => Err(EnforceError::IncognitoWidening(format!(

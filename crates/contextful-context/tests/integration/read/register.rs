@@ -62,6 +62,9 @@ fn a_quiet_table_reads_empty() {
     let quiet = r.query(&s, r#"SELECT * FROM "research/quiet""#).unwrap();
     assert!(quiet.rows.is_empty() && !quiet.truncated);
     assert!(quiet.columns.contains(&"_ingested_at".to_string()), "{:?}", quiet.columns);
+    // Its declared mask names a column no batch has landed yet; the table registers all
+    // the same, and every other covered table with it.
+    assert!(s.reads("research/quiet") && s.reads("research/notes"));
 }
 
 /// A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to the caller's registered relation, which carries the caller's restriction.
@@ -81,7 +84,7 @@ fn every_bare_name_resolves_to_the_callers_relation() {
     let template = r.face.execute_template(&s, "notes_for", &args, ReadOptions::default()).unwrap();
     assert_eq!(column(&template, "note_id"), acme);
 
-    let request = contextful_context::read::RetrieveRequest { prefix: "research/notes".into(), query: "solar battery storage".into(), ..Default::default() };
+    let request = contextful_context::read::RetrieveRequest::new("research/notes", "solar battery storage", at("2030-02-01T00:00:00Z"));
     let ranked = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
     assert!(column(&ranked, "_row").iter().all(|row| row["tenant"] == json!("acme")), "{:?}", ranked.rows);
 
@@ -129,6 +132,43 @@ fn a_preview_reads_a_run_file_through_its_relation() {
     }
     let hr = "tables/hr/salaries/data/runs/run-0001/ingest-a/part-00000.parquet";
     refused_with(r.face.file(&s, hr, ReadOptions::default()), "EnforceUnknownRelation");
+}
+
+/// Regression: a preview reads exactly the named file, and a path naming no committed
+/// file of its table is refused rather than answered with the run's other rows.
+#[test]
+fn a_preview_reads_the_named_file_alone() {
+    use contextful_context::land::{land_batches, Batch, Position, RunContext};
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::reserve::Injection;
+    let r = Reads::new();
+    let batch = |ids: &[&str]| Batch {
+        rows: ids.iter().map(|id| json!({ "item_id": id, "title": "batch" }).as_object().unwrap().clone()).collect(),
+        types: Default::default(),
+    };
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-0002".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        committed_at: at("2030-01-11T00:00:00Z"),
+    };
+    let decl = TableDecl::named("research/vendor");
+    let m = land_batches(&r.store, &decl, &[batch(&["v2", "v3"]), batch(&["v4"])], &ctx, &Position::default(), &|| Ok(())).unwrap();
+    assert_eq!(m.parts.len(), 2);
+    let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
+    let files = column(&r.face.files(&s, Bounds::default()).unwrap(), "path");
+    let parts: Vec<&str> = files.iter().filter_map(|f| f.as_str()).filter(|f| f.contains("/runs/run-0002/")).collect();
+    assert_eq!(parts.len(), 2, "{files:?}");
+    let mut seen = Vec::new();
+    for part in &parts {
+        let preview = r.face.file(&s, part, ReadOptions::default()).unwrap();
+        seen.push(column(&preview, "item_id"));
+    }
+    seen.sort_by_key(|v| v.len());
+    assert_eq!(seen, [vec![json!("v4")], vec![json!("v2"), json!("v3")]]);
+    let absent = "tables/research/vendor/data/runs/run-0002/ingest-a/part-00009.parquet";
+    refused_with(r.face.file(&s, absent, ReadOptions::default()), "FilePreviewNotATable");
+    let other_run = "tables/research/vendor/data/runs/run-0009/ingest-a/part-00000.parquet";
+    refused_with(r.face.file(&s, other_run, ReadOptions::default()), "FilePreviewNotATable");
 }
 
 /// A table's published `limits` block lists a bound exactly when the engine applies it.

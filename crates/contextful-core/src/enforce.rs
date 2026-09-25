@@ -48,6 +48,9 @@ pub enum EnforceError {
     /// A write tool registered on an organization-wide face. (`authority.resist.write-tool`)
     #[error("EnforceWriteOnReadOnlyFace: {0}")]
     WriteOnReadOnlyFace(String),
+    /// A request asserting a zone its credential does not sign. (`authority.place.asserted-zone`)
+    #[error("EnforceZoneAssertionWidens: {0}")]
+    ZoneAssertionWidens(String),
     /// An allow-set entry matching no entry form. (`authority.place.unparsed-pattern`)
     #[error("EnforceZonePatternUnparsed: {0}")]
     ZonePatternUnparsed(String),
@@ -71,6 +74,7 @@ impl EnforceError {
             EnforceError::UnknownClass(_) => "EnforceUnknownClass",
             EnforceError::UnknownRelation(_) => "EnforceUnknownRelation",
             EnforceError::WriteOnReadOnlyFace(_) => "EnforceWriteOnReadOnlyFace",
+            EnforceError::ZoneAssertionWidens(_) => "EnforceZoneAssertionWidens",
             EnforceError::ZonePatternUnparsed(_) => "EnforceZonePatternUnparsed",
         }
     }

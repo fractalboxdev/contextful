@@ -3,8 +3,8 @@
 use super::at;
 use contextful_core::read::embed::cosine;
 use contextful_core::read::rank::{
-    fingerprint, fuse, min_max, order, Candidate, LexicalIndex, LexicalIndexCache, Publication, RetrievalBlock, RowRanking,
-    Timeframe, FUSION_LEXICAL_WEIGHT_PERCENT, FUSION_VECTOR_WEIGHT_PERCENT, LEXICAL_INDEX_CACHE,
+    fuse, min_max, order, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
+    Timeframe, FUSION_LEXICAL_WEIGHT_PERCENT, FUSION_VECTOR_WEIGHT_PERCENT,
     WINDOW_ANCHOR_TOLERANCE_HOURS,
 };
 use contextful_core::read::tokens::content_tokens;
@@ -135,29 +135,4 @@ fn the_retrieval_block_and_row_fields_carry_their_names() {
         serde_json::to_value(&row).unwrap(),
         json!({ "_score": 2, "_vscore": 0.71, "_in_window": true, "_date_basis": "published_at" }),
     );
-}
-
-/// The full-text index is keyed on a fingerprint over the candidate documents and cached in a FIFO of 64 entries. A changed snapshot, table set or time bound changes the fingerprint.
-// spec: read.rank.lexical-index-cache@4b556062
-#[test]
-fn lexical_indexes_cache_by_fingerprint_in_a_fifo() {
-    assert_eq!(LEXICAL_INDEX_CACHE, 64);
-    let base = fingerprint(["snapshot-1", "research/notes", "as_of=none", "solar battery"]);
-    assert_ne!(base, fingerprint(["snapshot-2", "research/notes", "as_of=none", "solar battery"]));
-    assert_ne!(base, fingerprint(["snapshot-1", "research/notes,research/vendor", "as_of=none", "solar battery"]));
-    assert_ne!(base, fingerprint(["snapshot-1", "research/notes", "as_of=2030-01-01", "solar battery"]));
-    assert_ne!(fingerprint(["ab", "c"]), fingerprint(["a", "bc"]));
-
-    let mut cache = LexicalIndexCache::default();
-    let mut builds = 0;
-    for i in 0..=LEXICAL_INDEX_CACHE {
-        cache.get_or_build(&format!("k{i}"), || {
-            builds += 1;
-            LexicalIndex::build(&[Some("x")])
-        });
-    }
-    assert_eq!(builds, 65);
-    assert_eq!(cache.len(), 64);
-    assert!(!cache.contains("k0"), "the oldest entry leaves first");
-    cache.get_or_build("k64", || panic!("a cached fingerprint builds nothing"));
 }

@@ -7,7 +7,7 @@ use contextful_core::store::bound_time::Bounds;
 use serde_json::json;
 
 fn ask(prefix: &str, query: &str) -> RetrieveRequest {
-    RetrieveRequest { prefix: prefix.into(), query: query.into(), ..RetrieveRequest::default() }
+    RetrieveRequest::new(prefix, query, at("2030-02-01T00:00:00Z"))
 }
 
 fn ids(r: &Response, key: &str) -> Vec<String> {
@@ -52,7 +52,7 @@ fn identifier_columns_never_enter_a_snippet() {
 fn the_engine_resolves_the_publication_column() {
     let r = Reads::new();
     let s = r.session(&["research/*"], Some(("research/notes", "acme")), Some("on-prem:hq"));
-    let request = RetrieveRequest { min_score: Some(0), ..ask("research/", "solar battery storage hiring grids") };
+    let request = RetrieveRequest { min_score: Some(0), ..ask("research/notes", "solar battery storage hiring grids") };
     let ranked = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
     let basis: Vec<(String, String)> = column(&ranked, "_row")
         .iter()
@@ -159,4 +159,24 @@ fn an_ungranted_table_yields_no_rows() {
     let tables = column(&ranked, "_table");
     assert!(!tables.is_empty());
     assert!(tables.iter().all(|t| t == "research/notes"), "{tables:?}");
+}
+
+/// Regression: a ranked read meets the least row ceiling a statement does — the table's
+/// published limit and the grant's — with `truncated` set by the probe row, and a limit
+/// past any ceiling reads no wider window.
+#[test]
+fn a_ranked_read_meets_the_row_ceiling() {
+    let r = Reads::new();
+    let s = r.session(&["research/notes"], None, None);
+    let capped = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), min_score: Some(0), ..ask("research/notes", "solar battery storage") }, Bounds::default()).unwrap();
+    assert_eq!((capped.rows.len(), capped.truncated), (3, true), "notes publish max_rows = 3");
+    let mut grant = read(&["research/notes"], None);
+    grant.max_rows = Some(1);
+    let g = r.session_for(loop_subject("agent://research-loop"), vec![grant], None);
+    let one = r.face.retrieve(&g, &ask("research/notes", "solar battery storage"), Bounds::default()).unwrap();
+    assert_eq!((one.rows.len(), one.truncated), (1, true));
+    let huge = r.face.retrieve(&s, &RetrieveRequest { limit: Some(u64::MAX), ..ask("research/", "solar") }, Bounds::default()).unwrap();
+    assert!(huge.blocks["contextful.retrieval"]["window"].as_u64().unwrap() <= 8 * contextful_context::read::retrieve::MAX_LIMIT);
+    let exact = r.face.retrieve(&s, &RetrieveRequest { limit: Some(2), ..ask("research/notes", "solar battery storage") }, Bounds::default()).unwrap();
+    assert_eq!(exact.rows.len(), 2);
 }

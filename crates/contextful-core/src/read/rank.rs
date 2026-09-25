@@ -5,9 +5,6 @@
 use super::tokens::matches;
 use crate::time::Instant;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
-use std::collections::VecDeque;
-use std::sync::Arc;
 
 /// Multiple of the requested limit forming the candidate window (`read.retrieve.candidate-window`).
 pub const CANDIDATE_WINDOW_FACTOR: u64 = 8;
@@ -24,9 +21,6 @@ pub const FUSION_LEXICAL_WEIGHT_PERCENT: u32 = 40;
 /// How far past the anchor a publication instant still counts in-window, in hours
 /// (`read.rank.window-anchor-tolerance`).
 pub const WINDOW_ANCHOR_TOLERANCE_HOURS: u64 = 24;
-
-/// FIFO capacity of cached lexical indexes (`read.rank.lexical-index-cache`).
-pub const LEXICAL_INDEX_CACHE: usize = 64;
 
 /// BM25 term-frequency saturation and length normalization, at their customary values.
 const BM25_K1: f64 = 1.2;
@@ -111,50 +105,6 @@ impl LexicalIndex {
                 Some(score)
             })
             .collect()
-    }
-}
-
-/// A fingerprint over what a lexical index covers: the documents, and the snapshot ids,
-/// table set and time bound they were read under (`read.rank.lexical-index-cache`).
-pub fn fingerprint<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
-    let mut h = Sha256::new();
-    for p in parts {
-        h.update((p.len() as u64).to_be_bytes());
-        h.update(p.as_bytes());
-    }
-    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// Lexical indexes keyed on their fingerprint, evicting the oldest past 64 entries.
-#[derive(Debug, Default)]
-pub struct LexicalIndexCache {
-    entries: VecDeque<(String, Arc<LexicalIndex>)>,
-}
-
-impl LexicalIndexCache {
-    /// The index cached under `key`, or the one `build` makes, now cached.
-    pub fn get_or_build(&mut self, key: &str, build: impl FnOnce() -> LexicalIndex) -> Arc<LexicalIndex> {
-        if let Some((_, index)) = self.entries.iter().find(|(k, _)| k == key) {
-            return index.clone();
-        }
-        let index = Arc::new(build());
-        if self.entries.len() == LEXICAL_INDEX_CACHE {
-            self.entries.pop_front();
-        }
-        self.entries.push_back((key.to_string(), index.clone()));
-        index
-    }
-
-    pub fn contains(&self, key: &str) -> bool {
-        self.entries.iter().any(|(k, _)| k == key)
-    }
-
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
     }
 }
 

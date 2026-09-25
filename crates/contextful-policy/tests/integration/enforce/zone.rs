@@ -94,8 +94,8 @@ fn an_undeclared_table_resolves_to_the_fail_closed_pair() {
     }
 }
 
-/// A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time.
-// spec: authority.place.protected-floor@8371814d
+/// A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.
+// spec: authority.place.protected-floor@b98f1c6b
 #[test]
 fn a_protected_surface_resolves_down_to_its_floor() {
     let p = Placement { declared: Some(set(&["*"])), protected: true, protected_override: true };
@@ -108,10 +108,25 @@ fn a_protected_surface_resolves_down_to_its_floor() {
     .unwrap();
     assert!(t.column_set("case_notes").admits(&z("on-prem:ward-3")));
     assert!(!t.column_set("case_notes").admits(&z("public-cloud:x")));
+    // A table-wide override that names another class lifts no phi column; one naming the
+    // column, or its class, does.
+    let wide = |names: &str| {
+        decl(&format!(
+            "[[pipeline.tables]]\nname = \"visits\"\n[pipeline.tables.policy.zone]\nallow = [\"on-prem:*\", \"public-cloud:*\"]\nprotected_class_override = [{names}]\n[pipeline.tables.policy.columns]\ncase_notes = {{ class = \"phi\" }}\nward_notes = {{ class = \"phi\" }}\n"
+        ))
+    };
+    let none = TablePolicy::from_decl(&wide("\"ssn\"")).unwrap();
+    assert!(!none.column_set("case_notes").admits(&z("public-cloud:x")));
+    let one = TablePolicy::from_decl(&wide("\"case_notes\"")).unwrap();
+    assert!(one.column_set("case_notes").admits(&z("public-cloud:x")));
+    assert!(!one.column_set("ward_notes").admits(&z("public-cloud:x")));
+    let class = TablePolicy::from_decl(&wide("\"phi\"")).unwrap();
+    assert!(class.column_set("ward_notes").admits(&z("public-cloud:x")));
+    assert!(TablePolicy::from_decl(&decl("[[pipeline.tables]]\nname = \"v\"\n[pipeline.tables.policy.zone]\nallow = [\"*\"]\nprotected_class_override = true\n")).is_err());
 }
 
-/// A manifest widening a protected-class surface past its floor without the override flag raises `EnforceProtectedFloorWidened`.
-// spec: authority.place.floor-widened@13de91c9
+/// A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.
+// spec: authority.place.floor-widened@8d125ad7
 #[test]
 fn widening_a_protected_surface_needs_the_override() {
     let widened = "[[pipeline.tables]]\nname = \"visits\"\nclass = \"phi\"\n[pipeline.tables.policy.zone]\nallow = [\"public-cloud:*\"]\n";
@@ -119,7 +134,7 @@ fn widening_a_protected_surface_needs_the_override() {
         Err(PolicyError::Enforce(EnforceError::ProtectedFloorWidened(why))) => assert!(why.contains("visits"), "{why}"),
         other => panic!("{other:?}"),
     }
-    let overridden = widened.replace("allow = [\"public-cloud:*\"]", "allow = [\"public-cloud:*\"]\nprotected_class_override = true");
+    let overridden = widened.replace("allow = [\"public-cloud:*\"]", "allow = [\"public-cloud:*\"]\nprotected_class_override = [\"phi\"]");
     assert!(TablePolicy::from_decl(&decl(&overridden)).is_ok());
     let within = widened.replace("public-cloud:*", "on-prem:hq");
     assert!(TablePolicy::from_decl(&decl(&within)).is_ok());
@@ -161,10 +176,22 @@ fn a_synthesized_row_resolves_to_its_evidence_intersection() {
 #[test]
 fn incognito_refuses_a_wider_zone_and_pins_an_absent_one() {
     assert_eq!(session_zone(None, None, true), Ok(Zone::LocalDevice));
-    assert_eq!(session_zone(Some("on-prem:hq"), None, true), Ok(z("on-prem:hq")));
-    assert!(matches!(session_zone(Some("public-cloud:us-east-1"), None, true), Err(EnforceError::IncognitoWidening(_))));
+    assert_eq!(session_zone(Some("on-prem:hq"), Some("on-prem:hq"), true), Ok(z("on-prem:hq")));
     assert!(matches!(session_zone(None, Some("private-cloud:vpc"), true), Err(EnforceError::IncognitoWidening(_))));
-    assert_eq!(session_zone(Some("public-cloud:us-east-1"), None, false), Ok(z("public-cloud:us-east-1")));
+    assert_eq!(session_zone(None, Some("public-cloud:us-east-1"), false), Ok(z("public-cloud:us-east-1")));
+}
+
+/// A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.
+// spec: authority.place.asserted-zone@53fcfebd
+#[test]
+fn an_asserted_zone_never_replaces_the_signed_one() {
+    assert_eq!(session_zone(Some(" on-prem:hq"), Some("on-prem:hq"), false), Ok(z("on-prem:hq")));
+    for (asserted, signed) in [("public-cloud:us-east-1", Some("on-prem:hq")), ("on-prem:ward-3", Some("on-prem:hq")), ("on-prem:hq", None)] {
+        match session_zone(Some(asserted), signed, false) {
+            Err(EnforceError::ZoneAssertionWidens(why)) => assert!(why.contains(asserted), "{why}"),
+            other => panic!("{asserted} over {signed:?}: {other:?}"),
+        }
+    }
 }
 
 /// Serving one row yields a drop flag and the list of zone-masked columns.

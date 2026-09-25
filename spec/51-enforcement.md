@@ -154,7 +154,7 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
   *A-authority*
 - `one-value` — A column mask is one value whose primary and combine halves are private; it drives both the write-time and query-time layers, and no consumer applies the primary alone.
   *A-authority*
-- `digest-alone` — `hash` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.
+- `digest-alone` — `hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.
   *A-authority*
 - `high-entropy` — A column of random identifiers or opaque tokens carries `hash` with no combine.
   *A-authority*
@@ -168,7 +168,7 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
   *A-authority*
 - `crowd` — A column's `crowd`, the fewest inputs one masked output covers, is at least 1000 values and defaults to that floor.
   *A-authority*
-- `truncation-ceiling` — Behind `hash` over an exhaustible class, a `truncate` width above floor(log16(domain ÷ `crowd`)), with domain from the class registry, raises `EnforceTruncationTooWide`.
+- `truncation-ceiling` — Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.
   *A-authority*
 - `pepper` — One environment variable supplies the key for `hash` and `tokenize`, read by both layers as one resolved value.
   *A-authority*
@@ -280,15 +280,17 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
   *A-authority*
 - `caller-zone` — The calling process declares its zone per request; the store carries none.
   *A-authority*
+- `asserted-zone` — A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.
+  *because an unsigned argument able to widen placement makes the signed zone decorative*
 - `picks-no-model` — Placement selects no model and dispatches no inference; the engine's one invocation point is an operator-configured endpoint capability for synthesis.
   *A-authority*
 - `fail-closed` — A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.
   *A-authority*
 - `permissive-default` — A default resolving an unlabeled table to `*` raises `EnforcePermissiveZoneDefault` where more than one principal owns the store.
   *A-authority*
-- `protected-floor` — A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time.
+- `protected-floor` — A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.
   *A-authority*
-- `floor-widened` — A manifest widening a protected-class surface past its floor without the override flag raises `EnforceProtectedFloorWidened`.
+- `floor-widened` — A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.
   *A-authority*
 - `removal-with-public-cloud` — A surface declaring write-time removal on a column and an allow-set admitting a public cloud raises `EnforceRemovalWithPublicCloud`.
   *P1*
@@ -385,14 +387,14 @@ A column policy and a zone declaration:
 ```toml
 [pipeline.tables.policy.columns]
 patient_mrn   = { class = "mrn",   strategy = "hash", combine = "truncate:4" }
-contact_email = { class = "email", strategy = "tokenize" }
+contact_email = { class = "email", strategy = "tokenize", combine = "truncate:4" }
 case_notes    = { class = "phi",   summarize_only = true }
 salary_band   = { strategy = "bucket:10000" }
 internal_id   = { strategy = "hash" }
 
 [pipeline.tables.policy.zone]
 allow = ["local:device", "on-prem:*"]
-protected_class_override = false
+protected_class_override = []
 
 [pipeline.tables.policy.rows]
 predicate = "region = subject.region AND classification <= subject.clearance"

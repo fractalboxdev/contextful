@@ -99,6 +99,15 @@ impl Strategy {
         })
     }
 
+    /// The alphabet size of a keyed digest's output: hexadecimal for `hash`, lowercase
+    /// letters and digits for `tokenize`.
+    pub fn digest_base(self) -> u32 {
+        match self {
+            Strategy::Tokenize => TOKEN_ALPHABET.len() as u32,
+            _ => 16,
+        }
+    }
+
     /// The output width of a digest primary.
     fn digest_width(self) -> Option<u32> {
         match self {
@@ -176,16 +185,16 @@ impl ColumnPolicy {
                 }
             }
         };
-        if let (Some(Strategy::Hash), Some(cls)) = (primary, class) {
+        if let (Some(p @ (Strategy::Hash | Strategy::Tokenize)), Some(cls)) = (primary, class) {
             if let Some(domain) = cls.domain {
                 let Some(n) = combine else {
                     return Err(EnforceError::DigestAloneOnExhaustibleClass(at(format!(
-                        "a bare keyed hash over exhaustible class `{}` is recoverable by enumeration; add combine = \"truncate:<n>\"",
+                        "a bare keyed digest over exhaustible class `{}` is recoverable by enumeration; add combine = \"truncate:<n>\"",
                         cls.name
                     )))
                     .into());
                 };
-                let ceiling = truncation_ceiling(domain, crowd);
+                let ceiling = truncation_ceiling(domain, crowd, p.digest_base());
                 if n > ceiling {
                     return Err(EnforceError::TruncationTooWide(at(format!(
                         "truncate:{n} over class `{}` exceeds the ceiling of {ceiling} for crowd {crowd}",
@@ -204,14 +213,16 @@ impl ColumnPolicy {
     }
 }
 
-/// The widest truncation a digest over an exhaustible class admits:
-/// floor(log16(domain ÷ crowd)) (`authority.mask.truncation-ceiling`).
-pub fn truncation_ceiling(domain: f64, crowd: u64) -> u32 {
+/// The widest truncation a keyed digest over an exhaustible class admits:
+/// floor(log_b(domain ÷ crowd)), `b` the digest's alphabet size
+/// (`authority.mask.truncation-ceiling`).
+pub fn truncation_ceiling(domain: f64, crowd: u64, base: u32) -> u32 {
     let ratio = domain / crowd as f64;
     if ratio < 1.0 {
         0
     } else {
-        (ratio.ln() / 16f64.ln()).floor() as u32
+        // The epsilon keeps an exact power, such as 36^4, from flooring one short.
+        (ratio.ln() / f64::from(base).ln() + 1e-9).floor() as u32
     }
 }
 
@@ -284,18 +295,20 @@ fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
 }
 
 impl Mask {
-    /// The masked value for one input, as the write layer applies it; `None` where the
-    /// mask drops the cell.
-    pub fn apply(&self, pepper: &Pepper, value: &str) -> Option<String> {
-        let primary = match self.primary {
-            Strategy::Drop => return None,
-            Strategy::Hash => pepper.digest(value),
-            Strategy::Tokenize => pepper.token(value),
-            Strategy::Truncate(n) => value.chars().take(n as usize).collect(),
-            Strategy::Bucket(n) => value.parse::<f64>().ok().map(|v| ((v / n as f64).floor() * n as f64).to_string())?,
-            Strategy::Range(n) => {
-                let lo = value.parse::<f64>().ok().map(|v| (v / n as f64).floor() * n as f64)?;
-                format!("{lo}-{}", lo + n as f64)
+    /// The masked value for one input of a column typed `ty`, as the write layer applies
+    /// it; `None` is SQL NULL. Every strategy yields exactly the value [`Mask::sql`] does.
+    pub fn apply(&self, pepper: &Pepper, value: Option<&str>, ty: ColumnType) -> Option<String> {
+        let lower = |v: &str, n: u64| v.trim().parse::<f64>().ok().map(|v| ((v / n as f64).floor() * n as f64) as i64);
+        let primary = match (self.primary, value) {
+            (Strategy::Drop, _) => return (ty == ColumnType::Utf8).then(String::new),
+            (_, None) => return None,
+            (Strategy::Hash, Some(v)) => pepper.digest(v),
+            (Strategy::Tokenize, Some(v)) => pepper.token(v),
+            (Strategy::Truncate(n), Some(v)) => v.chars().take(n as usize).collect(),
+            (Strategy::Bucket(n), Some(v)) => lower(v, n)?.to_string(),
+            (Strategy::Range(n), Some(v)) => {
+                let lo = lower(v, n)?;
+                format!("{lo}-{}", lo + n as i64)
             }
         };
         Some(match self.combine {
@@ -317,10 +330,11 @@ impl Mask {
             Strategy::Hash => format!("{HASH_FUNCTION}({text})"),
             Strategy::Tokenize => format!("{TOKEN_FUNCTION}({text})"),
             Strategy::Truncate(n) => format!("left({text}, {n})"),
-            Strategy::Bucket(n) => format!("(floor(CAST({c} AS DOUBLE) / {n}) * {n})"),
-            Strategy::Range(n) => format!(
-                "(CAST(floor(CAST({c} AS DOUBLE) / {n}) * {n} AS VARCHAR) || '-' || CAST(floor(CAST({c} AS DOUBLE) / {n}) * {n} + {n} AS VARCHAR))"
-            ),
+            Strategy::Bucket(n) => format!("CAST(CAST(floor(TRY_CAST(trim({text}) AS DOUBLE) / {n}) * {n} AS BIGINT) AS VARCHAR)"),
+            Strategy::Range(n) => {
+                let lo = format!("CAST(floor(TRY_CAST(trim({text}) AS DOUBLE) / {n}) * {n} AS BIGINT)");
+                format!("(CAST({lo} AS VARCHAR) || '-' || CAST({lo} + {n} AS VARCHAR))")
+            }
         };
         match self.combine {
             Some(n) => format!("left({primary}, {n})"),

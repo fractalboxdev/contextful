@@ -9,6 +9,7 @@ use contextful_context::read::{Face, ReadFault, ReadOptions, RetrieveRequest};
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
 use contextful_core::read::Refusal;
 use contextful_core::store::bound_time::{Bound, Bounds};
+use contextful_core::ports::Clock;
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
 use contextful_policy::enforce::refuse::payload;
@@ -39,6 +40,7 @@ pub struct Server<'a> {
     face: &'a Face,
     authority: AdmittedAuthority,
     boundary: &'a Boundary<'a>,
+    clock: &'a dyn Clock,
 }
 
 /// A protocol-level error: code and message.
@@ -120,11 +122,11 @@ fn refused(r: &Refusal) -> Value {
 impl<'a> Server<'a> {
     /// A server for one admitted authority. Every built-in tool registers as a read tool
     /// (`authority.resist.read-only-face`).
-    pub fn new(face: &'a Face, authority: AdmittedAuthority, boundary: &'a Boundary<'a>) -> Result<Server<'a>, String> {
+    pub fn new(face: &'a Face, authority: AdmittedAuthority, boundary: &'a Boundary<'a>, clock: &'a dyn Clock) -> Result<Server<'a>, String> {
         for tool in TOOLS {
             register_tool(FaceScope::Organization, tool, ToolKind::Read).map_err(|e| e.to_string())?;
         }
-        Ok(Server { face, authority, boundary })
+        Ok(Server { face, authority, boundary, clock })
     }
 
     /// Serve until the input closes.
@@ -266,14 +268,16 @@ impl<'a> Server<'a> {
                 };
                 let b = bounds(args)?;
                 let request = RetrieveRequest {
-                    prefix: string(args, "prefix")?.unwrap_or_default(),
-                    query: required(args, "query")?,
                     query_embedding,
                     limit: integer(args, "limit")?,
                     since: instant(args, "since")?,
-                    anchor: b.as_of.map(|a| a.at),
                     min_score: integer(args, "min_score")?.map(|m| u32::try_from(m).unwrap_or(u32::MAX)),
                     internals: boolean(args, "internals")?,
+                    ..RetrieveRequest::new(
+                        string(args, "prefix")?.unwrap_or_default(),
+                        required(args, "query")?,
+                        b.as_of.map_or_else(|| self.clock.now(), |a| a.at),
+                    )
                 };
                 self.session(zone, b).and_then(|s| self.face.retrieve(&s, &request, b)).map(|r| r.to_json())
             }

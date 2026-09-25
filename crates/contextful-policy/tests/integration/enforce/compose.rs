@@ -16,7 +16,9 @@ fn source(name: &str) -> TableSource {
         policy: TablePolicy::from_decl(&decl).unwrap(),
         decl,
         base: "SELECT 1 AS \"x\"".into(),
+        files: Vec::new(),
         columns: vec![Column::new("x", ColumnType::Int32, false)],
+        landed: true,
     }
 }
 
