@@ -105,8 +105,6 @@ Acceptance: `contextful_acceptance::m05::m05_read_face`
 
 Reach: Two nodes share one bucket and converge without a coordinator.
 
-Depth: operation
-
 Acceptance: `contextful_acceptance::m06::m06_sync`
 
 ## 7 — Memory
