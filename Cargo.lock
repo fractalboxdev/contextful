@@ -658,6 +658,7 @@ name = "contextful-acceptance"
 version = "0.1.0"
 dependencies = [
  "parquet",
+ "serde_json",
  "tempfile",
 ]
 
@@ -680,6 +681,7 @@ dependencies = [
  "clap",
  "contextful-context",
  "contextful-core",
+ "contextful-engine",
  "contextful-policy",
  "serde",
  "serde_json",
@@ -718,9 +720,23 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.20",
  "time",
  "toml",
+]
+
+[[package]]
+name = "contextful-engine"
+version = "0.1.0"
+dependencies = [
+ "contextful-core",
+ "getrandom 0.3.4",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

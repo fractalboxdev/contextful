@@ -1,0 +1,181 @@
+//! A scratch engine over a temporary directory, a settable clock, a scripted source and
+//! an in-memory destination.
+
+use contextful_core::coordinate::Catalog;
+use contextful_core::ports::Clock;
+use contextful_core::run::own::ConnectorPin;
+use contextful_core::run::plan::Plan;
+use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Marker, PullRequest, Source};
+use contextful_core::run::record::RunRow;
+use contextful_core::run::Failure;
+use contextful_core::time::Instant;
+use contextful_engine::cancel::Cadence;
+use contextful_engine::{Engine, EngineError, Journal, LocalCatalog, RunSpec};
+use serde_json::{json, Value};
+use std::panic::AssertUnwindSafe;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+pub fn at(s: &str) -> Instant {
+    Instant::parse(s).unwrap_or_else(|e| panic!("{s}: {e}"))
+}
+
+pub const T0: &str = "2030-01-01T00:00:00Z";
+
+/// A clock a test moves by hand.
+#[derive(Clone)]
+pub struct SetClock(Arc<AtomicI64>);
+
+impl SetClock {
+    pub fn new(s: &str) -> SetClock {
+        SetClock(Arc::new(AtomicI64::new(at(s).unix_secs())))
+    }
+
+    pub fn advance(&self, secs: i64) {
+        self.0.fetch_add(secs, Ordering::SeqCst);
+    }
+}
+
+impl Clock for SetClock {
+    fn now(&self) -> Instant {
+        Instant::from_unix_secs(self.0.load(Ordering::SeqCst)).unwrap()
+    }
+}
+
+pub struct Rig {
+    pub dir: tempfile::TempDir,
+    pub clock: SetClock,
+    pub engine: Engine,
+}
+
+impl Rig {
+    pub fn new() -> Rig {
+        let dir = tempfile::tempdir().unwrap();
+        let clock = SetClock::new(T0);
+        let journal = Journal::open(dir.path());
+        let catalog = Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock.clone())));
+        let engine = Engine { catalog, journal, cadence: Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }, emitter: None };
+        Rig { dir, clock, engine }
+    }
+
+    pub fn catalog(&self) -> &dyn Catalog {
+        self.engine.catalog.as_ref()
+    }
+
+    pub fn row(&self, run_id: &str) -> RunRow {
+        self.catalog().run(run_id).unwrap().unwrap_or_else(|| panic!("no run `{run_id}`"))
+    }
+
+    /// Run `plan` as `run_id`, admitting connector version `version`.
+    pub fn run(&self, plan: &Plan, version: &str, run_id: &str, source: &mut dyn Source, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
+        let spec = RunSpec {
+            connector: ConnectorPin { version: version.into(), ..plan.connector_pin("artifact-1") },
+            plan: plan.clone(),
+            run_id: run_id.into(),
+            site_id: "site-a".into(),
+            pid: 4242,
+            boot_id: "boot-a".into(),
+            trace_id: None,
+        };
+        self.engine.run(&spec, source, dest)
+    }
+
+    /// Run until the source or destination panics, as a process dying mid-step leaves its state.
+    pub fn crash(&self, plan: &Plan, run_id: &str, source: &mut dyn Source, dest: &mut dyn Destination) {
+        let out = std::panic::catch_unwind(AssertUnwindSafe(|| self.run(plan, "1.0.0", run_id, source, dest)));
+        assert!(out.is_err(), "the run was expected to die: {out:?}");
+    }
+}
+
+/// A plan over table `filings` with the given cursor block and extra top-level lines.
+pub fn plan(cursor: &str, extra: &str) -> Plan {
+    let text = format!(
+        "pipeline = \"feed\"\ntable = \"filings\"\n{extra}\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\ncommand = [\"vendor\"]\n[cursor]\n{cursor}\n"
+    );
+    Plan::compile(text.as_bytes()).unwrap()
+}
+
+/// Every call a source served: the position asked for and the idempotency key sent.
+pub type Calls = Arc<Mutex<Vec<(Option<Value>, String)>>>;
+
+/// A paged vendor: page `n` answers `rows[n]` and continues to `p{n+1}`; it panics
+/// after serving the page named in `die_after`, before the runner can record it.
+pub struct Pages {
+    pub pages: Vec<Vec<Value>>,
+    pub calls: Calls,
+    pub die_after: Option<usize>,
+    pub fail: Vec<Failure>,
+}
+
+impl Pages {
+    pub fn new(pages: Vec<Vec<Value>>) -> Pages {
+        Pages { pages, calls: Arc::default(), die_after: None, fail: Vec::new() }
+    }
+
+    pub fn calls(&self) -> Vec<(Option<Value>, String)> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+impl Source for Pages {
+    fn pull(&mut self, request: &PullRequest, _cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        self.calls.lock().unwrap().push((request.position.clone(), request.idempotency_key.clone()));
+        if !self.fail.is_empty() {
+            return Err(self.fail.remove(0));
+        }
+        let n = match &request.position {
+            None => 0,
+            Some(Value::String(p)) => p.trim_start_matches('p').parse::<usize>().unwrap(),
+            Some(other) => panic!("position {other}"),
+        };
+        let rows = self.pages.get(n).cloned().unwrap_or_default();
+        let more = n + 1 < self.pages.len();
+        let body = json!({ "rows": rows, "cursor": format!("p{}", (n + 1).min(self.pages.len())), "more": more });
+        if self.die_after == Some(n) {
+            self.die_after = None;
+            panic!("the process dies after the vendor served page {n}");
+        }
+        Ok(serde_json::to_vec(&body).unwrap())
+    }
+}
+
+/// The store stand-in: every commit it accepted, and whether it dies after the next one.
+#[derive(Default)]
+pub struct Sink {
+    pub commits: Vec<Commit>,
+    pub die_after_land: bool,
+    /// Counts to report instead of the ones the commit carries.
+    pub report: Option<Landed>,
+}
+
+impl Destination for Sink {
+    fn land(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
+        precommit()?;
+        let rows = commit.batches.iter().map(|b| b.len() as u64).sum();
+        self.commits.push(commit);
+        if std::mem::take(&mut self.die_after_land) {
+            panic!("the process dies after the commit marker lands");
+        }
+        Ok(self.report.unwrap_or(Landed { rows, bytes: 0 }))
+    }
+
+    fn newest_marker(&self, pipeline_id: &str, table: &str) -> Result<Option<Marker>, Failure> {
+        Ok(self
+            .commits
+            .iter()
+            .filter(|c| c.pipeline_id == pipeline_id && c.table == table)
+            .max_by_key(|c| c.committed_at)
+            .map(|c| Marker { run_id: c.run_id.clone(), cursor: c.cursor.clone(), committed_at: c.committed_at }))
+    }
+}
+
+/// Ids of the rows of every batch, per batch.
+pub fn ids(commit: &Commit) -> Vec<Vec<String>> {
+    commit.batches.iter().map(|b| b.iter().map(|r| r["id"].as_str().unwrap_or_default().to_string()).collect()).collect()
+}
+
+/// Three pages: two rows, one row, one row.
+pub fn three_pages() -> Vec<Vec<Value>> {
+    vec![vec![json!({"id": "d1"}), json!({"id": "d2"})], vec![json!({"id": "d3"})], vec![json!({"id": "d4"})]]
+}

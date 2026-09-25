@@ -23,6 +23,9 @@ pub enum StoreError {
     /// A primary-key column takes the float promotion. (`store.reconcile.key-widening`)
     #[error("StoreKeyWidened: {0}")]
     StoreKeyWidened(String),
+    /// A commit, pointer replace or catalog update losing its condition to a higher fence. (`store.lease.stale-fence`)
+    #[error("LeaseFenced: {0}")]
+    LeaseFenced(String),
     /// A run manifest or reachable snapshot manifest fails to parse. (`store.lay-out.manifest-unreadable`)
     #[error("StoreManifestUnreadable: {0}")]
     StoreManifestUnreadable(String),

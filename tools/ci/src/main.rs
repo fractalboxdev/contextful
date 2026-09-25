@@ -1,6 +1,8 @@
 //! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
 //! pull-request workflow invoke the identical command.
 
+mod topology;
+
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
@@ -42,6 +44,8 @@ enum Cmd {
     Secrets,
     /// Resolve every `mirrors:` comment under crates/, tools/ and apps/ to a clause id.
     Mirrors,
+    /// Hold the workspace's dependency graph to the topology contract's rules.
+    Topology,
 }
 
 /// A refusal the gate reports by its registered error name.
@@ -73,6 +77,7 @@ fn main() {
         Cmd::Gate { stages, base } => gate(&stages, &base),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
+        Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
     };
     if let Err(e) = result {
         eprintln!("{e:#}");
@@ -92,6 +97,7 @@ fn gate(selected: &[String], base: &str) -> Result<()> {
             "schema" => {
                 secrets(&root)?;
                 mirrors(&root)?;
+                topology::check(&root)?;
                 run(&root, "cargo", &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
             }
             "test-first" => {
@@ -369,24 +375,31 @@ fn test_first(root: &Path, base: &str) -> Result<()> {
 }
 
 /// Overlay the change's test files on the base tree; return each package whose tests fail there.
+///
+/// A package the base lacks counts red by construction and none of its files is copied,
+/// so a test directory with no manifest never stops the base workspace from loading and
+/// every package that exists at base is judged by its own tests alone.
 fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str]) -> Result<Vec<String>> {
     let mut packages: Vec<&str> = Vec::new();
+    let mut red = Vec::new();
     for t in tests {
+        let pkg = t.split("/tests/").next().unwrap_or(t);
+        if !tree.join(pkg).join("Cargo.toml").exists() {
+            let entry = format!("{pkg} (absent at base)");
+            if !red.contains(&entry) {
+                red.push(entry);
+            }
+            continue;
+        }
         let dest = tree.join(t);
         std::fs::create_dir_all(dest.parent().unwrap())?;
         std::fs::copy(root.join(t), &dest).with_context(|| format!("overlaying {t}"))?;
-        let pkg = t.split("/tests/").next().unwrap();
         if !packages.contains(&pkg) {
             packages.push(pkg);
         }
     }
-    let mut red = Vec::new();
     for pkg in packages {
         let manifest = tree.join(pkg).join("Cargo.toml");
-        if !manifest.exists() {
-            red.push(format!("{pkg} (absent at base)"));
-            continue;
-        }
         let status = Command::new("cargo")
             .args(["test", "-q", "--tests", "--manifest-path"])
             .arg(&manifest)

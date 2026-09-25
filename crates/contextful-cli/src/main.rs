@@ -3,6 +3,7 @@
 mod context;
 mod differential;
 mod formal;
+mod run;
 mod token;
 
 use clap::{Parser, Subcommand};
@@ -22,6 +23,9 @@ enum Cmd {
     /// Land, list, scan and fold a project's store tables.
     #[command(subcommand)]
     Context(context::ContextCmd),
+    /// Start, inspect, stop and resume durable runs.
+    #[command(subcommand)]
+    Run(run::RunCmd),
     /// Elaborate and audit the Lean models under `formal/`.
     #[command(subcommand)]
     Formal(formal::FormalCmd),
@@ -32,6 +36,7 @@ fn main() {
     let result = match cli.cmd {
         Cmd::Token(c) => token::run(c),
         Cmd::Context(c) => context::run(c),
+        Cmd::Run(c) => run::run(c),
         Cmd::Formal(c) => formal::run(c),
     };
     if let Err(e) = result {

@@ -35,6 +35,16 @@ pub struct RunContext {
     pub committed_at: Instant,
 }
 
+/// The pipeline a run commits for and the position its rows reach, carried on the run
+/// manifest so rows and position commit together (`run.advance.commit-with-rows`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Position {
+    pub pipeline_id: Option<String>,
+    pub cursor: Option<Value>,
+    /// The fence of the lease the commit runs under.
+    pub fence: Option<u64>,
+}
+
 /// The type a JSON value carries on its own.
 fn value_type(v: &Value) -> ColumnType {
     match v {
@@ -50,13 +60,19 @@ fn value_type(v: &Value) -> ColumnType {
 /// The batch's own schema: columns in order of first appearance, each typed by the
 /// producer or by the lattice supertype of its values. Producer columns are nullable.
 pub fn batch_schema(batch: &Batch) -> Result<Schema> {
+    rows_schema(batch.rows.iter(), &batch.types)
+}
+
+/// The schema of `rows` read in order, each column typed by `types` or by the lattice
+/// supertype of its values.
+fn rows_schema<'a>(rows: impl Iterator<Item = &'a Map<String, Value>>, types: &HashMap<String, ColumnType>) -> Result<Schema> {
     let mut columns: Vec<Column> = Vec::new();
-    for row in &batch.rows {
+    for row in rows {
         for (name, v) in row {
             let seen = value_type(v);
             match columns.iter_mut().find(|c| &c.name == name) {
                 Some(c) => {
-                    if batch.types.contains_key(name) {
+                    if types.contains_key(name) {
                         continue;
                     }
                     c.ty = supertype(c.ty, seen).ok_or_else(|| {
@@ -68,7 +84,7 @@ pub fn batch_schema(batch: &Batch) -> Result<Schema> {
                     })?;
                 }
                 None => {
-                    let ty = batch.types.get(name).copied().unwrap_or(seen);
+                    let ty = types.get(name).copied().unwrap_or(seen);
                     columns.push(Column::new(name.clone(), ty, true));
                 }
             }
@@ -159,6 +175,28 @@ fn check_run_id(run_id: &str) -> Result<()> {
 /// reserved name, an incompatible or widened type, an unknown ordering column —
 /// fires before any Parquet is written; the run is visible once its manifest exists.
 pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) -> Result<RunManifest> {
+    land_batches(store, decl, std::slice::from_ref(batch), ctx, &Position::default(), &|| Ok(()))
+}
+
+/// Land `batches` as one run commit: a part per non-empty batch in order, each row's
+/// `_batch_seq` its batch's ordinal when the run carries one per batch, `_row_seq`
+/// numbering the run's rows across parts, and the manifest carrying `position`.
+/// `precommit` runs immediately before the manifest is created; a refusal there leaves
+/// the run uncommitted, joining no file list.
+pub fn land_batches(
+    store: &Store,
+    decl: &TableDecl,
+    batches: &[Batch],
+    ctx: &RunContext,
+    position: &Position,
+    precommit: &dyn Fn() -> Result<()>,
+) -> Result<RunManifest> {
+    let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
+    let mut types: HashMap<String, ColumnType> = HashMap::new();
+    for b in batches {
+        types.extend(b.types.iter().map(|(k, v)| (k.clone(), *v)));
+    }
+    let all_rows = || batches.iter().flat_map(|b| b.rows.iter());
     let table = decl.name.as_str();
     let run_id = ctx.injection.run_id.as_str();
     check_run_id(run_id)?;
@@ -170,11 +208,11 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
     }
 
     // Reconcile: the producer's columns, held to the namespace, merged into the stored shape.
-    let arriving = producer_columns(&batch_schema(batch)?)?;
+    let arriving = producer_columns(&rows_schema(all_rows(), &types)?)?;
     // An optional column's value is held to its vocabulary whatever JSON type it arrives
     // as: a number reads as its text, so `{"_modality": 7}` refuses like `"7"` would.
     for c in arriving.columns.iter().filter(|c| c.name.starts_with('_')) {
-        for row in &batch.rows {
+        for row in all_rows() {
             let text = match row.get(&c.name) {
                 None | Some(Value::Null) => continue,
                 Some(Value::String(v)) => v.clone(),
@@ -189,8 +227,11 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
     // write runs outside it, so a large batch holds up no other landing on the table.
     let schema_lock = store.lock_schema(table)?;
     let stored = store.try_schema(table)?.unwrap_or_default();
-    let injected: Vec<Column> = ctx
-        .injection
+    let mut schema_injection = ctx.injection.clone();
+    if per_batch {
+        schema_injection.batch_seq = Some(0);
+    }
+    let injected: Vec<Column> = schema_injection
         .columns()
         .into_iter()
         .map(|mut c| {
@@ -222,30 +263,36 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
         return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
     }
 
-    // Build the part: the producer's columns in their arriving types, then the injected ones.
+    // Build the parts: the producer's columns in their arriving types, then the injected ones.
     let mut parts = Vec::new();
-    if !batch.rows.is_empty() {
-        let n = batch.rows.len();
+    let mut row_offset: i64 = 0;
+    let at = i64::try_from(ctx.committed_at.unix_nanos())
+        .map_err(|_| ContextError::Invalid(format!("{} is outside the nanosecond timestamp range", ctx.committed_at)))?;
+    for (ordinal, b) in batches.iter().enumerate().filter(|(_, b)| !b.rows.is_empty()) {
+        let n = b.rows.len();
+        let mut injection = ctx.injection.clone();
+        if per_batch {
+            injection.batch_seq = Some(i32::try_from(ordinal).map_err(|_| ContextError::Invalid(format!("batch ordinal {ordinal} exceeds the `_batch_seq` range")))?);
+        }
         let mut cols: Vec<Column> = arriving.columns.clone();
-        let mut arrays: Vec<ArrayRef> = arriving.columns.iter().map(|c| column_array(c, &batch.rows)).collect::<Result<_>>()?;
-        let at = i64::try_from(ctx.committed_at.unix_nanos())
-            .map_err(|_| ContextError::Invalid(format!("{} is outside the nanosecond timestamp range", ctx.committed_at)))?;
-        for c in ctx.injection.columns() {
+        let mut arrays: Vec<ArrayRef> = arriving.columns.iter().map(|c| column_array(c, &b.rows)).collect::<Result<_>>()?;
+        for c in injection.columns() {
             let array: ArrayRef = match c.name.as_str() {
                 INGESTED_AT => Arc::new(arrow_array::TimestampNanosecondArray::from(vec![at; n]).with_timezone("UTC")),
                 RUN_ID => Arc::new(arrow_array::StringArray::from(vec![run_id; n])),
-                ROW_SEQ => Arc::new(arrow_array::Int64Array::from_iter_values(0..n as i64)),
-                BATCH_SEQ => Arc::new(arrow_array::Int32Array::from(vec![ctx.injection.batch_seq.unwrap_or_default(); n])),
-                SITE_ID => Arc::new(arrow_array::StringArray::from(vec![ctx.injection.site_id.as_str(); n])),
-                AUTHORED_BY => Arc::new(arrow_array::StringArray::from(vec![ctx.injection.authored_by.as_deref().unwrap_or_default(); n])),
+                ROW_SEQ => Arc::new(arrow_array::Int64Array::from_iter_values(row_offset..row_offset + n as i64)),
+                BATCH_SEQ => Arc::new(arrow_array::Int32Array::from(vec![injection.batch_seq.unwrap_or_default(); n])),
+                SITE_ID => Arc::new(arrow_array::StringArray::from(vec![injection.site_id.as_str(); n])),
+                AUTHORED_BY => Arc::new(arrow_array::StringArray::from(vec![injection.authored_by.as_deref().unwrap_or_default(); n])),
                 other => unreachable!("no injected column `{other}`"),
             };
             cols.push(c);
             arrays.push(array);
         }
+        row_offset += n as i64;
         let rb = RecordBatch::try_new(parquet_io::arrow_schema(&Schema { columns: cols }), arrays)
             .map_err(|e| ContextError::Invalid(e.to_string()))?;
-        let name = part_name(0);
+        let name = part_name(u32::try_from(parts.len()).map_err(|_| ContextError::Invalid("a run holds more parts than a part name numbers".into()))?);
         let path = node_dir.join(&name);
         if path.exists() {
             std::fs::remove_file(&path).at(&path)?;
@@ -261,12 +308,13 @@ pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) ->
         node_id: ctx.node.to_string(),
         parts,
         committed_at: ctx.committed_at,
-        pipeline_id: None,
-        cursor: None,
-        fence: None,
+        pipeline_id: position.pipeline_id.clone(),
+        cursor: position.cursor.clone(),
+        fence: position.fence,
     };
     std::fs::create_dir_all(&node_dir).at(&node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
+    precommit()?;
     if !create_new_file(&manifest_path, &bytes)? {
         return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
     }

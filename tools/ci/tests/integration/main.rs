@@ -6,6 +6,7 @@ mod lean;
 mod mirrors;
 mod secrets;
 mod test_first;
+mod topology;
 mod workflow;
 
 use std::path::{Path, PathBuf};
