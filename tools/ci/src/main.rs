@@ -1,6 +1,8 @@
 //! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
 //! pull-request workflow invoke the identical command.
 
+mod topology;
+
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
@@ -42,6 +44,8 @@ enum Cmd {
     Secrets,
     /// Resolve every `mirrors:` comment under crates/, tools/ and apps/ to a clause id.
     Mirrors,
+    /// Hold the workspace's dependency graph to the topology contract's rules.
+    Topology,
 }
 
 /// A refusal the gate reports by its registered error name.
@@ -73,6 +77,7 @@ fn main() {
         Cmd::Gate { stages, base } => gate(&stages, &base),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
+        Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
     };
     if let Err(e) = result {
         eprintln!("{e:#}");
@@ -92,6 +97,7 @@ fn gate(selected: &[String], base: &str) -> Result<()> {
             "schema" => {
                 secrets(&root)?;
                 mirrors(&root)?;
+                topology::check(&root)?;
                 run(&root, "cargo", &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
             }
             "test-first" => {
