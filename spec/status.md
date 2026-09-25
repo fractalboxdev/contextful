@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `assurance` | 2 | 13 | 175 | 46 | 18 | 13 | 49 | 0 | 49 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
-| `corpus` | 1 | 9 | 65 | 26 | 7 | 0 | 25 | 0 | 25 |
+| `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 109 | 21 | 14 | 16 | 54 | 0 | 54 |
 | `run` | 3 | 24 | 279 | 80 | 34 | 24 | 104 | 0 | 104 |
 | `store` | 1 | 14 | 140 | 37 | 12 | 8 | 75 | 0 | 75 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 144 | 1406 | 451 | 161 | 101 | 528 | 0 | |
+| **total** | 19 | 145 | 1417 | 462 | 161 | 101 | 540 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ Decision records: 18.
 | 13 — Disclosure | 5 | 21 | 0 | absent |
 | 14 — Assurance | 5 | 85 | 4 | open |
 
-Unscheduled operations: 9.
+Unscheduled operations: 10.
 
 ## Pins
 
@@ -307,6 +307,18 @@ Unscheduled operations: 9.
 | `corpus.anatomy.bad-anatomy` | `tools/spec/tests/integration/readable.rs::an_item_outside_the_clause_shape_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.clause-list` | `tools/spec/tests/integration/readable.rs::a_clause_list_split_by_prose_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.lede` | `tools/spec/tests/integration/readable.rs::the_lede_lands_in_the_lock_and_its_absence_is_an_anatomy_finding` | performed |
+| `corpus.diagram.boundary` | `tools/spec/tests/integration/diagram.rs::a_flowchart_node_standing_for_a_contract_or_boundary_is_a_diagram_finding` | performed |
+| `corpus.diagram.branch` | `tools/spec/tests/integration/diagram.rs::a_box_branching_on_a_condition_is_a_branch_finding` | performed |
+| `corpus.diagram.connected` | `tools/spec/tests/integration/diagram.rs::a_node_no_edge_reaches_is_an_orphan` | performed |
+| `corpus.diagram.decision` | `tools/spec/tests/integration/diagram.rs::a_decision_without_labelled_exits_or_with_a_long_label_is_a_decision_finding` | performed |
+| `corpus.diagram.edge` | `tools/spec/tests/integration/diagram.rs::an_unlabelled_two_way_or_bundled_edge_is_an_edge_finding` | performed |
+| `corpus.diagram.layout` | `tools/spec/tests/integration/diagram.rs::a_chart_without_direction_too_deep_or_too_large_is_a_layout_finding` | performed |
+| `corpus.diagram.message` | `tools/spec/tests/integration/diagram.rs::a_long_message_or_note_is_a_message_finding` | performed |
+| `corpus.diagram.node` | `tools/spec/tests/integration/diagram.rs::a_node_bundling_attributes_naming_an_error_or_an_operation_is_a_diagram_finding` | performed |
+| `corpus.diagram.sequence` | `tools/spec/tests/integration/diagram.rs::a_sequence_with_undeclared_or_too_many_parts_is_a_sequence_finding` | performed |
+| `corpus.diagram.shape` | `tools/spec/tests/integration/diagram.rs::a_table_drawn_as_a_box_or_a_question_drawn_as_a_box_is_a_shape_finding` | performed |
+| `corpus.diagram.state` | `tools/spec/tests/integration/diagram.rs::a_state_diagram_with_two_starts_a_dead_end_or_a_long_label_is_a_state_finding` | performed |
+| `corpus.diagram.unique-label` | `tools/spec/tests/integration/diagram.rs::two_nodes_sharing_a_label_are_a_duplicate` | performed |
 | `corpus.guide.bad-guide` | `tools/spec/tests/integration/readable.rs::a_contract_without_a_guide_is_a_guide_finding` | performed |
 | `corpus.guide.file` | `tools/spec/tests/integration/readable.rs::a_guide_over_its_length_or_off_its_title_is_a_guide_finding` | performed |
 | `corpus.guide.non-normative` | `tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding` | performed |
