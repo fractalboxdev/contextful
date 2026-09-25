@@ -17,6 +17,9 @@ importers:
       '@fractalbox/merlion-themes':
         specifier: file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz
         version: file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz
+      '@fractalbox/merlion-view':
+        specifier: file:vendor/merlion/fractalbox-merlion-view-0.1.0.tgz
+        version: file:vendor/merlion/fractalbox-merlion-view-0.1.0.tgz
       '@fractalbox/merlion-wasm':
         specifier: file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz
         version: file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz
@@ -641,6 +644,10 @@ packages:
 
   '@fractalbox/merlion-themes@file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz':
     resolution: {integrity: sha512-UFJkJdZFwpN3LC/0W5nJ2ZGUhFc8xOcOiWqx6sHsmZtBN1FlLBU5V57PtxXSbDloequq0qaFUm/E72mX0HwyhQ==, tarball: file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz}
+    version: 0.1.0
+
+  '@fractalbox/merlion-view@file:vendor/merlion/fractalbox-merlion-view-0.1.0.tgz':
+    resolution: {integrity: sha512-tAVI28WkA5XI/A8o9HxCrd9hR4wefhi+MENhuyvbPiIsbRya7JA7PZiKeztAG81hT9ZVvIO7IhN7QwqdRQHfHA==, tarball: file:vendor/merlion/fractalbox-merlion-view-0.1.0.tgz}
     version: 0.1.0
 
   '@fractalbox/merlion-wasm@file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz':
@@ -2865,6 +2872,8 @@ snapshots:
       '@fractalbox/merlion-wasm': file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz
 
   '@fractalbox/merlion-themes@file:vendor/merlion/fractalbox-merlion-themes-0.1.0.tgz': {}
+
+  '@fractalbox/merlion-view@file:vendor/merlion/fractalbox-merlion-view-0.1.0.tgz': {}
 
   '@fractalbox/merlion-wasm@file:vendor/merlion/fractalbox-merlion-wasm-0.1.0.tgz': {}
 
