@@ -141,13 +141,6 @@ const hasClass = (node, name) => {
   return Array.isArray(c) ? c.includes(name) : typeof c === "string" && c.split(/\s+/).includes(name);
 };
 
-const enlarge = () => ({
-  type: "element",
-  tagName: "button",
-  properties: { type: "button", className: ["diagram-open"], ariaLabel: "Enlarge diagram", title: "Enlarge diagram" },
-  children: [{ type: "text", value: "⤢" }],
-});
-
 /** `<file>:<line>` of each mermaid fence Merlion did not draw in this build. */
 export const unrendered = [];
 
@@ -164,9 +157,9 @@ export const diagramGate = {
 };
 
 /**
- * Wraps each table so a wide one scrolls horizontally instead of the page, and gives each
- * Merlion figure the enlarge button. A mermaid fence Merlion left as code is recorded in
- * `unrendered`; the site ships no client-side renderer, so the build fails on any.
+ * Wraps each table so a wide one scrolls horizontally instead of the page. A mermaid fence
+ * Merlion left as code is recorded in `unrendered`; the site ships no client-side
+ * renderer, so the build fails on any.
  */
 export function rehypeCorpus() {
   return (tree, file) => {
@@ -174,11 +167,6 @@ export function rehypeCorpus() {
       if (!parent || index === undefined) return;
       if (node.tagName === "table") {
         parent.children[index] = { type: "element", tagName: "div", properties: { className: ["table-wrap"] }, children: [node] };
-        return SKIP;
-      }
-      if (node.tagName === "figure" && hasClass(node, "merlion-figure")) {
-        node.properties.className = ["merlion-figure", "diagram"];
-        node.children.push(enlarge());
         return SKIP;
       }
       if (node.tagName === "code" && hasClass(node, "language-mermaid")) {

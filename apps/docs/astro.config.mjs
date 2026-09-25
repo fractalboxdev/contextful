@@ -17,7 +17,7 @@ export default defineConfig({
     // Merlion draws every mermaid fence to inline SVG at build time; diagramGate fails the
     // build on a fence it leaves as code.
     rehypePlugins: [
-      [rehypeMerlion, { width: 720, source: "none", viewer: false, fontCss: true, cacheDir: ".merlion" }],
+      [rehypeMerlion, { width: 720, source: "none", fontCss: true, cacheDir: ".merlion" }],
       rehypeCorpus,
     ],
   },
