@@ -5,6 +5,7 @@ mod connector;
 mod exchange;
 mod grant;
 mod identify;
+mod memory;
 mod issue;
 mod pipeline;
 mod read;

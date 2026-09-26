@@ -14,6 +14,7 @@ contextful-connectors = { path = "../contextful-connectors" }
 contextful-context = { path = "../contextful-context" }
 contextful-core = { path = "../contextful-core" }
 contextful-engine = { path = "../contextful-engine" }
+contextful-memory = { path = "../contextful-memory" }
 contextful-policy = { path = "../contextful-policy" }
 contextful-runtime = { path = "../contextful-runtime" }
 anyhow = "1"

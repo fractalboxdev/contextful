@@ -66,6 +66,9 @@ Extract, Resolve and Consolidate; the dedup key, evidence support, the audit rec
 - `extract-attempts` — A schema-invalid response is re-prompted with its validation feedback, at most 3 attempts per batch in total.
 - `dead-letter` — A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced.
   *A-read*
+- `pass-cursor` — A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under a prompt bound, recording each batch once its claims commit.
+- `attribution` — Every landed claim carries `grant_id`, the chain-final revocation identifier of the credential that wrote it, `agent`, that credential's agent member, and `_authored_by`, its on-behalf-of principal.
+  *because a reader weighs a conclusion by which grant could have produced it*
 
 One synthesis batch, from landed rows to a committed claim or the dead-letter table:
 
@@ -91,6 +94,10 @@ unsettled: How is a model-emitted confidence rescaled into a comparable number, 
 
 Supersession within one validity line, confidence decay, the direct write and its anchor, expiry, retention, promotion.
 
+- `tier` — `tier` is stamped from the write path and grounding, never the payload: a synthesis pass stamps `derived`, a direct write `curated`, a fetched result `researched`, and mixed grounding takes the lowest.
+  *A-read*
+- `supersede` — A claim of equal or higher tier retires a live prior of its subject, predicate and scope when both are open-ended or share a valid-from instant: the prior's `valid_to` becomes the claim's `valid_from`, and `superseded_by` names it.
+  *A-read*
 - `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.
   *A-read*
 
@@ -106,6 +113,9 @@ Serving live memory at present time: the two clocks, tier-first ordering, the sc
   *A-read*
 - `evidence-references` — A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
   *A-read*
+- `ranked-arm` — A `corpus.retrieve` arm over a `memory_facts` table serves only live claims — no `superseded_by`, and a `valid_to` null or past the read's anchor — whose evidence passes the gate.
+- `suppression-count` — A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.
+  *because a count discloses that a conclusion was withheld, never what it concluded*
 
 The evidence check a claim passes on its way to a grounded turn:
 

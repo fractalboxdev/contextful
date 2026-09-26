@@ -5,6 +5,7 @@
 //! names the refusal a caller greps for.
 
 use crate::enforce::EnforceError;
+use crate::memory::MemoryError;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ReadError {
@@ -46,13 +47,15 @@ impl ReadError {
     }
 }
 
-/// A refusal a read surface reports: a read-face refusal or an enforcement one.
+/// A refusal a read surface reports: a read-face, enforcement or memory refusal.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Refusal {
     #[error(transparent)]
     Read(#[from] ReadError),
     #[error(transparent)]
     Enforce(#[from] EnforceError),
+    #[error(transparent)]
+    Memory(#[from] MemoryError),
 }
 
 impl Refusal {
@@ -61,6 +64,7 @@ impl Refusal {
         match self {
             Refusal::Read(e) => e.identifier(),
             Refusal::Enforce(e) => e.identifier(),
+            Refusal::Memory(e) => e.identifier(),
         }
     }
 }

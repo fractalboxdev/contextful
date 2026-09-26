@@ -1,9 +1,11 @@
 //! The `contextful` binary.
 
+mod admit;
 mod context;
 mod differential;
 mod formal;
 mod mcp;
+mod memory;
 mod pipeline;
 mod run;
 mod token;
@@ -31,6 +33,9 @@ enum Cmd {
     /// Start, inspect, stop and resume durable runs.
     #[command(subcommand)]
     Run(run::RunCmd),
+    /// Synthesize memory from landed rows, and write claims directly.
+    #[command(subcommand)]
+    Memory(memory::MemoryCmd),
     /// Serve the read face over the tool protocol on standard input and output.
     Mcp(mcp::McpArgs),
     /// Elaborate and audit the Lean models under `formal/`.
@@ -46,6 +51,7 @@ fn main() {
         Cmd::Run(c) => run::run(c),
         Cmd::Pipeline(c) => pipeline::run(c),
         Cmd::Mcp(c) => mcp::run(c),
+        Cmd::Memory(c) => memory::run(c),
         Cmd::Formal(c) => formal::run(c),
     };
     if let Err(e) = result {

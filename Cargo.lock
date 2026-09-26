@@ -695,6 +695,7 @@ dependencies = [
  "contextful-context",
  "contextful-core",
  "contextful-engine",
+ "contextful-memory",
  "contextful-policy",
  "contextful-runtime",
  "serde",
@@ -764,6 +765,20 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "contextful-memory"
+version = "0.1.0"
+dependencies = [
+ "contextful-context",
+ "contextful-core",
+ "contextful-policy",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.20",
 ]

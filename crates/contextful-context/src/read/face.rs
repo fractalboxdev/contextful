@@ -13,8 +13,9 @@ use contextful_core::read::respond::{Cell, Internals, Response};
 use contextful_core::read::template::{parse_templates, Bound, QueryTemplate};
 use contextful_core::read::ReadError;
 use contextful_core::enforce::EnforceError;
+use contextful_core::memory::declare::{DeclareError, MemoryDeclarations};
 use contextful_core::store::bound_time::Bounds;
-use contextful_core::store::declare::TableDecl;
+use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
 use contextful_core::store::reconcile::{Column, ColumnType};
 use contextful_core::store::relation::{ident, relation};
 use contextful_core::store::reserve::{INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
@@ -42,6 +43,7 @@ pub struct Face {
     decls: BTreeMap<String, TableDecl>,
     policies: BTreeMap<String, TablePolicy>,
     templates: Vec<QueryTemplate>,
+    memory: MemoryDeclarations,
     pepper: Pepper,
 }
 
@@ -61,7 +63,18 @@ impl Face {
     /// against its table's schema is checked here, once, caller-independently; one
     /// failure refuses the whole manifest (`read.guard.startup-time-check`).
     pub fn open(store: Store, manifest: &str, pepper: Pepper) -> Result<Face, ReadFault> {
-        let parsed = TableDecl::parse_pipeline(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
+        let mut parsed = TableDecl::parse_pipeline(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
+        let memory = MemoryDeclarations::parse(manifest).map_err(|e| match e {
+            DeclareError::Memory(m) => ReadFault::Refused(m.into()),
+            DeclareError::Malformed(m) => ReadFault::Policy(m.into()),
+        })?;
+        parsed.extend(memory.tables.iter().map(|t| t.table_decl()));
+        // One name has one declaration: a second would replace the first's masks, zone and
+        // predicate.
+        let mut names = BTreeSet::new();
+        if let Some(d) = parsed.iter().find(|d| !names.insert(d.name.clone())) {
+            return Err(ReadFault::Policy(DeclarationMalformed(format!("table `{}` is declared more than once", d.name)).into()));
+        }
         let mut decls = BTreeMap::new();
         let mut policies = BTreeMap::new();
         for d in parsed {
@@ -73,7 +86,7 @@ impl Face {
             decls.insert(d.name.clone(), d);
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
-        let face = Face { store, decls, policies, templates, pepper };
+        let face = Face { store, decls, policies, templates, memory, pepper };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {
@@ -93,7 +106,30 @@ impl Face {
         &self.templates
     }
 
-    pub(crate) fn decl(&self, table: &str) -> TableDecl {
+    /// The manifest's memory tables and declared relation types.
+    pub fn memory(&self) -> &MemoryDeclarations {
+        &self.memory
+    }
+
+    /// The store the face reads.
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
+    /// Every row of a table the session reads, or of one of its committed runs, through
+    /// the table's registered relation; an engine-composed read with no row ceiling.
+    pub fn rows(&self, session: &Session, table: &str, run: Option<&str>) -> Result<Response, ReadFault> {
+        let r = self.registered(session, table)?;
+        let engine = SqlEngine::open(session)?;
+        let (sql, parameters) = match run {
+            Some(run) => (format!("SELECT * FROM {} WHERE {} = ?", ident(r.name()), ident(RUN_ID)), vec![Bound::Text(run.to_string())]),
+            None => (format!("SELECT * FROM {}", ident(r.name())), Vec::new()),
+        };
+        self.respond(&engine, &sql, &parameters, None, ReadOptions::default())
+    }
+
+    /// A table's declaration, or an undeclared table's defaults.
+    pub fn decl(&self, table: &str) -> TableDecl {
         self.decls.get(table).cloned().unwrap_or_else(|| TableDecl::named(table))
     }
 

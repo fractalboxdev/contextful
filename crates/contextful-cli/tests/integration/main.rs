@@ -4,6 +4,7 @@ mod context;
 mod differential;
 mod formal;
 mod mcp;
+mod memory;
 mod pipeline;
 mod run;
 mod token;
