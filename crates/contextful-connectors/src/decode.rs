@@ -1,6 +1,9 @@
 //! The one decoder set every source shares (`connector.source.body-format`): JSON, JSON
-//! Lines and delimited text. Input a decoder cannot read refuses whole, naming the input
-//! and the position inside it.
+//! Lines, delimited text and a workbook. Input a decoder cannot read refuses whole, naming
+//! the input and the position inside it.
+
+mod ooxml;
+pub mod workbook;
 
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Row;
@@ -12,6 +15,8 @@ pub enum Format {
     Json,
     Jsonl,
     Csv,
+    /// An Office Open XML workbook, one worksheet per read.
+    Workbook,
 }
 
 impl Format {
@@ -20,7 +25,8 @@ impl Format {
             "json" => Ok(Format::Json),
             "jsonl" => Ok(Format::Jsonl),
             "csv" => Ok(Format::Csv),
-            other => Err(ConnectorError::ConnectorFormatKeyRejected(format!("format `{other}` is none of json, jsonl and csv"))),
+            "xlsx" => Ok(Format::Workbook),
+            other => Err(ConnectorError::ConnectorFormatKeyRejected(format!("format `{other}` is none of json, jsonl, csv and xlsx"))),
         }
     }
 
@@ -29,11 +35,12 @@ impl Format {
             Format::Json => "json",
             Format::Jsonl => "jsonl",
             Format::Csv => "csv",
+            Format::Workbook => "xlsx",
         }
     }
 }
 
-fn unreadable(input: &str, position: String, why: impl std::fmt::Display) -> Failure {
+pub(crate) fn unreadable(input: &str, position: String, why: impl std::fmt::Display) -> Failure {
     Failure::deterministic(FailureTag::Permanent, RunError::PipelineUnreadableInput(format!("`{input}` at {position}: {why}")).to_string())
 }
 
@@ -44,7 +51,8 @@ fn object(v: Value, input: &str, position: String) -> Result<Row, Failure> {
     }
 }
 
-/// Decode `body` into records, and the parsed JSON body a pagination pointer reads.
+/// Decode `body` into records, and the parsed JSON body a pagination pointer reads. A
+/// workbook lands its first sheet; [`workbook::rows`] selects another.
 pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -> Result<(Vec<Row>, Option<Value>), Failure> {
     match format {
         Format::Json => {
@@ -73,6 +81,7 @@ pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -
             let text = std::str::from_utf8(body).map_err(|e| unreadable(input, format!("byte {}", e.valid_up_to()), "the body is not UTF-8"))?;
             Ok((csv(text, input)?, None))
         }
+        Format::Workbook => Ok((workbook::rows(body, None, 0, input)?, None)),
     }
 }
 
