@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 13 | 178 | 47 | 19 | 13 | 52 | 0 | 52 |
+| `assurance` | 2 | 13 | 179 | 47 | 19 | 13 | 68 | 0 | 68 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 153 | 37 | 12 | 8 | 109 | 0 | 109 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1439 | 463 | 162 | 101 | 596 | 0 | |
+| **total** | 19 | 145 | 1440 | 463 | 162 | 101 | 612 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ Decision records: 18.
 | 11 — The derive tier | 7 | 58 | 0 | absent |
 | 12 — The console | 11 | 30 | 0 | absent |
 | 13 — Disclosure | 5 | 21 | 0 | absent |
-| 14 — Assurance | 5 | 85 | 4 | open |
+| 14 — Assurance | 5 | 86 | 20 | open |
 
 Unscheduled operations: 10.
 
@@ -55,6 +55,16 @@ Unscheduled operations: 10.
 | `assurance.audit-assumptions.statement-drift` | `crates/contextful-cli/tests/integration/formal.rs::a_weakened_statement_drifts` | performed |
 | `assurance.audit-assumptions.transitive-audit` | `crates/contextful-cli/tests/integration/formal.rs::a_footprint_reaches_through_helper_lemmas` | performed |
 | `assurance.audit-assumptions.verdict-input` | `crates/contextful-cli/tests/integration/formal.rs::source_text_and_build_status_decide_nothing` | performed |
+| `assurance.baseline.band-units` | `tools/eval/tests/integration/baseline.rs::latency_bands_in_milliseconds_and_counts_pin_at_zero` | performed |
+| `assurance.baseline.default-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_rate_entry_gates_at_two_percent` | performed |
+| `assurance.baseline.file` | `tools/eval/tests/integration/baseline.rs::a_file_holds_a_run_block_and_bare_or_banded_entries` | performed |
+| `assurance.baseline.floor-coverage` | `tools/eval/tests/integration/floors.rs::a_report_missing_a_floor_figure_breaches_that_floor` | performed |
+| `assurance.baseline.floors-are-absolute` | `tools/eval/tests/integration/baseline.rs::a_floor_reds_a_run_its_baseline_passes` | performed |
+| `assurance.baseline.metric-path` | `tools/eval/tests/integration/baseline.rs::an_entry_names_a_report_field_path` | performed |
+| `assurance.baseline.raise-only` | `tools/eval/tests/integration/baseline.rs::an_update_raises_improved_entries_only_and_only_on_green` | performed |
+| `assurance.baseline.rank-quality-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_ndcg_entry_gates_at_three_percent` | performed |
+| `assurance.baseline.run-stamp-drift` | `tools/eval/tests/integration/baseline.rs::a_run_configured_unlike_the_baseline_is_refused_from_its_configuration_alone` | performed |
+| `assurance.baseline.sample-count` | `tools/eval/tests/integration/baseline.rs::a_mean_carries_its_sample_count_and_shrinking_it_regresses` | performed |
 | `assurance.differential-test.case-classes` | `crates/contextful-cli/tests/integration/differential.rs::the_report_names_the_three_case_classes` | performed |
 | `assurance.differential-test.command` | `crates/contextful-cli/tests/integration/differential.rs::the_command_replays_then_generates_and_stops_at_the_first_disagreement` | performed |
 | `assurance.differential-test.corpus-entries` | `crates/contextful-cli/tests/integration/differential.rs::a_full_corpus_evicts_the_oldest_reproducible_case` | performed |
@@ -66,6 +76,12 @@ Unscheduled operations: 10.
 | `assurance.differential-test.reference-model` | `crates/contextful-cli/tests/integration/differential.rs::the_reference_binary_reads_one_case_and_prints_one_decision` | performed |
 | `assurance.differential-test.run-budget` | `crates/contextful-cli/tests/integration/differential.rs::a_run_past_its_budget_stops` | performed |
 | `assurance.differential-test.seed` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_seed_reproduces_the_case_sequence` | performed |
+| `assurance.evaluate.absent-truth` | `tools/eval/tests/integration/metrics.rs::a_case_with_no_truth_is_nan_and_leaves_the_aggregate` | performed |
+| `assurance.evaluate.distinct-top-k` | `tools/eval/tests/integration/metrics.rs::a_repeated_row_counts_once_in_the_top_k` | performed |
+| `assurance.evaluate.duplicate-row-rate` | `tools/eval/tests/integration/floors.rs::a_repeated_table_and_row_key_pair_breaches_the_floor` | performed |
+| `assurance.evaluate.forbidden-row-rate` | `tools/eval/tests/integration/floors.rs::one_forbidden_row_in_one_case_breaches_the_floor` | performed |
+| `assurance.evaluate.in-window-rate` | `tools/eval/tests/integration/floors.rs::a_bounded_case_under_ninety_five_percent_in_window_breaches_the_floor` | performed |
+| `assurance.evaluate.precision-floor` | `tools/eval/tests/integration/floors.rs::a_leg_below_sixty_percent_r_precision_breaches_the_floor` | performed |
 | `assurance.gate.fork-dispatch` | `tools/ci/tests/integration/workflow.rs::a_fork_pull_request_dispatches_no_stage` | performed |
 | `assurance.gate.secret-ciphertext` | `spec/pins.toml` | performed |
 | `assurance.gate.secret-scope` | `spec/pins.toml` | performed |
