@@ -12997,7 +12997,7 @@
       "operation": "suppress",
       "subject": "empty-policy",
       "kind": "refusal",
-      "statement": "A policy setting neither threshold raises `DisclosurePolicySuppressesNothing`.",
+      "statement": "A policy setting neither threshold, or only a share ceiling at a whole group's mass, raises `DisclosurePolicySuppressesNothing`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
       "line": 82

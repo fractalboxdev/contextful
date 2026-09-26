@@ -79,7 +79,7 @@ The group-size floor, the contributor-share ceiling, and the single signal a wit
   *A-disclosure*
 - `dominance-unverifiable` — A group under a share constraint whose per-contributor masses are unavailable raises `DisclosureDominanceUnverifiable` and is suppressed.
   *A-disclosure*
-- `empty-policy` — A policy setting neither threshold raises `DisclosurePolicySuppressesNothing`.
+- `empty-policy` — A policy setting neither threshold, or only a share ceiling at a whole group's mass, raises `DisclosurePolicySuppressesNothing`.
   *A-disclosure*
 - `grouping-allowlist` — An empty permitted-grouping list, or a permitted name that is not column-shaped, raises `DisclosureGroupingAllowlistEmpty`.
   *A-disclosure*
