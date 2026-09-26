@@ -30,7 +30,12 @@ pub fn probe(allow: &Allowlist, probe: &ScopeProbe, credential: (&str, &Hydrated
         let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
         return Err(classify(resp.status, retry_after, &format!("the scope probe `{}`", scrub(&resp.url))));
     }
-    probe.judge(resp.header(&probe.scopes_header)).map_err(refuse)
+    // Repeated field lines form one comma-separated list (RFC 9110 §5.3), so a scope on
+    // any line counts toward the grant.
+    let lines: Vec<&str> =
+        resp.headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case(&probe.scopes_header)).map(|(_, v)| v.as_str()).collect();
+    let granted = (!lines.is_empty()).then(|| lines.join(","));
+    probe.judge(granted.as_deref()).map_err(refuse)
 }
 
 /// Open a session: with a probe declared, the probe runs first and a refusal returns

@@ -113,6 +113,22 @@ fn an_answer_without_the_scopes_header_refuses() {
 }
 
 #[test]
+fn a_scope_on_a_repeated_scopes_header_line_counts_toward_the_grant() {
+    let server = Server::start(|r| match r.path() {
+        "/identity" => Response {
+            status: 200,
+            headers: vec![(HEADER.to_string(), "reports.read".to_string()), (HEADER.to_string(), "admin.write".to_string())],
+            body: b"{}".to_vec(),
+        },
+        _ => Response::json(200, "[]"),
+    });
+    let f = open(&server, Some(&declared(&server))).unwrap_err();
+    assert!(f.message.starts_with("ConnectorScopeExceeded"), "{f}");
+    assert!(f.message.contains("admin.write"), "{f}");
+    assert_eq!(paths(&server), ["/identity"]);
+}
+
+#[test]
 fn a_rejected_credential_at_the_probe_classifies_as_expired_auth() {
     let server = Server::start(|_| Response::json(401, "{}"));
     let f = open(&server, Some(&declared(&server))).unwrap_err();
