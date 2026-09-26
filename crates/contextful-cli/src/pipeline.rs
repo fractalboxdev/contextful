@@ -7,8 +7,12 @@
 use crate::run::{boot_id, wire, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
+use contextful_connectors::derive::DeriveSource;
 use contextful_connectors::http::{HttpConfig, HttpSource};
-use contextful_context::{node, Store};
+use contextful_core::run::derive::config::{bind, bindings, check_output_table, Binding, DeriveConfig};
+use contextful_core::run::ports::{Row, Source, TableReader};
+use contextful_core::run::{Failure, FailureTag};
+use contextful_context::{node, ContextError, Store};
 use contextful_core::pipeline::declare::{collect, Declared, ManifestFile, PipelineSpec};
 use contextful_core::pipeline::transform::Chain;
 use contextful_core::run::advance::CursorKind;
@@ -69,25 +73,55 @@ fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
     Ok(files)
 }
 
+/// A pipeline's source, checked and ready to build.
+enum Checked {
+    Http(HttpConfig),
+    Derive(Box<(DeriveConfig, Binding)>),
+}
+
 /// Hold a specification to every rule checked before I/O, returning its source configuration.
-fn check(spec: &PipelineSpec) -> Result<HttpConfig> {
+fn check(spec: &PipelineSpec, declaration: &Path) -> Result<Checked> {
     spec.validate()?;
-    if spec.source.name != contextful_connectors::http::NAME {
-        bail!(
-            "pipeline `{}` names source `{}`; the compiled-in sources are {}",
-            spec.id,
-            spec.source.name,
-            contextful_connectors::BUILT_IN.join(", ")
-        );
-    }
     for op in &spec.transforms {
         op.validate()?;
     }
-    let config = HttpConfig::parse(&spec.source.config)?;
-    for t in &spec.tables {
-        config.allowlist(t.name())?;
+    match spec.source.name.as_str() {
+        contextful_connectors::http::NAME => {
+            let config = HttpConfig::parse(&spec.source.config)?;
+            for t in &spec.tables {
+                config.allowlist(t.name())?;
+            }
+            Ok(Checked::Http(config))
+        }
+        contextful_connectors::derive::NAME => {
+            let config = DeriveConfig::parse(&spec.id, &spec.source.config)?;
+            let [table] = spec.tables.as_slice() else {
+                bail!("derive pipeline `{}` declares {} tables; it writes one output table", spec.id, spec.tables.len());
+            };
+            check_output_table(&TableDecl { name: spec.table_name(table.name()), ..table.decl() })?;
+            let text = std::fs::read_to_string(declaration).unwrap_or_default();
+            let bindings = bindings(&text)?;
+            let binding = bind(&spec.id, &config, &bindings, &declaration.display().to_string())?.clone();
+            Ok(Checked::Derive(Box::new((config, binding))))
+        }
+        other => bail!("pipeline `{}` names source `{other}`; the compiled-in sources are {}", spec.id, contextful_connectors::BUILT_IN.join(", ")),
     }
-    Ok(config)
+}
+
+/// The store's landed tables, read for a derive source.
+struct StoreReader {
+    store: Store,
+    decls: Vec<TableDecl>,
+}
+
+impl TableReader for StoreReader {
+    fn rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure> {
+        let decl = self.decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table));
+        contextful_context::rows::table_rows(&self.store, &decl, columns).map_err(|e| match e {
+            ContextError::ColumnType { .. } => Failure::deterministic(FailureTag::SchemaIncompatible, format!("`{table}`: {e}")),
+            e => Failure::new(FailureTag::Storage, e.to_string()),
+        })
+    }
 }
 
 /// The plan one table of `spec` runs against.
@@ -105,7 +139,8 @@ fn plan(spec: &PipelineSpec, table: &str) -> Result<Plan> {
             },
             cursor: CursorSpec { kind: Some(cursor_kind.name().to_string()), field: spec.incremental.clone() },
             retry: None,
-            journal: true,
+            // A derive pipeline re-reads the store each tick and records no pull.
+            journal: spec.source.name != contextful_connectors::derive::NAME,
             redact: spec.redaction.iter().map(|_| "declared".to_string()).collect(),
         },
         content_hash: spec.content_hash(),
@@ -120,7 +155,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
     match cmd {
         PipelineCmd::Validate { declaration } => {
             for d in collect(&manifests(&declaration)?)? {
-                check(&d.spec).with_context(|| format!("{}:{}", d.file, d.line))?;
+                check(&d.spec, &declaration).with_context(|| format!("{}:{}", d.file, d.line))?;
                 println!("{}: valid ({} tables, content hash {})", d.spec.id, d.spec.tables.len(), &d.spec.content_hash()[..16]);
             }
             Ok(())
@@ -130,11 +165,13 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
             let declared: Vec<Declared> = collect(&manifests(&declaration)?)?;
             let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| format!("no pipeline `{id}` is declared"))?;
             let spec = d.spec;
-            let config = check(&spec)?;
+            let checked = check(&spec, &declaration)?;
             let w = wire(&project)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
             let resolver = Arc::new(contextful_runtime::assemble(&vars, w.clock.clone())?);
-            resolver.preflight(config.headers.values())?;
+            if let Checked::Http(config) = &checked {
+                resolver.preflight(config.headers.values())?;
+            }
 
             let cwd = std::env::current_dir()?;
             let store = Store::open(&cwd, &project.project)?;
@@ -165,8 +202,20 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                     let plan = plan(&spec, t.name())?;
                     let connector: ConnectorPin = plan.connector_pin(&artifact);
                     let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
-                    let mut source = Guarded { inner: HttpSource::new(config.clone(), t.name(), resolver.clone())?, report: log_counts };
                     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
+                    let inner: Box<dyn Source> = match &checked {
+                        Checked::Http(config) => Box::new(HttpSource::new(config.clone(), t.name(), resolver.clone())?),
+                        Checked::Derive(pair) => Box::new(DeriveSource {
+                            pipeline_id: spec.id.clone(),
+                            config: pair.0.clone(),
+                            binding: pair.1.clone(),
+                            output_table: table.clone(),
+                            reader: Box::new(StoreReader { store: Store::open(&cwd, &project.project)?, decls: dest.decls.clone() }),
+                            resolver: resolver.clone(),
+                            cwd: cwd.clone(),
+                        }),
+                    };
+                    let mut source = Guarded { inner, report: log_counts };
                     Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
                 })();
                 let row = match outcome {

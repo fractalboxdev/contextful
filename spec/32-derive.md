@@ -67,6 +67,10 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-connector*
 - `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
   *A-connector*
+- `anti-join` — Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker in the pipeline's own output table.
+  *A-run*
+- `latest-marker` — A unit's standing is its latest marker by `_ingested_at`, `_run_id` and `_row_seq`, never its highest attempt count.
+  *because an `empty` marker records 1 attempt, so ranking by count lets an older retry revive a settled unit*
 
 unsettled: At what parent-table size does the in-memory scan stop fitting, and what replaces it? owner: derive affects: run.select
 
@@ -90,6 +94,8 @@ Where a derive engine's definition lives, the port every engine implements, and 
   *A-run*
 - `media-unreadable` — A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing that unit alone.
   *A-run*
+- `media-root` — A local media value resolves, canonicalized, under the binding's `media_root`, the working directory by default; a path escaping it raises `DeriveMediaOutsideRoot`, failing that unit alone.
+  *because a parent row is third-party data, and an unconfined path reads any file the machine's user can*
 - `confidence-range` — A `confidence` outside `0.0..=1.0` after adapter normalization raises `DeriveConfidenceOutOfRange` and lands null.
   *A-run*
 - `upstream-excerpt` — An `Upstream` excerpt holds at most 4 KiB and no request body.
@@ -126,6 +132,11 @@ Operator-declared argv chains against local binaries: resolution, pinning, envir
   *A-connector*
 - `digest-mismatch` — A pinned file whose bytes differ from its recorded digest raises `DeriveDigestMismatch`.
   *A-connector*
+- `no-shell` — A step runs as its argument array with no shell, in a process group of its own, under a cleared environment holding only the binding's `env` table.
+  *A-run*
+- `step-condition` — A preprocess step runs only while its `when` holds: `media_is_url` for an `http` or `https` input, `engine_requires_pcm16_wav` for an input other than 16-bit PCM WAV; another name raises `DeriveStepConditionUnknown`.
+  *because a misspelled condition otherwise skips or runs its step silently*
+- `verified-spawn` — Each spawn re-reads its step's binary and runs it only while those bytes match the digest resolved at run start, else {{run.exec.digest-mismatch}}.
 - `engine-id` — An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments.
 
 ```mermaid
@@ -205,6 +216,10 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
   *A-authority*
 - `primary-key` — A derive output table without `primary_key` `["unit_ref", "cue_seq"]` raises `DerivePrimaryKeyMissing`.
   *because a re-derived unit otherwise lands duplicate passages beside the originals*
+- `marker-row` — A unit yielding no passage lands one marker row, `cue_seq` -1 and `kind` `marker`, carrying its status, attempts, last error and whether it retries.
+  *A-run*
+- `empty-document` — Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty output, or blocks none of which parse, lands `unavailable`.
+- `canceled-unit` — A unit whose chain a run stop interrupts lands no row and charges no attempt; the pull ends `Canceled` once {{run.cancel.child-reaped}}.
 
 unsettled: What validated domain does `_modality` carry, and which value does a passage derived from a video row take? owner: derive affects: run.emit
 
@@ -222,6 +237,7 @@ Reading a caption document into passages: one grammar, defect accounting, coales
 - `passage-span` — A passage stays open while it spans less than 60 s.
 - `passage-bytes` — One passage's text holds at most 8 KiB.
 - `passages-per-document` — One document yields at most 2000 rows of passages.
+- `grammar` — SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.
 
 ## test-engine
 

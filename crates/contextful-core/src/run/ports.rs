@@ -52,6 +52,12 @@ pub trait Source {
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure>;
 }
 
+impl<S: Source + ?Sized> Source for Box<S> {
+    fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        (**self).pull(request, cancel)
+    }
+}
+
 /// One run's commit to one table: every batch in pull order, and the position the rows
 /// behind it reach.
 #[derive(Debug, Clone, PartialEq)]
@@ -109,4 +115,11 @@ impl Shape for Unshaped {
     fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, super::RunError> {
         Ok(rows)
     }
+}
+
+/// Read access to landed tables for a source that derives from the store: every row of a
+/// table's current file list. An unknown table reads as no rows.
+pub trait TableReader {
+    /// Every row of `table`, holding the named columns it carries.
+    fn rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure>;
 }

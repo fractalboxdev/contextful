@@ -162,8 +162,6 @@ Acceptance: `contextful_acceptance::m10::m10_cadence`
 
 Reach: A pipeline reads the words inside a landed document and fills them into the parent row.
 
-Depth: operation
-
 Acceptance: `contextful_acceptance::m11::m11_derive`
 
 ## 12 — The console

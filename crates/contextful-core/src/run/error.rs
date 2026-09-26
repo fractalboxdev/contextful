@@ -33,6 +33,90 @@ pub enum RunError {
     /// A connector identity, component world or plan hash moved under a pending owner. (`run.own.pinned-plan-changed`)
     #[error("ExecutionPinMismatch: {0}")]
     ExecutionPinMismatch(String),
+    /// A declared command that is not an executable file. (`run.exec.missing-binary`)
+    #[error("DeriveBinaryMissing: {0}")]
+    DeriveBinaryMissing(String),
+    /// An executable key on the request side of the binding split. (`run.bind.command-in-manifest`)
+    #[error("DeriveCommandInManifest: {0}")]
+    DeriveCommandInManifest(String),
+    /// A required derive config key absent or blank. (`run.select.required-key`)
+    #[error("DeriveConfigKeyMissing: {0}")]
+    DeriveConfigKeyMissing(String),
+    /// A caption block starting before the one already accepted. (`run.parse-cues.backward-cue`)
+    #[error("DeriveCueOutOfOrder: {0}")]
+    DeriveCueOutOfOrder(String),
+    /// A pinned file whose bytes differ from its digest. (`run.exec.digest-mismatch`)
+    #[error("DeriveDigestMismatch: {0}")]
+    DeriveDigestMismatch(String),
+    /// A driver and task pairing the tier does not serve. (`run.bind.driver-mismatch`)
+    #[error("DeriveDriverMismatch: {0}")]
+    DeriveDriverMismatch(String),
+    /// A pipeline naming an engine the machine has not defined. (`run.bind.unbound-engine`)
+    #[error("DeriveEngineUnbound: {0}")]
+    DeriveEngineUnbound(String),
+    /// An environment allowlist name outside the permitted characters. (`run.exec.env-name`)
+    #[error("DeriveEnvNameInvalid: {0}")]
+    DeriveEnvNameInvalid(String),
+    /// Configuration naming another pipeline's output table. (`run.select.foreign-output-table`)
+    #[error("DeriveForeignOutputTable: {0}")]
+    DeriveForeignOutputTable(String),
+    /// A derive pipeline configured to journal its pulls. (`run.select.journaled-pull`)
+    #[error("DeriveJournaledPull: {0}")]
+    DeriveJournaledPull(String),
+    /// A local media path escaping the binding's media root. (`run.bind.media-root`)
+    #[error("DeriveMediaOutsideRoot: {0}")]
+    DeriveMediaOutsideRoot(String),
+    /// A media value neither an address nor a readable local file. (`run.bind.media-unreadable`)
+    #[error("DeriveMediaUnreadable: {0}")]
+    DeriveMediaUnreadable(String),
+    /// A derive source built without a store root or pipeline id. (`run.select.no-store-root`)
+    #[error("DeriveNoStoreRoot: {0}")]
+    DeriveNoStoreRoot(String),
+    /// A step's captured output crossing its bound. (`run.exec.output-cap`)
+    #[error("DeriveOutputCap: {0}")]
+    DeriveOutputCap(String),
+    /// A derive output table without the unit-and-sequence key. (`run.emit.primary-key`)
+    #[error("DerivePrimaryKeyMissing: {0}")]
+    DerivePrimaryKeyMissing(String),
+    /// A remote address handed to an engine that declines them. (`run.bind.remote-url-unsupported`)
+    #[error("DeriveRemoteUrlUnsupported: {0}")]
+    DeriveRemoteUrlUnsupported(String),
+    /// A derive table declaring the reserved genre column. (`run.emit.reserved-discriminator`)
+    #[error("DeriveReservedDiscriminator: {0}")]
+    DeriveReservedDiscriminator(String),
+    /// A settled unit re-entering the outstanding set. (`run.emit.settled-revived`)
+    #[error("DeriveSettledUnitRevived: {0}")]
+    DeriveSettledUnitRevived(String),
+    /// A step command given as a string, not an argument array. (`run.exec.shell-command`)
+    #[error("DeriveShellCommand: {0}")]
+    DeriveShellCommand(String),
+    /// A chain step ending non-zero. (`run.exec.non-zero-exit`)
+    #[error("DeriveStepExit: {0}")]
+    DeriveStepExit(String),
+    /// A preprocess step exiting zero without its output file. (`run.exec.silent-step`)
+    #[error("DeriveStepProducedNothing: {0}")]
+    DeriveStepProducedNothing(String),
+    /// A chain outrunning its deadline. (`run.exec.deadline-elapsed`)
+    #[error("DeriveStepTimeout: {0}")]
+    DeriveStepTimeout(String),
+    /// The single-file verb handed a fetch engine. (`run.test-engine.unsupported-driver`)
+    #[error("DeriveTestEngineUnsupported: {0}")]
+    DeriveTestEngineUnsupported(String),
+    /// A parent row without a key or media value. (`run.select.incomplete-unit`)
+    #[error("DeriveUnitIncomplete: {0}")]
+    DeriveUnitIncomplete(String),
+    /// A unit status outside the four. (`run.emit.unit-status`)
+    #[error("DeriveUnitStatusUnknown: {0}")]
+    DeriveUnitStatusUnknown(String),
+    /// A `task` outside the supported pair. (`run.bind.unknown-task`)
+    #[error("DeriveUnknownTask: {0}")]
+    DeriveUnknownTask(String),
+    /// A preprocess condition naming no known condition. (`run.exec.step-condition`)
+    #[error("DeriveStepConditionUnknown: {0}")]
+    DeriveStepConditionUnknown(String),
+    /// A path-form command with no content digest. (`run.exec.unpinned-path`)
+    #[error("DeriveUnpinnedPath: {0}")]
+    DeriveUnpinnedPath(String),
     /// A history window bound outside the two accepted spellings. (`run.record.bound-spelling`)
     #[error("HistoryBoundSpelling: {0}")]
     HistoryBoundSpelling(String),

@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 73 | 0 | 73 |
-| `run` | 3 | 24 | 279 | 80 | 34 | 24 | 104 | 0 | 104 |
+| `run` | 3 | 24 | 289 | 82 | 34 | 24 | 148 | 0 | 148 |
 | `store` | 1 | 14 | 153 | 37 | 12 | 8 | 109 | 0 | 109 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1440 | 463 | 162 | 101 | 612 | 0 | |
+| **total** | 19 | 145 | 1450 | 465 | 162 | 101 | 656 | 0 | |
 
 Decision records: 18.
 
@@ -34,7 +34,7 @@ Decision records: 18.
 | 8 — Accountability | 5 | 22 | 0 | absent |
 | 9 — Visibility | 6 | 22 | 0 | absent |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
-| 11 — The derive tier | 7 | 58 | 0 | absent |
+| 11 — The derive tier | 7 | 68 | 44 | passing |
 | 12 — The console | 11 | 30 | 0 | absent |
 | 13 — Disclosure | 5 | 21 | 0 | absent |
 | 14 — Assurance | 5 | 86 | 20 | open |
@@ -440,6 +440,13 @@ Unscheduled operations: 10.
 | `run.advance.inclusive-boundary` | `crates/contextful-engine/tests/integration/runner.rs::every_poll_re_lands_the_boundary_instant` | performed |
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
+| `run.bind.command-in-manifest` | `crates/contextful-core/tests/integration/run/derive.rs::an_executable_key_in_the_manifest_refuses` | performed |
+| `run.bind.driver-mismatch` | `crates/contextful-core/tests/integration/run/derive.rs::a_driver_the_task_does_not_serve_refuses` | performed |
+| `run.bind.media-root` | `crates/contextful-connectors/tests/integration/derive.rs::media_outside_the_root_fails_that_unit_alone` | performed |
+| `run.bind.media-unreadable` | `crates/contextful-connectors/tests/integration/derive.rs::unreadable_media_fails_that_unit_alone` | performed |
+| `run.bind.remote-url-unsupported` | `crates/contextful-connectors/tests/integration/derive.rs::an_address_for_an_engine_reading_local_files_refuses_naming_the_step` | performed |
+| `run.bind.unbound-engine` | `crates/contextful-core/tests/integration/run/derive.rs::an_engine_with_no_block_refuses_naming_every_bound_engine` | performed |
+| `run.bind.unknown-task` | `crates/contextful-core/tests/integration/run/derive.rs::a_task_outside_the_pair_refuses_printing_both` | performed |
 | `run.cancel.catalog-channel` | `crates/contextful-engine/tests/integration/cancel.rs::a_stop_is_a_mark_on_the_run_row` | performed |
 | `run.cancel.child-reaped` | `crates/contextful-engine/tests/integration/command.rs::a_stop_signals_and_reaps_the_whole_process_group` | performed |
 | `run.cancel.distinct-terminal-status` | `crates/contextful-core/tests/integration/run/record.rs::canceled_is_terminal_distinct_and_unobserved_by_health` | performed |
@@ -458,6 +465,28 @@ Unscheduled operations: 10.
 | `run.declare.table-error` | `crates/contextful-cli/tests/integration/pipeline.rs::abort_halts_at_the_first_failure_and_continue_runs_the_rest` | performed |
 | `run.declare.table-name` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_destination_table_folds_the_pipeline_and_table_names` | performed |
 | `run.declare.table-name-collision` | `crates/contextful-core/tests/integration/pipeline/declare.rs::tables_folding_to_one_destination_name_are_refused` | performed |
+| `run.emit.attempts` | `crates/contextful-core/tests/integration/run/derive.rs::attempts_count_up_from_the_prior_and_an_empty_unit_takes_one` | performed |
+| `run.emit.canceled-unit` | `crates/contextful-connectors/tests/integration/derive.rs::a_stopped_chain_lands_no_row_and_the_pull_ends_canceled` | performed |
+| `run.emit.empty-document` | `crates/contextful-core/tests/integration/run/derive.rs::only_a_well_formed_webvtt_without_cues_is_empty` | performed |
+| `run.emit.marker-row` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_without_passages_lands_one_marker_row` | performed |
+| `run.emit.primary-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_table_keys_on_unit_and_sequence` | performed |
+| `run.emit.reserved-discriminator` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_table_naming_kind_refuses` | performed |
+| `run.emit.unit-status` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_status_is_one_of_four` | performed |
+| `run.exec.captured-output` | `crates/contextful-connectors/tests/integration/derive.rs::a_step_captures_8_mib_by_default_and_the_declared_bound_otherwise` | performed |
+| `run.exec.chain-deadline` | `crates/contextful-connectors/tests/integration/derive.rs::the_chain_runs_1800_s_by_default_and_the_declared_bound_otherwise` | performed |
+| `run.exec.deadline-elapsed` | `crates/contextful-connectors/tests/integration/derive.rs::a_chain_outrunning_its_deadline_refuses_naming_the_step` | performed |
+| `run.exec.digest-mismatch` | `crates/contextful-connectors/tests/integration/derive.rs::a_pinned_file_whose_bytes_moved_refuses` | performed |
+| `run.exec.engine-id` | `crates/contextful-core/tests/integration/run/derive.rs::an_exec_engine_id_hashes_every_steps_digest_and_arguments` | performed |
+| `run.exec.env-name` | `crates/contextful-core/tests/integration/run/derive.rs::an_allowlist_name_outside_the_variable_grammar_refuses` | performed |
+| `run.exec.missing-binary` | `crates/contextful-connectors/tests/integration/derive.rs::a_command_that_is_no_executable_file_refuses` | performed |
+| `run.exec.no-shell` | `crates/contextful-connectors/tests/integration/derive.rs::a_step_runs_its_argument_array_with_a_cleared_environment` | performed |
+| `run.exec.output-cap` | `crates/contextful-connectors/tests/integration/derive.rs::output_past_the_bound_stops_the_step_with_the_byte_count` | performed |
+| `run.exec.shell-command` | `crates/contextful-core/tests/integration/run/derive.rs::a_command_given_as_one_string_refuses` | performed |
+| `run.exec.silent-step` | `crates/contextful-connectors/tests/integration/derive.rs::a_preprocess_step_writing_no_output_refuses` | performed |
+| `run.exec.step-condition` | `crates/contextful-connectors/tests/integration/derive.rs::a_preprocess_step_runs_only_while_its_condition_holds` | performed |
+| `run.exec.step-error-excerpt` | `crates/contextful-core/tests/integration/run/derive.rs::a_failing_steps_error_carries_4_kib_of_its_stderr` | performed |
+| `run.exec.unpinned-path` | `crates/contextful-connectors/tests/integration/derive.rs::a_path_form_command_without_a_digest_refuses_quoting_it` | performed |
+| `run.exec.verified-spawn` | `crates/contextful-connectors/tests/integration/derive.rs::a_binary_replaced_after_resolution_never_runs` | performed |
 | `run.guard-secrets.coverage` | `crates/contextful-core/tests/integration/pipeline/guard.rs::encoded_or_split_credentials_pass_through` | performed |
 | `run.guard-secrets.mask-only` | `crates/contextful-engine/tests/integration/guard.rs::each_pull_reports_masked_cells_and_the_run_proceeds` | performed |
 | `run.guard-secrets.mask-replacement` | `crates/contextful-core/tests/integration/pipeline/guard.rs::the_marker_is_fixed_and_an_assignment_keeps_its_key` | performed |
@@ -483,6 +512,12 @@ Unscheduled operations: 10.
 | `run.own.one-commit-per-run` | `crates/contextful-engine/tests/integration/runner.rs::a_run_commits_once_and_a_crash_commits_nothing` | performed |
 | `run.own.pin-release` | `crates/contextful-core/tests/integration/run/own.rs::success_and_an_empty_failure_release_every_other_status_holds` | performed |
 | `run.own.pinned-plan-changed` | `crates/contextful-engine/tests/integration/runner.rs::a_moved_build_under_a_pending_owner_is_refused_before_replay` | performed |
+| `run.parse-cues.backward-cue` | `crates/contextful-core/tests/integration/run/derive.rs::a_block_starting_before_the_last_accepted_one_is_dropped` | performed |
+| `run.parse-cues.grammar` | `crates/contextful-core/tests/integration/run/derive.rs::subrip_and_webvtt_read_through_one_grammar` | performed |
+| `run.parse-cues.passage-bytes` | `crates/contextful-core/tests/integration/run/derive.rs::a_passage_holds_at_most_8_kib` | performed |
+| `run.parse-cues.passage-chars` | `crates/contextful-core/tests/integration/run/derive.rs::a_passage_closes_at_600_chars` | performed |
+| `run.parse-cues.passage-span` | `crates/contextful-core/tests/integration/run/derive.rs::a_passage_closes_at_60_seconds` | performed |
+| `run.parse-cues.passages-per-document` | `crates/contextful-core/tests/integration/run/derive.rs::a_document_yields_at_most_2000_passages` | performed |
 | `run.project.broadcast-ring` | `crates/contextful-engine/tests/integration/project.rs::a_subscriber_overrunning_the_ring_resynchronizes_to_the_latest` | performed |
 | `run.project.coalescing` | `crates/contextful-core/tests/integration/run/project.rs::broadcasts_coalesce_per_window_and_a_terminal_flushes_at_once` | performed |
 | `run.project.connect` | `crates/contextful-engine/tests/integration/project.rs::connect_hands_over_the_folded_snapshot_then_every_later_update_once` | performed |
@@ -521,6 +556,14 @@ Unscheduled operations: 10.
 | `run.retry.single-attempt` | `crates/contextful-core/tests/integration/run/retry.rs::a_one_attempt_schedule_never_retries` | performed |
 | `run.retry.step-failed` | `crates/contextful-core/tests/integration/run/retry.rs::a_terminal_or_exhausted_step_fails_with_its_label_and_tag` | performed |
 | `run.retry.unretryable-tag` | `crates/contextful-core/tests/integration/run/retry.rs::retry_on_naming_an_unretryable_tag_is_refused_at_compile` | performed |
+| `run.select.anti-join` | `crates/contextful-core/tests/integration/run/derive.rs::the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker` | performed |
+| `run.select.attempts-per-unit` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_receives_3_attempts_by_default` | performed |
+| `run.select.foreign-output-table` | `crates/contextful-core/tests/integration/run/derive.rs::a_key_naming_another_pipelines_output_refuses` | performed |
+| `run.select.journaled-pull` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_pipeline_journaling_its_pulls_refuses` | performed |
+| `run.select.latest-marker` | `crates/contextful-core/tests/integration/run/derive.rs::a_units_latest_marker_decides_its_standing` | performed |
+| `run.select.required-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_missing_or_blank_required_key_refuses` | performed |
+| `run.select.rows-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::a_run_takes_25_units_by_default_after_the_anti_join` | performed |
+| `run.select.seconds-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::link_preview_holds_300_s_and_transcribe_carries_no_default` | performed |
 | `run.suspend.awakeable` | `crates/contextful-engine/tests/integration/suspend.rs::a_minted_token_persists_a_pending_row_and_resumes_on_post` | performed |
 | `run.suspend.conflicting-resolution` | `crates/contextful-core/tests/integration/run/suspend.rs::a_different_second_payload_is_refused_and_the_first_stands` | performed |
 | `run.suspend.deadline` | `crates/contextful-core/tests/integration/run/suspend.rs::the_deadline_is_creation_plus_ttl_from_caller_instants` | performed |
@@ -531,6 +574,7 @@ Unscheduled operations: 10.
 | `run.suspend.survives-restart` | `crates/contextful-engine/tests/integration/suspend.rs::a_restart_keeps_every_pending_callback` | performed |
 | `run.suspend.timeout-is-sticky` | `crates/contextful-core/tests/integration/run/suspend.rs::a_timeout_sticks_under_any_later_instant` | performed |
 | `run.suspend.unknown-token` | `crates/contextful-engine/tests/integration/suspend.rs::an_unknown_token_is_refused_and_writes_nothing` | performed |
+| `run.test-engine.unsupported-driver` | `crates/contextful-cli/tests/integration/derive.rs::the_verb_refuses_a_fetch_engine_and_runs_a_transcriber_over_one_file` | performed |
 | `run.transform.arity` | `crates/contextful-core/tests/integration/pipeline/transform.rs::an_operation_emitting_more_rows_than_it_consumed_is_refused` | performed |
 | `run.transform.cast` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_cast_rewrites_the_type_in_place` | performed |
 | `run.transform.chain` | `crates/contextful-core/tests/integration/pipeline/transform.rs::the_chain_runs_its_four_operations_in_order` | performed |

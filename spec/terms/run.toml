@@ -82,9 +82,11 @@ DeriveDriverMismatch           = { clause = "run.bind.driver-mismatch", gloss = 
 DeriveEndpointHostNotBare      = { clause = "run.bind.endpoint-host-bare", gloss = "An engine host carrying more than a host." }
 DeriveRemoteUrlUnsupported     = { clause = "run.bind.remote-url-unsupported", gloss = "A remote address handed to an engine that declines them." }
 DeriveMediaUnreadable          = { clause = "run.bind.media-unreadable", gloss = "A media value neither an address nor a readable local file." }
+DeriveMediaOutsideRoot         = { clause = "run.bind.media-root", gloss = "A local media path escaping the binding's media root." }
 DeriveConfidenceOutOfRange     = { clause = "run.bind.confidence-range", gloss = "A confidence outside the normalized interval." }
 DeriveLinkEngineUnavailable    = { clause = "run.bind.engine-unavailable", gloss = "A link engine returning the engine-unavailable variant." }
 DeriveAdvisoryZone             = { clause = "run.bind.advisory-zone", gloss = "A row zone taken from the operator's advisory key." }
+DeriveStepConditionUnknown     = { clause = "run.exec.step-condition", gloss = "A preprocess condition naming no known condition." }
 DeriveShellCommand             = { clause = "run.exec.shell-command", gloss = "A step command given as a string, not an argument array." }
 DeriveEnvNameInvalid           = { clause = "run.exec.env-name", gloss = "An environment allowlist name outside the permitted characters." }
 DeriveStepExit                 = { clause = "run.exec.non-zero-exit", gloss = "A chain step ending non-zero." }

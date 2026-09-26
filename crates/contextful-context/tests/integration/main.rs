@@ -9,5 +9,6 @@ mod lay_out;
 mod read;
 mod reconcile;
 mod reserve;
+mod rows;
 mod run_commit;
 mod support;

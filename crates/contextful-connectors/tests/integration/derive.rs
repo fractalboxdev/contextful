@@ -1,0 +1,375 @@
+//! The exec driver and the derive source.
+
+use crate::support::Never;
+use contextful_connectors::derive::{resolve_step, run_chain, Chain, ChainError, DeriveSource};
+use contextful_core::run::derive::config::{bindings, Binding, DeriveConfig};
+use contextful_core::run::journal::sha256_hex;
+use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
+use contextful_core::run::{Failure, FailureTag, RunError};
+use serde_json::{json, Value};
+use std::path::Path;
+use std::sync::Arc;
+
+fn binding(toml: &str) -> Binding {
+    bindings(toml).unwrap().remove("reader").unwrap()
+}
+
+fn chain(dir: &Path, toml: &str) -> Result<Chain, RunError> {
+    Chain::resolve("reader", &binding(toml), dir)
+}
+
+fn env_of(c: &Chain) -> Vec<(String, String)> {
+    c.env.iter().map(|(k, t)| (k.clone(), t.render(|_| Ok::<_, ()>(contextful_core::connector::reference::Hydrated::new(""))).unwrap().reveal().to_string())).collect()
+}
+
+fn run_resolved(dir: &Path, c: &Chain, media: &str, cancel: &dyn Cancellation) -> Result<String, ChainError> {
+    let scratch = tempfile::tempdir().unwrap();
+    run_chain(c, &dir.join(media), &env_of(c), scratch.path(), cancel)
+}
+
+fn run(dir: &Path, toml: &str, media: &str) -> Result<String, RunError> {
+    let c = chain(dir, toml)?;
+    run_resolved(dir, &c, media, &Never).map_err(|e| match e {
+        ChainError::Unit(e) => e,
+        ChainError::Canceled => panic!("no stop was requested"),
+    })
+}
+
+/// A cancellation requested once `after` has passed.
+struct StopAfter(std::time::Instant);
+
+impl StopAfter {
+    fn new(after: std::time::Duration) -> StopAfter {
+        StopAfter(std::time::Instant::now() + after)
+    }
+}
+
+impl Cancellation for StopAfter {
+    fn requested(&self) -> bool {
+        std::time::Instant::now() >= self.0
+    }
+}
+
+fn script(dir: &Path, name: &str, body: &str) -> String {
+    let p = dir.join(name);
+    std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::process::Command::new("chmod").args(["755", p.to_str().unwrap()]).status().unwrap();
+    sha256_hex(&std::fs::read(&p).unwrap())
+}
+
+/// A `command[0]` that is not an executable file on this machine raises `DeriveBinaryMissing`, naming the binary
+/// and the step.
+// spec: run.exec.missing-binary@bf83a423
+#[test]
+fn a_command_that_is_no_executable_file_refuses() {
+    let dir = tempfile::tempdir().unwrap();
+    for cmd in ["no-such-binary-contextful", "./absent.sh"] {
+        match chain(dir.path(), &format!("[derive.reader.engine]\ncommand = [\"{cmd}\"]\nsha256 = \"00\"\n")) {
+            Err(RunError::DeriveBinaryMissing(m)) => assert!(m.contains(cmd) && m.contains("engine"), "{m}"),
+            other => panic!("{cmd}: {:?}", other.err()),
+        }
+    }
+}
+
+/// A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the digest just computed; a
+/// bare search-path name carries none.
+// spec: run.exec.unpinned-path@75300ef2
+#[test]
+fn a_path_form_command_without_a_digest_refuses_quoting_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let digest = script(dir.path(), "engine.sh", "cat \"$1\"");
+    match chain(dir.path(), "[derive.reader.engine]\ncommand = [\"./engine.sh\", \"{input}\"]\n") {
+        Err(RunError::DeriveUnpinnedPath(m)) => assert!(m.contains(&digest), "{m}"),
+        other => panic!("{:?}", other.err()),
+    }
+    // A bare search-path name carries no pin.
+    assert!(chain(dir.path(), "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n").is_ok());
+}
+
+/// A pinned file whose bytes differ from its recorded digest raises `DeriveDigestMismatch`.
+// spec: run.exec.digest-mismatch@52f114c3
+#[test]
+fn a_pinned_file_whose_bytes_moved_refuses() {
+    let dir = tempfile::tempdir().unwrap();
+    let digest = script(dir.path(), "engine.sh", "cat \"$1\"");
+    let toml = format!("[derive.reader.engine]\ncommand = [\"./engine.sh\", \"{{input}}\"]\nsha256 = \"{digest}\"\n");
+    assert!(chain(dir.path(), &toml).is_ok());
+    script(dir.path(), "engine.sh", "rm -rf \"$1\"");
+    assert!(matches!(chain(dir.path(), &toml), Err(RunError::DeriveDigestMismatch(_))));
+}
+
+/// A step runs as its argument array with no shell, in a process group of its own, under a cleared environment
+/// holding only the binding's `env` table.
+// spec: run.exec.no-shell@a5b98206
+#[test]
+fn a_step_runs_its_argument_array_with_a_cleared_environment() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("doc.txt"), "x").unwrap();
+    assert!(std::env::var_os("PATH").is_some(), "the test process carries a variable a step must not inherit");
+    let toml = "[derive.reader.engine]\ncommand = [\"/usr/bin/env\"]\n[derive.reader.env]\nLANG = \"C\"\n";
+    let digest = sha256_hex(&std::fs::read("/usr/bin/env").unwrap());
+    let out = run(dir.path(), &toml.replace("[\"/usr/bin/env\"]", &format!("[\"/usr/bin/env\"]\nsha256 = \"{digest}\"")), "doc.txt").unwrap();
+    assert_eq!(out.trim(), "LANG=C", "only the binding's env reaches a step");
+    // An argument carrying shell syntax reaches the program as one literal argument.
+    let echo = "[derive.reader.engine]\ncommand = [\"printf\", \"%s\", \"$(echo injected){input}\"]\n";
+    let out = run(dir.path(), echo, "doc.txt").unwrap();
+    assert!(out.starts_with("$(echo injected)"), "{out}");
+}
+
+/// `timeout_secs` bounds one unit's whole chain at 1800 s by default.
+// spec: run.exec.chain-deadline@d42f55a9
+#[test]
+fn the_chain_runs_1800_s_by_default_and_the_declared_bound_otherwise() {
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(chain(dir.path(), "[derive.reader.engine]\ncommand = [\"cat\"]\n").unwrap().deadline.as_secs(), 1800);
+    assert_eq!(chain(dir.path(), "[derive.reader]\ntimeout_secs = 7\n[derive.reader.engine]\ncommand = [\"cat\"]\n").unwrap().deadline.as_secs(), 7);
+}
+
+/// A chain outrunning its deadline raises `DeriveStepTimeout`, naming the running step.
+// spec: run.exec.deadline-elapsed@f4347448
+#[test]
+fn a_chain_outrunning_its_deadline_refuses_naming_the_step() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("doc.txt"), "x").unwrap();
+    let started = std::time::Instant::now();
+    match run(dir.path(), "[derive.reader]\ntimeout_secs = 1\n[derive.reader.engine]\ncommand = [\"sleep\", \"30\"]\n", "doc.txt") {
+        Err(RunError::DeriveStepTimeout(m)) => assert!(m.contains("`engine`"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    assert!(started.elapsed().as_secs() < 10);
+}
+
+/// `max_output_bytes` bounds each step's captured standard output and error at 8 MiB by default.
+// spec: run.exec.captured-output@b46b1b34
+#[test]
+fn a_step_captures_8_mib_by_default_and_the_declared_bound_otherwise() {
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(chain(dir.path(), "[derive.reader.engine]\ncommand = [\"cat\"]\n").unwrap().max_output, 8 * 1024 * 1024);
+    assert_eq!(chain(dir.path(), "[derive.reader]\nmax_output_bytes = 512\n[derive.reader.engine]\ncommand = [\"cat\"]\n").unwrap().max_output, 512);
+}
+
+/// Output past the bound is counted and discarded, never buffered; crossing it kills the step and raises
+/// `DeriveOutputCap` with the byte count, draining continuing so the child never blocks.
+// spec: run.exec.output-cap@004fc225
+#[test]
+fn output_past_the_bound_stops_the_step_with_the_byte_count() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("big.txt"), "y".repeat(200_000)).unwrap();
+    match run(dir.path(), "[derive.reader]\nmax_output_bytes = 1000\n[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n", "big.txt") {
+        Err(RunError::DeriveOutputCap(m)) => {
+            let count: u64 = m.split_whitespace().find_map(|w| w.parse().ok()).unwrap();
+            assert!(count > 1000, "{m}");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A preprocess step exiting zero without writing its output file raises `DeriveStepProducedNothing`.
+// spec: run.exec.silent-step@116cf075
+#[test]
+fn a_preprocess_step_writing_no_output_refuses() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("doc.txt"), "x").unwrap();
+    let toml = "[[derive.reader.preprocess]]\ncommand = [\"true\"]\noutput_path = \"{output_stem}.wav\"\n[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n";
+    assert!(matches!(run(dir.path(), toml, "doc.txt"), Err(RunError::DeriveStepProducedNothing(m)) if m.contains("preprocess-0")));
+    let copying = "[[derive.reader.preprocess]]\ncommand = [\"cp\", \"{input}\", \"{output}\"]\noutput_path = \"{output_stem}.txt\"\n[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n";
+    assert_eq!(run(dir.path(), copying, "doc.txt").unwrap(), "x");
+}
+
+struct Rows(Vec<(String, Vec<Row>)>);
+
+impl TableReader for Rows {
+    fn rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure> {
+        let project = |r: &Row| r.iter().filter(|(k, _)| columns.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect();
+        Ok(self.0.iter().find(|(t, _)| t == table).map(|(_, rs)| rs.iter().map(project).collect()).unwrap_or_default())
+    }
+}
+
+fn source(dir: &Path, parents: Value, engine_toml: &str) -> DeriveSource {
+    let config = DeriveConfig::parse("doc-text", &json!({"engine": "reader", "source_table": "documents", "media_column": "path", "parent_id_column": "doc_id"})).unwrap();
+    let parents: Vec<Row> = parents.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
+    DeriveSource {
+        pipeline_id: "doc-text".into(),
+        config,
+        binding: binding(engine_toml),
+        output_table: "doc_text_passages".into(),
+        reader: Box::new(Rows(vec![("documents".into(), parents)])),
+        resolver: Arc::new(contextful_runtime::Resolver::new(vec![], false, Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::from_unix_secs(0).unwrap())))),
+        cwd: dir.to_path_buf(),
+    }
+}
+
+fn pull(s: &mut DeriveSource, cancel: &dyn Cancellation) -> Result<Vec<Value>, Failure> {
+    let req = PullRequest { step_label: "pull-0".into(), position: None, idempotency_key: "k".into() };
+    let v: Value = serde_json::from_slice(&s.pull(&req, cancel)?).unwrap();
+    Ok(v["rows"].as_array().unwrap().clone())
+}
+
+fn pulled(s: &mut DeriveSource) -> Vec<Value> {
+    pull(s, &Never).unwrap()
+}
+
+fn unit<'a>(rows: &'a [Value], key: &str) -> &'a Value {
+    rows.iter().find(|r| r["unit_ref"] == key).unwrap_or_else(|| panic!("no row for `{key}` in {rows:?}"))
+}
+
+const SRT_ENGINE: &str = "[derive.reader.engine]\ncommand = [\"awk\", \"NF { n++; printf \\\"%d\\\\n00:00:0%d,000 --> 00:00:0%d,500\\\\n%s\\\\n\\\\n\\\", n, n, n, $0 }\", \"{input}\"]\noutput_format = \"srt\"\n";
+
+/// A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing
+/// that unit alone.
+// spec: run.bind.media-unreadable@d9205180
+#[test]
+fn unreadable_media_fails_that_unit_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("memo.txt"), "Hello there.\n").unwrap();
+    let mut s = source(dir.path(), json!([{"doc_id": "lost", "path": "nowhere.txt"}, {"doc_id": "memo", "path": "memo.txt"}]), SRT_ENGINE);
+    let rows = pulled(&mut s);
+    let lost = rows.iter().find(|r| r["unit_ref"] == "lost").unwrap();
+    assert_eq!((lost["kind"].as_str(), lost["unit_status"].as_str()), (Some("marker"), Some("failed")));
+    assert!(lost["last_error"].as_str().unwrap().starts_with("DeriveMediaUnreadable"), "{lost}");
+    let memo = rows.iter().find(|r| r["unit_ref"] == "memo").unwrap();
+    assert_eq!((memo["kind"].as_str(), memo["text"].as_str()), (Some("passage"), Some("Hello there.")));
+}
+
+/// An `http` or `https` media value for an engine declining remote addresses raises `DeriveRemoteUrlUnsupported`,
+/// naming the `when = "media_is_url"` preprocess step.
+// spec: run.bind.remote-url-unsupported@4a017929
+#[test]
+fn an_address_for_an_engine_reading_local_files_refuses_naming_the_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = source(dir.path(), json!([{"doc_id": "web", "path": "https://docs.example/memo.txt"}]), SRT_ENGINE);
+    let rows = pulled(&mut s);
+    let err = rows[0]["last_error"].as_str().unwrap();
+    assert!(err.starts_with("DeriveRemoteUrlUnsupported") && err.contains("media_is_url"), "{err}");
+}
+
+#[test]
+fn the_step_resolver_reads_a_bare_name_off_the_search_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = binding("[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n");
+    let step = resolve_step("reader", "engine", b.engine.as_ref().unwrap(), dir.path()).unwrap();
+    assert!(step.binary.is_absolute() && step.binary.ends_with("cat"));
+}
+
+/// A preprocess step runs only while its `when` holds: `media_is_url` for an `http` or `https` input,
+/// `engine_requires_pcm16_wav` for an input other than 16-bit PCM WAV; another name raises
+/// `DeriveStepConditionUnknown`.
+// spec: run.exec.step-condition@726bdffa
+#[test]
+fn a_preprocess_step_runs_only_while_its_condition_holds() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("doc.txt"), "x").unwrap();
+    // A 16-bit PCM WAV header: RIFF, WAVE, a `fmt ` chunk of format 1 and 16 bits per sample.
+    let mut wav = b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80\x3e\x00\x00\x00\x7d\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00".to_vec();
+    std::fs::write(dir.path().join("clip.wav"), &wav).unwrap();
+    wav[34] = 0x08;
+    std::fs::write(dir.path().join("clip8.wav"), &wav).unwrap();
+    let echo_input = "[derive.reader.engine]\ncommand = [\"printf\", \"%s\", \"{input}\"]\n";
+    let convert = format!("[[derive.reader.preprocess]]\nwhen = \"engine_requires_pcm16_wav\"\ncommand = [\"cp\", \"{{input}}\", \"{{output}}\"]\noutput_path = \"{{output_stem}}.wav\"\n{echo_input}");
+    assert!(run(dir.path(), &convert, "doc.txt").unwrap().ends_with("step-0.wav"), "a text input is converted");
+    assert!(run(dir.path(), &convert, "clip8.wav").unwrap().ends_with("step-0.wav"), "8-bit audio is converted");
+    assert!(run(dir.path(), &convert, "clip.wav").unwrap().ends_with("clip.wav"), "16-bit PCM passes through unconverted");
+    let fetch = format!("[[derive.reader.preprocess]]\nwhen = \"media_is_url\"\ncommand = [\"false\"]\n{echo_input}");
+    assert!(run(dir.path(), &fetch, "doc.txt").unwrap().ends_with("doc.txt"), "a local input skips the fetch step");
+    let typo = format!("[[derive.reader.preprocess]]\nwhen = \"media_is_uri\"\ncommand = [\"true\"]\n{echo_input}");
+    match chain(dir.path(), &typo) {
+        Err(RunError::DeriveStepConditionUnknown(m)) => assert!(m.contains("media_is_uri") && m.contains("preprocess-0"), "{m}"),
+        other => panic!("{:?}", other.err()),
+    }
+}
+
+/// A local media value resolves, canonicalized, under the binding's `media_root`, the working directory by
+/// default; a path escaping it raises `DeriveMediaOutsideRoot`, failing that unit alone.
+// spec: run.bind.media-root@7395cd15
+#[test]
+fn media_outside_the_root_fails_that_unit_alone() {
+    let top = tempfile::tempdir().unwrap();
+    let project = top.path().join("project");
+    let media = top.path().join("media");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&media).unwrap();
+    std::fs::write(top.path().join("secret.txt"), "Private key.\n").unwrap();
+    std::fs::write(project.join("memo.txt"), "Hello there.\n").unwrap();
+    std::fs::write(media.join("clip.txt"), "From the root.\n").unwrap();
+    std::os::unix::fs::symlink(top.path().join("secret.txt"), project.join("link.txt")).unwrap();
+    let secret = top.path().join("secret.txt").to_string_lossy().into_owned();
+    let parents = json!([
+        {"doc_id": "dotdot", "path": "../secret.txt"}, {"doc_id": "absolute", "path": secret},
+        {"doc_id": "link", "path": "link.txt"}, {"doc_id": "memo", "path": "memo.txt"}
+    ]);
+    let rows = pulled(&mut source(&project, parents, SRT_ENGINE));
+    for key in ["dotdot", "absolute", "link"] {
+        let r = unit(&rows, key);
+        assert_eq!(r["unit_status"], "failed", "{r}");
+        assert!(r["last_error"].as_str().unwrap().starts_with("DeriveMediaOutsideRoot"), "{r}");
+        assert!(!rows.iter().any(|r| r["text"] == "Private key."), "{rows:?}");
+    }
+    assert_eq!(unit(&rows, "memo")["text"], "Hello there.");
+    let rooted = format!("[derive.reader]\nmedia_root = \"../media\"\n{SRT_ENGINE}");
+    let rows = pulled(&mut source(&project, json!([{"doc_id": "clip", "path": "clip.txt"}, {"doc_id": "memo", "path": "memo.txt"}]), &rooted));
+    assert_eq!(unit(&rows, "clip")["text"], "From the root.");
+    assert!(unit(&rows, "memo")["last_error"].as_str().unwrap().starts_with("DeriveMediaUnreadable"), "{rows:?}");
+}
+
+/// A unit whose chain a run stop interrupts lands no row and charges no attempt; the pull ends `Canceled` once
+/// {{run.cancel.child-reaped}}.
+// spec: run.emit.canceled-unit@1e635838
+#[test]
+fn a_stopped_chain_lands_no_row_and_the_pull_ends_canceled() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("doc.txt"), "x").unwrap();
+    let slow = "[derive.reader.engine]\ncommand = [\"sleep\", \"30\"]\n";
+    let started = std::time::Instant::now();
+    let c = chain(dir.path(), slow).unwrap();
+    assert!(matches!(run_resolved(dir.path(), &c, "doc.txt", &StopAfter::new(std::time::Duration::from_millis(200))), Err(ChainError::Canceled)));
+    let mut s = source(dir.path(), json!([{"doc_id": "doc", "path": "doc.txt"}]), slow);
+    let failure = pull(&mut s, &StopAfter::new(std::time::Duration::from_millis(200))).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::Canceled, "{failure:?}");
+    assert!(started.elapsed().as_secs() < 10);
+}
+
+/// Each spawn re-reads its step's binary and runs it only while those bytes match the digest resolved at run
+/// start, else {{run.exec.digest-mismatch}}.
+// spec: run.exec.verified-spawn@f4827a6e
+#[test]
+fn a_binary_replaced_after_resolution_never_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("doc.txt"), "x").unwrap();
+    let digest = script(dir.path(), "engine.sh", "cat \"$1\"");
+    let c = chain(dir.path(), &format!("[derive.reader.engine]\ncommand = [\"./engine.sh\", \"{{input}}\"]\nsha256 = \"{digest}\"\n")).unwrap();
+    assert_eq!(run_resolved(dir.path(), &c, "doc.txt", &Never).unwrap(), "x");
+    script(dir.path(), "engine.sh", "echo tampered > \"$1\".owned");
+    match run_resolved(dir.path(), &c, "doc.txt", &Never) {
+        Err(ChainError::Unit(RunError::DeriveDigestMismatch(m))) => assert!(m.contains("engine"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    assert!(!dir.path().join("doc.txt.owned").exists(), "the replaced binary never ran");
+}
+
+/// The captured-output bound holds over standard output and error together, and after the step exits.
+#[test]
+fn the_bound_holds_over_both_streams_together_and_after_the_step_exits() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("doc.txt"), "x").unwrap();
+    let both = script(dir.path(), "both.sh", "head -c 600 /dev/zero | tr '\\0' a\nhead -c 600 /dev/zero | tr '\\0' b >&2");
+    match run(dir.path(), &format!("[derive.reader]\nmax_output_bytes = 1000\n[derive.reader.engine]\ncommand = [\"./both.sh\"]\nsha256 = \"{both}\"\n"), "doc.txt") {
+        Err(RunError::DeriveOutputCap(m)) => assert!(m.contains("1200"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    for _ in 0..20 {
+        let quick = run(dir.path(), "[derive.reader]\nmax_output_bytes = 1000\n[derive.reader.engine]\ncommand = [\"head\", \"-c\", \"1001\", \"/dev/zero\"]\n", "doc.txt");
+        assert!(matches!(quick, Err(RunError::DeriveOutputCap(_))), "{quick:?}");
+    }
+}
+
+/// An engine printing nothing lands a retryable `unavailable` marker; a cue-free WebVTT document lands `empty`.
+#[test]
+fn silence_lands_unavailable_and_a_cue_free_webvtt_lands_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("doc.txt"), "x").unwrap();
+    let parents = json!([{"doc_id": "doc", "path": "doc.txt"}]);
+    let silent = pulled(&mut source(dir.path(), parents.clone(), "[derive.reader.engine]\ncommand = [\"true\"]\n"));
+    assert_eq!((silent[0]["unit_status"].as_str(), silent[0]["retryable"].as_bool(), silent[0]["attempts"].as_i64()), (Some("unavailable"), Some(true), Some(1)));
+    let empty = pulled(&mut source(dir.path(), parents, "[derive.reader.engine]\ncommand = [\"printf\", \"WEBVTT\\n\"]\n"));
+    assert_eq!((empty[0]["unit_status"].as_str(), empty[0]["retryable"].as_bool()), (Some("empty"), Some(false)));
+}
