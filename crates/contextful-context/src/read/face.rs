@@ -179,10 +179,12 @@ impl Face {
     }
 
     /// The least row ceiling over the grants, the request, a template and every touched
-    /// table's published `limits.max_rows` (`read.respond.row-ceiling`).
+    /// table's published `limits.max_rows` (`read.respond.row-ceiling`). A request ledger
+    /// answers to its table's ceiling.
     pub(crate) fn ceiling(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>) -> Option<u64> {
         let grant = session.grants().iter().filter_map(|g| g.max_rows).min();
-        let table = touched.iter().filter_map(|t| session.policy(t).and_then(|p| p.max_rows)).min();
+        let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
+        let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
         least_row_ceiling([grant, request, template, table])
     }
 
@@ -220,6 +222,7 @@ impl Face {
         let tree = engine.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &[])?;
+        engine.register_ledgers(session, &admitted.relations)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         self.respond(&engine, sql, &[], ceiling, opts)
     }
@@ -236,6 +239,7 @@ impl Face {
         let tree = engine.serialize(&template.sql)?;
         let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &parameters)?;
+        engine.register_ledgers(session, &admitted.relations)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         self.respond(&engine, &template.sql, &parameters, ceiling, opts)
     }

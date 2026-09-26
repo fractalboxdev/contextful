@@ -340,3 +340,25 @@ fn concurrent_flushes_of_one_run_keep_every_row() {
     let path = r.store.root().join("tables/research/vendor/requests/run-0001.ingest-a.parquet");
     assert_eq!(contextful_context::ledger::read(&path).unwrap().len(), 40, "a concurrent flush dropped another's rows");
 }
+
+#[test]
+fn an_unreadable_ledger_file_fails_only_a_read_naming_that_ledger() {
+    let r = Reads::new();
+    let requests = r.store.root().join("tables/research/vendor/requests");
+    std::fs::create_dir_all(&requests).unwrap();
+    std::fs::write(requests.join("run-0009.ingest-a.parquet"), b"").unwrap();
+    let s = r.session(&["research/*"], None, None);
+    let notes = r.query(&s, r#"SELECT note_id FROM "research/notes""#).unwrap();
+    assert!(!notes.rows.is_empty());
+    assert!(r.query(&s, r#"SELECT * FROM "research/vendor__requests""#).is_err());
+}
+
+#[test]
+fn a_ledger_answers_to_its_tables_row_ceiling() {
+    let r = Reads::new();
+    let calls: Vec<RequestRecord> = (0..6).map(|i| call(&format!("r{i}"), Some(0), Some(200))).collect();
+    record_calls(&r, "research/notes", "run-0001", &calls);
+    let s = r.session(&["research/*"], None, None);
+    let seen = r.query(&s, r#"SELECT request_id FROM "research/notes__requests""#).unwrap();
+    assert_eq!((seen.rows.len(), seen.truncated), (3, true), "notes publish max_rows = 3");
+}

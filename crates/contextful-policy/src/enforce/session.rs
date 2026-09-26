@@ -273,6 +273,21 @@ impl Session {
         self.ledgers.values()
     }
 
+    /// The ledger relations among `names`, which a statement names and a connection then
+    /// registers beside the table relations. Each counts toward the relation set, so a
+    /// connection past [`RELATIONS_PER_SESSION`] refuses (`authority.compose.relations-per-session`).
+    pub fn ledgers_named(&self, names: &std::collections::BTreeSet<String>) -> Result<Vec<&RegisteredRelation>, PolicyError> {
+        let named: Vec<&RegisteredRelation> = names.iter().filter_map(|n| self.ledgers.get(n)).collect();
+        let total = self.relations.len() + named.len();
+        if total > RELATIONS_PER_SESSION {
+            return Err(DeclarationMalformed(format!(
+                "the statement's request ledgers bring the session to {total} relations; a session holds at most {RELATIONS_PER_SESSION}"
+            ))
+            .into());
+        }
+        Ok(named)
+    }
+
     /// The table's relation compiled over another FROM-source of the same table — one of
     /// its committed files — under every step its registered relation applies.
     pub fn relation_over(&self, table: &str, base: &str, files: Vec<String>) -> Option<RegisteredRelation> {
