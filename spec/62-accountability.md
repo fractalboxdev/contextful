@@ -57,6 +57,8 @@ What a read leaves behind: the span, the hash-linked audit entry, and where tele
 - `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes at 4096 entries under one signed root.
 - `unpersisted-entry` — A read whose entry fails to reach local durable storage raises `AuditEntryUnpersisted` and returns no rows.
   *A-disclosure*
+- `single-writer` — One process holds a directory's audit log at a time; opening a log another holds raises `AuditLogHeld`.
+  *because two writers caching one tip append the same seq twice, and every later verification breaks there*
 - `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
 
 One read's entry under group commit:
@@ -99,7 +101,7 @@ The access decision and its path, replay over a window with its coverage, and th
 
 Chain verification, signed segment roots, lineage attestations, and the reach of each guarantee.
 
-- `broken-chain` — A disagreeing digest, a sequence gap, or an absent chain while `chain.tip` or a signed root exists raises `AuditChainBroken` with the index of the earliest failure.
+- `broken-chain` — A disagreeing digest, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the signed check opening a log runs, an absent or unverified tip or root raises `AuditChainBroken` at the earliest failing index.
   *A-disclosure*
 - `root-replication` — Signed roots reach the replication bucket asynchronously every 10 min.
 
