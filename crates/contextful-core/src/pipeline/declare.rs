@@ -169,7 +169,7 @@ impl PipelineSpec {
                 }
             }
         }
-        Ok(())
+        super::seed::check_declaration(self)
     }
 
     /// The destination table name of `table` (`run.declare.table-name`).

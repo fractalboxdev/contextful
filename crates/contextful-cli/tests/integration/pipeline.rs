@@ -140,6 +140,32 @@ fn another_destination_is_refused_before_any_request() {
     ok(&fire(dir.path(), "orders", "r1", "2030-01-01T00:00:00Z"));
 }
 
+/// `validate` builds the seed source as it builds the live one: its connector name, config keys and header
+/// templates are refused before any seeding run reaches them.
+#[test]
+fn validate_builds_the_seed_source_like_the_live_one() {
+    let seeded = |seed_source: &str| {
+        let tables = "[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\norder_by = \"updated_at\"\n";
+        let seed = format!("[pipeline.seed]\nbelow = \"2030-01-01T00:00:00Z\"\n[pipeline.seed.source]\n{seed_source}\n");
+        project(&format!("{}{seed}", pipeline("orders", "https://api.vendor.example/v1", "", tables)))
+    };
+    ok(&cf(seeded("name = \"http\"\nconfig = { endpoint = \"https://exports.vendor.example/v1\" }").path(), &["pipeline", "validate"]));
+    for (source, refusal) in [
+        ("name = \"file\"\nconfig = { path = \"exports/items.jsonl\" }", "`file`"),
+        ("name = \"http\"\nconfig = { endpoint = \"https://exports.vendor.example/v1\", bogus = 1 }", "PipelineUnknownConfigKey"),
+        (
+            "name = \"http\"\nconfig = { endpoint = \"https://exports.vendor.example/v1\", headers = { Authorization = \"Bearer sk_live_0123456789abcdef\" } }",
+            "SecretMaterialInDeclaration",
+        ),
+    ] {
+        let out = cf(seeded(source).path(), &["pipeline", "validate"]);
+        assert!(!out.status.success(), "{source}");
+        let err = stderr(&out);
+        assert!(err.contains(refusal) && err.contains("seed"), "{source}: {err}");
+        assert!(!err.contains("sk_live_0123456789abcdef"), "{err}");
+    }
+}
+
 fn two_tables(vendor: &Vendor, on_error: &str) -> tempfile::TempDir {
     project(&pipeline("shop", &vendor.url("/v1/{table}"), &format!("on_table_error = \"{on_error}\""), "tables = [\"bad\", \"good\"]"))
 }

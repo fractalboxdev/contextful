@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
-| `run` | 3 | 24 | 289 | 82 | 34 | 24 | 148 | 0 | 148 |
+| `run` | 3 | 24 | 289 | 82 | 34 | 24 | 151 | 0 | 151 |
 | `store` | 1 | 14 | 155 | 37 | 12 | 8 | 111 | 0 | 111 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1453 | 466 | 162 | 101 | 670 | 0 | |
+| **total** | 19 | 145 | 1453 | 466 | 162 | 101 | 673 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
-| 4 — Ingest | 22 | 329 | 80 | passing |
+| 4 — Ingest | 22 | 329 | 83 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 39 | 34 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
@@ -568,6 +568,9 @@ Unscheduled operations: 10.
 | `run.retry.single-attempt` | `crates/contextful-core/tests/integration/run/retry.rs::a_one_attempt_schedule_never_retries` | performed |
 | `run.retry.step-failed` | `crates/contextful-core/tests/integration/run/retry.rs::a_terminal_or_exhausted_step_fails_with_its_label_and_tag` | performed |
 | `run.retry.unretryable-tag` | `crates/contextful-core/tests/integration/run/retry.rs::retry_on_naming_an_unretryable_tag_is_refused_at_compile` | performed |
+| `run.seed.block` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seed_block_names_a_source_and_a_ceiling_on_the_ordering_scale` | performed |
+| `run.seed.ceiling-unevaluable` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_missing_column_or_an_off_scale_stamp_is_unevaluable` | performed |
+| `run.seed.declaration-missing` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seeded_table_needs_a_key_and_an_event_time_ordering` | performed |
 | `run.select.anti-join` | `crates/contextful-core/tests/integration/run/derive.rs::the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker` | performed |
 | `run.select.attempts-per-unit` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_receives_3_attempts_by_default` | performed |
 | `run.select.foreign-output-table` | `crates/contextful-core/tests/integration/run/derive.rs::a_key_naming_another_pipelines_output_refuses` | performed |

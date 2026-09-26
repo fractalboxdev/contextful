@@ -135,6 +135,15 @@ pub enum RunError {
     /// The replacing write mode beside a windowed or chunked load. (`run.declare.replace-unsupported`)
     #[error("PipelineReplaceUnsupported: {0}")]
     PipelineReplaceUnsupported(String),
+    /// A seeded stamp at or past the ceiling. (`run.seed.ceiling-breached`)
+    #[error("PipelineSeedCeilingBreached: {0}")]
+    PipelineSeedCeilingBreached(String),
+    /// A seeded batch whose stamp cannot be ordered against the ceiling. (`run.seed.ceiling-unevaluable`)
+    #[error("PipelineSeedCeilingUnevaluable: {0}")]
+    PipelineSeedCeilingUnevaluable(String),
+    /// A seeded table lacking a key or an event-time ordering. (`run.seed.declaration-missing`)
+    #[error("PipelineSeedDeclarationMissing: {0}")]
+    PipelineSeedDeclarationMissing(String),
     /// A manifest file the canonical type cannot deserialize. (`run.declare.spec-invalid`)
     #[error("PipelineSpecInvalid: {0}")]
     PipelineSpecInvalid(String),

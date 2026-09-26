@@ -2,4 +2,5 @@
 
 mod declare;
 mod guard;
+mod seed;
 mod transform;
