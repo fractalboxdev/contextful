@@ -43,7 +43,10 @@ impl HeaderValue {
 #[derive(Debug, Clone)]
 pub struct Response {
     pub status: u16,
+    /// Every header line in arrival order. A value holding bytes outside visible ASCII
+    /// decodes lossily, so it never reads as empty.
     pub headers: Vec<(String, String)>,
+    /// The body, empty from a client built [`Client::without_body`].
     pub body: Vec<u8>,
     /// The URL whose answer this is, after every followed hop.
     pub url: Url,
@@ -124,6 +127,8 @@ pub struct Client {
     vetted: Vetted,
     /// The largest response body a request reads.
     max_body: u64,
+    /// Whether a request reads the response body at all.
+    read_body: bool,
     /// One agent per proxy posture, reused across every request of the client's life.
     hardened: ureq::Agent,
     proxied: ureq::Agent,
@@ -133,12 +138,19 @@ impl Client {
     pub fn new(allow: Allowlist, origin: Url) -> Client {
         let vetted = Vetted::default();
         let (hardened, proxied) = (agent(&vetted, true), agent(&vetted, false));
-        Client { allow, origin, sensitive: Mutex::default(), vetted, max_body: MAX_BODY_BYTES, hardened, proxied }
+        Client { allow, origin, sensitive: Mutex::default(), vetted, max_body: MAX_BODY_BYTES, read_body: true, hardened, proxied }
     }
 
     /// The client with a lower body ceiling than [`MAX_BODY_BYTES`].
     pub fn with_body_limit(mut self, bytes: u64) -> Client {
         self.max_body = bytes.min(MAX_BODY_BYTES);
+        self
+    }
+
+    /// The client reading no response body: an answer carries its status and headers,
+    /// and its body is dropped unread.
+    pub fn without_body(mut self) -> Client {
+        self.read_body = false;
         self
     }
 
@@ -205,7 +217,7 @@ impl Client {
             let mut resp = agent.run(request).map_err(|e| Failure::new(FailureTag::Transient, format!("request to `{}` failed: {}", scrub(&current), transport_error(&e))))?;
             let status = resp.status().as_u16();
             let headers_out: Vec<(String, String)> =
-                resp.headers().iter().map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or_default().to_string())).collect();
+                resp.headers().iter().map(|(k, v)| (k.as_str().to_string(), String::from_utf8_lossy(v.as_bytes()).into_owned())).collect();
             if follow && (300..400).contains(&status) {
                 let location = headers_out.iter().find(|(k, _)| k.eq_ignore_ascii_case("location")).map(|(_, v)| v.clone());
                 if let Some(loc) = location {
@@ -214,6 +226,9 @@ impl Client {
                     current = next;
                     continue;
                 }
+            }
+            if !self.read_body {
+                return Ok(Response { status, headers: headers_out, body: Vec::new(), url: current });
             }
             let body = resp.body_mut().with_config().limit(self.max_body).read_to_vec().map_err(|e| match e {
                 // A body past the ceiling is past it on every retry.

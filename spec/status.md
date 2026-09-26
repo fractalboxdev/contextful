@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 13 | 179 | 47 | 19 | 13 | 68 | 0 | 68 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
-| `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
+| `connector` | 2 | 13 | 230 | 72 | 14 | 7 | 58 | 0 | 58 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 155 | 37 | 12 | 8 | 111 | 0 | 111 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1453 | 466 | 162 | 101 | 673 | 0 | |
+| **total** | 19 | 145 | 1454 | 467 | 162 | 101 | 677 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
-| 4 — Ingest | 22 | 329 | 83 | passing |
+| 4 — Ingest | 22 | 330 | 87 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 39 | 34 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
@@ -279,6 +279,10 @@ Unscheduled operations: 10.
 | `connector.attach.weakened-hop` | `crates/contextful-runtime/tests/integration/attach.rs::a_hop_off_the_origin_or_down_to_cleartext_is_refused` | performed |
 | `connector.declare-capability.allowlist-shape` | `crates/contextful-core/tests/integration/connector/attach.rs::a_malformed_allowlist_is_refused` | performed |
 | `connector.declare-capability.host-allowlist` | `crates/contextful-core/tests/integration/connector/attach.rs::exact_hosts_and_subdomain_wildcards_match_as_suffixes` | performed |
+| `connector.declare-capability.probe-shape` | `crates/contextful-core/tests/integration/connector/probe.rs::a_scopes_header_that_is_no_field_name_refuses_at_declaration` | performed |
+| `connector.declare-capability.probe-transport` | `crates/contextful-runtime/tests/integration/probe.rs::the_probe_reaches_only_an_allowlisted_host_over_tls_or_loopback` | performed |
+| `connector.declare-capability.scope-exceeded` | `crates/contextful-runtime/tests/integration/probe.rs::a_grant_beyond_the_expectation_refuses_and_the_session_does_not_open` | performed |
+| `connector.declare-capability.scope-unverified` | `crates/contextful-runtime/tests/integration/probe.rs::a_grant_the_probe_cannot_read_refuses_and_the_session_does_not_open` | performed |
 | `connector.lease.bootstrap-declared-leased` | `crates/contextful-runtime/tests/integration/lease.rs::the_bootstrap_name_cannot_be_leased` | performed |
 | `connector.lease.bootstrap-non-recursion` | `crates/contextful-runtime/tests/integration/lease.rs::the_mint_credential_comes_from_the_adapters_behind_the_provider` | performed |
 | `connector.lease.bootstrap-unserved` | `crates/contextful-runtime/tests/integration/lease.rs::an_unanswered_bootstrap_refuses_before_any_mint` | performed |

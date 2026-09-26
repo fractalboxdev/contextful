@@ -2,4 +2,5 @@
 
 mod attach;
 mod lease;
+mod probe;
 mod reference;

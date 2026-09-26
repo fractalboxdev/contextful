@@ -115,9 +115,11 @@ The manifest's statement of host access and the scope probe judging a bound cred
 - `scope-probe` — A manifest may declare an identity endpoint, the response header carrying granted scopes, and the grant it expects. The host calls it with the bound credential ahead of the first read.
 - `probe-transport` — The scope probe's host sits on the allowlist and its scheme is TLS or loopback.
   *A-connector*
-- `scope-exceeded` — A granted scope outside the declared expectation raises `ConnectorScopeExceeded`, and the session does not open.
+- `probe-shape` — A scope probe declaring a scopes header that is empty or not an HTTP field-name token raises `ConnectorScopeProbeRejected`.
+  *because a header no response can carry refuses every session as though the vendor withheld the grant*
+- `scope-exceeded` — A granted scope outside the declared expectation, compared byte for byte, raises `ConnectorScopeExceeded`, and the session does not open.
   *A-connector*
-- `scope-unverified` — A probe response carrying no granted-scopes header raises `ConnectorScopeUnverified`.
+- `scope-unverified` — A probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII, raises `ConnectorScopeUnverified`.
   *because cannot-verify is not verified*
 - `environment-binding` — A source key binds from the environment as `<key>_from = "env:<NAME>"`. The engine enumerates the bindable keys in one place, each with its value shape: a scalar or a comma-separated list.
 - `binding-unsupported` — A `_from` binding on a key the connector does not read raises `ConnectorBindingUnsupported`.

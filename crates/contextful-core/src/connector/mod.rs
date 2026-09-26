@@ -5,6 +5,7 @@
 pub mod attach;
 pub mod error;
 pub mod lease;
+pub mod probe;
 pub mod reference;
 pub mod resolve;
 
