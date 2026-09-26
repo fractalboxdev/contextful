@@ -4,6 +4,8 @@
 use super::*;
 use contextful_context::read::ReadOptions;
 use contextful_core::store::bound_time::Bounds;
+use contextful_core::store::lay_out::NodeId;
+use contextful_core::store::ledger::RequestRecord;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use serde_json::{json, Map};
 
@@ -206,4 +208,101 @@ fn the_row_ceiling_bounds_delivery_with_one_probe_row() {
     let asked = r.face.query(&s, r#"SELECT note_id FROM "research/notes""#, ReadOptions { limit: Some(2), internals: true }).unwrap();
     assert_eq!((asked.rows.len(), asked.truncated), (2, true));
     assert_eq!(asked.blocks["contextful.internals"]["limit"], json!(2));
+}
+
+/// One mediated outbound call, as a test names it.
+fn call(id: &str, batch_seq: Option<i32>, status: Option<u16>) -> RequestRecord {
+    RequestRecord {
+        request_id: id.into(),
+        vendor_request_id: Some(format!("vendor-{id}")),
+        connector: "http".into(),
+        method: "GET".into(),
+        url_host: "api.example.org".into(),
+        status_code: status,
+        started_at: at("2030-01-10T00:00:00Z"),
+        duration_ms: 12,
+        batch_seq,
+    }
+}
+
+fn record_calls(r: &Reads, table: &str, run: &str, calls: &[RequestRecord]) {
+    let node = NodeId::parse("ingest-a").unwrap();
+    contextful_context::ledger::append(&r.store, table, run, &node, calls).unwrap();
+}
+
+/// Each table's per-run request ledger registers as the child relation `<table>__requests`, holding identifiers, connector, method, host, status and timing of mediated outbound calls.
+// spec: read.register.ledger-relation@0a97be3c
+#[test]
+fn a_tables_request_ledger_reads_as_its_child_relation() {
+    let r = Reads::new();
+    record_calls(&r, "research/vendor", "run-0001", &[call("r1", Some(0), Some(200))]);
+    // A second flush of the run keeps the first flush's rows; a call whose scope produced
+    // no batch, or that met no response, keeps its row with nulls.
+    record_calls(&r, "research/vendor", "run-0001", &[call("r2", None, None)]);
+    assert!(r.store.root().join("tables/research/vendor/requests/run-0001.ingest-a.parquet").is_file());
+
+    let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
+    let calls = r
+        .query(
+            &s,
+            r#"SELECT run_id, request_id, vendor_request_id, connector, method, url_host, status_code, batch_seq, duration_ms, started_at
+               FROM "research/vendor__requests" ORDER BY request_id"#,
+        )
+        .unwrap();
+    assert_eq!(column(&calls, "request_id"), [json!("r1"), json!("r2")]);
+    assert_eq!(column(&calls, "run_id"), [json!("run-0001"), json!("run-0001")]);
+    assert_eq!(column(&calls, "vendor_request_id"), [json!("vendor-r1"), json!("vendor-r2")]);
+    assert_eq!(column(&calls, "url_host"), [json!("api.example.org"), json!("api.example.org")]);
+    assert_eq!(column(&calls, "method"), [json!("GET"), json!("GET")]);
+    assert_eq!(column(&calls, "connector"), [json!("http"), json!("http")]);
+    assert_eq!(column(&calls, "status_code"), [json!(200), Value::Null]);
+    assert_eq!(column(&calls, "batch_seq"), [json!(0), Value::Null]);
+    assert_eq!(column(&calls, "duration_ms"), [json!("12"), json!("12")]);
+    assert_ne!(column(&calls, "started_at")[0], Value::Null);
+
+    // The run id and batch ordinal join a data row onto the calls that fetched it.
+    let joined = r
+        .query(
+            &s,
+            r#"SELECT v.item_id, q.request_id FROM "research/vendor" v
+               JOIN "research/vendor__requests" q ON v._run_id = q.run_id AND v._batch_seq = q.batch_seq"#,
+        )
+        .unwrap();
+    assert_eq!((column(&joined, "item_id"), column(&joined, "request_id")), (vec![json!("v1")], vec![json!("r1")]));
+
+    // A table no call has been recorded against registers an empty ledger.
+    let quiet = r.query(&s, r#"SELECT * FROM "research/visits__requests""#).unwrap();
+    assert!(quiet.rows.is_empty() && quiet.columns.contains(&"request_id".to_string()), "{:?}", quiet.columns);
+    // The ledger file stays out of the data listing.
+    let files = r.face.files(&s, Bounds::default()).unwrap();
+    assert!(column(&files, "path").iter().all(|p| !p.as_str().unwrap().contains("/requests/")));
+}
+
+/// The child relation registers on the owner read alone. A tenant-scoped token naming it raises `LedgerNotTenantScoped`, stating what closed the relation.
+// spec: read.register.scoped-ledger@f0bf1f40
+#[test]
+fn a_tenant_scoped_read_naming_the_ledger_is_refused() {
+    let r = Reads::new();
+    record_calls(&r, "research/notes", "run-0001", &[call("r1", Some(0), Some(200))]);
+    record_calls(&r, "research/vendor", "run-0001", &[call("r2", Some(0), Some(200))]);
+
+    let owner = r.session(&["research/*"], None, None);
+    assert!(owner.reads("research/notes__requests"));
+    let seen = r.query(&owner, r#"SELECT request_id FROM "research/notes__requests""#).unwrap();
+    assert_eq!(column(&seen, "request_id"), [json!("r1")]);
+
+    let scoped = r.session(&["research/*"], Some(("research/notes", "acme")), Some("public-cloud:us-east-1"));
+    assert!(!scoped.reads("research/notes__requests"));
+    let message = refused_with(r.query(&scoped, r#"SELECT request_id FROM "research/notes__requests""#), "LedgerNotTenantScoped");
+    assert!(message.contains("`research/notes`") && message.contains("tenant"), "{message}");
+    // Inside a subquery the relation is refused all the same.
+    refused_with(
+        r.query(&scoped, r#"SELECT note_id FROM "research/notes" WHERE note_id IN (SELECT request_id FROM "research/notes__requests")"#),
+        "LedgerNotTenantScoped",
+    );
+    // The same credential reads the ledger of a table it holds with no tenant scope.
+    let vendor = r.query(&scoped, r#"SELECT request_id FROM "research/vendor__requests""#).unwrap();
+    assert_eq!(column(&vendor, "request_id"), [json!("r2")]);
+    // A table the credential does not read names no ledger at all.
+    refused_with(r.query(&scoped, r#"SELECT * FROM "hr/salaries__requests""#), "EnforceUnknownRelation");
 }

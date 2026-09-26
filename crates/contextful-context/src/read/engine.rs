@@ -134,10 +134,10 @@ impl SqlEngine {
             conn.execute(&format!("INSERT INTO {} VALUES (?, ?)", ident(TENANT_RELATION)), [table, value]).map_err(fault)?;
         }
 
-        for r in session.relations() {
+        for r in session.relations().chain(session.ledgers()) {
             conn.execute_batch(&format!("CREATE OR REPLACE TEMP VIEW {} AS {}", ident(r.name()), r.sql())).map_err(fault)?;
         }
-        let files: Vec<String> = session.relations().flat_map(|r| r.files().iter().cloned()).collect();
+        let files: Vec<String> = session.relations().chain(session.ledgers()).flat_map(|r| r.files().iter().cloned()).collect();
         engine.lock(&files)?;
         Ok(engine)
     }

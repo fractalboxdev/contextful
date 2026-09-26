@@ -18,6 +18,7 @@ use crate::verify::AdmittedAuthority;
 use contextful_core::grant::{raw_read_covers, Action, Grant};
 use contextful_core::identify::Member;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
+use contextful_core::store::ledger::{ledger_relation, ledger_sql, ledger_table};
 use contextful_core::store::reconcile::Column;
 use contextful_core::store::relation::{ident, literal};
 use std::collections::BTreeMap;
@@ -42,6 +43,8 @@ pub struct TableSource {
     /// Whether the table has a landed schema; a quiet table registers over its injected
     /// columns, and its masks meet their columns once they land.
     pub landed: bool,
+    /// Absolute paths of the table's request-ledger files.
+    pub ledger: Vec<String>,
 }
 
 /// The relation one granted table registers as, bound to the table's bare name
@@ -86,6 +89,7 @@ pub struct Session {
     incognito: bool,
     tenants: BTreeMap<String, (String, Vec<String>)>,
     relations: BTreeMap<String, RegisteredRelation>,
+    ledgers: BTreeMap<String, RegisteredRelation>,
     policies: BTreeMap<String, TablePolicy>,
     sources: BTreeMap<String, TableSource>,
     pepper: Pepper,
@@ -127,6 +131,7 @@ impl Session {
             incognito: subject.incognito(),
             tenants: BTreeMap::new(),
             relations: BTreeMap::new(),
+            ledgers: BTreeMap::new(),
             policies: BTreeMap::new(),
             sources: BTreeMap::new(),
             pepper: pepper.clone(),
@@ -143,6 +148,14 @@ impl Session {
             session.policies.insert(t.decl.name.clone(), t.policy.clone());
             session.sources.insert(t.decl.name.clone(), t);
         }
+        let ledgers: Vec<RegisteredRelation> = session
+            .sources
+            .values()
+            .filter(|t| !session.tenants.contains_key(&t.decl.name))
+            .map(|t| session.ledger(t))
+            .filter(|l| !session.relations.contains_key(&l.name))
+            .collect();
+        session.ledgers = ledgers.into_iter().map(|l| (l.name.clone(), l)).collect();
         Ok(session)
     }
 
@@ -217,6 +230,30 @@ impl Session {
         }
     }
 
+    /// A table's request-ledger relation `<table>__requests`, registered on an owner read
+    /// alone: a tenant-scoped table's ledger carries no tenant column to narrow on
+    /// (`read.register.scoped-ledger`). The table's zone gate applies to it as to the table.
+    fn ledger(&self, t: &TableSource) -> RegisteredRelation {
+        let filter = if t.policy.placement.effective().admits(&self.zone) { "true" } else { "false" };
+        RegisteredRelation {
+            name: ledger_relation(&t.decl.name),
+            sql: format!("SELECT * FROM ({}) AS \"__contextful_base\" WHERE {filter}", ledger_sql(&t.ledger)),
+            files: t.ledger.clone(),
+        }
+    }
+
+    /// The table whose ledger `name` is, where this session reads the table under a tenant
+    /// scope and so registers no ledger for it.
+    pub fn closed_ledger<'n>(&self, name: &'n str) -> Option<&'n str> {
+        ledger_table(name).filter(|t| self.tenants.contains_key(*t) && !self.reads(name))
+    }
+
+    /// The request-ledger relations this session registers
+    /// (`read.register.ledger-relation`).
+    pub fn ledgers(&self) -> impl Iterator<Item = &RegisteredRelation> {
+        self.ledgers.values()
+    }
+
     /// The table's relation compiled over another FROM-source of the same table — one of
     /// its committed files — under every step its registered relation applies.
     pub fn relation_over(&self, table: &str, base: &str, files: Vec<String>) -> Option<RegisteredRelation> {
@@ -225,7 +262,7 @@ impl Session {
 
     /// Whether a table has a registered relation in this session.
     pub fn reads(&self, table: &str) -> bool {
-        self.relations.contains_key(table)
+        self.relations.contains_key(table) || self.ledgers.contains_key(table)
     }
 
     pub fn relation(&self, table: &str) -> Option<&RegisteredRelation> {

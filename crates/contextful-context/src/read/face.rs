@@ -141,16 +141,17 @@ impl Face {
             Some(p) => p.clone(),
             None => TablePolicy::from_decl(&decl)?,
         };
+        let ledger = crate::ledger::files(&self.store, table)?.iter().map(|p| p.to_string_lossy().into_owned()).collect();
         Ok(match self.store.try_schema(table)? {
             Some(schema) => {
                 let s = scan(&self.store, &decl, bounds)?;
                 let files = s.files.iter().map(|f| self.absolute(f)).collect();
-                TableSource { decl, policy, base: s.relation, files, columns: schema.columns, landed: true }
+                TableSource { decl, policy, base: s.relation, files, columns: schema.columns, landed: true, ledger }
             }
             None => {
                 let columns = injected_columns();
                 let base = relation(&TableDecl::named(table), &[], &columns, &[], None)?;
-                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false }
+                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger }
             }
         })
     }
@@ -217,7 +218,7 @@ impl Face {
     pub fn query(&self, session: &Session, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
         let engine = SqlEngine::open(session)?;
         let tree = engine.serialize(sql)?;
-        let admitted: Admitted = admit(&tree, |name| session.reads(name))?;
+        let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &[])?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         self.respond(&engine, sql, &[], ceiling, opts)
@@ -233,7 +234,7 @@ impl Face {
         let parameters = template.bind(arguments)?;
         let engine = SqlEngine::open(session)?;
         let tree = engine.serialize(&template.sql)?;
-        let admitted = admit(&tree, |name| session.reads(name))?;
+        let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &parameters)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         self.respond(&engine, &template.sql, &parameters, ceiling, opts)
@@ -332,6 +333,28 @@ impl Face {
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
         self.respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &[], ceiling, opts)
+    }
+}
+
+/// Admit a statement over the session's registered relations. Naming the request ledger
+/// of a table the session reads under a tenant scope raises `LedgerNotTenantScoped`
+/// rather than an unknown relation (`read.register.scoped-ledger`).
+fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, ReadFault> {
+    let closed = std::cell::RefCell::new(None);
+    let admitted = admit(tree, |name| {
+        if let Some(table) = session.closed_ledger(name) {
+            *closed.borrow_mut() = Some((name.to_string(), table.to_string()));
+            return false;
+        }
+        session.reads(name)
+    });
+    match (admitted, closed.into_inner()) {
+        (Err(_), Some((name, table))) => Err(ReadError::LedgerNotTenantScoped(format!(
+            "`{name}` is closed: the credential reads `{table}` under a tenant scope, and the request ledger carries no tenant \
+             column to narrow on, so it registers on the owner read alone"
+        ))
+        .into()),
+        (admitted, _) => Ok(admitted?),
     }
 }
 

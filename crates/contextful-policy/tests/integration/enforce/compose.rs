@@ -19,6 +19,7 @@ fn source(name: &str) -> TableSource {
         files: Vec::new(),
         columns: vec![Column::new("x", ColumnType::Int32, false)],
         landed: true,
+        ledger: Vec::new(),
     }
 }
 
