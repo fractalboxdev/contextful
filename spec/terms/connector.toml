@@ -26,7 +26,8 @@ ConnectorScopeProbeRejected     = { clause = "connector.declare-capability.probe
 ConnectorBindingUnsupported     = { clause = "connector.declare-capability.binding-unsupported", gloss = "An environment binding on a key the connector does not read." }
 ConnectorBindingUnbound         = { clause = "connector.declare-capability.binding-unbound", gloss = "An environment binding not supplied, or supplied off its declared shape." }
 ConnectorQuotaUnbound           = { clause = "connector.meter.quota-unbound", gloss = "A declared limiter quota with no operator binding." }
-ConnectorLimiterBindingRejected = { clause = "connector.meter.binding-transport", gloss = "A non-HTTPS limiter endpoint, or an inline literal limiter token." }
+ConnectorLimiterBindingRejected = { clause = "connector.meter.binding-transport", gloss = "A non-HTTPS limiter endpoint, one carrying a query, fragment or userinfo, or a limiter token that is not a secret reference." }
+ConnectorForwardRejected        = { clause = "connector.meter.forward-credential", gloss = "A limiter declaration forwarding a credential-bearing response header." }
 ConnectorLimiterUnreadable      = { clause = "connector.meter.unreadable-answer", gloss = "A limiter response the engine cannot parse." }
 ConnectorUnmetered              = { clause = "connector.meter.unmetered-request", gloss = "A vendor request without a granted reservation under a declared limiter." }
 ConnectorGrantMissing           = { clause = "connector.meter.built-in-grant-absent", gloss = "A compiled-in vendor-reaching source built without a limiter grant." }

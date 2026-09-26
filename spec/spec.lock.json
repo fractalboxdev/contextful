@@ -8031,6 +8031,17 @@
       "line": 153
     },
     {
+      "id": "connector.meter.forward-credential",
+      "contract": "connector",
+      "operation": "meter",
+      "subject": "forward-credential",
+      "kind": "refusal",
+      "statement": "A limiter declaration forwarding `authorization`, `proxy-authorization`, `cookie` or `set-cookie` raises `ConnectorForwardRejected` at load.",
+      "why": "because the report carries forwarded headers verbatim to a party outside the vendor credential's scope",
+      "file": "spec/40-connector.md",
+      "line": 154
+    },
+    {
       "id": "connector.meter.limiter-binding",
       "contract": "connector",
       "operation": "meter",
@@ -8039,7 +8050,7 @@
       "statement": "The operator binds that quota name to an endpoint, a bearer token held by reference, and a permit batch size.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 154
+      "line": 156
     },
     {
       "id": "connector.meter.quota-unbound",
@@ -8050,7 +8061,7 @@
       "statement": "A declared quota with no binding raises `ConnectorQuotaUnbound` at load.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 155
+      "line": 157
     },
     {
       "id": "connector.meter.binding-transport",
@@ -8058,10 +8069,21 @@
       "operation": "meter",
       "subject": "binding-transport",
       "kind": "refusal",
-      "statement": "A limiter endpoint that is neither HTTPS nor loopback, and a limiter token written as an inline literal, raise `ConnectorLimiterBindingRejected` at load.",
+      "statement": "A limiter endpoint that is neither HTTPS nor loopback or carries a query, fragment or userinfo, and a limiter token that is not a `secret://` reference, raise `ConnectorLimiterBindingRejected` at load.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 157
+      "line": 159
+    },
+    {
+      "id": "connector.meter.limiter-address",
+      "contract": "connector",
+      "operation": "meter",
+      "subject": "limiter-address",
+      "kind": "behavior",
+      "statement": "A limiter endpoint may resolve to a private or loopback address; the engine's check of vendor-host addresses does not apply to it.",
+      "why": "because the operator authors the limiter endpoint and no vendor answer supplies it",
+      "file": "spec/40-connector.md",
+      "line": 161
     },
     {
       "id": "connector.meter.reservation-point",
@@ -8072,7 +8094,7 @@
       "statement": "The host reserves at the mediation point, the guest's outgoing-HTTP import or the engine's shared client. One permit covers one outbound request.",
       "why": "because one call issues any number of requests for paging, retries and token refresh",
       "file": "spec/40-connector.md",
-      "line": 159
+      "line": 163
     },
     {
       "id": "connector.meter.permit-batch",
@@ -8083,7 +8105,7 @@
       "statement": "An acquire may grant a batch of permits under a short TTL. Each request spends one, and the next report surrenders the unspent.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 161
+      "line": 165
     },
     {
       "id": "connector.meter.acquire",
@@ -8094,7 +8116,7 @@
       "statement": "Acquire is an authenticated POST of quota, class and permit count, answered granted with permits and a TTL, or denied with a retry-after. A bare `429` with `Retry-After`, and a zero-permit grant, read as denials.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 162
+      "line": 166
     },
     {
       "id": "connector.meter.unreadable-answer",
@@ -8105,7 +8127,18 @@
       "statement": "A limiter response the engine cannot read raises `ConnectorLimiterUnreadable` and grants nothing.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 163
+      "line": 167
+    },
+    {
+      "id": "connector.meter.denial-ceiling",
+      "contract": "connector",
+      "operation": "meter",
+      "subject": "denial-ceiling",
+      "kind": "behavior",
+      "statement": "A limiter wait, whether a retry-after or a zero-permit grant's TTL, reads as at most the ceiling of {{run.retry.retry-after}}.",
+      "why": "because an unbounded wait named by the limiter parks the run past any retry its schedule allows",
+      "file": "spec/40-connector.md",
+      "line": 169
     },
     {
       "id": "connector.meter.report",
@@ -8116,7 +8149,7 @@
       "statement": "Report is an authenticated POST of quota, class, granted, spent, one entry per vendor response (status, retry-after, verbatim headers), an observation instant and the run id.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 165
+      "line": 171
     },
     {
       "id": "connector.meter.report-delivery",
@@ -8124,10 +8157,10 @@
       "operation": "meter",
       "subject": "report-delivery",
       "kind": "behavior",
-      "statement": "Report delivery is at-least-once under bounded backoff inside the run. A report that never lands is recorded in the run audit and fails nothing.",
+      "statement": "Report delivery is at-least-once under bounded backoff inside the run, and one attempt ahead of a refill; an undelivered report rides the next. A report that never lands is recorded in the run audit and fails nothing.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 166
+      "line": 172
     },
     {
       "id": "connector.meter.unmetered-request",
@@ -8135,10 +8168,10 @@
       "operation": "meter",
       "subject": "unmetered-request",
       "kind": "refusal",
-      "statement": "Under a declared limiter, a vendor request with no granted reservation raises `ConnectorUnmetered`, including when the limiter is unreachable or unbound.",
+      "statement": "Under a declared limiter, a vendor request with no granted reservation raises `ConnectorUnmetered`, including when the limiter is unreachable, unbound or answers a failing status, which never reads as an expired vendor credential.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 167
+      "line": 173
     },
     {
       "id": "connector.meter.allowlist-precedence",
@@ -8149,7 +8182,7 @@
       "statement": "A request the allowlist refuses never reaches the limiter and spends no permit.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 169
+      "line": 175
     },
     {
       "id": "connector.meter.held-back-request",
@@ -8160,7 +8193,7 @@
       "statement": "A guest swallowing a held-back request still fails its call, and a fault inside the reservation machinery fails the request rather than passing it unmetered.",
       "why": "P2",
       "file": "spec/40-connector.md",
-      "line": 170
+      "line": 176
     },
     {
       "id": "connector.meter.synthesized-throttle",
@@ -8171,7 +8204,7 @@
       "statement": "A denied reservation returns to the guest as a synthesized `429` carrying the retry-after. An unreachable limiter fails the request as a transport failure.",
       "why": "because a connector mapping vendor throttles needs no second interface",
       "file": "spec/40-connector.md",
-      "line": 172
+      "line": 178
     },
     {
       "id": "connector.meter.replay-reservation",
@@ -8182,7 +8215,7 @@
       "statement": "Replay issues no outbound request and makes no limiter call.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 174
+      "line": 180
     },
     {
       "id": "connector.meter.built-in-grant-absent",
@@ -8193,7 +8226,7 @@
       "statement": "A compiled-in source reaching an outside vendor declares its grant in the pipeline's source configuration; the build raises `ConnectorGrantMissing` without it.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 175
+      "line": 181
     },
     {
       "id": "connector.meter.grant-unhonorable",
@@ -8204,7 +8237,7 @@
       "statement": "A declared grant on a compiled-in source that bypasses the mediated client raises `ConnectorGrantUnhonorable` at load.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 177
+      "line": 183
     },
     {
       "id": "connector.meter.metered-disclosure",
@@ -8215,7 +8248,7 @@
       "statement": "Where the project binds any quota, every compiled-in read records whether it ran metered, the run record states an unmetered read once, and validation warns per pipeline naming the connector.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 179
+      "line": 185
     },
     {
       "id": "connector.meter.counting-not-pricing",
@@ -8226,7 +8259,7 @@
       "statement": "The limiter counts requests and prices none.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 180
+      "line": 186
     },
     {
       "id": "connector.infer.model-endpoint",
@@ -8237,7 +8270,7 @@
       "statement": "Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, rate limit and span; the component owns the prompt template and response schema.",
       "why": "A-topology",
       "file": "spec/40-connector.md",
-      "line": 215
+      "line": 221
     },
     {
       "id": "connector.infer.vendor-sdk",
@@ -8248,7 +8281,7 @@
       "statement": "A model-vendor SDK in any workspace crate is refused as {{topology.compose.vendor-sdk}}, so a provider swap is a URL edit.",
       "why": "A-topology",
       "file": "spec/40-connector.md",
-      "line": 217
+      "line": 223
     },
     {
       "id": "connector.infer.data-fence",
@@ -8259,7 +8292,7 @@
       "statement": "No ingested value reaches a model outside a data boundary: marker pairs whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 219
+      "line": 225
     },
     {
       "id": "connector.infer.fence-is-not-a-boundary",
@@ -8270,7 +8303,7 @@
       "statement": "The fence lowers the success rate of injected instructions and bounds nothing. No clause treats the output of a fenced call as trusted.",
       "why": "because spotlighting reduces injection and guarantees nothing",
       "file": "spec/40-connector.md",
-      "line": 220
+      "line": 226
     },
     {
       "id": "connector.infer.output-taint",
@@ -8281,7 +8314,7 @@
       "statement": "Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.",
       "why": "because output re-landing as fresh data launders injected text",
       "file": "spec/40-connector.md",
-      "line": 222
+      "line": 228
     },
     {
       "id": "connector.infer.marker-derivation",
@@ -8292,7 +8325,7 @@
       "statement": "A marker carries a token derived from the fenced content itself.",
       "why": "because closing one's own fence then requires content containing its own digest",
       "file": "spec/40-connector.md",
-      "line": 224
+      "line": 230
     },
     {
       "id": "connector.infer.fenced-value-hygiene",
@@ -8303,7 +8336,7 @@
       "statement": "Control characters are stripped from a fenced value, and a value past its declared character cap is truncated with a truncation mark.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 226
+      "line": 232
     },
     {
       "id": "connector.infer.operator-template",
@@ -8314,7 +8347,7 @@
       "statement": "The operator's prompt template stays unfenced in the system role. The idempotency hash covers the template alone.",
       "why": "because hardening the fence leaves a dedup key intact",
       "file": "spec/40-connector.md",
-      "line": 227
+      "line": 233
     },
     {
       "id": "connector.package.distribution-form",
@@ -8325,7 +8358,7 @@
       "statement": "A connector resolves in one of four forms: in-tree by name, a project-local artifact path, an HTTPS URL, or an OCI reference.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 237
+      "line": 243
     },
     {
       "id": "connector.package.remote-unpinned",
@@ -8336,7 +8369,7 @@
       "statement": "A remote artifact carrying no 64-hex content pin raises `ConnectorRemoteUnpinned` at parse.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 238
+      "line": 244
     },
     {
       "id": "connector.package.insecure-artifact",
@@ -8347,7 +8380,7 @@
       "statement": "A plain-HTTP artifact reference raises `ConnectorInsecureArtifact`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 240
+      "line": 246
     },
     {
       "id": "connector.package.digest-mismatch",
@@ -8358,7 +8391,7 @@
       "statement": "The host re-hashes the resolved bytes and raises `ConnectorDigestMismatch` on a difference, before the bytes reach the engine.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 242
+      "line": 248
     },
     {
       "id": "connector.package.pin-requirement",
@@ -8369,7 +8402,7 @@
       "statement": "Two switches require a pin on a local artifact, composed by disjunction: a store-wide policy key and a per-connector manifest flag.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 244
+      "line": 250
     },
     {
       "id": "connector.package.local-unpinned",
@@ -8380,7 +8413,7 @@
       "statement": "With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 245
+      "line": 251
     },
     {
       "id": "connector.package.manifest-posture",
@@ -8391,7 +8424,7 @@
       "statement": "A manifest is adopted, carrying a digest built on the fixed builder platform, or a template, carrying the requirement plus a placeholder. A template parses cleanly and refuses at load.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 247
+      "line": 253
     },
     {
       "id": "connector.package.posture-undeclared",
@@ -8402,7 +8435,7 @@
       "statement": "A manifest carrying neither a digest nor both template markers raises `ConnectorPostureUndeclared` at merge.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 248
+      "line": 254
     },
     {
       "id": "connector.package.pin-verb",
@@ -8413,7 +8446,7 @@
       "statement": "`contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and writes the artifact and its digest. `--verify` rebuilds and compares without writing.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 250
+      "line": 256
     },
     {
       "id": "connector.package.host-built-pin",
@@ -8424,7 +8457,7 @@
       "statement": "`--local` builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises `ConnectorHostPinRefused`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 252
+      "line": 258
     },
     {
       "id": "connector.package.path-remap",
@@ -8435,7 +8468,7 @@
       "statement": "Every build remaps the source root and the package cache, so checkout location is not a digest input.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 254
+      "line": 260
     },
     {
       "id": "connector.package.native-verification",
@@ -8446,7 +8479,7 @@
       "statement": "`--verify --native` checks host triple, compiler and package manager against pinned constants and clears byte-moving configuration before building. A mismatch exits with a status distinct from digest drift.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 255
+      "line": 261
     },
     {
       "id": "connector.package.linear-memory",
@@ -8457,7 +8490,7 @@
       "statement": "A connector runs under 256 MiB of linear memory by default, raised per connector to at most 2 GiB.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 256
+      "line": 262
     },
     {
       "id": "connector.package.call-deadline",
@@ -8468,7 +8501,7 @@
       "statement": "A read call carries a 30 s wall-clock deadline and a discovery call a 60 s one, armed by epoch interruption at 100 ms granularity.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 257
+      "line": 263
     },
     {
       "id": "connector.package.session-budget",
@@ -8479,7 +8512,7 @@
       "statement": "A session carries a 1 MiB logging budget, dropping and counting messages past it, and holds at most 8 requests outbound at once.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 258
+      "line": 264
     },
     {
       "id": "connector.package.world-compatibility",
@@ -8490,7 +8523,7 @@
       "statement": "Compatibility is semver over the world: a guest built against one minor loads on any host advertising a compatible minor.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 259
+      "line": 265
     },
     {
       "id": "connector.package.world-drain",
@@ -8501,7 +8534,7 @@
       "statement": "On a major world bump no new run admits against the old world, in-flight runs complete or suspend on the world they pinned, and the old world then retires.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 260
+      "line": 266
     },
     {
       "id": "connector.package.live-reresolution",
@@ -8512,7 +8545,7 @@
       "statement": "Re-resolving or reloading a connector while a journaled run holds it raises `ConnectorHotReload`; a new version applies to runs admitted after it.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 262
+      "line": 268
     },
     {
       "id": "connector.package.built-in-registry",
@@ -8523,7 +8556,7 @@
       "statement": "The names resolving to compiled-in sources form one enumerated list. A listed name carries no manifest or artifact, and a feature-gated entry stays listed and answers with a rebuild hint.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 264
+      "line": 270
     },
     {
       "id": "connector.source.http-headers",
@@ -8534,7 +8567,7 @@
       "statement": "The generic HTTP source binds credentials through a `headers` table whose values are templates in the {{connector.reference.value-template}} grammar, hydrated per read.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 290
+      "line": 296
     },
     {
       "id": "connector.source.body-format",
@@ -8545,7 +8578,7 @@
       "statement": "`format` selects the decoder — `json` by default, `jsonl`, `csv` or a workbook — and one decoder serves the HTTP, file and object sources. Over HTTP the format is explicit; file sources infer it from the extension.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 292
+      "line": 298
     },
     {
       "id": "connector.source.format-key-mismatch",
@@ -8556,7 +8589,7 @@
       "statement": "A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises `ConnectorFormatKeyRejected` at build.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 293
+      "line": 299
     },
     {
       "id": "connector.source.delimited-cell",
@@ -8567,7 +8600,7 @@
       "statement": "A delimited source lands every cell as a string and an empty unquoted field as null.",
       "why": "because a dimension file's schema then depends on no data",
       "file": "spec/40-connector.md",
-      "line": 295
+      "line": 301
     },
     {
       "id": "connector.source.declared-encoding",
@@ -8578,7 +8611,7 @@
       "statement": "A non-UTF-8 delimited body decodes through a declared encoding label, and bytes invalid under it raise `ConnectorEncodingInvalid`.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 297
+      "line": 303
     },
     {
       "id": "connector.source.clock-column-spelling",
@@ -8589,7 +8622,7 @@
       "statement": "A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.",
       "why": "because the watermark compares text",
       "file": "spec/40-connector.md",
-      "line": 299
+      "line": 305
     },
     {
       "id": "connector.source.pagination",
@@ -8600,7 +8633,7 @@
       "statement": "A walk declares exactly one pagination shape: a page parameter with a start page, a next-cursor path with a cursor parameter, a next-URL path, or link-header following.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 301
+      "line": 307
     },
     {
       "id": "connector.source.pagination-ambiguity",
@@ -8611,7 +8644,7 @@
       "statement": "Declaring two pagination shapes raises `ConnectorPaginationAmbiguous`.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 302
+      "line": 308
     },
     {
       "id": "connector.source.page-cap",
@@ -8622,7 +8655,7 @@
       "statement": "One walk issues at most 1000 requests.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 304
+      "line": 310
     },
     {
       "id": "connector.source.page-loop",
@@ -8633,7 +8666,7 @@
       "statement": "A vendor returning a token or link it already served raises `ConnectorPageLoop`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 305
+      "line": 311
     },
     {
       "id": "connector.source.next-link-origin",
@@ -8644,7 +8677,7 @@
       "statement": "A vendor-supplied next link is judged as a hop under {{connector.attach.weakened-hop}}.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 307
+      "line": 313
     },
     {
       "id": "connector.source.table-pattern",
@@ -8655,7 +8688,7 @@
       "statement": "A table pattern binds table-name segments into the request URL, percent-encoded, and each table holds its own position.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 309
+      "line": 315
     },
     {
       "id": "connector.source.table-unmatched",
@@ -8666,7 +8699,7 @@
       "statement": "A table not matching the declared pattern raises `ConnectorTableUnmatched` ahead of any request.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 310
+      "line": 316
     },
     {
       "id": "connector.source.placeholder-unbound",
@@ -8677,7 +8710,7 @@
       "statement": "A URL placeholder with no pattern to bind it raises `ConnectorPlaceholderUnbound` at build.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 312
+      "line": 318
     },
     {
       "id": "connector.source.expansion",
@@ -8688,7 +8721,7 @@
       "statement": "An expansion block names its pointer as a URL template over the landed row's scalar columns, percent-encoded, or as a column holding a URL, and names the column the fetched document lands under.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 314
+      "line": 320
     },
     {
       "id": "connector.source.pointer-ambiguity",
@@ -8699,7 +8732,7 @@
       "statement": "Declaring both pointer forms raises `ConnectorPointerAmbiguous`.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 315
+      "line": 321
     },
     {
       "id": "connector.source.expansion-order",
@@ -8710,7 +8743,7 @@
       "statement": "Expansion runs after the watermark filter, and follow-ups are issued one at a time.",
       "why": "because a rejected row then costs no vendor request and no batch bursts one host",
       "file": "spec/40-connector.md",
-      "line": 317
+      "line": 323
     },
     {
       "id": "connector.source.follow-up-failure",
@@ -8721,7 +8754,7 @@
       "statement": "A failed follow-up raises `ConnectorExpansionFailed` for the whole read.",
       "why": "because a position committed past a row missing its detail strands that row",
       "file": "spec/40-connector.md",
-      "line": 319
+      "line": 325
     },
     {
       "id": "connector.source.expansion-budget",
@@ -8732,7 +8765,7 @@
       "statement": "One expanding read issues at most 200 requests of follow-up, judged before the first, buffers at most 256 MiB, and runs at most 600 s. Each budget refuses rather than truncating.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 321
+      "line": 327
     },
     {
       "id": "connector.source.template-shape",
@@ -8743,7 +8776,7 @@
       "statement": "A pointer template carrying no placeholder, or binding one into the URL authority, raises `ConnectorTemplateRejected` at build.",
       "why": "because a response body then names a credential's destination",
       "file": "spec/40-connector.md",
-      "line": 323
+      "line": 329
     },
     {
       "id": "connector.source.pointer-column-missing",
@@ -8754,7 +8787,7 @@
       "statement": "A placeholder naming a column the rows lack, or carry as an array, raises `ConnectorPointerColumnMissing` on the first row, ahead of its request.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 325
+      "line": 331
     },
     {
       "id": "connector.source.target-column-occupied",
@@ -8765,7 +8798,7 @@
       "statement": "A target column any landed index row already carries raises `ConnectorTargetColumnOccupied` ahead of the walk.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 327
+      "line": 333
     },
     {
       "id": "connector.source.walk-boundary",
@@ -8776,7 +8809,7 @@
       "statement": "A directory walk reaches the configured root and nothing outside it, skips dot-entries, and traverses in sorted order. A decode-selecting key narrows nothing.",
       "why": "because a sorted walk over an unchanged tree reproduces across hosts",
       "file": "spec/40-connector.md",
-      "line": 329
+      "line": 335
     },
     {
       "id": "connector.source.declined-tally",
@@ -8787,7 +8820,7 @@
       "statement": "A directory walk records on the run record what it declined, tallied by extension.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 331
+      "line": 337
     },
     {
       "id": "connector.source.document-grain",
@@ -8798,7 +8831,7 @@
       "statement": "A document source lands one row per page, or one row per heading past a length threshold. With a base URL, each row links to its own page anchor.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 333
+      "line": 339
     },
     {
       "id": "connector.source.document-identity",
@@ -8809,7 +8842,7 @@
       "statement": "A document row's identity is a slug plus an ordinal, chunked or not.",
       "why": "because an identity then survives a document crossing the threshold",
       "file": "spec/40-connector.md",
-      "line": 334
+      "line": 340
     },
     {
       "id": "connector.source.document-unreadable",
@@ -8820,7 +8853,7 @@
       "statement": "An encrypted document, and one with no extractable text on any page, is unreadable input under {{run.land.unreadable-input}} and never lands as empty pages.",
       "why": "P2",
       "file": "spec/40-connector.md",
-      "line": 336
+      "line": 342
     },
     {
       "id": "connector.source.frontmatter-shape",
@@ -8831,7 +8864,7 @@
       "statement": "A nested map, a block scalar, or a key carrying the reserved producer prefix in a note's frontmatter raises `ConnectorFrontmatterRejected`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 338
+      "line": 344
     },
     {
       "id": "connector.source.conversion-required",
@@ -8842,7 +8875,7 @@
       "statement": "A compound-binary office container, detected by magic bytes as well as extension, raises `ConnectorConversionRequired` naming the conversion command.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 340
+      "line": 346
     },
     {
       "id": "connector.source.parse-containment",
@@ -8853,7 +8886,7 @@
       "statement": "A compiled-in source decodes behind {{run.land.parse-boundary}}.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 342
+      "line": 348
     },
     {
       "id": "connector.source.office-part-selection",
@@ -8864,7 +8897,7 @@
       "statement": "An office container is read by exact part name. No other part is opened and no external entity is resolved.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 344
+      "line": 350
     },
     {
       "id": "connector.source.decompression-budget",
@@ -8875,7 +8908,7 @@
       "statement": "A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 346
+      "line": 352
     },
     {
       "id": "connector.source.worksheet-landing",
@@ -8886,7 +8919,7 @@
       "statement": "One worksheet lands at most 64 MiB of resolved cell text, counted as cells land, and at most 1048576 rows.",
       "why": "because shared-string fan-out turns a small input into an unbounded output",
       "file": "spec/40-connector.md",
-      "line": 348
+      "line": 354
     },
     {
       "id": "connector.source.cell-out-of-range",
@@ -8897,7 +8930,7 @@
       "statement": "A cell past the header's width raises `ConnectorCellOutOfRange`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 350
+      "line": 356
     },
     {
       "id": "connector.source.external-reference",
@@ -8908,7 +8941,7 @@
       "statement": "An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 352
+      "line": 358
     },
     {
       "id": "connector.source.workbook-cell-typing",
@@ -8919,7 +8952,7 @@
       "statement": "A workbook cell lands as a string and a date cell as its serial number. No formula is evaluated; a formula cell lands its cached value.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 354
+      "line": 360
     },
     {
       "id": "connector.source.workbook-incremental",
@@ -8930,7 +8963,7 @@
       "statement": "An incremental position against a workbook raises `ConnectorIncrementalUnsupported`.",
       "why": "because a variable-width serial number advances a lexicographic watermark past unlanded rows",
       "file": "spec/40-connector.md",
-      "line": 356
+      "line": 362
     },
     {
       "id": "connector.source.report-id-commit",
@@ -8941,7 +8974,7 @@
       "statement": "An async-report source commits the vendor's run id the instant creation returns it. An exhausted polling budget ends the read successfully, and an expired vendor run is recreated for the same window.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 358
+      "line": 364
     },
     {
       "id": "connector.source.page-drain",
@@ -8952,7 +8985,7 @@
       "statement": "Report paging drains a fixed number of pages per read, one batch per page, each carrying the position after it.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 360
+      "line": 366
     },
     {
       "id": "connector.source.page-cursor-missing",
@@ -8963,7 +8996,7 @@
       "statement": "A response announcing another page while naming its cursor in neither the cursor field nor the next link raises `ConnectorPageCursorMissing`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 361
+      "line": 367
     },
     {
       "id": "connector.source.report-watermark",
@@ -8974,7 +9007,7 @@
       "statement": "Report watermarks are held per partition — account, grain, breakdown and any split dimension — as a versioned map inside one position.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 363
+      "line": 369
     },
     {
       "id": "connector.source.partition-isolation",
@@ -8985,7 +9018,7 @@
       "statement": "A retryable failure on one partition holds it at its committed position and keeps the pages other partitions drained.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 364
+      "line": 370
     },
     {
       "id": "connector.source.metric-grain",
@@ -8996,7 +9029,7 @@
       "statement": "A metric read at a grain where the vendor estimates rather than computes it raises `ConnectorMetricGrainRejected`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 366
+      "line": 372
     },
     {
       "id": "connector.source.restated-window",
@@ -9007,7 +9040,7 @@
       "statement": "A caught-up partition re-opens its lookback window every run, the pull window is at least that wide, and each row carries a deterministic key over partition, entity, date and breakdown.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 368
+      "line": 374
     },
     {
       "id": "connector.source.report-event-time",
@@ -9018,7 +9051,7 @@
       "statement": "A report row's event time is an RFC 3339 instant at midnight UTC of the window-start day, null where the vendor gave no usable date.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 369
+      "line": 375
     },
     {
       "id": "connector.source.ordering-column",
@@ -9029,7 +9062,7 @@
       "statement": "Ordering a report stream by the engine-injected ingest stamp raises `ConnectorOrderingColumnRejected`.",
       "why": "because a late seed then outranks a live restatement",
       "file": "spec/40-connector.md",
-      "line": 370
+      "line": 376
     },
     {
       "id": "connector.source.field-drift",
@@ -9040,7 +9073,7 @@
       "statement": "Report rows stay untyped JSON into the batch, and throttling is recognized from a throttle status or from an error body carrying a throttle code.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 372
+      "line": 378
     },
     {
       "id": "connector.source.report-auth",
@@ -9051,7 +9084,7 @@
       "statement": "An authentication failure on a report read raises `ConnectorAuthTerminal`, terminal against the retry schedule.",
       "why": "P6",
       "file": "spec/40-connector.md",
-      "line": 373
+      "line": 379
     },
     {
       "id": "connector.source.image-row",
@@ -9062,7 +9095,7 @@
       "statement": "An image source lands path, content hash, header width and height, embedded capture instant, file modification time, a modality marker and a null body. No pixel decode runs on ingest.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 375
+      "line": 381
     },
     {
       "id": "connector.source.image-header",
@@ -9073,7 +9106,7 @@
       "statement": "An image header that does not parse raises `ConnectorImageHeaderUnreadable` naming the path.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 376
+      "line": 382
     },
     {
       "id": "connector.source.quotability-marker",
@@ -9084,7 +9117,7 @@
       "statement": "Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model's reading.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 378
+      "line": 384
     },
     {
       "id": "connector.source.marker-body-pairing",
@@ -9095,7 +9128,7 @@
       "statement": "An image body and its quotability marker that are not null together raise `ConnectorQuotabilityMismatch`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 379
+      "line": 385
     },
     {
       "id": "connector.source.search-config",
@@ -9106,7 +9139,7 @@
       "statement": "The search source takes a driver, a query, a freshness window and a result ceiling, landing one row per result. Its cursor kind is snapshot-id, keyed on the result URL.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 381
+      "line": 387
     },
     {
       "id": "connector.source.provider-origin",
@@ -9117,7 +9150,7 @@
       "statement": "Each search provider's host is pinned at the call site; a non-TLS transport or another host raises `ConnectorProviderOriginRejected`, loopback excepted.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 382
+      "line": 388
     },
     {
       "id": "connector.source.search-degradation",
@@ -9128,7 +9161,7 @@
       "statement": "An absent provider key and a provider `5xx` are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 384
+      "line": 390
     },
     {
       "id": "connector.source.poll-only-increments",
@@ -9139,7 +9172,7 @@
       "statement": "Incremental loading is a scheduled poll. A replication socket held open is not a source read.",
       "why": "because its output is unbounded and has no recorded exchange to replay",
       "file": "spec/40-connector.md",
-      "line": 385
+      "line": 391
     },
     {
       "id": "connector.source.twin-api",
@@ -9150,7 +9183,7 @@
       "statement": "A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. A sanctioned, disclosed organization-wide export path is admitted.",
       "why": "A-read",
       "file": "spec/40-connector.md",
-      "line": 387
+      "line": 393
     },
     {
       "id": "connector.reference.credential-plane",
@@ -16509,6 +16542,10 @@
       "run.cancel.child-reaped"
     ],
     [
+      "connector.meter.denial-ceiling",
+      "run.retry.retry-after"
+    ],
+    [
       "connector.infer.vendor-sdk",
       "topology.compose.vendor-sdk"
     ],
@@ -17999,6 +18036,10 @@
             "clause": "connector.source.format-key-mismatch",
             "gloss": "A record path, pagination shape or decode key the chosen format does not read."
           },
+          "ConnectorForwardRejected": {
+            "clause": "connector.meter.forward-credential",
+            "gloss": "A limiter declaration forwarding a credential-bearing response header."
+          },
           "ConnectorFrontmatterRejected": {
             "clause": "connector.source.frontmatter-shape",
             "gloss": "A nested map, block scalar or reserved-prefix key in a note's frontmatter."
@@ -18033,7 +18074,7 @@
           },
           "ConnectorLimiterBindingRejected": {
             "clause": "connector.meter.binding-transport",
-            "gloss": "A non-HTTPS limiter endpoint, or an inline literal limiter token."
+            "gloss": "A non-HTTPS limiter endpoint, one carrying a query, fragment or userinfo, or a limiter token that is not a secret reference."
           },
           "ConnectorLimiterUnreadable": {
             "clause": "connector.meter.unreadable-answer",

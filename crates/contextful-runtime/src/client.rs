@@ -1,8 +1,10 @@
 //! The mediated client: the one path every outbound request takes. It judges the request
 //! against the declaration ahead of socket I/O, resolves the host once and connects to
 //! the address it vetted, attaches credentials, and follows a hop only within the
-//! configured origin.
+//! configured origin. A metered client reserves one permit per request after the
+//! allowlist admits it and before any byte leaves.
 
+use crate::limiter::Meter;
 use contextful_core::connector::attach::{check_hop, check_transport, scrub, vet_address, Allowlist};
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::connector::ConnectorError;
@@ -90,8 +92,8 @@ impl Resolver for Vetted {
     }
 }
 
-fn agent(vetted: &Vetted, hardened: bool) -> ureq::Agent {
-    let mut builder = Config::builder().max_redirects(0).http_status_as_error(false).timeout_global(Some(REQUEST_TIMEOUT)).save_redirect_history(false);
+fn agent(vetted: &Vetted, hardened: bool, timeout: Duration) -> ureq::Agent {
+    let mut builder = Config::builder().max_redirects(0).http_status_as_error(false).timeout_global(Some(timeout)).save_redirect_history(false);
     if hardened {
         // A request carrying a declared header takes the hardened client, which bypasses the system proxy.
         builder = builder.proxy(None);
@@ -132,13 +134,32 @@ pub struct Client {
     /// One agent per proxy posture, reused across every request of the client's life.
     hardened: ureq::Agent,
     proxied: ureq::Agent,
+    /// The shared quota every request reserves against, when the connector declares one.
+    meter: Option<Meter>,
+    /// Whether a permitted host may resolve to an internal address: the operator's own
+    /// limiter only (`connector.meter.limiter-address`).
+    internal: bool,
 }
 
 impl Client {
     pub fn new(allow: Allowlist, origin: Url) -> Client {
         let vetted = Vetted::default();
-        let (hardened, proxied) = (agent(&vetted, true), agent(&vetted, false));
-        Client { allow, origin, sensitive: Mutex::default(), vetted, max_body: MAX_BODY_BYTES, read_body: true, hardened, proxied }
+        let (hardened, proxied) = (agent(&vetted, true, REQUEST_TIMEOUT), agent(&vetted, false, REQUEST_TIMEOUT));
+        Client { allow, origin, sensitive: Mutex::default(), vetted, max_body: MAX_BODY_BYTES, read_body: true, hardened, proxied, meter: None, internal: false }
+    }
+
+    /// The client with a shorter wall clock per request than [`REQUEST_TIMEOUT`].
+    pub fn with_timeout(mut self, timeout: Duration) -> Client {
+        let timeout = timeout.min(REQUEST_TIMEOUT);
+        (self.hardened, self.proxied) = (agent(&self.vetted, true, timeout), agent(&self.vetted, false, timeout));
+        self
+    }
+
+    /// The client admitting an internal address for its permitted hosts. Only the
+    /// operator-authored limiter endpoint takes it; a vendor host never does.
+    pub(crate) fn admitting_internal(mut self) -> Client {
+        self.internal = true;
+        self
     }
 
     /// The client with a lower body ceiling than [`MAX_BODY_BYTES`].
@@ -151,6 +172,12 @@ impl Client {
     /// and its body is dropped unread.
     pub fn without_body(mut self) -> Client {
         self.read_body = false;
+        self
+    }
+
+    /// The client reserving every request against `meter` (`connector.meter.reservation-point`).
+    pub fn metered(mut self, meter: Meter) -> Client {
+        self.meter = Some(meter);
         self
     }
 
@@ -179,8 +206,10 @@ impl Client {
         if addrs.is_empty() {
             return Err(Failure::new(FailureTag::Transient, format!("`{host}` resolves to no address")));
         }
-        for a in &addrs {
-            vet_address(self.origin.host_str().unwrap_or_default(), a.ip()).map_err(deny)?;
+        if !self.internal {
+            for a in &addrs {
+                vet_address(self.origin.host_str().unwrap_or_default(), a.ip()).map_err(deny)?;
+            }
         }
         Ok(addrs)
     }
@@ -200,6 +229,10 @@ impl Client {
         check_hop(&self.origin, &current).map_err(deny)?;
         for _ in 0..=MAX_HOPS {
             let addr = self.admit(&current, headers)?;
+            // A request the allowlist refuses never reaches the limiter (`connector.meter.allowlist-precedence`).
+            if let Some(meter) = &self.meter {
+                meter.reserve()?;
+            }
             self.vetted.pin(current.host_str().unwrap_or_default(), current.port_or_known_default().unwrap_or(443), addr);
             let agent = if headers.is_empty() { &self.proxied } else { &self.hardened };
             let mut req = ureq::http::Request::builder().method(method).uri(current.as_str());
@@ -218,6 +251,9 @@ impl Client {
             let status = resp.status().as_u16();
             let headers_out: Vec<(String, String)> =
                 resp.headers().iter().map(|(k, v)| (k.as_str().to_string(), String::from_utf8_lossy(v.as_bytes()).into_owned())).collect();
+            if let Some(meter) = &self.meter {
+                meter.observe(status, &headers_out);
+            }
             if follow && (300..400).contains(&status) {
                 let location = headers_out.iter().find(|(k, _)| k.eq_ignore_ascii_case("location")).map(|(_, v)| v.clone());
                 if let Some(loc) = location {

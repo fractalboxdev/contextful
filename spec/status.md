@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 13 | 179 | 47 | 19 | 13 | 68 | 0 | 68 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
-| `connector` | 2 | 13 | 230 | 72 | 14 | 7 | 58 | 0 | 58 |
+| `connector` | 2 | 13 | 233 | 73 | 14 | 7 | 69 | 0 | 69 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 155 | 37 | 12 | 8 | 111 | 0 | 111 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1454 | 467 | 162 | 101 | 677 | 0 | |
+| **total** | 19 | 145 | 1457 | 468 | 162 | 101 | 688 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
-| 4 — Ingest | 22 | 330 | 87 | passing |
+| 4 — Ingest | 22 | 333 | 98 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 39 | 34 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
@@ -303,6 +303,17 @@ Unscheduled operations: 10.
 | `connector.lease.transient-class` | `crates/contextful-runtime/tests/integration/lease.rs::server_and_transport_failures_are_transient_and_tried_once` | performed |
 | `connector.lease.undeclared-name-defers` | `crates/contextful-runtime/tests/integration/lease.rs::an_undeclared_name_passes_the_provider_by` | performed |
 | `connector.lease.unknown-scope` | `crates/contextful-runtime/tests/integration/lease.rs::an_unknown_scope_is_a_configuration_fault_with_no_fallthrough` | performed |
+| `connector.meter.acquire` | `crates/contextful-runtime/tests/integration/meter.rs::a_denial_a_bare_429_and_a_zero_grant_all_hold_the_request_back` | performed |
+| `connector.meter.allowlist-precedence` | `crates/contextful-runtime/tests/integration/meter.rs::a_refused_request_never_reaches_the_limiter` | performed |
+| `connector.meter.counting-not-pricing` | `crates/contextful-core/tests/integration/connector/meter.rs::the_wire_counts_requests_and_prices_none` | performed |
+| `connector.meter.denial-ceiling` | `crates/contextful-core/tests/integration/connector/meter.rs::a_limiter_wait_caps_at_the_retry_after_ceiling` | performed |
+| `connector.meter.limiter-address` | `crates/contextful-runtime/tests/integration/meter.rs::a_limiter_on_a_private_address_is_not_refused_as_one` | performed |
+| `connector.meter.limiter-binding` | `crates/contextful-core/tests/integration/connector/meter.rs::a_binding_names_an_endpoint_a_token_reference_and_a_batch_size` | performed |
+| `connector.meter.permit-batch` | `crates/contextful-runtime/tests/integration/meter.rs::a_batch_is_spent_one_permit_per_request_and_surrendered_on_report` | performed |
+| `connector.meter.report` | `crates/contextful-runtime/tests/integration/meter.rs::the_report_carries_the_accounting_the_responses_and_the_run` | performed |
+| `connector.meter.reservation-point` | `crates/contextful-runtime/tests/integration/meter.rs::each_outbound_request_spends_one_permit` | performed |
+| `connector.meter.unmetered-request` | `crates/contextful-runtime/tests/integration/meter.rs::no_granted_reservation_means_no_request` | performed |
+| `connector.meter.unreadable-answer` | `crates/contextful-runtime/tests/integration/meter.rs::an_unreadable_answer_fails_the_request_before_the_vendor` | performed |
 | `connector.reference.environment-is-a-miss` | `crates/contextful-runtime/tests/integration/resolve.rs::the_environment_answers_no_template` | performed |
 | `connector.reference.foreign-placeholder` | `crates/contextful-core/tests/integration/connector/reference.rs::an_environment_or_bare_placeholder_is_foreign` | performed |
 | `connector.reference.malformed-placeholder` | `crates/contextful-core/tests/integration/connector/reference.rs::an_unclosed_empty_or_nested_placeholder_is_malformed` | performed |
