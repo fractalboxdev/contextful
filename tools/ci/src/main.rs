@@ -15,7 +15,7 @@ const STAGES: [&str; 4] = ["schema", "test-first", "workspace", "acceptance"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
 const REFACTOR_TRAILER: &str = "refactor";
-/// Wall clock one test-first invocation against the base runs for: 300 s
+/// Wall clock one test-first execution against the base runs for, its build excluded: 300 s
 /// (`assurance.test.base-run-bound`). A run still going is killed with its process group
 /// and counts red, because a test that does not finish at base does not pass there.
 const BASE_RUN_BOUND_SECS: u64 = 300;
@@ -54,7 +54,7 @@ enum Cmd {
         /// The revision the change is measured against.
         #[arg(long, default_value = "origin/HEAD")]
         base: String,
-        /// Overrides the wall clock of one test-first invocation against the base.
+        /// Overrides the wall clock of one test-first execution against the base.
         #[arg(long, hide = true, default_value_t = BASE_RUN_BOUND_SECS)]
         base_bound_secs: u64,
     },
@@ -480,9 +480,15 @@ enum BaseRun {
     Killed,
 }
 
-/// Run `cmd` in a process group of its own for at most `bound`, echoing its output to
-/// stderr and returning its standard error. A run past the bound has its whole group killed.
-fn run_bounded(mut cmd: Command, bound: Duration) -> Result<(BaseRun, String)> {
+/// What one base invocation printed.
+struct Printed {
+    stdout: String,
+    stderr: String,
+}
+
+/// Run `cmd` in a process group of its own, for at most `bound` when one is given; a run
+/// past the bound has its whole group killed.
+fn run_bounded(mut cmd: Command, bound: Option<Duration>) -> Result<(BaseRun, Printed)> {
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
@@ -494,7 +500,7 @@ fn run_bounded(mut cmd: Command, bound: Duration) -> Result<(BaseRun, String)> {
         if let Some(status) = child.try_wait()? {
             break if status.success() { BaseRun::Passed } else { BaseRun::Failed };
         }
-        if started.elapsed() >= bound {
+        if bound.is_some_and(|b| started.elapsed() >= b) {
             let _ = Command::new("kill").args(["-KILL", "--", &format!("-{pgid}")]).status();
             let _ = child.kill();
             let _ = child.wait();
@@ -504,24 +510,48 @@ fn run_bounded(mut cmd: Command, bound: Duration) -> Result<(BaseRun, String)> {
     };
     // The group is gone, so both pipes close; the deadline guards one held elsewhere.
     let deadline = Instant::now() + Duration::from_secs(10);
-    let (stdout, stderr) = (String::from_utf8_lossy(&gather(&out, deadline)).into_owned(), String::from_utf8_lossy(&gather(&err, deadline)).into_owned());
-    eprint!("{stdout}{stderr}");
-    Ok((run, stderr))
+    let printed = Printed {
+        stdout: String::from_utf8_lossy(&gather(&out, deadline)).into_owned(),
+        stderr: String::from_utf8_lossy(&gather(&err, deadline)).into_owned(),
+    };
+    Ok((run, printed))
 }
 
-/// The infrastructure fault a base invocation's standard error names, if any: a full disk,
-/// a workspace or manifest that does not load, a dependency that does not fetch. Standard
-/// output is never read: it carries the tests' own reports, which may quote any of these.
-fn infrastructure_fault(output: &str) -> Option<String> {
-    output
-        .lines()
-        .find(|l| INFRASTRUCTURE_FAULTS.iter().any(|f| l.contains(f)) || (l.trim_start().starts_with("--> ") && l.contains("Cargo.toml:")))
-        .map(|l| l.trim().to_string())
+/// The infrastructure fault cargo's own standard error names, if any: a full disk, a
+/// workspace or manifest that does not load, a dependency that does not fetch. Only
+/// cargo's lines are read — a top-level `error:` line, the `Caused by:` chain under it,
+/// and a TOML diagnostic pointing into a `Cargo.toml` — never rustc's source excerpts or
+/// standard output, both of which quote the tests' own text.
+fn infrastructure_fault(stderr: &str) -> Option<String> {
+    let mut in_chain = false;
+    for line in stderr.lines() {
+        let cargo_line = if line.starts_with("error:") {
+            in_chain = false;
+            true
+        } else if line == "Caused by:" {
+            in_chain = true;
+            false
+        } else if in_chain && line.starts_with("  ") && !line.trim().is_empty() {
+            true
+        } else {
+            in_chain = false;
+            let t = line.trim_start();
+            if t.starts_with("--> ") && line[..line.len() - t.len()].chars().all(char::is_whitespace) && t.contains("Cargo.toml:") {
+                return Some(line.trim().to_string());
+            }
+            false
+        };
+        if cargo_line && INFRASTRUCTURE_FAULTS.iter().any(|f| line.contains(f)) {
+            return Some(line.trim().to_string());
+        }
+    }
+    None
 }
 
-/// Overlay the change's test files on the base tree and run only those tests there, each
-/// invocation bounded; return each selection that fails, fails to compile, or outruns its
-/// bound. An infrastructure fault fails the stage rather than reading as red.
+/// Overlay the change's test files on the base tree and run only those tests there;
+/// return each selection that fails to compile, fails, or outruns its bound. A build runs
+/// unbounded, and only the tests' execution answers to the bound. An infrastructure fault
+/// fails the stage rather than reading as red.
 ///
 /// A package the base lacks counts red by construction and none of its files is copied,
 /// so a test directory with no manifest never stops the base workspace from loading and
@@ -544,28 +574,70 @@ fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str], bou
         present.push(t);
     }
     for sel in selections(tree, &present) {
-        let mut cmd = Command::new("cargo");
-        cmd.args(["test", "-q", "--manifest-path"]).arg(tree.join(&sel.pkg).join("Cargo.toml"));
-        match &sel.target {
-            Some(t) => cmd.args(["--test", t]),
-            None => cmd.arg("--tests"),
-        };
-        if !sel.filters.is_empty() {
-            cmd.arg("--").args(&sel.filters);
-        }
-        cmd.env("CARGO_TARGET_DIR", target).current_dir(tree);
         let label = format!(
             "{} ({}{})",
             sel.pkg,
             sel.target.as_deref().unwrap_or("every test target"),
             if sel.filters.is_empty() { String::new() } else { format!(": {}", sel.filters.join(" ")) }
         );
-        let (run, stderr) = run_bounded(cmd, bound)?;
-        if let Some(fault) = infrastructure_fault(&stderr).filter(|_| !matches!(run, BaseRun::Passed)) {
-            return Err(refuse(
-                "TestFirstBaseUnrunnable",
-                format!("{label} did not run at base: `{fault}`; the base workspace or its manifest does not load there, which is no verdict on the change"),
-            ));
+        let cargo = |extra: &[&str], after: &[String]| {
+            let mut cmd = Command::new("cargo");
+            cmd.args(["test", "-q"]).args(extra).arg("--manifest-path").arg(tree.join(&sel.pkg).join("Cargo.toml"));
+            match &sel.target {
+                Some(t) => cmd.args(["--test", t]),
+                None => cmd.arg("--tests"),
+            };
+            if !after.is_empty() {
+                cmd.arg("--").args(after);
+            }
+            cmd.env("CARGO_TARGET_DIR", target).current_dir(tree);
+            cmd
+        };
+        let unrunnable = |printed: &Printed| -> Result<()> {
+            match infrastructure_fault(&printed.stderr) {
+                Some(fault) => Err(refuse(
+                    "TestFirstBaseUnrunnable",
+                    format!("{label} did not run at base: `{fault}`; the machine, the base workspace or a manifest stopped it, which is no verdict on the change"),
+                )),
+                None => Ok(()),
+            }
+        };
+        // Build: unbounded, since a cold base compile says nothing about the tests.
+        let (built, printed) = run_bounded(cargo(&["--no-run"], &[]), None)?;
+        eprint!("{}{}", printed.stdout, printed.stderr);
+        if !matches!(built, BaseRun::Passed) {
+            unrunnable(&printed)?;
+            red.push(format!("{label}, which does not compile at base"));
+            continue;
+        }
+        // Select: the exact names under each changed top-level module.
+        let mut run_args: Vec<String> = Vec::new();
+        if !sel.filters.is_empty() {
+            let (listed, printed) = run_bounded(cargo(&[], &["--list".into(), "--format".into(), "terse".into()]), Some(bound))?;
+            if !matches!(listed, BaseRun::Passed) {
+                eprint!("{}{}", printed.stdout, printed.stderr);
+                unrunnable(&printed)?;
+                red.push(format!("{label}, whose tests do not list at base"));
+                continue;
+            }
+            let names: Vec<String> = printed
+                .stdout
+                .lines()
+                .filter_map(|l| l.strip_suffix(": test"))
+                .filter(|n| sel.filters.iter().any(|f| n.starts_with(f.as_str())))
+                .map(str::to_string)
+                .collect();
+            if names.is_empty() {
+                continue;
+            }
+            run_args.push("--exact".into());
+            run_args.extend(names);
+        }
+        // Run: bounded, since a test that does not finish at base does not pass there.
+        let (run, printed) = run_bounded(cargo(&[], &run_args), Some(bound))?;
+        eprint!("{}{}", printed.stdout, printed.stderr);
+        if !matches!(run, BaseRun::Passed) {
+            unrunnable(&printed)?;
         }
         match run {
             BaseRun::Passed => {}

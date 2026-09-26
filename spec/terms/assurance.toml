@@ -92,4 +92,4 @@ assurance-rank-dead-band         = { clause = "assurance.baseline.rank-quality-d
 assurance-gated-mean-cases       = { clause = "assurance.baseline.unresolvable-path", value = 30, unit = "cases", basis = "chosen", gloss = "Fewest cases behind a gated mean." }
 assurance-interval-level         = { clause = "assurance.baseline.interval", value = 95, unit = "percent", basis = "chosen", gloss = "Confidence level of a judged figure's interval." }
 assurance-bootstrap-resamples    = { clause = "assurance.baseline.interval", value = 1000, unit = "resamples", basis = "chosen", gloss = "Bootstrap resamples behind a judged figure's interval." }
-assurance-test-first-base-run    = { clause = "assurance.test.base-run-bound", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock one test-first invocation against the base runs for." }
+assurance-test-first-base-run    = { clause = "assurance.test.base-run-bound", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock one test-first execution against the base runs for, its build excluded." }

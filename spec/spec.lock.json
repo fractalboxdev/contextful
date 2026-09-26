@@ -14922,7 +14922,7 @@
       "operation": "test",
       "subject": "test-first-scope",
       "kind": "behavior",
-      "statement": "The test-first stage runs only the change's test files against the base source, each as its test target filtered to its top-level module; a target failing to compile there counts as failing.",
+      "statement": "The test-first stage builds each changed test file's target against the base source, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 91
@@ -14933,7 +14933,7 @@
       "operation": "test",
       "subject": "base-run-bound",
       "kind": "limit",
-      "statement": "One test-first invocation against the base runs for at most 300 s; a run past the bound is killed with its process group and counts as failing.",
+      "statement": "One test-first execution against the base, its build excluded, runs for at most 300 s; a run past the bound is killed with its process group and counts as failing.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 92
@@ -17198,7 +17198,7 @@
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Wall clock one test-first invocation against the base runs for."
+            "gloss": "Wall clock one test-first execution against the base runs for, its build excluded."
           }
         }
       },
