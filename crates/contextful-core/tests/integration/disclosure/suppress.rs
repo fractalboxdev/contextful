@@ -78,6 +78,11 @@ fn dominance_unverifiable() {
         evaluate_group(&p, &group(100, Some(vec![1.0, f64::NAN]))),
         GroupDecision::Suppress(SuppressReason::DominanceUnverifiable)
     );
+    // Finite masses whose sum overflows verify no share either.
+    assert_eq!(
+        evaluate_group(&p, &group(100, Some(vec![f64::MAX, f64::MAX * 0.02]))),
+        GroupDecision::Suppress(SuppressReason::DominanceUnverifiable)
+    );
     // An empty mass list verifies no contributor's share.
     assert_eq!(evaluate_group(&p, &group(100, Some(vec![]))), GroupDecision::Suppress(SuppressReason::DominanceUnverifiable));
     // Without a share constraint, absent masses decide nothing.
@@ -125,6 +130,9 @@ fn a_policy_parses_from_its_declaration_and_validates_on_load() {
     assert!(err.contains("DisclosureMinGroupSizeBelowFloor"), "{err}");
     let err = toml::from_str::<SuppressPolicy>("max_contributor_share = 40.0\n").unwrap_err().to_string();
     assert!(err.contains("DisclosureShareOutOfRange"), "{err}");
+    // A misspelt threshold beside a valid one refuses instead of dropping the floor.
+    let err = toml::from_str::<SuppressPolicy>("max_contributor_share = 0.4\nmin_grup_size = 5\n").unwrap_err().to_string();
+    assert!(err.contains("min_grup_size"), "{err}");
 }
 
 #[test]

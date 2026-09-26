@@ -26,8 +26,10 @@ pub struct SuppressPolicy {
     max_contributor_share: Option<f64>,
 }
 
-/// The thresholds as declared, before validation.
+/// The thresholds as declared, before validation. An unknown key refuses, so a misspelt
+/// threshold never drops silently beside a valid one.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PolicyDecl {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_group_size: Option<u64>,
@@ -136,6 +138,10 @@ pub fn evaluate_group(policy: &SuppressPolicy, stats: &GroupStats) -> GroupDecis
         _ => return GroupDecision::Suppress(SuppressReason::DominanceUnverifiable),
     };
     let total: f64 = masses.iter().map(|m| m.abs()).sum();
+    // Finite masses whose sum overflows leave no share to compare.
+    if !total.is_finite() {
+        return GroupDecision::Suppress(SuppressReason::DominanceUnverifiable);
+    }
     // A group of zero total mass discloses no contributor's figure.
     if total > 0.0 {
         let top = masses.iter().map(|m| m.abs()).fold(0.0, f64::max);
