@@ -12744,7 +12744,7 @@
       "operation": "declare-fidelity",
       "subject": "family-bound",
       "kind": "refusal",
-      "statement": "A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound` and the table does not load.",
+      "statement": "A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound`, and the manifest declaring it does not load.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
       "line": 118

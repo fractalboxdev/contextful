@@ -24,4 +24,15 @@ pub enum PolicyError {
     Authority(#[from] AuthorityError),
     #[error(transparent)]
     Malformed(#[from] DeclarationMalformed),
+    #[error(transparent)]
+    Visibility(#[from] contextful_core::disclosure::VisibilityError),
+}
+
+impl From<contextful_core::disclosure::declare::DeclareError> for PolicyError {
+    fn from(e: contextful_core::disclosure::declare::DeclareError) -> Self {
+        match e {
+            contextful_core::disclosure::declare::DeclareError::Malformed(m) => PolicyError::Malformed(m),
+            contextful_core::disclosure::declare::DeclareError::Visibility(v) => PolicyError::Visibility(v),
+        }
+    }
 }

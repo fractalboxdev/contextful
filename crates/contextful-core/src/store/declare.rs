@@ -95,7 +95,10 @@ impl TableDecl {
     /// Every table block of a pipeline manifest: the `[[pipeline.tables]]` of a
     /// `[pipeline]` table as named, and those of each `[[pipeline]]` specification under
     /// its destination name `<pipeline id>_<table name>` (`run.declare.table-name`).
-    pub fn parse_pipeline(toml_text: &str) -> Result<Vec<TableDecl>, DeclarationMalformed> {
+    ///
+    /// A table's visibility block outside its family bound or budget grammar refuses the
+    /// manifest with its typed refusal (`disclosure.declare-fidelity.family-bound`).
+    pub fn parse_pipeline(toml_text: &str) -> Result<Vec<TableDecl>, crate::disclosure::declare::DeclareError> {
         let value: toml::Value = toml::from_str(toml_text).map_err(|e| DeclarationMalformed(e.to_string()))?;
         let tables = match value.get("pipeline") {
             Some(toml::Value::Array(specs)) => {
@@ -120,6 +123,7 @@ impl TableDecl {
         };
         for t in &tables {
             t.retain_runs_secs()?;
+            crate::disclosure::declare::Binding::of(t)?;
         }
         Ok(tables)
     }

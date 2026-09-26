@@ -154,7 +154,13 @@ fn plan(spec: &PipelineSpec, table: &str) -> Result<Plan> {
 pub fn run(cmd: PipelineCmd) -> Result<()> {
     match cmd {
         PipelineCmd::Validate { declaration } => {
-            for d in collect(&manifests(&declaration)?)? {
+            let files = manifests(&declaration)?;
+            // Store tables declared under `[pipeline]` answer to the same load checks the
+            // store and the read face run.
+            for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
+                TableDecl::parse_pipeline(&f.text).with_context(|| f.path.clone())?;
+            }
+            for d in collect(&files)? {
                 check(&d.spec, &declaration).with_context(|| format!("{}:{}", d.file, d.line))?;
                 println!("{}: valid ({} tables, content hash {})", d.spec.id, d.spec.tables.len(), &d.spec.content_hash()[..16]);
             }

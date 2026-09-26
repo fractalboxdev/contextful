@@ -47,7 +47,7 @@ replicate = false
 subject_id = "owner"
 class = { owner = "email" }
 policy = "owner_only"
-visibility = "source"
+visibility = { source = "notes", resource_key = "note_id", fidelity = "mirrored", family = "item-exception" }
 view = "SELECT 1"
 agent_description = "Meeting notes"
 agent_hint = "Filter by owner"

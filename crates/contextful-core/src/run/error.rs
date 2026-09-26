@@ -120,6 +120,9 @@ pub enum RunError {
     /// A history window bound outside the two accepted spellings. (`run.record.bound-spelling`)
     #[error("HistoryBoundSpelling: {0}")]
     HistoryBoundSpelling(String),
+    /// A table's visibility block refused by the `disclosure` contract, carried typed.
+    #[error(transparent)]
+    Visibility(#[from] crate::disclosure::VisibilityError),
     /// An input outside a shape the contract bounds without naming a refusal.
     #[error("invalid: {0}")]
     Invalid(String),

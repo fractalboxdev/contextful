@@ -4,6 +4,7 @@ pub mod attenuate;
 pub mod claims;
 pub mod connector;
 pub mod coordinate;
+pub mod disclosure;
 pub mod enforce;
 pub mod error;
 pub mod exchange;

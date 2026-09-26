@@ -115,7 +115,7 @@ The declared age budget on mirrored authorization, the refusal past it, and the 
 
 The fidelity level a table claims, the source family bounding the claim, and live federation under a reader's delegated credential.
 
-- `family-bound` — A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound` and the table does not load.
+- `family-bound` — A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound`, and the manifest declaring it does not load.
   *A-disclosure*
 - `family-undeclared` — A mapping landing a table without naming its `family` raises `VisibilityFamilyUndeclared`.
   *A-disclosure*
