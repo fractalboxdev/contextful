@@ -3,12 +3,13 @@
 //! so no run-directory sweep reaches it.
 //!
 //! Parquet has no in-place append, so a flush reads the file's rows, adds the new ones
-//! and replaces the file through one rename: a reader meets the previous complete file or
-//! the new one, and once [`append`] returns every row it was handed is durable.
+//! and replaces the file through one rename, all under a lock on the file: a reader meets
+//! the previous complete file or the new one, concurrent flushes of one run serialize, and
+//! once [`append`] returns its rows and the rename are synced (`store.reserve.ledger-append`).
 
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
-use crate::store::{replace_file, Store};
+use crate::store::{FileLock, Store};
 use arrow_array::cast::AsArray;
 use arrow_array::types::{Int32Type, Int64Type, TimestampNanosecondType};
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray, TimestampNanosecondArray};
@@ -25,6 +26,8 @@ use std::sync::Arc;
 
 /// The directory holding a table's ledger files.
 const LEDGER_DIR: &str = "requests";
+/// How long an append waits for another flush of the same run to release the file.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Append `rows` to run `run_id`'s ledger for `table` as written by `node`. An empty
 /// `rows` writes nothing.
@@ -37,12 +40,33 @@ pub fn append(store: &Store, table: &str, run_id: &str, node: &NodeId, rows: &[R
         return Ok(());
     }
     let path = store.table_dir(table)?.join(ledger_path(run_id, node.as_str()));
+    let dir = path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(dir).at(dir)?;
+    let lock_path = path.with_extension("parquet.lock");
+    let _lock = FileLock::acquire_within(&lock_path, LOCK_WAIT)?.ok_or_else(|| {
+        ContextError::Invalid(format!("`{}` stayed held {} s by another flush of run `{run_id}`", lock_path.display(), LOCK_WAIT.as_secs()))
+    })?;
     let mut all = if path.is_file() { read(&path)? } else { Vec::new() };
     all.extend(rows.iter().map(|r| (run_id.to_string(), r.clone())));
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).at(dir)?;
+    write_synced(&path, &encode(&path, &all)?)
+}
+
+/// Replace `path` with `bytes`: a synced sibling temporary file renamed into place, then
+/// the directory synced so the rename survives a crash.
+fn write_synced(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("parquet.tmp");
+    let written = (|| -> std::io::Result<()> {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        std::fs::File::open(path.parent().unwrap_or(Path::new(".")))?.sync_all()
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
     }
-    replace_file(&path, &encode(&path, &all)?)
+    written.at(path)
 }
 
 /// Every ledger file of `table`, absolute and sorted; a table with no ledger has none.

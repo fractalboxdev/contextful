@@ -278,8 +278,10 @@ fn a_tables_request_ledger_reads_as_its_child_relation() {
     assert!(column(&files, "path").iter().all(|p| !p.as_str().unwrap().contains("/requests/")));
 }
 
-/// The child relation registers on the owner read alone. A tenant-scoped token naming it raises `LedgerNotTenantScoped`, stating what closed the relation.
-// spec: read.register.scoped-ledger@f0bf1f40
+/// The child relation registers on the owner read alone: a credential carrying no tenant scope, over a table
+/// carrying no row policy. Naming a closed ledger raises `LedgerNotTenantScoped`, stating what closed the
+/// relation.
+// spec: read.register.scoped-ledger@4e735917
 #[test]
 fn a_tenant_scoped_read_naming_the_ledger_is_refused() {
     let r = Reads::new();
@@ -307,4 +309,34 @@ fn a_tenant_scoped_read_naming_the_ledger_is_refused() {
     assert!(message.contains("`research/vendor`") && message.contains("tenant scope"), "{message}");
     // A table the credential does not read names no ledger at all.
     refused_with(r.query(&scoped, r#"SELECT * FROM "hr/salaries__requests""#), "EnforceUnknownRelation");
+
+    // A table under a row policy is no owner read either: its ledger would carry every
+    // run's calls, rows the credential cannot see among them.
+    record_calls(&r, "research/contacts", "run-0001", &[call("r3", Some(0), Some(200))]);
+    assert!(!owner.reads("research/contacts__requests") && owner.reads("research/contacts"));
+    let message = refused_with(r.query(&owner, r#"SELECT request_id FROM "research/contacts__requests""#), "LedgerNotTenantScoped");
+    assert!(message.contains("`research/contacts`") && message.contains("row policy"), "{message}");
+}
+
+/// Appends to one run's ledger file serialize under a lock on it, and an append returns once its rows and the
+/// rename are synced to disk.
+// spec: store.reserve.ledger-append@a90828c9
+#[test]
+fn concurrent_flushes_of_one_run_keep_every_row() {
+    let r = Reads::new();
+    let store = std::sync::Arc::new(r.store.clone());
+    let threads: Vec<_> = (0..8)
+        .map(|i| {
+            let store = store.clone();
+            std::thread::spawn(move || {
+                let node = NodeId::parse("ingest-a").unwrap();
+                for j in 0..5 {
+                    contextful_context::ledger::append(&store, "research/vendor", "run-0001", &node, &[call(&format!("t{i}-{j}"), None, None)]).unwrap();
+                }
+            })
+        })
+        .collect();
+    threads.into_iter().for_each(|t| t.join().unwrap());
+    let path = r.store.root().join("tables/research/vendor/requests/run-0001.ingest-a.parquet");
+    assert_eq!(contextful_context::ledger::read(&path).unwrap().len(), 40, "a concurrent flush dropped another's rows");
 }

@@ -336,22 +336,22 @@ impl Face {
     }
 }
 
-/// Admit a statement over the session's registered relations. A tenant-scoped session
-/// naming the request ledger of a table it reads raises `LedgerNotTenantScoped` rather
-/// than an unknown relation (`read.register.scoped-ledger`).
+/// Admit a statement over the session's registered relations. A session that is no owner
+/// read naming the request ledger of a table it reads raises `LedgerNotTenantScoped`
+/// rather than an unknown relation (`read.register.scoped-ledger`).
 fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, ReadFault> {
     let closed = std::cell::RefCell::new(None);
     let admitted = admit(tree, |name| {
-        if let Some(table) = session.closed_ledger(name) {
-            *closed.borrow_mut() = Some((name.to_string(), table.to_string()));
+        if let Some((table, reason)) = session.closed_ledger(name) {
+            *closed.borrow_mut() = Some((name.to_string(), table.to_string(), reason));
             return false;
         }
         session.reads(name)
     });
     match (admitted, closed.into_inner()) {
-        (Err(_), Some((name, table))) => Err(ReadError::LedgerNotTenantScoped(format!(
-            "`{name}` is closed: the credential carries a tenant scope, and the request ledger of `{table}` carries no tenant \
-             column to narrow on, so it registers on the owner read alone"
+        (Err(_), Some((name, table, reason))) => Err(ReadError::LedgerNotTenantScoped(format!(
+            "`{name}` is closed: {reason}, and the request ledger of `{table}` carries no tenant or row column to narrow \
+             on, so it registers on the owner read alone"
         ))
         .into()),
         (admitted, _) => Ok(admitted?),

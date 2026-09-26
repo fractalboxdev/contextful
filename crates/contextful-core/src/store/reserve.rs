@@ -94,6 +94,11 @@ pub fn producer_columns(schema: &Schema) -> Result<Schema, StoreError> {
 
 /// Refuse a table name inside a reserved namespace (`store.reserve.table-name`).
 pub fn check_table_name(table: &str) -> Result<(), StoreError> {
+    if table.ends_with(crate::store::ledger::LEDGER_RELATION_SUFFIX) {
+        return Err(StoreError::StoreReservedTableName(format!(
+            "table `{table}` ends in `{}`, reserved for request-ledger relations", crate::store::ledger::LEDGER_RELATION_SUFFIX
+        )));
+    }
     for (ns, what) in RESERVED_TABLE_NAMESPACES {
         let hit = if ns.ends_with('/') { table.starts_with(ns) } else { table == ns || table.starts_with(&format!("{ns}/")) };
         if hit {

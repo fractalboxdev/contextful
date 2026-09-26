@@ -94,6 +94,22 @@ fn a_table_inside_a_reserved_namespace_is_refused() {
     }
 }
 
+/// A table name ending in `__requests` is reserved to request-ledger relations and refuses as
+/// {{store.reserve.table-name}}.
+// spec: store.reserve.ledger-suffix@d94383f5
+#[test]
+fn a_table_named_like_a_ledger_is_refused() {
+    for bad in ["notes__requests", "research/notes__requests"] {
+        match check_table_name(bad) {
+            Err(StoreError::StoreReservedTableName(m)) => assert!(m.contains("__requests"), "{m}"),
+            other => panic!("{bad}: expected StoreReservedTableName, got {other:?}"),
+        }
+    }
+    for ok in ["requests", "research/requests", "notes__request", "notes__requests_archive"] {
+        check_table_name(ok).unwrap();
+    }
+}
+
 /// A run's request ledger is `requests/<run-id>.<node-id>.parquet`, disjoint per run and per writing node.
 // spec: store.reserve.ledger-path@bba6cadb
 #[test]

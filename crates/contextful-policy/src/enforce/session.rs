@@ -149,8 +149,13 @@ impl Session {
             session.sources.insert(t.decl.name.clone(), t);
         }
         if !session.tenant_scoped() {
-            let ledgers: Vec<RegisteredRelation> =
-                session.sources.values().map(|t| session.ledger(t)).filter(|l| !session.relations.contains_key(&l.name)).collect();
+            let ledgers: Vec<RegisteredRelation> = session
+                .sources
+                .values()
+                .filter(|t| t.policy.rows.is_none())
+                .map(|t| session.ledger(t))
+                .filter(|l| !session.relations.contains_key(&l.name))
+                .collect();
             session.ledgers = ledgers.into_iter().map(|l| (l.name.clone(), l)).collect();
         }
         Ok(session)
@@ -229,7 +234,8 @@ impl Session {
 
     /// Whether any grant this session holds carries a tenant scope. Such a session is not
     /// an owner read and registers no request ledger: ledger rows carry no tenant column to
-    /// narrow on (`read.register.scoped-ledger`).
+    /// narrow on, and a table under a row policy registers none either, since its ledger
+    /// carries the calls behind rows the policy withholds (`read.register.scoped-ledger`).
     pub fn tenant_scoped(&self) -> bool {
         self.grants.iter().any(|g| g.tenant.is_some())
     }
@@ -246,11 +252,19 @@ impl Session {
         }
     }
 
-    /// The table whose ledger `name` is, where this session reads the table but, being
-    /// tenant-scoped, registers no ledger for it. A table the session does not read yields
-    /// `None`, so the refusal names nothing the credential cannot already see.
-    pub fn closed_ledger<'n>(&self, name: &'n str) -> Option<&'n str> {
-        ledger_table(name).filter(|t| self.tenant_scoped() && self.relations.contains_key(*t) && !self.reads(name))
+    /// The table whose ledger `name` is, and what closed it, where this session reads the
+    /// table but is no owner read of it: the credential carries a tenant scope, or the table
+    /// a row policy. A table the session does not read yields `None`, so the refusal names
+    /// nothing the credential cannot already see.
+    pub fn closed_ledger<'n>(&self, name: &'n str) -> Option<(&'n str, &'static str)> {
+        let table = ledger_table(name).filter(|t| self.relations.contains_key(*t) && !self.reads(name))?;
+        if self.tenant_scoped() {
+            Some((table, "the credential carries a tenant scope"))
+        } else if self.policies.get(table).is_some_and(|p| p.rows.is_some()) {
+            Some((table, "the table carries a row policy"))
+        } else {
+            None
+        }
     }
 
     /// The request-ledger relations this session registers
