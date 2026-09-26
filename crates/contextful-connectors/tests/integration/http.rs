@@ -165,6 +165,52 @@ fn a_placeholder_other_than_the_table_is_refused_at_build() {
 }
 
 #[test]
+fn a_table_pattern_binds_each_segment_percent_encoded() {
+    let c = HttpConfig::parse(&json!({
+        "endpoint": "https://api.vendor.example/repos/{owner}/{repo}/{stream}",
+        "table_pattern": "{stream}/{owner}/{repo}"
+    }))
+    .unwrap();
+    assert_eq!(c.table_url("issues/acme/wid gets").unwrap().path(), "/repos/acme/wid%20gets/issues");
+    assert_eq!(c.table_url("pulls/acme/tools").unwrap().path(), "/repos/acme/tools/pulls");
+    // A literal segment matches exactly and binds nothing.
+    let lit = HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/v2/{name}", "table_pattern": "crm/{name}"})).unwrap();
+    assert_eq!(lit.table_url("crm/deals?all").unwrap().path(), "/v2/deals%3Fall");
+    // A placeholder the pattern does not name is refused at build.
+    match HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/{owner}/{account}", "table_pattern": "{owner}/{repo}"})) {
+        Err(ConfigError::Connector(ConnectorError::ConnectorPlaceholderUnbound(m))) => assert!(m.contains("{account}"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    // A pattern naming one field twice, mixing text into a placeholder segment, or empty is refused at build.
+    for pattern in ["{a}/{a}", "v{a}/{b}", "", "{}/x"] {
+        assert!(matches!(HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/x", "table_pattern": pattern})), Err(ConfigError::Run(RunError::Invalid(_)))), "{pattern}");
+    }
+}
+
+/// A table not matching the declared pattern raises `ConnectorTableUnmatched` ahead of any request.
+// spec: connector.source.table-unmatched@0b83abd3
+#[test]
+fn a_table_off_the_pattern_is_refused_before_any_request() {
+    let vendor = Server::start(|_| Response::json(200, "[{\"id\":\"a\"}]"));
+    let config = HttpConfig::parse(&json!({"endpoint": vendor.url("/repos/{owner}/{repo}/{stream}"), "table_pattern": "{stream}/{owner}/{repo}"})).unwrap();
+    for table in ["issues/acme", "issues/acme/widgets/extra", "issues//widgets", "issues/acme/"] {
+        match contextful_connectors::http::HttpSource::new(config.clone(), table, crate::support::resolver(vec![])) {
+            Err(ConnectorError::ConnectorTableUnmatched(m)) => assert!(m.contains(table) && m.contains("{stream}/{owner}/{repo}"), "{m}"),
+            Err(other) => panic!("{table}: {other:?}"),
+            Ok(_) => panic!("{table}: bound"),
+        }
+        assert!(matches!(config.allowlist(table), Err(ConnectorError::ConnectorTableUnmatched(_))), "{table}");
+    }
+    let lit = HttpConfig::parse(&json!({"endpoint": vendor.url("/v2/{name}"), "table_pattern": "crm/{name}"})).unwrap();
+    assert!(matches!(lit.table_url("erp/deals"), Err(ConnectorError::ConnectorTableUnmatched(_))));
+    assert!(vendor.requests.lock().unwrap().is_empty(), "no request reached the vendor");
+    // A matching table walks.
+    let s = contextful_connectors::http::HttpSource::new(config, "issues/acme/widgets", crate::support::resolver(vec![])).unwrap();
+    assert_eq!(ids(&s.walk(&request(None), &Never).unwrap()), ["a"]);
+    assert_eq!(vendor.received("/repos/acme/widgets/issues").len(), 1);
+}
+
+#[test]
 fn the_allowlist_is_the_host_each_table_reaches() {
     let c = HttpConfig::parse(&json!({"endpoint": "https://{table}.vendor.example/v1"})).unwrap();
     assert!(c.allowlist("eu").unwrap().permits("eu.vendor.example"));
