@@ -46,7 +46,7 @@ fn a_seed_block_names_a_source_and_a_ceiling_on_the_ordering_scale() {
     let block = s.seed_block().unwrap().expect("a declared seed block");
     assert_eq!(block.source.name, "file");
     assert_eq!(block.source.config, json!({"path": "exports/items.jsonl"}));
-    assert!(matches!(block.below, Ceiling::Instant(_)));
+    assert!(matches!(block.below, Ceiling::Instant { fraction_digits: 0, .. }));
     assert!(s.validate().is_ok());
 
     let numeric = spec(&seeded("1700000000", KEYED)).seed_block().unwrap().unwrap();
@@ -96,9 +96,9 @@ fn a_seeded_table_needs_a_key_and_an_event_time_ordering() {
 #[test]
 fn a_stamp_at_or_past_the_ceiling_refuses_the_whole_batch() {
     let gate = instant_gate();
-    assert!(gate.check("orders_items", &rows(&[json!("2029-12-31T23:59:59Z"), json!("2029-06-01T09:00:00+09:00")])).is_ok());
+    assert!(gate.check("orders_items", &rows(&[json!("2029-12-31T23:59:59Z"), json!("2029-06-01T00:00:00Z")])).is_ok());
 
-    for stamp in ["2030-01-01T00:00:00Z", "2030-01-01T09:00:00+09:00", "2031-02-03T00:00:00Z"] {
+    for stamp in ["2030-01-01T00:00:00Z", "2031-02-03T00:00:00Z"] {
         let batch = rows(&[json!("2020-01-01T00:00:00Z"), json!(stamp)]);
         let before = batch.clone();
         match gate.check("orders_items", &batch) {
@@ -118,8 +118,8 @@ fn a_stamp_at_or_past_the_ceiling_refuses_the_whole_batch() {
 }
 
 /// A batch missing the ordering column, or a stamp unorderable against the ceiling, raises
-/// `PipelineSeedCeilingUnevaluable`.
-// spec: run.seed.ceiling-unevaluable@077b19dd
+/// `PipelineSeedCeilingUnevaluable`; a text stamp orders only when `Z`-suffixed at the ceiling's fractional width.
+// spec: run.seed.ceiling-unevaluable@aa21d6f5
 #[test]
 fn a_missing_column_or_an_off_scale_stamp_is_unevaluable() {
     let gate = instant_gate();
@@ -135,6 +135,31 @@ fn a_missing_column_or_an_off_scale_stamp_is_unevaluable() {
             "{stamp}"
         );
     }
+    // A text column lands as text and ranks byte-wise, so a stamp orders only in the
+    // ceiling's spelling: `Z`-suffixed at the ceiling's fractional width. `+09:00` at 14:00Z
+    // outranks a later `20:00:00Z` correction lexically, and `59.5Z` sorts below `59Z`.
+    for stamp in [
+        "2029-12-31T23:00:00+09:00",
+        "2029-06-01T09:00:00+09:00",
+        "2030-01-01T09:00:00+09:00",
+        "2029-12-31T23:59:59.5Z",
+        "2029-12-31T23:59:59.000000000Z",
+        "2029-12-31t23:59:59Z",
+        "2029-12-31T23:59:59z",
+        "2029-12-31T23:59:59-00:00",
+    ] {
+        match gate.check("orders_items", &rows(&[json!("2020-01-01T00:00:00Z"), json!(stamp)])) {
+            Err(RunError::PipelineSeedCeilingUnevaluable(m)) => assert!(m.contains(stamp), "{stamp}: {m}"),
+            other => panic!("{stamp}: {other:?}"),
+        }
+    }
+    let fractional = SeedCeiling::new("updated_at", Ceiling::from_value(&json!("2030-01-01T09:00:00.000+09:00")).unwrap());
+    assert!(fractional.check("t", &rows(&[json!("2029-12-31T23:59:59.500Z"), json!("2029-12-31T23:59:59.999Z")])).is_ok());
+    assert!(matches!(fractional.check("t", &rows(&[json!("2030-01-01T00:00:00.000Z")])), Err(RunError::PipelineSeedCeilingBreached(_))));
+    for stamp in ["2029-12-31T23:59:59Z", "2029-12-31T23:59:59.5Z", "2029-12-31T23:59:59.500000Z"] {
+        assert!(matches!(fractional.check("t", &rows(&[json!(stamp)])), Err(RunError::PipelineSeedCeilingUnevaluable(_))), "{stamp}");
+    }
+
     // Text never orders against a numeric ceiling: "999" sorts after "1000" byte-wise.
     let numeric = SeedCeiling::new("updated_at", Ceiling::from_value(&json!(1000)).unwrap());
     for stamp in [json!("999"), json!("2020-01-01T00:00:00Z")] {

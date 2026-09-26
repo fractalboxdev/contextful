@@ -13,7 +13,7 @@ use contextful_core::run::derive::config::{bind, bindings, check_output_table, B
 use contextful_core::run::ports::{Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_context::{node, ContextError, Store};
-use contextful_core::pipeline::declare::{collect, Declared, ManifestFile, PipelineSpec};
+use contextful_core::pipeline::declare::{collect, Declared, ManifestFile, PipelineSpec, SourceBlock};
 use contextful_core::pipeline::transform::Chain;
 use contextful_core::run::advance::CursorKind;
 use contextful_core::run::journal::sha256_hex;
@@ -80,19 +80,17 @@ enum Checked {
 }
 
 /// Hold a specification to every rule checked before I/O, returning its source configuration.
+/// A declared seed source is built as a compiled-in HTTP source, so it refuses before a seeding run reaches it.
 fn check(spec: &PipelineSpec, declaration: &Path) -> Result<Checked> {
     spec.validate()?;
     for op in &spec.transforms {
         op.validate()?;
     }
+    if let Some(seed) = spec.seed_block()? {
+        build_source(spec, "seed source", &seed.source)?;
+    }
     match spec.source.name.as_str() {
-        contextful_connectors::http::NAME => {
-            let config = HttpConfig::parse(&spec.source.config)?;
-            for t in &spec.tables {
-                config.allowlist(t.name())?;
-            }
-            Ok(Checked::Http(config))
-        }
+        contextful_connectors::http::NAME => Ok(Checked::Http(build_source(spec, "source", &spec.source)?)),
         contextful_connectors::derive::NAME => {
             let config = DeriveConfig::parse(&spec.id, &spec.source.config)?;
             let [table] = spec.tables.as_slice() else {
@@ -122,6 +120,26 @@ impl TableReader for StoreReader {
             e => Failure::new(FailureTag::Storage, e.to_string()),
         })
     }
+}
+
+/// Build one source block of `spec` as a compiled-in source and bind every table to it.
+fn build_source(spec: &PipelineSpec, role: &str, source: &SourceBlock) -> Result<HttpConfig> {
+    if source.name != contextful_connectors::http::NAME {
+        bail!(
+            "pipeline `{}` names {role} `{}`; the compiled-in sources are {}",
+            spec.id,
+            source.name,
+            contextful_connectors::BUILT_IN.join(", ")
+        );
+    }
+    let built = || -> Result<HttpConfig> {
+        let config = HttpConfig::parse(&source.config)?;
+        for t in &spec.tables {
+            config.allowlist(t.name())?;
+        }
+        Ok(config)
+    };
+    built().with_context(|| format!("pipeline `{}` {role}", spec.id))
 }
 
 /// The plan one table of `spec` runs against.

@@ -242,7 +242,7 @@ The bulk-load source mode, its ceiling, its scope and the parity it guarantees.
 - `ceiling-breached` — A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped.
   *A-run*
 - `ceiling-point` — The ceiling is evaluated on the root batch after normalize and the chain, before the write.
-- `ceiling-unevaluable` — A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`.
+- `ceiling-unevaluable` — A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`; a text stamp orders only when `Z`-suffixed at the ceiling's fractional width.
   *A-run*
 - `scope` — Seed chunk and cursor state live under a `<table>#seed` scope apart from the live pipeline's.
 - `connector-pin` — A seeding run is exempt from {{run.own.pinned-plan-changed}} and records its connector identity as provenance.

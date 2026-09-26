@@ -6650,7 +6650,7 @@
       "operation": "seed",
       "subject": "ceiling-unevaluable",
       "kind": "refusal",
-      "statement": "A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`.",
+      "statement": "A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`; a text stamp orders only when `Z`-suffixed at the ceiling's fractional width.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
       "line": 245

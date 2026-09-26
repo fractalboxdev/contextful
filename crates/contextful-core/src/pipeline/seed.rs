@@ -5,6 +5,11 @@
 //! batch naming the value: clamping it fabricates event time, and dropping the row loses
 //! history. A stamp that cannot be ordered against the ceiling fails too, because a
 //! ceiling the gate cannot read is a ceiling it does not enforce.
+//!
+//! A text stamp lands as text and the store ranks it byte-wise, so the gate orders only
+//! text whose byte order is its instant order: the `Z`-suffixed UTC spelling at the
+//! ceiling's fractional width. An offset or another width reorders the column under the
+//! store's `ORDER BY` while the instants still sort, and the gate refuses it.
 
 use super::declare::{PipelineSpec, SourceBlock};
 use crate::run::ports::Row;
@@ -17,8 +22,9 @@ use std::cmp::Ordering;
 /// The ordering-stamp ceiling, on the seeded table's `order_by` scale.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ceiling {
-    /// An RFC 3339 instant, for a timestamp column.
-    Instant(Instant),
+    /// An RFC 3339 instant, for a text column of `Z`-suffixed UTC stamps carrying
+    /// `fraction_digits` fractional digits, the width the declared ceiling spells.
+    Instant { at: Instant, fraction_digits: usize },
     /// A number, for a numeric event clock.
     Number(Number),
 }
@@ -29,7 +35,7 @@ impl Ceiling {
     pub fn from_value(v: &Value) -> Result<Ceiling, RunError> {
         match v {
             Value::Number(n) => Ok(Ceiling::Number(n.clone())),
-            Value::String(s) => Instant::parse(s).map(Ceiling::Instant).map_err(|e| {
+            Value::String(s) => Instant::parse(s).map(|at| Ceiling::Instant { at, fraction_digits: fraction_digits(s) }).map_err(|e| {
                 RunError::PipelineSpecInvalid(format!("seed.below `{s}` is neither an RFC 3339 instant nor a number: {e}"))
             }),
             other => Err(RunError::PipelineSpecInvalid(format!(
@@ -40,7 +46,7 @@ impl Ceiling {
 
     fn render(&self) -> String {
         match self {
-            Ceiling::Instant(i) => i.to_rfc3339_nanos(),
+            Ceiling::Instant { at, .. } => at.to_rfc3339_nanos(),
             Ceiling::Number(n) => n.to_string(),
         }
     }
@@ -137,7 +143,7 @@ impl SeedCeiling {
             };
             let Some(order) = self.compare(stamp) else {
                 return Err(RunError::PipelineSeedCeilingUnevaluable(format!(
-                    "table `{table}`: `{}` stamp `{}` cannot be ordered against the ceiling `{}`; an RFC 3339 ceiling orders RFC 3339 text and a numeric ceiling orders numbers",
+                    "table `{table}`: `{}` stamp `{}` cannot be ordered against the ceiling `{}`; an RFC 3339 ceiling orders `Z`-suffixed UTC text at its own fractional width and a numeric ceiling orders numbers",
                     self.order_by,
                     render(stamp),
                     self.below.render()
@@ -155,16 +161,38 @@ impl SeedCeiling {
         Ok(())
     }
 
-    /// The stamp's order against the ceiling, `None` when the two share no scale. Text is
-    /// compared as instants, never as bytes: offsets break lexical order, and `"999"`
-    /// sorts after `"1000"`.
+    /// The stamp's order against the ceiling, `None` when the two share no scale. Text
+    /// orders only in the ceiling's spelling, where its byte order, the order the store
+    /// ranks it by, is its instant order; `"999"` never orders against a number.
     fn compare(&self, stamp: &Value) -> Option<Ordering> {
         match (stamp, &self.below) {
-            (Value::String(s), Ceiling::Instant(c)) => Instant::parse(s).ok().map(|v| v.cmp(c)),
+            (Value::String(s), Ceiling::Instant { at, fraction_digits }) => {
+                let v = Instant::parse(s).ok()?;
+                is_utc_spelling(s, *fraction_digits).then(|| v.cmp(at))
+            }
             (Value::Number(v), Ceiling::Number(c)) => compare_numbers(v, c),
             _ => None,
         }
     }
+}
+
+/// The fractional-second digits an RFC 3339 text spells, zero when it spells none.
+fn fraction_digits(s: &str) -> usize {
+    match s.as_bytes().get(19) {
+        Some(b'.') => s.as_bytes()[20..].iter().take_while(|b| b.is_ascii_digit()).count(),
+        _ => 0,
+    }
+}
+
+/// `YYYY-MM-DDTHH:MM:SS[.f…]Z` with exactly `width` fractional digits: the one spelling
+/// per instant in which byte order is instant order.
+fn is_utc_spelling(s: &str, width: usize) -> bool {
+    let b = s.as_bytes();
+    let len = if width == 0 { 20 } else { 21 + width };
+    b.len() == len
+        && b[10] == b'T'
+        && b[len - 1] == b'Z'
+        && (width == 0 || (b[19] == b'.' && b[20..len - 1].iter().all(u8::is_ascii_digit)))
 }
 
 fn compare_numbers(a: &Number, b: &Number) -> Option<Ordering> {
