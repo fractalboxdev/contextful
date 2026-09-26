@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
-| `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
+| `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 3 | 0 | 3 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 73 | 0 | 73 |
 | `run` | 3 | 24 | 289 | 82 | 34 | 24 | 148 | 0 | 148 |
 | `store` | 1 | 14 | 153 | 37 | 12 | 8 | 109 | 0 | 109 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1450 | 465 | 162 | 101 | 656 | 0 | |
+| **total** | 19 | 145 | 1451 | 466 | 162 | 101 | 659 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ Decision records: 18.
 | 5 — The read face under enforcement | 16 | 204 | 118 | passing |
 | 6 — Sync and replicas | 6 | 39 | 34 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
-| 8 — Accountability | 5 | 22 | 0 | absent |
+| 8 — Accountability | 5 | 23 | 3 | open |
 | 9 — Visibility | 6 | 22 | 0 | absent |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
 | 11 — The derive tier | 7 | 68 | 44 | passing |
@@ -359,6 +359,9 @@ Unscheduled operations: 10.
 | `corpus.targets.function-profile` | `spec/pins.toml` | performed |
 | `corpus.targets.incomplete` | `spec/pins.toml` | performed |
 | `corpus.targets.page` | `spec/pins.toml` | performed |
+| `disclosure.attest.broken-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken` | performed |
+| `disclosure.record.segment` | `crates/contextful-policy/tests/integration/audit.rs::a_segment_closes_at_4096_entries_under_one_signed_root` | performed |
+| `disclosure.record.single-writer` | `crates/contextful-policy/tests/integration/audit.rs::a_second_writer_on_one_directory_is_refused` | performed |
 | `read.declare.canonical-column` | `crates/contextful-core/tests/integration/memory/declare.rs::a_shaped_table_omitting_a_canonical_column_is_refused` | performed |
 | `read.declare.undeclared-relation` | `crates/contextful-core/tests/integration/memory/declare.rs::an_edge_outside_the_relation_union_is_refused` | performed |
 | `read.embed.default-embedder` | `crates/contextful-core/tests/integration/read/embed.rs::the_default_embedder_is_deterministic_and_normalized` | performed |
