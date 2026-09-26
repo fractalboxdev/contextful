@@ -287,6 +287,7 @@ Where the build-time material sits:
 tools/
   ci/                     typed subcommands the gate invokes
   spec/                   the corpus checker
+  eval/                   the quality harness's metrics, floors and baseline gate
 crates/acceptance/
   tests/integration/mNN.rs  one milestone's acceptance test, driving a built binary
 evals/
