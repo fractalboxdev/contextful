@@ -101,23 +101,7 @@ fn a_grant_beyond_the_expectation_refuses_and_the_session_does_not_open() {
 }
 
 #[test]
-fn a_scopes_header_naming_no_scope_refuses_and_the_session_does_not_open() {
-    for granted in ["", " , "] {
-        let server = vendor(Some(granted));
-        let f = open(&server, Some(&declared(&server))).unwrap_err();
-        assert!(f.message.starts_with("ConnectorScopeUnverified"), "{granted:?}: {f}");
-        assert_eq!(paths(&server), ["/identity"], "no read follows an unverified grant");
-    }
-}
-
-#[test]
-fn a_scopes_header_line_outside_visible_ascii_refuses_and_the_session_does_not_open() {
-    // The line reaches the wire as obs-text bytes (`0xC3 0xA9`).
-    let alone = vendor(Some("admin.write caf\u{e9}.read"));
-    let f = open(&alone, Some(&declared(&alone))).unwrap_err();
-    assert!(f.message.starts_with("ConnectorScopeUnverified"), "{f}");
-    assert_eq!(paths(&alone), ["/identity"]);
-    // Beside a clean line, the undecodable line still refuses the whole grant.
+fn a_scopes_header_line_outside_visible_ascii_beside_a_clean_line_refuses_the_whole_grant() {
     let beside = Server::start(|r| match r.path() {
         "/identity" => Response {
             status: 200,
@@ -146,12 +130,19 @@ fn the_identity_body_is_not_read_so_its_size_does_not_refuse_the_grant() {
 /// raises `ConnectorScopeUnverified`.
 // spec: connector.declare-capability.scope-unverified@d672e057
 #[test]
-fn an_answer_without_the_scopes_header_refuses() {
+fn a_grant_the_probe_cannot_read_refuses_and_the_session_does_not_open() {
     let server = vendor(None);
     let f = open(&server, Some(&declared(&server))).unwrap_err();
     assert!(f.message.starts_with("ConnectorScopeUnverified"), "{f}");
     assert!(f.message.contains(HEADER), "{f}");
     assert_eq!(paths(&server), ["/identity"], "no read follows an unverified grant");
+    // A value naming no scope, and one reaching the wire as obs-text bytes (`0xC3 0xA9`).
+    for granted in ["", " , ", "admin.write caf\u{e9}.read"] {
+        let server = vendor(Some(granted));
+        let f = open(&server, Some(&declared(&server))).unwrap_err();
+        assert!(f.message.starts_with("ConnectorScopeUnverified"), "{granted:?}: {f}");
+        assert_eq!(paths(&server), ["/identity"], "no read follows an unverified grant");
+    }
 }
 
 #[test]
