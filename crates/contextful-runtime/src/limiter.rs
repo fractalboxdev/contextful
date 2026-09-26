@@ -14,8 +14,12 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// Delivery attempts one report gets inside the run.
+/// Delivery attempts one report gets when the run finishes. A report owed ahead of a
+/// refill gets one attempt and, undelivered, rides the next report.
 pub const REPORT_ATTEMPTS: u32 = 3;
+/// Wall clock one limiter call may take, so a stalled limiter delays a vendor request by
+/// seconds rather than by a vendor request's own timeout.
+pub const LIMITER_TIMEOUT: Duration = Duration::from_secs(5);
 /// The wait before the second attempt; each later wait doubles it.
 pub const REPORT_BACKOFF: Duration = Duration::from_millis(25);
 /// Limiter events a run records verbatim; later ones are counted.
@@ -54,7 +58,7 @@ impl Limiter {
     pub fn new(binding: LimiterBinding, resolver: Arc<Resolver>, run_id: &str, clock: Arc<dyn Clock + Send + Sync>) -> Result<Limiter, Failure> {
         let host = binding.endpoint.host_str().unwrap_or_default().to_string();
         let allow = Allowlist::parse(&[host]).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
-        let client = Client::new(allow, binding.endpoint.clone());
+        let client = Client::new(allow, binding.endpoint.clone()).admitting_internal().with_timeout(LIMITER_TIMEOUT);
         Ok(Limiter { binding, resolver, run_id: run_id.to_string(), clock, client, pools: Mutex::default(), audit: Mutex::default() })
     }
 
@@ -69,6 +73,12 @@ impl Limiter {
     ) -> Result<Limiter, Failure> {
         let binding = require_binding(declaration, bindings).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
         Limiter::new(binding.clone(), resolver, run_id, clock)
+    }
+
+    /// The limiter with a shorter wall clock per call than [`LIMITER_TIMEOUT`].
+    pub fn with_timeout(mut self, timeout: Duration) -> Limiter {
+        self.client = self.client.with_timeout(timeout.min(LIMITER_TIMEOUT));
+        self
     }
 
     pub fn quota(&self) -> &str {
@@ -100,16 +110,19 @@ impl Limiter {
     }
 
     /// Reserve one permit for one outbound request under `class`. A live batch pays for
-    /// it; otherwise the owed report goes first and an acquire refills the batch. A denial
-    /// fails as the vendor `429` it stands for; an unreachable limiter, an unresolvable
-    /// token and a failing answer raise `ConnectorUnmetered`; an unreadable answer raises
+    /// it; otherwise the owed report gets one attempt, surrendering the unspent before the
+    /// limiter grants again, and an acquire refills the batch. A denial fails as the
+    /// vendor `429` it stands for; an unreachable limiter, an unresolvable token and a
+    /// failing answer raise `ConnectorUnmetered`; an unreadable answer raises
     /// `ConnectorLimiterUnreadable`. No outcome but a granted permit returns `Ok`.
     pub fn reserve(&self, class: &str) -> Result<(), Failure> {
         let now = self.clock.now();
         if self.with_pool(class, |p| p.take(now)) {
             return Ok(());
         }
-        self.deliver(class);
+        if let Some((report, _)) = self.deliver(class, 1) {
+            self.with_pool(class, |p| p.restore(report));
+        }
         let quota = self.binding.quota.clone();
         match self.acquire(class)? {
             Decision::Granted { permits, ttl_secs } => {
@@ -153,10 +166,9 @@ impl Limiter {
         match resp.status {
             429 => Ok(Decision::throttled(resp.header("retry-after"), self.clock.now())),
             200..=299 => Decision::read(&resp.body).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string())),
-            status => {
-                let f = classify(status, None, "the limiter");
-                Err(Failure { message: unmetered(quota, format!("the limiter answered {status}")).to_string(), retry_after_secs: None, ..f })
-            }
+            // One tag for every failing answer: the limiter's refusal of its own token is no
+            // statement about the vendor credential.
+            status => Err(Failure::new(FailureTag::Transient, unmetered(quota, format!("the limiter answered {status}")).to_string())),
         }
     }
 
@@ -165,26 +177,28 @@ impl Limiter {
         self.with_pool(class, |p| p.observe(usage));
     }
 
-    /// Deliver the report owed on `class`, at most [`REPORT_ATTEMPTS`] times under
-    /// doubling backoff. A report that never lands is recorded in [`Limiter::audit`] and
-    /// fails nothing.
-    fn deliver(&self, class: &str) {
+    /// Deliver the report owed on `class` in at most `attempts` tries under doubling
+    /// backoff, each bounded by the limiter's call timeout, answering the report and the
+    /// last fault when it does not land. Ahead of a refill it returns to the pool and
+    /// rides the next report; at [`Limiter::finish`] it is recorded in
+    /// [`Limiter::audit`]. Either way it fails nothing.
+    fn deliver(&self, class: &str, attempts: u32) -> Option<(Report, String)> {
         let now = self.clock.now();
-        let Some(report) = self.with_pool(class, |p| p.drain(&self.binding.quota, class, &self.run_id, now)) else { return };
+        let report = self.with_pool(class, |p| p.drain(&self.binding.quota, class, &self.run_id, now))?;
         let body = report.to_json();
         let (mut wait, mut last) = (REPORT_BACKOFF, String::new());
-        for attempt in 1..=REPORT_ATTEMPTS {
+        for attempt in 1..=attempts {
             match self.bearer().and_then(|bearer| self.post("report", bearer, &body)) {
-                Ok(r) if (200..300).contains(&r.status) => return,
+                Ok(r) if (200..300).contains(&r.status) => return None,
                 Ok(r) => last = format!("answered {}", r.status),
                 Err(f) => last = f.message,
             }
-            if attempt < REPORT_ATTEMPTS {
+            if attempt < attempts {
                 std::thread::sleep(wait);
                 wait *= 2;
             }
         }
-        self.undelivered(&report, &last);
+        Some((report, last))
     }
 
     fn undelivered(&self, report: &Report, last: &str) {
@@ -194,11 +208,14 @@ impl Limiter {
         ));
     }
 
-    /// Deliver every report still owed, surrendering the unspent permits of each class.
+    /// Deliver every report still owed, [`REPORT_ATTEMPTS`] times at most, surrendering
+    /// the unspent permits of each class.
     pub fn finish(&self) {
         let classes: Vec<String> = self.pools.lock().unwrap_or_else(|e| e.into_inner()).keys().cloned().collect();
         for class in classes {
-            self.deliver(&class);
+            if let Some((report, last)) = self.deliver(&class, REPORT_ATTEMPTS) {
+                self.undelivered(&report, &last);
+            }
         }
     }
 }

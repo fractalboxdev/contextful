@@ -15,7 +15,10 @@ pub enum ConnectorError {
     /// A record path, pagination shape or decode key the chosen format does not read. (`connector.source.format-key-mismatch`)
     #[error("ConnectorFormatKeyRejected: {0}")]
     ConnectorFormatKeyRejected(String),
-    /// A non-HTTPS non-loopback limiter endpoint, or an inline literal limiter token. (`connector.meter.binding-transport`)
+    /// A limiter declaration forwarding a credential-bearing response header. (`connector.meter.forward-credential`)
+    #[error("ConnectorForwardRejected: {0}")]
+    ConnectorForwardRejected(String),
+    /// A non-HTTPS non-loopback limiter endpoint, one carrying a query, fragment or userinfo, or a limiter token that is not a `secret://` reference. (`connector.meter.binding-transport`)
     #[error("ConnectorLimiterBindingRejected: {0}")]
     ConnectorLimiterBindingRejected(String),
     /// A limiter response the engine cannot read. (`connector.meter.unreadable-answer`)

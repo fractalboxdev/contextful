@@ -4,6 +4,7 @@
 use super::attach::{is_loopback_host, scrub};
 use super::reference::{SecretName, SCHEME};
 use super::ConnectorError;
+use crate::run::retry::RETRY_AFTER_CEILING_SECS;
 use crate::time::Instant;
 use std::collections::BTreeMap;
 use url::Url;
@@ -14,6 +15,14 @@ pub const DEFAULT_PERMITS: u32 = 8;
 pub const DEFAULT_TTL_SECS: u64 = 10;
 /// Seconds a denial waits when the limiter names no retry-after.
 pub const DEFAULT_RETRY_AFTER_SECS: u64 = 1;
+/// Response headers a declaration never forwards, since they carry credentials or session state
+/// (`connector.meter.forward-credential`).
+pub const UNFORWARDABLE: [&str; 4] = ["authorization", "proxy-authorization", "cookie", "set-cookie"];
+
+/// A limiter wait capped at the run's retry-after ceiling (`connector.meter.denial-ceiling`).
+fn capped(secs: u64) -> u64 {
+    secs.min(RETRY_AFTER_CEILING_SECS)
+}
 
 /// What a connector declares about the shared vendor quota its requests draw on
 /// (`connector.meter.limiter-declaration`).
@@ -28,12 +37,14 @@ pub struct LimiterDeclaration {
 }
 
 impl LimiterDeclaration {
-    pub fn new<S: AsRef<str>>(quota: &str, class: &str, forward: &[S]) -> LimiterDeclaration {
-        LimiterDeclaration {
-            quota: quota.to_string(),
-            class: class.to_string(),
-            forward: forward.iter().map(|h| h.as_ref().to_ascii_lowercase()).collect(),
+    /// A declaration forwarding a header of [`UNFORWARDABLE`] raises `ConnectorForwardRejected`
+    /// (`connector.meter.forward-credential`).
+    pub fn new<S: AsRef<str>>(quota: &str, class: &str, forward: &[S]) -> Result<LimiterDeclaration, ConnectorError> {
+        let forward: Vec<String> = forward.iter().map(|h| h.as_ref().to_ascii_lowercase()).collect();
+        if let Some(h) = forward.iter().find(|h| UNFORWARDABLE.contains(&h.as_str())) {
+            return Err(ConnectorError::ConnectorForwardRejected(format!("the limiter declaration for quota `{quota}` forwards `{h}`, which carries a credential")));
         }
+        Ok(LimiterDeclaration { quota: quota.to_string(), class: class.to_string(), forward })
     }
 
     /// Whether a response header is one this declaration forwards.
@@ -62,7 +73,8 @@ impl LimiterBinding {
     /// Read a binding. An endpoint that is neither HTTPS nor loopback, one carrying a
     /// query, fragment or userinfo, and a token that is not a `secret://` reference
     /// raise `ConnectorLimiterBindingRejected` (`connector.meter.binding-transport`). The
-    /// refusal never repeats the token, which may be material.
+    /// refusal never repeats the token, which may be material. The endpoint's host may
+    /// resolve to a private address (`connector.meter.limiter-address`).
     pub fn parse(quota: &str, endpoint: &str, token: &str, permits: Option<u32>) -> Result<LimiterBinding, ConnectorError> {
         let url = Url::parse(endpoint).map_err(|e| rejected(quota, format!("names an endpoint that is not a URL: {e}")))?;
         if url.scheme() != "https" && !url.host_str().is_some_and(is_loopback_host) {
@@ -114,7 +126,8 @@ pub enum Decision {
 impl Decision {
     /// Read a `2xx` acquire body. `decision` discriminates; a body carrying `permits`
     /// alone reads as a grant and one carrying `retry_after_secs` alone as a denial. A
-    /// zero-permit grant reads as a denial waiting out its TTL. Anything else raises
+    /// zero-permit grant reads as a denial waiting out its TTL. A wait above the run's
+    /// retry-after ceiling reads as the ceiling. Anything else raises
     /// `ConnectorLimiterUnreadable` (`connector.meter.unreadable-answer`).
     pub fn read(body: &[u8]) -> Result<Decision, ConnectorError> {
         let unreadable = |why: &str| ConnectorError::ConnectorLimiterUnreadable(format!("the acquire answer {why}"));
@@ -133,23 +146,24 @@ impl Decision {
         let granted = |permits: u64| {
             let ttl_secs = ttl.unwrap_or(DEFAULT_TTL_SECS);
             match u32::try_from(permits).unwrap_or(u32::MAX) {
-                0 => Decision::Denied { retry_after_secs: ttl_secs.max(1) },
+                0 => Decision::Denied { retry_after_secs: capped(ttl_secs.max(1)) },
                 permits => Decision::Granted { permits, ttl_secs },
             }
         };
         match (decision, permits, retry) {
-            (Some("denied"), _, retry) => Ok(Decision::Denied { retry_after_secs: retry.unwrap_or(DEFAULT_RETRY_AFTER_SECS) }),
+            (Some("denied"), _, retry) => Ok(Decision::Denied { retry_after_secs: capped(retry.unwrap_or(DEFAULT_RETRY_AFTER_SECS)) }),
             (Some("granted"), Some(p), _) | (None, Some(p), _) => Ok(granted(p)),
             (Some("granted"), None, _) => Err(unreadable("grants without a `permits` count")),
-            (None, None, Some(retry)) => Ok(Decision::Denied { retry_after_secs: retry }),
+            (None, None, Some(retry)) => Ok(Decision::Denied { retry_after_secs: capped(retry) }),
             (Some(other), _, _) => Err(unreadable(&format!("names decision `{other}`"))),
             (None, None, None) => Err(unreadable("carries no decision")),
         }
     }
 
-    /// A bare `429` reads as a denial carrying its `Retry-After`.
+    /// A bare `429` reads as a denial carrying its `Retry-After`, capped at the run's
+    /// retry-after ceiling.
     pub fn throttled(retry_after: Option<&str>, now: Instant) -> Decision {
-        Decision::Denied { retry_after_secs: retry_after.and_then(|r| parse_retry_after(r, now)).unwrap_or(DEFAULT_RETRY_AFTER_SECS) }
+        Decision::Denied { retry_after_secs: capped(retry_after.and_then(|r| parse_retry_after(r, now)).unwrap_or(DEFAULT_RETRY_AFTER_SECS)) }
     }
 }
 
@@ -236,6 +250,15 @@ impl Pool {
         self.granted = 0;
         self.spent = 0;
         Some(report)
+    }
+
+    /// Take back a drained report the limiter did not accept, so the next report carries
+    /// its counts and its usage ahead of anything observed since.
+    pub fn restore(&mut self, report: Report) {
+        self.granted = self.granted.saturating_add(report.granted);
+        self.spent = self.spent.saturating_add(report.spent);
+        let later = std::mem::replace(&mut self.usage, report.usage);
+        self.usage.extend(later);
     }
 }
 

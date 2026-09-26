@@ -92,8 +92,8 @@ impl Resolver for Vetted {
     }
 }
 
-fn agent(vetted: &Vetted, hardened: bool) -> ureq::Agent {
-    let mut builder = Config::builder().max_redirects(0).http_status_as_error(false).timeout_global(Some(REQUEST_TIMEOUT)).save_redirect_history(false);
+fn agent(vetted: &Vetted, hardened: bool, timeout: Duration) -> ureq::Agent {
+    let mut builder = Config::builder().max_redirects(0).http_status_as_error(false).timeout_global(Some(timeout)).save_redirect_history(false);
     if hardened {
         // A request carrying a declared header takes the hardened client, which bypasses the system proxy.
         builder = builder.proxy(None);
@@ -136,13 +136,30 @@ pub struct Client {
     proxied: ureq::Agent,
     /// The shared quota every request reserves against, when the connector declares one.
     meter: Option<Meter>,
+    /// Whether a permitted host may resolve to an internal address: the operator's own
+    /// limiter only (`connector.meter.limiter-address`).
+    internal: bool,
 }
 
 impl Client {
     pub fn new(allow: Allowlist, origin: Url) -> Client {
         let vetted = Vetted::default();
-        let (hardened, proxied) = (agent(&vetted, true), agent(&vetted, false));
-        Client { allow, origin, sensitive: Mutex::default(), vetted, max_body: MAX_BODY_BYTES, read_body: true, hardened, proxied, meter: None }
+        let (hardened, proxied) = (agent(&vetted, true, REQUEST_TIMEOUT), agent(&vetted, false, REQUEST_TIMEOUT));
+        Client { allow, origin, sensitive: Mutex::default(), vetted, max_body: MAX_BODY_BYTES, read_body: true, hardened, proxied, meter: None, internal: false }
+    }
+
+    /// The client with a shorter wall clock per request than [`REQUEST_TIMEOUT`].
+    pub fn with_timeout(mut self, timeout: Duration) -> Client {
+        let timeout = timeout.min(REQUEST_TIMEOUT);
+        (self.hardened, self.proxied) = (agent(&self.vetted, true, timeout), agent(&self.vetted, false, timeout));
+        self
+    }
+
+    /// The client admitting an internal address for its permitted hosts. Only the
+    /// operator-authored limiter endpoint takes it; a vendor host never does.
+    pub(crate) fn admitting_internal(mut self) -> Client {
+        self.internal = true;
+        self
     }
 
     /// The client with a lower body ceiling than [`MAX_BODY_BYTES`].
@@ -189,8 +206,10 @@ impl Client {
         if addrs.is_empty() {
             return Err(Failure::new(FailureTag::Transient, format!("`{host}` resolves to no address")));
         }
-        for a in &addrs {
-            vet_address(self.origin.host_str().unwrap_or_default(), a.ip()).map_err(deny)?;
+        if !self.internal {
+            for a in &addrs {
+                vet_address(self.origin.host_str().unwrap_or_default(), a.ip()).map_err(deny)?;
+            }
         }
         Ok(addrs)
     }

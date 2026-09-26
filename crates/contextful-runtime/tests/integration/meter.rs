@@ -12,6 +12,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use url::Url;
 
 const TOKEN: &str = "limiter-token-value";
@@ -22,7 +23,7 @@ fn url(s: &str) -> Url {
 }
 
 fn declaration() -> LimiterDeclaration {
-    LimiterDeclaration::new("graph-app", "reads", &["X-App-Usage"])
+    LimiterDeclaration::new("graph-app", "reads", &["X-App-Usage"]).unwrap()
 }
 
 /// A vendor answering every path 200 with quota-state headers, redirecting `/start` to `/landed`.
@@ -78,7 +79,6 @@ fn vendor_hits(server: &Server) -> usize {
 
 /// The declaration names the quota, the class every request reserves under, and the headers the report forwards;
 /// a header it does not name stays home.
-// spec: connector.meter.limiter-declaration@fb907310
 #[test]
 fn the_declaration_names_the_quota_the_class_and_the_forwarded_headers() {
     let (v, l, clock) = (vendor(), granting(8, 10), SetClock::new());
@@ -200,9 +200,8 @@ fn the_report_carries_the_accounting_the_responses_and_the_run() {
     assert_eq!((usage[0]["status"].as_u64(), usage[0]["retry_after_secs"].as_u64()), (Some(200), Some(3)));
 }
 
-/// A failing report endpoint is retried under backoff up to three attempts; one that never takes the report is
-/// recorded in the audit and fails no request.
-// spec: connector.meter.report-delivery@1de57715
+/// A failing report endpoint is retried under backoff up to three attempts when the run finishes; one that never
+/// takes the report is recorded in the audit and fails no request.
 #[test]
 fn a_report_retries_then_lands_in_the_audit_and_fails_nothing() {
     let clock = SetClock::new();
@@ -221,7 +220,8 @@ fn a_report_retries_then_lands_in_the_audit_and_fails_nothing() {
     assert_eq!(l.received("/report").len(), 3);
     assert!(limiter.audit().is_empty(), "{:?}", limiter.audit());
 
-    // Never accepted: three attempts, one audit entry, and every request still succeeds.
+    // Never accepted: one attempt ahead of the refill, three at finish, one audit entry naming both batches, and
+    // every request still succeeds.
     let l = Server::start(|r| match r.path() {
         "/acquire" => Response::json(200, "{\"permits\":1,\"ttl_secs\":10}"),
         _ => Response::json(500, "{}"),
@@ -230,16 +230,99 @@ fn a_report_retries_then_lands_in_the_audit_and_fails_nothing() {
     let c = metered(&v, &limiter);
     get(&c, &v, "/v1").unwrap();
     get(&c, &v, "/v2").unwrap();
-    assert_eq!(l.received("/report").len(), 3, "the report ahead of the second acquire is attempted three times");
+    assert_eq!(l.received("/report").len(), 1, "the report ahead of the refill is attempted once");
+    limiter.finish();
+    assert_eq!(l.received("/report").len(), 4);
     let audit = limiter.audit();
     assert_eq!(audit.len(), 1, "{audit:?}");
-    assert!(audit[0].contains("undelivered") && audit[0].contains("graph-app"), "{audit:?}");
+    assert!(audit[0].contains("undelivered") && audit[0].contains("graph-app") && audit[0].contains("2 spent of 2 granted"), "{audit:?}");
     assert!(!audit[0].contains(TOKEN));
+}
+
+/// A report the limiter does not take ahead of a refill is carried into the next one, so no granted or spent permit
+/// goes unreported.
+#[test]
+fn an_undelivered_report_folds_into_the_next() {
+    let clock = SetClock::new();
+    let reports = Arc::new(AtomicUsize::new(0));
+    let seen = reports.clone();
+    let l = Server::start(move |r| match r.path() {
+        "/acquire" => Response::json(200, "{\"permits\":1,\"ttl_secs\":10}"),
+        _ if seen.fetch_add(1, Ordering::SeqCst) == 0 => Response::json(503, "{}"),
+        _ => Response::json(204, ""),
+    });
+    let v = vendor();
+    let limiter = limiter_at(&l.url(""), 1, &clock);
+    let c = metered(&v, &limiter);
+    for path in ["/v1", "/v2", "/v3"] {
+        get(&c, &v, path).unwrap();
+    }
+    let sent = l.received("/report");
+    assert_eq!(sent.len(), 2, "one attempt ahead of each refill");
+    let landed = json(&sent[1]);
+    assert_eq!((landed["granted"].as_u64(), landed["spent"].as_u64()), (Some(2), Some(2)), "{landed}");
+    assert_eq!(landed["usage"].as_array().unwrap().len(), 2);
+    limiter.finish();
+    let last = json(&l.received("/report")[2]);
+    assert_eq!((last["granted"].as_u64(), last["spent"].as_u64()), (Some(1), Some(1)));
+    assert!(limiter.audit().is_empty(), "{:?}", limiter.audit());
+}
+
+/// A report endpoint that accepts the connection and never answers delays a refill by at most the limiter's call
+/// timeout, not by a vendor request's.
+#[test]
+fn a_hanging_report_endpoint_stalls_no_request() {
+    let clock = SetClock::new();
+    let l = Server::start(|r| match r.path() {
+        "/acquire" => Response::json(200, "{\"permits\":1,\"ttl_secs\":10}"),
+        _ => {
+            std::thread::sleep(Duration::from_secs(5));
+            Response::json(204, "")
+        }
+    });
+    let v = vendor();
+    let binding = LimiterBinding::parse("graph-app", &l.url(""), "secret://limiter-token", Some(1)).unwrap();
+    let limiter = Arc::new(Limiter::new(binding, resolver(&clock), RUN, Arc::new(clock.clone())).unwrap().with_timeout(Duration::from_millis(200)));
+    let c = metered(&v, &limiter);
+    get(&c, &v, "/v1").unwrap();
+    let started = Instant::now();
+    get(&c, &v, "/v2").unwrap();
+    assert!(started.elapsed() < Duration::from_secs(2), "the refill took {:?}", started.elapsed());
+}
+
+/// A limiter answering `401`, `403` or another failing status fails the request as one transient `ConnectorUnmetered`,
+/// never as an expired vendor credential.
+#[test]
+fn a_failing_limiter_answer_is_never_a_vendor_credential_expiry() {
+    let clock = SetClock::new();
+    for status in [401u16, 403, 400, 404, 503] {
+        let v = vendor();
+        let l = Server::start(move |_| Response::json(status, "{}"));
+        let f = get(&metered(&v, &limiter_at(&l.url(""), 8, &clock)), &v, "/v1").unwrap_err();
+        assert!(f.message.starts_with("ConnectorUnmetered"), "{status}: {f}");
+        assert_eq!(f.tag, FailureTag::Transient, "{status}: {f}");
+        assert_eq!(vendor_hits(&v), 0);
+    }
+}
+
+/// The operator's limiter endpoint may resolve to a private address; the vendor-host address check does not refuse
+/// it.
+// spec: connector.meter.limiter-address@26640b2d
+#[test]
+fn a_limiter_on_a_private_address_is_not_refused_as_one() {
+    let (v, clock) = (vendor(), SetClock::new());
+    let binding = LimiterBinding::parse("graph-app", "https://10.255.255.1", "secret://limiter-token", Some(1)).unwrap();
+    let limiter = Arc::new(Limiter::new(binding, resolver(&clock), RUN, Arc::new(clock.clone())).unwrap().with_timeout(Duration::from_millis(200)));
+    let f = get(&metered(&v, &limiter), &v, "/v1").unwrap_err();
+    assert!(f.message.starts_with("ConnectorUnmetered"), "{f}");
+    assert!(!f.message.contains("ConnectorPrivateAddress"), "{f}");
+    assert!(!f.deterministic, "{f}");
+    assert_eq!(vendor_hits(&v), 0);
 }
 
 /// With the limiter unreachable, failing, or unbound, a request raises `ConnectorUnmetered` and never reaches the
 /// vendor.
-// spec: connector.meter.unmetered-request@ab2097a5
+// spec: connector.meter.unmetered-request@df535b45
 #[test]
 fn no_granted_reservation_means_no_request() {
     let clock = SetClock::new();
@@ -254,6 +337,11 @@ fn no_granted_reservation_means_no_request() {
     let failing = Server::start(|_| Response::json(503, "{}"));
     let f = get(&metered(&v, &limiter_at(&failing.url(""), 8, &clock)), &v, "/v1").unwrap_err();
     assert!(f.message.starts_with("ConnectorUnmetered"), "{f}");
+    // Refusing the limiter token: no statement about the vendor credential.
+    let refusing = Server::start(|_| Response::json(401, "{}"));
+    let f = get(&metered(&v, &limiter_at(&refusing.url(""), 8, &clock)), &v, "/v1").unwrap_err();
+    assert!(f.message.starts_with("ConnectorUnmetered"), "{f}");
+    assert_ne!(f.tag, FailureTag::AuthExpired, "{f}");
     // Unbound: the declaration carries no limiter.
     let c = Client::new(Allowlist::parse(&["127.0.0.1"]).unwrap(), url(&v.url("/"))).metered(Meter::new(declaration(), None));
     let f = get(&c, &v, "/v1").unwrap_err();

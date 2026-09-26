@@ -151,20 +151,26 @@ unsettled: Does a community-distributed connector need a signing and transparenc
 Reservation against a shared vendor quota: declaration, binding, permits, denial and the usage report.
 
 - `limiter-declaration` — A connector declares a limiter capability naming the shared vendor quota, the traffic class of its requests, and the vendor quota-state response headers to forward.
+- `forward-credential` — A limiter declaration forwarding `authorization`, `proxy-authorization`, `cookie` or `set-cookie` raises `ConnectorForwardRejected` at load.
+  *because the report carries forwarded headers verbatim to a party outside the vendor credential's scope*
 - `limiter-binding` — The operator binds that quota name to an endpoint, a bearer token held by reference, and a permit batch size.
 - `quota-unbound` — A declared quota with no binding raises `ConnectorQuotaUnbound` at load.
   *A-connector*
-- `binding-transport` — A limiter endpoint that is neither HTTPS nor loopback, and a limiter token written as an inline literal, raise `ConnectorLimiterBindingRejected` at load.
+- `binding-transport` — A limiter endpoint that is neither HTTPS nor loopback or carries a query, fragment or userinfo, and a limiter token that is not a `secret://` reference, raise `ConnectorLimiterBindingRejected` at load.
   *A-connector*
+- `limiter-address` — A limiter endpoint may resolve to a private or loopback address; the engine's check of vendor-host addresses does not apply to it.
+  *because the operator authors the limiter endpoint and no vendor answer supplies it*
 - `reservation-point` — The host reserves at the mediation point, the guest's outgoing-HTTP import or the engine's shared client. One permit covers one outbound request.
   *because one call issues any number of requests for paging, retries and token refresh*
 - `permit-batch` — An acquire may grant a batch of permits under a short TTL. Each request spends one, and the next report surrenders the unspent.
 - `acquire` — Acquire is an authenticated POST of quota, class and permit count, answered granted with permits and a TTL, or denied with a retry-after. A bare `429` with `Retry-After`, and a zero-permit grant, read as denials.
 - `unreadable-answer` — A limiter response the engine cannot read raises `ConnectorLimiterUnreadable` and grants nothing.
   *A-connector*
+- `denial-ceiling` — A limiter wait, whether a retry-after or a zero-permit grant's TTL, reads as at most the ceiling of {{run.retry.retry-after}}.
+  *because an unbounded wait named by the limiter parks the run past any retry its schedule allows*
 - `report` — Report is an authenticated POST of quota, class, granted, spent, one entry per vendor response (status, retry-after, verbatim headers), an observation instant and the run id.
-- `report-delivery` — Report delivery is at-least-once under bounded backoff inside the run. A report that never lands is recorded in the run audit and fails nothing.
-- `unmetered-request` — Under a declared limiter, a vendor request with no granted reservation raises `ConnectorUnmetered`, including when the limiter is unreachable or unbound.
+- `report-delivery` — Report delivery is at-least-once under bounded backoff inside the run, and one attempt ahead of a refill; an undelivered report rides the next. A report that never lands is recorded in the run audit and fails nothing.
+- `unmetered-request` — Under a declared limiter, a vendor request with no granted reservation raises `ConnectorUnmetered`, including when the limiter is unreachable, unbound or answers a failing status, which never reads as an expired vendor credential.
   *A-connector*
 - `allowlist-precedence` — A request the allowlist refuses never reaches the limiter and spends no permit.
 - `held-back-request` — A guest swallowing a held-back request still fails its call, and a fault inside the reservation machinery fails the request rather than passing it unmetered.

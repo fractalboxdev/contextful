@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 13 | 179 | 47 | 19 | 13 | 68 | 0 | 68 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
-| `connector` | 2 | 13 | 230 | 72 | 14 | 7 | 58 | 0 | 58 |
+| `connector` | 2 | 13 | 232 | 72 | 14 | 7 | 65 | 0 | 65 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
-| `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
+| `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 3 | 0 | 3 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
-| `run` | 3 | 24 | 289 | 82 | 34 | 24 | 151 | 0 | 151 |
+| `run` | 3 | 24 | 289 | 82 | 34 | 24 | 148 | 0 | 148 |
 | `store` | 1 | 14 | 155 | 37 | 12 | 8 | 111 | 0 | 111 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1454 | 467 | 162 | 101 | 677 | 0 | |
+| **total** | 19 | 145 | 1456 | 467 | 162 | 101 | 674 | 0 | |
 
 Decision records: 18.
 
@@ -27,16 +27,16 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
-| 4 — Ingest | 22 | 330 | 87 | passing |
+| 4 — Ingest | 22 | 332 | 91 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 39 | 34 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
 | 8 — Accountability | 5 | 23 | 3 | open |
-| 9 — Visibility | 6 | 22 | 3 | open |
+| 9 — Visibility | 6 | 22 | 0 | absent |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
 | 11 — The derive tier | 7 | 68 | 44 | passing |
 | 12 — The console | 11 | 30 | 0 | absent |
-| 13 — Disclosure | 5 | 21 | 4 | open |
+| 13 — Disclosure | 5 | 21 | 0 | absent |
 | 14 — Assurance | 5 | 86 | 20 | open |
 
 Unscheduled operations: 10.
@@ -279,10 +279,6 @@ Unscheduled operations: 10.
 | `connector.attach.weakened-hop` | `crates/contextful-runtime/tests/integration/attach.rs::a_hop_off_the_origin_or_down_to_cleartext_is_refused` | performed |
 | `connector.declare-capability.allowlist-shape` | `crates/contextful-core/tests/integration/connector/attach.rs::a_malformed_allowlist_is_refused` | performed |
 | `connector.declare-capability.host-allowlist` | `crates/contextful-core/tests/integration/connector/attach.rs::exact_hosts_and_subdomain_wildcards_match_as_suffixes` | performed |
-| `connector.declare-capability.probe-shape` | `crates/contextful-core/tests/integration/connector/probe.rs::a_scopes_header_that_is_no_field_name_refuses_at_declaration` | performed |
-| `connector.declare-capability.probe-transport` | `crates/contextful-runtime/tests/integration/probe.rs::the_probe_reaches_only_an_allowlisted_host_over_tls_or_loopback` | performed |
-| `connector.declare-capability.scope-exceeded` | `crates/contextful-runtime/tests/integration/probe.rs::a_grant_beyond_the_expectation_refuses_and_the_session_does_not_open` | performed |
-| `connector.declare-capability.scope-unverified` | `crates/contextful-runtime/tests/integration/probe.rs::a_grant_the_probe_cannot_read_refuses_and_the_session_does_not_open` | performed |
 | `connector.lease.bootstrap-declared-leased` | `crates/contextful-runtime/tests/integration/lease.rs::the_bootstrap_name_cannot_be_leased` | performed |
 | `connector.lease.bootstrap-non-recursion` | `crates/contextful-runtime/tests/integration/lease.rs::the_mint_credential_comes_from_the_adapters_behind_the_provider` | performed |
 | `connector.lease.bootstrap-unserved` | `crates/contextful-runtime/tests/integration/lease.rs::an_unanswered_bootstrap_refuses_before_any_mint` | performed |
@@ -303,6 +299,17 @@ Unscheduled operations: 10.
 | `connector.lease.transient-class` | `crates/contextful-runtime/tests/integration/lease.rs::server_and_transport_failures_are_transient_and_tried_once` | performed |
 | `connector.lease.undeclared-name-defers` | `crates/contextful-runtime/tests/integration/lease.rs::an_undeclared_name_passes_the_provider_by` | performed |
 | `connector.lease.unknown-scope` | `crates/contextful-runtime/tests/integration/lease.rs::an_unknown_scope_is_a_configuration_fault_with_no_fallthrough` | performed |
+| `connector.meter.acquire` | `crates/contextful-runtime/tests/integration/meter.rs::a_denial_a_bare_429_and_a_zero_grant_all_hold_the_request_back` | performed |
+| `connector.meter.allowlist-precedence` | `crates/contextful-runtime/tests/integration/meter.rs::a_refused_request_never_reaches_the_limiter` | performed |
+| `connector.meter.counting-not-pricing` | `crates/contextful-core/tests/integration/connector/meter.rs::the_wire_counts_requests_and_prices_none` | performed |
+| `connector.meter.denial-ceiling` | `crates/contextful-core/tests/integration/connector/meter.rs::a_limiter_wait_caps_at_the_retry_after_ceiling` | performed |
+| `connector.meter.limiter-address` | `crates/contextful-runtime/tests/integration/meter.rs::a_limiter_on_a_private_address_is_not_refused_as_one` | performed |
+| `connector.meter.limiter-binding` | `crates/contextful-core/tests/integration/connector/meter.rs::a_binding_names_an_endpoint_a_token_reference_and_a_batch_size` | performed |
+| `connector.meter.permit-batch` | `crates/contextful-runtime/tests/integration/meter.rs::a_batch_is_spent_one_permit_per_request_and_surrendered_on_report` | performed |
+| `connector.meter.report` | `crates/contextful-runtime/tests/integration/meter.rs::the_report_carries_the_accounting_the_responses_and_the_run` | performed |
+| `connector.meter.reservation-point` | `crates/contextful-runtime/tests/integration/meter.rs::each_outbound_request_spends_one_permit` | performed |
+| `connector.meter.unmetered-request` | `crates/contextful-runtime/tests/integration/meter.rs::no_granted_reservation_means_no_request` | performed |
+| `connector.meter.unreadable-answer` | `crates/contextful-runtime/tests/integration/meter.rs::an_unreadable_answer_fails_the_request_before_the_vendor` | performed |
 | `connector.reference.environment-is-a-miss` | `crates/contextful-runtime/tests/integration/resolve.rs::the_environment_answers_no_template` | performed |
 | `connector.reference.foreign-placeholder` | `crates/contextful-core/tests/integration/connector/reference.rs::an_environment_or_bare_placeholder_is_foreign` | performed |
 | `connector.reference.malformed-placeholder` | `crates/contextful-core/tests/integration/connector/reference.rs::an_unclosed_empty_or_nested_placeholder_is_malformed` | performed |
@@ -364,15 +371,8 @@ Unscheduled operations: 10.
 | `corpus.targets.incomplete` | `spec/pins.toml` | performed |
 | `corpus.targets.page` | `spec/pins.toml` | performed |
 | `disclosure.attest.broken-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken` | performed |
-| `disclosure.bound-staleness.budget-grammar` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_budget_outside_the_grammar_is_refused_naming_table_and_text` | performed |
-| `disclosure.declare-fidelity.family-bound` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_level_the_family_does_not_permit_is_refused` | performed |
-| `disclosure.declare-fidelity.family-undeclared` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_block_naming_no_family_is_refused` | performed |
 | `disclosure.record.segment` | `crates/contextful-policy/tests/integration/audit.rs::a_segment_closes_at_4096_entries_under_one_signed_root` | performed |
 | `disclosure.record.single-writer` | `crates/contextful-policy/tests/integration/audit.rs::a_second_writer_on_one_directory_is_refused` | performed |
-| `disclosure.suppress.contributor-share` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::contributor_share` | performed |
-| `disclosure.suppress.dominance-unverifiable` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::dominance_unverifiable` | performed |
-| `disclosure.suppress.empty-policy` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::empty_policy` | performed |
-| `disclosure.suppress.min-group-size` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::min_group_size` | performed |
 | `read.declare.canonical-column` | `crates/contextful-core/tests/integration/memory/declare.rs::a_shaped_table_omitting_a_canonical_column_is_refused` | performed |
 | `read.declare.undeclared-relation` | `crates/contextful-core/tests/integration/memory/declare.rs::an_edge_outside_the_relation_union_is_refused` | performed |
 | `read.embed.default-embedder` | `crates/contextful-core/tests/integration/read/embed.rs::the_default_embedder_is_deterministic_and_normalized` | performed |
@@ -572,9 +572,6 @@ Unscheduled operations: 10.
 | `run.retry.single-attempt` | `crates/contextful-core/tests/integration/run/retry.rs::a_one_attempt_schedule_never_retries` | performed |
 | `run.retry.step-failed` | `crates/contextful-core/tests/integration/run/retry.rs::a_terminal_or_exhausted_step_fails_with_its_label_and_tag` | performed |
 | `run.retry.unretryable-tag` | `crates/contextful-core/tests/integration/run/retry.rs::retry_on_naming_an_unretryable_tag_is_refused_at_compile` | performed |
-| `run.seed.block` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seed_block_names_a_source_and_a_ceiling_on_the_ordering_scale` | performed |
-| `run.seed.ceiling-unevaluable` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_missing_column_or_an_off_scale_stamp_is_unevaluable` | performed |
-| `run.seed.declaration-missing` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seeded_table_needs_a_key_and_an_event_time_ordering` | performed |
 | `run.select.anti-join` | `crates/contextful-core/tests/integration/run/derive.rs::the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker` | performed |
 | `run.select.attempts-per-unit` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_receives_3_attempts_by_default` | performed |
 | `run.select.foreign-output-table` | `crates/contextful-core/tests/integration/run/derive.rs::a_key_naming_another_pipelines_output_refuses` | performed |

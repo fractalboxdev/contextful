@@ -2,6 +2,7 @@
 
 use contextful_core::connector::meter::{acquire_body, require_binding, Decision, LimiterBinding, LimiterDeclaration, Pool, Usage, DEFAULT_PERMITS};
 use contextful_core::connector::ConnectorError;
+use contextful_core::run::retry::RETRY_AFTER_CEILING_SECS;
 use contextful_core::time::Instant;
 use std::collections::BTreeMap;
 
@@ -12,7 +13,7 @@ fn at(s: &str) -> Instant {
 const NOW: &str = "2030-01-01T00:00:00Z";
 
 fn declaration() -> LimiterDeclaration {
-    LimiterDeclaration::new("graph-app", "reads", &["X-App-Usage"])
+    LimiterDeclaration::new("graph-app", "reads", &["X-App-Usage"]).unwrap()
 }
 
 /// The operator binds a quota name to an endpoint, a token held by reference and a batch size; an unnamed size is
@@ -30,9 +31,8 @@ fn a_binding_names_an_endpoint_a_token_reference_and_a_batch_size() {
     assert_eq!(LimiterBinding::parse("graph-app", "https://limiter.example", "secret://limiter-token", Some(0)).unwrap().permits, 1);
 }
 
-/// A cleartext endpoint off loopback, and a token written as a literal, raise `ConnectorLimiterBindingRejected`; the
-/// refusal never repeats the literal.
-// spec: connector.meter.binding-transport@67b7fe12
+/// A cleartext endpoint off loopback, an endpoint carrying a query, fragment or userinfo, and a token that is not a
+/// `secret://` reference raise `ConnectorLimiterBindingRejected`; the refusal never repeats the literal.
 #[test]
 fn a_cleartext_endpoint_or_a_literal_token_rejects_the_binding() {
     let rejected = |endpoint: &str, token: &str| match LimiterBinding::parse("graph-app", endpoint, token, None) {
@@ -42,6 +42,7 @@ fn a_cleartext_endpoint_or_a_literal_token_rejects_the_binding() {
     rejected("http://limiter.example", "secret://limiter-token");
     rejected("https://limiter.example?key=1", "secret://limiter-token");
     rejected("https://user:pw@limiter.example", "secret://limiter-token");
+    rejected("https://limiter.example#frag", "secret://limiter-token");
     let m = rejected("https://limiter.example", "sk-live-limiter-literal");
     assert!(!m.contains("sk-live-limiter-literal"), "{m}");
     rejected("https://limiter.example", "env://LIMITER_TOKEN");
@@ -52,7 +53,6 @@ fn a_cleartext_endpoint_or_a_literal_token_rejects_the_binding() {
 }
 
 /// A declared quota with no binding raises `ConnectorQuotaUnbound`, naming the quota.
-// spec: connector.meter.quota-unbound@3c671e00
 #[test]
 fn a_declared_quota_with_no_binding_refuses() {
     let mut bindings = BTreeMap::new();
@@ -95,4 +95,30 @@ fn the_wire_counts_requests_and_prices_none() {
     for priced in ["price", "cost", "currency", "amount"] {
         assert!(!text.contains(priced), "{text}");
     }
+}
+
+/// A declaration forwarding a credential-bearing header raises `ConnectorForwardRejected`, whatever its case.
+#[test]
+fn a_declaration_forwarding_a_credential_header_refuses() {
+    for header in ["Authorization", "proxy-authorization", "Cookie", "SET-COOKIE"] {
+        match LimiterDeclaration::new("graph-app", "reads", &["X-App-Usage", header]) {
+            Err(ConnectorError::ConnectorForwardRejected(m)) => assert!(m.contains("graph-app") && m.contains(&header.to_ascii_lowercase()), "{m}"),
+            other => panic!("`{header}`: expected ConnectorForwardRejected, got {other:?}"),
+        }
+    }
+    assert_eq!(declaration().forward, ["x-app-usage"]);
+}
+
+/// A limiter wait above the run's retry-after ceiling reads as the ceiling, from a denial, a bare `429` and a
+/// zero-permit grant alike.
+// spec: connector.meter.denial-ceiling@1ef4e6cb
+#[test]
+fn a_limiter_wait_caps_at_the_retry_after_ceiling() {
+    let cap = Decision::Denied { retry_after_secs: RETRY_AFTER_CEILING_SECS };
+    let huge = u64::MAX;
+    assert_eq!(Decision::read(format!("{{\"decision\":\"denied\",\"retry_after_secs\":{huge}}}").as_bytes()).unwrap(), cap);
+    assert_eq!(Decision::read(format!("{{\"retry_after_secs\":{huge}}}").as_bytes()).unwrap(), cap);
+    assert_eq!(Decision::read(format!("{{\"decision\":\"granted\",\"permits\":0,\"ttl_secs\":{huge}}}").as_bytes()).unwrap(), cap);
+    assert_eq!(Decision::throttled(Some("99999999999"), at(NOW)), cap);
+    assert_eq!(Decision::throttled(Some("7"), at(NOW)), Decision::Denied { retry_after_secs: 7 });
 }
