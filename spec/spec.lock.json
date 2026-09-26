@@ -4258,6 +4258,50 @@
       "line": 67
     },
     {
+      "id": "read.synthesize.pass-cursor",
+      "contract": "read",
+      "operation": "synthesize",
+      "subject": "pass-cursor",
+      "kind": "behavior",
+      "statement": "A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under a prompt bound, recording each batch once its claims commit.",
+      "why": "",
+      "file": "spec/21-memory.md",
+      "line": 69
+    },
+    {
+      "id": "read.synthesize.attribution",
+      "contract": "read",
+      "operation": "synthesize",
+      "subject": "attribution",
+      "kind": "behavior",
+      "statement": "Every landed claim carries `grant_id`, the chain-final revocation identifier of the credential that wrote it, `agent`, that credential's agent member, and `_authored_by`, its on-behalf-of principal.",
+      "why": "because a reader weighs a conclusion by which grant could have produced it",
+      "file": "spec/21-memory.md",
+      "line": 70
+    },
+    {
+      "id": "read.revise.tier",
+      "contract": "read",
+      "operation": "revise",
+      "subject": "tier",
+      "kind": "behavior",
+      "statement": "`tier` is stamped from the write path and grounding, never the payload: a synthesis pass stamps `derived`, a direct write `curated`, a fetched result `researched`, and mixed grounding takes the lowest.",
+      "why": "A-read",
+      "file": "spec/21-memory.md",
+      "line": 97
+    },
+    {
+      "id": "read.revise.supersede",
+      "contract": "read",
+      "operation": "revise",
+      "subject": "supersede",
+      "kind": "behavior",
+      "statement": "A claim of equal or higher tier retires a live prior of its subject, predicate and scope when both are open-ended or share a valid-from instant: the prior's `valid_to` becomes the claim's `valid_from`, and `superseded_by` names it.",
+      "why": "A-read",
+      "file": "spec/21-memory.md",
+      "line": 99
+    },
+    {
       "id": "read.revise.direct-write",
       "contract": "read",
       "operation": "revise",
@@ -4266,7 +4310,7 @@
       "statement": "The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 94
+      "line": 101
     },
     {
       "id": "read.recall.evidence-unresolved",
@@ -4277,7 +4321,7 @@
       "statement": "An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 105
+      "line": 112
     },
     {
       "id": "read.recall.evidence-references",
@@ -4288,7 +4332,29 @@
       "statement": "A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 107
+      "line": 114
+    },
+    {
+      "id": "read.recall.ranked-arm",
+      "contract": "read",
+      "operation": "recall",
+      "subject": "ranked-arm",
+      "kind": "behavior",
+      "statement": "A `corpus.retrieve` arm over a `memory_facts` table serves only live claims — no `superseded_by`, and a `valid_to` null or past the read's anchor — whose evidence passes the gate.",
+      "why": "",
+      "file": "spec/21-memory.md",
+      "line": 116
+    },
+    {
+      "id": "read.recall.suppression-count",
+      "contract": "read",
+      "operation": "recall",
+      "subject": "suppression-count",
+      "kind": "behavior",
+      "statement": "A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.",
+      "why": "because a count discloses that a conclusion was withheld, never what it concluded",
+      "file": "spec/21-memory.md",
+      "line": 117
     },
     {
       "id": "read.resolve-entity.ambiguous-mention",
@@ -4299,7 +4365,7 @@
       "statement": "A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 126
+      "line": 136
     },
     {
       "id": "read.resolve-entity.edge-endpoint",
@@ -4310,7 +4376,7 @@
       "statement": "A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 128
+      "line": 138
     },
     {
       "id": "read.settle.registration",
@@ -4321,7 +4387,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 139
+      "line": 149
     },
     {
       "id": "read.settle.source-mismatch",
@@ -4332,7 +4398,7 @@
       "statement": "An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 141
+      "line": 151
     },
     {
       "id": "read.settle.settling-citation",
@@ -4343,7 +4409,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 143
+      "line": 153
     },
     {
       "id": "read.settle.grace-window",
@@ -4354,7 +4420,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 145
+      "line": 155
     },
     {
       "id": "run.journal.step-output",
