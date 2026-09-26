@@ -130,6 +130,28 @@ fn a_session_logs_within_1_mib_and_holds_8_requests_outbound() {
     let peak = peak.load(Ordering::SeqCst);
     assert!(peak <= IN_FLIGHT, "{peak} requests were outbound at once");
     assert!(peak > 1, "the guest's requests overlap");
+
+    // Requests a call abandoned at its deadline stay outbound until the vendor answers,
+    // and the instance replacing the overrun one waits for their slots.
+    let (now, peak) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+    let (n, p) = (now.clone(), peak.clone());
+    let server = Server::start(move |_| {
+        let at = n.fetch_add(1, Ordering::SeqCst) + 1;
+        p.fetch_max(at, Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(1500));
+        n.fetch_sub(1, Ordering::SeqCst);
+        Response::text(200, "ok")
+    });
+    let short = Limits { read_deadline: Duration::from_millis(300), ..Limits::default() };
+    let mut s = open_with(loopback(), &short, None).unwrap();
+    let burst = format!("burst {IN_FLIGHT} {}", server.url("/slow"));
+    s.open(&burst, None).unwrap();
+    assert!(s.next().unwrap_err().message.contains("deadline"));
+    s.open(&burst, None).unwrap();
+    assert!(s.next().unwrap_err().message.contains("deadline"));
+    std::thread::sleep(Duration::from_millis(2000));
+    let peak = peak.load(Ordering::SeqCst);
+    assert!(peak <= IN_FLIGHT, "{peak} requests were outbound at once across a replaced instance");
 }
 
 /// A guest's outbound request body carries at most 8 MiB. The host stops reading past it and fails the call as a

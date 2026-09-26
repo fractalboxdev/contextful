@@ -318,10 +318,12 @@ impl ComponentHost {
         if !grant.attach.is_empty() {
             grant.allow.check_bound().map_err(refuse)?;
         }
-        let (store, guest, instance) = instantiate(&connector.pre, &grant, limits)?;
+        let slots = Mediator::slots();
+        let (store, guest, instance) = instantiate(&connector.pre, &grant, limits, &slots)?;
         let mut session = Session {
             pre: connector.pre.clone(),
             grant,
+            slots,
             config,
             store,
             guest,
@@ -341,7 +343,7 @@ fn refuse(e: ConnectorError) -> Failure {
 }
 
 /// A fresh store and instance, instantiated under the discovery deadline.
-fn instantiate(pre: &InstancePre<Ctx>, grant: &Grant, limits: &Limits) -> Result<(Store<Ctx>, SourceConnector, Instance), Failure> {
+fn instantiate(pre: &InstancePre<Ctx>, grant: &Grant, limits: &Limits, slots: &Arc<tokio::sync::Semaphore>) -> Result<(Store<Ctx>, SourceConnector, Instance), Failure> {
     let mut wasi = WasiCtx::builder();
     wasi.allow_tcp(false).allow_udp(false).allow_ip_name_lookup(false).socket_addr_check(|_, _| Box::pin(async { false }));
     let ctx = Ctx {
@@ -349,7 +351,7 @@ fn instantiate(pre: &InstancePre<Ctx>, grant: &Grant, limits: &Limits) -> Result
         http: WasiHttpCtx::new(),
         table: ResourceTable::new(),
         budget: Budget::new(usize::try_from(limits.memory_bytes).unwrap_or(usize::MAX)),
-        mediator: Mediator::new(grant.allow.clone(), grant.attach.clone(), grant.gate.clone()),
+        mediator: Mediator::new(grant.allow.clone(), grant.attach.clone(), grant.gate.clone(), slots.clone()),
         log_left: limits.log_bytes,
         logs: Vec::new(),
         logs_dropped: 0,
@@ -439,10 +441,13 @@ fn data_type(t: wit::DataType) -> DataType {
 ///
 /// A call that traps or overruns its deadline leaves the instance unusable, so the
 /// session drops it with its open read, and the next call runs on a fresh instance of the
-/// same component under the same grant and configuration. Logs and traffic carry over.
+/// same component under the same grant and configuration. Logs, traffic and the
+/// in-flight slots carry over.
 pub struct Session {
     pre: InstancePre<Ctx>,
     grant: Grant,
+    /// The in-flight slots every instance of the session draws from.
+    slots: Arc<tokio::sync::Semaphore>,
     config: Option<String>,
     store: Store<Ctx>,
     guest: SourceConnector,
@@ -464,7 +469,7 @@ impl Session {
     }
 
     fn revive(&mut self) -> Result<(), Failure> {
-        let (store, guest, instance) = instantiate(&self.pre, &self.grant, &self.limits)?;
+        let (store, guest, instance) = instantiate(&self.pre, &self.grant, &self.limits, &self.slots)?;
         let old = std::mem::replace(&mut self.store, store);
         let traffic = old.data().mediator.traffic.lock().map(|t| t.clone()).unwrap_or_default();
         let old = old.into_data();

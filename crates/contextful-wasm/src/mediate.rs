@@ -64,15 +64,15 @@ pub(crate) struct Mediator {
 }
 
 impl Mediator {
-    pub(crate) fn new(allow: Allowlist, attach: Vec<(String, HeaderValue)>, gate: Option<Arc<dyn Reserve>>) -> Mediator {
-        Mediator {
-            allow,
-            attach,
-            gate,
-            clients: HashMap::new(),
-            in_flight: Arc::new(tokio::sync::Semaphore::new(IN_FLIGHT)),
-            traffic: Arc::default(),
-        }
+    /// A mediator drawing from `in_flight`, the session's slots. An instance replacing a
+    /// trapped one shares them, so requests its predecessor abandoned still count.
+    pub(crate) fn new(allow: Allowlist, attach: Vec<(String, HeaderValue)>, gate: Option<Arc<dyn Reserve>>, in_flight: Arc<tokio::sync::Semaphore>) -> Mediator {
+        Mediator { allow, attach, gate, clients: HashMap::new(), in_flight, traffic: Arc::default() }
+    }
+
+    /// The [`IN_FLIGHT`] slots one session's requests share.
+    pub(crate) fn slots() -> Arc<tokio::sync::Semaphore> {
+        Arc::new(tokio::sync::Semaphore::new(IN_FLIGHT))
     }
 
     fn note(&self, f: impl FnOnce(&mut Traffic)) {
