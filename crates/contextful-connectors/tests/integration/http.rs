@@ -181,8 +181,9 @@ fn a_table_pattern_binds_each_segment_percent_encoded() {
         Err(ConfigError::Connector(ConnectorError::ConnectorPlaceholderUnbound(m))) => assert!(m.contains("{account}"), "{m}"),
         other => panic!("{other:?}"),
     }
-    // A pattern naming one field twice, mixing text into a placeholder segment, or empty is refused at build.
-    for pattern in ["{a}/{a}", "v{a}/{b}", "", "{}/x"] {
+    // A pattern naming one field twice, mixing text into a placeholder segment, empty, or
+    // claiming the whole-name `{table}` as a field is refused at build.
+    for pattern in ["{a}/{a}", "v{a}/{b}", "", "{}/x", "{table}/{b}"] {
         assert!(matches!(HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/x", "table_pattern": pattern})), Err(ConfigError::Run(RunError::Invalid(_)))), "{pattern}");
     }
 }

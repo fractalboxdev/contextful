@@ -51,7 +51,8 @@ pub struct TablePattern {
 }
 
 impl TablePattern {
-    /// Parse a pattern: each segment is a literal or one `{name}`, and no name repeats.
+    /// Parse a pattern: each segment is a literal or one `{name}`, no name repeats, and no
+    /// field is `table`, the placeholder reserved for the whole name.
     pub fn parse(pattern: &str) -> Result<TablePattern, RunError> {
         let invalid = |why: String| RunError::Invalid(format!("`{NAME}` source `table_pattern` {why}"));
         if pattern.is_empty() {
@@ -61,6 +62,7 @@ impl TablePattern {
         for raw in pattern.split('/') {
             let segment = match raw.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
                 Some(name) if name.is_empty() || name.contains(['{', '}']) => return Err(invalid(format!("segment `{raw}` is not one `{{name}}`"))),
+                Some("table") => return Err(invalid("names `{table}`, which always binds the whole table name".into())),
                 Some(name) if segments.contains(&Segment::Field(name.to_string())) => return Err(invalid(format!("names `{{{name}}}` twice"))),
                 Some(name) => Segment::Field(name.to_string()),
                 None if raw.contains(['{', '}']) => return Err(invalid(format!("segment `{raw}` mixes literal text with a placeholder"))),
