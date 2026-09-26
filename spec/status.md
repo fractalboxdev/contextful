@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 3 | 0 | 3 |
-| `read` | 2 | 14 | 115 | 21 | 14 | 16 | 73 | 0 | 73 |
+| `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
 | `run` | 3 | 24 | 289 | 82 | 34 | 24 | 148 | 0 | 148 |
-| `store` | 1 | 14 | 153 | 37 | 12 | 8 | 109 | 0 | 109 |
+| `store` | 1 | 14 | 155 | 37 | 12 | 8 | 111 | 0 | 111 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1451 | 466 | 162 | 101 | 659 | 0 | |
+| **total** | 19 | 145 | 1453 | 466 | 162 | 101 | 663 | 0 | |
 
 Decision records: 18.
 
@@ -25,10 +25,10 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 191 | 133 | passing |
-| 2 — The store | 8 | 114 | 75 | passing |
+| 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
 | 4 — Ingest | 22 | 329 | 80 | passing |
-| 5 — The read face under enforcement | 16 | 204 | 118 | passing |
+| 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 39 | 34 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
 | 8 — Accountability | 5 | 23 | 3 | open |
@@ -399,7 +399,9 @@ Unscheduled operations: 10.
 | `read.register.engine` | `crates/contextful-context/tests/integration/read/register.rs::the_embedded_engine_reads_the_parquet_an_external_reader_opens` | performed |
 | `read.register.file-listing` | `crates/contextful-context/tests/integration/read/register.rs::file_listing_covers_the_callers_tables_alone` | performed |
 | `read.register.file-preview-target` | `crates/contextful-context/tests/integration/read/register.rs::a_preview_reads_a_run_file_through_its_relation` | performed |
+| `read.register.ledger-relation` | `crates/contextful-context/tests/integration/read/register.rs::a_tables_request_ledger_reads_as_its_child_relation` | performed |
 | `read.register.quiet-table` | `crates/contextful-context/tests/integration/read/register.rs::a_quiet_table_reads_empty` | performed |
+| `read.register.scoped-ledger` | `crates/contextful-context/tests/integration/read/register.rs::a_tenant_scoped_read_naming_the_ledger_is_refused` | performed |
 | `read.register.template-projection` | `crates/contextful-core/tests/integration/read/template.rs::a_template_projects_into_a_tool_with_every_field_required` | performed |
 | `read.register.tool-set` | `crates/contextful-agent/tests/integration/mcp.rs::the_tool_list_is_the_closed_read_set` | performed |
 | `read.resolve-entity.ambiguous-mention` | `crates/contextful-core/tests/integration/memory/resolve.rs::a_mention_two_identities_share_is_ambiguous` | performed |
@@ -686,7 +688,9 @@ Unscheduled operations: 10.
 | `store.replicate.write-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_refuses_a_write_verb_naming_the_canonical_store` | performed |
 | `store.reserve.column-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_producer_column_in_the_namespace_is_refused` | performed |
 | `store.reserve.injected` | `crates/contextful-context/tests/integration/reserve.rs::the_engine_injects_provenance_and_replaces_producer_values` | performed |
+| `store.reserve.ledger-append` | `crates/contextful-context/tests/integration/read/register.rs::concurrent_flushes_of_one_run_keep_every_row` | performed |
 | `store.reserve.ledger-path` | `crates/contextful-core/tests/integration/store/reserve.rs::the_ledger_path_is_disjoint_per_run_and_node` | performed |
+| `store.reserve.ledger-suffix` | `crates/contextful-core/tests/integration/store/reserve.rs::a_table_named_like_a_ledger_is_refused` | performed |
 | `store.reserve.modality` | `crates/contextful-core/tests/integration/store/reserve.rs::modality_takes_five_values` | performed |
 | `store.reserve.no-placeholder` | `crates/contextful-core/tests/integration/store/reserve.rs::a_missing_scope_omits_its_column` | performed |
 | `store.reserve.row-seq` | `crates/contextful-context/tests/integration/declare.rs::the_last_write_per_key_wins_within_a_run_and_across_runs_at_one_instant` | performed |
