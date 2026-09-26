@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 13 | 176 | 46 | 18 | 13 | 65 | 0 | 65 |
+| `assurance` | 2 | 13 | 179 | 47 | 19 | 13 | 68 | 0 | 68 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 153 | 37 | 12 | 8 | 109 | 0 | 109 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1437 | 462 | 161 | 101 | 609 | 0 | |
+| **total** | 19 | 145 | 1440 | 463 | 162 | 101 | 612 | 0 | |
 
 Decision records: 18.
 
@@ -23,7 +23,7 @@ Decision records: 18.
 
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
-| 0 — The test-first gate | 2 | 15 | 3 | passing |
+| 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 114 | 75 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
@@ -108,8 +108,11 @@ Unscheduled operations: 10.
 | `assurance.scope-claim.unnamed-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_claim_resting_on_an_unnamed_component_is_refused` | performed |
 | `assurance.structure-tree.mirror-unresolved` | `spec/pins.toml` | performed |
 | `assurance.test.acceptance-surface` | `spec/pins.toml` | performed |
+| `assurance.test.base-run-bound` | `tools/ci/tests/integration/test_first.rs::a_base_run_past_its_bound_is_killed_and_counts_red` | performed |
+| `assurance.test.base-unrunnable` | `tools/ci/tests/integration/test_first.rs::an_unloadable_base_fails_the_stage_instead_of_reading_red` | performed |
 | `assurance.test.refactor-trailer` | `spec/pins.toml` | performed |
 | `assurance.test.test-first` | `spec/pins.toml` | performed |
+| `assurance.test.test-first-scope` | `tools/ci/tests/integration/test_first.rs::only_the_changes_test_modules_run_against_the_base` | performed |
 | `authority.attenuate.expiry-extended` | `crates/contextful-core/tests/integration/attenuate.rs::expiry_extended` | performed |
 | `authority.attenuate.narrowing` | `crates/contextful-core/tests/integration/attenuate.rs::narrowing` | performed |
 | `authority.attenuate.offline` | `crates/contextful-policy/tests/integration/attenuate.rs::a_holder_derives_a_child_offline_and_the_parent_stays_intact` | performed |

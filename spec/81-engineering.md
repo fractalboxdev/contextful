@@ -88,6 +88,10 @@ Assertion construction, guard validation, suite placement, test-first and accept
 - `connector-kit` — The connector authoring toolkit ships a conformance suite — discovery returns valid schemas, an opened table yields a finite stream, a position round-trips — plus recorded-HTTP fixture replay and property tests over position monotonicity.
 - `test-first` — A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`.
   *A-assurance*
+- `test-first-scope` — The test-first stage builds each changed test file's target against the base source, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.
+- `base-run-bound` — One test-first execution against the base, its build excluded, runs for at most 300 s; a run past the bound is killed with its process group and counts as failing.
+- `base-unrunnable` — A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises `TestFirstBaseUnrunnable` instead of a verdict.
+  *because such a fault fails at base whatever the tests assert, and reading it as red admits an untested change*
 - `refactor-trailer` — A commit carrying the trailer `Test-First: refactor` exempts the source it alters from {{assurance.test.test-first}}; the rest of the range stays held, and the workspace stage alone holds that commit.
   *because a behavior-preserving change has no failing test to write, and the existing suite is its specification*
 - `acceptance-surface` — An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`.

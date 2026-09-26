@@ -6,13 +6,30 @@ mod topology;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
+use std::time::{Duration, Instant};
 
 /// Gate stages in run order. The pull-request workflow dispatches each as its own check.
 const STAGES: [&str; 4] = ["schema", "test-first", "workspace", "acceptance"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
 const REFACTOR_TRAILER: &str = "refactor";
+/// Wall clock one test-first execution against the base runs for, its build excluded: 300 s
+/// (`assurance.test.base-run-bound`). A run still going is killed with its process group
+/// and counts red, because a test that does not finish at base does not pass there.
+const BASE_RUN_BOUND_SECS: u64 = 300;
+/// Cargo output naming a fault of the machine or the base workspace rather than of the
+/// change's tests (`assurance.test.base-unrunnable`).
+const INFRASTRUCTURE_FAULTS: [&str; 7] = [
+    "No space left on device",
+    "failed to load manifest",
+    "failed to parse manifest",
+    "could not find `Cargo.toml`",
+    "failed to get `",
+    "failed to download",
+    "failed to select a version",
+];
 /// The toolchain the Lean models pin; its presence makes Lean a test dependency.
 const LEAN_PIN: &str = "formal/lean-toolchain";
 /// Set for every test process once Lean is provisioned, so a Lean-backed test fails
@@ -37,6 +54,9 @@ enum Cmd {
         /// The revision the change is measured against.
         #[arg(long, default_value = "origin/HEAD")]
         base: String,
+        /// Overrides the wall clock of one test-first execution against the base.
+        #[arg(long, hide = true, default_value_t = BASE_RUN_BOUND_SECS)]
+        base_bound_secs: u64,
     },
     /// Print the stage names, one per line, in run order.
     Stages,
@@ -74,7 +94,7 @@ fn main() {
             STAGES.iter().for_each(|s| println!("{s}"));
             Ok(())
         }
-        Cmd::Gate { stages, base } => gate(&stages, &base),
+        Cmd::Gate { stages, base, base_bound_secs } => gate(&stages, &base, Duration::from_secs(base_bound_secs)),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
@@ -89,7 +109,7 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(git(&["rev-parse", "--show-toplevel"])?))
 }
 
-fn gate(selected: &[String], base: &str) -> Result<()> {
+fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
     let root = repo_root()?;
     for stage in STAGES.iter().filter(|s| selected.is_empty() || selected.iter().any(|x| x == *s)) {
         eprintln!("--- stage {stage}");
@@ -102,7 +122,7 @@ fn gate(selected: &[String], base: &str) -> Result<()> {
             }
             "test-first" => {
                 provision_lean(&root)?;
-                test_first(&root, base)?
+                test_first(&root, base, bound)?
             }
             "workspace" => {
                 provision_lean(&root)?;
@@ -338,7 +358,7 @@ fn workspace_packages(root: &Path) -> Result<Vec<String>> {
 
 // ---------------------------------------------------------------- test-first
 
-fn test_first(root: &Path, base: &str) -> Result<()> {
+fn test_first(root: &Path, base: &str, bound: Duration) -> Result<()> {
     let range = format!("{base}...HEAD");
     let sources = sources_outside_refactors(base)?;
     if sources.is_empty() {
@@ -360,7 +380,7 @@ fn test_first(root: &Path, base: &str) -> Result<()> {
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch)?;
     git(&["worktree", "add", "--detach", "-q", &tree.to_string_lossy(), &merge_base(base)?])?;
-    let verdict = red_against_base(root, &tree, &scratch.join("target"), &tests);
+    let verdict = red_against_base(root, &tree, &scratch.join("target"), &tests, bound);
     let _ = git(&["worktree", "remove", "--force", &tree.to_string_lossy()]);
     let _ = std::fs::remove_dir_all(&scratch);
     let red = verdict?;
@@ -374,13 +394,170 @@ fn test_first(root: &Path, base: &str) -> Result<()> {
     Ok(())
 }
 
-/// Overlay the change's test files on the base tree; return each package whose tests fail there.
+/// The tests one base invocation runs: a package's test target, filtered to the modules the
+/// change touches, or the whole target when only its root file changed.
+#[derive(Debug, PartialEq, Eq)]
+struct Selection {
+    pkg: String,
+    /// `None` runs every test target of the package: the file is a helper no target names.
+    target: Option<String>,
+    /// Test-name filters; empty runs the whole target.
+    filters: Vec<String>,
+}
+
+/// Map a changed test file to its package, test target and module filter. A file directly
+/// under `tests/` is its own target; under `tests/<target>/`, the target's `main.rs` stands
+/// for the whole target and any other file for its top-level module, `<mod>::`.
+fn target_of(tree: &Path, test: &str) -> (String, Option<String>, Option<String>) {
+    let (pkg, rest) = test.split_once("/tests/").unwrap_or((test, ""));
+    let parts: Vec<&str> = rest.split('/').collect();
+    let first = parts[0];
+    if let Some(stem) = first.strip_suffix(".rs") {
+        return (pkg.to_string(), Some(stem.to_string()), None);
+    }
+    let tests = tree.join(pkg).join("tests");
+    let is_target = tests.join(first).join("main.rs").exists() || tests.join(format!("{first}.rs")).exists();
+    if !is_target {
+        return (pkg.to_string(), None, None);
+    }
+    let module = parts.get(1).map(|m| m.trim_end_matches(".rs")).filter(|m| *m != "main");
+    (pkg.to_string(), Some(first.to_string()), module.map(|m| format!("{m}::")))
+}
+
+/// Group the changed test files into one invocation per package and target. A target's
+/// root file declares its modules, so it adds no filter; a target whose root file alone
+/// changed runs whole.
+fn selections(tree: &Path, tests: &[&str]) -> Vec<Selection> {
+    let mut out: Vec<Selection> = Vec::new();
+    for t in tests {
+        let (pkg, target, filter) = target_of(tree, t);
+        let at = match out.iter().position(|s| s.pkg == pkg && s.target == target) {
+            Some(i) => i,
+            None => {
+                out.push(Selection { pkg, target, filters: Vec::new() });
+                out.len() - 1
+            }
+        };
+        if let Some(f) = filter.filter(|f| !out[at].filters.contains(f)) {
+            out[at].filters.push(f);
+        }
+    }
+    out
+}
+
+/// Read a pipe on a thread of its own, delivering each chunk over a channel.
+fn drain(pipe: Option<impl std::io::Read + Send + 'static>) -> Receiver<Vec<u8>> {
+    let (tx, rx) = channel();
+    std::thread::spawn(move || {
+        let Some(mut p) = pipe else { return };
+        let mut buf = [0u8; 8192];
+        while let Ok(n) = p.read(&mut buf) {
+            if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                break;
+            }
+        }
+    });
+    rx
+}
+
+/// Gather a drained pipe until it closes or `deadline` passes.
+fn gather(rx: &Receiver<Vec<u8>>, deadline: Instant) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    loop {
+        match rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(chunk) => bytes.extend_from_slice(&chunk),
+            Err(RecvTimeoutError::Disconnected) => return bytes,
+            Err(RecvTimeoutError::Timeout) if Instant::now() >= deadline => return bytes,
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+    }
+}
+
+/// How one base invocation ended.
+enum BaseRun {
+    Passed,
+    Failed,
+    Killed,
+}
+
+/// What one base invocation printed.
+struct Printed {
+    stdout: String,
+    stderr: String,
+}
+
+/// Run `cmd` in a process group of its own, for at most `bound` when one is given; a run
+/// past the bound has its whole group killed.
+fn run_bounded(mut cmd: Command, bound: Option<Duration>) -> Result<(BaseRun, Printed)> {
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    let mut child = cmd.spawn().context("spawning cargo")?;
+    let pgid = child.id();
+    let (out, err) = (drain(child.stdout.take()), drain(child.stderr.take()));
+    let started = Instant::now();
+    let run = loop {
+        if let Some(status) = child.try_wait()? {
+            break if status.success() { BaseRun::Passed } else { BaseRun::Failed };
+        }
+        if bound.is_some_and(|b| started.elapsed() >= b) {
+            let _ = Command::new("kill").args(["-KILL", "--", &format!("-{pgid}")]).status();
+            let _ = child.kill();
+            let _ = child.wait();
+            break BaseRun::Killed;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    // The group is gone, so both pipes close; the deadline guards one held elsewhere.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let printed = Printed {
+        stdout: String::from_utf8_lossy(&gather(&out, deadline)).into_owned(),
+        stderr: String::from_utf8_lossy(&gather(&err, deadline)).into_owned(),
+    };
+    Ok((run, printed))
+}
+
+/// The infrastructure fault cargo's own standard error names, if any: a full disk, a
+/// workspace or manifest that does not load, a dependency that does not fetch. Only
+/// cargo's lines are read — a top-level `error:` line, the `Caused by:` chain under it,
+/// and a TOML diagnostic pointing into a `Cargo.toml` — never rustc's source excerpts or
+/// standard output, both of which quote the tests' own text.
+fn infrastructure_fault(stderr: &str) -> Option<String> {
+    let mut in_chain = false;
+    for line in stderr.lines() {
+        let cargo_line = if line.starts_with("error:") {
+            in_chain = false;
+            true
+        } else if line == "Caused by:" {
+            in_chain = true;
+            false
+        } else if in_chain && line.starts_with("  ") && !line.trim().is_empty() {
+            true
+        } else {
+            in_chain = false;
+            let t = line.trim_start();
+            if t.starts_with("--> ") && line[..line.len() - t.len()].chars().all(char::is_whitespace) && t.contains("Cargo.toml:") {
+                return Some(line.trim().to_string());
+            }
+            false
+        };
+        if cargo_line && INFRASTRUCTURE_FAULTS.iter().any(|f| line.contains(f)) {
+            return Some(line.trim().to_string());
+        }
+    }
+    None
+}
+
+/// Overlay the change's test files on the base tree and run only those tests there;
+/// return each selection that fails to compile, fails, or outruns its bound. A build runs
+/// unbounded, and only the tests' execution answers to the bound. An infrastructure fault
+/// fails the stage rather than reading as red.
 ///
 /// A package the base lacks counts red by construction and none of its files is copied,
 /// so a test directory with no manifest never stops the base workspace from loading and
 /// every package that exists at base is judged by its own tests alone.
-fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str]) -> Result<Vec<String>> {
-    let mut packages: Vec<&str> = Vec::new();
+fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str], bound: Duration) -> Result<Vec<String>> {
+    let mut present: Vec<&str> = Vec::new();
     let mut red = Vec::new();
     for t in tests {
         let pkg = t.split("/tests/").next().unwrap_or(t);
@@ -394,20 +571,78 @@ fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str]) -> 
         let dest = tree.join(t);
         std::fs::create_dir_all(dest.parent().unwrap())?;
         std::fs::copy(root.join(t), &dest).with_context(|| format!("overlaying {t}"))?;
-        if !packages.contains(&pkg) {
-            packages.push(pkg);
-        }
+        present.push(t);
     }
-    for pkg in packages {
-        let manifest = tree.join(pkg).join("Cargo.toml");
-        let status = Command::new("cargo")
-            .args(["test", "-q", "--tests", "--manifest-path"])
-            .arg(&manifest)
-            .env("CARGO_TARGET_DIR", target)
-            .current_dir(tree)
-            .status()?;
-        if !status.success() {
-            red.push(pkg.to_string());
+    for sel in selections(tree, &present) {
+        let label = format!(
+            "{} ({}{})",
+            sel.pkg,
+            sel.target.as_deref().unwrap_or("every test target"),
+            if sel.filters.is_empty() { String::new() } else { format!(": {}", sel.filters.join(" ")) }
+        );
+        let cargo = |extra: &[&str], after: &[String]| {
+            let mut cmd = Command::new("cargo");
+            cmd.args(["test", "-q"]).args(extra).arg("--manifest-path").arg(tree.join(&sel.pkg).join("Cargo.toml"));
+            match &sel.target {
+                Some(t) => cmd.args(["--test", t]),
+                None => cmd.arg("--tests"),
+            };
+            if !after.is_empty() {
+                cmd.arg("--").args(after);
+            }
+            cmd.env("CARGO_TARGET_DIR", target).current_dir(tree);
+            cmd
+        };
+        let unrunnable = |printed: &Printed| -> Result<()> {
+            match infrastructure_fault(&printed.stderr) {
+                Some(fault) => Err(refuse(
+                    "TestFirstBaseUnrunnable",
+                    format!("{label} did not run at base: `{fault}`; the machine, the base workspace or a manifest stopped it, which is no verdict on the change"),
+                )),
+                None => Ok(()),
+            }
+        };
+        // Build: unbounded, since a cold base compile says nothing about the tests.
+        let (built, printed) = run_bounded(cargo(&["--no-run"], &[]), None)?;
+        eprint!("{}{}", printed.stdout, printed.stderr);
+        if !matches!(built, BaseRun::Passed) {
+            unrunnable(&printed)?;
+            red.push(format!("{label}, which does not compile at base"));
+            continue;
+        }
+        // Select: the exact names under each changed top-level module.
+        let mut run_args: Vec<String> = Vec::new();
+        if !sel.filters.is_empty() {
+            let (listed, printed) = run_bounded(cargo(&[], &["--list".into(), "--format".into(), "terse".into()]), Some(bound))?;
+            if !matches!(listed, BaseRun::Passed) {
+                eprint!("{}{}", printed.stdout, printed.stderr);
+                unrunnable(&printed)?;
+                red.push(format!("{label}, whose tests do not list at base"));
+                continue;
+            }
+            let names: Vec<String> = printed
+                .stdout
+                .lines()
+                .filter_map(|l| l.strip_suffix(": test"))
+                .filter(|n| sel.filters.iter().any(|f| n.starts_with(f.as_str())))
+                .map(str::to_string)
+                .collect();
+            if names.is_empty() {
+                continue;
+            }
+            run_args.push("--exact".into());
+            run_args.extend(names);
+        }
+        // Run: bounded, since a test that does not finish at base does not pass there.
+        let (run, printed) = run_bounded(cargo(&[], &run_args), Some(bound))?;
+        eprint!("{}{}", printed.stdout, printed.stderr);
+        if !matches!(run, BaseRun::Passed) {
+            unrunnable(&printed)?;
+        }
+        match run {
+            BaseRun::Passed => {}
+            BaseRun::Failed => red.push(label),
+            BaseRun::Killed => red.push(format!("{label}, killed at the {} s bound", bound.as_secs())),
         }
     }
     Ok(red)
