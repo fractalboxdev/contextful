@@ -20,8 +20,130 @@ pub const NAME: &str = "http";
 pub const PAGE_CAP: usize = 1000;
 
 /// The configuration keys the HTTP source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 11] =
-    ["endpoint", "format", "records", "headers", "page_param", "start_page", "next_cursor_path", "cursor_param", "next_url_path", "link_header", "since_param"];
+pub const KEYS: [&str; 12] = [
+    "endpoint",
+    "table_pattern",
+    "format",
+    "records",
+    "headers",
+    "page_param",
+    "start_page",
+    "next_cursor_path",
+    "cursor_param",
+    "next_url_path",
+    "link_header",
+    "since_param",
+];
+
+/// One `/`-separated segment of a table pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Segment {
+    /// Matches the table's segment exactly and binds nothing.
+    Literal(String),
+    /// Binds the table's non-empty segment under this name.
+    Field(String),
+}
+
+/// A parsed `table_pattern`, such as `{stream}/{owner}/{repo}` (`connector.source.table-pattern`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TablePattern {
+    segments: Vec<Segment>,
+}
+
+impl TablePattern {
+    /// Parse a pattern: each segment is a literal or one `{name}`, no name repeats, and no
+    /// field is `table`, the placeholder reserved for the whole name.
+    pub fn parse(pattern: &str) -> Result<TablePattern, RunError> {
+        let invalid = |why: String| RunError::Invalid(format!("`{NAME}` source `table_pattern` {why}"));
+        if pattern.is_empty() {
+            return Err(invalid("is empty".into()));
+        }
+        let mut segments = Vec::new();
+        for raw in pattern.split('/') {
+            let segment = match raw.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+                Some(name) if name.is_empty() || name.contains(['{', '}']) => return Err(invalid(format!("segment `{raw}` is not one `{{name}}`"))),
+                Some("table") => return Err(invalid("names `{table}`, which always binds the whole table name".into())),
+                Some(name) if segments.contains(&Segment::Field(name.to_string())) => return Err(invalid(format!("names `{{{name}}}` twice"))),
+                Some(name) => Segment::Field(name.to_string()),
+                None if raw.contains(['{', '}']) => return Err(invalid(format!("segment `{raw}` mixes literal text with a placeholder"))),
+                None => Segment::Literal(raw.to_string()),
+            };
+            segments.push(segment);
+        }
+        Ok(TablePattern { segments })
+    }
+
+    /// Whether the pattern binds `{name}`.
+    fn binds(&self, name: &str) -> bool {
+        self.fields().any(|f| f == name)
+    }
+
+    /// The names the pattern binds, in segment order.
+    fn fields(&self) -> impl Iterator<Item = &str> {
+        self.segments.iter().filter_map(|s| match s {
+            Segment::Field(f) => Some(f.as_str()),
+            Segment::Literal(_) => None,
+        })
+    }
+
+    /// A table name the pattern matches, each field bound to its own name.
+    fn exemplar(&self) -> String {
+        self.segments
+            .iter()
+            .map(|s| match s {
+                Segment::Literal(l) | Segment::Field(l) => l.as_str(),
+            })
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    /// Bind `table`'s segments by name. A table with another segment count, a differing
+    /// literal, or an empty, `.` or `..` field raises `ConnectorTableUnmatched` rather than
+    /// falling back to an unbound URL or a folded dot segment (`connector.source.table-unmatched`).
+    pub fn bind(&self, table: &str) -> Result<BTreeMap<String, String>, ConnectorError> {
+        let parts: Vec<&str> = table.split('/').collect();
+        let unmatched = || ConnectorError::ConnectorTableUnmatched(format!("table `{table}` does not match the source's `table_pattern = \"{self}\"`"));
+        if parts.len() != self.segments.len() {
+            return Err(unmatched());
+        }
+        let mut bound = BTreeMap::new();
+        for (segment, part) in self.segments.iter().zip(parts) {
+            match segment {
+                Segment::Literal(l) if l == part => {}
+                Segment::Field(name) if !part.is_empty() && !is_dot_segment(part) => {
+                    bound.insert(name.clone(), part.to_string());
+                }
+                _ => return Err(unmatched()),
+            }
+        }
+        Ok(bound)
+    }
+}
+
+impl std::fmt::Display for TablePattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let parts: Vec<String> = self
+            .segments
+            .iter()
+            .map(|s| match s {
+                Segment::Literal(l) => l.clone(),
+                Segment::Field(n) => format!("{{{n}}}"),
+            })
+            .collect();
+        f.write_str(&parts.join("/"))
+    }
+}
+
+/// Whether `value` is `.` or `..`, which a URL parser folds out of a path as a dot segment.
+fn is_dot_segment(value: &str) -> bool {
+    matches!(value, "." | "..")
+}
+
+/// Percent-encode every byte outside RFC 3986's unreserved set, so a bound value other than
+/// `.` or `..` holds its position in a path or a query and adds no segment or query.
+fn percent_encode(value: &str) -> String {
+    value.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
 
 /// How a walk finds its next page (`connector.source.pagination`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +164,8 @@ pub enum Pagination {
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
     pub endpoint: String,
+    /// Binds table-name segments into the endpoint; absent, `{table}` binds the whole name.
+    pub table_pattern: Option<TablePattern>,
     pub format: Format,
     pub records: Option<String>,
     pub headers: BTreeMap<String, Template>,
@@ -141,23 +265,43 @@ impl HttpConfig {
                 headers.insert(name.clone(), check_material(&format!("headers.{name}"), v)?);
             }
         }
-        // Every placeholder is `{table}`; any other has no pattern to bind it.
+        let table_pattern = text(cfg, "table_pattern")?.as_deref().map(TablePattern::parse).transpose()?;
+        // Every placeholder is `{table}` or a field of the table pattern; any other has
+        // nothing to bind it.
         let mut rest = endpoint_raw.as_str();
         while let Some(open) = rest.find('{') {
             let placeholder = match rest[open..].find('}') {
                 Some(close) => &rest[open..=open + close],
                 None => &rest[open..],
             };
-            if placeholder != "{table}" {
-                return Err(ConnectorError::ConnectorPlaceholderUnbound(format!(
-                    "the endpoint's placeholder `{placeholder}` has no table pattern to bind it; `{{table}}` is the one placeholder"
-                ))
-                .into());
+            let name = placeholder.strip_prefix('{').and_then(|p| p.strip_suffix('}'));
+            if !name.is_some_and(|n| n == "table" || table_pattern.as_ref().is_some_and(|p| p.binds(n))) {
+                let binds = match &table_pattern {
+                    Some(p) => format!("`{{table}}` and the fields of `table_pattern = \"{p}\"` are the placeholders"),
+                    None => "`{table}` is the one placeholder without a `table_pattern`".to_string(),
+                };
+                return Err(ConnectorError::ConnectorPlaceholderUnbound(format!("the endpoint's placeholder `{placeholder}` has no table pattern to bind it; {binds}")).into());
             }
             rest = &rest[open + placeholder.len()..];
         }
-        let c = HttpConfig { endpoint: endpoint_raw, format, records, headers, pagination, since_param: text(cfg, "since_param")? };
-        c.table_url("table")?;
+        // A field the endpoint never places leaves every table matching the pattern on one URL.
+        if let Some(p) = &table_pattern {
+            if let Some(unused) = p.fields().find(|f| !endpoint_raw.contains(&format!("{{{f}}}"))) {
+                return Err(RunError::Invalid(format!("`{NAME}` source `table_pattern = \"{p}\"` names `{{{unused}}}`, which the endpoint never places")).into());
+            }
+        }
+        // The scheme and authority end at the first `/`, `?` or `#` past `://`; a placeholder
+        // there lets a table name choose where a bound credential goes (`connector.attach.bound-host`).
+        let authority_end = endpoint_raw.find("://").map_or(endpoint_raw.len(), |s| endpoint_raw[s + 3..].find(['/', '?', '#']).map_or(endpoint_raw.len(), |e| s + 3 + e));
+        if headers.values().any(Template::has_reference) && endpoint_raw[..authority_end].contains('{') {
+            return Err(ConnectorError::SecretWildcardHost(
+                "the endpoint binds a table name into its scheme or host beside a bound credential; a credential attaches to one exact host, and a table binds only the path and query".into(),
+            )
+            .into());
+        }
+        let c = HttpConfig { endpoint: endpoint_raw, table_pattern, format, records, headers, pagination, since_param: text(cfg, "since_param")? };
+        let exemplar = c.table_pattern.as_ref().map_or_else(|| "table".to_string(), TablePattern::exemplar);
+        c.table_url(&exemplar)?;
         Ok(c)
     }
 
@@ -172,13 +316,30 @@ impl HttpConfig {
         Ok(allow)
     }
 
-    /// The endpoint for `table`, the table name percent-encoded into a `{table}` segment.
+    /// The endpoint for `table`: `{table}` binds the whole name and each pattern field its
+    /// segment, every value percent-encoded, in one pass so a bound value never expands. A
+    /// `.` or `..` table raises `ConnectorTableUnmatched` (`connector.source.table-unmatched`).
     pub fn table_url(&self, table: &str) -> Result<Url, ConnectorError> {
-        let encoded: String = table
-            .bytes()
-            .map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
-            .collect();
-        endpoint(NAME, &self.endpoint.replace("{table}", &encoded))
+        let mut values = match &self.table_pattern {
+            Some(p) => p.bind(table)?,
+            None => BTreeMap::new(),
+        };
+        if is_dot_segment(table) && self.endpoint.contains("{table}") {
+            return Err(ConnectorError::ConnectorTableUnmatched(format!("table `{table}` binds a dot segment into the endpoint's `{{table}}`")));
+        }
+        values.insert("table".to_string(), table.to_string());
+        let mut out = String::with_capacity(self.endpoint.len());
+        let mut rest = self.endpoint.as_str();
+        while let Some((open, close)) = rest.find('{').and_then(|o| rest[o..].find('}').map(|c| (o, o + c))) {
+            out.push_str(&rest[..open]);
+            match values.get(&rest[open + 1..close]) {
+                Some(v) => out.push_str(&percent_encode(v)),
+                None => out.push_str(&rest[open..=close]),
+            }
+            rest = &rest[close + 1..];
+        }
+        out.push_str(rest);
+        endpoint(NAME, &out)
     }
 }
 

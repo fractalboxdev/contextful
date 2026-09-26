@@ -313,7 +313,7 @@ The declared behavior of each source compiled into the engine.
 - `next-link-origin` — A vendor-supplied next link is judged as a hop under {{connector.attach.weakened-hop}}.
   *A-connector*
 - `table-pattern` — A table pattern binds table-name segments into the request URL, percent-encoded, and each table holds its own position.
-- `table-unmatched` — A table not matching the declared pattern raises `ConnectorTableUnmatched` ahead of any request.
+- `table-unmatched` — A table not matching the declared pattern, or binding `.` or `..` into a placeholder, raises `ConnectorTableUnmatched` ahead of any request.
   *P1*
 - `placeholder-unbound` — A URL placeholder with no pattern to bind it raises `ConnectorPlaceholderUnbound` at build.
   *P1*

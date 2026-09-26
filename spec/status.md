@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 13 | 179 | 47 | 19 | 13 | 68 | 0 | 68 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
-| `connector` | 2 | 13 | 233 | 73 | 14 | 7 | 69 | 0 | 69 |
+| `connector` | 2 | 13 | 233 | 73 | 14 | 7 | 71 | 0 | 71 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 155 | 37 | 12 | 8 | 111 | 0 | 111 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1457 | 468 | 162 | 101 | 688 | 0 | |
+| **total** | 19 | 145 | 1457 | 468 | 162 | 101 | 690 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
-| 4 — Ingest | 22 | 333 | 98 | passing |
+| 4 — Ingest | 22 | 333 | 100 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 39 | 34 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
@@ -268,6 +268,7 @@ Unscheduled operations: 10.
 | `authority.verify.replay-window` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_older_than_the_replay_window_refuses_and_nonces_live_for_that_window` | performed |
 | `authority.verify.replayed-nonce` | `crates/contextful-policy/tests/integration/possession.rs::a_nonce_repeating_inside_the_window_raises_possession_proof_replayed` | performed |
 | `authority.verify.timestamps` | `crates/contextful-core/tests/integration/time.rs::timestamps_decode_into_utc_instants_and_compare_as_instants` | performed |
+| `connector.attach.bound-host` | `crates/contextful-connectors/tests/integration/http.rs::a_credentialed_endpoint_host_is_never_bound_from_a_table_name` | performed |
 | `connector.attach.cleartext-endpoint` | `crates/contextful-runtime/tests/integration/attach.rs::a_credential_never_travels_in_cleartext_outside_loopback` | performed |
 | `connector.attach.credential-in-a-url` | `crates/contextful-core/tests/integration/connector/attach.rs::an_endpoint_carrying_userinfo_is_refused` | performed |
 | `connector.attach.landed-origin` | `crates/contextful-runtime/tests/integration/attach.rs::the_body_that_lands_comes_from_the_configured_origin` | performed |
@@ -337,6 +338,7 @@ Unscheduled operations: 10.
 | `connector.source.pagination-ambiguity` | `crates/contextful-connectors/tests/integration/http.rs::two_pagination_shapes_are_refused` | performed |
 | `connector.source.placeholder-unbound` | `crates/contextful-connectors/tests/integration/http.rs::a_placeholder_other_than_the_table_is_refused_at_build` | performed |
 | `connector.source.table-pattern` | `crates/contextful-cli/tests/integration/pipeline.rs::each_table_binds_its_segment_and_keeps_its_own_position` | performed |
+| `connector.source.table-unmatched` | `crates/contextful-connectors/tests/integration/http.rs::a_table_off_the_pattern_is_refused_before_any_request` | performed |
 | `corpus.address.clause-id` | `tools/spec/tests/integration/readable.rs::a_clause_item_takes_its_contract_and_operation_from_its_file_and_section` | performed |
 | `corpus.anatomy.bad-anatomy` | `tools/spec/tests/integration/readable.rs::an_item_outside_the_clause_shape_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.clause-list` | `tools/spec/tests/integration/readable.rs::a_clause_list_split_by_prose_is_an_anatomy_finding` | performed |

@@ -49,6 +49,7 @@ pub enum ConnectorError {
     #[error("ConnectorQuotaUnbound: {0}")]
     ConnectorQuotaUnbound(String),
     /// A table not matching the source's table pattern. (`connector.source.table-unmatched`)
+    /// A table off the source's table pattern, or binding a dot segment. (`connector.source.table-unmatched`)
     #[error("ConnectorTableUnmatched: {0}")]
     ConnectorTableUnmatched(String),
     /// Host access a connector reaches for that its manifest does not list. (`connector.declare-capability.undeclared-access`)
@@ -111,7 +112,7 @@ pub enum ConnectorError {
     /// A logical name no assembled adapter answers. (`connector.resolve.unresolved-name`)
     #[error("SecretUnresolvedReference: {0}")]
     SecretUnresolvedReference(String),
-    /// A wildcard host entry beside a bound credential. (`connector.attach.bound-host`)
+    /// A wildcard or table-bound endpoint host beside a bound credential. (`connector.attach.bound-host`)
     #[error("SecretWildcardHost: {0}")]
     SecretWildcardHost(String),
 }

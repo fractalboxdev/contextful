@@ -203,7 +203,7 @@ Host mediation of an outbound request: the bound host, address vetting, header t
   *A-connector*
 - `private-address` — A host name resolving to a private, link-local, unique-local, loopback or cloud-metadata address raises `ConnectorPrivateAddress`, unless the configured host is itself a loopback name or literal.
   *because an allowlisted name pointed at an internal range is SSRF*
-- `bound-host` — A source binding any credential carries one non-wildcard host, checked at validation and at session open; a wildcard entry beside a bound credential raises `SecretWildcardHost`.
+- `bound-host` — A source binding any credential carries one non-wildcard host, checked at validation and at session open; a wildcard entry, or an endpoint host a table name binds, beside a bound credential raises `SecretWildcardHost`.
   *A-connector*
 - `default-attachment` — With no further declaration the host writes `Authorization: Bearer <value>` from the single bound credential.
 - `attach-block` — An `[attach]` block maps a header name to a value template. The host hydrates it onto the permitted request, overriding the guest's header of that name.
