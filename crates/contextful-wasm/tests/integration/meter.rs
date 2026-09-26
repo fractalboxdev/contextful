@@ -39,7 +39,6 @@ fn a_denied_reservation_is_a_synthesized_429_and_an_unreachable_limiter_a_transp
 }
 
 /// A request the allowlist refuses never reaches the limiter and spends no permit.
-// spec: connector.meter.allowlist-precedence@a04fd503
 #[test]
 fn a_refused_request_spends_no_permit() {
     let server = Server::start(|_| Response::text(200, "vendor"));
