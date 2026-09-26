@@ -233,6 +233,22 @@ fn each_table_binds_its_segment_and_keeps_its_own_position() {
     let targets = vendor.targets();
     assert_eq!(&targets[..2], ["/v1/sales%20orders", "/v1/returns"]);
     assert_eq!(&targets[2..], ["/v1/sales%20orders?since=9", "/v1/returns?since=2"]);
+
+    // A declared pattern binds each segment by name into its own place in the path.
+    let vendor = Vendor::start(|t| match t.split('?').next().unwrap_or_default() {
+        "/repos/acme/wid%20gets/issues" => (200, "[{\"id\":\"i1\",\"at\":4}]".into()),
+        "/repos/acme/tools/pulls" => (200, "[{\"id\":\"p1\",\"at\":7},{\"id\":\"p2\",\"at\":8}]".into()),
+        _ => (404, "{}".into()),
+    });
+    let dir = project(&format!(
+        "[[pipeline]]\nid = \"gh\"\nincremental = \"at\"\ntables = [\"issues/acme/wid gets\", \"pulls/acme/tools\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", table_pattern = \"{{stream}}/{{owner}}/{{repo}}\", since_param = \"since\" }}\n",
+        vendor.url("/repos/{owner}/{repo}/{stream}")
+    ));
+    ok(&fire(dir.path(), "gh", "g1", "2030-01-01T00:00:00Z"));
+    ok(&fire(dir.path(), "gh", "g2", "2030-01-01T00:01:00Z"));
+    let targets = vendor.targets();
+    assert_eq!(&targets[..2], ["/repos/acme/wid%20gets/issues", "/repos/acme/tools/pulls"]);
+    assert_eq!(&targets[2..], ["/repos/acme/wid%20gets/issues?since=4", "/repos/acme/tools/pulls?since=8"]);
 }
 
 #[test]

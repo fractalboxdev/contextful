@@ -44,7 +44,7 @@ ConnectorEncodingInvalid        = { clause = "connector.source.declared-encoding
 ConnectorClockColumnRejected    = { clause = "connector.source.clock-column-spelling", gloss = "A delimited clock column neither RFC 3339 nor a fixed-width digit stamp." }
 ConnectorPaginationAmbiguous    = { clause = "connector.source.pagination-ambiguity", gloss = "Two pagination shapes on one source." }
 ConnectorPageLoop               = { clause = "connector.source.page-loop", gloss = "A paging token or link the vendor already served." }
-ConnectorTableUnmatched         = { clause = "connector.source.table-unmatched", gloss = "A table not matching the source's table pattern." }
+ConnectorTableUnmatched         = { clause = "connector.source.table-unmatched", gloss = "A table off the source's table pattern, or binding a dot segment." }
 ConnectorPlaceholderUnbound     = { clause = "connector.source.placeholder-unbound", gloss = "A URL placeholder with no table pattern to bind it." }
 ConnectorPointerAmbiguous       = { clause = "connector.source.pointer-ambiguity", gloss = "Both expansion pointer forms on one block." }
 ConnectorExpansionFailed        = { clause = "connector.source.follow-up-failure", gloss = "A failed expansion follow-up, failing the whole read." }
@@ -82,7 +82,7 @@ SecretBootstrapUnresolved       = { clause = "connector.lease.bootstrap-unserved
 SecretBootstrapLeased           = { clause = "connector.lease.bootstrap-declared-leased", gloss = "The bootstrap name among the declared lease scopes." }
 SecretLeaseRedirect             = { clause = "connector.lease.redirect", gloss = "The mint endpoint answering a redirect." }
 SecretUnpermittedRequest        = { clause = "connector.attach.unpermitted-request", gloss = "A request to a host the declaration does not cover." }
-SecretWildcardHost              = { clause = "connector.attach.bound-host", gloss = "A wildcard host entry beside a bound credential." }
+SecretWildcardHost              = { clause = "connector.attach.bound-host", gloss = "A wildcard or table-bound endpoint host beside a bound credential." }
 SecretLiteralAttachValue        = { clause = "connector.attach.literal-attach-value", gloss = "An attach value embedding no reference." }
 SecretRedirectOffOrigin         = { clause = "connector.attach.weakened-hop", gloss = "A hop or next link weakening the transport or leaving the configured host and port." }
 SecretCleartextEndpoint         = { clause = "connector.attach.cleartext-endpoint", gloss = "A sensitive header bound for a cleartext endpoint outside loopback." }

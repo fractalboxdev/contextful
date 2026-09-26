@@ -8696,7 +8696,7 @@
       "operation": "source",
       "subject": "table-unmatched",
       "kind": "refusal",
-      "statement": "A table not matching the declared pattern raises `ConnectorTableUnmatched` ahead of any request.",
+      "statement": "A table not matching the declared pattern, or binding `.` or `..` into a placeholder, raises `ConnectorTableUnmatched` ahead of any request.",
       "why": "P1",
       "file": "spec/40-connector.md",
       "line": 316
@@ -9807,7 +9807,7 @@
       "operation": "attach",
       "subject": "bound-host",
       "kind": "refusal",
-      "statement": "A source binding any credential carries one non-wildcard host, checked at validation and at session open; a wildcard entry beside a bound credential raises `SecretWildcardHost`.",
+      "statement": "A source binding any credential carries one non-wildcard host, checked at validation and at session open; a wildcard entry, or an endpoint host a table name binds, beside a bound credential raises `SecretWildcardHost`.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
       "line": 206
@@ -18154,7 +18154,7 @@
           },
           "ConnectorTableUnmatched": {
             "clause": "connector.source.table-unmatched",
-            "gloss": "A table not matching the source's table pattern."
+            "gloss": "A table off the source's table pattern, or binding a dot segment."
           },
           "ConnectorTargetColumnOccupied": {
             "clause": "connector.source.target-column-occupied",
@@ -18270,7 +18270,7 @@
           },
           "SecretWildcardHost": {
             "clause": "connector.attach.bound-host",
-            "gloss": "A wildcard host entry beside a bound credential."
+            "gloss": "A wildcard or table-bound endpoint host beside a bound credential."
           }
         },
         "limit": {

@@ -75,7 +75,15 @@ impl TablePattern {
 
     /// Whether the pattern binds `{name}`.
     fn binds(&self, name: &str) -> bool {
-        self.segments.iter().any(|s| matches!(s, Segment::Field(f) if f == name))
+        self.fields().any(|f| f == name)
+    }
+
+    /// The names the pattern binds, in segment order.
+    fn fields(&self) -> impl Iterator<Item = &str> {
+        self.segments.iter().filter_map(|s| match s {
+            Segment::Field(f) => Some(f.as_str()),
+            Segment::Literal(_) => None,
+        })
     }
 
     /// A table name the pattern matches, each field bound to its own name.
@@ -90,8 +98,8 @@ impl TablePattern {
     }
 
     /// Bind `table`'s segments by name. A table with another segment count, a differing
-    /// literal, or an empty field raises `ConnectorTableUnmatched` rather than falling back
-    /// to an unbound URL (`connector.source.table-unmatched`).
+    /// literal, or an empty, `.` or `..` field raises `ConnectorTableUnmatched` rather than
+    /// falling back to an unbound URL or a folded dot segment (`connector.source.table-unmatched`).
     pub fn bind(&self, table: &str) -> Result<BTreeMap<String, String>, ConnectorError> {
         let parts: Vec<&str> = table.split('/').collect();
         let unmatched = || ConnectorError::ConnectorTableUnmatched(format!("table `{table}` does not match the source's `table_pattern = \"{self}\"`"));
@@ -102,7 +110,7 @@ impl TablePattern {
         for (segment, part) in self.segments.iter().zip(parts) {
             match segment {
                 Segment::Literal(l) if l == part => {}
-                Segment::Field(name) if !part.is_empty() => {
+                Segment::Field(name) if !part.is_empty() && !is_dot_segment(part) => {
                     bound.insert(name.clone(), part.to_string());
                 }
                 _ => return Err(unmatched()),
@@ -126,8 +134,13 @@ impl std::fmt::Display for TablePattern {
     }
 }
 
-/// Percent-encode every byte outside RFC 3986's unreserved set, so a bound value holds its
-/// position in a path or a query and adds no segment, query or traversal.
+/// Whether `value` is `.` or `..`, which a URL parser folds out of a path as a dot segment.
+fn is_dot_segment(value: &str) -> bool {
+    matches!(value, "." | "..")
+}
+
+/// Percent-encode every byte outside RFC 3986's unreserved set, so a bound value other than
+/// `.` or `..` holds its position in a path or a query and adds no segment or query.
 fn percent_encode(value: &str) -> String {
     value.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
 }
@@ -271,6 +284,21 @@ impl HttpConfig {
             }
             rest = &rest[open + placeholder.len()..];
         }
+        // A field the endpoint never places leaves every table matching the pattern on one URL.
+        if let Some(p) = &table_pattern {
+            if let Some(unused) = p.fields().find(|f| !endpoint_raw.contains(&format!("{{{f}}}"))) {
+                return Err(RunError::Invalid(format!("`{NAME}` source `table_pattern = \"{p}\"` names `{{{unused}}}`, which the endpoint never places")).into());
+            }
+        }
+        // The scheme and authority end at the first `/`, `?` or `#` past `://`; a placeholder
+        // there lets a table name choose where a bound credential goes (`connector.attach.bound-host`).
+        let authority_end = endpoint_raw.find("://").map_or(endpoint_raw.len(), |s| endpoint_raw[s + 3..].find(['/', '?', '#']).map_or(endpoint_raw.len(), |e| s + 3 + e));
+        if headers.values().any(Template::has_reference) && endpoint_raw[..authority_end].contains('{') {
+            return Err(ConnectorError::SecretWildcardHost(
+                "the endpoint binds a table name into its scheme or host beside a bound credential; a credential attaches to one exact host, and a table binds only the path and query".into(),
+            )
+            .into());
+        }
         let c = HttpConfig { endpoint: endpoint_raw, table_pattern, format, records, headers, pagination, since_param: text(cfg, "since_param")? };
         let exemplar = c.table_pattern.as_ref().map_or_else(|| "table".to_string(), TablePattern::exemplar);
         c.table_url(&exemplar)?;
@@ -289,12 +317,16 @@ impl HttpConfig {
     }
 
     /// The endpoint for `table`: `{table}` binds the whole name and each pattern field its
-    /// segment, every value percent-encoded, in one pass so a bound value never expands.
+    /// segment, every value percent-encoded, in one pass so a bound value never expands. A
+    /// `.` or `..` table raises `ConnectorTableUnmatched` (`connector.source.table-unmatched`).
     pub fn table_url(&self, table: &str) -> Result<Url, ConnectorError> {
         let mut values = match &self.table_pattern {
             Some(p) => p.bind(table)?,
             None => BTreeMap::new(),
         };
+        if is_dot_segment(table) && self.endpoint.contains("{table}") {
+            return Err(ConnectorError::ConnectorTableUnmatched(format!("table `{table}` binds a dot segment into the endpoint's `{{table}}`")));
+        }
         values.insert("table".to_string(), table.to_string());
         let mut out = String::with_capacity(self.endpoint.len());
         let mut rest = self.endpoint.as_str();
