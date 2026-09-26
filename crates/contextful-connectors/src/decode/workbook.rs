@@ -420,7 +420,8 @@ fn worksheet(xml: &str, shared: &[String], budget: Budget, skip_rows: usize, inp
         let (ns, event) = reader.read_resolved_event().map_err(|e| malformed(input, &part, e))?;
         let ss = in_ns(&ns, NS);
         match event {
-            Event::Eof if depth > 0 => return Err(unreadable(input, part, format!("the part ends with {depth} element(s) open"))),            Event::Eof => return Ok(out),
+            Event::Eof if depth > 0 => return Err(unreadable(input, part, format!("the part ends with {depth} element(s) open"))),
+            Event::Eof => return Ok(out),
             Event::Start(ref e) | Event::Empty(ref e) => {
                 let empty = matches!(event, Event::Empty(_));
                 if !empty {
