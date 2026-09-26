@@ -3,6 +3,24 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectorError {
+    /// A forwarded guest configuration value that is not a table, over 64 KiB, or carrying a reference. (`connector.import.config-shape`)
+    #[error("ConnectorConfigRejected: {0}")]
+    ConnectorConfigRejected(String),
+    /// A guest configuration table declared against a guest exporting no configuration interface. (`connector.import.config-unclaimed`)
+    #[error("ConnectorConfigUnclaimed: {0}")]
+    ConnectorConfigUnclaimed(String),
+    /// Resolved artifact bytes whose re-hash differs from the pin. (`connector.package.digest-mismatch`)
+    #[error("ConnectorDigestMismatch: {0}")]
+    ConnectorDigestMismatch(String),
+    /// A connector artifact referenced over plain HTTP. (`connector.package.insecure-artifact`)
+    #[error("ConnectorInsecureArtifact: {0}")]
+    ConnectorInsecureArtifact(String),
+    /// An unpinned local artifact under a set pin requirement. (`connector.package.local-unpinned`)
+    #[error("ConnectorLocalUnpinned: {0}")]
+    ConnectorLocalUnpinned(String),
+    /// A remote artifact reference with no 64-hex content pin. (`connector.package.remote-unpinned`)
+    #[error("ConnectorRemoteUnpinned: {0}")]
+    ConnectorRemoteUnpinned(String),
     /// An allowlist that is empty or bare-wildcard, or an entry carrying a scheme, port or path. (`connector.declare-capability.allowlist-shape`)
     #[error("ConnectorAllowlistRejected: {0}")]
     ConnectorAllowlistRejected(String),

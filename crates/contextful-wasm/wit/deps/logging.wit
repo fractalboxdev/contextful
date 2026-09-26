@@ -1,0 +1,15 @@
+package wasi:logging@0.1.0-draft;
+
+/// A logging interface for a guest: one call, a level, a context string and a message.
+interface logging {
+  enum level {
+    trace,
+    debug,
+    info,
+    warn,
+    error,
+    critical,
+  }
+
+  log: func(level: level, context: string, message: string);
+}

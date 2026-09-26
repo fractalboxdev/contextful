@@ -262,6 +262,8 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `linear-memory` — A connector runs under 256 MiB of linear memory by default, raised per connector to at most 2 GiB.
 - `call-deadline` — A read call carries a 30 s wall-clock deadline and a discovery call a 60 s one, armed by epoch interruption at 100 ms granularity.
 - `session-budget` — A session carries a 1 MiB logging budget, dropping and counting messages past it, and holds at most 8 requests outbound at once.
+- `request-body` — A guest's outbound request body carries at most 8 MiB. The host stops reading past it and fails the call as a deterministic refusal before the request reaches the vendor.
+  *because the body buffers in host memory, outside the guest's linear-memory cap*
 - `world-compatibility` — Compatibility is semver over the world: a guest built against one minor loads on any host advertising a compatible minor.
 - `world-drain` — On a major world bump no new run admits against the old world, in-flight runs complete or suspend on the world they pinned, and the old world then retires.
   *A-connector*
