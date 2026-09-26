@@ -3207,7 +3207,7 @@
       "operation": "guard",
       "subject": "whole-tree-walk",
       "kind": "behavior",
-      "statement": "The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and gathers common-table-expression names across the tree before checking any base relation.",
+      "statement": "The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and a common-table-expression name resolves only within the scope that declares it and the scopes beneath.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 101
@@ -11479,7 +11479,7 @@
       "operation": "mask",
       "subject": "digest-alone",
       "kind": "refusal",
-      "statement": "`hash` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.",
+      "statement": "`hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
       "line": 157
@@ -11556,7 +11556,7 @@
       "operation": "mask",
       "subject": "truncation-ceiling",
       "kind": "refusal",
-      "statement": "Behind `hash` over an exhaustible class, a `truncate` width above floor(log16(domain ÷ `crowd`)), with domain from the class registry, raises `EnforceTruncationTooWide`.",
+      "statement": "Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
       "line": 171
@@ -12002,6 +12002,17 @@
       "line": 281
     },
     {
+      "id": "authority.place.asserted-zone",
+      "contract": "authority",
+      "operation": "place",
+      "subject": "asserted-zone",
+      "kind": "refusal",
+      "statement": "A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.",
+      "why": "because an unsigned argument able to widen placement makes the signed zone decorative",
+      "file": "spec/51-enforcement.md",
+      "line": 283
+    },
+    {
       "id": "authority.place.picks-no-model",
       "contract": "authority",
       "operation": "place",
@@ -12010,7 +12021,7 @@
       "statement": "Placement selects no model and dispatches no inference; the engine's one invocation point is an operator-configured endpoint capability for synthesis.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 283
+      "line": 285
     },
     {
       "id": "authority.place.fail-closed",
@@ -12021,7 +12032,7 @@
       "statement": "A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 285
+      "line": 287
     },
     {
       "id": "authority.place.permissive-default",
@@ -12032,7 +12043,7 @@
       "statement": "A default resolving an unlabeled table to `*` raises `EnforcePermissiveZoneDefault` where more than one principal owns the store.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 287
+      "line": 289
     },
     {
       "id": "authority.place.protected-floor",
@@ -12040,10 +12051,10 @@
       "operation": "place",
       "subject": "protected-floor",
       "kind": "behavior",
-      "statement": "A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time.",
+      "statement": "A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 289
+      "line": 291
     },
     {
       "id": "authority.place.floor-widened",
@@ -12051,10 +12062,10 @@
       "operation": "place",
       "subject": "floor-widened",
       "kind": "refusal",
-      "statement": "A manifest widening a protected-class surface past its floor without the override flag raises `EnforceProtectedFloorWidened`.",
+      "statement": "A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 291
+      "line": 293
     },
     {
       "id": "authority.place.removal-with-public-cloud",
@@ -12065,7 +12076,7 @@
       "statement": "A surface declaring write-time removal on a column and an allow-set admitting a public cloud raises `EnforceRemovalWithPublicCloud`.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 293
+      "line": 295
     },
     {
       "id": "authority.place.narrowest-grain",
@@ -12076,7 +12087,7 @@
       "statement": "A column's set narrows its table's; a principal's set narrows both.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 295
+      "line": 297
     },
     {
       "id": "authority.place.excluded-row",
@@ -12087,7 +12098,7 @@
       "statement": "Where the table's effective set omits the session's zone, the row leaves the result.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 297
+      "line": 299
     },
     {
       "id": "authority.place.excluded-cell",
@@ -12098,7 +12109,7 @@
       "statement": "A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 299
+      "line": 301
     },
     {
       "id": "authority.place.per-principal",
@@ -12109,7 +12120,7 @@
       "statement": "A principal's allow-set pins every row it authors wherever the row lands. A row with no verified author resolves as an undeclared zone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 301
+      "line": 303
     },
     {
       "id": "authority.place.evidence-floor",
@@ -12120,7 +12131,7 @@
       "statement": "A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 303
+      "line": 305
     },
     {
       "id": "authority.place.incognito",
@@ -12131,7 +12142,7 @@
       "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 305
+      "line": 307
     },
     {
       "id": "authority.place.incognito-widening",
@@ -12142,7 +12153,7 @@
       "statement": "A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 307
+      "line": 309
     },
     {
       "id": "authority.place.team-default",
@@ -12153,7 +12164,7 @@
       "statement": "A project declares a default zone, whether users widen it, and whether incognito is on by default.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 309
+      "line": 311
     },
     {
       "id": "authority.place.serve-outcome",
@@ -12164,7 +12175,7 @@
       "statement": "Serving one row yields a drop flag and the list of zone-masked columns.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "authority.place.envelope",
@@ -12175,7 +12186,7 @@
       "statement": "A response envelope carries row counts removed by predicate and by zone, column names masked by policy and by zone, the asserted zone and the incognito flag, and no removed value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 313
+      "line": 315
     },
     {
       "id": "authority.place.symbolic-inclusion",
@@ -12186,7 +12197,7 @@
       "statement": "Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 315
+      "line": 317
     },
     {
       "id": "authority.place.proxy-boundary",
@@ -12197,7 +12208,7 @@
       "statement": "A proxy replica resolves zones at the proxy boundary.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 317
+      "line": 319
     },
     {
       "id": "authority.place.allow-set-entries",
@@ -12208,7 +12219,7 @@
       "statement": "An allow-set holds at most 32 entries.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 319
+      "line": 321
     },
     {
       "id": "authority.place.identifier-length",
@@ -12219,7 +12230,7 @@
       "statement": "A zone identifier holds at most 128 chars.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "authority.resist.credential-shaped-value",
@@ -12230,7 +12241,7 @@
       "statement": "The write path raises `EnforceCredentialShapedValue` on a value matching a credential shape, before it reaches storage.",
       "why": "A-read",
       "file": "spec/51-enforcement.md",
-      "line": 350
+      "line": 352
     },
     {
       "id": "authority.resist.read-only-face",
@@ -12241,7 +12252,7 @@
       "statement": "An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 352
+      "line": 354
     },
     {
       "id": "authority.resist.write-tool",
@@ -12252,7 +12263,7 @@
       "statement": "Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 354
+      "line": 356
     },
     {
       "id": "disclosure.mirror.unbound-table",
@@ -17121,6 +17132,10 @@
           "EnforceWriteOnReadOnlyFace": {
             "clause": "authority.resist.write-tool",
             "gloss": "A write tool registered on an organization-wide face."
+          },
+          "EnforceZoneAssertionWidens": {
+            "clause": "authority.place.asserted-zone",
+            "gloss": "A request asserted a zone its credential does not sign."
           },
           "EnforceZonePatternUnparsed": {
             "clause": "authority.place.unparsed-pattern",

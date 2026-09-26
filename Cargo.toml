@@ -1,3 +1,13 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "tools/*"]
+
+# Every test binary linking the read path embeds the bundled DuckDB; with full debug
+# info each weighs hundreds of MiB, and the workspace's test binaries together exceed
+# a gate sandbox's disk. Workspace code keeps line tables for backtraces; dependencies
+# carry none.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

@@ -4,17 +4,22 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-# The store adapter: Parquet table parts, run and snapshot manifests, the table
-# pointer, the fold, and the relation a scan resolves.
+# The store adapter and the read face: Parquet table parts, run and snapshot manifests, the table
+# pointer, the fold, the relation a scan resolves, and the SQL engine reads execute on.
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }
+contextful-policy = { path = "../contextful-policy" }
 arrow-array = "57"
 arrow-cast = "57"
 arrow-ord = "57"
 arrow-row = "57"
 arrow-schema = "57"
 arrow-select = "57"
+# The read face's embedded SQL engine: Parquet reading and statement serialization link
+# statically, so the read path loads no extension while serving; the scalar-function
+# interface carries the pepper-holding mask functions.
+duckdb = { version = "1.10500", features = ["bundled", "parquet", "json", "vscalar"] }
 getrandom = "0.3"
 parquet = { version = "57", default-features = false, features = ["arrow", "zstd"] }
 serde = { version = "1", features = ["derive"] }
@@ -24,8 +29,6 @@ thiserror = "2"
 toml = "0.8"
 
 [dev-dependencies]
-# Executes the relation a scan resolves, as the read face will.
-duckdb = { version = "1.10500", features = ["bundled"] }
 tempfile = "3"
 
 [[test]]

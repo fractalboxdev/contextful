@@ -98,7 +98,7 @@ Admission of caller-written SQL: what parses, what a base relation names, whose 
   *because guard and executor cannot disagree about what a text means when they share one parse*
 - `relation-allowlist` — Every base relation names a view registered for this caller or a common table expression the statement declares. A bare file path is a base relation and falls under this rule.
   *A-read*
-- `whole-tree-walk` — The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and gathers common-table-expression names across the tree before checking any base relation.
+- `whole-tree-walk` — The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and a common-table-expression name resolves only within the scope that declares it and the scopes beneath.
 - `unregistered-relation` — A base relation naming nothing this connection registered is refused by {{authority.refuse.ungranted-table}}, echoing what the statement asked for and no relation of another caller.
   *A-read*
 - `table-function` — A table function anywhere in the tree, and a schema-qualified reach into a system catalog, raise `TableFunctionRefused`.

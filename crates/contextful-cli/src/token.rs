@@ -5,7 +5,7 @@
 
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
-use contextful_core::grant::{Action, Grant, TablePattern};
+use contextful_core::grant::{Action, Grant, TablePattern, TenantScope};
 use contextful_core::identify::{MintSurface, Subject};
 use contextful_core::issue::{IssuancePolicy, Lifetime, MintContext, MintRequest, NodeRole, SignatureAlgorithm};
 use contextful_core::ports::{Clock, FixedClock, SigningPort};
@@ -54,6 +54,9 @@ pub enum TokenCmd {
         /// Repeatable table pattern.
         #[arg(long = "table")]
         tables: Vec<String>,
+        /// `<table>=<value>`: scope the grant to one tenant of that table.
+        #[arg(long)]
+        tenant: Option<String>,
         /// Repeatable template identifier; absent confers none.
         #[arg(long = "template")]
         templates: Vec<String>,
@@ -122,6 +125,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             incognito,
             actions,
             tables,
+            tenant,
             templates,
             max_rows,
             ttl,
@@ -132,7 +136,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             let grant = Grant {
                 actions: parse_actions(&actions)?,
                 tables: parse_tables(&tables)?,
-                tenant: None,
+                tenant: tenant.as_deref().map(parse_tenant).transpose()?,
                 aggregate: None,
                 templates: (!templates.is_empty()).then_some(templates),
                 max_rows,
@@ -250,4 +254,13 @@ fn parse_actions(names: &[String]) -> Result<Vec<Action>> {
 
 fn parse_tables(patterns: &[String]) -> Result<Vec<TablePattern>> {
     Ok(patterns.iter().map(|p| TablePattern::parse(p)).collect::<Result<_, _>>()?)
+}
+
+fn parse_tenant(text: &str) -> Result<TenantScope> {
+    match text.split_once('=') {
+        Some((table, value)) if !table.is_empty() && !value.is_empty() => {
+            Ok(TenantScope { table: table.to_string(), value: value.to_string() })
+        }
+        _ => bail!("`--tenant {text}` is not <table>=<value>"),
+    }
 }
