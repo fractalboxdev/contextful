@@ -1,0 +1,34 @@
+# The probe guest the host's integration suite drives: a source-connector component
+# whose tables each exercise one property of the host. `cargo build --target
+# wasm32-wasip2 --release` builds the base world alone, kept as
+# `tests/fixtures/probe-base.wasm`; with `--features optional` the guest also exports
+# `config` and `attribution`, kept as `tests/fixtures/probe.wasm`. The suite loads the
+# kept artifacts, so it needs no guest toolchain. Both builds remap the package cache,
+# the toolchain and this directory (`--remap-path-prefix` in `RUSTFLAGS` to `/cargo`,
+# `/rustup` and `/probe`), so no checkout location lands in an artifact.
+[package]
+name = "probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+optional = []
+
+[dependencies]
+wit-bindgen = "0.57"
+arrow-array = { version = "57", default-features = false }
+arrow-schema = { version = "57", default-features = false }
+arrow-ipc = { version = "57", default-features = false }
+
+[profile.release]
+opt-level = "s"
+strip = true
+codegen-units = 1
+lto = true
+panic = "abort"

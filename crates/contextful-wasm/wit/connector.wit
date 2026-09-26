@@ -1,0 +1,125 @@
+// The connector world. The host owns this file: a connector author writes method
+// bodies against the bindings it generates and never edits it (connector.export).
+//
+// The WASI interfaces under `deps/` are the 0.2 releases the host links; a guest built
+// against any semver-compatible 0.2 toolchain instantiates.
+
+package contextful:connector@1.2.0;
+
+interface types {
+  // A flat scalar taxonomy. A nested value rides as `json` and takes its type at the
+  // normalize stage; the interface carries no recursive type.
+  enum data-type {
+    boolean,
+    int32,
+    int64,
+    float64,
+    %string,
+    bytes,
+    timestamp-millis,
+    %json,
+  }
+
+  record schema-field {
+    name: string,
+    ty: data-type,
+    nullable: bool,
+  }
+
+  record schema {
+    name: string,
+    fields: list<schema-field>,
+    primary-key: list<string>,
+  }
+
+  // Arrow IPC stream bytes: one schema message and its record batches.
+  type record-batch = list<u8>;
+
+  // How a position advances.
+  enum cursor-kind {
+    monotonic,
+    opaque-token,
+    snapshot-id,
+  }
+
+  // A position: bytes the connector owns, beside its declared kind.
+  record cursor {
+    kind: cursor-kind,
+    bytes: list<u8>,
+  }
+
+  variant error {
+    transient(string),
+    permanent(string),
+    auth-expired(string),
+    // Retry-after, in seconds.
+    rate-limited(u32),
+    schema-incompatible(string),
+  }
+}
+
+interface source {
+  // The type is renamed on import: a function and a type share one namespace.
+  use types.{schema, record-batch, cursor, cursor-kind as kind, error};
+
+  cursor-kind: func() -> kind;
+
+  discover: func() -> result<list<schema>, error>;
+
+  open: func(table: string, %from: option<cursor>) -> result<read-handle, error>;
+
+  resource read-handle {
+    // One batch, or none once the read is exhausted.
+    next: func() -> result<option<record-batch>, error>;
+    // Where the read stands after the last batch `next` yielded.
+    position: func() -> cursor;
+  }
+}
+
+// Operator configuration: the pipeline's guest table as one JSON object, delivered once
+// per session ahead of discovery. A key or value the guest cannot act on is a
+// permanent error. No credential crosses here.
+interface config {
+  use types.{error};
+
+  configure: func(config: string) -> result<_, error>;
+}
+
+// The byte-exact values of the outermost partition column the session's failed reads
+// belong to. An empty list leaves the failure unattributed.
+interface attribution {
+  failed-partitions: func() -> list<string>;
+}
+
+interface destination {
+  use types.{schema, record-batch, error};
+
+  prepare: func(table: string, %schema: schema) -> result<_, error>;
+  write: func(table: string, batch: record-batch) -> result<_, error>;
+  commit: func() -> result<_, error>;
+  abort: func() -> result<_, error>;
+}
+
+world source-connector {
+  import wasi:http/outgoing-handler@0.2.12;
+  import wasi:logging/logging@0.1.0-draft;
+  import wasi:clocks/wall-clock@0.2.12;
+  export source;
+}
+
+world configurable-source-connector {
+  include source-connector;
+  export config;
+}
+
+world attributing-source-connector {
+  include source-connector;
+  export attribution;
+}
+
+world destination-connector {
+  import wasi:http/outgoing-handler@0.2.12;
+  import wasi:logging/logging@0.1.0-draft;
+  import wasi:clocks/wall-clock@0.2.12;
+  export destination;
+}

@@ -1,0 +1,2 @@
+# The probe guest builds; the suite loads them in place.
+!*.wasm

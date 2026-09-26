@@ -1,0 +1,29 @@
+[package]
+name = "contextful-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The sandboxed component host: guest connectors built against `wit/connector.wit` run
+# under wasmtime, reach the network only through the mediated client in
+# `contextful-runtime`, and hand batches over as Arrow IPC.
+
+[dependencies]
+contextful-core = { path = "../contextful-core" }
+contextful-runtime = { path = "../contextful-runtime" }
+arrow-array = "57"
+arrow-ipc = { version = "57", default-features = false }
+arrow-schema = "57"
+bytes = "1"
+http = "1"
+http-body-util = "0.1"
+serde_json = "1"
+tokio = { version = "1", default-features = false, features = ["rt", "sync"] }
+url = "2"
+wasmtime = { version = "49", default-features = false, features = ["anyhow", "cranelift", "runtime", "component-model", "std", "gc", "gc-drc"] }
+wasmtime-wasi = { version = "49", default-features = false, features = ["p2"] }
+wasmtime-wasi-http = { version = "49", default-features = false, features = ["p2"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
