@@ -101,6 +101,10 @@ pub struct RunManifest {
     pub cursor: Option<Value>,
     #[serde(default)]
     pub fence: Option<u64>,
+    /// Written under the commit-log protocol: readable once the writing node's commit log
+    /// records the run under `fence`. A manifest without it reads as committed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub logged: bool,
 }
 
 impl RunManifest {

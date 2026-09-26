@@ -69,6 +69,7 @@ pub enum Committed {
 /// that fails is reported, beside a published snapshot that stays published, since the
 /// pointer has already moved (`store.fold.collection-failed`).
 pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome> {
+    store.check_writable("compact")?;
     match prepare(store, decl, now)? {
         Prepared::NothingLanded => Ok(match collect(store, decl, now) {
             Ok(()) => FoldOutcome::NothingLanded,

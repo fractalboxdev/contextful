@@ -698,6 +698,7 @@ dependencies = [
  "contextful-memory",
  "contextful-policy",
  "contextful-runtime",
+ "contextful-sync",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -825,6 +826,20 @@ dependencies = [
  "tempfile",
  "toml",
  "walkdir",
+]
+
+[[package]]
+name = "contextful-sync"
+version = "0.1.0"
+dependencies = [
+ "contextful-context",
+ "contextful-core",
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

@@ -8,6 +8,7 @@ use contextful_core::store::lay_out::{
 };
 use contextful_core::store::reconcile::Schema;
 use contextful_core::store::resolve::TableState;
+use contextful_core::store::commit_log;
 use contextful_core::store::StoreError;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -26,6 +27,16 @@ pub struct StoreConfig {
     /// Bucket sync, read by the sync adapter.
     #[serde(default)]
     pub sync: Option<toml::Value>,
+    /// Present on a consuming replica: the canonical store it reads from.
+    #[serde(default)]
+    pub replica: Option<ReplicaConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReplicaConfig {
+    /// The canonical store a replica answers for.
+    pub of: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -45,6 +56,7 @@ pub struct EncryptionConfig {
 pub struct Store {
     root: PathBuf,
     config_node_id: Option<String>,
+    replica_of: Option<String>,
 }
 
 impl Store {
@@ -65,11 +77,24 @@ impl Store {
         if let Some(enc) = &config.encryption {
             check_key_source(&enc.key_source)?;
         }
-        Ok(Store { root, config_node_id: config.node.and_then(|n| n.id) })
+        Ok(Store { root, config_node_id: config.node.and_then(|n| n.id), replica_of: config.replica.map(|r| r.of) })
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The canonical store this store replicates, if it is a replica.
+    pub fn replica_of(&self) -> Option<&str> {
+        self.replica_of.as_deref()
+    }
+
+    /// Refuse a write verb on a replica, naming the canonical store (`store.replicate.write-refused`).
+    pub fn check_writable(&self, verb: &str) -> Result<()> {
+        match &self.replica_of {
+            Some(canonical) => Err(StoreError::ReplicaWriteRefused(format!("`{verb}` writes, and this store is a read-only replica of `{canonical}`")).into()),
+            None => Ok(()),
+        }
     }
 
     /// `[node] id` from the store's configuration.
@@ -157,6 +182,8 @@ impl Store {
     pub fn committed_runs(&self, table: &str) -> Result<Vec<RunManifest>> {
         let runs_dir = self.table_dir(table)?.join("data").join("runs");
         let mut out = Vec::new();
+        // One read of each (pipeline, node) commit log per call.
+        let mut logs: std::collections::HashMap<(String, String), Vec<commit_log::CommitEntry>> = std::collections::HashMap::new();
         for run_dir in sorted_dirs(&runs_dir)? {
             for node_dir in sorted_dirs(&run_dir)? {
                 let path = node_dir.join(MANIFEST_FILE);
@@ -175,6 +202,18 @@ impl Store {
                         m.run_id, m.node_id, m.table
                     ))
                     .into());
+                }
+                // A run written under the commit-log protocol is readable once its node's log
+                // records it under its fence; a manifest without the mark reads as committed.
+                if let (true, Some(fence), Some(pipeline)) = (m.logged, m.fence, m.pipeline_id.as_deref()) {
+                    let key = (pipeline.to_string(), m.node_id.clone());
+                    if !logs.contains_key(&key) {
+                        let log = crate::commit_log::read(self, pipeline, &m.node_id)?;
+                        logs.insert(key.clone(), log);
+                    }
+                    if !commit_log::committed(&logs[&key], table, &m.run_id, fence) {
+                        continue;
+                    }
                 }
                 out.push(m);
             }
@@ -379,8 +418,9 @@ pub(crate) fn sorted_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-/// Write to a sibling temporary file, then rename it over `path`.
-pub(crate) fn replace_file(path: &Path, bytes: &[u8]) -> Result<()> {
+/// Replace `path` with `bytes` through a private temporary file and one rename, so a
+/// reader meets the old file or the new one.
+pub fn replace_file(path: &Path, bytes: &[u8]) -> Result<()> {
     let tmp = tmp_sibling(path);
     fs::write(&tmp, bytes).at(&tmp)?;
     fs::rename(&tmp, path).at(path)

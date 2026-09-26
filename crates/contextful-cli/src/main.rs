@@ -8,6 +8,7 @@ mod mcp;
 mod memory;
 mod pipeline;
 mod run;
+mod sync;
 mod token;
 
 use clap::{Parser, Subcommand};
@@ -30,6 +31,9 @@ enum Cmd {
     /// Validate and fire declared pipelines.
     #[command(subcommand)]
     Pipeline(pipeline::PipelineCmd),
+    /// Push, pull, lease and compact against the store's bucket.
+    #[command(subcommand)]
+    Sync(sync::SyncCmd),
     /// Start, inspect, stop and resume durable runs.
     #[command(subcommand)]
     Run(run::RunCmd),
@@ -49,6 +53,7 @@ fn main() {
         Cmd::Token(c) => token::run(c),
         Cmd::Context(c) => context::run(c),
         Cmd::Run(c) => run::run(c),
+        Cmd::Sync(c) => sync::run(c),
         Cmd::Pipeline(c) => pipeline::run(c),
         Cmd::Mcp(c) => mcp::run(c),
         Cmd::Memory(c) => memory::run(c),

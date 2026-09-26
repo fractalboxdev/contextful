@@ -172,3 +172,14 @@ fn the_runner_projects_each_step_and_its_terminal_status() {
     use contextful_core::run::project::StepStatus::Completed;
     assert_eq!(steps, [("pull-0", Completed), ("pull-1", Completed), ("pull-2", Completed)]);
 }
+
+#[test]
+fn a_refused_fence_record_releases_the_lease() {
+    let rig = Rig::new();
+    let mut sink = Sink { refuse_fence: true, ..Sink::default() };
+    let row = rig.run(&plan("kind = \"opaque-token\"", ""), "1.0.0", "run-1", &mut Pages::new(three_pages()), &mut sink).unwrap();
+    assert_eq!(row.status, RunStatus::Failed);
+    let lease = rig.catalog().lease_row(&key()).unwrap();
+    assert_eq!(lease.holder, None, "the lease was released");
+    assert!(rig.catalog().acquire(&key(), "next", 30).unwrap().is_some());
+}

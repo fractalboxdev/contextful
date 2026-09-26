@@ -2773,6 +2773,39 @@
       "line": 317
     },
     {
+      "id": "store.push.wire-format",
+      "contract": "store",
+      "operation": "push",
+      "subject": "wire-format",
+      "kind": "behavior",
+      "statement": "A push uploads each file it owns, or no node owns, whose digest the bucket lacks under `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks, staging directories and table pointers stay local.",
+      "why": "",
+      "file": "spec/10-store.md",
+      "line": 319
+    },
+    {
+      "id": "store.push.schema-cas",
+      "contract": "store",
+      "operation": "push",
+      "subject": "schema-cas",
+      "kind": "behavior",
+      "statement": "A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and replacing it on the ETag read; no copy overwrites another.",
+      "why": "because two nodes landing different columns into one table both keep them",
+      "file": "spec/10-store.md",
+      "line": 320
+    },
+    {
+      "id": "store.push.manifest-commit",
+      "contract": "store",
+      "operation": "push",
+      "subject": "manifest-commit",
+      "kind": "behavior",
+      "statement": "A push commits when the bucket manifest, `<prefix>/manifest.json` listing each key's sha256, size and owner, replaces the copy it read under `If-Match` on that copy's ETag.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 322
+    },
+    {
       "id": "store.pull.digest-mismatch",
       "contract": "store",
       "operation": "pull",
@@ -2781,7 +2814,7 @@
       "statement": "A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 351
+      "line": 356
     },
     {
       "id": "store.pull.convergence",
@@ -2792,7 +2825,7 @@
       "statement": "When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 353
+      "line": 358
     },
     {
       "id": "store.pull.unconverged",
@@ -2803,7 +2836,51 @@
       "statement": "Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 354
+      "line": 359
+    },
+    {
+      "id": "store.pull.pointer-last",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "pointer-last",
+      "kind": "behavior",
+      "statement": "A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 361
+    },
+    {
+      "id": "store.pull.tombstone-applied",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "tombstone-applied",
+      "kind": "behavior",
+      "statement": "A pull deletes the local copy of each key a tombstone names and no entry lists.",
+      "why": "because a deletion that never reaches a consumer resurrects once its tombstone ages out",
+      "file": "spec/10-store.md",
+      "line": 363
+    },
+    {
+      "id": "store.pull.pointer-advance",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "pointer-advance",
+      "kind": "behavior",
+      "statement": "A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a later snapshot, and verifies every advancing table before writing any pointer.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 365
+    },
+    {
+      "id": "store.pull.schema-merge",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "schema-merge",
+      "kind": "behavior",
+      "statement": "A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.",
+      "why": "because rows landed locally carry columns the bucket's copy may lack",
+      "file": "spec/10-store.md",
+      "line": 367
     },
     {
       "id": "store.probe.inconclusive",
@@ -2814,7 +2891,7 @@
       "statement": "An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 389
+      "line": 402
     },
     {
       "id": "store.probe.unproven",
@@ -2825,7 +2902,18 @@
       "statement": "Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 391
+      "line": 404
+    },
+    {
+      "id": "store.probe.sentinel",
+      "contract": "store",
+      "operation": "probe",
+      "subject": "sentinel",
+      "kind": "behavior",
+      "statement": "The probe creates a sentinel under `_contextful/cas-probe/` and demonstrates `cas` when a second create and a stale `If-Match` both fail and a current `If-Match` replaces it, deleting the sentinel after.",
+      "why": "",
+      "file": "spec/10-store.md",
+      "line": 406
     },
     {
       "id": "store.merge.tombstone-owner",
@@ -2836,7 +2924,7 @@
       "statement": "A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 398
+      "line": 412
     },
     {
       "id": "store.merge.tombstone-ttl",
@@ -2847,7 +2935,7 @@
       "statement": "A tombstone leaves the manifest 30 d after its `deleted_at`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 400
+      "line": 414
     },
     {
       "id": "store.merge.retries",
@@ -2858,7 +2946,7 @@
       "statement": "`[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 401
+      "line": 415
     },
     {
       "id": "store.merge.exhausted",
@@ -2869,7 +2957,7 @@
       "statement": "Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 402
+      "line": 416
     },
     {
       "id": "store.merge.cursor-recency",
@@ -2880,7 +2968,29 @@
       "statement": "Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 404
+      "line": 418
+    },
+    {
+      "id": "store.merge.scoped-union",
+      "contract": "store",
+      "operation": "merge",
+      "subject": "scoped-union",
+      "kind": "behavior",
+      "statement": "A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a remote entry it owns and no longer holds leaves with a tombstone.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 420
+    },
+    {
+      "id": "store.merge.ownership",
+      "contract": "store",
+      "operation": "merge",
+      "subject": "ownership",
+      "kind": "behavior",
+      "statement": "A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, or a commit log's node directory. Every other key is unowned and propagates no deletion.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 422
     },
     {
       "id": "store.lease.ttl",
@@ -2891,7 +3001,7 @@
       "statement": "A lease is granted for 10 min.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 413
+      "line": 431
     },
     {
       "id": "store.lease.renewal",
@@ -2902,7 +3012,7 @@
       "statement": "A holder renews every 200 s by `If-Match` replace on the ETag it holds.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 414
+      "line": 432
     },
     {
       "id": "store.lease.clock-skew",
@@ -2913,7 +3023,7 @@
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
       "why": "because correctness rests on the fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
-      "line": 415
+      "line": 433
     },
     {
       "id": "store.lease.held",
@@ -2924,7 +3034,7 @@
       "statement": "A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 417
+      "line": 435
     },
     {
       "id": "store.lease.stale-fence",
@@ -2935,7 +3045,7 @@
       "statement": "A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 419
+      "line": 437
     },
     {
       "id": "store.lease.not-held",
@@ -2946,7 +3056,7 @@
       "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 421
+      "line": 439
     },
     {
       "id": "store.lease.cursor-kind",
@@ -2957,7 +3067,7 @@
       "statement": "A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 423
+      "line": 441
     },
     {
       "id": "store.lease.local-node",
@@ -2968,7 +3078,40 @@
       "statement": "A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 425
+      "line": 443
+    },
+    {
+      "id": "store.lease.acquire",
+      "contract": "store",
+      "operation": "lease",
+      "subject": "acquire",
+      "kind": "behavior",
+      "statement": "Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-Match` on its ETag, the fence one past the object's.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 445
+    },
+    {
+      "id": "store.lease.pointer-fence",
+      "contract": "store",
+      "operation": "lease",
+      "subject": "pointer-fence",
+      "kind": "behavior",
+      "statement": "Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 447
+    },
+    {
+      "id": "store.lease.commit-log",
+      "contract": "store",
+      "operation": "lease",
+      "subject": "commit-log",
+      "kind": "behavior",
+      "statement": "Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 449
     },
     {
       "id": "store.replicate.write-refused",
@@ -2979,7 +3122,7 @@
       "statement": "A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 443
+      "line": 467
     },
     {
       "id": "store.replicate.partial-parquet",
@@ -2990,7 +3133,7 @@
       "statement": "A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 445
+      "line": 469
     },
     {
       "id": "store.replicate.missing-index",
@@ -3001,7 +3144,7 @@
       "statement": "A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 447
+      "line": 471
     },
     {
       "id": "store.replicate.sensitive-refused",
@@ -3012,7 +3155,7 @@
       "statement": "A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 449
+      "line": 473
     },
     {
       "id": "read.register.connection-views",
@@ -16046,6 +16189,10 @@
     [
       "store.bound-time.pin-bound",
       "read.resolve-pin.earlier-bound-wins"
+    ],
+    [
+      "store.pull.schema-merge",
+      "store.reconcile.incompatible"
     ],
     [
       "read.register.connection-views",

@@ -7,7 +7,8 @@
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_context::land::{land_batches, Batch, Position, RunContext};
-use contextful_context::{node, ContextError, Store};
+use contextful_context::{commit_log, node, ContextError, Store};
+use contextful_core::store::commit_log::{CommitEntry, Kind};
 use contextful_core::ports::{Clock, FixedClock};
 use contextful_core::run::cancel::Scope;
 use contextful_core::run::journal::sha256_hex;
@@ -202,15 +203,25 @@ impl Destination for StoreDestination {
             injection: Injection { run_id: commit.run_id.clone(), site_id: commit.site_id.clone(), batch_seq: None, authored_by: None },
             committed_at: commit.committed_at,
         };
-        let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence };
+        let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some() };
         let precommit = || precommit().map_err(|f| ContextError::Invalid(f.to_string()));
         let manifest = land_batches(&self.store, &decl, &batches, &ctx, &position, &precommit).map_err(store_failure)?;
+        // Under a lease, the commit-log create is the commit point: the manifest stays
+        // unreadable unless the log records this run under its fence.
+        if let Some(fence) = commit.fence {
+            let entry = CommitEntry { kind: Kind::Commit, table: commit.table.clone(), run_id: Some(commit.run_id.clone()), cursor: commit.cursor.clone(), fence };
+            commit_log::append(&self.store, &commit.pipeline_id, self.node.as_str(), &entry).map_err(store_failure)?;
+        }
         let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join("data").join("runs").join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;
         for p in &manifest.parts {
             bytes += std::fs::metadata(dir.join(&p.name)).map(|m| m.len()).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
         }
         Ok(Landed { rows, bytes })
+    }
+
+    fn open_fence(&mut self, pipeline_id: &str, table: &str, fence: u64) -> Result<(), Failure> {
+        commit_log::open_fence(&self.store, pipeline_id, self.node.as_str(), table, fence).map(|_| ()).map_err(store_failure)
     }
 
     fn newest_marker(&self, pipeline_id: &str, table: &str) -> Result<Option<Marker>, Failure> {

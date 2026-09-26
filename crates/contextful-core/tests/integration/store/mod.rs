@@ -6,6 +6,7 @@ mod fold;
 mod lay_out;
 mod reconcile;
 mod reserve;
+mod sync;
 
 use contextful_core::store::lay_out::{PartEntry, RunManifest, SnapshotId, SnapshotManifest};
 use contextful_core::time::Instant;
@@ -24,6 +25,7 @@ pub fn run(id: &str, committed: &str, parts: usize) -> RunManifest {
         pipeline_id: None,
         cursor: None,
         fence: None,
+        logged: false,
     }
 }
 

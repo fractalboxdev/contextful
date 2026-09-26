@@ -43,6 +43,8 @@ pub struct Position {
     pub cursor: Option<Value>,
     /// The fence of the lease the commit runs under.
     pub fence: Option<u64>,
+    /// The run commits through its node's commit log, which makes it readable.
+    pub logged: bool,
 }
 
 /// The type a JSON value carries on its own.
@@ -191,6 +193,7 @@ pub fn land_batches(
     position: &Position,
     precommit: &dyn Fn() -> Result<()>,
 ) -> Result<RunManifest> {
+    store.check_writable("land")?;
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
     let mut types: HashMap<String, ColumnType> = HashMap::new();
     for b in batches {
@@ -311,6 +314,7 @@ pub fn land_batches(
         pipeline_id: position.pipeline_id.clone(),
         cursor: position.cursor.clone(),
         fence: position.fence,
+        logged: position.logged,
     };
     std::fs::create_dir_all(&node_dir).at(&node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");

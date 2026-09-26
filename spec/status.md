@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 65 | 56 | 9 | 13 | 0 | 0 | 0 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 73 | 0 | 73 |
 | `run` | 3 | 24 | 279 | 80 | 34 | 24 | 104 | 0 | 104 |
-| `store` | 1 | 14 | 140 | 37 | 12 | 8 | 75 | 0 | 75 |
+| `store` | 1 | 14 | 153 | 37 | 12 | 8 | 109 | 0 | 109 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1423 | 462 | 161 | 101 | 559 | 0 | |
+| **total** | 19 | 145 | 1436 | 462 | 161 | 101 | 593 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ Decision records: 18.
 | 3 — The run path | 11 | 169 | 90 | passing |
 | 4 — Ingest | 22 | 329 | 80 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 118 | passing |
-| 6 — Sync and replicas | 6 | 26 | 0 | absent |
+| 6 — Sync and replicas | 6 | 39 | 34 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
 | 8 — Accountability | 5 | 22 | 0 | absent |
 | 9 — Visibility | 6 | 22 | 0 | absent |
@@ -573,6 +573,37 @@ Unscheduled operations: 10.
 | `store.lay-out.table-pointer` | `crates/contextful-context/tests/integration/lay_out.rs::only_the_pointer_chain_makes_a_snapshot_readable` | performed |
 | `store.lay-out.uncommitted-run` | `crates/contextful-context/tests/integration/lay_out.rs::a_run_without_its_manifest_joins_no_file_list` | performed |
 | `store.lay-out.unknown-table` | `crates/contextful-context/tests/integration/lay_out.rs::a_table_no_schema_declares_is_unknown` | performed |
+| `store.lease.acquire` | `crates/contextful-core/tests/integration/store/sync.rs::acquisition_creates_or_replaces_on_the_etag_with_the_next_fence` | performed |
+| `store.lease.commit-log` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_created_before_the_next_acquisition_stands` | performed |
+| `store.lease.local-node` | `crates/contextful-core/tests/integration/store/sync.rs::a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable` | performed |
+| `store.lease.not-held` | `crates/contextful-core/tests/integration/store/sync.rs::releasing_another_nodes_lease_refuses` | performed |
+| `store.lease.pointer-fence` | `crates/contextful-sync/tests/integration/pull.rs::a_publish_under_a_superseded_fence_loses_its_condition` | performed |
+| `store.lease.stale-fence` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable` | performed |
+| `store.lease.ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_lease_is_granted_for_10_minutes` | performed |
+| `store.merge.cursor-recency` | `crates/contextful-core/tests/integration/store/sync.rs::differing_copies_of_a_commit_log_entry_refuse` | performed |
+| `store.merge.exhausted` | `crates/contextful-sync/tests/integration/push.rs::exhausted_rounds_refuse_and_report_every_uploaded_object` | performed |
+| `store.merge.ownership` | `crates/contextful-core/tests/integration/store/sync.rs::a_keys_owner_is_read_off_the_key` | performed |
+| `store.merge.retries` | `crates/contextful-sync/tests/integration/push.rs::the_re_commit_loop_takes_five_rounds_by_default_and_the_declared_bound_otherwise` | performed |
+| `store.merge.scoped-union` | `crates/contextful-core/tests/integration/store/sync.rs::a_merge_keeps_every_local_entry_and_only_the_remote_entries_it_does_not_own` | performed |
+| `store.merge.tombstone-owner` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_naming_another_owners_entry_refuses_and_the_entry_stays` | performed |
+| `store.merge.tombstone-ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_leaves_the_manifest_after_30_days` | performed |
+| `store.probe.inconclusive` | `crates/contextful-sync/tests/integration/push.rs::a_refused_method_credential_or_transport_is_inconclusive` | performed |
+| `store.probe.sentinel` | `crates/contextful-sync/tests/integration/push.rs::the_probe_demonstrates_cas_and_leaves_no_sentinel` | performed |
+| `store.probe.unproven` | `crates/contextful-sync/tests/integration/push.rs::a_declared_cas_against_an_undemonstrated_backend_stops_the_push` | performed |
+| `store.pull.convergence` | `crates/contextful-sync/tests/integration/pull.rs::a_key_moving_mid_download_refetches_the_manifest_and_retries_the_shortfall` | performed |
+| `store.pull.digest-mismatch` | `crates/contextful-sync/tests/integration/pull.rs::an_object_whose_digest_differs_from_its_entry_is_refused_and_discarded` | performed |
+| `store.pull.pointer-advance` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies` | performed |
+| `store.pull.pointer-last` | `crates/contextful-sync/tests/integration/pull.rs::a_pointer_is_written_only_once_its_snapshot_is_home` | performed |
+| `store.pull.schema-merge` | `crates/contextful-sync/tests/integration/pull.rs::a_pulled_schema_merges_into_the_local_one` | performed |
+| `store.pull.tombstone-applied` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_deletes_the_copy_a_tombstone_names` | performed |
+| `store.pull.unconverged` | `crates/contextful-sync/tests/integration/pull.rs::a_key_that_keeps_moving_refuses_and_writes_no_pointer` | performed |
+| `store.push.in-flight` | `crates/contextful-sync/tests/integration/push.rs::a_second_push_of_one_store_refuses_while_the_first_runs` | performed |
+| `store.push.manifest-commit` | `crates/contextful-sync/tests/integration/push.rs::the_manifest_commits_by_replace_on_the_etag_read` | performed |
+| `store.push.prefix-escape` | `crates/contextful-core/tests/integration/store/sync.rs::a_key_climbing_out_of_the_prefix_is_refused` | performed |
+| `store.push.prefix-overspecified` | `crates/contextful-core/tests/integration/store/sync.rs::prefix_and_prefix_from_together_refuse` | performed |
+| `store.push.prefix-unbound` | `crates/contextful-core/tests/integration/store/sync.rs::an_unset_prefix_variable_refuses_with_no_root_fallback` | performed |
+| `store.push.schema-cas` | `crates/contextful-sync/tests/integration/converge.rs::two_nodes_landing_different_columns_both_keep_them` | performed |
+| `store.push.wire-format` | `crates/contextful-sync/tests/integration/push.rs::a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local` | performed |
 | `store.reconcile.additive` | `crates/contextful-core/tests/integration/store/reconcile.rs::an_unseen_column_joins_nullable` | performed |
 | `store.reconcile.explicit-file-list` | `crates/contextful-context/tests/integration/reconcile.rs::a_read_hands_read_parquet_an_explicit_sorted_list` | performed |
 | `store.reconcile.first-sight` | `crates/contextful-context/tests/integration/reconcile.rs::the_first_batch_creates_the_table` | performed |
@@ -584,6 +615,9 @@ Unscheduled operations: 10.
 | `store.reconcile.no-history` | `crates/contextful-core/tests/integration/store/reconcile.rs::the_schema_document_keeps_the_current_shape_alone` | performed |
 | `store.reconcile.no-invented-column` | `crates/contextful-context/tests/integration/reconcile.rs::a_scan_invents_no_column` | performed |
 | `store.reconcile.union-by-name` | `crates/contextful-context/tests/integration/reconcile.rs::a_column_resolves_to_the_supertype_of_its_files_with_no_cast` | performed |
+| `store.replicate.partial-parquet` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_missing_a_snapshot_part_refuses_and_leaves_it_unpublished` | performed |
+| `store.replicate.sensitive-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_refresh_requesting_a_replicate_off_table_refuses` | performed |
+| `store.replicate.write-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_refuses_a_write_verb_naming_the_canonical_store` | performed |
 | `store.reserve.column-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_producer_column_in_the_namespace_is_refused` | performed |
 | `store.reserve.injected` | `crates/contextful-context/tests/integration/reserve.rs::the_engine_injects_provenance_and_replaces_producer_values` | performed |
 | `store.reserve.ledger-path` | `crates/contextful-core/tests/integration/store/reserve.rs::the_ledger_path_is_disjoint_per_run_and_node` | performed |
