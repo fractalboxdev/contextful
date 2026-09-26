@@ -44,7 +44,7 @@ const LOWER_IS_BETTER: [&str; 4] = ["forbidden_row_rate", "duplicate_row_rate", 
 const BAND_EPSILON: f64 = 1e-9;
 
 const GRAMMAR: &str = "an entry names `retrieval.<leg>.<metric>`, `edge_retrieval.<leg>.<metric>`, \
-     `judge.<dimension>`, `slices.<tag>.<path>`, `latency_ms` or `n_cases`, a mean optionally suffixed `.n`";
+     `judge.<dimension>`, `slices.<tag>.<metric>`, `slices.<tag>.<path>`, `latency_ms` or `n_cases`, a mean optionally suffixed `.n`";
 
 /// Whether a figure grades higher or lower as better.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -152,6 +152,11 @@ fn parse_head(head: &str, top: bool) -> Option<MetricPath> {
             if LEGS.contains(leg) && (RANKED_METRICS.contains(metric) || RELEVANCE_METRICS.contains(metric)) =>
         {
             Some(mean(vec![surface, leg, metric]))
+        }
+        ["slices", tag, metric]
+            if top && !tag.is_empty() && (RANKED_METRICS.contains(metric) || RELEVANCE_METRICS.contains(metric)) =>
+        {
+            Some(mean(vec!["slices", tag, metric]))
         }
         ["slices", tag, ..] if top && !tag.is_empty() && parts.len() > 2 => {
             let inner = parse_head(&parts[2..].join("."), false)?;

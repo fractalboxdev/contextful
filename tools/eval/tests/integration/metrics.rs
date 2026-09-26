@@ -84,5 +84,6 @@ fn the_relevance_rates_are_defined_only_where_the_case_declares_their_input() {
     assert_eq!(forbidden_row_rate(&[], &set(&["a"])), 0.0);
     assert_eq!(duplicate_row_rate(&[]), 0.0);
     assert!(in_window_rate(&crate::returned(&[("a", true)]), false).is_nan());
-    assert_eq!(in_window_rate(&[], true), 0.0);
+    // An empty return — an abstaining case — carries no row outside the window.
+    assert!(in_window_rate(&[], true).is_nan());
 }

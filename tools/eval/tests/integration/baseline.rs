@@ -154,6 +154,8 @@ fn an_entry_names_a_report_field_path() {
         "judge.correct_refusal",
         "judge.hallucination_on_unknown",
         "judge.temporal_correctness",
+        "slices.multi_hop.recall_at_k",
+        "slices.multi_hop.duplicate_row_rate",
         "slices.multi_hop.retrieval.hybrid.recall_at_k",
         "slices.multi_hop.judge.accuracy",
         "slices.multi_hop.n_cases",
@@ -183,6 +185,9 @@ fn an_entry_names_a_report_field_path() {
     assert_eq!(p.steps, ["slices", "multi_hop", "retrieval", "hybrid", "recall_at_k"]);
     let r = json!({ "slices": { "multi_hop": { "retrieval": { "hybrid": { "recall_at_k": node(40, 0.5) } } } } });
     assert_eq!(resolve(&r, "slices.multi_hop.retrieval.hybrid.recall_at_k").unwrap(), 0.5);
+    let flat = json!({ "slices": { "multi_hop": { "recall_at_k": node(40, 0.4) } } });
+    assert_eq!(resolve(&flat, "slices.multi_hop.recall_at_k").unwrap(), 0.4);
+    assert_eq!(MetricPath::parse("slices.multi_hop.recall_at_k.n").unwrap().kind, PathKind::Count);
 }
 
 /// Every mean-valued path takes a `.n` suffix naming its sample count.

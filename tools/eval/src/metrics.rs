@@ -140,13 +140,11 @@ pub fn duplicate_row_rate(ranking: &[RowRef]) -> f64 {
 }
 
 /// Fraction of the returned rows the engine flagged in-window. NaN when the case
-/// declares no recency bound; 0.0 for an empty return, which holds no in-window row.
+/// declares no recency bound, and NaN for an empty return: it holds no out-of-window
+/// row, and a must-abstain case with a recency bound returns zero rows by design.
 pub fn in_window_rate(returned: &[Returned], recency_bound: bool) -> f64 {
-    if !recency_bound {
+    if !recency_bound || returned.is_empty() {
         return f64::NAN;
-    }
-    if returned.is_empty() {
-        return 0.0;
     }
     returned.iter().filter(|r| r.in_window).count() as f64 / returned.len() as f64
 }
