@@ -1,6 +1,7 @@
 //! The policy crate's one integration binary, one module per operation.
 
 mod attenuate;
+mod audit;
 mod enforce;
 mod exchange;
 mod issue;
