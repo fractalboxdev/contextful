@@ -142,6 +142,14 @@ impl PipelineSpec {
         }
         for t in &self.tables {
             let d = t.decl();
+            // A visibility refusal names the destination table.
+            let destination = TableDecl { name: self.table_name(&d.name), ..d.clone() };
+            crate::disclosure::declare::Binding::of(&destination).map_err(|e| match e {
+                crate::disclosure::declare::DeclareError::Visibility(v) => RunError::Visibility(v),
+                crate::disclosure::declare::DeclareError::Malformed(m) => {
+                    RunError::PipelineSpecInvalid(format!("pipeline `{}`: {}", self.id, m.0))
+                }
+            })?;
             if d.write_mode() == WriteMode::Replace {
                 let reason = if self.incremental.is_some() {
                     Some("a `monotonic` cursor")

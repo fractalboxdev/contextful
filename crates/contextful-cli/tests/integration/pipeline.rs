@@ -208,3 +208,12 @@ fn each_table_binds_its_segment_and_keeps_its_own_position() {
     assert_eq!(&targets[..2], ["/v1/sales%20orders", "/v1/returns"]);
     assert_eq!(&targets[2..], ["/v1/sales%20orders?since=9", "/v1/returns?since=2"]);
 }
+
+#[test]
+fn validate_holds_store_tables_to_their_visibility_block() {
+    let dir = project("[[pipeline.tables]]\nname = \"wiki/pages\"\n\n[pipeline.tables.visibility]\nsource = \"wiki\"\nresource_key = \"page_id\"\nfidelity = \"mirrored\"\nfamily = \"item-exception\"\nmax_acl_staleness = \"1h30m\"\n");
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "{err}");
+    assert!(err.contains("VisibilityBudgetMalformed") && err.contains("wiki/pages"), "{err}");
+}

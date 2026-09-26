@@ -101,6 +101,22 @@ fn a_level_the_family_does_not_permit_is_refused() {
     }
 }
 
+#[test]
+fn a_pipeline_specification_holds_its_tables_to_the_same_bound() {
+    use contextful_core::pipeline::declare::{collect, ManifestFile};
+    use contextful_core::run::RunError;
+    let text = "[[pipeline]]\nid = \"wiki\"\n[pipeline.source]\nname = \"http\"\n[[pipeline.tables]]\nname = \"pages\"\n[pipeline.tables.visibility]\nsource = \"x\"\nresource_key = \"id\"\nfidelity = \"mirrored\"\nfamily = \"directory\"\n";
+    let declared = collect(&[ManifestFile { path: "contextful.toml".into(), text: text.into() }]).unwrap();
+    match declared[0].spec.validate() {
+        Err(RunError::Visibility(e @ VisibilityError::FamilyBound { .. })) => {
+            assert!(e.to_string().starts_with("VisibilityFamilyBound") && e.to_string().contains("pages"), "{e}")
+        }
+        other => panic!("{other:?}"),
+    }
+    let ok = text.replace("\"mirrored\"", "\"excluded\"");
+    assert!(collect(&[ManifestFile { path: "contextful.toml".into(), text: ok }]).unwrap()[0].spec.validate().is_ok());
+}
+
 /// A mapping landing a table without naming its `family` raises `VisibilityFamilyUndeclared`.
 // spec: disclosure.declare-fidelity.family-undeclared@56217b6d
 #[test]
