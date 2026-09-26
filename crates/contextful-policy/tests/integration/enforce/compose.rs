@@ -19,6 +19,7 @@ fn source(name: &str) -> TableSource {
         files: Vec::new(),
         columns: vec![Column::new("x", ColumnType::Int32, false)],
         landed: true,
+        ledger: Vec::new(),
     }
 }
 
@@ -41,5 +42,23 @@ fn a_session_holds_at_most_1024_relations() {
     assert!(!session.reads("hr/salaries"));
 
     let over = Session::open(&authority, &Request::default(), tables(1025), &pepper);
+    assert!(matches!(over, Err(PolicyError::Malformed(ref m)) if m.0.contains("1024")), "{over:?}");
+}
+
+#[test]
+fn a_named_ledger_counts_toward_the_relation_set() {
+    let signer = issuer();
+    let token = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+    let authority = admit(&token, &signer, DURING).unwrap();
+    let pepper = Pepper::resolve(|_| None);
+    let tables = |n: usize| (0..n).map(|i| source(&format!("research/t{i:04}"))).collect::<Vec<_>>();
+    let names = |n: &[&str]| n.iter().map(|s| s.to_string()).collect::<std::collections::BTreeSet<String>>();
+
+    let under = Session::open(&authority, &Request::default(), tables(1023), &pepper).unwrap();
+    assert_eq!(under.ledgers_named(&names(&["research/t0000__requests", "research/t0000"])).unwrap().len(), 1);
+
+    let full = Session::open(&authority, &Request::default(), tables(1024), &pepper).unwrap();
+    assert!(full.ledgers_named(&names(&["research/t0000"])).unwrap().is_empty());
+    let over = full.ledgers_named(&names(&["research/t0000__requests"]));
     assert!(matches!(over, Err(PolicyError::Malformed(ref m)) if m.0.contains("1024")), "{over:?}");
 }

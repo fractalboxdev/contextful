@@ -6,6 +6,7 @@ pub mod commit_log;
 pub mod error;
 pub mod fold;
 pub mod land;
+pub mod ledger;
 pub mod node;
 pub mod parquet_io;
 pub mod read;

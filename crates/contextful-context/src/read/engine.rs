@@ -134,12 +134,23 @@ impl SqlEngine {
             conn.execute(&format!("INSERT INTO {} VALUES (?, ?)", ident(TENANT_RELATION)), [table, value]).map_err(fault)?;
         }
 
+        // A request ledger registers only once a statement names it, so one unreadable
+        // ledger file fails that statement alone.
         for r in session.relations() {
             conn.execute_batch(&format!("CREATE OR REPLACE TEMP VIEW {} AS {}", ident(r.name()), r.sql())).map_err(fault)?;
         }
-        let files: Vec<String> = session.relations().flat_map(|r| r.files().iter().cloned()).collect();
+        let files: Vec<String> = session.relations().chain(session.ledgers()).flat_map(|r| r.files().iter().cloned()).collect();
         engine.lock(&files)?;
         Ok(engine)
+    }
+
+    /// Register the request ledgers among `names`, the relations an admitted statement
+    /// names; the connection already admits their files.
+    pub fn register_ledgers(&self, session: &Session, names: &std::collections::BTreeSet<String>) -> Result<(), ReadFault> {
+        for l in session.ledgers_named(names)? {
+            self.register(l.name(), l.sql())?;
+        }
+        Ok(())
     }
 
     /// Register one more relation on an open connection under `name`, reading only files

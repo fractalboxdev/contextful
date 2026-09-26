@@ -4,6 +4,8 @@
 use super::*;
 use contextful_context::read::ReadOptions;
 use contextful_core::store::bound_time::Bounds;
+use contextful_core::store::lay_out::NodeId;
+use contextful_core::store::ledger::RequestRecord;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use serde_json::{json, Map};
 
@@ -206,4 +208,157 @@ fn the_row_ceiling_bounds_delivery_with_one_probe_row() {
     let asked = r.face.query(&s, r#"SELECT note_id FROM "research/notes""#, ReadOptions { limit: Some(2), internals: true }).unwrap();
     assert_eq!((asked.rows.len(), asked.truncated), (2, true));
     assert_eq!(asked.blocks["contextful.internals"]["limit"], json!(2));
+}
+
+/// One mediated outbound call, as a test names it.
+fn call(id: &str, batch_seq: Option<i32>, status: Option<u16>) -> RequestRecord {
+    RequestRecord {
+        request_id: id.into(),
+        vendor_request_id: Some(format!("vendor-{id}")),
+        connector: "http".into(),
+        method: "GET".into(),
+        url_host: "api.example.org".into(),
+        status_code: status,
+        started_at: at("2030-01-10T00:00:00Z"),
+        duration_ms: 12,
+        batch_seq,
+    }
+}
+
+fn record_calls(r: &Reads, table: &str, run: &str, calls: &[RequestRecord]) {
+    let node = NodeId::parse("ingest-a").unwrap();
+    contextful_context::ledger::append(&r.store, table, run, &node, calls).unwrap();
+}
+
+/// Each table's per-run request ledger registers as the child relation `<table>__requests`, holding identifiers, connector, method, host, status and timing of mediated outbound calls.
+// spec: read.register.ledger-relation@0a97be3c
+#[test]
+fn a_tables_request_ledger_reads_as_its_child_relation() {
+    let r = Reads::new();
+    record_calls(&r, "research/vendor", "run-0001", &[call("r1", Some(0), Some(200))]);
+    // A second flush of the run keeps the first flush's rows; a call whose scope produced
+    // no batch, or that met no response, keeps its row with nulls.
+    record_calls(&r, "research/vendor", "run-0001", &[call("r2", None, None)]);
+    assert!(r.store.root().join("tables/research/vendor/requests/run-0001.ingest-a.parquet").is_file());
+
+    let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
+    let calls = r
+        .query(
+            &s,
+            r#"SELECT run_id, request_id, vendor_request_id, connector, method, url_host, status_code, batch_seq, duration_ms, started_at
+               FROM "research/vendor__requests" ORDER BY request_id"#,
+        )
+        .unwrap();
+    assert_eq!(column(&calls, "request_id"), [json!("r1"), json!("r2")]);
+    assert_eq!(column(&calls, "run_id"), [json!("run-0001"), json!("run-0001")]);
+    assert_eq!(column(&calls, "vendor_request_id"), [json!("vendor-r1"), json!("vendor-r2")]);
+    assert_eq!(column(&calls, "url_host"), [json!("api.example.org"), json!("api.example.org")]);
+    assert_eq!(column(&calls, "method"), [json!("GET"), json!("GET")]);
+    assert_eq!(column(&calls, "connector"), [json!("http"), json!("http")]);
+    assert_eq!(column(&calls, "status_code"), [json!(200), Value::Null]);
+    assert_eq!(column(&calls, "batch_seq"), [json!(0), Value::Null]);
+    assert_eq!(column(&calls, "duration_ms"), [json!("12"), json!("12")]);
+    assert_ne!(column(&calls, "started_at")[0], Value::Null);
+
+    // The run id and batch ordinal join a data row onto the calls that fetched it.
+    let joined = r
+        .query(
+            &s,
+            r#"SELECT v.item_id, q.request_id FROM "research/vendor" v
+               JOIN "research/vendor__requests" q ON v._run_id = q.run_id AND v._batch_seq = q.batch_seq"#,
+        )
+        .unwrap();
+    assert_eq!((column(&joined, "item_id"), column(&joined, "request_id")), (vec![json!("v1")], vec![json!("r1")]));
+
+    // A table no call has been recorded against registers an empty ledger.
+    let quiet = r.query(&s, r#"SELECT * FROM "research/visits__requests""#).unwrap();
+    assert!(quiet.rows.is_empty() && quiet.columns.contains(&"request_id".to_string()), "{:?}", quiet.columns);
+    // The ledger file stays out of the data listing.
+    let files = r.face.files(&s, Bounds::default()).unwrap();
+    assert!(column(&files, "path").iter().all(|p| !p.as_str().unwrap().contains("/requests/")));
+}
+
+/// The child relation registers on the owner read alone: a credential carrying no tenant scope, over a table
+/// carrying no row policy. Naming a closed ledger raises `LedgerNotTenantScoped`, stating what closed the
+/// relation.
+// spec: read.register.scoped-ledger@4e735917
+#[test]
+fn a_tenant_scoped_read_naming_the_ledger_is_refused() {
+    let r = Reads::new();
+    record_calls(&r, "research/notes", "run-0001", &[call("r1", Some(0), Some(200))]);
+    record_calls(&r, "research/vendor", "run-0001", &[call("r2", Some(0), Some(200))]);
+
+    let owner = r.session(&["research/*"], None, None);
+    assert!(owner.reads("research/notes__requests"));
+    let seen = r.query(&owner, r#"SELECT request_id FROM "research/notes__requests""#).unwrap();
+    assert_eq!(column(&seen, "request_id"), [json!("r1")]);
+
+    let scoped = r.session(&["research/*"], Some(("research/notes", "acme")), Some("public-cloud:us-east-1"));
+    assert!(!scoped.reads("research/notes__requests"));
+    let message = refused_with(r.query(&scoped, r#"SELECT request_id FROM "research/notes__requests""#), "LedgerNotTenantScoped");
+    assert!(message.contains("`research/notes`") && message.contains("tenant"), "{message}");
+    // Inside a subquery the relation is refused all the same.
+    refused_with(
+        r.query(&scoped, r#"SELECT note_id FROM "research/notes" WHERE note_id IN (SELECT request_id FROM "research/notes__requests")"#),
+        "LedgerNotTenantScoped",
+    );
+    // A tenant-scoped credential is no owner read: the ledger of a table it holds with no
+    // tenant scope is closed too, while that table itself still reads.
+    assert!(!scoped.reads("research/vendor__requests") && scoped.reads("research/vendor"));
+    let message = refused_with(r.query(&scoped, r#"SELECT request_id FROM "research/vendor__requests""#), "LedgerNotTenantScoped");
+    assert!(message.contains("`research/vendor`") && message.contains("tenant scope"), "{message}");
+    // A table the credential does not read names no ledger at all.
+    refused_with(r.query(&scoped, r#"SELECT * FROM "hr/salaries__requests""#), "EnforceUnknownRelation");
+
+    // A table under a row policy is no owner read either: its ledger would carry every
+    // run's calls, rows the credential cannot see among them.
+    record_calls(&r, "research/contacts", "run-0001", &[call("r3", Some(0), Some(200))]);
+    assert!(!owner.reads("research/contacts__requests") && owner.reads("research/contacts"));
+    let message = refused_with(r.query(&owner, r#"SELECT request_id FROM "research/contacts__requests""#), "LedgerNotTenantScoped");
+    assert!(message.contains("`research/contacts`") && message.contains("row policy"), "{message}");
+}
+
+/// Appends to one run's ledger file serialize under a lock on it, and an append returns once its rows and the
+/// rename are synced to disk.
+// spec: store.reserve.ledger-append@a90828c9
+#[test]
+fn concurrent_flushes_of_one_run_keep_every_row() {
+    let r = Reads::new();
+    let store = std::sync::Arc::new(r.store.clone());
+    let threads: Vec<_> = (0..8)
+        .map(|i| {
+            let store = store.clone();
+            std::thread::spawn(move || {
+                let node = NodeId::parse("ingest-a").unwrap();
+                for j in 0..5 {
+                    contextful_context::ledger::append(&store, "research/vendor", "run-0001", &node, &[call(&format!("t{i}-{j}"), None, None)]).unwrap();
+                }
+            })
+        })
+        .collect();
+    threads.into_iter().for_each(|t| t.join().unwrap());
+    let path = r.store.root().join("tables/research/vendor/requests/run-0001.ingest-a.parquet");
+    assert_eq!(contextful_context::ledger::read(&path).unwrap().len(), 40, "a concurrent flush dropped another's rows");
+}
+
+#[test]
+fn an_unreadable_ledger_file_fails_only_a_read_naming_that_ledger() {
+    let r = Reads::new();
+    let requests = r.store.root().join("tables/research/vendor/requests");
+    std::fs::create_dir_all(&requests).unwrap();
+    std::fs::write(requests.join("run-0009.ingest-a.parquet"), b"").unwrap();
+    let s = r.session(&["research/*"], None, None);
+    let notes = r.query(&s, r#"SELECT note_id FROM "research/notes""#).unwrap();
+    assert!(!notes.rows.is_empty());
+    assert!(r.query(&s, r#"SELECT * FROM "research/vendor__requests""#).is_err());
+}
+
+#[test]
+fn a_ledger_answers_to_its_tables_row_ceiling() {
+    let r = Reads::new();
+    let calls: Vec<RequestRecord> = (0..6).map(|i| call(&format!("r{i}"), Some(0), Some(200))).collect();
+    record_calls(&r, "research/notes", "run-0001", &calls);
+    let s = r.session(&["research/*"], None, None);
+    let seen = r.query(&s, r#"SELECT request_id FROM "research/notes__requests""#).unwrap();
+    assert_eq!((seen.rows.len(), seen.truncated), (3, true), "notes publish max_rows = 3");
 }

@@ -141,16 +141,17 @@ impl Face {
             Some(p) => p.clone(),
             None => TablePolicy::from_decl(&decl)?,
         };
+        let ledger = crate::ledger::files(&self.store, table)?.iter().map(|p| p.to_string_lossy().into_owned()).collect();
         Ok(match self.store.try_schema(table)? {
             Some(schema) => {
                 let s = scan(&self.store, &decl, bounds)?;
                 let files = s.files.iter().map(|f| self.absolute(f)).collect();
-                TableSource { decl, policy, base: s.relation, files, columns: schema.columns, landed: true }
+                TableSource { decl, policy, base: s.relation, files, columns: schema.columns, landed: true, ledger }
             }
             None => {
                 let columns = injected_columns();
                 let base = relation(&TableDecl::named(table), &[], &columns, &[], None)?;
-                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false }
+                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger }
             }
         })
     }
@@ -178,10 +179,12 @@ impl Face {
     }
 
     /// The least row ceiling over the grants, the request, a template and every touched
-    /// table's published `limits.max_rows` (`read.respond.row-ceiling`).
+    /// table's published `limits.max_rows` (`read.respond.row-ceiling`). A request ledger
+    /// answers to its table's ceiling.
     pub(crate) fn ceiling(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>) -> Option<u64> {
         let grant = session.grants().iter().filter_map(|g| g.max_rows).min();
-        let table = touched.iter().filter_map(|t| session.policy(t).and_then(|p| p.max_rows)).min();
+        let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
+        let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
         least_row_ceiling([grant, request, template, table])
     }
 
@@ -217,8 +220,9 @@ impl Face {
     pub fn query(&self, session: &Session, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
         let engine = SqlEngine::open(session)?;
         let tree = engine.serialize(sql)?;
-        let admitted: Admitted = admit(&tree, |name| session.reads(name))?;
+        let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &[])?;
+        engine.register_ledgers(session, &admitted.relations)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         self.respond(&engine, sql, &[], ceiling, opts)
     }
@@ -233,8 +237,9 @@ impl Face {
         let parameters = template.bind(arguments)?;
         let engine = SqlEngine::open(session)?;
         let tree = engine.serialize(&template.sql)?;
-        let admitted = admit(&tree, |name| session.reads(name))?;
+        let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &parameters)?;
+        engine.register_ledgers(session, &admitted.relations)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         self.respond(&engine, &template.sql, &parameters, ceiling, opts)
     }
@@ -332,6 +337,28 @@ impl Face {
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
         self.respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &[], ceiling, opts)
+    }
+}
+
+/// Admit a statement over the session's registered relations. A session that is no owner
+/// read naming the request ledger of a table it reads raises `LedgerNotTenantScoped`
+/// rather than an unknown relation (`read.register.scoped-ledger`).
+fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, ReadFault> {
+    let closed = std::cell::RefCell::new(None);
+    let admitted = admit(tree, |name| {
+        if let Some((table, reason)) = session.closed_ledger(name) {
+            *closed.borrow_mut() = Some((name.to_string(), table.to_string(), reason));
+            return false;
+        }
+        session.reads(name)
+    });
+    match (admitted, closed.into_inner()) {
+        (Err(_), Some((name, table, reason))) => Err(ReadError::LedgerNotTenantScoped(format!(
+            "`{name}` is closed: {reason}, and the request ledger of `{table}` carries no tenant or row column to narrow \
+             on, so it registers on the owner read alone"
+        ))
+        .into()),
+        (admitted, _) => Ok(admitted?),
     }
 }
 

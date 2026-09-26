@@ -157,7 +157,9 @@ The column and table namespaces the engine holds, the provenance columns it inje
 - `table-namespaces` — The engine reserves two table namespaces: the durable run record, and the prefix the visibility engine mirrors access data under.
 - `table-name` — A pipeline declaring a table inside a reserved namespace raises `StoreReservedTableName` when its manifest is assembled, naming the reservation.
   *P1*
+- `ledger-suffix` — A table name ending in `__requests` is reserved to request-ledger relations and refuses as {{store.reserve.table-name}}.
 - `ledger-path` — A run's request ledger is `requests/<run-id>.<node-id>.parquet`, disjoint per run and per writing node.
+- `ledger-append` — Appends to one run's ledger file serialize under a lock on it, and an append returns once its rows and the rename are synced to disk.
 - `ledger-fold` — Each fold pass merges a table's committed ledger files into `requests/folded-<snapshot-id>.parquet`, and a replica carries ledgers with their table.
   *because one ledger file per run per node per table grows listing and diff cost without bound*
 - `ledger-retention` — A ledger row is collected 365 d after its run committed.

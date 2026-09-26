@@ -15,6 +15,9 @@ pub enum ReadError {
     /// A ranked read's filter exceeded its value, condition or byte budget. (`read.retrieve.filter-budget-refusal`)
     #[error("FilterBudgetExceeded: {0}")]
     FilterBudgetExceeded(String),
+    /// A tenant-scoped token named the request-ledger child relation. (`read.register.scoped-ledger`)
+    #[error("LedgerNotTenantScoped: {0}")]
+    LedgerNotTenantScoped(String),
     /// A client required a face this binary did not link. (`read.embed.required-face`)
     #[error("RequiredFaceAbsent: {0}")]
     RequiredFaceAbsent(String),
@@ -38,6 +41,7 @@ impl ReadError {
         match self {
             ReadError::FilePreviewNotATable(_) => "FilePreviewNotATable",
             ReadError::FilterBudgetExceeded(_) => "FilterBudgetExceeded",
+            ReadError::LedgerNotTenantScoped(_) => "LedgerNotTenantScoped",
             ReadError::RequiredFaceAbsent(_) => "RequiredFaceAbsent",
             ReadError::StatementNotReadOnly(_) => "StatementNotReadOnly",
             ReadError::TableFunctionRefused(_) => "TableFunctionRefused",
