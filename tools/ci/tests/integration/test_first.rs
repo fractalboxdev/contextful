@@ -1,4 +1,4 @@
-//! `assurance.test.test-first` and `assurance.test.refactor-trailer`.
+//! `assurance.test.test-first`, its scope, bound and unrunnable base, and `assurance.test.refactor-trailer`.
 
 use crate::{stderr, Repo};
 
@@ -108,4 +108,83 @@ fn a_new_package_counts_red_alone_and_leaves_the_base_workspace_loadable() {
     assert!(err.contains("crates/fresh (absent at base)"), "{err}");
     assert!(!err.contains("crates/demo"), "demo's test passes at base and counts green: {err}");
     assert!(!err.contains("failed to load manifest"), "{err}");
+}
+
+/// The test-first stage runs only the change's test files against the base source, each as its test target
+/// filtered to its top-level module; a target failing to compile there counts as failing.
+// spec: assurance.test.test-first-scope@eadc2f0b
+#[test]
+fn only_the_changes_test_modules_run_against_the_base() {
+    let r = Repo::init();
+    // The base carries a suite that already fails there; the change does not touch it.
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod stale;\n");
+    r.write("crates/demo/tests/integration/stale.rs", "#[test]\nfn stale() {\n    assert_eq!(demo::double(2), 5);\n}\n");
+    r.commit("a base whose stale suite fails");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() {\n    assert_eq!(demo::double(5), 10);\n}\n");
+    r.commit("triple, with a double test green at base");
+    let o = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(!o.status.success(), "the base's unrelated failing suite read as the change's red test: {}", stderr(&o));
+    assert!(stderr(&o).contains("TestNotFirst"), "{}", stderr(&o));
+}
+
+/// One test-first invocation against the base runs for at most 300 s; a run past the bound is killed with its
+/// process group and counts as failing.
+// spec: assurance.test.base-run-bound@f7e5fc6b
+#[test]
+fn a_base_run_past_its_bound_is_killed_and_counts_red() {
+    let r = Repo::init();
+    r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 {\n    x * 2\n}\n\npub fn ready() -> bool {\n    false\n}\n");
+    r.commit("a base that is never ready");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 {\n    x * 2\n}\n\npub fn ready() -> bool {\n    true\n}\n");
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod ready;\n");
+    r.write(
+        "crates/demo/tests/integration/ready.rs",
+        "#[test]\nfn settles() {\n    while !demo::ready() {\n        std::thread::sleep(std::time::Duration::from_millis(10));\n    }\n}\n",
+    );
+    r.commit("ready");
+    let started = std::time::Instant::now();
+    let o = r.gate(&["--stage", "test-first", "--base", &base, "--base-bound-secs", "20"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("20 s") && err.contains("crates/demo"), "{err}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(120), "{:?}", started.elapsed());
+}
+
+/// A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises
+/// `TestFirstBaseUnrunnable` instead of a verdict.
+// spec: assurance.test.base-unrunnable@60e4830e
+#[test]
+fn an_unloadable_base_fails_the_stage_instead_of_reading_red() {
+    let r = Repo::init();
+    r.write("crates/demo/Cargo.toml", "[package\nname = \"demo\"\n");
+    r.commit("a base whose manifest does not parse");
+    let base = r.head();
+    r.write("crates/demo/Cargo.toml", &crate::manifest("demo", ""));
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod triple;\n");
+    r.write("crates/demo/tests/integration/triple.rs", "#[test]\nfn triples() {\n    assert_eq!(demo::triple(2), 6);\n}\n");
+    r.commit("triple, test first");
+    let o = r.gate(&["--stage", "test-first", "--base", &base]);
+    let err = stderr(&o);
+    assert!(!o.status.success(), "an infrastructure failure read as red: {err}");
+    assert!(err.contains("TestFirstBaseUnrunnable") && err.contains("manifest"), "{err}");
+}
+
+#[test]
+fn a_test_quoting_an_infrastructure_fault_still_reads_as_red() {
+    let r = Repo::init();
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write(
+        "crates/demo/tests/integration/double.rs",
+        "#[test]\nfn doubles() {\n    assert_eq!(demo::double(2), 5, \"No space left on device; failed to load manifest\");\n}\n",
+    );
+    r.commit("a demo test failing at base with a message that quotes infrastructure faults");
+    let o = r.gate(&["--stage", "test-first", "--base", &base]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("red against the base in crates/demo"), "{err}");
 }

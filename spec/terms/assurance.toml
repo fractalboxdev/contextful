@@ -43,6 +43,7 @@ CapabilityDuplicated             = { clause = "assurance.structure-tree.duplicat
 MirrorUnresolved                 = { clause = "assurance.structure-tree.mirror-unresolved", gloss = "A mirrors annotation naming no clause of the lock file." }
 ShellCheckFailed                 = { clause = "assurance.automate.unchecked-shell", gloss = "A shell file in the tree that the shell linter rejects." }
 VacuousAssertion                 = { clause = "assurance.test.vacuous-exclusion", gloss = "An exclusion assertion evaluated over an empty collection." }
+TestFirstBaseUnrunnable          = { clause = "assurance.test.base-unrunnable", gloss = "A test-first run at base stopped by the machine or the base workspace, not by the tests." }
 TestNotFirst                     = { clause = "assurance.test.test-first", gloss = "A source change carrying no test that fails against the base commit's source." }
 AcceptanceLinksEngine            = { clause = "assurance.test.acceptance-surface", gloss = "The acceptance package depending on a workspace package." }
 ExtensionAutoloadRefused         = { clause = "assurance.build.runtime-extension-load", gloss = "A read path loading a query-engine extension into a statically linked binary." }
@@ -91,3 +92,4 @@ assurance-rank-dead-band         = { clause = "assurance.baseline.rank-quality-d
 assurance-gated-mean-cases       = { clause = "assurance.baseline.unresolvable-path", value = 30, unit = "cases", basis = "chosen", gloss = "Fewest cases behind a gated mean." }
 assurance-interval-level         = { clause = "assurance.baseline.interval", value = 95, unit = "percent", basis = "chosen", gloss = "Confidence level of a judged figure's interval." }
 assurance-bootstrap-resamples    = { clause = "assurance.baseline.interval", value = 1000, unit = "resamples", basis = "chosen", gloss = "Bootstrap resamples behind a judged figure's interval." }
+assurance-test-first-base-run    = { clause = "assurance.test.base-run-bound", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock one test-first invocation against the base runs for." }
