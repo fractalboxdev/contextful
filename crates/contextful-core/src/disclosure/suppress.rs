@@ -91,8 +91,8 @@ pub struct GroupStats {
     /// The group's noised distinct-contributor count. The noise is applied upstream;
     /// the floor never sees the exact count.
     pub noised_contributors: u64,
-    /// Each contributor's metric mass. `None`, or any non-finite mass, leaves dominance
-    /// unverifiable.
+    /// Each contributor's metric mass. `None`, an empty list, or any non-finite mass
+    /// leaves dominance unverifiable.
     pub contributor_masses: Option<Vec<f64>>,
 }
 
@@ -123,7 +123,7 @@ pub fn evaluate_group(policy: &SuppressPolicy, stats: &GroupStats) -> GroupDecis
         return GroupDecision::Publish;
     };
     let masses = match &stats.contributor_masses {
-        Some(m) if m.iter().all(|x| x.is_finite()) => m,
+        Some(m) if !m.is_empty() && m.iter().all(|x| x.is_finite()) => m,
         _ => return GroupDecision::Suppress(SuppressReason::DominanceUnverifiable),
     };
     let total: f64 = masses.iter().map(|m| m.abs()).sum();

@@ -78,6 +78,8 @@ fn dominance_unverifiable() {
         evaluate_group(&p, &group(100, Some(vec![1.0, f64::NAN]))),
         GroupDecision::Suppress(SuppressReason::DominanceUnverifiable)
     );
+    // An empty mass list verifies no contributor's share.
+    assert_eq!(evaluate_group(&p, &group(100, Some(vec![]))), GroupDecision::Suppress(SuppressReason::DominanceUnverifiable));
     // Without a share constraint, absent masses decide nothing.
     assert_eq!(evaluate_group(&policy(Some(10), None), &group(100, None)), GroupDecision::Publish);
 
