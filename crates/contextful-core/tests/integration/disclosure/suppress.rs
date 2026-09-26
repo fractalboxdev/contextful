@@ -46,7 +46,7 @@ fn contributor_share() {
             other => panic!("{share}: {other:?}"),
         }
     }
-    assert!(SuppressPolicy::new(None, Some(1.0)).is_ok());
+    assert!(SuppressPolicy::new(Some(2), Some(1.0)).is_ok());
     assert!(SuppressPolicy::new(None, Some(f64::MIN_POSITIVE)).is_ok());
 
     // A group large enough for the floor, one contributor holding 80% of the mass.
@@ -87,19 +87,31 @@ fn dominance_unverifiable() {
     assert_eq!(out.published, vec!["seen"]);
     assert_eq!(out.sentinel, Some(Sentinel));
     assert_eq!(out.tally.dominance_unverifiable, 1);
-    assert_eq!(out.refusals.len(), 1);
-    assert_eq!(out.refusals[0].identifier(), "DisclosureDominanceUnverifiable");
-    assert!(!out.refusals[0].to_string().contains("blind"), "{}", out.refusals[0]);
+    let refusal = out.refusal.as_ref().unwrap();
+    assert_eq!(refusal.identifier(), "DisclosureDominanceUnverifiable");
+    assert!(!refusal.to_string().contains("blind"), "{refusal}");
+
+    // Three unverifiable groups or one leave the same single refusal: its text states no count.
+    let three = suppress(&p, vec![("a", group(100, None)), ("b", group(100, None)), ("c", group(100, None))]);
+    assert_eq!(three.refusal, out.refusal);
+    assert_eq!(three.tally.dominance_unverifiable, 3, "the count stays audit-side");
 }
 
-/// A policy setting neither threshold raises `DisclosurePolicySuppressesNothing`.
-// spec: disclosure.suppress.empty-policy@999bfe8c
+/// A policy setting neither threshold, or only a share ceiling at a whole group's mass, raises
+/// `DisclosurePolicySuppressesNothing`.
+// spec: disclosure.suppress.empty-policy@5298b6b4
 #[test]
 fn empty_policy() {
     match SuppressPolicy::new(None, None) {
         Err(e @ DisclosureError::PolicySuppressesNothing(_)) => assert_eq!(e.identifier(), "DisclosurePolicySuppressesNothing"),
         other => panic!("{other:?}"),
     }
+    // A share ceiling of 100 percent with no size floor holds every group under it.
+    match SuppressPolicy::new(None, Some(1.0)) {
+        Err(e @ DisclosureError::PolicySuppressesNothing(_)) => assert!(e.to_string().contains("max_contributor_share 1"), "{e}"),
+        other => panic!("{other:?}"),
+    }
+    assert!(SuppressPolicy::new(Some(2), Some(1.0)).is_ok(), "a size floor beside it still suppresses");
     let parsed: Result<SuppressPolicy, _> = serde_json::from_str("{}");
     let err = parsed.unwrap_err().to_string();
     assert!(err.contains("DisclosurePolicySuppressesNothing"), "{err}");

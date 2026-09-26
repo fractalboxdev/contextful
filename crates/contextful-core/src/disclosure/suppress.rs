@@ -5,8 +5,8 @@
 //! `min_group_size`, or, under a share constraint, when one contributor holds more than
 //! `max_contributor_share` of the group's sign-insensitive metric mass, or when the
 //! per-contributor masses needed to check that are unavailable. The caller-facing output
-//! carries only the published groups and at most one [`Sentinel`]; the reason per group
-//! stays in the [`SuppressTally`] and the recorded refusals.
+//! carries only the published groups and at most one [`Sentinel`]; the reason and count
+//! per group stay in the [`SuppressTally`], and a pass records at most one refusal.
 
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +58,13 @@ impl SuppressPolicy {
                 "the policy sets neither min_group_size nor max_contributor_share".into(),
             ));
         }
+        // No contributor holds more than all of a group's mass, so this ceiling alone
+        // withholds nothing a caller could see.
+        if min_group_size.is_none() && max_contributor_share == Some(1.0) {
+            return Err(DisclosureError::PolicySuppressesNothing(
+                "the policy sets max_contributor_share 1 and no min_group_size, which withholds no group".into(),
+            ));
+        }
         if let Some(k) = min_group_size {
             if k < MIN_GROUP_SIZE_FLOOR {
                 return Err(DisclosureError::MinGroupSizeBelowFloor(format!(
@@ -91,8 +98,10 @@ pub struct GroupStats {
     /// The group's noised distinct-contributor count. The noise is applied upstream;
     /// the floor never sees the exact count.
     pub noised_contributors: u64,
-    /// Each contributor's metric mass. `None`, an empty list, or any non-finite mass
-    /// leaves dominance unverifiable.
+    /// Each distinct contributor's metric mass, one entry per contributor with that
+    /// contributor's rows summed: per-row masses would split a dominant contributor and
+    /// evade the ceiling. `None`, an empty list, or any non-finite mass leaves dominance
+    /// unverifiable.
     pub contributor_masses: Option<Vec<f64>>,
 }
 
@@ -171,14 +180,14 @@ pub struct Suppressed<T> {
     pub sentinel: Option<Sentinel>,
     /// Audit-side counts per reason.
     pub tally: SuppressTally,
-    /// One `DisclosureDominanceUnverifiable` per group withheld for missing masses. The
-    /// message names the ceiling, never the group.
-    pub refusals: Vec<DisclosureError>,
+    /// One `DisclosureDominanceUnverifiable` when any group is withheld for missing
+    /// masses, however many: the message names the ceiling, never a group or a count.
+    pub refusal: Option<DisclosureError>,
 }
 
 /// Decides every group, collapsing the withheld ones into one sentinel.
 pub fn suppress<T>(policy: &SuppressPolicy, groups: Vec<(T, GroupStats)>) -> Suppressed<T> {
-    let mut out = Suppressed { published: Vec::new(), sentinel: None, tally: SuppressTally::default(), refusals: Vec::new() };
+    let mut out = Suppressed { published: Vec::new(), sentinel: None, tally: SuppressTally::default(), refusal: None };
     for (payload, stats) in groups {
         match evaluate_group(policy, &stats) {
             GroupDecision::Publish => out.published.push(payload),
@@ -186,10 +195,12 @@ pub fn suppress<T>(policy: &SuppressPolicy, groups: Vec<(T, GroupStats)>) -> Sup
             GroupDecision::Suppress(SuppressReason::DominantContributor) => out.tally.dominant_contributor += 1,
             GroupDecision::Suppress(SuppressReason::DominanceUnverifiable) => {
                 out.tally.dominance_unverifiable += 1;
-                out.refusals.push(DisclosureError::DominanceUnverifiable(format!(
-                    "per-contributor masses unavailable under max_contributor_share {}",
-                    policy.max_contributor_share.unwrap_or_default()
-                )));
+                out.refusal.get_or_insert_with(|| {
+                    DisclosureError::DominanceUnverifiable(format!(
+                        "per-contributor masses unavailable under max_contributor_share {}",
+                        policy.max_contributor_share.unwrap_or_default()
+                    ))
+                });
             }
         }
     }
