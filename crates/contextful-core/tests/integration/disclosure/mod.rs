@@ -1,3 +1,4 @@
-//! The `disclosure` contract's visibility operations.
+//! The `disclosure` contract, one module per operation.
 
 mod declare;
+mod suppress;

@@ -1,5 +1,5 @@
-//! The refusals of the visibility operations of the `disclosure` contract, one variant
-//! per error identifier.
+//! The refusals of the `disclosure` contract, one variant per error identifier: the
+//! visibility operations' and aggregate suppression's.
 //!
 //! A variant's `Display` begins with its identifier, so a surface printing the error
 //! names the refusal a caller greps for.
@@ -27,6 +27,34 @@ impl VisibilityError {
             VisibilityError::BudgetMalformed { .. } => "VisibilityBudgetMalformed",
             VisibilityError::FamilyBound { .. } => "VisibilityFamilyBound",
             VisibilityError::FamilyUndeclared { .. } => "VisibilityFamilyUndeclared",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum DisclosureError {
+    /// A group under a share constraint arrived without per-contributor masses. (`disclosure.suppress.dominance-unverifiable`)
+    #[error("DisclosureDominanceUnverifiable: {0}")]
+    DominanceUnverifiable(String),
+    /// A declared `min_group_size` is below the floor. (`disclosure.suppress.min-group-size`)
+    #[error("DisclosureMinGroupSizeBelowFloor: {0}")]
+    MinGroupSizeBelowFloor(String),
+    /// A policy sets neither threshold. (`disclosure.suppress.empty-policy`)
+    #[error("DisclosurePolicySuppressesNothing: {0}")]
+    PolicySuppressesNothing(String),
+    /// A declared `max_contributor_share` lies outside `(0, 1]`. (`disclosure.suppress.contributor-share`)
+    #[error("DisclosureShareOutOfRange: {0}")]
+    ShareOutOfRange(String),
+}
+
+impl DisclosureError {
+    /// The error identifier.
+    pub fn identifier(&self) -> &'static str {
+        match self {
+            DisclosureError::DominanceUnverifiable(_) => "DisclosureDominanceUnverifiable",
+            DisclosureError::MinGroupSizeBelowFloor(_) => "DisclosureMinGroupSizeBelowFloor",
+            DisclosureError::PolicySuppressesNothing(_) => "DisclosurePolicySuppressesNothing",
+            DisclosureError::ShareOutOfRange(_) => "DisclosureShareOutOfRange",
         }
     }
 }
