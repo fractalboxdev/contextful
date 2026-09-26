@@ -53,11 +53,9 @@ pub struct SeedBlock {
     pub source: SourceBlock,
     /// The ceiling every seeded stamp sorts strictly below.
     pub below: Ceiling,
-    /// Chunk settings for the seed pull, in the `[pipeline.backfill]` shape.
-    pub backfill: Option<Value>,
 }
 
-const SEED_KEYS: [&str; 3] = ["source", "below", "backfill"];
+const SEED_KEYS: [&str; 2] = ["source", "below"];
 
 impl SeedBlock {
     /// Read a seed block, refusing a missing or unknown key with `PipelineSpecInvalid`.
@@ -75,7 +73,7 @@ impl SeedBlock {
             RunError::PipelineSpecInvalid(m) => invalid(m),
             other => other,
         })?;
-        Ok(SeedBlock { source, below, backfill: obj.get("backfill").cloned() })
+        Ok(SeedBlock { source, below })
     }
 }
 

@@ -59,6 +59,7 @@ fn a_seed_block_names_a_source_and_a_ceiling_on_the_ordering_scale() {
         ("[[pipeline]]\nid = \"o\"\nseed = { below = 5 }\n[pipeline.source]\nname = \"http\"\n[[pipeline.tables]]\nname = \"t\"\nprimary_key = [\"id\"]\norder_by = \"at\"\n", "source"),
         (&seeded("true", KEYED)[..], "below"),
         (&seeded("\"next tuesday\"", KEYED)[..], "below"),
+        (&seeded("1", KEYED).replace("[pipeline.seed]\n", "[pipeline.seed]\nbackfill = { max_chunks = 4 }\n")[..], "seed.backfill"),
     ] {
         match spec(text).validate() {
             Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains(part), "{part}: {m}"),
@@ -89,9 +90,9 @@ fn a_seeded_table_needs_a_key_and_an_event_time_ordering() {
     assert!(live.validate().is_ok(), "an unseeded table orders by the ingest stamp");
 }
 
-/// A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its
-/// chunk lands nothing, and the stamp is neither clamped nor dropped.
-// spec: run.seed.ceiling-breached@0b3b936a
+/// The gate refuses a batch holding a stamp at or past `below`, naming the value, and leaves
+/// every row and stamp as it found them. `run.seed.ceiling-breached` also requires the chunk
+/// to land nothing, which holds once the land path calls the gate before the write.
 #[test]
 fn a_stamp_at_or_past_the_ceiling_refuses_the_whole_batch() {
     let gate = instant_gate();
