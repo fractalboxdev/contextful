@@ -8,9 +8,6 @@ use contextful_core::connector::probe::ScopeProbe;
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::run::{Failure, FailureTag};
 
-/// Largest identity response body the probe reads; the grant rides a header.
-pub const MAX_PROBE_BODY_BYTES: u64 = 64 * 1024;
-
 fn refuse(e: contextful_core::connector::ConnectorError) -> Failure {
     Failure::deterministic(FailureTag::Config, e.to_string())
 }
@@ -23,7 +20,8 @@ fn refuse(e: contextful_core::connector::ConnectorError) -> Failure {
 pub fn probe(allow: &Allowlist, probe: &ScopeProbe, credential: (&str, &Hydrated)) -> Result<Vec<String>, Failure> {
     let (name, value) = credential;
     probe.check_transport(allow, name).map_err(refuse)?;
-    let client = Client::new(allow.clone(), probe.endpoint.clone()).with_body_limit(MAX_PROBE_BODY_BYTES);
+    // The grant rides a header, so the identity body is never read.
+    let client = Client::new(allow.clone(), probe.endpoint.clone()).without_body();
     let headers = [(name.to_string(), HeaderValue::Sensitive(value.clone()))];
     let resp = client.send("GET", &probe.endpoint, &headers, None)?;
     if !(200..300).contains(&resp.status) {

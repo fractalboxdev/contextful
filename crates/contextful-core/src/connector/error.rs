@@ -30,7 +30,10 @@ pub enum ConnectorError {
     /// A granted scope outside the manifest's declared expectation. (`connector.declare-capability.scope-exceeded`)
     #[error("ConnectorScopeExceeded: {0}")]
     ConnectorScopeExceeded(String),
-    /// A scope probe response carrying no granted-scopes header. (`connector.declare-capability.scope-unverified`)
+    /// A scope probe declaring a scopes header that is empty or not an HTTP field name. (`connector.declare-capability.probe-shape`)
+    #[error("ConnectorScopeProbeRejected: {0}")]
+    ConnectorScopeProbeRejected(String),
+    /// A scope probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII. (`connector.declare-capability.scope-unverified`)
     #[error("ConnectorScopeUnverified: {0}")]
     ConnectorScopeUnverified(String),
     /// A table not matching the source's table pattern. (`connector.source.table-unmatched`)

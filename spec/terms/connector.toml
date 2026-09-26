@@ -21,7 +21,8 @@ ConnectorConfigUnclaimed        = { clause = "connector.import.config-unclaimed"
 ConnectorUndeclaredAccess       = { clause = "connector.declare-capability.undeclared-access", gloss = "Host access a connector reaches for that its manifest does not list." }
 ConnectorAllowlistRejected      = { clause = "connector.declare-capability.allowlist-shape", gloss = "An allowlist that is empty or bare-wildcard, or an entry carrying a scheme, port or path." }
 ConnectorScopeExceeded          = { clause = "connector.declare-capability.scope-exceeded", gloss = "A granted scope outside the manifest's declared expectation." }
-ConnectorScopeUnverified        = { clause = "connector.declare-capability.scope-unverified", gloss = "A scope probe response carrying no granted-scopes header." }
+ConnectorScopeUnverified        = { clause = "connector.declare-capability.scope-unverified", gloss = "A scope probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII." }
+ConnectorScopeProbeRejected     = { clause = "connector.declare-capability.probe-shape", gloss = "A scope probe declaring a scopes header that is empty or not an HTTP field name." }
 ConnectorBindingUnsupported     = { clause = "connector.declare-capability.binding-unsupported", gloss = "An environment binding on a key the connector does not read." }
 ConnectorBindingUnbound         = { clause = "connector.declare-capability.binding-unbound", gloss = "An environment binding not supplied, or supplied off its declared shape." }
 ConnectorQuotaUnbound           = { clause = "connector.meter.quota-unbound", gloss = "A declared limiter quota with no operator binding." }

@@ -21,11 +21,20 @@ pub struct ScopeProbe {
 
 impl ScopeProbe {
     /// Declare a probe. An endpoint carrying userinfo or not an http(s) URL refuses as
-    /// any configured endpoint does. An empty expectation admits no granted scope.
+    /// any configured endpoint does; a scopes header that is not an HTTP field-name token
+    /// refuses (`connector.declare-capability.probe-shape`). An empty expectation admits
+    /// no granted scope.
     pub fn new<S: AsRef<str>>(endpoint_raw: &str, scopes_header: &str, expect: &[S]) -> Result<ScopeProbe, ConnectorError> {
+        let scopes_header = scopes_header.trim();
+        if !is_field_name(scopes_header) {
+            return Err(ConnectorError::ConnectorScopeProbeRejected(format!(
+                "the scope probe's scopes header `{}` is not an HTTP field name",
+                scopes_header.escape_default()
+            )));
+        }
         Ok(ScopeProbe {
             endpoint: endpoint("scope_probe", endpoint_raw)?,
-            scopes_header: scopes_header.trim().to_string(),
+            scopes_header: scopes_header.to_string(),
             expect: expect.iter().map(|s| s.as_ref().trim().to_string()).filter(|s| !s.is_empty()).collect(),
         })
     }
@@ -46,15 +55,26 @@ impl ScopeProbe {
     }
 
     /// Judge the probe's granted-scopes header value, absent when the response carried
-    /// none. Answers the granted scopes when every one sits within the expectation.
+    /// none. A value naming no scope, or holding a character outside visible ASCII, space
+    /// and tab, states no grant the probe can read
+    /// (`connector.declare-capability.scope-unverified`). Answers the granted scopes when
+    /// every one sits within the expectation.
     pub fn judge(&self, granted: Option<&str>) -> Result<Vec<String>, ConnectorError> {
-        let Some(granted) = granted else {
-            return Err(ConnectorError::ConnectorScopeUnverified(format!(
-                "`{}` answered no `{}` header; a grant the vendor does not state is not verified",
+        let unverified = |what: &str| {
+            ConnectorError::ConnectorScopeUnverified(format!(
+                "`{}` answered {what}; a grant the vendor does not state is not verified",
                 scrub(&self.endpoint),
-                self.scopes_header
-            )));
+            ))
         };
+        let Some(granted) = granted else {
+            return Err(unverified(&format!("no `{}` header", self.scopes_header)));
+        };
+        if !granted.chars().all(|c| c == ' ' || c == '\t' || c.is_ascii_graphic()) {
+            return Err(unverified(&format!("a `{}` value outside visible ASCII", self.scopes_header)));
+        }
+        if scopes(granted).next().is_none() {
+            return Err(unverified(&format!("a `{}` value naming no scope", self.scopes_header)));
+        }
         let over = self.violations(granted);
         if !over.is_empty() {
             return Err(ConnectorError::ConnectorScopeExceeded(format!(
@@ -72,8 +92,13 @@ fn scopes(granted: &str) -> impl Iterator<Item = &str> {
     granted.split(|c: char| c == ',' || c.is_whitespace()).filter(|s| !s.is_empty())
 }
 
-/// The scopes of `granted` absent from `expect`, compared case-insensitively, in granted order.
+/// The scopes of `granted` absent from `expect`, compared byte for byte, in granted order.
 pub fn scope_violations(granted: &str, expect: &[String]) -> Vec<String> {
-    let expect: BTreeSet<String> = expect.iter().map(|s| s.trim().to_ascii_lowercase()).collect();
-    scopes(granted).filter(|s| !expect.contains(&s.to_ascii_lowercase())).map(str::to_string).collect()
+    let expect: BTreeSet<&str> = expect.iter().map(|s| s.trim()).collect();
+    scopes(granted).filter(|s| !expect.contains(s)).map(str::to_string).collect()
+}
+
+/// An RFC 9110 §5.1 field name: one or more `tchar`.
+fn is_field_name(name: &str) -> bool {
+    !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
 }

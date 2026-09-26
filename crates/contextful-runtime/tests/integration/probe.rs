@@ -50,9 +50,7 @@ fn paths(server: &Server) -> Vec<String> {
     server.requests.lock().unwrap().iter().map(|r| r.path().to_string()).collect()
 }
 
-/// A manifest may declare an identity endpoint, the response header carrying granted scopes, and the grant it
-/// expects. The host calls it with the bound credential ahead of the first read.
-// spec: connector.declare-capability.scope-probe@058eafc8
+/// `open_session` calls a declared probe's identity endpoint with the bound credential ahead of the first read.
 #[test]
 fn the_probe_calls_the_identity_endpoint_with_the_bound_credential_before_the_first_read() {
     let server = vendor(Some("reports.read, accounts.read"));
@@ -86,8 +84,9 @@ fn the_probe_reaches_only_an_allowlisted_host_over_tls_or_loopback() {
     assert_eq!(probe(&allow(), &declared(&server), ("Authorization", &token())).unwrap(), ["reports.read"]);
 }
 
-/// A granted scope outside the declared expectation raises `ConnectorScopeExceeded`, and the session does not open.
-// spec: connector.declare-capability.scope-exceeded@8ba8ed4a
+/// A granted scope outside the declared expectation, compared byte for byte, raises `ConnectorScopeExceeded`, and the
+/// session does not open.
+// spec: connector.declare-capability.scope-exceeded@0edb85a1
 #[test]
 fn a_grant_beyond_the_expectation_refuses_and_the_session_does_not_open() {
     let server = vendor(Some("reports.read,admin.write, some.future.scope"));
@@ -96,13 +95,56 @@ fn a_grant_beyond_the_expectation_refuses_and_the_session_does_not_open() {
     assert!(f.message.contains("admin.write, some.future.scope"), "the excess is named, unknown scopes included: {f}");
     assert!(f.deterministic, "an over-scoped credential is over-scoped on every retry");
     assert_eq!(paths(&server), ["/identity"], "no read follows a refused probe");
-    // A subset of the expectation, in any order, case or spacing, is within it.
-    let within = vendor(Some("  ACCOUNTS.READ  "));
+    // A subset of the expectation, in any order or spacing, is within it.
+    let within = vendor(Some("  accounts.read  "));
     assert_eq!(open(&within, Some(&declared(&within))).unwrap(), 200);
 }
 
-/// A probe response carrying no granted-scopes header raises `ConnectorScopeUnverified`.
-// spec: connector.declare-capability.scope-unverified@fd50de06
+#[test]
+fn a_scopes_header_naming_no_scope_refuses_and_the_session_does_not_open() {
+    for granted in ["", " , "] {
+        let server = vendor(Some(granted));
+        let f = open(&server, Some(&declared(&server))).unwrap_err();
+        assert!(f.message.starts_with("ConnectorScopeUnverified"), "{granted:?}: {f}");
+        assert_eq!(paths(&server), ["/identity"], "no read follows an unverified grant");
+    }
+}
+
+#[test]
+fn a_scopes_header_line_outside_visible_ascii_refuses_and_the_session_does_not_open() {
+    // The line reaches the wire as obs-text bytes (`0xC3 0xA9`).
+    let alone = vendor(Some("admin.write caf\u{e9}.read"));
+    let f = open(&alone, Some(&declared(&alone))).unwrap_err();
+    assert!(f.message.starts_with("ConnectorScopeUnverified"), "{f}");
+    assert_eq!(paths(&alone), ["/identity"]);
+    // Beside a clean line, the undecodable line still refuses the whole grant.
+    let beside = Server::start(|r| match r.path() {
+        "/identity" => Response {
+            status: 200,
+            headers: vec![(HEADER.to_string(), "reports.read".to_string()), (HEADER.to_string(), "admin.write caf\u{e9}.read".to_string())],
+            body: b"{}".to_vec(),
+        },
+        _ => Response::json(200, "[]"),
+    });
+    let f = open(&beside, Some(&declared(&beside))).unwrap_err();
+    assert!(f.message.starts_with("ConnectorScopeUnverified"), "{f}");
+    assert_eq!(paths(&beside), ["/identity"]);
+}
+
+#[test]
+fn the_identity_body_is_not_read_so_its_size_does_not_refuse_the_grant() {
+    let server = Server::start(|r| match r.path() {
+        "/identity" => Response { status: 200, headers: vec![(HEADER.to_string(), "reports.read".to_string())], body: vec![b' '; 256 * 1024] },
+        "/read" => Response::json(200, "[{\"id\":1}]"),
+        _ => Response::json(404, "{}"),
+    });
+    assert_eq!(open(&server, Some(&declared(&server))).unwrap(), 200);
+    assert_eq!(paths(&server), ["/identity", "/read"]);
+}
+
+/// A probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII,
+/// raises `ConnectorScopeUnverified`.
+// spec: connector.declare-capability.scope-unverified@d672e057
 #[test]
 fn an_answer_without_the_scopes_header_refuses() {
     let server = vendor(None);
