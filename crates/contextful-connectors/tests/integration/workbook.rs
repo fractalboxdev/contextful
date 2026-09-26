@@ -95,20 +95,25 @@ fn a_named_sheet_and_a_preamble_select_the_header_row() {
         ("xl/worksheets/sheet1.xml", notes.as_bytes()),
         ("xl/worksheets/sheet2.xml", series.as_bytes()),
     ]);
-    let got: Vec<Value> = rows(&bytes, Some("Series"), 1, "series.xlsx").unwrap().into_iter().map(Value::Object).collect();
+    let got: Vec<Value> = rows(&bytes, Some("Series"), 2, "series.xlsx").unwrap().into_iter().map(Value::Object).collect();
     assert_eq!(got, vec![json!({"year": "2024", "value": "3.1"})]);
     let f = rows(&bytes, Some("Missing"), 0, "series.xlsx").unwrap_err();
     assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("Notes, Series"), "{f}");
 }
 
-/// A cell past the header's width raises `ConnectorCellOutOfRange`.
-// spec: connector.source.cell-out-of-range@d228a88c
+/// A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell
+/// holding none widens nothing.
+// spec: connector.source.cell-out-of-range@8ee3b542
 #[test]
 fn a_cell_past_the_header_width_is_refused_rather_than_dropped() {
     let sheet = r#"<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>
                    <row r="2"><c r="A2"><v>1</v></c><c r="D2"><v>9</v></c></row>"#;
     let m = refusal(&book(sheet, &["a", "b"], &[]));
     assert!(m.starts_with("ConnectorCellOutOfRange") && m.contains("D2") && m.contains("2 column"), "{m}");
+    // A formatted cell holding no value neither widens the header nor lies out of range.
+    let styled = r#"<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" s="3"/></row>
+                    <row r="2"><c r="A2"><v>1</v></c><c r="B2"><v>2</v></c><c r="C2" s="3"/><c r="F2" s="3"></c></row>"#;
+    assert_eq!(landed(&book(styled, &["a", "b"], &[])), vec![json!({"a": "1", "b": "2"})]);
 }
 
 /// An external-reference declaration, an external-links part, or a relationship marked
@@ -119,11 +124,16 @@ fn every_form_of_external_reference_is_refused() {
     let (ws, ss) = (sheet_xml(r#"<row r="1"><c r="A1" t="s"><v>0</v></c></row>"#), shared_xml(&["a"]));
     let declared = workbook_xml(&["Data"], r#"<externalReferences><externalReference r:id="rId9"/></externalReferences>"#);
     let external_rel = rels_xml(1, &format!(r#"<Relationship Id="rId9" Type="{REL_NS}/hyperlink" Target="https://example.test/other.xlsx" TargetMode="External"/>"#));
+    let link_rel = rels_xml(1, &format!(r#"<Relationship Id="rId9" Type="{REL_NS}/externalLink" Target="links/l1.xml"/>"#));
     let (wb, rels) = (workbook_xml(&["Data"], ""), rels_xml(1, ""));
     type Entries<'a> = Vec<(&'a str, &'a [u8])>;
-    let cases: [(&str, Entries); 3] = [
+    let cases: [(&str, Entries); 5] = [
         ("declaration", vec![("xl/workbook.xml", declared.as_bytes()), ("xl/_rels/workbook.xml.rels", rels.as_bytes())]),
         ("part", vec![("xl/workbook.xml", wb.as_bytes()), ("xl/_rels/workbook.xml.rels", rels.as_bytes()), ("xl/externalLinks/externalLink1.xml", b"<externalLink/>")]),
+        // Part names compare without regard to ASCII case.
+        ("part cased", vec![("xl/workbook.xml", wb.as_bytes()), ("xl/_rels/workbook.xml.rels", rels.as_bytes()), ("xl/ExternalLinks/externalLink1.xml", b"<externalLink/>")]),
+        // An external-links part is whatever part a relationship of that type names.
+        ("part by type", vec![("xl/workbook.xml", wb.as_bytes()), ("xl/_rels/workbook.xml.rels", link_rel.as_bytes()), ("xl/links/l1.xml", b"<externalLink/>")]),
         ("relationship", vec![("xl/workbook.xml", wb.as_bytes()), ("xl/_rels/workbook.xml.rels", external_rel.as_bytes())]),
     ];
     for (case, mut entries) in cases {
@@ -210,9 +220,9 @@ fn an_office_read_decompresses_at_most_64_mib_by_claim_and_by_arrival() {
     assert!(m.contains("inflates past") && m.contains("67108864"), "{m}");
 }
 
-/// One worksheet lands at most 64 MiB of resolved cell text, counted as cells land, and
-/// at most 1048576 rows.
-// spec: connector.source.worksheet-landing@a1a4c97a
+/// One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each
+/// shared string and each stored cell, counted as they land — and lands at most 1048576 rows.
+// spec: connector.source.worksheet-landing@5b81c75d
 #[test]
 fn a_worksheet_lands_at_most_64_mib_of_resolved_text_and_1048576_rows() {
     // One 1 MiB shared string referenced by 70 cells resolves to 70 MiB from a small part.
@@ -223,6 +233,24 @@ fn a_worksheet_lands_at_most_64_mib_of_resolved_text_and_1048576_rows() {
     }
     let m = refusal(&book(&sheet, &[&big], &[]));
     assert!(m.contains("67108864 bytes of cell text"), "{m}");
+
+    // A valueless cell inflates from 4 bytes into a map entry, and `<si/>` from 5 into a
+    // string: each is charged 32 bytes beside its text, so a sub-MiB body cannot fan out.
+    let letters: Vec<String> = (b'a'..=b'z').map(|b| (b as char).to_string()).collect();
+    let names: Vec<&str> = letters.iter().map(String::as_str).collect();
+    let head: String = (0..26u8).map(|i| format!(r#"<c r="{}1" t="s"><v>{i}</v></c>"#, (b'A' + i) as char)).collect();
+    let empties = format!(r#"<row r="1">{head}</row>{}"#, format!("<row>{}</row>", "<c/>".repeat(26)).repeat(100_000));
+    let m = refusal(&book(&empties, &names, &[]));
+    assert!(m.contains("67108864 bytes"), "{m}");
+    let blank_strings = format!(r#"<?xml version="1.0"?><sst xmlns="{SS}">{}</sst>"#, "<si/>".repeat(2_200_000));
+    let (wb, rels, ws) = (workbook_xml(&["Data"], ""), rels_xml(1, ""), sheet_xml(r#"<row r="1"><c r="A1" t="inlineStr"><is><t>v</t></is></c></row>"#));
+    let m = refusal(&zip_of(&[
+        ("xl/workbook.xml", wb.as_bytes()),
+        ("xl/_rels/workbook.xml.rels", rels.as_bytes()),
+        ("xl/worksheets/sheet1.xml", ws.as_bytes()),
+        ("xl/sharedStrings.xml", blank_strings.as_bytes()),
+    ]));
+    assert!(m.contains("67108864 bytes"), "{m}");
 
     let header = r#"<row r="1"><c r="A1" t="inlineStr"><is><t>v</t></is></c></row>"#;
     let at_cap = format!("{header}{}", "<row></row>".repeat(ROW_CAP));
@@ -262,4 +290,93 @@ fn a_workbook_key_on_another_format_is_refused_at_build() {
     }
     let c = HttpConfig::parse(&json!({"endpoint": "https://example.test/b.xlsx", "format": "xlsx", "sheet": "Data", "skip_rows": 2})).unwrap();
     assert_eq!((c.sheet.as_deref(), c.skip_rows), (Some("Data"), 2));
+}
+
+#[test]
+fn skip_rows_counts_sheet_rows_whether_or_not_a_blank_row_is_stored() {
+    let title = r#"<row r="1"><c r="A1" t="inlineStr"><is><t>Title</t></is></c></row>"#;
+    let tail = r#"<row r="3"><c r="A3" t="inlineStr"><is><t>a</t></is></c><c r="B3" t="inlineStr"><is><t>b</t></is></c></row>
+                  <row r="4"><c r="A4"><v>1</v></c><c r="B4"><v>2</v></c></row>
+                  <row r="5"><c r="A5"><v>3</v></c><c r="B5"><v>4</v></c></row>"#;
+    let want = vec![json!({"a": "1", "b": "2"}), json!({"a": "3", "b": "4"})];
+    for (case, blank) in [("omitted", ""), ("formatted", r#"<row r="2" ht="20" customHeight="1"/>"#)] {
+        let got: Vec<Value> = rows(&book(&format!("{title}{blank}{tail}"), &[], &[]), None, 2, "book.xlsx").unwrap().into_iter().map(Value::Object).collect();
+        assert_eq!(got, want, "{case}");
+    }
+    // A row with no `r` takes the number after the row before it.
+    let unnumbered = r#"<row><c t="inlineStr"><is><t>Title</t></is></c></row>
+                        <row><c t="inlineStr"><is><t>a</t></is></c></row>
+                        <row><c><v>1</v></c></row>"#;
+    let got: Vec<Value> = rows(&book(unnumbered, &[], &[]), None, 1, "book.xlsx").unwrap().into_iter().map(Value::Object).collect();
+    assert_eq!(got, vec![json!({"a": "1"})]);
+}
+
+#[test]
+fn cdata_text_lands_as_written() {
+    let sheet = r#"<row r="1"><c r="A1" t="inlineStr"><is><t><![CDATA[x<y]]></t></is></c><c r="B1" t="s"><v>0</v></c><c r="C1" t="inlineStr"><is><t>n</t></is></c></row>
+                   <row r="2"><c r="A2"><v><![CDATA[42]]></v></c><c r="B2" t="s"><v>0</v></c><c r="C2" t="inlineStr"><is><t>z</t></is></c></row>"#;
+    let shared = format!(r#"<?xml version="1.0"?><sst xmlns="{SS}"><si><t><![CDATA[sh<ared]]></t></si></sst>"#);
+    let (wb, rels, ws) = (workbook_xml(&["Data"], ""), rels_xml(1, ""), sheet_xml(sheet));
+    let bytes = zip_of(&[
+        ("xl/workbook.xml", wb.as_bytes()),
+        ("xl/_rels/workbook.xml.rels", rels.as_bytes()),
+        ("xl/worksheets/sheet1.xml", ws.as_bytes()),
+        ("xl/sharedStrings.xml", shared.as_bytes()),
+    ]);
+    assert_eq!(landed(&bytes), vec![json!({"x<y": "42", "sh<ared": "sh<ared", "n": "z"})]);
+}
+
+#[test]
+fn a_phonetic_guide_is_no_part_of_an_inline_string() {
+    let sheet = r#"<row r="1"><c r="A1" t="inlineStr"><is><t>city</t></is></c></row>
+                   <row r="2"><c r="A2" t="inlineStr"><is><t>東京</t><rPh sb="0" eb="2"><t>トウキョウ</t></rPh><phoneticPr fontId="1"/></is></c></row>"#;
+    assert_eq!(landed(&book(sheet, &[], &[])), vec![json!({"city": "東京"})]);
+}
+
+#[test]
+fn a_truncated_part_is_unreadable_rather_than_short() {
+    let (wb, rels) = (workbook_xml(&["Data"], ""), rels_xml(1, ""));
+    let ws = sheet_xml(r#"<row r="1"><c r="A1" t="s"><v>0</v></c></row>"#);
+    let (full_ss, cut_ss) = (shared_xml(&["a"]), format!(r#"<?xml version="1.0"?><sst xmlns="{SS}"><si><t>a</t></si><si><t>b"#));
+    let (cut_wb, cut_rels) = (&wb[..wb.len() - "</workbook>".len()], &rels[..rels.len() - "</Relationships>".len()]);
+    let cases = [("shared strings", wb.as_str(), rels.as_str(), cut_ss.as_str()), ("workbook", cut_wb, rels.as_str(), full_ss.as_str()), ("relationships", wb.as_str(), cut_rels, full_ss.as_str())];
+    for (case, wb, rels, ss) in cases {
+        let bytes = zip_of(&[
+            ("xl/workbook.xml", wb.as_bytes()),
+            ("xl/_rels/workbook.xml.rels", rels.as_bytes()),
+            ("xl/worksheets/sheet1.xml", ws.as_bytes()),
+            ("xl/sharedStrings.xml", ss.as_bytes()),
+        ]);
+        let m = refusal(&bytes);
+        assert!(m.starts_with("PipelineUnreadableInput") && m.contains("open"), "{case}: {m}");
+    }
+}
+
+#[test]
+fn a_column_a_row_carries_twice_is_refused_rather_than_overwritten() {
+    let header = r#"<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>"#;
+    let cases = [
+        ("repeated", format!(r#"{header}<row r="2"><c r="A2"><v>1</v></c><c r="A2"><v>2</v></c></row>"#)),
+        ("implied", format!(r#"{header}<row r="2"><c r="B2"><v>1</v></c><c r="A2"><v>2</v></c><c><v>3</v></c></row>"#)),
+        ("header", r#"<row r="1"><c r="A1" t="s"><v>0</v></c><c r="A1" t="s"><v>1</v></c></row>"#.to_string()),
+    ];
+    for (case, sheet) in cases {
+        let m = refusal(&book(&sheet, &["a", "b"], &[]));
+        assert!(m.starts_with("PipelineUnreadableInput") && m.contains("twice"), "{case}: {m}");
+    }
+}
+
+#[test]
+fn the_shared_string_part_is_the_one_the_workbook_relationships_name() {
+    let wb = workbook_xml(&["Data"], "");
+    let ws = sheet_xml(r#"<row r="1"><c r="A1" t="s"><v>0</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c></row>"#);
+    let rels = rels_xml(1, &format!(r#"<Relationship Id="rId7" Type="{REL_NS}/sharedStrings" Target="strings/table.xml"/>"#));
+    let ss = shared_xml(&["k", "v"]);
+    let bytes = zip_of(&[
+        ("xl/workbook.xml", wb.as_bytes()),
+        ("xl/_rels/workbook.xml.rels", rels.as_bytes()),
+        ("xl/worksheets/sheet1.xml", ws.as_bytes()),
+        ("xl/strings/table.xml", ss.as_bytes()),
+    ]);
+    assert_eq!(landed(&bytes), vec![json!({"k": "v"})]);
 }

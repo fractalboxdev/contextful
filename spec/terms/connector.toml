@@ -53,7 +53,7 @@ ConnectorPointerColumnMissing   = { clause = "connector.source.pointer-column-mi
 ConnectorTargetColumnOccupied   = { clause = "connector.source.target-column-occupied", gloss = "An expansion target column the index rows already carry." }
 ConnectorFrontmatterRejected    = { clause = "connector.source.frontmatter-shape", gloss = "A nested map, block scalar or reserved-prefix key in a note's frontmatter." }
 ConnectorConversionRequired     = { clause = "connector.source.conversion-required", gloss = "A compound-binary office container, answered with the conversion command." }
-ConnectorCellOutOfRange         = { clause = "connector.source.cell-out-of-range", gloss = "A worksheet cell past the header's width." }
+ConnectorCellOutOfRange         = { clause = "connector.source.cell-out-of-range", gloss = "A worksheet cell holding a value past the header's width." }
 ConnectorExternalReference      = { clause = "connector.source.external-reference", gloss = "A workbook declaration, part or relationship pointing outside the archive." }
 ConnectorIncrementalUnsupported = { clause = "connector.source.workbook-incremental", gloss = "An incremental position against a workbook source." }
 ConnectorPageCursorMissing      = { clause = "connector.source.page-cursor-missing", gloss = "A next-page announcement naming no cursor." }
@@ -106,7 +106,8 @@ connector-expansion-follow-ups  = { clause = "connector.source.expansion-budget"
 connector-expansion-buffer      = { clause = "connector.source.expansion-budget", value = 256, unit = "MiB", basis = "chosen", gloss = "Buffered expansion document bytes in one read." }
 connector-expansion-elapsed     = { clause = "connector.source.expansion-budget", value = 600, unit = "s", basis = "chosen", gloss = "Elapsed time one expanding read takes." }
 connector-office-decompression  = { clause = "connector.source.decompression-budget", value = 64, unit = "MiB", basis = "chosen", gloss = "Decompressed bytes across one multi-part office read." }
-connector-worksheet-text        = { clause = "connector.source.worksheet-landing", value = 64, unit = "MiB", basis = "chosen", gloss = "Resolved cell text landed from one worksheet." }
+connector-worksheet-text        = { clause = "connector.source.worksheet-landing", value = 64, unit = "MiB", basis = "chosen", gloss = "Cell text, keys and entry charges one worksheet read holds." }
+connector-worksheet-entry       = { clause = "connector.source.worksheet-landing", value = 32, unit = "B", basis = "chosen", gloss = "Charge for each shared string and stored cell beside its text." }
 connector-worksheet-rows        = { clause = "connector.source.worksheet-landing", value = 1048576, unit = "rows", basis = "chosen", gloss = "Rows landed from one worksheet." }
 connector-secret-name           = { clause = "connector.reference.reference-scheme", value = 128, unit = "chars", basis = "chosen", gloss = "Longest logical credential name." }
 connector-resolve-cache         = { clause = "connector.resolve.cache-ttl", value = 300, unit = "s", basis = "chosen", gloss = "Longest life of a hydrated value in a resolver cache." }

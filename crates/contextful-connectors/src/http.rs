@@ -175,7 +175,7 @@ pub struct HttpConfig {
     pub since_param: Option<String>,
     /// The worksheet a workbook body lands; the first sheet when unset.
     pub sheet: Option<String>,
-    /// Rows a workbook sheet carries ahead of its header row.
+    /// Sheet rows 1 through `skip_rows`, by row number, ahead of a workbook's header row.
     pub skip_rows: usize,
 }
 
@@ -267,6 +267,10 @@ impl HttpConfig {
         .into_iter()
         .flatten()
         .collect();
+        // A workbook is one document; no page of it follows another.
+        if let (Format::Workbook, Some(k)) = (format, declared.first()) {
+            return Err(ConnectorError::ConnectorFormatKeyRejected(format!("`{k}` walks pages and the source's format is `xlsx`, one document per read")).into());
+        }
         if declared.len() > 1 {
             return Err(ConnectorError::ConnectorPaginationAmbiguous(format!("the source declares {}; a walk takes one pagination shape", declared.join(" and "))).into());
         }
@@ -323,6 +327,16 @@ impl HttpConfig {
         let exemplar = c.table_pattern.as_ref().map_or_else(|| "table".to_string(), TablePattern::exemplar);
         c.table_url(&exemplar)?;
         Ok(c)
+    }
+
+    /// Whether a pipeline may declare an incremental cursor over this source: a workbook
+    /// refuses at build, ahead of the run that would commit its first position
+    /// (`connector.source.workbook-incremental`).
+    pub fn accepts_incremental(&self) -> Result<(), ConnectorError> {
+        match self.format {
+            Format::Workbook => Err(incremental("the pipeline declares `incremental`")),
+            _ => Ok(()),
+        }
     }
 
     /// The hosts this source reaches for `table`: its endpoint's host with the table bound.

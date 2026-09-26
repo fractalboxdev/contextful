@@ -351,9 +351,9 @@ The declared behavior of each source compiled into the engine.
   *A-connector*
 - `decompression-budget` — A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.
   *A-connector*
-- `worksheet-landing` — One worksheet lands at most 64 MiB of resolved cell text, counted as cells land, and at most 1048576 rows.
+- `worksheet-landing` — One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.
   *because shared-string fan-out turns a small input into an unbounded output*
-- `cell-out-of-range` — A cell past the header's width raises `ConnectorCellOutOfRange`.
+- `cell-out-of-range` — A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.
   *A-connector*
 - `external-reference` — An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.
   *A-connector*

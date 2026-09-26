@@ -51,6 +51,13 @@ fn a_json_key_on_another_format_is_refused_at_build() {
             other => panic!("{format}/{key}: {other:?}"),
         }
     }
+    // A workbook is one document: no pagination shape reads it.
+    for (key, value) in [("page_param", json!("page")), ("link_header", json!(true))] {
+        match HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/b.xlsx", "format": "xlsx", key: value})) {
+            Err(ConfigError::Connector(ConnectorError::ConnectorFormatKeyRejected(m))) => assert!(m.contains(key) && m.contains("xlsx"), "{m}"),
+            other => panic!("xlsx/{key}: {other:?}"),
+        }
+    }
     assert!(HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/v1", "format": "json", "records": "/data"})).is_ok());
     assert!(HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/v1", "format": "csv", "page_param": "p"})).is_ok());
 }

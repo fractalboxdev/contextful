@@ -90,7 +90,13 @@ fn check(spec: &PipelineSpec, declaration: &Path) -> Result<Checked> {
         build_source(spec, "seed source", &seed.source)?;
     }
     match spec.source.name.as_str() {
-        contextful_connectors::http::NAME => Ok(Checked::Http(build_source(spec, "source", &spec.source)?)),
+        contextful_connectors::http::NAME => {
+            let config = build_source(spec, "source", &spec.source)?;
+            if spec.incremental.is_some() {
+                config.accepts_incremental()?;
+            }
+            Ok(Checked::Http(config))
+        }
         contextful_connectors::derive::NAME => {
             let config = DeriveConfig::parse(&spec.id, &spec.source.config)?;
             let [table] = spec.tables.as_slice() else {

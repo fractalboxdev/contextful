@@ -12,7 +12,7 @@ pub enum ConnectorError {
     /// An environment binding on a key the connector does not read. (`connector.declare-capability.binding-unsupported`)
     #[error("ConnectorBindingUnsupported: {0}")]
     ConnectorBindingUnsupported(String),
-    /// A worksheet cell past the header's width. (`connector.source.cell-out-of-range`)
+    /// A worksheet cell holding a value past the header's width. (`connector.source.cell-out-of-range`)
     #[error("ConnectorCellOutOfRange: {0}")]
     ConnectorCellOutOfRange(String),
     /// A workbook declaration, part or relationship pointing outside the archive. (`connector.source.external-reference`)

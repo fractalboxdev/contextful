@@ -4,7 +4,7 @@
 
 use super::unreadable;
 use contextful_core::run::{Failure, FailureTag, RunError};
-use quick_xml::events::BytesText;
+use quick_xml::events::{BytesCData, BytesText};
 use quick_xml::name::ResolveResult;
 use std::io::{Cursor, Read};
 
@@ -25,9 +25,10 @@ impl<'a> Archive<'a> {
         Ok(Archive { zip, input, inflated: 0 })
     }
 
-    /// Whether any entry name starts with `prefix`, judged on the directory alone.
+    /// Whether any entry name starts with `prefix`, judged on the directory alone. Part
+    /// names compare without regard to ASCII case, as OPC defines them.
     pub fn has_prefix(&self, prefix: &str) -> bool {
-        self.zip.file_names().any(|n| n.starts_with(prefix))
+        self.zip.file_names().any(|n| n.len() >= prefix.len() && n.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes()))
     }
 
     /// Part `name`, or `None` when the archive carries none. The directory's claim is
@@ -82,5 +83,10 @@ pub fn text(raw: &BytesText<'_>) -> String {
         Ok(t) => t.into_owned(),
         Err(_) => String::from_utf8_lossy(raw.as_ref()).into_owned(),
     }
+}
+
+/// A CDATA section's text as written: nothing inside it is escaped.
+pub fn cdata(raw: &BytesCData<'_>) -> String {
+    String::from_utf8_lossy(raw).into_owned()
 }
 
