@@ -92,11 +92,13 @@ pub fn check(report: &Value) -> FloorVerdict {
             for (metric, field, bound, side, empty_holds) in FLOORS {
                 let path = format!("{surface}.{leg}.{metric}.{field}");
                 let summary = leg_node.and_then(|l| l.get(metric));
-                let n = summary.and_then(|s| s.get("n")).and_then(Value::as_u64).unwrap_or(0);
-                if summary.is_some() && n == 0 && empty_holds {
+                // Only an integer `n` counts cases; an absent, null or float one names no
+                // count, so it breaches rather than reading as a rate over no case.
+                let n = summary.and_then(|s| s.get("n")).and_then(Value::as_u64);
+                if n == Some(0) && empty_holds {
                     continue;
                 }
-                let measured = summary.and_then(|s| s.get(field)).and_then(Value::as_f64).filter(|_| n > 0).unwrap_or(f64::NAN);
+                let measured = summary.and_then(|s| s.get(field)).and_then(Value::as_f64).filter(|_| n.is_some_and(|n| n > 0)).unwrap_or(f64::NAN);
                 let holds = match side {
                     Side::AtLeast => measured >= bound,
                     Side::AtMost => measured <= bound,

@@ -184,6 +184,12 @@ impl Baselines {
         let Value::Object(map) = root else {
             return Err(EvalError::unresolved("", "a baseline file is a JSON object"));
         };
+        // A parsed map keeps the last of a repeated key; the raw entries show every one.
+        let Keys(keys) = serde_json::from_str(raw).map_err(|e| EvalError::unresolved("", format!("not JSON: {e}")))?;
+        let mut seen = std::collections::BTreeSet::new();
+        if let Some(twice) = keys.into_iter().find(|k| !seen.insert(k.clone())) {
+            return Err(EvalError::unresolved(&twice, "the entry appears twice in the file"));
+        }
         let run = map
             .get(RUN_KEY)
             .ok_or_else(|| EvalError::unresolved(RUN_KEY, "the file carries no run block"))
@@ -281,6 +287,30 @@ impl Baselines {
             }
         }
         Some(moved)
+    }
+}
+
+/// The top-level keys of a JSON object in file order, repeats included.
+struct Keys(Vec<String>);
+
+impl<'de> Deserialize<'de> for Keys {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Keys, D::Error> {
+        struct Visit;
+        impl<'de> serde::de::Visitor<'de> for Visit {
+            type Value = Keys;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a JSON object")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Keys, A::Error> {
+                let mut keys = Vec::new();
+                while let Some(k) = map.next_key::<String>()? {
+                    map.next_value::<serde::de::IgnoredAny>()?;
+                    keys.push(k);
+                }
+                Ok(Keys(keys))
+            }
+        }
+        d.deserialize_map(Visit)
     }
 }
 

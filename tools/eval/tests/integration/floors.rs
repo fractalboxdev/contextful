@@ -141,6 +141,15 @@ fn a_report_missing_a_floor_figure_breaches_that_floor() {
     let mut report = json!({ "retrieval": clean_retrieval(40) });
     report["retrieval"]["vector"].as_object_mut().unwrap().remove("r_precision");
     assert_eq!(breached(&report), ["retrieval.vector.r_precision.mean"]);
+    // A rate summary without an integer sample count names no case count, and breaches.
+    for summary in [json!({ "mean": 0.5, "min": 0.5, "max": 1.0 }), json!({ "n": 40.0, "min": 0.0, "max": 1.0 }), json!({ "n": null, "max": 1.0 })] {
+        for metric in ["forbidden_row_rate", "in_window_rate"] {
+            let mut r = json!({ "retrieval": clean_retrieval(40) });
+            r["retrieval"]["hybrid"][metric] = summary.clone();
+            let field = if metric == "forbidden_row_rate" { "max" } else { "min" };
+            assert_eq!(breached(&r), [format!("retrieval.hybrid.{metric}.{field}")], "{metric} {summary}");
+        }
+    }
     // A duplicate rate over no case breaches; a forbidden-row or in-window rate over no case holds.
     for metric in ["forbidden_row_rate", "in_window_rate", "duplicate_row_rate"] {
         let mut r = json!({ "retrieval": clean_retrieval(40) });

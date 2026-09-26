@@ -326,3 +326,14 @@ fn a_malformed_report_run_block_names_its_fault() {
     r.as_object_mut().unwrap().remove("run");
     assert!(gate(&r, &b).unwrap_err().to_string().contains("no run block"));
 }
+
+#[test]
+fn a_path_named_twice_is_refused() {
+    let twice = r#"{ "_run": { "k": 10, "tier": "deterministic", "model": null, "samples": 1 }, "n_cases": 184, "n_cases": 1 }"#;
+    match Baselines::parse(twice) {
+        Err(EvalError::BaselinePathUnresolved { path, reason }) => assert!(path == "n_cases" && reason.contains("twice"), "{path}: {reason}"),
+        other => panic!("{other:?}"),
+    }
+    let run_twice = r#"{ "_run": { "k": 10, "tier": "deterministic", "model": null, "samples": 1 }, "_run": { "k": 20, "tier": "deterministic", "model": null, "samples": 1 } }"#;
+    assert!(matches!(Baselines::parse(run_twice), Err(EvalError::BaselinePathUnresolved { .. })));
+}
