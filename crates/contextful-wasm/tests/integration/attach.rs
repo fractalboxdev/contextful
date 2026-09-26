@@ -26,9 +26,8 @@ fn the_host_attaches_the_credential_and_the_guest_sees_only_the_response() {
     assert!(format!("{:?}", s.traffic()).find("vendor-token-value").is_none(), "the record names no value");
 }
 
-/// A source binding any credential carries one non-wildcard host, checked at validation and at session open; a
-/// wildcard entry beside a bound credential raises `SecretWildcardHost`.
-// spec: connector.attach.bound-host@32a81649
+/// At session open, a credential beside a wildcard or a second host raises `SecretWildcardHost`. The guest host has
+/// no validation step, so `connector.attach.bound-host` stays unpinned here.
 #[test]
 fn a_credential_beside_a_wildcard_or_second_host_refuses_the_session() {
     for hosts in [&["*.vendor.example"][..], &["api.vendor.example", "127.0.0.1"][..]] {
