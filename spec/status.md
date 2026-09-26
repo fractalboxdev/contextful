@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 13 | 175 | 46 | 18 | 13 | 64 | 0 | 64 |
+| `assurance` | 2 | 13 | 176 | 46 | 18 | 13 | 65 | 0 | 65 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 153 | 37 | 12 | 8 | 109 | 0 | 109 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1436 | 462 | 161 | 101 | 608 | 0 | |
+| **total** | 19 | 145 | 1437 | 462 | 161 | 101 | 609 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ Decision records: 18.
 | 11 — The derive tier | 7 | 58 | 0 | absent |
 | 12 — The console | 11 | 30 | 0 | absent |
 | 13 — Disclosure | 5 | 21 | 0 | absent |
-| 14 — Assurance | 5 | 85 | 19 | open |
+| 14 — Assurance | 5 | 86 | 20 | open |
 
 Unscheduled operations: 10.
 
@@ -58,6 +58,7 @@ Unscheduled operations: 10.
 | `assurance.baseline.band-units` | `tools/eval/tests/integration/baseline.rs::latency_bands_in_milliseconds_and_counts_pin_at_zero` | performed |
 | `assurance.baseline.default-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_rate_entry_gates_at_two_percent` | performed |
 | `assurance.baseline.file` | `tools/eval/tests/integration/baseline.rs::a_file_holds_a_run_block_and_bare_or_banded_entries` | performed |
+| `assurance.baseline.floor-coverage` | `tools/eval/tests/integration/floors.rs::a_report_missing_a_floor_figure_breaches_that_floor` | performed |
 | `assurance.baseline.floors-are-absolute` | `tools/eval/tests/integration/baseline.rs::a_floor_reds_a_run_its_baseline_passes` | performed |
 | `assurance.baseline.metric-path` | `tools/eval/tests/integration/baseline.rs::an_entry_names_a_report_field_path` | performed |
 | `assurance.baseline.raise-only` | `tools/eval/tests/integration/baseline.rs::an_update_raises_improved_entries_only_and_only_on_green` | performed |

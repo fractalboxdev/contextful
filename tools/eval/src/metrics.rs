@@ -178,11 +178,12 @@ pub struct RelevanceScores {
     pub in_window_rate: f64,
 }
 
-/// Score what one case's return carried besides its truth.
-pub fn score_relevance(returned: &[Returned], must_not: &HashSet<RowRef>, recency_bound: bool) -> RelevanceScores {
+/// Score what one case's return carried besides its truth. The forbidden-row rate reads
+/// a regression case alone; any other case's is NaN and drops out.
+pub fn score_relevance(returned: &[Returned], must_not: &HashSet<RowRef>, recency_bound: bool, regression: bool) -> RelevanceScores {
     let rows: Vec<RowRef> = returned.iter().map(|r| r.row.clone()).collect();
     RelevanceScores {
-        forbidden_row_rate: forbidden_row_rate(&rows, must_not),
+        forbidden_row_rate: if regression { forbidden_row_rate(&rows, must_not) } else { f64::NAN },
         duplicate_row_rate: duplicate_row_rate(&rows),
         in_window_rate: in_window_rate(returned, recency_bound),
     }

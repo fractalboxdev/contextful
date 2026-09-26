@@ -2,7 +2,7 @@ use contextful_eval::baseline::*;
 use contextful_eval::EvalError;
 use serde_json::{json, Value};
 
-use crate::{node, run};
+use crate::{clean_retrieval, node, run};
 
 /// The baseline file the spec shows, recorded in the deterministic tier.
 const FILE: &str = r#"{
@@ -19,13 +19,16 @@ const FILE: &str = r#"{
 
 /// A report measuring exactly what [`FILE`] records.
 fn report() -> Value {
-    json!({
+    let mut r = json!({
         "run": run(10),
         "n_cases": 184,
-        "retrieval": { "hybrid": { "recall_at_k": node(184, 0.71), "ndcg_at_k": node(184, 0.63) } },
+        "retrieval": clean_retrieval(184),
         "judge": { "citation_faithfulness": node(184, 0.82) },
         "latency_ms": node(184, 480.0),
-    })
+    });
+    r["retrieval"]["hybrid"]["recall_at_k"] = node(184, 0.71);
+    r["retrieval"]["hybrid"]["ndcg_at_k"] = node(184, 0.63);
+    r
 }
 
 fn file(entries: Value) -> Baselines {
@@ -141,8 +144,9 @@ fn latency_bands_in_milliseconds_and_counts_pin_at_zero() {
 }
 
 /// An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`,
-/// `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `slices.<tag>.<metric>`, `latency_ms` or `n_cases`.
-// spec: assurance.baseline.metric-path@77977e9e
+/// `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `latency_ms`, `n_cases`, or `slices.<tag>.` before
+/// a bare `<metric>` or any of these but `latency_ms`.
+// spec: assurance.baseline.metric-path@3270d415
 #[test]
 fn an_entry_names_a_report_field_path() {
     for path in [
@@ -270,7 +274,7 @@ fn an_update_raises_improved_entries_only_and_only_on_green() {
     set(&mut r, "/retrieval/hybrid/ndcg_at_k/mean", json!(0.61)); // worse, inside the band
     set(&mut r, "/latency_ms/mean", json!(400.0)); // improved: lower
     // A measured, ungated metric.
-    r["retrieval"]["vector"] = json!({ "recall_at_k": node(184, 0.5) });
+    r["retrieval"]["vector"]["recall_at_k"] = node(184, 0.5);
     let v = gate(&r, &b).unwrap();
     assert!(v.passed());
     let moved = b.raise(&v).unwrap();
@@ -296,7 +300,8 @@ fn an_update_raises_improved_entries_only_and_only_on_green() {
 fn a_floor_reds_a_run_its_baseline_passes() {
     // A committed R-precision below the floor, and a run that improves on it.
     let b = file(json!({ "retrieval.hybrid.r_precision": 0.40 }));
-    let r = json!({ "run": run(10), "retrieval": { "hybrid": { "r_precision": node(60, 0.45) } } });
+    let mut r = json!({ "run": run(10), "retrieval": clean_retrieval(60) });
+    r["retrieval"]["hybrid"]["r_precision"] = node(60, 0.45);
     let v = gate(&r, &b).unwrap();
     assert_eq!(v.comparisons[0].outcome, Outcome::Improved);
     assert!(v.baseline_passed());
@@ -307,4 +312,17 @@ fn a_floor_reds_a_run_its_baseline_passes() {
     let empty = file(json!({}));
     let v = gate(&r, &empty).unwrap();
     assert!(v.comparisons.is_empty() && !v.passed());
+}
+
+#[test]
+fn a_malformed_report_run_block_names_its_fault() {
+    let b = Baselines::parse(FILE).unwrap();
+    let mut r = report();
+    r["run"]["k"] = json!("10");
+    let e = gate(&r, &b).unwrap_err();
+    assert_eq!(e.code(), "BaselineRunStampMismatch");
+    let text = e.to_string();
+    assert!(text.contains("does not parse") && !text.contains("no run block"), "{text}");
+    r.as_object_mut().unwrap().remove("run");
+    assert!(gate(&r, &b).unwrap_err().to_string().contains("no run block"));
 }

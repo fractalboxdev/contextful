@@ -15604,7 +15604,7 @@
       "operation": "baseline",
       "subject": "metric-path",
       "kind": "behavior",
-      "statement": "An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `slices.<tag>.<metric>`, `latency_ms` or `n_cases`.",
+      "statement": "An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `latency_ms`, `n_cases`, or `slices.<tag>.` before a bare `<metric>` or any of these but `latency_ms`.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 254
@@ -15676,6 +15676,17 @@
       "line": 263
     },
     {
+      "id": "assurance.baseline.floor-coverage",
+      "contract": "assurance",
+      "operation": "baseline",
+      "subject": "floor-coverage",
+      "kind": "behavior",
+      "statement": "A report lacking a floor's figure on any leg of its `retrieval` surface breaches that floor; only a forbidden-row or in-window rate over no case holds.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 264
+    },
+    {
       "id": "assurance.baseline.offline",
       "contract": "assurance",
       "operation": "baseline",
@@ -15684,7 +15695,7 @@
       "statement": "The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 264
+      "line": 265
     },
     {
       "id": "assurance.baseline.trace-store",
@@ -15695,7 +15706,7 @@
       "statement": "A trace store records run history and curation staging, and decides no verdict.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 265
+      "line": 266
     },
     {
       "id": "assurance.baseline.golden-custody",
@@ -15706,7 +15717,7 @@
       "statement": "Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 266
+      "line": 267
     },
     {
       "id": "assurance.baseline.answer-key-in-the-store",
@@ -15717,7 +15728,7 @@
       "statement": "An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 268
+      "line": 269
     },
     {
       "id": "assurance.baseline.generated-redaction",
@@ -15728,7 +15739,7 @@
       "statement": "A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 270
+      "line": 271
     },
     {
       "id": "assurance.baseline.promotion-source",
@@ -15739,7 +15750,7 @@
       "statement": "Only an adjudicated outcome label promotes into a golden set; a self-rated row does not.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 272
+      "line": 273
     },
     {
       "id": "assurance.baseline.generators",
@@ -15750,7 +15761,7 @@
       "statement": "Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 273
+      "line": 274
     },
     {
       "id": "assurance.baseline.held-out",
@@ -15761,7 +15772,7 @@
       "statement": "Retrieval and synthesis are tuned on no gate input.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 274
+      "line": 275
     },
     {
       "id": "assurance.baseline.rotation",
@@ -15772,7 +15783,7 @@
       "statement": "The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 275
+      "line": 276
     },
     {
       "id": "assurance.baseline.native-gate",
@@ -15783,7 +15794,7 @@
       "statement": "A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 276
+      "line": 277
     },
     {
       "id": "assurance.baseline.trace-export",
@@ -15794,7 +15805,7 @@
       "statement": "A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 277
+      "line": 278
     }
   ],
   "owns": {

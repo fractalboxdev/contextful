@@ -2,11 +2,13 @@ use contextful_eval::floors::{self, *};
 use contextful_eval::metrics::*;
 use serde_json::{json, Value};
 
-use crate::{returned, rows, set, summary, EPS};
+use crate::{clean_retrieval, returned, rows, set, summary, EPS};
 
-/// A report whose hybrid leg carries one metric's summary.
+/// A report whose every floor holds but for the hybrid leg's `metric`, which summarizes `values`.
 fn hybrid(metric: &str, values: &[f64]) -> Value {
-    json!({ "retrieval": { "hybrid": { metric: summary(values) } } })
+    let mut report = json!({ "retrieval": clean_retrieval(40) });
+    report["retrieval"]["hybrid"][metric] = summary(values);
+    report
 }
 
 fn breached(report: &Value) -> Vec<String> {
@@ -36,9 +38,8 @@ fn a_leg_below_sixty_percent_r_precision_breaches_the_floor() {
     let below = [per_case.as_slice(), &[0.5]].concat();
     assert_eq!(breached(&hybrid("r_precision", &below)), ["retrieval.hybrid.r_precision.mean"]);
 
-    // A leg of cases without truth measures nothing and holds nothing.
-    let v = floors::check(&hybrid("r_precision", &[f64::NAN]));
-    assert!(v.passed && v.checks.is_empty());
+    // A leg of cases without truth measured nothing, which holds no floor.
+    assert_eq!(breached(&hybrid("r_precision", &[f64::NAN])), ["retrieval.hybrid.r_precision.mean"]);
 }
 
 /// A row named in a must-not-retrieve set holds at 0 percent of a regression case's returned rows.
@@ -54,6 +55,11 @@ fn one_forbidden_row_in_one_case_breaches_the_floor() {
     // A case naming no forbidden row is not a regression case and drops out.
     let unnamed = forbidden_row_rate(&rows(&["offtopic"]), &set(&[]));
     assert!(unnamed.is_nan());
+    // Nor is a case outside the regression tag, whatever its must-not set names.
+    let exploratory = score_relevance(&returned(&[("offtopic", true)]), &must_not, false, false);
+    assert!(exploratory.forbidden_row_rate.is_nan());
+    let regression = score_relevance(&returned(&[("offtopic", true)]), &must_not, false, true);
+    assert_eq!(regression.forbidden_row_rate, 1.0);
 
     assert!(breached(&hybrid("forbidden_row_rate", &[clean, clean, unnamed])).is_empty());
     // The floor holds every case, not the mean: one case in forty breaches it.
@@ -113,15 +119,33 @@ fn a_bounded_case_under_ninety_five_percent_in_window_breaches_the_floor() {
 
 #[test]
 fn every_leg_of_every_surface_answers_to_the_floors() {
-    let report = json!({
-        "retrieval": {
-            "lexical": { "duplicate_row_rate": summary(&[0.1]) },
-            "vector": { "duplicate_row_rate": summary(&[0.0]) },
-        },
-        "edge_retrieval": { "hybrid": { "duplicate_row_rate": summary(&[0.5]) } },
-    });
+    let mut report = json!({ "retrieval": clean_retrieval(40), "edge_retrieval": { "hybrid": clean_retrieval(40)["hybrid"].clone() } });
+    report["retrieval"]["lexical"]["duplicate_row_rate"] = summary(&[0.1]);
+    report["edge_retrieval"]["hybrid"]["duplicate_row_rate"] = summary(&[0.5]);
     let v = floors::check(&report);
-    assert_eq!(v.checks.len(), 3);
+    assert_eq!(v.checks.len(), 16);
     assert!(!v.passed);
     assert_eq!(breached(&report), ["retrieval.lexical.duplicate_row_rate.max", "edge_retrieval.hybrid.duplicate_row_rate.max"]);
+}
+
+/// A report lacking a floor's figure on any leg of its `retrieval` surface breaches that floor; only a forbidden-
+/// row or in-window rate over no case holds.
+// spec: assurance.baseline.floor-coverage@b98d2d1f
+#[test]
+fn a_report_missing_a_floor_figure_breaches_that_floor() {
+    // The runner dropped the retrieval block: no floor was read, so none holds.
+    let v = floors::check(&json!({ "run": crate::run(10), "judge": {} }));
+    assert!(!v.passed);
+    assert_eq!(v.breaches().count(), 12, "{:?}", v.checks);
+    // One leg without its precision figure breaches the precision floor there alone.
+    let mut report = json!({ "retrieval": clean_retrieval(40) });
+    report["retrieval"]["vector"].as_object_mut().unwrap().remove("r_precision");
+    assert_eq!(breached(&report), ["retrieval.vector.r_precision.mean"]);
+    // A duplicate rate over no case breaches; a forbidden-row or in-window rate over no case holds.
+    for metric in ["forbidden_row_rate", "in_window_rate", "duplicate_row_rate"] {
+        let mut r = json!({ "retrieval": clean_retrieval(40) });
+        r["retrieval"]["lexical"][metric] = summary(&[f64::NAN]);
+        let expected: Vec<String> = if metric == "duplicate_row_rate" { vec![format!("retrieval.lexical.{metric}.max")] } else { vec![] };
+        assert_eq!(breached(&r), expected, "{metric}");
+    }
 }

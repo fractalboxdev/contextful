@@ -251,7 +251,7 @@ Holding a run against committed baselines and absolute floors, intervals, golden
 - `default-dead-band` — A rate-valued entry with no override gates at a 2 percent dead band.
 - `rank-quality-dead-band` — The ranked-quality entry gates at a 3 percent dead band.
 - `band-units` — A band carries its metric's own units, and a count entry is pinned at zero with no band.
-- `metric-path` — An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `slices.<tag>.<metric>`, `latency_ms` or `n_cases`.
+- `metric-path` — An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `latency_ms`, `n_cases`, or `slices.<tag>.` before a bare `<metric>` or any of these but `latency_ms`.
 - `sample-count` — Every mean-valued path takes a `.n` suffix naming its sample count.
   *because blanking one case's truth lifts a NaN-filtered mean without moving the case count*
 - `unresolvable-path` — A path resolving to nothing, a mean over fewer than 30 cases, a malformed entry or a non-finite band raises `BaselinePathUnresolved` before the suite runs.
@@ -261,6 +261,7 @@ Holding a run against committed baselines and absolute floors, intervals, golden
 - `interval` — Each judged figure reports a 95 percent percentile-bootstrap interval over cases from 1000 resamples.
 - `raise-only` — A baseline update runs after every gate and floor passes, moves each improved entry to its measured value, moves none in the worse direction, and adds no path.
 - `floors-are-absolute` — An absolute floor gates independently of every committed value.
+- `floor-coverage` — A report lacking a floor's figure on any leg of its `retrieval` surface breaches that floor; only a forbidden-row or in-window rate over no case holds.
 - `offline` — The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.
 - `trace-store` — A trace store records run history and curation staging, and decides no verdict.
 - `golden-custody` — Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree.

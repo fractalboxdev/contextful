@@ -384,13 +384,10 @@ pub fn resolve(report: &Value, path: &str) -> Result<f64, EvalError> {
 /// compared, so one unresolvable entry refuses the run and yields no partial verdict.
 /// The floors gate independently of every committed value.
 pub fn gate(report: &Value, baselines: &Baselines) -> Result<Verdict, EvalError> {
-    let run = report
-        .get(REPORT_RUN_KEY)
-        .and_then(|v| serde_json::from_value::<RunStamp>(v.clone()).ok())
-        .ok_or_else(|| EvalError::BaselineRunStampMismatch {
-            recorded: baselines.run.to_string(),
-            run: "a report with no run block".into(),
-        })?;
+    let mismatch = |run: String| EvalError::BaselineRunStampMismatch { recorded: baselines.run.to_string(), run };
+    let block = report.get(REPORT_RUN_KEY).ok_or_else(|| mismatch("a report with no run block".into()))?;
+    let run = serde_json::from_value::<RunStamp>(block.clone())
+        .map_err(|e| mismatch(format!("a report whose run block does not parse: {e}")))?;
     baselines.check_run(&run)?;
 
     let mut resolved = Vec::with_capacity(baselines.entries.len());

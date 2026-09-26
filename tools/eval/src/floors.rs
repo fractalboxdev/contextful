@@ -56,36 +56,52 @@ impl FloorVerdict {
     }
 }
 
-/// `(metric, summary field, bound, side)` for each floor.
-const FLOORS: [(&str, &str, f64, Side); 4] = [
-    ("r_precision", "mean", PRECISION_FLOOR, Side::AtLeast),
-    ("forbidden_row_rate", "max", FORBIDDEN_ROW_RATE_CEILING, Side::AtMost),
-    ("duplicate_row_rate", "max", DUPLICATE_ROW_RATE_CEILING, Side::AtMost),
-    ("in_window_rate", "min", IN_WINDOW_RATE_FLOOR, Side::AtLeast),
+/// `(metric, summary field, bound, side, holds over no case)` for each floor. A
+/// forbidden-row rate over no case means no regression case named a must-not set, and an
+/// in-window rate over no case means no case declared a recency bound; both hold. A
+/// precision or duplicate rate over no case measured nothing, which holds no floor.
+const FLOORS: [(&str, &str, f64, Side, bool); 4] = [
+    ("r_precision", "mean", PRECISION_FLOOR, Side::AtLeast, false),
+    ("forbidden_row_rate", "max", FORBIDDEN_ROW_RATE_CEILING, Side::AtMost, true),
+    ("duplicate_row_rate", "max", DUPLICATE_ROW_RATE_CEILING, Side::AtMost, false),
+    ("in_window_rate", "min", IN_WINDOW_RATE_FLOOR, Side::AtLeast, true),
 ];
 
-/// Hold `report` to every floor. A leg whose summary has no finite sample (`n == 0`) has
-/// nothing the floor could hold and is not checked.
+/// Hold `report` to every floor on every leg of `retrieval`, and on each leg of
+/// `edge_retrieval` the report carries. A leg or figure the report lacks breaches its floor,
+/// read as NaN, so a report the runner truncated never passes vacuously.
 pub fn check(report: &Value) -> FloorVerdict {
     let mut checks = Vec::new();
     for surface in SURFACES {
+        let Some(node) = report.get(surface) else {
+            if surface == "retrieval" {
+                for leg in LEGS {
+                    for (metric, field, bound, side, _) in FLOORS {
+                        checks.push(FloorCheck { path: format!("{surface}.{leg}.{metric}.{field}"), bound, side, measured: f64::NAN, holds: false });
+                    }
+                }
+            }
+            continue;
+        };
         for leg in LEGS {
-            let Some(node) = report.get(surface).and_then(|s| s.get(leg)) else {
+            let leg_node = node.get(leg);
+            // Every retrieval leg answers; an edge surface answers on the legs it configures.
+            if leg_node.is_none() && surface != "retrieval" {
                 continue;
-            };
-            for (metric, field, bound, side) in FLOORS {
-                let Some(summary) = node.get(metric) else {
-                    continue;
-                };
-                if summary.get("n").and_then(Value::as_u64).unwrap_or(0) == 0 {
+            }
+            for (metric, field, bound, side, empty_holds) in FLOORS {
+                let path = format!("{surface}.{leg}.{metric}.{field}");
+                let summary = leg_node.and_then(|l| l.get(metric));
+                let n = summary.and_then(|s| s.get("n")).and_then(Value::as_u64).unwrap_or(0);
+                if summary.is_some() && n == 0 && empty_holds {
                     continue;
                 }
-                let measured = summary.get(field).and_then(Value::as_f64).unwrap_or(f64::NAN);
+                let measured = summary.and_then(|s| s.get(field)).and_then(Value::as_f64).filter(|_| n > 0).unwrap_or(f64::NAN);
                 let holds = match side {
                     Side::AtLeast => measured >= bound,
                     Side::AtMost => measured <= bound,
                 };
-                checks.push(FloorCheck { path: format!("{surface}.{leg}.{metric}.{field}"), bound, side, measured, holds });
+                checks.push(FloorCheck { path, bound, side, measured, holds });
             }
         }
     }

@@ -6,7 +6,7 @@ mod metrics;
 
 use std::collections::HashSet;
 
-use contextful_eval::metrics::{Aggregate, Returned, RowRef};
+use contextful_eval::metrics::{Aggregate, Returned, RowRef, LEGS};
 use serde_json::{json, Value};
 
 pub const EPS: f64 = 1e-9;
@@ -38,4 +38,15 @@ pub fn node(n: u64, mean: f64) -> Value {
 /// The deterministic run block at k = 10.
 pub fn run(k: usize) -> Value {
     json!({ "k": k, "tier": "deterministic", "model": null, "samples": 1 })
+}
+
+/// Every leg of `retrieval` carrying every floor's figure at a value that holds, over `n` cases.
+pub fn clean_retrieval(n: u64) -> Value {
+    let leg = json!({
+        "r_precision": { "n": n, "mean": 0.8, "min": 0.8, "max": 0.8 },
+        "forbidden_row_rate": { "n": n, "mean": 0.0, "min": 0.0, "max": 0.0 },
+        "duplicate_row_rate": { "n": n, "mean": 0.0, "min": 0.0, "max": 0.0 },
+        "in_window_rate": { "n": n, "mean": 1.0, "min": 1.0, "max": 1.0 },
+    });
+    Value::Object(LEGS.iter().map(|l| (l.to_string(), leg.clone())).collect())
 }
