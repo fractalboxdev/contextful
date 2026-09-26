@@ -19,6 +19,8 @@ pub const EPOCH_TICK: Duration = Duration::from_millis(100);
 pub const SESSION_LOG_BYTES: usize = 1024 * 1024;
 /// Outbound requests one session holds open at once: 8.
 pub const IN_FLIGHT: usize = 8;
+/// Bytes one outbound request body carries: 8 MiB.
+pub const REQUEST_BODY_BYTES: usize = 8 * 1024 * 1024;
 /// Partition values one failure attribution returns per session: 512.
 pub const ATTRIBUTION_ENTRIES: usize = 512;
 /// Bytes in one attributed partition value: 512.

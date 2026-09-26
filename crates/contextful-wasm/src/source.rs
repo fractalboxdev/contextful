@@ -1,5 +1,8 @@
 //! A guest session behind the runner's [`Source`] port: one pull is one `next`, and the
 //! position after it travels as `{"kind", "bytes"}` with the bytes in hex.
+//!
+//! A failed pull forgets the open read, so its retry reopens at the position the runner
+//! asks for rather than trusting whatever state the failure left the guest's handle in.
 
 use crate::batch::rows;
 use crate::host::{Cursor, CursorKind, Session};
@@ -10,7 +13,8 @@ use serde_json::{json, Value};
 pub struct GuestSource {
     session: Session,
     table: String,
-    /// The position the open read stands at, as last handed to the runner.
+    /// The position the open read stands at, as last handed to the runner; `None` once a
+    /// pull fails.
     at: Option<Option<Value>>,
 }
 
@@ -45,7 +49,7 @@ pub fn cursor_from(v: &Value) -> Result<Cursor, Failure> {
         _ => return Err(bad()),
     };
     let hex = v.get("bytes").and_then(Value::as_str).ok_or_else(bad)?;
-    if hex.len() % 2 != 0 {
+    if !hex.is_ascii() || hex.len() % 2 != 0 {
         return Err(bad());
     }
     let bytes = (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16)).collect::<Result<Vec<u8>, _>>().map_err(|_| bad())?;
@@ -57,6 +61,16 @@ impl Source for GuestSource {
         if cancel.requested() {
             return Err(Failure::canceled("the run was stopped ahead of the pull"));
         }
+        let pulled = self.read(request);
+        if pulled.is_err() {
+            self.at = None;
+        }
+        pulled
+    }
+}
+
+impl GuestSource {
+    fn read(&mut self, request: &PullRequest) -> Result<Vec<u8>, Failure> {
         if self.at.as_ref() != Some(&request.position) {
             let from = request.position.as_ref().map(cursor_from).transpose()?;
             self.session.open(&self.table, from.as_ref())?;

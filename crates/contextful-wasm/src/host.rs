@@ -1,9 +1,13 @@
-//! The component host: one engine and linker, an epoch ticker arming wall-clock
-//! deadlines, and one store per session.
+//! The component host: one engine and linker, an epoch ticker, and one store per session.
+//!
+//! Every guest call runs on a fiber under a host-side timeout at its wall-clock deadline,
+//! so a guest blocked inside a host import — a clock wait, a vendor exchange, a
+//! reservation — returns at the deadline. The epoch deadline stays armed beside it for
+//! guest code that computes without yielding.
 //!
 //! A guest's standard library may import the rest of WASI; it links against an empty
-//! context — no preopens, no environment, no arguments, no socket grant — so those
-//! interfaces exist and grant nothing (`connector.import.empty-context`).
+//! context — no preopens, no environment, no arguments, sockets and name lookup denied —
+//! so those interfaces exist and grant nothing (`connector.import.empty-context`).
 
 use crate::limits::{Limits, ATTRIBUTION_ENTRIES, ATTRIBUTION_VALUE_BYTES, EPOCH_TICK};
 use crate::mediate::{Mediator, Reserve, Traffic};
@@ -12,11 +16,12 @@ use contextful_core::connector::package::{guest_config, Artifact, Digest, PinReq
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag};
 use contextful_runtime::client::HeaderValue;
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use wasmtime::component::{Component, HasSelf, Instance, Linker, ResourceAny, ResourceTable, TypedFunc};
-use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder, Trap};
+use wasmtime::component::{Component, HasSelf, Instance, InstancePre, Linker, ResourceAny, ResourceTable, TypedFunc};
+use wasmtime::{Config, Engine, ResourceLimiter, Store, Trap};
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpCtxView, WasiHttpView};
 
@@ -24,9 +29,10 @@ mod bindings {
     wasmtime::component::bindgen!({
         world: "contextful:connector/source-connector@1.2.0",
         path: "wit",
+        exports: { default: async },
         with: {
             "wasi:http": wasmtime_wasi_http::p2::bindings::http,
-            "wasi:io": wasmtime_wasi::p2::bindings::sync::io,
+            "wasi:io": wasmtime_wasi::p2::bindings::io,
             "wasi:clocks": wasmtime_wasi::p2::bindings::clocks,
         },
         require_store_data_send: true,
@@ -42,6 +48,19 @@ pub const WORLD: &str = "contextful:connector/source-connector@1.2.0";
 const CONFIG_INTERFACE: &str = "contextful:connector/config@1.2.0";
 /// The optional failure-attribution interface, probed on the instance by name.
 const ATTRIBUTION_INTERFACE: &str = "contextful:connector/attribution@1.2.0";
+
+/// Core instances one session's store creates. A component's shims and adapters each
+/// count; a guest built by the standard toolchain uses under ten.
+const INSTANCES: usize = 64;
+/// Linear memories one session's store creates.
+const MEMORIES: usize = 16;
+/// Tables one session's store creates.
+const TABLES: usize = 64;
+/// Table elements across every table of one session.
+const TABLE_ELEMENTS: usize = 1 << 20;
+
+type ConfigFunc = TypedFunc<(String,), (Result<(), wit::Error>,)>;
+type AttributionFunc = TypedFunc<(), (Vec<String>,)>;
 
 /// A scalar type a field declares (`connector.export.type-taxonomy`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,11 +124,74 @@ pub struct LogLine {
     pub message: String,
 }
 
+/// The store's resource budget. Linear memory is one budget across every memory the
+/// component instantiates (`connector.package.linear-memory`), so a component splitting
+/// its heap over several memories or core instances gets no more than one would.
+struct Budget {
+    memory_cap: usize,
+    memory_used: usize,
+    memory_pending: usize,
+    elements_used: usize,
+    elements_pending: usize,
+}
+
+impl Budget {
+    fn new(memory_cap: usize) -> Budget {
+        Budget { memory_cap, memory_used: 0, memory_pending: 0, elements_used: 0, elements_pending: 0 }
+    }
+}
+
+impl ResourceLimiter for Budget {
+    fn memory_growing(&mut self, current: usize, desired: usize, _maximum: Option<usize>) -> wasmtime::Result<bool> {
+        let grow = desired.saturating_sub(current);
+        let total = self.memory_used.saturating_add(grow);
+        if total > self.memory_cap {
+            wasmtime::bail!("the connector's linear memory would reach {total} bytes, over its {} byte cap", self.memory_cap);
+        }
+        self.memory_used = total;
+        self.memory_pending = grow;
+        Ok(true)
+    }
+
+    fn memory_grow_failed(&mut self, _error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.memory_used -= std::mem::take(&mut self.memory_pending);
+        Ok(())
+    }
+
+    fn table_growing(&mut self, current: usize, desired: usize, _maximum: Option<usize>) -> wasmtime::Result<bool> {
+        let grow = desired.saturating_sub(current);
+        let total = self.elements_used.saturating_add(grow);
+        if total > TABLE_ELEMENTS {
+            wasmtime::bail!("the connector's tables would hold {total} elements, over {TABLE_ELEMENTS}");
+        }
+        self.elements_used = total;
+        self.elements_pending = grow;
+        Ok(true)
+    }
+
+    fn table_grow_failed(&mut self, _error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.elements_used -= std::mem::take(&mut self.elements_pending);
+        Ok(())
+    }
+
+    fn instances(&self) -> usize {
+        INSTANCES
+    }
+
+    fn tables(&self) -> usize {
+        TABLES
+    }
+
+    fn memories(&self) -> usize {
+        MEMORIES
+    }
+}
+
 struct Ctx {
     wasi: WasiCtx,
     http: WasiHttpCtx,
     table: ResourceTable,
-    memory: StoreLimits,
+    budget: Budget,
     mediator: Mediator,
     log_left: usize,
     logs: Vec<LogLine>,
@@ -184,9 +266,9 @@ impl Drop for Ticker {
     }
 }
 
-/// A compiled component, reusable across sessions.
+/// A compiled and linked component, reusable across sessions.
 pub struct Connector {
-    component: Component,
+    pre: InstancePre<Ctx>,
 }
 
 /// The engine every session of the process runs on.
@@ -207,16 +289,18 @@ impl ComponentHost {
         config.epoch_interruption(true);
         let engine = Engine::new(&config).map_err(load_failure)?;
         let mut linker: Linker<Ctx> = Linker::new(&engine);
-        wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(load_failure)?;
-        wasmtime_wasi_http::p2::add_only_http_to_linker_sync(&mut linker).map_err(load_failure)?;
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker).map_err(load_failure)?;
+        wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker).map_err(load_failure)?;
         bindings::wasi::logging::logging::add_to_linker::<Ctx, HasSelf<Ctx>>(&mut linker, |c| c).map_err(load_failure)?;
         let ticker = Arc::new(Ticker::spawn(engine.clone())?);
         Ok(ComponentHost { engine, linker, ticker })
     }
 
-    /// Compile `wasm` as a component. Core modules and malformed bytes refuse.
+    /// Compile `wasm` as a component and resolve its imports. Core modules, malformed
+    /// bytes and imports the host does not offer refuse.
     pub fn load(&self, wasm: &[u8]) -> Result<Connector, Failure> {
-        Ok(Connector { component: Component::new(&self.engine, wasm).map_err(load_failure)? })
+        let component = Component::new(&self.engine, wasm).map_err(load_failure)?;
+        Ok(Connector { pre: self.linker.instantiate_pre(&component).map_err(load_failure)? })
     }
 
     /// Admit resolved artifact bytes against their reference's pin, then compile them.
@@ -227,42 +311,57 @@ impl ComponentHost {
     }
 
     /// Instantiate a session. `config` is the pipeline's guest table: checked ahead of
-    /// any I/O, then delivered once, ahead of discovery (`connector.import.forwarded-config`).
+    /// any I/O, then delivered once per instance, ahead of discovery
+    /// (`connector.import.forwarded-config`).
     pub fn open(&self, connector: &Connector, grant: Grant, limits: &Limits, config: Option<&serde_json::Value>) -> Result<Session, Failure> {
-        let refuse = |e: ConnectorError| Failure::deterministic(FailureTag::Config, e.to_string());
         let config = config.map(guest_config).transpose().map_err(refuse)?;
         if !grant.attach.is_empty() {
             grant.allow.check_bound().map_err(refuse)?;
         }
-        let memory = usize::try_from(limits.memory_bytes).unwrap_or(usize::MAX);
-        let ctx = Ctx {
-            wasi: WasiCtx::builder().build(),
-            http: WasiHttpCtx::new(),
-            table: ResourceTable::new(),
-            memory: StoreLimitsBuilder::new().memory_size(memory).trap_on_grow_failure(true).build(),
-            mediator: Mediator::new(grant.allow, grant.attach, grant.gate),
-            log_left: limits.log_bytes,
-            logs: Vec::new(),
-            logs_dropped: 0,
+        let (store, guest, instance) = instantiate(&connector.pre, &grant, limits)?;
+        let mut session = Session {
+            pre: connector.pre.clone(),
+            grant,
+            config,
+            store,
+            guest,
+            instance,
+            handle: None,
+            poisoned: false,
+            limits: limits.clone(),
+            _ticker: self.ticker.clone(),
         };
-        let mut store = Store::new(&self.engine, ctx);
-        store.limiter(|c| &mut c.memory);
-        store.epoch_deadline_trap();
-        arm(&mut store, limits.discovery_deadline);
-        let instance = self.linker.instantiate(&mut store, &connector.component).map_err(|e| trapped(e, "instantiation"))?;
-        let guest = SourceConnector::new(&mut store, &instance).map_err(load_failure)?;
-        let mut session = Session { store, guest, instance, handle: None, limits: limits.clone(), _ticker: self.ticker.clone() };
-        if let Some(table) = config {
-            let Some(configure) = session.config_func() else {
-                return Err(refuse(ConnectorError::ConnectorConfigUnclaimed(format!(
-                    "a guest table is declared and the guest exports no `{CONFIG_INTERFACE}`"
-                ))));
-            };
-            let deadline = session.limits.discovery_deadline;
-            session.call(deadline, move |s| configure.call(&mut s.store, (table,)).map(|(r,)| r))?.map_err(guest_error)?;
-        }
+        session.configure()?;
         Ok(session)
     }
+}
+
+fn refuse(e: ConnectorError) -> Failure {
+    Failure::deterministic(FailureTag::Config, e.to_string())
+}
+
+/// A fresh store and instance, instantiated under the discovery deadline.
+fn instantiate(pre: &InstancePre<Ctx>, grant: &Grant, limits: &Limits) -> Result<(Store<Ctx>, SourceConnector, Instance), Failure> {
+    let mut wasi = WasiCtx::builder();
+    wasi.allow_tcp(false).allow_udp(false).allow_ip_name_lookup(false).socket_addr_check(|_, _| Box::pin(async { false }));
+    let ctx = Ctx {
+        wasi: wasi.build(),
+        http: WasiHttpCtx::new(),
+        table: ResourceTable::new(),
+        budget: Budget::new(usize::try_from(limits.memory_bytes).unwrap_or(usize::MAX)),
+        mediator: Mediator::new(grant.allow.clone(), grant.attach.clone(), grant.gate.clone()),
+        log_left: limits.log_bytes,
+        logs: Vec::new(),
+        logs_dropped: 0,
+    };
+    let mut store = Store::new(pre.engine(), ctx);
+    store.limiter(|c| &mut c.budget);
+    store.epoch_deadline_trap();
+    let deadline = limits.discovery_deadline;
+    arm(&mut store, deadline);
+    let instance = bounded(deadline, "instantiation", pre.instantiate_async(&mut store))?;
+    let guest = SourceConnector::new(&mut store, &instance).map_err(load_failure)?;
+    Ok((store, guest, instance))
 }
 
 fn arm(store: &mut Store<Ctx>, deadline: Duration) {
@@ -270,15 +369,31 @@ fn arm(store: &mut Store<Ctx>, deadline: Duration) {
     store.set_epoch_deadline(u64::try_from(ticks).unwrap_or(u64::MAX));
 }
 
+/// Drive one guest call to completion or to `deadline`, whichever comes first. The epoch
+/// deadline interrupts guest code; the timeout interrupts a wait inside a host import.
+fn bounded<T>(deadline: Duration, during: &str, call: impl Future<Output = wasmtime::Result<T>>) -> Result<T, Failure> {
+    match wasmtime_wasi::runtime::in_tokio(async move { tokio::time::timeout(deadline, call).await }) {
+        Ok(Ok(v)) => Ok(v),
+        Ok(Err(e)) => Err(trapped(e, during)),
+        Err(_) => Err(overran(during)),
+    }
+}
+
+fn overran(during: &str) -> Failure {
+    Failure::new(FailureTag::Transient, format!("the guest ran past its call deadline during {during}"))
+}
+
 /// A trap is a bound hit or a guest fault, and either is transient
 /// (`run.retry.bound-hit-is-transient`).
 fn trapped(e: wasmtime::Error, during: &str) -> Failure {
+    if matches!(e.downcast_ref::<Trap>(), Some(Trap::Interrupt)) {
+        return overran(during);
+    }
     let why = match e.downcast_ref::<Trap>() {
-        Some(Trap::Interrupt) => "ran past its call deadline".to_string(),
-        Some(other) => format!("trapped: {other}"),
-        None => format!("trapped: {e:#}"),
+        Some(other) => format!("{other}"),
+        None => format!("{e:#}"),
     };
-    Failure::new(FailureTag::Transient, format!("the guest {why} during {during}"))
+    Failure::new(FailureTag::Transient, format!("the guest trapped: {why} during {during}"))
 }
 
 fn guest_error(e: wit::Error) -> Failure {
@@ -321,22 +436,54 @@ fn data_type(t: wit::DataType) -> DataType {
 }
 
 /// One instantiated guest and the read it holds open.
+///
+/// A call that traps or overruns its deadline leaves the instance unusable, so the
+/// session drops it with its open read, and the next call runs on a fresh instance of the
+/// same component under the same grant and configuration. Logs and traffic carry over.
 pub struct Session {
+    pre: InstancePre<Ctx>,
+    grant: Grant,
+    config: Option<String>,
     store: Store<Ctx>,
     guest: SourceConnector,
     instance: Instance,
     handle: Option<ResourceAny>,
+    poisoned: bool,
     limits: Limits,
     _ticker: Arc<Ticker>,
 }
 
 impl Session {
-    /// Run one guest call under a fresh deadline. A request the mediation point refused
-    /// or held back during the call fails it, whatever the guest made of the refusal.
-    fn call<T>(&mut self, deadline: Duration, f: impl FnOnce(&mut Self) -> wasmtime::Result<T>) -> Result<T, Failure> {
+    /// Replace a poisoned instance, then arm `deadline` and snapshot the traffic record.
+    fn begin(&mut self, deadline: Duration) -> Result<Traffic, Failure> {
+        if self.poisoned {
+            self.revive()?;
+        }
         arm(&mut self.store, deadline);
-        let before = self.traffic();
-        let out = f(self).map_err(|e| trapped(e, "a call"))?;
+        Ok(self.traffic())
+    }
+
+    fn revive(&mut self) -> Result<(), Failure> {
+        let (store, guest, instance) = instantiate(&self.pre, &self.grant, &self.limits)?;
+        let old = std::mem::replace(&mut self.store, store);
+        let traffic = old.data().mediator.traffic.lock().map(|t| t.clone()).unwrap_or_default();
+        let old = old.into_data();
+        let ctx = self.store.data_mut();
+        *ctx.mediator.traffic.lock().unwrap_or_else(|e| e.into_inner()) = traffic;
+        (ctx.logs, ctx.logs_dropped, ctx.log_left) = (old.logs, old.logs_dropped, old.log_left);
+        (self.guest, self.instance, self.handle, self.poisoned) = (guest, instance, None, false);
+        self.configure()
+    }
+
+    /// Settle one guest call. A trap or an overrun poisons the instance. A request the
+    /// mediation point refused or held back during the call fails it, whatever the guest
+    /// made of the refusal.
+    fn finish<T>(&mut self, before: Traffic, out: Result<T, Failure>) -> Result<T, Failure> {
+        if out.is_err() {
+            self.poisoned = true;
+            self.handle = None;
+        }
+        let out = out?;
         let after = self.traffic();
         if let Some(host) = after.denied.get(before.denied.len()) {
             return Err(Failure::deterministic(
@@ -353,26 +500,34 @@ impl Session {
         Ok(out)
     }
 
-    fn read_deadline(&self) -> Duration {
-        self.limits.read_deadline
+    /// Deliver the guest table, when one is declared, to the current instance.
+    fn configure(&mut self) -> Result<(), Failure> {
+        let Some(table) = self.config.clone() else {
+            return Ok(());
+        };
+        let Some(configure) = self.config_func() else {
+            return Err(refuse(ConnectorError::ConnectorConfigUnclaimed(format!(
+                "a guest table is declared and the guest exports no `{CONFIG_INTERFACE}`"
+            ))));
+        };
+        let d = self.limits.discovery_deadline;
+        let before = self.begin(d)?;
+        let out = bounded(d, "configuration", configure.call_async(&mut self.store, (table,)));
+        self.finish(before, out)?.0.map_err(guest_error)
     }
 
-    fn discovery_deadline(&self) -> Duration {
-        self.limits.discovery_deadline
-    }
-
-    fn config_func(&mut self) -> Option<TypedFunc<(String,), (Result<(), wit::Error>,)>> {
+    fn config_func(&mut self) -> Option<ConfigFunc> {
         let instance = self.instance;
         let (_, iface) = instance.get_export(&mut self.store, None, CONFIG_INTERFACE)?;
         let (_, func) = instance.get_export(&mut self.store, Some(&iface), "configure")?;
-        instance.get_typed_func(&mut self.store, &func).ok()
+        instance.get_typed_func(&mut self.store, func).ok()
     }
 
-    fn attribution_func(&mut self) -> Option<TypedFunc<(), (Vec<String>,)>> {
+    fn attribution_func(&mut self) -> Option<AttributionFunc> {
         let instance = self.instance;
         let (_, iface) = instance.get_export(&mut self.store, None, ATTRIBUTION_INTERFACE)?;
         let (_, func) = instance.get_export(&mut self.store, Some(&iface), "failed-partitions")?;
-        instance.get_typed_func(&mut self.store, &func).ok()
+        instance.get_typed_func(&mut self.store, func).ok()
     }
 
     /// Whether the guest exports the configuration interface.
@@ -386,13 +541,17 @@ impl Session {
     }
 
     pub fn cursor_kind(&mut self) -> Result<CursorKind, Failure> {
-        let d = self.discovery_deadline();
-        self.call(d, |s| s.guest.contextful_connector_source().call_cursor_kind(&mut s.store)).map(kind_in)
+        let d = self.limits.discovery_deadline;
+        let before = self.begin(d)?;
+        let out = bounded(d, "a call", self.guest.contextful_connector_source().call_cursor_kind(&mut self.store));
+        self.finish(before, out).map(kind_in)
     }
 
     pub fn discover(&mut self) -> Result<Vec<Schema>, Failure> {
-        let d = self.discovery_deadline();
-        let schemas = self.call(d, |s| s.guest.contextful_connector_source().call_discover(&mut s.store))?.map_err(guest_error)?;
+        let d = self.limits.discovery_deadline;
+        let before = self.begin(d)?;
+        let out = bounded(d, "a call", self.guest.contextful_connector_source().call_discover(&mut self.store));
+        let schemas = self.finish(before, out)?.map_err(guest_error)?;
         Ok(schemas
             .into_iter()
             .map(|s| Schema {
@@ -407,8 +566,10 @@ impl Session {
     pub fn open(&mut self, table: &str, from: Option<&Cursor>) -> Result<(), Failure> {
         self.close();
         let from = from.map(|c| wit::Cursor { kind: kind_out(c.kind), bytes: c.bytes.clone() });
-        let d = self.read_deadline();
-        let handle = self.call(d, |s| s.guest.contextful_connector_source().call_open(&mut s.store, table, from.as_ref()))?.map_err(guest_error)?;
+        let d = self.limits.read_deadline;
+        let before = self.begin(d)?;
+        let out = bounded(d, "a call", self.guest.contextful_connector_source().call_open(&mut self.store, table, from.as_ref()));
+        let handle = self.finish(before, out)?.map_err(guest_error)?;
         self.handle = Some(handle);
         Ok(())
     }
@@ -418,17 +579,22 @@ impl Session {
     }
 
     /// The next batch as Arrow IPC bytes, or `None` once the read is exhausted.
+    #[allow(clippy::should_implement_trait, reason = "a fallible guest call under a deadline, not an iterator step")]
     pub fn next(&mut self) -> Result<Option<Vec<u8>>, Failure> {
         let handle = self.opened()?;
-        let d = self.read_deadline();
-        self.call(d, |s| s.guest.contextful_connector_source().read_handle().call_next(&mut s.store, handle))?.map_err(guest_error)
+        let d = self.limits.read_deadline;
+        let before = self.begin(d)?;
+        let out = bounded(d, "a call", self.guest.contextful_connector_source().read_handle().call_next(&mut self.store, handle));
+        self.finish(before, out)?.map_err(guest_error)
     }
 
     /// Where the open read stands after the last batch.
     pub fn position(&mut self) -> Result<Cursor, Failure> {
         let handle = self.opened()?;
-        let d = self.read_deadline();
-        let c = self.call(d, |s| s.guest.contextful_connector_source().read_handle().call_position(&mut s.store, handle))?;
+        let d = self.limits.read_deadline;
+        let before = self.begin(d)?;
+        let out = bounded(d, "a call", self.guest.contextful_connector_source().read_handle().call_position(&mut self.store, handle));
+        let c = self.finish(before, out)?;
         Ok(Cursor { kind: kind_in(c.kind), bytes: c.bytes })
     }
 
@@ -436,11 +602,13 @@ impl Session {
     /// exporting no attribution. A value over [`ATTRIBUTION_VALUE_BYTES`] and entries past
     /// [`ATTRIBUTION_ENTRIES`] are dropped and stay unattributed; the rest keep their bytes.
     pub fn failed_partitions(&mut self) -> Result<Vec<String>, Failure> {
+        let d = self.limits.read_deadline;
+        let before = self.begin(d)?;
         let Some(func) = self.attribution_func() else {
             return Ok(Vec::new());
         };
-        let d = self.read_deadline();
-        let mut values = self.call(d, move |s| func.call(&mut s.store, ()).map(|(v,)| v))?;
+        let out = bounded(d, "a call", func.call_async(&mut self.store, ()));
+        let (mut values,) = self.finish(before, out)?;
         values.retain(|v| v.len() <= ATTRIBUTION_VALUE_BYTES);
         values.truncate(ATTRIBUTION_ENTRIES);
         Ok(values)
@@ -462,12 +630,18 @@ impl Session {
     }
 
     fn close(&mut self) {
-        if let Some(handle) = self.handle.take() {
-            // The handle's destructor runs guest code; it gets a fresh deadline, and the
-            // table entry goes whether or not it traps.
-            let d = self.read_deadline();
-            arm(&mut self.store, d);
-            let _ = handle.resource_drop(&mut self.store);
+        let Some(handle) = self.handle.take() else {
+            return;
+        };
+        if self.poisoned {
+            return;
+        }
+        // The handle's destructor runs guest code; it gets a fresh deadline, and the
+        // table entry goes whether or not it traps.
+        let d = self.limits.read_deadline;
+        arm(&mut self.store, d);
+        if bounded(d, "a close", handle.resource_drop_async(&mut self.store)).is_err() {
+            self.poisoned = true;
         }
     }
 }

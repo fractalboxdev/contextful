@@ -12,6 +12,10 @@
 //! | `swallow <url>`  | one GET whose failure the guest ignores, then ends                 |
 //! | `burst <n> <url>`| `n` GETs issued before any is awaited; one row counting the 200s   |
 //! | `fail`           | a transient error                                                  |
+//! | `flaky`          | `items`, whose second batch fails once after the handle ran to its end |
+//! | `sleep <ms>`     | blocks in the monotonic clock for `ms`, then ends                  |
+//! | `post <kib> <url>`| one POST streaming a `kib` KiB body; one row naming the status   |
+//! | `sockets <port>` | one row naming what a TCP connect and a name lookup returned      |
 
 #[cfg(not(feature = "optional"))]
 wit_bindgen::generate!({
@@ -44,13 +48,14 @@ use exports::contextful::connector::source::{Guest, GuestReadHandle, ReadHandle}
 use std::cell::RefCell;
 use std::sync::Arc;
 use wasi::http::outgoing_handler;
-use wasi::http::types::{Fields, IncomingBody, OutgoingBody, OutgoingRequest, Scheme};
+use wasi::http::types::{Fields, IncomingBody, Method, OutgoingBody, OutgoingRequest, Scheme};
 use wasi::io::streams::StreamError;
 use wasi::logging::logging::{log, Level};
 
 thread_local! {
     static CALLS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     static CONFIG: RefCell<Option<String>> = const { RefCell::new(None) };
+    static FLAKED: RefCell<bool> = const { RefCell::new(false) };
 }
 
 fn called(name: &str) {
@@ -98,7 +103,7 @@ fn items(ids: &[i64]) -> Vec<u8> {
     ipc(&RecordBatch::try_new(Arc::new(schema), cols).expect("batch"))
 }
 
-fn request(url: &str) -> Result<outgoing_handler::FutureIncomingResponse, String> {
+fn outgoing(url: &str) -> Result<OutgoingRequest, String> {
     let (scheme, rest) = url.split_once("://").ok_or("no scheme")?;
     let (authority, path) = match rest.split_once('/') {
         Some((a, p)) => (a, format!("/{p}")),
@@ -108,6 +113,11 @@ fn request(url: &str) -> Result<outgoing_handler::FutureIncomingResponse, String
     req.set_scheme(Some(&if scheme == "https" { Scheme::Https } else { Scheme::Http })).map_err(|_| "scheme")?;
     req.set_authority(Some(authority)).map_err(|_| "authority")?;
     req.set_path_with_query(Some(&path)).map_err(|_| "path")?;
+    Ok(req)
+}
+
+fn request(url: &str) -> Result<outgoing_handler::FutureIncomingResponse, String> {
+    let req = outgoing(url)?;
     let body = req.body().map_err(|_| "body")?;
     OutgoingBody::finish(body, None).map_err(|e| format!("{e:?}"))?;
     outgoing_handler::handle(req, None).map_err(|e| format!("{e:?}"))
@@ -135,6 +145,26 @@ fn answer(fut: outgoing_handler::FutureIncomingResponse) -> Result<(u16, Vec<(St
     Ok((status, headers, buf))
 }
 
+/// One POST whose body streams `kib` KiB after the request is handed over. A write the
+/// host refuses ends the body early.
+fn post(url: &str, kib: usize) -> Result<u16, String> {
+    let req = outgoing(url)?;
+    req.set_method(&Method::Post).map_err(|_| "method")?;
+    let body = req.body().map_err(|_| "body")?;
+    let fut = outgoing_handler::handle(req, None).map_err(|e| format!("{e:?}"))?;
+    {
+        let stream = body.write().map_err(|_| "write")?;
+        let chunk = [b'x'; 4096];
+        for _ in 0..kib / 4 {
+            if stream.blocking_write_and_flush(&chunk).is_err() {
+                break;
+            }
+        }
+    }
+    let _ = OutgoingBody::finish(body, None);
+    answer(fut).map(|(status, _, _)| status)
+}
+
 fn get(url: &str) -> Result<(u16, Vec<(String, Vec<u8>)>, Vec<u8>), String> {
     answer(request(url)?)
 }
@@ -142,7 +172,7 @@ fn get(url: &str) -> Result<(u16, Vec<(String, Vec<u8>)>, Vec<u8>), String> {
 struct Probe;
 
 enum Mode {
-    Items { ids: Vec<i64>, at: usize, last: i64 },
+    Items { ids: Vec<i64>, at: usize, last: i64, flaky: bool },
     Spin,
     Grow,
     Log,
@@ -151,6 +181,8 @@ enum Mode {
     Fetch(String),
     Swallow(String),
     Burst(usize, String),
+    Sleep(u64),
+    Post(usize, String),
 }
 
 pub struct Handle {
@@ -187,9 +219,29 @@ impl Guest for Probe {
         called("open");
         let mut words = table.split_whitespace();
         let mode = match words.next().unwrap_or_default() {
-            "items" => {
+            name @ ("items" | "flaky") => {
                 let after = from.map(|c| String::from_utf8_lossy(&c.bytes).parse::<i64>().unwrap_or(0)).unwrap_or(0);
-                Mode::Items { ids: (1..=3).filter(|i| *i > after).collect(), at: 0, last: after }
+                Mode::Items { ids: (1..=3).filter(|i| *i > after).collect(), at: 0, last: after, flaky: name == "flaky" }
+            }
+            "sleep" => Mode::Sleep(words.next().and_then(|n| n.parse().ok()).unwrap_or(0)),
+            "post" => {
+                let kib = words.next().and_then(|n| n.parse().ok()).unwrap_or(0);
+                Mode::Post(kib, words.next().unwrap_or_default().to_string())
+            }
+            "sockets" => {
+                let port = words.next().unwrap_or("80");
+                let tcp = match std::net::TcpStream::connect(format!("127.0.0.1:{port}")) {
+                    Ok(_) => "connected".to_string(),
+                    Err(e) => format!("{:?}", e.kind()),
+                };
+                let dns = {
+                    use std::net::ToSocketAddrs;
+                    match ("localhost", 80).to_socket_addrs() {
+                        Ok(addrs) => format!("resolved {}", addrs.count()),
+                        Err(e) => format!("{:?}", e.kind()),
+                    }
+                };
+                Mode::Once(text_batch("sockets", &format!("tcp={tcp} dns={dns}")))
             }
             "spin" => Mode::Spin,
             "grow" => Mode::Grow,
@@ -219,9 +271,13 @@ impl GuestReadHandle for Handle {
     fn next(&self) -> Result<Option<Vec<u8>>, Error> {
         let mut mode = self.mode.borrow_mut();
         match &mut *mode {
-            Mode::Items { ids, at, last } => {
+            Mode::Items { ids, at, last, flaky } => {
                 if *at >= ids.len() {
                     return Ok(None);
+                }
+                if *flaky && *at > 0 && !FLAKED.with(|f| f.replace(true)) {
+                    *at = ids.len();
+                    return Err(Error::Transient("simulated, after the handle ran to its end".into()));
                 }
                 let end = (*at + 2).min(ids.len());
                 let chunk = ids[*at..end].to_vec();
@@ -275,6 +331,18 @@ impl GuestReadHandle for Handle {
                 *mode = Mode::Done;
                 let _ = get(&url);
                 Ok(None)
+            }
+            Mode::Sleep(ms) => {
+                let ns = *ms * 1_000_000;
+                *mode = Mode::Done;
+                wasi::clocks::monotonic_clock::subscribe_duration(ns).block();
+                Ok(None)
+            }
+            Mode::Post(kib, url) => {
+                let (kib, url) = (*kib, url.clone());
+                *mode = Mode::Done;
+                let status = post(&url, kib).map_err(Error::Transient)?;
+                Ok(Some(text_batch("status", &status.to_string())))
             }
             Mode::Burst(n, url) => {
                 let (n, url) = (*n, url.clone());

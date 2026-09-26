@@ -14,6 +14,14 @@ fn a_guest_standard_library_sees_no_environment_arguments_or_files() {
     let mut s = open();
     s.open("ambient", None).unwrap();
     assert_eq!(text(&s.next().unwrap().unwrap()), "env=0 args=0 root=none");
+
+    // Sockets link and grant nothing: a TCP connect to a listening loopback port and a
+    // name lookup both refuse. The guest's standard library reports a refused lookup as
+    // an uncategorized resolver failure.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    s.open(&format!("sockets {port}"), None).unwrap();
+    assert_eq!(text(&s.next().unwrap().unwrap()), "tcp=PermissionDenied dns=Uncategorized");
 }
 
 /// The pipeline's guest configuration table is the one part of the source configuration crossing inward, as one JSON

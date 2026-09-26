@@ -82,9 +82,8 @@ fn either_switch_requires_a_local_pin() {
     }
 }
 
-/// With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of
-/// the bytes found.
-// spec: connector.package.local-unpinned@c59e312a
+/// `Artifact::admit` raises `ConnectorLocalUnpinned` under either switch, carrying the digest of the bytes found. No
+/// build step calls it, so `connector.package.local-unpinned` stays unpinned here.
 #[test]
 fn an_unpinned_local_artifact_under_a_requirement_names_the_digest_found() {
     let local = Artifact::parse("connectors/vendor.wasm", None).unwrap();
@@ -122,9 +121,8 @@ fn a_guest_table_off_its_shape_is_refused() {
     assert_eq!(guest_config(&json!({ "region": "eu", "limit": 50 })).unwrap(), r#"{"limit":50,"region":"eu"}"#);
 }
 
-/// The forwarded table folds into the connector's content hash; with no table forwarded, the artifact digest is that
-/// hash verbatim.
-// spec: connector.import.config-hashing@1a312bfb
+/// `content_hash` folds the forwarded table into the artifact digest and returns the digest verbatim with no table. No
+/// pipeline hash reads it, so `connector.import.config-hashing` stays unpinned here.
 #[test]
 fn the_forwarded_table_folds_into_the_content_hash() {
     let digest = Digest::of(BYTES);

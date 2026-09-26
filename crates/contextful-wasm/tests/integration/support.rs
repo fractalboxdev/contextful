@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 pub const PROBE: &[u8] = include_bytes!("../fixtures/probe.wasm");
 /// The probe guest exporting the base world alone.
 pub const PROBE_BASE: &[u8] = include_bytes!("../fixtures/probe-base.wasm");
+/// A component instantiating three linear memories, 281.25 MiB together (`memories.wat`).
+pub const MEMORIES: &[u8] = include_bytes!("../fixtures/memories.wasm");
 
 /// One host and both compiled guests for the process: compiling is per engine, and a
 /// session carries its own store, memory cap and deadline.

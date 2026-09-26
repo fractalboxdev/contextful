@@ -1,9 +1,9 @@
 //! `connector.package`: the per-connector resource bounds.
 
-use crate::support::{host, loopback, open, open_with, text, Response, Server, PROBE, PROBE_BASE};
+use crate::support::{host, loopback, open, open_with, text, Response, Server, MEMORIES, PROBE, PROBE_BASE};
 use contextful_core::connector::package::{Artifact, Digest, PinRequirement};
 use contextful_core::run::FailureTag;
-use contextful_wasm::limits::{DISCOVERY_DEADLINE, EPOCH_TICK, IN_FLIGHT, READ_DEADLINE, SESSION_LOG_BYTES};
+use contextful_wasm::limits::{DISCOVERY_DEADLINE, EPOCH_TICK, IN_FLIGHT, READ_DEADLINE, REQUEST_BODY_BYTES, SESSION_LOG_BYTES};
 use contextful_wasm::Limits;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -44,6 +44,17 @@ fn linear_memory_defaults_to_256_mib_and_rises_to_at_most_2_gib() {
     let f = s.next().unwrap_err();
     assert_eq!(f.tag, FailureTag::Transient, "{f}");
     assert!(f.message.contains("trapped"), "{f}");
+
+    // The cap is one budget across every memory the component instantiates: three
+    // memories each under 256 MiB, 281.25 MiB together, refuse at instantiation.
+    let (host, _, _) = host();
+    let many = host.load(MEMORIES).unwrap();
+    let f = host.open(&many, loopback(), &Limits::default(), None).err().expect("refused");
+    assert_eq!(f.tag, FailureTag::Transient, "{f}");
+    assert!(f.message.contains("linear memory"), "{f}");
+    let roomy = Limits::default().with_memory(512 * 1024 * 1024).unwrap();
+    let f = host.open(&many, loopback(), &roomy, None).err().expect("not a source connector");
+    assert!(f.message.contains("does not load"), "under a larger cap the same component instantiates: {f}");
 }
 
 /// A read call carries a 30 s wall-clock deadline and a discovery call a 60 s one, armed by epoch interruption at
@@ -62,6 +73,27 @@ fn a_read_call_is_interrupted_at_its_deadline() {
     assert_eq!(f.tag, FailureTag::Transient, "{f}");
     assert!(f.message.contains("deadline"), "{f}");
     assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+
+    // The deadline bounds a guest blocked inside a host import: a clock wait the guest
+    // sized itself, and an exchange with a vendor slower than the deadline.
+    let mut s = open_with(loopback(), &short, None).unwrap();
+    s.open("sleep 5000", None).unwrap();
+    let started = Instant::now();
+    let f = s.next().unwrap_err();
+    assert!(f.message.contains("deadline"), "{f}");
+    assert!(started.elapsed() < Duration::from_secs(2), "a clock wait outran the deadline: {:?}", started.elapsed());
+
+    let slow = Server::start(|_| {
+        std::thread::sleep(Duration::from_secs(4));
+        Response::text(200, "late")
+    });
+    let mut s = open_with(loopback(), &short, None).unwrap();
+    s.open(&format!("fetch {}", slow.url("/slow")), None).unwrap();
+    let started = Instant::now();
+    let f = s.next().unwrap_err();
+    assert_eq!(f.tag, FailureTag::Transient, "{f}");
+    assert!(f.message.contains("deadline"), "{f}");
+    assert!(started.elapsed() < Duration::from_secs(2), "a vendor wait outran the deadline: {:?}", started.elapsed());
 
     // A discovery call runs under its own deadline: a read deadline below one epoch tick
     // leaves discovery untouched.
@@ -98,4 +130,25 @@ fn a_session_logs_within_1_mib_and_holds_8_requests_outbound() {
     let peak = peak.load(Ordering::SeqCst);
     assert!(peak <= IN_FLIGHT, "{peak} requests were outbound at once");
     assert!(peak > 1, "the guest's requests overlap");
+}
+
+/// A guest's outbound request body carries at most 8 MiB. The host stops reading past it and fails the call as a
+/// deterministic refusal before the request reaches the vendor.
+// spec: connector.package.request-body@6e5f58ea
+#[test]
+fn an_outbound_body_past_8_mib_fails_the_call_before_the_vendor() {
+    assert_eq!(REQUEST_BODY_BYTES, 8 * 1024 * 1024);
+    let server = Server::start(|r| Response::text(200, r.header("content-length").unwrap_or("none")));
+    let mut s = open();
+    s.open(&format!("post 1024 {}", server.url("/v1")), None).unwrap();
+    assert_eq!(text(&s.next().unwrap().unwrap()), "200", "a 1 MiB body goes out");
+    assert_eq!(server.received()[0].header("content-length"), Some("1048576"));
+
+    let mut s = open();
+    s.open(&format!("post 9216 {}", server.url("/v1")), None).unwrap();
+    let f = s.next().unwrap_err();
+    assert!(f.deterministic, "{f}");
+    assert!(f.message.contains("request body"), "{f}");
+    assert_eq!(server.received().len(), 1, "the over-long request never reached the vendor");
+    assert_eq!(s.traffic().refused.len(), 1);
 }

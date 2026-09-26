@@ -6,4 +6,5 @@ mod export;
 mod import;
 mod meter;
 mod package;
+mod source;
 mod support;

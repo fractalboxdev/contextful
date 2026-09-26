@@ -3,8 +3,11 @@
 //! origin, which vets the address, pins the origin and attaches the host-held headers.
 //! The guest names a request and receives a response; no import hands it credential
 //! bytes (`connector.attach.no-material-to-a-guest`).
+//!
+//! Every wait — the reservation, an in-flight slot, the body, the exchange — happens
+//! inside the returned future, so the call deadline in `host` bounds it.
 
-use crate::limits::IN_FLIGHT;
+use crate::limits::{IN_FLIGHT, REQUEST_BODY_BYTES};
 use bytes::Bytes;
 use contextful_core::connector::attach::{scrub, Allowlist};
 use contextful_core::run::Failure;
@@ -130,19 +133,7 @@ impl WasiHttpHooks for Mediator {
             self.note(|t| t.denied.push(host));
             return answered(Err(Error::HttpRequestDenied));
         }
-        if let Some(gate) = &self.gate {
-            match gate.reserve() {
-                Reservation::Granted => {}
-                Reservation::Denied { retry_after_secs } => {
-                    self.note(|t| t.throttled += 1);
-                    return answered(Ok((synthesized_429(retry_after_secs), done())));
-                }
-                Reservation::Unreachable(why) => {
-                    self.note(|t| t.held_back.push(why.clone()));
-                    return answered(Err(Error::InternalError(Some(format!("the limiter could not answer: {why}")))));
-                }
-            }
-        }
+        let gate = self.gate.clone();
         let mut headers: Vec<(String, HeaderValue)> = request
             .headers()
             .iter()
@@ -155,13 +146,36 @@ impl WasiHttpHooks for Mediator {
         let slots = self.in_flight.clone();
         let traffic = self.traffic.clone();
         Box::new(async move {
-            let _slot = slots.acquire_owned().await.map_err(|e| Error::InternalError(Some(e.to_string())))?;
-            let body = request.into_body().collect().await?.to_bytes();
-            let body = (!body.is_empty()).then(|| body.to_vec());
+            if let Some(gate) = gate {
+                let reservation = tokio::task::spawn_blocking(move || gate.reserve()).await.map_err(|e| Error::InternalError(Some(e.to_string())))?;
+                match reservation {
+                    Reservation::Granted => {}
+                    Reservation::Denied { retry_after_secs } => {
+                        traffic.lock().unwrap_or_else(|e| e.into_inner()).throttled += 1;
+                        return Ok((synthesized_429(retry_after_secs), done()));
+                    }
+                    Reservation::Unreachable(why) => {
+                        traffic.lock().unwrap_or_else(|e| e.into_inner()).held_back.push(why.clone());
+                        return Err(Error::InternalError(Some(format!("the limiter could not answer: {why}"))));
+                    }
+                }
+            }
+            let slot = slots.acquire_owned().await.map_err(|e| Error::InternalError(Some(e.to_string())))?;
+            let Some(body) = bounded_body(request.into_body()).await? else {
+                let why = format!("a guest request body to `{}` runs past {REQUEST_BODY_BYTES} bytes", scrub(&url));
+                traffic.lock().unwrap_or_else(|e| e.into_inner()).refused.push(why);
+                return Err(Error::HttpRequestBodySize(Some(REQUEST_BODY_BYTES as u64)));
+            };
+            let body = (!body.is_empty()).then_some(body);
             let sent = scrub(&url);
-            let answer = tokio::task::spawn_blocking(move || client.send(&method, &url, &headers, body.as_deref()))
-                .await
-                .map_err(|e| Error::InternalError(Some(e.to_string())))?;
+            // The slot travels with the exchange, so a call abandoned at its deadline
+            // frees it only once the exchange ends.
+            let answer = tokio::task::spawn_blocking(move || {
+                let _slot = slot;
+                client.send(&method, &url, &headers, body.as_deref())
+            })
+            .await
+            .map_err(|e| Error::InternalError(Some(e.to_string())))?;
             match answer {
                 Ok(resp) => {
                     traffic.lock().unwrap_or_else(|e| e.into_inner()).sent.push(host);
@@ -171,6 +185,20 @@ impl WasiHttpHooks for Mediator {
             }
         })
     }
+}
+
+/// The request body, read up to [`REQUEST_BODY_BYTES`]; `None` once it runs past.
+async fn bounded_body(mut body: WasiBody) -> Result<Option<Vec<u8>>, Error> {
+    let mut out = Vec::new();
+    while let Some(frame) = body.frame().await {
+        if let Ok(data) = frame?.into_data() {
+            if out.len() + data.len() > REQUEST_BODY_BYTES {
+                return Ok(None);
+            }
+            out.extend_from_slice(&data);
+        }
+    }
+    Ok(Some(out))
 }
 
 /// A failed exchange, as the guest sees it. A refusal decided ahead of the socket is
