@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
 | `connector` | 2 | 13 | 229 | 71 | 14 | 7 | 54 | 0 | 54 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
-| `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 6 | 0 | 6 |
+| `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
 | `run` | 3 | 24 | 289 | 82 | 34 | 24 | 148 | 0 | 148 |
 | `store` | 1 | 14 | 155 | 37 | 12 | 8 | 111 | 0 | 111 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1453 | 466 | 162 | 101 | 666 | 0 | |
+| **total** | 19 | 145 | 1453 | 466 | 162 | 101 | 670 | 0 | |
 
 Decision records: 18.
 
@@ -36,7 +36,7 @@ Decision records: 18.
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
 | 11 — The derive tier | 7 | 68 | 44 | passing |
 | 12 — The console | 11 | 30 | 0 | absent |
-| 13 — Disclosure | 5 | 21 | 0 | absent |
+| 13 — Disclosure | 5 | 21 | 4 | open |
 | 14 — Assurance | 5 | 86 | 20 | open |
 
 Unscheduled operations: 10.
@@ -365,6 +365,10 @@ Unscheduled operations: 10.
 | `disclosure.declare-fidelity.family-undeclared` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_block_naming_no_family_is_refused` | performed |
 | `disclosure.record.segment` | `crates/contextful-policy/tests/integration/audit.rs::a_segment_closes_at_4096_entries_under_one_signed_root` | performed |
 | `disclosure.record.single-writer` | `crates/contextful-policy/tests/integration/audit.rs::a_second_writer_on_one_directory_is_refused` | performed |
+| `disclosure.suppress.contributor-share` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::contributor_share` | performed |
+| `disclosure.suppress.dominance-unverifiable` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::dominance_unverifiable` | performed |
+| `disclosure.suppress.empty-policy` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::empty_policy` | performed |
+| `disclosure.suppress.min-group-size` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::min_group_size` | performed |
 | `read.declare.canonical-column` | `crates/contextful-core/tests/integration/memory/declare.rs::a_shaped_table_omitting_a_canonical_column_is_refused` | performed |
 | `read.declare.undeclared-relation` | `crates/contextful-core/tests/integration/memory/declare.rs::an_edge_outside_the_relation_union_is_refused` | performed |
 | `read.embed.default-embedder` | `crates/contextful-core/tests/integration/read/embed.rs::the_default_embedder_is_deterministic_and_normalized` | performed |
