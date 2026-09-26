@@ -336,9 +336,9 @@ impl Face {
     }
 }
 
-/// Admit a statement over the session's registered relations. Naming the request ledger
-/// of a table the session reads under a tenant scope raises `LedgerNotTenantScoped`
-/// rather than an unknown relation (`read.register.scoped-ledger`).
+/// Admit a statement over the session's registered relations. A tenant-scoped session
+/// naming the request ledger of a table it reads raises `LedgerNotTenantScoped` rather
+/// than an unknown relation (`read.register.scoped-ledger`).
 fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, ReadFault> {
     let closed = std::cell::RefCell::new(None);
     let admitted = admit(tree, |name| {
@@ -350,7 +350,7 @@ fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, ReadFault> {
     });
     match (admitted, closed.into_inner()) {
         (Err(_), Some((name, table))) => Err(ReadError::LedgerNotTenantScoped(format!(
-            "`{name}` is closed: the credential reads `{table}` under a tenant scope, and the request ledger carries no tenant \
+            "`{name}` is closed: the credential carries a tenant scope, and the request ledger of `{table}` carries no tenant \
              column to narrow on, so it registers on the owner read alone"
         ))
         .into()),

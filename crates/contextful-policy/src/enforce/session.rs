@@ -148,14 +148,11 @@ impl Session {
             session.policies.insert(t.decl.name.clone(), t.policy.clone());
             session.sources.insert(t.decl.name.clone(), t);
         }
-        let ledgers: Vec<RegisteredRelation> = session
-            .sources
-            .values()
-            .filter(|t| !session.tenants.contains_key(&t.decl.name))
-            .map(|t| session.ledger(t))
-            .filter(|l| !session.relations.contains_key(&l.name))
-            .collect();
-        session.ledgers = ledgers.into_iter().map(|l| (l.name.clone(), l)).collect();
+        if !session.tenant_scoped() {
+            let ledgers: Vec<RegisteredRelation> =
+                session.sources.values().map(|t| session.ledger(t)).filter(|l| !session.relations.contains_key(&l.name)).collect();
+            session.ledgers = ledgers.into_iter().map(|l| (l.name.clone(), l)).collect();
+        }
         Ok(session)
     }
 
@@ -230,9 +227,16 @@ impl Session {
         }
     }
 
+    /// Whether any grant this session holds carries a tenant scope. Such a session is not
+    /// an owner read and registers no request ledger: ledger rows carry no tenant column to
+    /// narrow on (`read.register.scoped-ledger`).
+    pub fn tenant_scoped(&self) -> bool {
+        self.grants.iter().any(|g| g.tenant.is_some())
+    }
+
     /// A table's request-ledger relation `<table>__requests`, registered on an owner read
-    /// alone: a tenant-scoped table's ledger carries no tenant column to narrow on
-    /// (`read.register.scoped-ledger`). The table's zone gate applies to it as to the table.
+    /// alone (`read.register.scoped-ledger`). The table's zone gate applies to it as to the
+    /// table.
     fn ledger(&self, t: &TableSource) -> RegisteredRelation {
         let filter = if t.policy.placement.effective().admits(&self.zone) { "true" } else { "false" };
         RegisteredRelation {
@@ -242,10 +246,11 @@ impl Session {
         }
     }
 
-    /// The table whose ledger `name` is, where this session reads the table under a tenant
-    /// scope and so registers no ledger for it.
+    /// The table whose ledger `name` is, where this session reads the table but, being
+    /// tenant-scoped, registers no ledger for it. A table the session does not read yields
+    /// `None`, so the refusal names nothing the credential cannot already see.
     pub fn closed_ledger<'n>(&self, name: &'n str) -> Option<&'n str> {
-        ledger_table(name).filter(|t| self.tenants.contains_key(*t) && !self.reads(name))
+        ledger_table(name).filter(|t| self.tenant_scoped() && self.relations.contains_key(*t) && !self.reads(name))
     }
 
     /// The request-ledger relations this session registers

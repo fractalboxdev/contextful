@@ -300,9 +300,11 @@ fn a_tenant_scoped_read_naming_the_ledger_is_refused() {
         r.query(&scoped, r#"SELECT note_id FROM "research/notes" WHERE note_id IN (SELECT request_id FROM "research/notes__requests")"#),
         "LedgerNotTenantScoped",
     );
-    // The same credential reads the ledger of a table it holds with no tenant scope.
-    let vendor = r.query(&scoped, r#"SELECT request_id FROM "research/vendor__requests""#).unwrap();
-    assert_eq!(column(&vendor, "request_id"), [json!("r2")]);
+    // A tenant-scoped credential is no owner read: the ledger of a table it holds with no
+    // tenant scope is closed too, while that table itself still reads.
+    assert!(!scoped.reads("research/vendor__requests") && scoped.reads("research/vendor"));
+    let message = refused_with(r.query(&scoped, r#"SELECT request_id FROM "research/vendor__requests""#), "LedgerNotTenantScoped");
+    assert!(message.contains("`research/vendor`") && message.contains("tenant scope"), "{message}");
     // A table the credential does not read names no ledger at all.
     refused_with(r.query(&scoped, r#"SELECT * FROM "hr/salaries__requests""#), "EnforceUnknownRelation");
 }
