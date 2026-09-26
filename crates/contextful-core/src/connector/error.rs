@@ -15,6 +15,12 @@ pub enum ConnectorError {
     /// A record path, pagination shape or decode key the chosen format does not read. (`connector.source.format-key-mismatch`)
     #[error("ConnectorFormatKeyRejected: {0}")]
     ConnectorFormatKeyRejected(String),
+    /// A non-HTTPS non-loopback limiter endpoint, or an inline literal limiter token. (`connector.meter.binding-transport`)
+    #[error("ConnectorLimiterBindingRejected: {0}")]
+    ConnectorLimiterBindingRejected(String),
+    /// A limiter response the engine cannot read. (`connector.meter.unreadable-answer`)
+    #[error("ConnectorLimiterUnreadable: {0}")]
+    ConnectorLimiterUnreadable(String),
     /// A paging token or link the vendor already served. (`connector.source.page-loop`)
     #[error("ConnectorPageLoop: {0}")]
     ConnectorPageLoop(String),
@@ -36,12 +42,18 @@ pub enum ConnectorError {
     /// A scope probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII. (`connector.declare-capability.scope-unverified`)
     #[error("ConnectorScopeUnverified: {0}")]
     ConnectorScopeUnverified(String),
+    /// A declared limiter quota with no operator binding. (`connector.meter.quota-unbound`)
+    #[error("ConnectorQuotaUnbound: {0}")]
+    ConnectorQuotaUnbound(String),
     /// A table not matching the source's table pattern. (`connector.source.table-unmatched`)
     #[error("ConnectorTableUnmatched: {0}")]
     ConnectorTableUnmatched(String),
     /// Host access a connector reaches for that its manifest does not list. (`connector.declare-capability.undeclared-access`)
     #[error("ConnectorUndeclaredAccess: {0}")]
     ConnectorUndeclaredAccess(String),
+    /// A vendor request without a granted reservation under a declared limiter. (`connector.meter.unmetered-request`)
+    #[error("ConnectorUnmetered: {0}")]
+    ConnectorUnmetered(String),
     /// The bootstrap name among the declared lease scopes. (`connector.lease.bootstrap-declared-leased`)
     #[error("SecretBootstrapLeased: {0}")]
     SecretBootstrapLeased(String),

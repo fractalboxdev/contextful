@@ -3,6 +3,7 @@
 mod attach;
 mod infer;
 mod lease;
+mod meter;
 mod probe;
 mod resolve;
 mod support;
