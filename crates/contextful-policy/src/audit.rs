@@ -11,8 +11,9 @@
 //!
 //! Segment `n` holds seq `(n - 1) * 4096 + 1` through `n * 4096`. An entry's digest is
 //! SHA-256 over its seq (8 bytes, little-endian), its `prev_hash` text and the compact
-//! JSON of its attributes; object keys serialize sorted, so the digest is independent
-//! of the order attributes were built in.
+//! canonical JSON of its attributes: compact, object keys in byte order at every depth,
+//! so the digest is independent of the order attributes were built in and of how the
+//! JSON library orders a map.
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use hmac::{Hmac, Mac};
@@ -42,9 +43,9 @@ pub enum AuditError {
     /// (`disclosure.record.unpersisted-entry`)
     #[error("AuditEntryUnpersisted: {0}")]
     AuditEntryUnpersisted(String),
-    /// An audit file the process cannot read.
-    #[error("AuditLogUnreadable: {0}")]
-    AuditLogUnreadable(String),
+    /// An audit file the process cannot read or parse.
+    #[error("{0}")]
+    Io(String),
 }
 
 fn broken(index: u64, reason: impl Into<String>) -> AuditError {
@@ -52,7 +53,7 @@ fn broken(index: u64, reason: impl Into<String>) -> AuditError {
 }
 
 fn unreadable(path: &Path) -> impl Fn(std::io::Error) -> AuditError + '_ {
-    move |e| AuditError::AuditLogUnreadable(format!("{}: {e}", path.display()))
+    move |e| AuditError::Io(format!("{}: {e}", path.display()))
 }
 
 /// One entry: the audited attributes and their linkage to the entry before.
@@ -85,8 +86,42 @@ fn entry_digest(seq: u64, prev_hash: &str, attributes: &Value) -> String {
     let mut h = Sha256::new();
     h.update(seq.to_le_bytes());
     h.update(prev_hash.as_bytes());
-    h.update(serde_json::to_vec(attributes).expect("a JSON value serializes"));
+    let mut canonical = Vec::new();
+    write_canonical(attributes, &mut canonical);
+    h.update(canonical);
     format!("sha256:{}", hex::encode(h.finalize()))
+}
+
+/// Compact JSON with object keys sorted at every depth, independent of the map order
+/// the JSON library's features select.
+fn write_canonical(value: &Value, out: &mut Vec<u8>) {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            out.push(b'{');
+            for (i, key) in keys.into_iter().enumerate() {
+                if i > 0 {
+                    out.push(b',');
+                }
+                serde_json::to_writer(&mut *out, key).expect("a string serializes");
+                out.push(b':');
+                write_canonical(&map[key], out);
+            }
+            out.push(b'}');
+        }
+        Value::Array(items) => {
+            out.push(b'[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(b',');
+                }
+                write_canonical(item, out);
+            }
+            out.push(b']');
+        }
+        leaf => serde_json::to_writer(&mut *out, leaf).expect("a JSON value serializes"),
+    }
 }
 
 /// The last accepted entry: `{seq: 0, entry_hash: GENESIS}` for an empty chain.
@@ -203,7 +238,7 @@ fn read_tip(dir: &Path) -> Result<Option<ChainTip>, AuditError> {
     match fs::read_to_string(&path) {
         Ok(text) => serde_json::from_str(&text)
             .map(Some)
-            .map_err(|e| AuditError::AuditLogUnreadable(format!("{}: {e}", path.display()))),
+            .map_err(|e| AuditError::Io(format!("{}: {e}", path.display()))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(unreadable(&path)(e)),
     }
