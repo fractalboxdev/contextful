@@ -379,6 +379,23 @@ fn walk(dir: &Path, key: Option<&VerifyingKey>) -> Result<ChainTip, AuditError> 
     Ok(end)
 }
 
+/// Truncate the last segment to its last newline when it ends mid-line. An entry line is
+/// written whole and newline-terminated, and the tip moves only after the segment syncs,
+/// so unterminated bytes are a write a crash cut short, past the tip and never
+/// acknowledged. A newline-terminated line that does not parse is left for [`verify`].
+fn drop_torn_tail(dir: &Path) -> Result<(), AuditError> {
+    let (segments, _) = listing(dir)?;
+    let Some(&last) = segments.last() else { return Ok(()) };
+    let path = segment_path(dir, last);
+    let bytes = fs::read(&path).map_err(unreadable(&path))?;
+    if bytes.last().is_none_or(|b| *b == b'\n') {
+        return Ok(());
+    }
+    let keep = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1) as u64;
+    let f = OpenOptions::new().write(true).open(&path).map_err(unreadable(&path))?;
+    f.set_len(keep).and_then(|_| f.sync_all()).map_err(unreadable(&path))
+}
+
 /// Write `bytes` to `path` durably: a sibling temporary file, synced, renamed into
 /// place, and the directory synced.
 fn write_durable(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -467,6 +484,7 @@ impl<S: RootSigner> AuditLog<S> {
             }
             Err(fs::TryLockError::Error(e)) => return Err(unreadable(&lock_path)(e)),
         }
+        drop_torn_tail(&dir)?;
         let end = verify_signed(&dir, &signer.verifying_key())?;
         let log = AuditLog { dir, signer, tip: end, _lock: lock, poisoned: None };
         if log.tip.seq > 0 && log.tip.seq % AUDIT_SEGMENT_ENTRIES == 0 {

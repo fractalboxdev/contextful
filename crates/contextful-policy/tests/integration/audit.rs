@@ -276,3 +276,36 @@ fn the_query_digest_is_keyed_under_the_audit_key() {
     assert_ne!(d, query_digest(b"other-key", "select * from orders"));
     assert_ne!(d, query_digest(b"audit-key", "select * from customers"));
 }
+
+#[test]
+fn a_float_attribute_verifies_after_the_line_is_read_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut log = AuditLog::open(dir.path(), key()).unwrap();
+    let batch: Vec<Value> = (1..2000).map(|i| json!({ "contextful.duration_ms": f64::from(i) / 7.0 })).collect();
+    log.append_all(batch).unwrap();
+    log.append(json!({ "contextful.duration_ms": 632.0 / 7.0 })).unwrap();
+    drop(log);
+    assert_eq!(verify(dir.path()).unwrap().seq, 2000);
+    assert_eq!(AuditLog::open(dir.path(), key()).unwrap().tip().seq, 2000);
+}
+
+#[test]
+fn a_torn_unterminated_tail_past_the_tip_is_dropped_on_open() {
+    let dir = log_of(2);
+    let before = verify(dir.path()).unwrap();
+    // A crash inside the write leaves part of entry 3 with no newline.
+    let mut f = fs::OpenOptions::new().append(true).open(segment(dir.path(), 1)).unwrap();
+    std::io::Write::write_all(&mut f, br#"{"seq":3,"prev_ha"#).unwrap();
+    drop(f);
+    let mut log = AuditLog::open(dir.path(), key()).unwrap();
+    assert_eq!(log.tip(), &before);
+    assert_eq!(log.append(attrs("agent://c", 3)).unwrap().seq, 3);
+    assert_eq!(verify_signed(dir.path(), &key().verifying_key()).unwrap().seq, 3);
+
+    // A malformed line that ends in a newline is no torn write, and still breaks the chain.
+    let dir = log_of(2);
+    let mut f = fs::OpenOptions::new().append(true).open(segment(dir.path(), 1)).unwrap();
+    std::io::Write::write_all(&mut f, b"{\"seq\":3}\n").unwrap();
+    drop(f);
+    assert_eq!(broken_at(AuditLog::open(dir.path(), key())), 3);
+}
