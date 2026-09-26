@@ -139,8 +139,8 @@ impl Limiter {
         Ok(HeaderValue::Sensitive(Hydrated::new(format!("Bearer {}", token.reveal()))))
     }
 
-    fn post(&self, call: &str, body: &serde_json::Value) -> Result<crate::client::Response, Failure> {
-        let headers = [("Authorization".to_string(), self.bearer()?), ("Content-Type".to_string(), HeaderValue::Plain("application/json".into()))];
+    fn post(&self, call: &str, bearer: HeaderValue, body: &serde_json::Value) -> Result<crate::client::Response, Failure> {
+        let headers = [("Authorization".to_string(), bearer), ("Content-Type".to_string(), HeaderValue::Plain("application/json".into()))];
         let url = self.binding.call_url(call);
         self.client.send_once("POST", &url, &headers, Some(body.to_string().as_bytes()))
     }
@@ -148,7 +148,8 @@ impl Limiter {
     fn acquire(&self, class: &str) -> Result<Decision, Failure> {
         let quota = &self.binding.quota;
         let body = acquire_body(quota, class, self.binding.permits);
-        let resp = self.post("acquire", &body).map_err(|f| Failure { message: unmetered(quota, format!("the limiter is unreachable ({})", f.message)).to_string(), ..f })?;
+        let bearer = self.bearer()?;
+        let resp = self.post("acquire", bearer, &body).map_err(|f| Failure { message: unmetered(quota, format!("the limiter is unreachable ({})", f.message)).to_string(), ..f })?;
         match resp.status {
             429 => Ok(Decision::throttled(resp.header("retry-after"), self.clock.now())),
             200..=299 => Decision::read(&resp.body).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string())),
@@ -173,7 +174,7 @@ impl Limiter {
         let body = report.to_json();
         let (mut wait, mut last) = (REPORT_BACKOFF, String::new());
         for attempt in 1..=REPORT_ATTEMPTS {
-            match self.post("report", &body) {
+            match self.bearer().and_then(|bearer| self.post("report", bearer, &body)) {
                 Ok(r) if (200..300).contains(&r.status) => return,
                 Ok(r) => last = format!("answered {}", r.status),
                 Err(f) => last = f.message,

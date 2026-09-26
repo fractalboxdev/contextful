@@ -266,6 +266,24 @@ fn no_granted_reservation_means_no_request() {
     assert!(err.message.starts_with("ConnectorQuotaUnbound"), "{err}");
 }
 
+/// A limiter token that does not resolve raises `ConnectorUnmetered` naming the token, not an unreachable limiter,
+/// and sends no acquire.
+#[test]
+fn an_unresolved_limiter_token_is_named_as_such() {
+    let (v, l, clock) = (vendor(), granting(8, 10), SetClock::new());
+    let empty: Arc<dyn Provider> = Fixed::new("store", &[]);
+    let resolver = Arc::new(Resolver::new(vec![empty], false, Arc::new(clock.clone())));
+    let binding = LimiterBinding::parse("graph-app", &l.url(""), "secret://limiter-token", Some(8)).unwrap();
+    let limiter = Arc::new(Limiter::new(binding, resolver, RUN, Arc::new(clock.clone())).unwrap());
+    let f = get(&metered(&v, &limiter), &v, "/v1").unwrap_err();
+    assert!(f.message.starts_with("ConnectorUnmetered"), "{f}");
+    assert!(f.message.contains("does not resolve"), "{f}");
+    assert!(!f.message.contains("unreachable"), "{f}");
+    assert_eq!(f.message.matches("ConnectorUnmetered").count(), 1, "{f}");
+    assert!(l.requests.lock().unwrap().is_empty());
+    assert_eq!(vendor_hits(&v), 0);
+}
+
 /// A request the allowlist refuses fails with `SecretUnpermittedRequest` before any acquire.
 // spec: connector.meter.allowlist-precedence@a04fd503
 #[test]
