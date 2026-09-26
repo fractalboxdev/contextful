@@ -336,4 +336,15 @@ fn a_path_named_twice_is_refused() {
     }
     let run_twice = r#"{ "_run": { "k": 10, "tier": "deterministic", "model": null, "samples": 1 }, "_run": { "k": 20, "tier": "deterministic", "model": null, "samples": 1 } }"#;
     assert!(matches!(Baselines::parse(run_twice), Err(EvalError::BaselinePathUnresolved { .. })));
+    // A key repeated inside the run block or inside an object-form entry refuses too.
+    let k_twice = r#"{ "_run": { "k": 10, "k": 20, "tier": "deterministic", "model": null, "samples": 1 } }"#;
+    match Baselines::parse(k_twice) {
+        Err(EvalError::BaselinePathUnresolved { path, reason }) => assert!(path == "_run.k" && reason.contains("twice"), "{path}: {reason}"),
+        other => panic!("{other:?}"),
+    }
+    let value_twice = r#"{ "_run": { "k": 10, "tier": "deterministic", "model": null, "samples": 1 }, "latency_ms": { "value": 480, "value": 400, "band": 60 } }"#;
+    match Baselines::parse(value_twice) {
+        Err(EvalError::BaselinePathUnresolved { path, .. }) => assert_eq!(path, "latency_ms.value"),
+        other => panic!("{other:?}"),
+    }
 }

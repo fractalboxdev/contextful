@@ -184,11 +184,11 @@ impl Baselines {
         let Value::Object(map) = root else {
             return Err(EvalError::unresolved("", "a baseline file is a JSON object"));
         };
-        // A parsed map keeps the last of a repeated key; the raw entries show every one.
-        let Keys(keys) = serde_json::from_str(raw).map_err(|e| EvalError::unresolved("", format!("not JSON: {e}")))?;
-        let mut seen = std::collections::BTreeSet::new();
-        if let Some(twice) = keys.into_iter().find(|k| !seen.insert(k.clone())) {
-            return Err(EvalError::unresolved(&twice, "the entry appears twice in the file"));
+        // A parsed map keeps the last of a repeated key, at any depth; the raw document
+        // shows every one.
+        let Repeat(twice) = serde_json::from_str(raw).map_err(|e| EvalError::unresolved("", format!("not JSON: {e}")))?;
+        if let Some(path) = twice {
+            return Err(EvalError::unresolved(&path, "the key appears twice in the file"));
         }
         let run = map
             .get(RUN_KEY)
@@ -290,27 +290,60 @@ impl Baselines {
     }
 }
 
-/// The top-level keys of a JSON object in file order, repeats included.
-struct Keys(Vec<String>);
+/// The dotted path of the first key an object in the document names twice, at any depth.
+struct Repeat(Option<String>);
 
-impl<'de> Deserialize<'de> for Keys {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Keys, D::Error> {
+impl<'de> Deserialize<'de> for Repeat {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Repeat, D::Error> {
         struct Visit;
         impl<'de> serde::de::Visitor<'de> for Visit {
-            type Value = Keys;
+            type Value = Repeat;
             fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("a JSON object")
+                f.write_str("a JSON value")
             }
-            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Keys, A::Error> {
-                let mut keys = Vec::new();
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Repeat, A::Error> {
+                let mut seen = std::collections::BTreeSet::new();
+                let mut first = None;
                 while let Some(k) = map.next_key::<String>()? {
-                    map.next_value::<serde::de::IgnoredAny>()?;
-                    keys.push(k);
+                    let Repeat(inner) = map.next_value::<Repeat>()?;
+                    if first.is_none() {
+                        first = if seen.contains(&k) { Some(k.clone()) } else { inner.map(|p| format!("{k}.{p}")) };
+                    }
+                    seen.insert(k);
                 }
-                Ok(Keys(keys))
+                Ok(Repeat(first))
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Repeat, A::Error> {
+                let mut first = None;
+                let mut i = 0usize;
+                while let Some(Repeat(inner)) = seq.next_element::<Repeat>()? {
+                    if first.is_none() {
+                        first = inner.map(|p| format!("{i}.{p}"));
+                    }
+                    i += 1;
+                }
+                Ok(Repeat(first))
+            }
+            fn visit_bool<E>(self, _: bool) -> Result<Repeat, E> {
+                Ok(Repeat(None))
+            }
+            fn visit_i64<E>(self, _: i64) -> Result<Repeat, E> {
+                Ok(Repeat(None))
+            }
+            fn visit_u64<E>(self, _: u64) -> Result<Repeat, E> {
+                Ok(Repeat(None))
+            }
+            fn visit_f64<E>(self, _: f64) -> Result<Repeat, E> {
+                Ok(Repeat(None))
+            }
+            fn visit_str<E>(self, _: &str) -> Result<Repeat, E> {
+                Ok(Repeat(None))
+            }
+            fn visit_unit<E>(self) -> Result<Repeat, E> {
+                Ok(Repeat(None))
             }
         }
-        d.deserialize_map(Visit)
+        d.deserialize_any(Visit)
     }
 }
 
