@@ -5,9 +5,25 @@ use contextful_core::disclosure::declare::{parse_budget, Binding, DeclareError, 
 use contextful_core::disclosure::VisibilityError;
 use contextful_core::store::declare::TableDecl;
 
+fn manifest(block: &str) -> String {
+    format!("[[pipeline.tables]]\nname = \"wiki/pages\"\n\n[pipeline.tables.visibility]\n{block}\n")
+}
+
+/// The table block as declared, before the load checks run.
 fn table(block: &str) -> TableDecl {
-    let text = format!("[[pipeline.tables]]\nname = \"wiki/pages\"\n\n[pipeline.tables.visibility]\n{block}\n");
-    TableDecl::parse_pipeline(&text).unwrap().remove(0)
+    let text = format!("name = \"wiki/pages\"\n\n[visibility]\n{block}\n");
+    toml::from_str(&text).unwrap()
+}
+
+/// Loading the manifest refuses, naming `identifier` and the table.
+fn load_refused(block: &str, identifier: &str) {
+    match TableDecl::parse_pipeline(&manifest(block)) {
+        Err(e) => {
+            let shown = e.to_string();
+            assert!(shown.contains(identifier) && shown.contains("wiki/pages"), "{shown}");
+        }
+        Ok(tables) => panic!("loaded {tables:?}"),
+    }
 }
 
 fn block(fidelity: &str, family: Option<&str>, budget: &str) -> String {
@@ -48,6 +64,7 @@ fn a_budget_outside_the_grammar_is_refused_naming_table_and_text() {
     assert_eq!(e.identifier(), "VisibilityBudgetMalformed");
     let shown = e.to_string();
     assert!(shown.starts_with("VisibilityBudgetMalformed") && shown.contains("wiki/pages") && shown.contains("1h30m"), "{shown}");
+    load_refused(&block("mirrored", Some("item-exception"), "1h30m"), "VisibilityBudgetMalformed");
 }
 
 /// A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound` and the table does not load.
@@ -66,7 +83,9 @@ fn a_level_the_family_does_not_permit_is_refused() {
             if permitted(family, fidelity) {
                 let b = loaded.unwrap().unwrap();
                 assert_eq!((b.family, b.fidelity), (family, fidelity));
+                assert_eq!(TableDecl::parse_pipeline(&manifest(&block(fidelity.as_str(), Some(family.as_str()), "15m"))).unwrap().len(), 1);
             } else {
+                load_refused(&block(fidelity.as_str(), Some(family.as_str()), "15m"), "VisibilityFamilyBound");
                 match loaded {
                     Err(DeclareError::Visibility(e @ VisibilityError::FamilyBound { .. })) => {
                         assert_eq!(e.identifier(), "VisibilityFamilyBound");
@@ -87,6 +106,7 @@ fn a_block_naming_no_family_is_refused() {
         let e = visibility(&table(&block(fidelity.as_str(), None, "15m")));
         assert_eq!(e, VisibilityError::FamilyUndeclared { table: "wiki/pages".into() });
         assert!(e.to_string().starts_with("VisibilityFamilyUndeclared"), "{e}");
+        load_refused(&block(fidelity.as_str(), None, "15m"), "VisibilityFamilyUndeclared");
     }
     assert!(matches!(Binding::of(&TableDecl::named("wiki/pages")), Ok(None)));
     assert!(matches!(

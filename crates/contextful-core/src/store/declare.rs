@@ -120,6 +120,12 @@ impl TableDecl {
         };
         for t in &tables {
             t.retain_runs_secs()?;
+            // A visibility block outside its family bound or budget grammar keeps the
+            // table from loading (`disclosure.declare-fidelity.family-bound`).
+            crate::disclosure::declare::Binding::of(t).map_err(|e| match e {
+                crate::disclosure::declare::DeclareError::Malformed(m) => m,
+                crate::disclosure::declare::DeclareError::Visibility(v) => DeclarationMalformed(v.to_string()),
+            })?;
         }
         Ok(tables)
     }
