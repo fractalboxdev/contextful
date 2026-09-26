@@ -12,12 +12,21 @@ pub enum ConnectorError {
     /// An environment binding on a key the connector does not read. (`connector.declare-capability.binding-unsupported`)
     #[error("ConnectorBindingUnsupported: {0}")]
     ConnectorBindingUnsupported(String),
+    /// A worksheet cell holding a value past the header's width. (`connector.source.cell-out-of-range`)
+    #[error("ConnectorCellOutOfRange: {0}")]
+    ConnectorCellOutOfRange(String),
+    /// A workbook declaration, part or relationship pointing outside the archive. (`connector.source.external-reference`)
+    #[error("ConnectorExternalReference: {0}")]
+    ConnectorExternalReference(String),
     /// A record path, pagination shape or decode key the chosen format does not read. (`connector.source.format-key-mismatch`)
     #[error("ConnectorFormatKeyRejected: {0}")]
     ConnectorFormatKeyRejected(String),
     /// A limiter declaration forwarding a credential-bearing response header. (`connector.meter.forward-credential`)
     #[error("ConnectorForwardRejected: {0}")]
     ConnectorForwardRejected(String),
+    /// An incremental position against a workbook source. (`connector.source.workbook-incremental`)
+    #[error("ConnectorIncrementalUnsupported: {0}")]
+    ConnectorIncrementalUnsupported(String),
     /// A non-HTTPS non-loopback limiter endpoint, one carrying a query, fragment or userinfo, or a limiter token that is not a `secret://` reference. (`connector.meter.binding-transport`)
     #[error("ConnectorLimiterBindingRejected: {0}")]
     ConnectorLimiterBindingRejected(String),

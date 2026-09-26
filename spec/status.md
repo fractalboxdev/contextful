@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 13 | 179 | 47 | 19 | 13 | 68 | 0 | 68 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
-| `connector` | 2 | 13 | 233 | 73 | 14 | 7 | 71 | 0 | 71 |
+| `connector` | 2 | 13 | 233 | 73 | 14 | 7 | 78 | 0 | 78 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 155 | 37 | 12 | 8 | 111 | 0 | 111 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 58 | 13 | 5 | 5 | 12 | 0 | 12 |
-| **total** | 19 | 145 | 1457 | 468 | 162 | 101 | 690 | 0 | |
+| **total** | 19 | 145 | 1457 | 468 | 162 | 101 | 697 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 169 | 90 | passing |
-| 4 — Ingest | 22 | 333 | 100 | passing |
+| 4 — Ingest | 22 | 333 | 107 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 39 | 34 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
@@ -328,10 +328,14 @@ Unscheduled operations: 10.
 | `connector.resolve.resolver-per-source` | `crates/contextful-runtime/tests/integration/resolve.rs::concurrent_first_hydrations_make_one_call_and_resolvers_share_no_cache` | performed |
 | `connector.resolve.shadowed-name` | `crates/contextful-runtime/tests/integration/resolve.rs::a_name_two_adapters_answer_is_refused_at_first_hydration` | performed |
 | `connector.resolve.unresolved-name` | `crates/contextful-runtime/tests/integration/resolve.rs::an_unanswered_reference_refuses_at_preflight_and_at_the_call` | performed |
+| `connector.source.cell-out-of-range` | `crates/contextful-connectors/tests/integration/workbook.rs::a_cell_past_the_header_width_is_refused_rather_than_dropped` | performed |
+| `connector.source.decompression-budget` | `crates/contextful-connectors/tests/integration/workbook.rs::an_office_read_decompresses_at_most_64_mib_by_claim_and_by_arrival` | performed |
 | `connector.source.delimited-cell` | `crates/contextful-connectors/tests/integration/decode.rs::delimited_cells_land_as_strings_and_empty_unquoted_fields_as_null` | performed |
+| `connector.source.external-reference` | `crates/contextful-connectors/tests/integration/workbook.rs::every_form_of_external_reference_is_refused` | performed |
 | `connector.source.format-key-mismatch` | `crates/contextful-connectors/tests/integration/http.rs::a_json_key_on_another_format_is_refused_at_build` | performed |
 | `connector.source.http-headers` | `crates/contextful-connectors/tests/integration/http.rs::header_templates_hydrate_onto_each_read` | performed |
 | `connector.source.next-link-origin` | `crates/contextful-connectors/tests/integration/http.rs::a_next_link_off_the_configured_origin_fails_the_read` | performed |
+| `connector.source.office-part-selection` | `crates/contextful-connectors/tests/integration/workbook.rs::only_the_named_parts_open_and_an_entity_stays_literal` | performed |
 | `connector.source.page-cap` | `crates/contextful-connectors/tests/integration/http.rs::a_walk_stops_at_1000_requests` | performed |
 | `connector.source.page-loop` | `crates/contextful-connectors/tests/integration/http.rs::a_repeated_token_is_a_page_loop` | performed |
 | `connector.source.pagination` | `crates/contextful-connectors/tests/integration/http.rs::each_pagination_shape_walks_to_its_end` | performed |
@@ -339,6 +343,9 @@ Unscheduled operations: 10.
 | `connector.source.placeholder-unbound` | `crates/contextful-connectors/tests/integration/http.rs::a_placeholder_other_than_the_table_is_refused_at_build` | performed |
 | `connector.source.table-pattern` | `crates/contextful-cli/tests/integration/pipeline.rs::each_table_binds_its_segment_and_keeps_its_own_position` | performed |
 | `connector.source.table-unmatched` | `crates/contextful-connectors/tests/integration/http.rs::a_table_off_the_pattern_is_refused_before_any_request` | performed |
+| `connector.source.workbook-cell-typing` | `crates/contextful-connectors/tests/integration/workbook.rs::cells_land_as_strings_a_date_as_its_serial_and_a_formula_as_its_cached_value` | performed |
+| `connector.source.workbook-incremental` | `crates/contextful-connectors/tests/integration/workbook.rs::an_incremental_position_against_a_workbook_is_refused` | performed |
+| `connector.source.worksheet-landing` | `crates/contextful-connectors/tests/integration/workbook.rs::a_worksheet_lands_at_most_64_mib_of_resolved_text_and_1048576_rows` | performed |
 | `corpus.address.clause-id` | `tools/spec/tests/integration/readable.rs::a_clause_item_takes_its_contract_and_operation_from_its_file_and_section` | performed |
 | `corpus.anatomy.bad-anatomy` | `tools/spec/tests/integration/readable.rs::an_item_outside_the_clause_shape_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.clause-list` | `tools/spec/tests/integration/readable.rs::a_clause_list_split_by_prose_is_an_anatomy_finding` | performed |

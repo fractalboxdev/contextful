@@ -259,3 +259,14 @@ fn validate_holds_store_tables_to_their_visibility_block() {
     assert!(!out.status.success(), "{err}");
     assert!(err.contains("VisibilityBudgetMalformed") && err.contains("wiki/pages"), "{err}");
 }
+
+#[test]
+fn an_incremental_workbook_pipeline_is_refused_at_validation() {
+    let dir = project(
+        "[[pipeline]]\nid = \"book\"\nincremental = \"id\"\ntables = [\"a\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://files.vendor.example/{table}.xlsx\", format = \"xlsx\" }\n",
+    );
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let err = stderr(&out);
+    assert!(err.contains("ConnectorIncrementalUnsupported") && err.contains("incremental"), "{err}");
+}

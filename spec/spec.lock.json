@@ -8916,7 +8916,7 @@
       "operation": "source",
       "subject": "worksheet-landing",
       "kind": "limit",
-      "statement": "One worksheet lands at most 64 MiB of resolved cell text, counted as cells land, and at most 1048576 rows.",
+      "statement": "One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.",
       "why": "because shared-string fan-out turns a small input into an unbounded output",
       "file": "spec/40-connector.md",
       "line": 354
@@ -8927,7 +8927,7 @@
       "operation": "source",
       "subject": "cell-out-of-range",
       "kind": "refusal",
-      "statement": "A cell past the header's width raises `ConnectorCellOutOfRange`.",
+      "statement": "A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
       "line": 356
@@ -17998,7 +17998,7 @@
           },
           "ConnectorCellOutOfRange": {
             "clause": "connector.source.cell-out-of-range",
-            "gloss": "A worksheet cell past the header's width."
+            "gloss": "A worksheet cell holding a value past the header's width."
           },
           "ConnectorClockColumnRejected": {
             "clause": "connector.source.clock-column-spelling",
@@ -18428,6 +18428,13 @@
             "basis": "chosen",
             "gloss": "Requests one paginated walk issues."
           },
+          "connector-worksheet-entry": {
+            "clause": "connector.source.worksheet-landing",
+            "value": 32,
+            "unit": "B",
+            "basis": "chosen",
+            "gloss": "Charge for each shared string and stored cell beside its text."
+          },
           "connector-worksheet-rows": {
             "clause": "connector.source.worksheet-landing",
             "value": 1048576,
@@ -18440,7 +18447,7 @@
             "value": 64,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Resolved cell text landed from one worksheet."
+            "gloss": "Cell text, keys and entry charges one worksheet read holds."
           }
         }
       },

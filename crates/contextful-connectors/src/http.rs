@@ -1,7 +1,7 @@
 //! The generic HTTP source: one endpoint, one decoder, one pagination shape, and headers
 //! whose values are templates hydrated per read (`connector.source.http-headers`).
 
-use crate::decode::{decode, Format};
+use crate::decode::{decode, workbook, Format};
 use contextful_core::connector::attach::{endpoint, scrub, Allowlist};
 use contextful_core::connector::reference::{check_material, Template};
 use contextful_core::connector::ConnectorError;
@@ -20,7 +20,7 @@ pub const NAME: &str = "http";
 pub const PAGE_CAP: usize = 1000;
 
 /// The configuration keys the HTTP source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 12] = [
+pub const KEYS: [&str; 14] = [
     "endpoint",
     "table_pattern",
     "format",
@@ -33,6 +33,8 @@ pub const KEYS: [&str; 12] = [
     "next_url_path",
     "link_header",
     "since_param",
+    "sheet",
+    "skip_rows",
 ];
 
 /// One `/`-separated segment of a table pattern.
@@ -171,6 +173,10 @@ pub struct HttpConfig {
     pub headers: BTreeMap<String, Template>,
     pub pagination: Pagination,
     pub since_param: Option<String>,
+    /// The worksheet a workbook body lands; the first sheet when unset.
+    pub sheet: Option<String>,
+    /// Sheet rows 1 through `skip_rows`, by row number, ahead of a workbook's header row.
+    pub skip_rows: usize,
 }
 
 fn key_error(k: &str) -> RunError {
@@ -236,6 +242,20 @@ impl HttpConfig {
                 }
             }
         }
+        let sheet = text(cfg, "sheet")?;
+        let skip_rows = match cfg.get("skip_rows") {
+            None => None,
+            Some(v) => Some(v.as_u64().ok_or_else(|| RunError::Invalid(format!("`{NAME}` source key `skip_rows` is a non-negative integer, found {v}")))? as usize),
+        };
+        if format != Format::Workbook {
+            if let Some(k) = [sheet.as_ref().map(|_| "sheet"), skip_rows.map(|_| "skip_rows")].into_iter().flatten().next() {
+                return Err(ConnectorError::ConnectorFormatKeyRejected(format!("`{k}` reads a workbook and the source's format is `{}`", format.name())).into());
+            }
+        }
+        let since_param = text(cfg, "since_param")?;
+        if format == Format::Workbook && since_param.is_some() {
+            return Err(incremental("`since_param` declares an incremental position").into());
+        }
         let page_param = text(cfg, "page_param")?;
         let link_header = cfg.get("link_header").and_then(Value::as_bool).unwrap_or(false);
         let declared: Vec<&str> = [
@@ -247,6 +267,10 @@ impl HttpConfig {
         .into_iter()
         .flatten()
         .collect();
+        // A workbook is one document; no page of it follows another.
+        if let (Format::Workbook, Some(k)) = (format, declared.first()) {
+            return Err(ConnectorError::ConnectorFormatKeyRejected(format!("`{k}` walks pages and the source's format is `xlsx`, one document per read")).into());
+        }
         if declared.len() > 1 {
             return Err(ConnectorError::ConnectorPaginationAmbiguous(format!("the source declares {}; a walk takes one pagination shape", declared.join(" and "))).into());
         }
@@ -299,10 +323,20 @@ impl HttpConfig {
             )
             .into());
         }
-        let c = HttpConfig { endpoint: endpoint_raw, table_pattern, format, records, headers, pagination, since_param: text(cfg, "since_param")? };
+        let c = HttpConfig { endpoint: endpoint_raw, table_pattern, format, records, headers, pagination, since_param, sheet, skip_rows: skip_rows.unwrap_or(0) };
         let exemplar = c.table_pattern.as_ref().map_or_else(|| "table".to_string(), TablePattern::exemplar);
         c.table_url(&exemplar)?;
         Ok(c)
+    }
+
+    /// Whether a pipeline may declare an incremental cursor over this source: a workbook
+    /// refuses at build, ahead of the run that would commit its first position
+    /// (`connector.source.workbook-incremental`).
+    pub fn accepts_incremental(&self) -> Result<(), ConnectorError> {
+        match self.format {
+            Format::Workbook => Err(incremental("the pipeline declares `incremental`")),
+            _ => Ok(()),
+        }
     }
 
     /// The hosts this source reaches for `table`: its endpoint's host with the table bound.
@@ -371,6 +405,9 @@ impl HttpSource {
     /// Walk every page from `position`, returning every record fetched.
     pub fn walk(&self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
         let mut url = self.config.table_url(&self.table).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
+        if self.config.format == Format::Workbook && request.position.is_some() {
+            return Err(Failure::deterministic(FailureTag::Config, incremental("the read carries a stored position").to_string()));
+        }
         if let (Some(param), Some(at)) = (&self.config.since_param, request.position.as_ref().and_then(|p| p.get("at"))) {
             let v = match at {
                 Value::String(s) => s.clone(),
@@ -401,7 +438,10 @@ impl HttpSource {
                 let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
                 return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
             }
-            let (batch, body) = decode(self.config.format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?;
+            let (batch, body) = match self.config.format {
+                Format::Workbook => (workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?, None),
+                format => decode(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?,
+            };
             let empty = batch.is_empty();
             rows.extend(batch);
             let token = match &self.config.pagination {
@@ -434,6 +474,13 @@ impl HttpSource {
         }
         Err(Failure::new(FailureTag::Permanent, format!("the walk over `{}` reached {PAGE_CAP} requests", scrub(&url))))
     }
+}
+
+/// A workbook holds no incremental position (`connector.source.workbook-incremental`).
+fn incremental(why: &str) -> ConnectorError {
+    ConnectorError::ConnectorIncrementalUnsupported(format!(
+        "{why} and the source's format is `xlsx`; a date lands as a variable-width serial number, which no text watermark orders"
+    ))
 }
 
 fn scalar(v: &Value) -> Option<String> {
