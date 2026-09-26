@@ -6,8 +6,13 @@
 //! ```text
 //! segments/000001.jsonl       one entry per line, seq ascending from 1
 //! segments/000001.root.json   {root, count, signature} closing the segment
-//! chain.tip                   last accepted {seq, entry_hash}
+//! chain.tip                   last accepted {seq, entry_hash, signature}
+//! audit.lock                  held by the one process writing the log
 //! ```
+//!
+//! The tip is signed through the same signer as the roots, so a chain truncated under a
+//! rewritten tip fails signed verification. A replayed older signed tip is caught only
+//! against a replicated root (`disclosure.attest.root-replication`).
 //!
 //! Segment `n` holds seq `(n - 1) * 4096 + 1` through `n * 4096`. An entry's digest is
 //! SHA-256 over its seq (8 bytes, little-endian), its `prev_hash` text and the compact
@@ -43,6 +48,9 @@ pub enum AuditError {
     /// (`disclosure.record.unpersisted-entry`)
     #[error("AuditEntryUnpersisted: {0}")]
     AuditEntryUnpersisted(String),
+    /// An audit log another process holds open. (`disclosure.record.single-writer`)
+    #[error("AuditLogHeld: {0}")]
+    AuditLogHeld(String),
     /// An audit file the process cannot read or parse.
     #[error("{0}")]
     Io(String),
@@ -175,15 +183,53 @@ impl SignedRoot {
     }
 }
 
-/// The signing port for segment roots. Custody stays behind it: a local key signs
-/// in-process, and a remote custodian returns the raw Ed25519 signature bytes.
+/// The last accepted entry as `chain.tip` records it, signed so a truncation under a
+/// rewritten tip fails signed verification.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignedTip {
+    pub seq: u64,
+    pub entry_hash: String,
+    /// Hex-encoded Ed25519 signature over [`SignedTip::message`]; absent on a tip written
+    /// by no signer, which signed verification refuses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+}
+
+impl SignedTip {
+    /// The signed bytes: `contextful.audit.tip`, the seq and the entry digest, one per
+    /// line, apart from a root's so neither replays as the other.
+    pub fn message(seq: u64, entry_hash: &str) -> Vec<u8> {
+        format!("contextful.audit.tip\n{seq}\n{entry_hash}").into_bytes()
+    }
+
+    pub fn sign(seq: u64, entry_hash: &str, signer: &impl RootSigner) -> Result<SignedTip, String> {
+        let signature = signer.sign_root(&Self::message(seq, entry_hash))?;
+        Ok(SignedTip { seq, entry_hash: entry_hash.to_string(), signature: Some(hex::encode(signature)) })
+    }
+
+    /// Whether the signature verifies under `key`.
+    pub fn verify(&self, key: &VerifyingKey) -> bool {
+        let Some(Ok(bytes)) = self.signature.as_ref().map(hex::decode) else { return false };
+        let Ok(signature) = Signature::from_slice(&bytes) else { return false };
+        key.verify(&Self::message(self.seq, &self.entry_hash), &signature).is_ok()
+    }
+}
+
+/// The signing port for segment roots and the chain tip. Custody stays behind it: a local
+/// key signs in-process, and a remote custodian returns the raw Ed25519 signature bytes
+/// and publishes the key they verify under.
 pub trait RootSigner {
     fn sign_root(&self, message: &[u8]) -> Result<Vec<u8>, String>;
+    fn verifying_key(&self) -> VerifyingKey;
 }
 
 impl RootSigner for SigningKey {
     fn sign_root(&self, message: &[u8]) -> Result<Vec<u8>, String> {
         Ok(self.sign(message).to_bytes().to_vec())
+    }
+
+    fn verifying_key(&self) -> VerifyingKey {
+        SigningKey::verifying_key(self)
     }
 }
 
@@ -233,7 +279,7 @@ fn listing(dir: &Path) -> Result<(BTreeSet<u64>, BTreeSet<u64>), AuditError> {
     Ok((segments, roots))
 }
 
-fn read_tip(dir: &Path) -> Result<Option<ChainTip>, AuditError> {
+fn read_tip(dir: &Path) -> Result<Option<SignedTip>, AuditError> {
     let path = tip_path(dir);
     match fs::read_to_string(&path) {
         Ok(text) => serde_json::from_str(&text)
@@ -250,7 +296,8 @@ pub fn verify(dir: &Path) -> Result<ChainTip, AuditError> {
     walk(dir, None)
 }
 
-/// [`verify`], and every root's signature under `key`: the offline verifier's check.
+/// [`verify`], and every root's signature and the tip's under `key`: the check opening a
+/// log runs, and the offline verifier's. A non-empty chain needs a tip that verifies.
 pub fn verify_signed(dir: &Path, key: &VerifyingKey) -> Result<ChainTip, AuditError> {
     walk(dir, Some(key))
 }
@@ -317,8 +364,17 @@ fn walk(dir: &Path, key: Option<&VerifyingKey>) -> Result<ChainTip, AuditError> 
     if let Some(&n) = roots.range(last + 1..).next() {
         return Err(broken(first_seq(n), format!("a signed root closes segment {n} and the segment is absent")));
     }
-    if let Some(tip) = tip_file.filter(|t| t.seq > end.seq) {
+    if let Some(tip) = tip_file.as_ref().filter(|t| t.seq > end.seq) {
         return Err(broken(end.seq + 1, format!("chain.tip names seq {} beyond the chain end", tip.seq)));
+    }
+    if let Some(key) = key.filter(|_| end.seq > 0) {
+        match &tip_file {
+            None => return Err(broken(1, "the chain carries entries and no chain.tip")),
+            Some(tip) if !tip.verify(key) => {
+                return Err(broken(tip.seq.max(1), "the chain.tip signature does not verify"));
+            }
+            Some(_) => {}
+        }
     }
     Ok(end)
 }
@@ -356,15 +412,22 @@ struct Undo {
 }
 
 impl Undo {
-    fn apply(self) {
+    /// Reverse the append, reporting the first step that could not be reversed.
+    fn apply(self) -> Result<(), String> {
+        let mut first = None;
         if let Some((path, len)) = self.truncate {
-            if let Ok(f) = OpenOptions::new().write(true).open(&path) {
-                let _ = f.set_len(len).and_then(|_| f.sync_all());
+            let r = OpenOptions::new().write(true).open(&path).and_then(|f| f.set_len(len).and_then(|_| f.sync_all()));
+            if let Err(e) = r {
+                first = Some(format!("{}: {e}", path.display()));
             }
         }
         for path in self.created.iter().rev() {
-            let _ = fs::remove_file(path);
+            match fs::remove_file(path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound && first.is_none() => first = Some(format!("{}: {e}", path.display())),
+                _ => {}
+            }
         }
+        first.map_or(Ok(()), Err)
     }
 }
 
@@ -374,6 +437,11 @@ pub struct AuditLog<S: RootSigner> {
     dir: PathBuf,
     signer: S,
     tip: ChainTip,
+    /// The exclusive lock on `audit.lock`, held for the log's lifetime.
+    _lock: File,
+    /// Set when a failed append could not be reversed: the files may hold lines past the
+    /// tip, so every later append refuses until the log is reopened and verified.
+    poisoned: Option<String>,
 }
 
 /// The signer stays out of the debug form.
@@ -384,21 +452,32 @@ impl<S: RootSigner> std::fmt::Debug for AuditLog<S> {
 }
 
 impl<S: RootSigner> AuditLog<S> {
-    /// Open the log under `dir`, verifying the chain first. A full last segment left
+    /// Open the log under `dir`: take the directory's writer lock, then verify the chain
+    /// and every root and tip signature under the signer's key. A full last segment left
     /// without its root closes now, and a tip behind the chain end advances to it.
     pub fn open(dir: impl Into<PathBuf>, signer: S) -> Result<AuditLog<S>, AuditError> {
         let dir = dir.into();
-        let end = verify(&dir)?;
-        let log = AuditLog { dir, signer, tip: end };
+        fs::create_dir_all(&dir).map_err(unreadable(&dir))?;
+        let lock_path = dir.join("audit.lock");
+        let lock = OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(unreadable(&lock_path))?;
+        match lock.try_lock() {
+            Ok(()) => {}
+            Err(fs::TryLockError::WouldBlock) => {
+                return Err(AuditError::AuditLogHeld(format!("{} is held by another writer", lock_path.display())))
+            }
+            Err(fs::TryLockError::Error(e)) => return Err(unreadable(&lock_path)(e)),
+        }
+        let end = verify_signed(&dir, &signer.verifying_key())?;
+        let log = AuditLog { dir, signer, tip: end, _lock: lock, poisoned: None };
         if log.tip.seq > 0 && log.tip.seq % AUDIT_SEGMENT_ENTRIES == 0 {
             let n = segment_of(log.tip.seq);
             if !root_path(&log.dir, n).exists() {
                 log.close(n).map_err(AuditError::AuditEntryUnpersisted)?;
             }
         }
-        if read_tip(&log.dir)?.as_ref() != Some(&log.tip) && log.tip.seq > 0 {
-            write_durable(&tip_path(&log.dir), &serde_json::to_vec(&log.tip).expect("a tip serializes"))
-                .map_err(AuditError::AuditEntryUnpersisted)?;
+        let recorded = read_tip(&log.dir)?.map(|t| ChainTip { seq: t.seq, entry_hash: t.entry_hash });
+        if recorded.as_ref() != Some(&log.tip) && log.tip.seq > 0 {
+            log.write_tip(&log.tip).map_err(AuditError::AuditEntryUnpersisted)?;
         }
         Ok(log)
     }
@@ -418,6 +497,9 @@ impl<S: RootSigner> AuditLog<S> {
     /// then the tip. On any failure nothing in the batch persists, the files return to
     /// their prior length, and the in-memory tip stays where it was.
     pub fn append_all(&mut self, batch: Vec<Value>) -> Result<Vec<AuditEntry>, AuditError> {
+        if let Some(reason) = &self.poisoned {
+            return Err(AuditError::AuditEntryUnpersisted(format!("an earlier append could not be reversed ({reason}); reopen the log")));
+        }
         let mut undo = Undo::default();
         match self.persist(batch, &mut undo) {
             Ok((entries, tip)) => {
@@ -425,7 +507,9 @@ impl<S: RootSigner> AuditLog<S> {
                 Ok(entries)
             }
             Err(e) => {
-                undo.apply();
+                if let Err(reason) = undo.apply() {
+                    self.poisoned = Some(reason);
+                }
                 Err(AuditError::AuditEntryUnpersisted(e))
             }
         }
@@ -467,9 +551,15 @@ impl<S: RootSigner> AuditLog<S> {
                 self.close_at(n, &tip)?;
             }
         }
-        let tpath = tip_path(&self.dir);
-        write_durable(&tpath, &serde_json::to_vec(&tip).map_err(fail(&tpath))?)?;
+        self.write_tip(&tip)?;
         Ok((entries, tip))
+    }
+
+    /// Sign `tip` and write it durably as `chain.tip`.
+    fn write_tip(&self, tip: &ChainTip) -> Result<(), String> {
+        let signed = SignedTip::sign(tip.seq, &tip.entry_hash, &self.signer)?;
+        let tpath = tip_path(&self.dir);
+        write_durable(&tpath, &serde_json::to_vec(&signed).map_err(fail(&tpath))?)
     }
 
     /// Close segment `n`, whose last entry is the current tip.

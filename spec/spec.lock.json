@@ -13080,6 +13080,17 @@
       "line": 58
     },
     {
+      "id": "disclosure.record.single-writer",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "single-writer",
+      "kind": "refusal",
+      "statement": "One process holds a directory's audit log at a time; opening a log another holds raises `AuditLogHeld`.",
+      "why": "because two writers caching one tip append the same seq twice, and every later verification breaks there",
+      "file": "spec/62-accountability.md",
+      "line": 60
+    },
+    {
       "id": "disclosure.record.projection",
       "contract": "disclosure",
       "operation": "record",
@@ -13088,7 +13099,7 @@
       "statement": "The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 60
+      "line": 62
     },
     {
       "id": "disclosure.explain.no-row",
@@ -13099,7 +13110,7 @@
       "statement": "An explanation returning a row, field value or excerpt from the resource it decides about raises `VisibilityDiagnosticRow`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 89
+      "line": 91
     },
     {
       "id": "disclosure.explain.empty-window",
@@ -13110,7 +13121,7 @@
       "statement": "A window holding no observations raises `VisibilityNoObservations` and states that no claim is available.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 91
+      "line": 93
     },
     {
       "id": "disclosure.explain.unqualified-assurance",
@@ -13121,7 +13132,7 @@
       "statement": "A negative assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 93
+      "line": 95
     },
     {
       "id": "disclosure.explain.groups-not-members",
@@ -13132,7 +13143,7 @@
       "statement": "A reader-facing explanation rendering the member identities of a group on the path raises `VisibilityIndividualNamed`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 95
+      "line": 97
     },
     {
       "id": "disclosure.attest.broken-chain",
@@ -13140,10 +13151,10 @@
       "operation": "attest",
       "subject": "broken-chain",
       "kind": "refusal",
-      "statement": "A disagreeing digest, a sequence gap, or an absent chain while `chain.tip` or a signed root exists raises `AuditChainBroken` with the index of the earliest failure.",
+      "statement": "A disagreeing digest, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the signed check opening a log runs, an absent or unverified tip or root raises `AuditChainBroken` at the earliest failing index.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 102
+      "line": 104
     },
     {
       "id": "disclosure.attest.root-replication",
@@ -13154,7 +13165,7 @@
       "statement": "Signed roots reach the replication bucket asynchronously every 10 min.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 104
+      "line": 106
     },
     {
       "id": "disclosure.erase.privilege",
@@ -13165,7 +13176,7 @@
       "statement": "Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.",
       "why": "A-read",
       "file": "spec/62-accountability.md",
-      "line": 112
+      "line": 114
     },
     {
       "id": "disclosure.erase.subject-column",
@@ -13176,7 +13187,7 @@
       "statement": "A table names its subject column as `subject_id = \"<column>\"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 114
+      "line": 116
     },
     {
       "id": "disclosure.erase.cascade",
@@ -13187,7 +13198,7 @@
       "statement": "In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 116
+      "line": 118
     },
     {
       "id": "disclosure.erase.cascade-unbounded",
@@ -13198,7 +13209,7 @@
       "statement": "A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 118
+      "line": 120
     },
     {
       "id": "disclosure.erase.physical-removal",
@@ -13209,7 +13220,7 @@
       "statement": "Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 120
+      "line": 122
     },
     {
       "id": "disclosure.erase.restaging-gate",
@@ -13220,7 +13231,7 @@
       "statement": "`--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 122
+      "line": 124
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -13231,7 +13242,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 124
+      "line": 126
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -13242,7 +13253,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 126
+      "line": 128
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -13253,7 +13264,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 128
+      "line": 130
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -13264,7 +13275,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 157
+      "line": 159
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -13275,7 +13286,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 159
+      "line": 161
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -13286,7 +13297,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 161
+      "line": 163
     },
     {
       "id": "disclosure.receipt.no-rewrite-engine",
@@ -13297,7 +13308,7 @@
       "statement": "A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.",
       "why": "because a receipt over a rewrite that did not run states a false claim",
       "file": "spec/62-accountability.md",
-      "line": 163
+      "line": 165
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -18762,6 +18773,10 @@
           "AuditEntryUnpersisted": {
             "clause": "disclosure.record.unpersisted-entry",
             "gloss": "A read's audit entry did not persist; no rows are returned."
+          },
+          "AuditLogHeld": {
+            "clause": "disclosure.record.single-writer",
+            "gloss": "An audit log another process holds open."
           },
           "DisclosureCleanRoomPreconditionUnmet": {
             "clause": "disclosure.set-mode.clean-room-preconditions",

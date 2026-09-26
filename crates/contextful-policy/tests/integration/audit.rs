@@ -1,7 +1,7 @@
 //! `disclosure.record` and `disclosure.attest`: the hash-linked chain, its numbered
 //! segments, the chain tip, the signed root closing each segment, and verification.
 
-use contextful_policy::audit::{query_digest, verify, verify_signed, AuditEntry, AuditError, AuditLog, SignedRoot, AUDIT_SEGMENT_ENTRIES, GENESIS};
+use contextful_policy::audit::{query_digest, verify, verify_signed, AuditEntry, AuditError, AuditLog, SignedRoot, SignedTip, AUDIT_SEGMENT_ENTRIES, GENESIS};
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Value};
 use std::fs;
@@ -61,8 +61,9 @@ fn entries_link_from_genesis_with_seq_starting_at_one() {
     let end = verify(dir.path()).unwrap();
     assert_eq!(end.seq, 3);
     assert_eq!(end.entry_hash, entries[2].entry_hash);
-    let tip: Value = serde_json::from_str(&fs::read_to_string(dir.path().join("chain.tip")).unwrap()).unwrap();
-    assert_eq!(tip, json!({ "seq": 3, "entry_hash": entries[2].entry_hash }));
+    let tip: SignedTip = serde_json::from_str(&fs::read_to_string(dir.path().join("chain.tip")).unwrap()).unwrap();
+    assert_eq!((tip.seq, tip.entry_hash.as_str()), (3, entries[2].entry_hash.as_str()));
+    assert!(tip.verify(&key().verifying_key()));
 }
 
 #[test]
@@ -97,7 +98,10 @@ fn a_segment_closes_at_4096_entries_under_one_signed_root() {
     assert_eq!(verify_signed(dir.path(), &key().verifying_key()).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 1);
 }
 
-// spec: disclosure.attest.broken-chain@90ad083d
+/// A disagreeing digest, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the
+/// signed check opening a log runs, an absent or unverified tip or root raises `AuditChainBroken` at the earliest
+/// failing index.
+// spec: disclosure.attest.broken-chain@0683f91b
 #[test]
 fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     // A disagreeing digest: entry 2's attributes rewritten after the fact.
@@ -129,6 +133,64 @@ fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
 
     // Opening a broken chain refuses the same way.
     assert_eq!(broken_at(AuditLog::open(dir.path(), key())), 1);
+
+    // A truncated segment under a rewritten, unsigned tip.
+    let dir = log_of(10);
+    let mut entries = lines(&segment(dir.path(), 1));
+    entries.truncate(7);
+    write_lines(&segment(dir.path(), 1), &entries);
+    fs::write(dir.path().join("chain.tip"), json!({ "seq": 7, "entry_hash": entries[6].entry_hash }).to_string()).unwrap();
+    assert_eq!(verify(dir.path()).unwrap().seq, 7, "the unsigned walk cannot see a truncation");
+    assert_eq!(broken_at(verify_signed(dir.path(), &key().verifying_key())), 7);
+    assert_eq!(broken_at(AuditLog::open(dir.path(), key())), 7);
+
+    // A tip signed under another key, and a chain with no tip at all.
+    let dir = log_of(3);
+    let entries = lines(&segment(dir.path(), 1));
+    let forged = SignedTip::sign(3, &entries[2].entry_hash, &SigningKey::from_bytes(&[9; 32])).unwrap();
+    fs::write(dir.path().join("chain.tip"), serde_json::to_string(&forged).unwrap()).unwrap();
+    assert_eq!(broken_at(AuditLog::open(dir.path(), key())), 3);
+    fs::remove_file(dir.path().join("chain.tip")).unwrap();
+    assert_eq!(broken_at(verify_signed(dir.path(), &key().verifying_key())), 1);
+
+    // A closed segment rewritten wholesale, re-linked, under a root with a garbage signature.
+    let dir = tempfile::tempdir().unwrap();
+    AuditLog::open(dir.path(), key()).unwrap().append_all((0..AUDIT_SEGMENT_ENTRIES + 1).map(|i| attrs("agent://a", i)).collect()).unwrap();
+    let mut prev = GENESIS.to_string();
+    let forged: Vec<AuditEntry> = lines(&segment(dir.path(), 1))
+        .into_iter()
+        .map(|e| {
+            let f = AuditEntry::link(e.seq, &prev, attrs("agent://attacker", e.seq));
+            prev = f.entry_hash.clone();
+            f
+        })
+        .collect();
+    write_lines(&segment(dir.path(), 1), &forged);
+    let root = SignedRoot { root: prev.clone(), count: AUDIT_SEGMENT_ENTRIES, signature: "00".repeat(64) };
+    fs::write(root_file(dir.path(), 1), serde_json::to_string(&root).unwrap()).unwrap();
+    let mut second = lines(&segment(dir.path(), 2));
+    second[0] = AuditEntry::link(second[0].seq, &prev, second[0].attributes.clone());
+    write_lines(&segment(dir.path(), 2), &second);
+    fs::write(dir.path().join("chain.tip"), json!({ "seq": second[0].seq, "entry_hash": second[0].entry_hash }).to_string()).unwrap();
+    assert!(verify(dir.path()).is_ok(), "the unsigned walk accepts the forged history");
+    assert_eq!(broken_at(AuditLog::open(dir.path(), key())), AUDIT_SEGMENT_ENTRIES);
+}
+
+/// One process holds a directory's audit log at a time; opening a log another holds raises `AuditLogHeld`.
+// spec: disclosure.record.single-writer@f85b6bac
+#[test]
+fn a_second_writer_on_one_directory_is_refused() {
+    let dir = log_of(2);
+    let mut first = AuditLog::open(dir.path(), key()).unwrap();
+    match AuditLog::open(dir.path(), key()) {
+        Err(AuditError::AuditLogHeld(m)) => assert!(m.contains("audit.lock"), "{m}"),
+        other => panic!("expected AuditLogHeld, got {other:?}"),
+    }
+    first.append(attrs("agent://a", 3)).unwrap();
+    drop(first);
+    let mut second = AuditLog::open(dir.path(), key()).unwrap();
+    assert_eq!(second.append(attrs("agent://b", 4)).unwrap().seq, 4);
+    assert_eq!(verify_signed(dir.path(), &key().verifying_key()).unwrap().seq, 4);
 }
 
 #[test]
