@@ -3,6 +3,7 @@
 
 pub mod client;
 pub mod infer;
+pub mod probe;
 pub mod secrets;
 
 pub use client::{Client, HeaderValue, Response};
