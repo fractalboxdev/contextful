@@ -15,14 +15,16 @@ fn table(block: &str) -> TableDecl {
     toml::from_str(&text).unwrap()
 }
 
-/// Loading the manifest refuses, naming `identifier` and the table.
+/// Loading the manifest refuses with the typed refusal `identifier`, which heads its text
+/// and names the table.
 fn load_refused(block: &str, identifier: &str) {
     match TableDecl::parse_pipeline(&manifest(block)) {
-        Err(e) => {
+        Err(DeclareError::Visibility(e)) => {
+            assert_eq!(e.identifier(), identifier);
             let shown = e.to_string();
-            assert!(shown.contains(identifier) && shown.contains("wiki/pages"), "{shown}");
+            assert!(shown.starts_with(identifier) && shown.contains("wiki/pages"), "{shown}");
         }
-        Ok(tables) => panic!("loaded {tables:?}"),
+        other => panic!("expected {identifier}, got {other:?}"),
     }
 }
 
@@ -67,8 +69,9 @@ fn a_budget_outside_the_grammar_is_refused_naming_table_and_text() {
     load_refused(&block("mirrored", Some("item-exception"), "1h30m"), "VisibilityBudgetMalformed");
 }
 
-/// A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound` and the table does not load.
-// spec: disclosure.declare-fidelity.family-bound@8ace3542
+/// A `person-container` table at a servable level, or a `directory` table above `excluded`, raises
+/// `VisibilityFamilyBound`, and the manifest declaring it does not load.
+// spec: disclosure.declare-fidelity.family-bound@fe5c2bf2
 #[test]
 fn a_level_the_family_does_not_permit_is_refused() {
     let permitted = |family: Family, fidelity: Fidelity| match family {
