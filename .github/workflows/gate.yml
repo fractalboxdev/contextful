@@ -9,7 +9,7 @@
 #   flare-dispatch/check:test-first  a test under tests/ fails against the base source
 #   flare-dispatch/check:workspace   cargo test --workspace, acceptance excluded
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
-#   flare-dispatch/check:features    the store adapter's suites with the read face off
+#   flare-dispatch/check:features    each package declaring a feature, tested with none and with all
 #
 # Lean is provisioned by the dispatched command, not by a step in this file:
 # `contextful-ci gate` runs `provision_lean` (tools/ci/src/main.rs) before the

@@ -70,9 +70,12 @@ const SCRIPT_RUNTIMES: [&str; 9] =
 const RUN_PATH: [&str; 4] = ["contextful-engine", "contextful-runtime", "contextful-wasm", "contextful-connectors"];
 const READ_PATH: [&str; 5] = ["contextful-context", "contextful-memory", "contextful-sync", "contextful-agent", "contextful-eval"];
 
-/// The binary crate, the one package wiring the exchange
-/// (`topology.package.exchange-optional`).
+/// The binary crate, the one package that may link the exchange, and only while its
+/// source reaches [`EXCHANGE_MODULE`] (`topology.package.exchange-optional`).
 const BINARY: &str = "contextful-cli";
+
+/// The path through which the binary wires `authority.exchange.surface`.
+const EXCHANGE_MODULE: &str = "contextful_policy::exchange";
 
 /// The external-assertion stack no other `crates/` package resolves
 /// (`topology.package.exchange-optional`).
@@ -342,24 +345,45 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
     Ok(out)
 }
 
-/// `ExchangeDependencyLeak` per `crates/` package other than the binary whose own resolved
-/// normal graph reaches the exchange stack, naming the first path.
+/// `ExchangeDependencyLeak` per `crates/` package whose own resolved normal graph reaches
+/// the exchange stack, naming the first path; the binary is excepted while its source
+/// names [`EXCHANGE_MODULE`].
 fn exchange_leaks(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
-    let mut names: Vec<&str> = g
-        .packages
-        .values()
-        .filter(|p| p.workspace && p.manifest.starts_with("crates/") && p.name != BINARY)
-        .map(|p| p.name.as_str())
-        .collect();
-    names.sort_unstable();
+    let mut packages: Vec<&Package> =
+        g.packages.values().filter(|p| p.workspace && p.manifest.starts_with("crates/")).collect();
+    packages.sort_unstable_by(|a, b| a.name.cmp(&b.name));
     let mut out = Vec::new();
-    for name in names {
+    for package in packages {
+        let name = package.name.as_str();
+        let src = Path::new(&package.manifest).parent().unwrap_or(Path::new("")).join("src");
+        if name == BINARY && mentions(&root.join(&src), EXCHANGE_MODULE) {
+            continue;
+        }
         if let Some(path) = tree_paths(root, name, false, &EXCHANGE_STACK)?.into_iter().next() {
             let dep = path.rsplit(" -> ").next().unwrap_or_default();
-            out.push(("ExchangeDependencyLeak", format!("`{name}` links `{dep}` through {path}")));
+            let unwired = if name == BINARY {
+                format!(", and no source under {} names `{EXCHANGE_MODULE}`", src.display())
+            } else {
+                String::new()
+            };
+            out.push(("ExchangeDependencyLeak", format!("`{name}` links `{dep}` through {path}{unwired}")));
         }
     }
     Ok(out)
+}
+
+/// Whether any `.rs` file under `dir` contains `needle`.
+fn mentions(dir: &Path, needle: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else { return false };
+    entries.flatten().any(|e| {
+        let path = e.path();
+        if path.is_dir() {
+            mentions(&path, needle)
+        } else {
+            path.extension().is_some_and(|x| x == "rs")
+                && std::fs::read_to_string(&path).is_ok_and(|text| text.contains(needle))
+        }
+    })
 }
 
 /// Run every topology dependency rule over the workspace at `root`.

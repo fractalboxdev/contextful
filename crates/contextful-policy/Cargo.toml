@@ -30,11 +30,11 @@ prost = "0.10"
 rand = "0.8"
 
 [features]
+# The exchange suite runs under `--features exchange`; the gate's features stage tests
+# this package both ways (`assurance.build.staged-feature-runs`).
 exchange = ["dep:jsonwebtoken"]
 
 [dev-dependencies]
-# The integration binary runs the exchange suite whatever features the caller selects.
-contextful-policy = { path = ".", features = ["exchange"] }
 tempfile = "3"
 
 [[test]]

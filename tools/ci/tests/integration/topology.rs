@@ -192,13 +192,15 @@ fn policy(r: &Repo, default: bool) {
     r.write("crates/contextful-policy/tests/integration/main.rs", "");
 }
 
-/// `contextful-policy` links the external-assertion stack, `jsonwebtoken` and `rsa`, only under its non-default `exchange` feature, which `contextful-cli` alone enables to wire {{authority.exchange.surface}}. Another `crates/` package whose resolved graph reaches either raises `ExchangeDependencyLeak`, naming the path.
-// spec: topology.package.exchange-optional@b7ae0c11
+/// `contextful-policy` links the external-assertion stack, `jsonwebtoken` and `rsa`, only under its non-default `exchange` feature, which only the binary may enable, and only alongside wiring {{authority.exchange.surface}}. Another `crates/` package whose resolved graph reaches either raises `ExchangeDependencyLeak`, naming the path.
+// spec: topology.package.exchange-optional@c7196189
 #[test]
 fn a_library_reaching_the_exchange_stack_is_refused() {
     let r = Repo::init();
     policy(&r, false);
     package(&r, "contextful-cli", "contextful-policy = { path = \"../contextful-policy\", features = [\"exchange\"] }\n");
+    r.write("crates/contextful-cli/src/lib.rs", "mod auth;\n");
+    r.write("crates/contextful-cli/src/auth.rs", "pub use contextful_policy::exchange;\n");
     package(&r, "contextful-context", "contextful-policy = { path = \"../contextful-policy\" }\n");
     // The binary wiring the exchange does not switch it on for a library beside it.
     passes(&r);
@@ -218,6 +220,22 @@ fn a_library_reaching_the_exchange_stack_is_refused() {
 }
 
 #[test]
+fn the_binary_enabling_the_exchange_without_wiring_it_is_refused() {
+    let r = Repo::init();
+    policy(&r, false);
+    package(&r, "contextful-cli", "contextful-policy = { path = \"../contextful-policy\", features = [\"exchange\"] }\n");
+    let err = refused(&topology(&r.root), "ExchangeDependencyLeak");
+    assert!(
+        err.contains("`contextful-cli` links `jsonwebtoken` through contextful-cli -> contextful-policy -> jsonwebtoken, and no source under crates/contextful-cli/src names `contextful_policy::exchange`"),
+        "{err}"
+    );
+
+    r.write("crates/contextful-cli/src/lib.rs", "mod auth;\n");
+    r.write("crates/contextful-cli/src/auth.rs", "pub use contextful_policy::exchange;\n");
+    passes(&r);
+}
+
+#[test]
 fn a_library_declaring_rsa_directly_is_refused() {
     let r = Repo::init();
     stub(&r, "rsa", "", "");
@@ -226,10 +244,10 @@ fn a_library_declaring_rsa_directly_is_refused() {
     assert!(err.contains("`contextful-agent` links `rsa` through contextful-agent -> rsa"), "{err}");
 }
 
-/// The policy package without features resolves neither `jsonwebtoken` nor `rsa`; the
-/// binary resolves both.
+/// The policy package without features resolves neither `jsonwebtoken` nor `rsa`, and the
+/// binary resolves them exactly when its source names `contextful_policy::exchange`.
 #[test]
-fn this_repository_links_the_exchange_stack_into_the_binary_alone() {
+fn this_repository_links_the_exchange_stack_only_where_the_binary_wires_it() {
     let tree = |package: &str| {
         let o = Command::new("cargo")
             .args(["tree", "-q", "-p", package, "-e", "normal", "--prefix", "none"])
@@ -244,8 +262,19 @@ fn this_repository_links_the_exchange_stack_into_the_binary_alone() {
     for banned in ["jsonwebtoken", "rsa"] {
         assert!(!policy.iter().any(|n| n == banned), "contextful-policy resolves `{banned}` without `exchange`");
     }
-    let cli = tree("contextful-cli");
-    assert!(cli.iter().any(|n| n == "jsonwebtoken"), "contextful-cli wires the exchange");
+    fn wires(dir: &std::path::Path) -> bool {
+        std::fs::read_dir(dir).unwrap().flatten().any(|e| {
+            let p = e.path();
+            if p.is_dir() {
+                wires(&p)
+            } else {
+                std::fs::read_to_string(&p).is_ok_and(|t| t.contains("contextful_policy::exchange"))
+            }
+        })
+    }
+    let wired = wires(&repo_root().join("crates/contextful-cli/src"));
+    let links = tree("contextful-cli").iter().any(|n| n == "jsonwebtoken");
+    assert_eq!(links, wired, "contextful-cli links the exchange stack: {links}; its source wires the exchange: {wired}");
 }
 
 #[test]

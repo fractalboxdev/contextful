@@ -881,7 +881,6 @@ dependencies = [
  "base64 0.22.1",
  "biscuit-auth",
  "contextful-core",
- "contextful-policy",
  "ed25519-dalek",
  "hex",
  "hmac",
