@@ -145,7 +145,7 @@ fn a_declared_cas_against_an_undemonstrated_backend_stops_the_push() {
 
 /// A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves
 /// `single-writer` without the sentinel, and a declared `cas` there meets `store.probe.unproven` naming the mount type.
-// spec: store.probe.network-volume@a1ee7229
+// spec: store.probe.network-volume@ae257e4e
 #[test]
 fn a_bucket_on_a_network_volume_resolves_single_writer_and_refuses_a_declared_cas() {
     let dir = tempfile::tempdir().unwrap();
@@ -153,7 +153,9 @@ fn a_bucket_on_a_network_volume_resolves_single_writer_and_refuses_a_declared_ca
     assert_eq!(share.volume(), &VolumeClass::Network("smbfs".into()));
     let share: Arc<dyn ObjectStore> = Arc::new(share);
     let a = node("ingest-a", share.clone(), "");
-    assert_eq!(a.syncer.probe().unwrap(), Coordination::SingleWriter);
+    let (coordination, why) = a.syncer.probe_with_reason().unwrap();
+    assert_eq!(coordination, Coordination::SingleWriter);
+    assert!(why.contains("smbfs"), "the probe names the mount type: {why}");
     a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
     match a.syncer.push(at(NOW)) {
         Err(SyncError::Store(StoreError::SyncCoordinationUnproven(m))) => assert!(m.contains("smbfs"), "{m}"),
@@ -168,6 +170,27 @@ fn a_bucket_on_a_network_volume_resolves_single_writer_and_refuses_a_declared_ca
     assert_eq!(b.syncer.probe().unwrap(), Coordination::Cas);
     b.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
     assert!(!b.syncer.push(at(NOW)).unwrap().uploaded.is_empty());
+}
+
+/// A compaction lease on a network share refuses as `store.probe.unproven` naming the mount type,
+/// writing no lease object and no pointer fence; a local volume grants it.
+// spec: store.lease.network-volume@1d922578
+#[test]
+fn a_compaction_lease_on_a_network_volume_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let share: Arc<dyn ObjectStore> = Arc::new(FsBucket::open_with_volume(dir.path(), "context-team", VolumeClass::Network("nfs".into())).unwrap());
+    let a = node("ingest-a", share.clone(), "");
+    match a.syncer.acquire("filings", at(NOW)) {
+        Err(SyncError::Store(StoreError::SyncCoordinationUnproven(m))) => assert!(m.contains("nfs"), "{m}"),
+        other => panic!("a lease on a network share was granted: {other:?}"),
+    }
+    assert!(share.list("").unwrap().is_empty(), "no lease object and no pointer written");
+    assert!(a.syncer.held("filings").unwrap().is_none(), "nothing recorded as held");
+
+    let dir = tempfile::tempdir().unwrap();
+    let local: Arc<dyn ObjectStore> = Arc::new(FsBucket::open_with_volume(dir.path(), "context-team", VolumeClass::Local("ext4".into())).unwrap());
+    let b = node("ingest-a", local, "");
+    assert_eq!(b.syncer.acquire("filings", at(NOW)).unwrap().lease.fence, 1);
 }
 
 /// The local allowlist decides a mount type: anything off it, a FUSE or unknown type included, is a network volume.

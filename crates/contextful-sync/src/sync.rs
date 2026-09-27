@@ -217,8 +217,14 @@ impl Syncer {
     /// a bucket whose conditional put holds on one machine only resolves `single-writer`
     /// without the sentinel (`store.probe.network-volume`).
     pub fn probe(&self) -> Result<Coordination> {
-        if let CasScope::Machine(_) = self.bucket.cas_scope() {
-            return Ok(Coordination::SingleWriter);
+        Ok(self.probe_with_reason()?.0)
+    }
+
+    /// The probe's coordination and the reason it resolved so: the sentinel's verdict, or
+    /// the mount type of a bucket whose conditional put holds on one machine only.
+    pub fn probe_with_reason(&self) -> Result<(Coordination, String)> {
+        if let CasScope::Machine(why) = self.bucket.cas_scope() {
+            return Ok((Coordination::SingleWriter, why));
         }
         let inconclusive = |e: ObjectError| StoreError::SyncProbeInconclusive(format!("the conditional-write probe met {e}; capability not demonstrated"));
         let mut nonce = [0u8; 8];
@@ -235,8 +241,8 @@ impl Syncer {
         let outcome = run();
         let _ = self.bucket.delete(&key);
         match outcome {
-            Ok(true) => Ok(Coordination::Cas),
-            Ok(false) => Ok(Coordination::SingleWriter),
+            Ok(true) => Ok((Coordination::Cas, "conditional writes demonstrated".into())),
+            Ok(false) => Ok((Coordination::SingleWriter, "conditional writes not demonstrated".into())),
             Err(e) => Err(inconclusive(e).into()),
         }
     }
@@ -513,8 +519,12 @@ impl Syncer {
     }
 
     /// Take `table`'s compaction lease, raise the table pointer's fence to it, and record
-    /// the lease as held on this machine.
+    /// the lease as held on this machine. A bucket whose conditional put holds on one
+    /// machine only grants no lease (`store.lease.network-volume`).
     pub fn acquire(&self, table: &str, now: Instant) -> Result<Held> {
+        if let CasScope::Machine(why) = self.bucket.cas_scope() {
+            return Err(StoreError::SyncCoordinationUnproven(format!("the compaction lease on `{table}` needs conditional writes across clients: {why}")).into());
+        }
         let key = self.key(&compaction_key(&self.project, table))?;
         loop {
             let current = self.bucket.get(&key)?;

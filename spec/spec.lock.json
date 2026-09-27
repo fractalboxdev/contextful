@@ -2965,7 +2965,7 @@
       "operation": "probe",
       "subject": "network-volume",
       "kind": "behavior",
-      "statement": "A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves `single-writer` without the sentinel, and a declared `cas` there meets {{store.probe.unproven}} naming the mount type.",
+      "statement": "A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves `single-writer` without the sentinel, naming the mount type, and a declared `cas` there meets {{store.probe.unproven}}.",
       "why": "because the bucket's advisory lock is not a guarantee across the clients of a network share, and a sentinel run from one client cannot observe another",
       "file": "spec/10-store.md",
       "line": 409
@@ -3158,6 +3158,17 @@
       "line": 451
     },
     {
+      "id": "store.lease.network-volume",
+      "contract": "store",
+      "operation": "lease",
+      "subject": "network-volume",
+      "kind": "behavior",
+      "statement": "Taking a compaction lease on a bucket {{store.probe.network-volume}} resolves to `single-writer` meets {{store.probe.unproven}} naming the mount type, and writes no lease object and no pointer fence.",
+      "why": "because a conditional put holding on one machine only lets two machines each take the lease",
+      "file": "spec/10-store.md",
+      "line": 453
+    },
+    {
       "id": "store.lease.commit-log",
       "contract": "store",
       "operation": "lease",
@@ -3166,7 +3177,7 @@
       "statement": "Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 453
+      "line": 455
     },
     {
       "id": "store.replicate.write-refused",
@@ -3177,7 +3188,7 @@
       "statement": "A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 471
+      "line": 473
     },
     {
       "id": "store.replicate.partial-parquet",
@@ -3188,7 +3199,7 @@
       "statement": "A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 473
+      "line": 475
     },
     {
       "id": "store.replicate.missing-index",
@@ -3199,7 +3210,7 @@
       "statement": "A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 475
+      "line": 477
     },
     {
       "id": "store.replicate.sensitive-refused",
@@ -3210,7 +3221,7 @@
       "statement": "A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 477
+      "line": 479
     },
     {
       "id": "read.register.connection-views",
@@ -16490,6 +16501,14 @@
     ],
     [
       "store.probe.network-volume",
+      "store.probe.unproven"
+    ],
+    [
+      "store.lease.network-volume",
+      "store.probe.network-volume"
+    ],
+    [
+      "store.lease.network-volume",
       "store.probe.unproven"
     ],
     [

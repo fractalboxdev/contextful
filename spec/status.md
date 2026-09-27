@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
 | `run` | 3 | 24 | 289 | 82 | 34 | 24 | 151 | 0 | 151 |
-| `store` | 1 | 14 | 155 | 37 | 12 | 8 | 111 | 0 | 111 |
+| `store` | 1 | 14 | 157 | 37 | 12 | 8 | 113 | 0 | 113 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 60 | 15 | 5 | 5 | 14 | 0 | 14 |
-| **total** | 19 | 145 | 1461 | 471 | 163 | 102 | 721 | 0 | |
+| **total** | 19 | 145 | 1463 | 471 | 163 | 102 | 723 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ Decision records: 18.
 | 3 — The run path | 11 | 171 | 92 | passing |
 | 4 — Ingest | 22 | 334 | 127 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
-| 6 — Sync and replicas | 6 | 39 | 34 | passing |
+| 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
 | 8 — Accountability | 5 | 23 | 3 | open |
 | 9 — Visibility | 6 | 22 | 3 | open |
@@ -700,6 +700,7 @@ Unscheduled operations: 10.
 | `store.lease.acquire` | `crates/contextful-core/tests/integration/store/sync.rs::acquisition_creates_or_replaces_on_the_etag_with_the_next_fence` | performed |
 | `store.lease.commit-log` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_created_before_the_next_acquisition_stands` | performed |
 | `store.lease.local-node` | `crates/contextful-core/tests/integration/store/sync.rs::a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable` | performed |
+| `store.lease.network-volume` | `crates/contextful-sync/tests/integration/push.rs::a_compaction_lease_on_a_network_volume_is_refused` | performed |
 | `store.lease.not-held` | `crates/contextful-core/tests/integration/store/sync.rs::releasing_another_nodes_lease_refuses` | performed |
 | `store.lease.pointer-fence` | `crates/contextful-sync/tests/integration/pull.rs::a_publish_under_a_superseded_fence_loses_its_condition` | performed |
 | `store.lease.stale-fence` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable` | performed |
@@ -712,6 +713,7 @@ Unscheduled operations: 10.
 | `store.merge.tombstone-owner` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_naming_another_owners_entry_refuses_and_the_entry_stays` | performed |
 | `store.merge.tombstone-ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_leaves_the_manifest_after_30_days` | performed |
 | `store.probe.inconclusive` | `crates/contextful-sync/tests/integration/push.rs::a_refused_method_credential_or_transport_is_inconclusive` | performed |
+| `store.probe.network-volume` | `crates/contextful-sync/tests/integration/push.rs::a_bucket_on_a_network_volume_resolves_single_writer_and_refuses_a_declared_cas` | performed |
 | `store.probe.sentinel` | `crates/contextful-sync/tests/integration/push.rs::the_probe_demonstrates_cas_and_leaves_no_sentinel` | performed |
 | `store.probe.unproven` | `crates/contextful-sync/tests/integration/push.rs::a_declared_cas_against_an_undemonstrated_backend_stops_the_push` | performed |
 | `store.pull.convergence` | `crates/contextful-sync/tests/integration/pull.rs::a_key_moving_mid_download_refetches_the_manifest_and_retries_the_shortfall` | performed |

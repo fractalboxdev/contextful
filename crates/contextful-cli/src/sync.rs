@@ -118,11 +118,12 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
     match cmd {
         SyncCmd::Probe { args } => {
             let (s, _) = open(&args)?;
-            let c = s.probe()?;
-            println!("{}", match c {
-                contextful_core::store::sync::Coordination::Cas => "cas: conditional writes demonstrated",
-                contextful_core::store::sync::Coordination::SingleWriter => "single-writer: conditional writes not demonstrated",
-            });
+            let (c, why) = s.probe_with_reason()?;
+            let mode = match c {
+                contextful_core::store::sync::Coordination::Cas => "cas",
+                contextful_core::store::sync::Coordination::SingleWriter => "single-writer",
+            };
+            println!("{mode}: {why}");
             Ok(())
         }
         SyncCmd::Push { args } => {

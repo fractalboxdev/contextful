@@ -8,7 +8,7 @@ use contextful_core::store::object::{Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::reserve::Injection;
 use contextful_core::store::sync::SyncConfig;
 use contextful_core::time::Instant;
-use contextful_sync::{FsBucket, Syncer};
+use contextful_sync::{FsBucket, Syncer, VolumeClass};
 use std::sync::{Arc, Mutex};
 
 pub fn at(s: &str) -> Instant {
@@ -21,8 +21,9 @@ pub struct Node {
     pub syncer: Syncer,
 }
 
+/// A bucket classed as a local volume whatever filesystem holds the test's scratch directory.
 pub fn bucket(dir: &std::path::Path) -> Arc<dyn ObjectStore> {
-    Arc::new(FsBucket::open(dir, "context-team").unwrap())
+    Arc::new(FsBucket::open_with_volume(dir, "context-team", VolumeClass::Local("tmpfs".into())).unwrap())
 }
 
 pub fn node(id: &str, bucket: Arc<dyn ObjectStore>, extra_config: &str) -> Node {
