@@ -133,6 +133,8 @@ Target directories, the engine-linked invocation, linked query functions, build 
 
 unsettled: Does the edge profile build for `wasm32-wasip2` with the SQL engine inside its footprint budget? owner: build affects: assurance.build
 
+unsettled: Do the store adapter's write suites assert without the SQL engine, so the features stage compiles no second copy of it? owner: build affects: assurance.build
+
 ## gate
 
 Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.

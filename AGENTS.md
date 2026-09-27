@@ -104,7 +104,8 @@ The gate measures commits, so commit before running it.
 `contextful-ci gate` to the org's FlareDispatch Dispatcher as a `check` run. Each stage
 reports as its own check-run on the pull request:
 `flare-dispatch/check:schema`, `flare-dispatch/check:test-first`,
-`flare-dispatch/check:workspace` and `flare-dispatch/check:acceptance`. A local run and
+`flare-dispatch/check:workspace`, `flare-dispatch/check:acceptance` and
+`flare-dispatch/check:features`. A local run and
 the remote check invoke the identical command; `contextful-ci`'s suite fails when the
 workflow's stage matrix and the subcommand's stage list differ.
 

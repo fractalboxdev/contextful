@@ -36,8 +36,9 @@ default = ["read"]
 read = ["dep:duckdb"]
 
 [dev-dependencies]
-# The integration suites assert over landed tables through SQL. The feature set matches
-# the normal dependency, so the gate compiles the engine once.
+# The integration suites assert over landed tables through SQL, so every test build of this
+# package links the engine, the read face off included: the features stage's no-read run
+# compiles a second copy (about 282 MB of rlib) in its own container and target directory.
 duckdb = { version = "1.10500", features = ["bundled", "parquet", "json", "vscalar"] }
 tempfile = "3"
 
