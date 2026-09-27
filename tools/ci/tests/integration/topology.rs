@@ -87,8 +87,8 @@ fn a_domain_crate_depending_on_an_adapter_is_refused() {
     stub(&r, "serde_like", "", "");
     let err = refused(&topology(&r.root), "TopologyDependencyInversion");
     assert!(err.contains("`contextful-core` depends on adapter crate `contextful-context`"), "{err}");
-    // The manifest's `[dependencies]` opens on line 6; the edge is its second entry.
-    assert!(err.contains("crates/contextful-core/Cargo.toml:8"), "{err}");
+    // The manifest's `[dependencies]` opens on line 7; the edge is its second entry.
+    assert!(err.contains("crates/contextful-core/Cargo.toml:9"), "{err}");
     assert!(!err.contains("serde_like"), "a non-workspace dependency is no inversion: {err}");
 }
 
@@ -235,6 +235,33 @@ fn the_binary_enabling_the_exchange_without_wiring_it_is_refused() {
     passes(&r);
 }
 
+/// Every workspace package under `crates/` or `tools/` declares `license = "Apache-2.0"`, inherited from `[workspace.package]`; a package declaring another value or none raises `PackageLicenceMissing`, naming its manifest.
+// spec: assurance.build.licence-field@8babd985
+#[test]
+fn a_workspace_package_without_the_apache_licence_is_refused() {
+    let r = Repo::init();
+    // A path dependency outside the workspace carries no obligation.
+    stub(&r, "unlicensed", "", "");
+    package(&r, "contextful-core", "unlicensed = { path = \"../../stubs/unlicensed\" }\n");
+    passes(&r);
+
+    let bare = manifest("contextful-context", "").replace("license = \"Apache-2.0\"\n", "");
+    r.write("crates/contextful-context/Cargo.toml", &bare);
+    r.write("crates/contextful-context/src/lib.rs", "");
+    r.write("crates/contextful-engine/Cargo.toml", &manifest("contextful-engine", "").replace("Apache-2.0", "MIT"));
+    r.write("crates/contextful-engine/src/lib.rs", "");
+    let err = refused(&topology(&r.root), "PackageLicenceMissing");
+    assert!(err.contains("`contextful-context` declares no licence (crates/contextful-context/Cargo.toml)"), "{err}");
+    assert!(err.contains("`contextful-engine` declares licence `MIT`, not `Apache-2.0` (crates/contextful-engine/Cargo.toml)"), "{err}");
+    assert!(!err.contains("unlicensed"), "{err}");
+
+    // Inheriting the field from `[workspace.package]` satisfies the rule.
+    r.write("Cargo.toml", "[workspace]\nresolver = \"2\"\nmembers = [\"crates/*\"]\n\n[workspace.package]\nlicense = \"Apache-2.0\"\n");
+    r.write("crates/contextful-context/Cargo.toml", &bare.replace("edition = \"2021\"\n", "edition = \"2021\"\nlicense.workspace = true\n"));
+    r.write("crates/contextful-engine/Cargo.toml", &bare.replace("contextful-context", "contextful-engine").replace("edition = \"2021\"\n", "edition = \"2021\"\nlicense.workspace = true\n"));
+    passes(&r);
+}
+
 #[test]
 fn a_library_declaring_rsa_directly_is_refused() {
     let r = Repo::init();
@@ -275,6 +302,17 @@ fn this_repository_links_the_exchange_stack_only_where_the_binary_wires_it() {
     let wired = wires(&repo_root().join("crates/contextful-cli/src"));
     let links = tree("contextful-cli").iter().any(|n| n == "jsonwebtoken");
     assert_eq!(links, wired, "contextful-cli links the exchange stack: {links}; its source wires the exchange: {wired}");
+}
+
+#[test]
+fn every_package_of_this_repository_declares_the_apache_licence() {
+    let meta = Command::new("cargo").args(["metadata", "--no-deps", "--format-version", "1", "-q"]).current_dir(repo_root()).output().unwrap();
+    let meta: serde_json::Value = serde_json::from_slice(&meta.stdout).unwrap();
+    let packages = meta["packages"].as_array().unwrap();
+    assert!(packages.len() >= 2);
+    for p in packages {
+        assert_eq!(p["license"], "Apache-2.0", "{} declares {}", p["name"], p["license"]);
+    }
 }
 
 #[test]

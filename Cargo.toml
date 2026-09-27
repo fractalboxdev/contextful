@@ -2,6 +2,13 @@
 resolver = "2"
 members = ["crates/*", "tools/*"]
 
+# Every member inherits these; cargo-deny and SBOM generators read the licence from the
+# manifest, not from `LICENSE` (`assurance.build.licence-field`).
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/fractalboxdev/contextful"
+
 # Every test binary linking the read path embeds the bundled DuckDB; with full debug
 # info each weighs hundreds of MiB, and the workspace's test binaries together exceed
 # a gate sandbox's disk. Workspace code keeps line tables for backtraces; dependencies
