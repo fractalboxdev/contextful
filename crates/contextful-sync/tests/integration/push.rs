@@ -2,9 +2,9 @@
 
 use crate::support::{at, bucket, node, Script, Scripted};
 use contextful_core::store::object::{ObjectError, ObjectStore, Put};
-use contextful_core::store::sync::BucketManifest;
+use contextful_core::store::sync::{BucketManifest, Coordination};
 use contextful_core::store::StoreError;
-use contextful_sync::SyncError;
+use contextful_sync::{FsBucket, SyncError, VolumeClass};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -141,6 +141,44 @@ fn a_declared_cas_against_an_undemonstrated_backend_stops_the_push() {
     a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
     assert!(matches!(a.syncer.push(at(NOW)), Err(SyncError::Store(StoreError::SyncCoordinationUnproven(_)))));
     assert!(inner.list("team/research/").unwrap().is_empty(), "nothing uploaded");
+}
+
+/// A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves
+/// `single-writer` without the sentinel, and a declared `cas` there meets `store.probe.unproven` naming the mount type.
+// spec: store.probe.network-volume@a1ee7229
+#[test]
+fn a_bucket_on_a_network_volume_resolves_single_writer_and_refuses_a_declared_cas() {
+    let dir = tempfile::tempdir().unwrap();
+    let share = FsBucket::open_with_volume(dir.path(), "context-team", VolumeClass::Network("smbfs".into())).unwrap();
+    assert_eq!(share.volume(), &VolumeClass::Network("smbfs".into()));
+    let share: Arc<dyn ObjectStore> = Arc::new(share);
+    let a = node("ingest-a", share.clone(), "");
+    assert_eq!(a.syncer.probe().unwrap(), Coordination::SingleWriter);
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    match a.syncer.push(at(NOW)) {
+        Err(SyncError::Store(StoreError::SyncCoordinationUnproven(m))) => assert!(m.contains("smbfs"), "{m}"),
+        other => panic!("a declared cas on a network share proceeded: {other:?}"),
+    }
+    assert!(share.list("team/research/").unwrap().is_empty(), "nothing uploaded");
+
+    // The same bucket on a local volume still demonstrates `cas` and pushes.
+    let dir = tempfile::tempdir().unwrap();
+    let local: Arc<dyn ObjectStore> = Arc::new(FsBucket::open_with_volume(dir.path(), "context-team", VolumeClass::Local("apfs".into())).unwrap());
+    let b = node("ingest-a", local, "");
+    assert_eq!(b.syncer.probe().unwrap(), Coordination::Cas);
+    b.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    assert!(!b.syncer.push(at(NOW)).unwrap().uploaded.is_empty());
+}
+
+/// The local allowlist decides a mount type: anything off it, a FUSE or unknown type included, is a network volume.
+#[test]
+fn a_mount_type_off_the_local_allowlist_classifies_as_network() {
+    for local in ["apfs", "hfs", "ext4", "xfs", "btrfs", "zfs", "tmpfs", "overlay"] {
+        assert_eq!(VolumeClass::of(local), VolumeClass::Local(local.into()));
+    }
+    for remote in ["smbfs", "nfs", "afpfs", "webdav", "cifs", "fuse", "macfuse", "9p", "unknown"] {
+        assert_eq!(VolumeClass::of(remote), VolumeClass::Network(remote.into()));
+    }
 }
 
 /// `[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.

@@ -43,6 +43,15 @@ impl std::fmt::Display for ObjectError {
 
 impl std::error::Error for ObjectError {}
 
+/// How far a bucket's conditional put holds (`store.probe.network-volume`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CasScope {
+    /// Across every client of the backend; the probe's sentinel measures it.
+    Backend,
+    /// Across the processes of one machine only, for the named reason.
+    Machine(String),
+}
+
 /// An object store: keys to bytes, each object carrying an ETag.
 pub trait ObjectStore: Send + Sync {
     /// The object and its ETag, or `None` where no object holds the key.
@@ -51,4 +60,8 @@ pub trait ObjectStore: Send + Sync {
     fn delete(&self, key: &str) -> Result<(), ObjectError>;
     /// Every key beginning with `prefix`, sorted.
     fn list(&self, prefix: &str) -> Result<Vec<String>, ObjectError>;
+    /// How far the conditional put holds; a backend's own conditional writes hold across clients.
+    fn cas_scope(&self) -> CasScope {
+        CasScope::Backend
+    }
 }

@@ -4,7 +4,7 @@ use contextful_context::{ContextError, Store};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer};
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE};
-use contextful_core::store::object::{Condition, ObjectError, ObjectStore, Put};
+use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
     confine, is_commit_log, is_pointer, merge, owner_of, BucketManifest, Coordination, Entry, SyncConfig, MANIFEST_KEY, PROBE_PREFIX,
     PULL_CONVERGENCE,
@@ -213,8 +213,13 @@ impl Syncer {
     }
 
     /// Demonstrate conditional writes with a live sentinel inside the prefix (`store.probe`).
-    /// A backend refusing the method, the credential or the transport is inconclusive.
+    /// A backend refusing the method, the credential or the transport is inconclusive, and
+    /// a bucket whose conditional put holds on one machine only resolves `single-writer`
+    /// without the sentinel (`store.probe.network-volume`).
     pub fn probe(&self) -> Result<Coordination> {
+        if let CasScope::Machine(_) = self.bucket.cas_scope() {
+            return Ok(Coordination::SingleWriter);
+        }
         let inconclusive = |e: ObjectError| StoreError::SyncProbeInconclusive(format!("the conditional-write probe met {e}; capability not demonstrated"));
         let mut nonce = [0u8; 8];
         getrandom::fill(&mut nonce).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
@@ -246,7 +251,10 @@ impl Syncer {
             Err(SyncError::Store(StoreError::SyncProbeInconclusive(_))) if !self.config.declares_cas() => Coordination::SingleWriter,
             Err(e) => return Err(e),
         };
-        coordination.admit(&self.config)?;
+        coordination.admit(&self.config).map_err(|e| match (e, self.bucket.cas_scope()) {
+            (StoreError::SyncCoordinationUnproven(m), CasScope::Machine(why)) => StoreError::SyncCoordinationUnproven(format!("{m}: {why}")),
+            (e, _) => e,
+        })?;
         let local = self.local_entries()?;
         let (remote, _) = self.manifest()?;
         let mut report = PushReport::default();
