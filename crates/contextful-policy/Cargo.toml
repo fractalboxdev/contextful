@@ -20,15 +20,21 @@ ed25519-dalek = "2"
 sha2 = "0.10"
 # The audit chain: the keyed query digest.
 hmac = "0.12"
-# The exchange: external assertion verification under injected material.
-jsonwebtoken = { version = "11", features = ["rust_crypto"] }
+# The exchange: external assertion verification under injected material, behind the
+# `exchange` feature (`topology.package.exchange-optional`).
+jsonwebtoken = { version = "11", features = ["rust_crypto"], optional = true }
 # The credential format: reading the library's block encoding, credential identifiers
 # and revocation identifiers.
 hex = "0.4"
 prost = "0.10"
 rand = "0.8"
 
+[features]
+exchange = ["dep:jsonwebtoken"]
+
 [dev-dependencies]
+# The integration binary runs the exchange suite whatever features the caller selects.
+contextful-policy = { path = ".", features = ["exchange"] }
 tempfile = "3"
 
 [[test]]

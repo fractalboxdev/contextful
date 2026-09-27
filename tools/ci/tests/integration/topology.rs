@@ -175,6 +175,79 @@ fn a_run_path_crate_reaching_a_read_path_crate_is_refused() {
     );
 }
 
+/// A `contextful-policy` stub whose `exchange` feature (default when `default` is set)
+/// turns on a stub `jsonwebtoken` that links a stub `rsa`.
+fn policy(r: &Repo, default: bool) {
+    stub(r, "rsa", "", "");
+    stub(r, "jsonwebtoken", "rsa = { path = \"../rsa\" }\n", "");
+    let default = if default { "default = [\"exchange\"]\n" } else { "" };
+    r.write(
+        "crates/contextful-policy/Cargo.toml",
+        &format!(
+            "{}\n[features]\n{default}exchange = [\"dep:jsonwebtoken\"]\n",
+            manifest("contextful-policy", "jsonwebtoken = { path = \"../../stubs/jsonwebtoken\", optional = true }\n")
+        ),
+    );
+    r.write("crates/contextful-policy/src/lib.rs", "");
+    r.write("crates/contextful-policy/tests/integration/main.rs", "");
+}
+
+/// `contextful-policy` links the external-assertion stack, `jsonwebtoken` and `rsa`, only under its non-default `exchange` feature, which `contextful-cli` alone enables to wire {{authority.exchange.surface}}. Another `crates/` package whose resolved graph reaches either raises `ExchangeDependencyLeak`, naming the path.
+// spec: topology.package.exchange-optional@b7ae0c11
+#[test]
+fn a_library_reaching_the_exchange_stack_is_refused() {
+    let r = Repo::init();
+    policy(&r, false);
+    package(&r, "contextful-cli", "contextful-policy = { path = \"../contextful-policy\", features = [\"exchange\"] }\n");
+    package(&r, "contextful-context", "contextful-policy = { path = \"../contextful-policy\" }\n");
+    // The binary wiring the exchange does not switch it on for a library beside it.
+    passes(&r);
+
+    package(&r, "contextful-context", "contextful-policy = { path = \"../contextful-policy\", features = [\"exchange\"] }\n");
+    let err = refused(&topology(&r.root), "ExchangeDependencyLeak");
+    assert!(err.contains("`contextful-context` links `jsonwebtoken` through contextful-context -> contextful-policy -> jsonwebtoken"), "{err}");
+    assert!(!err.contains("`contextful-cli`"), "the binary wires the exchange: {err}");
+    assert!(!err.contains("`contextful-policy` links"), "{err}");
+
+    // A default-on feature reaches every dependent taking default features.
+    package(&r, "contextful-context", "contextful-policy = { path = \"../contextful-policy\" }\n");
+    policy(&r, true);
+    let err = refused(&topology(&r.root), "ExchangeDependencyLeak");
+    assert!(err.contains("`contextful-policy` links `jsonwebtoken` through contextful-policy -> jsonwebtoken"), "{err}");
+    assert!(err.contains("`contextful-context` links `jsonwebtoken`"), "{err}");
+}
+
+#[test]
+fn a_library_declaring_rsa_directly_is_refused() {
+    let r = Repo::init();
+    stub(&r, "rsa", "", "");
+    package(&r, "contextful-agent", "rsa = { path = \"../../stubs/rsa\" }\n");
+    let err = refused(&topology(&r.root), "ExchangeDependencyLeak");
+    assert!(err.contains("`contextful-agent` links `rsa` through contextful-agent -> rsa"), "{err}");
+}
+
+/// The policy package without features resolves neither `jsonwebtoken` nor `rsa`; the
+/// binary resolves both.
+#[test]
+fn this_repository_links_the_exchange_stack_into_the_binary_alone() {
+    let tree = |package: &str| {
+        let o = Command::new("cargo")
+            .args(["tree", "-q", "-p", package, "-e", "normal", "--prefix", "none"])
+            .current_dir(repo_root())
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", stderr(&o));
+        stdout(&o).lines().filter_map(|l| l.split_whitespace().next().map(str::to_string)).collect::<Vec<_>>()
+    };
+    let policy = tree("contextful-policy");
+    assert!(policy.iter().any(|n| n == "biscuit-auth"), "{policy:?}");
+    for banned in ["jsonwebtoken", "rsa"] {
+        assert!(!policy.iter().any(|n| n == banned), "contextful-policy resolves `{banned}` without `exchange`");
+    }
+    let cli = tree("contextful-cli");
+    assert!(cli.iter().any(|n| n == "jsonwebtoken"), "contextful-cli wires the exchange");
+}
+
 #[test]
 fn this_repository_holds_to_the_dependency_rules() {
     let meta = Command::new("cargo").args(["metadata", "--no-deps", "--format-version", "1", "-q"]).current_dir(repo_root()).output().unwrap();

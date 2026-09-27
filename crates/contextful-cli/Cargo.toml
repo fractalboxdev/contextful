@@ -15,7 +15,7 @@ contextful-context = { path = "../contextful-context", features = ["read"] }
 contextful-core = { path = "../contextful-core" }
 contextful-engine = { path = "../contextful-engine" }
 contextful-memory = { path = "../contextful-memory" }
-contextful-policy = { path = "../contextful-policy" }
+contextful-policy = { path = "../contextful-policy", features = ["exchange"] }
 contextful-runtime = { path = "../contextful-runtime" }
 contextful-sync = { path = "../contextful-sync" }
 anyhow = "1"
