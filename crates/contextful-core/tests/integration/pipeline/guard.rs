@@ -6,10 +6,9 @@ use serde_json::json;
 
 const PEM: &str = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA7\n-----END RSA PRIVATE KEY-----";
 
-/// Matchers are linear-time and regex-free, covering AWS access-key ids, PEM private keys, GitHub and Slack
-/// tokens, and `keyword=<token>` assignments; the pattern catalogue lives in code under a precision and recall
-/// fixture test.
-// spec: run.guard-secrets.matchers@7b844949
+/// Matchers are linear-time, regex-free forward scans, each anchored on a literal prefix; the credential
+/// catalogue lives in code under a precision and recall fixture test.
+// spec: run.guard-secrets.matchers@f276346d
 #[test]
 fn the_catalogue_holds_its_precision_and_recall_fixture() {
     let positives = [
@@ -21,6 +20,17 @@ fn the_catalogue_holds_its_precision_and_recall_fixture() {
         ("xoxb-123456789012-abcdefABCDEF", Kind::SlackToken),
         ("password=hunter2hunter2", Kind::Assignment),
         ("api_key: 'zK9s8d7f6g5h'", Kind::Assignment),
+        ("OPENAI_API_KEY sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z_AbCdEfGh", Kind::LlmProviderKey),
+        ("key sk-ant-api03-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAbCdEfGh-AA", Kind::LlmProviderKey),
+        ("sk-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAbCd", Kind::LlmProviderKey),
+        ("maps AIzaSyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q here", Kind::GoogleApiKey),
+        ("sk_live_4eC39HqLyjWDarjtT1zdp7dc", Kind::StripeKey),
+        ("rk_live_51H8xYzAbCdEfGhIjKlMnOpQr", Kind::StripeKey),
+        (
+            "session eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+            Kind::Jwt,
+        ),
+        ("Authorization: Bearer 9f8e7d6c5b4a39218a7b6c5d4e3f2a1b", Kind::Bearer),
     ];
     for (text, kind) in positives {
         let found = spans(text);
@@ -36,12 +46,22 @@ fn the_catalogue_holds_its_precision_and_recall_fixture() {
         "tokenizer=whitespace_standard",          // keyword inside a longer word
         "the password is set elsewhere",
         "order 20300101 shipped to AKIA street",
+        "a risk-free task-list",
+        "import sk-learn as the baseline",
+        "my-sk-learn-pipeline-config-v2-with-a-long-tail",
+        "desk-1234567890abcdefghijkl",
+        "release 1.2.3",
+        "xeyJabc.def.ghi",
+        "AIzaTooShort",
+        "sk_live_short",
+        "Bearer short",
+        "Authorization: Basic",
     ];
     for text in negatives {
         assert!(spans(text).is_empty(), "false positive on {text:?}: {:?}", spans(text));
     }
     // One forward scan per pattern: a long adversarial input stays linear.
-    let long = "AKIA".repeat(250_000) + &"password=".repeat(100_000);
+    let long = "AKIA".repeat(250_000) + &"password=".repeat(100_000) + &"sk-".repeat(250_000) + &"eyJ.".repeat(250_000) + &"bearer ".repeat(100_000);
     let started = std::time::Instant::now();
     let _ = spans(&long);
     assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
@@ -59,6 +79,10 @@ fn only_the_matched_range_is_replaced_and_overlaps_merge() {
     let found = spans("token=AKIAIOSFODNN7EXAMPLE");
     assert_eq!(found, [(Kind::AwsAccessKeyId, 6..26)]);
     assert_eq!(mask("token=AKIAIOSFODNN7EXAMPLE").unwrap(), format!("token={MARKER}"));
+    // A bearer header carrying a JWT: one span, under the JWT pattern, the scheme kept.
+    let header = "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJlLXNpZ25hdHVyZQ";
+    assert_eq!(spans(header).into_iter().map(|(k, _)| k).collect::<Vec<_>>(), [Kind::Jwt]);
+    assert_eq!(mask(header).unwrap(), format!("Authorization: Bearer {MARKER}"));
     assert_eq!(mask("nothing to see"), None);
 }
 

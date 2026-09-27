@@ -6298,7 +6298,7 @@
       "operation": "guard-secrets",
       "subject": "matchers",
       "kind": "behavior",
-      "statement": "Matchers are linear-time and regex-free, covering AWS access-key ids, PEM private keys, GitHub and Slack tokens, and `keyword=<token>` assignments; the pattern catalogue lives in code under a precision and recall fixture test.",
+      "statement": "Matchers are linear-time, regex-free forward scans, each anchored on a literal prefix; the credential catalogue lives in code under a precision and recall fixture test.",
       "why": "",
       "file": "spec/31-pipeline.md",
       "line": 145
