@@ -1,6 +1,7 @@
 //! `contextful-ci topology` — the dependency rules of the `topology` contract, read off
 //! `cargo metadata`: the domain crate's purity and dependency direction, the model-vendor
-//! and script-runtime bans, and the run-path-to-read-path crate graph.
+//! and script-runtime bans, the run-path-to-read-path crate graph, and the store adapter's
+//! engine-free write half.
 
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
@@ -35,6 +36,12 @@ const IMPURE: [(&str, &str); 19] = [
     ("datafusion", "a columnar-format implementation"),
     ("libduckdb-sys", "a columnar-format implementation"),
 ];
+
+/// The store adapter, whose write half resolves no SQL engine with its `read` feature off
+/// (`topology.package.store-write-engine-free`).
+const STORE: &str = "contextful-context";
+const STORE_READ_FEATURE: &str = "read";
+const SQL_ENGINE: [&str; 2] = ["duckdb", "libduckdb-sys"];
 
 /// Model-vendor SDKs no workspace crate declares (`topology.compose.vendor-sdk`).
 const VENDOR_SDKS: [&str; 12] = [
@@ -231,8 +238,37 @@ fn manifest_line(root: &Path, manifest: &str, dep: &str) -> String {
     }
 }
 
+/// Each normal-dependency path from `package` to a package named in `targets`, resolved
+/// by `cargo tree` with every feature of `package` off, as `a -> b -> c`.
+fn engine_paths(root: &Path, package: &str, targets: &[&str]) -> Result<Vec<String>> {
+    let out = Command::new("cargo")
+        .args(["tree", "-q", "-p", package, "--no-default-features", "-e", "normal", "--prefix", "depth", "--format", "{p}"])
+        .current_dir(root)
+        .output()
+        .context("running cargo tree")?;
+    if !out.status.success() {
+        bail!("cargo tree: {}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    let mut stack: Vec<String> = Vec::new();
+    let mut paths = Vec::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let rest = line.trim_start_matches(|c: char| c.is_ascii_digit());
+        let Ok(depth) = line[..line.len() - rest.len()].parse::<usize>() else { continue };
+        let name = rest.split_whitespace().next().unwrap_or_default().to_string();
+        stack.truncate(depth);
+        stack.push(name.clone());
+        if depth > 0 && targets.contains(&name.as_str()) {
+            let path = stack.join(" -> ");
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+    }
+    Ok(paths)
+}
+
 /// Every finding as `(error, message)`.
-fn findings(root: &Path, g: &Graph) -> Vec<(&'static str, String)> {
+fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
     let mut out = Vec::new();
     let mut workspace: Vec<(&String, &Package)> = g.packages.iter().filter(|(_, p)| p.workspace).collect();
     workspace.sort_by(|a, b| a.1.name.cmp(&b.1.name));
@@ -284,13 +320,20 @@ fn findings(root: &Path, g: &Graph) -> Vec<(&'static str, String)> {
             }
         }
     }
-    out
+
+    if g.id_of(STORE).is_some() {
+        for path in engine_paths(root, STORE, &SQL_ENGINE)? {
+            let name = path.rsplit(" -> ").next().unwrap_or_default();
+            out.push(("StoreWriteLinksEngine", format!("`{STORE}` without `{STORE_READ_FEATURE}` links `{name}` through {path}")));
+        }
+    }
+    Ok(out)
 }
 
 /// Run every topology dependency rule over the workspace at `root`.
 pub fn check(root: &Path) -> Result<()> {
     let g = Graph::load(root)?;
-    let found = findings(root, &g);
+    let found = findings(root, &g)?;
     for (code, message) in &found {
         eprintln!("{code}: {message}");
     }

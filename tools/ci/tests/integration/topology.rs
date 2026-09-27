@@ -92,6 +92,37 @@ fn a_domain_crate_depending_on_an_adapter_is_refused() {
     assert!(!err.contains("serde_like"), "a non-workspace dependency is no inversion: {err}");
 }
 
+/// `contextful-context` resolved without its `read` feature and reaching `duckdb` or `libduckdb-sys` through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.
+// spec: topology.package.store-write-engine-free@b7105e8e
+#[test]
+fn a_store_adapter_linking_the_sql_engine_without_read_is_refused() {
+    let r = Repo::init();
+    stub(&r, "libduckdb-sys", "", "");
+    stub(&r, "duckdb", "libduckdb-sys = { path = \"../libduckdb-sys\" }\n", "");
+    stub(&r, "sqlkit", "duckdb = { path = \"../duckdb\" }\n", "");
+    // The engine behind a default-on `read` feature, and as a dev-dependency, leaves the write half engine-free.
+    package(&r, "contextful-context", "");
+    r.write(
+        "crates/contextful-context/Cargo.toml",
+        &format!(
+            "{}\n[features]\ndefault = [\"read\"]\nread = [\"dep:duckdb\"]\n\n[dev-dependencies]\nduckdb = {{ path = \"../../stubs/duckdb\" }}\n",
+            manifest("contextful-context", "duckdb = { path = \"../../stubs/duckdb\", optional = true }\n")
+        ),
+    );
+    package(&r, "contextful-memory", "contextful-context = { path = \"../contextful-context\", features = [\"read\"] }\n");
+    passes(&r);
+
+    package(&r, "contextful-memory", "contextful-context = { path = \"../contextful-context\" }\n");
+    package(&r, "contextful-context", "duckdb = { path = \"../../stubs/duckdb\" }\n");
+    let err = refused(&topology(&r.root), "StoreWriteLinksEngine");
+    assert!(err.contains("`contextful-context` without `read` links `duckdb` through contextful-context -> duckdb"), "{err}");
+    assert!(err.contains("links `libduckdb-sys` through contextful-context -> duckdb -> libduckdb-sys"), "{err}");
+
+    package(&r, "contextful-context", "sqlkit = { path = \"../../stubs/sqlkit\" }\n");
+    let err = refused(&topology(&r.root), "StoreWriteLinksEngine");
+    assert!(err.contains("through contextful-context -> sqlkit -> duckdb"), "{err}");
+}
+
 /// The dependency audit raises `VendorSdkLinked`, naming the crate and the dependency, for a crate declaring a model-vendor SDK or a second outbound path to a model.
 // spec: topology.compose.vendor-sdk@ba72d1fc
 #[test]

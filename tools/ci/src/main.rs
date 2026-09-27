@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 const STAGES: [&str; 4] = ["schema", "test-first", "workspace", "acceptance"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
+const STORE_MANIFEST: &str = "crates/contextful-context/Cargo.toml";
 const REFACTOR_TRAILER: &str = "refactor";
 /// Wall clock one test-first execution against the base runs for, its build excluded: 300 s
 /// (`assurance.test.base-run-bound`). A run still going is killed with its process group
@@ -140,7 +141,13 @@ fn workspace(root: &Path) -> Result<()> {
     if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
         args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
     }
-    run(root, "cargo", &args)
+    run(root, "cargo", &args)?;
+    // The store adapter's write half builds and passes its land and fold suites with the
+    // read face off (`topology.package.store-write-engine-free`).
+    if root.join(STORE_MANIFEST).exists() {
+        run(root, "cargo", &["test", "-p", "contextful-context", "--no-default-features"])?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------- lean

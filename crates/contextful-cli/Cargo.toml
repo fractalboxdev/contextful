@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 contextful-agent = { path = "../contextful-agent" }
 contextful-connectors = { path = "../contextful-connectors" }
-contextful-context = { path = "../contextful-context" }
+contextful-context = { path = "../contextful-context", features = ["read"] }
 contextful-core = { path = "../contextful-core" }
 contextful-engine = { path = "../contextful-engine" }
 contextful-memory = { path = "../contextful-memory" }

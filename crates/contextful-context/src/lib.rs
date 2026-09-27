@@ -1,6 +1,6 @@
 //! The store adapter: a project's store root on a filesystem, Parquet table parts, run
 //! and snapshot manifests, the table pointer, the fold, the scan that resolves a table's
-//! file list and relation, and the read face executing over it.
+//! file list and relation, and, under the `read` feature, the read face executing over it.
 
 pub mod commit_log;
 pub mod error;
@@ -9,6 +9,7 @@ pub mod land;
 pub mod ledger;
 pub mod node;
 pub mod parquet_io;
+#[cfg(feature = "read")]
 pub mod read;
 pub mod rows;
 pub mod scan;

@@ -1,5 +1,6 @@
 //! The read face over a scratch store: registration, the guard, responses, ranked
 //! retrieval and the query-time enforcement layer, each through the embedded engine.
+#![cfg(feature = "read")]
 
 mod enforce;
 mod guard;
