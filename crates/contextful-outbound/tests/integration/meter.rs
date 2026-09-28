@@ -6,8 +6,8 @@ use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::meter::{LimiterBinding, LimiterDeclaration};
 use contextful_core::connector::resolve::Provider;
 use contextful_core::run::FailureTag;
-use contextful_runtime::client::{Client, HeaderValue};
-use contextful_runtime::{Limiter, Meter, Resolver};
+use contextful_outbound::client::{Client, HeaderValue};
+use contextful_outbound::{Limiter, Meter, Resolver};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -65,7 +65,7 @@ fn metered(vendor: &Server, limiter: &Arc<Limiter>) -> Client {
     Client::new(Allowlist::parse(&["127.0.0.1"]).unwrap(), url(&vendor.url("/"))).metered(Meter::new(declaration(), Some(limiter.clone())))
 }
 
-fn get(c: &Client, server: &Server, path: &str) -> Result<contextful_runtime::Response, contextful_core::run::Failure> {
+fn get(c: &Client, server: &Server, path: &str) -> Result<contextful_outbound::Response, contextful_core::run::Failure> {
     c.send("GET", &url(&server.url(path)), &[("Accept".to_string(), HeaderValue::Plain("application/json".into()))], None)
 }
 

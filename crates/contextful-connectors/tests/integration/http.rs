@@ -349,7 +349,7 @@ fn a_long_walk_rehydrates_a_lease_before_it_expires() {
         Response::json(200, &body)
     });
     let provider = Arc::new(Minting { clock: clock.clone(), minted: AtomicUsize::new(0) });
-    let resolver = Arc::new(contextful_runtime::Resolver::new(vec![provider], false, Arc::new(Ticking(clock))));
+    let resolver = Arc::new(contextful_outbound::Resolver::new(vec![provider], false, Arc::new(Ticking(clock))));
     let config = HttpConfig::parse(&json!({
         "endpoint": server.url("/v1/items"), "page_param": "page",
         "headers": {"Authorization": "Bearer ${secret://vendor-token}"}

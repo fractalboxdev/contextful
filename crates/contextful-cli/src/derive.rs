@@ -51,7 +51,7 @@ pub fn run(cmd: DeriveCmd) -> Result<()> {
             let cwd = std::env::current_dir()?;
             let chain = Chain::resolve(&name, binding, &cwd)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
-            let resolver = contextful_runtime::assemble(&vars, std::sync::Arc::new(crate::run::SystemClock))?;
+            let resolver = contextful_outbound::assemble(&vars, std::sync::Arc::new(crate::run::SystemClock))?;
             let mut env = Vec::new();
             for (k, t) in &chain.env {
                 env.push((k.clone(), resolver.render(t)?.reveal().to_string()));

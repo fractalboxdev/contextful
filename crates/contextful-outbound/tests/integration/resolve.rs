@@ -3,8 +3,8 @@
 use crate::support::{name, Fixed, SetClock};
 use contextful_core::connector::reference::{Hydrated, Template, SENTINEL};
 use contextful_core::connector::resolve::Provider;
-use contextful_runtime::secrets::{assemble, EnvProvider};
-use contextful_runtime::Resolver;
+use contextful_outbound::secrets::{assemble, EnvProvider};
+use contextful_outbound::Resolver;
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};

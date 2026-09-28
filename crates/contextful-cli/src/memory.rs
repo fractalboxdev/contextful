@@ -13,7 +13,7 @@ use contextful_core::ports::Clock;
 use contextful_policy::verify::{effect_boundary, Admission};
 use contextful_memory::synthesize::Pass;
 use contextful_memory::write::write_claim;
-use contextful_runtime::infer::Endpoint;
+use contextful_outbound::infer::Endpoint;
 use std::path::PathBuf;
 
 /// The environment variable holding the inference endpoint's bearer key, if it takes one.

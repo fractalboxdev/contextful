@@ -5,8 +5,8 @@ use crate::support::{configure_proxy, proxy_env, name, Fixed, Response, Server, 
 use contextful_core::connector::lease::Scopes;
 use contextful_core::connector::resolve::Provider;
 use contextful_core::run::FailureTag;
-use contextful_runtime::secrets::{assemble, LeaseProvider};
-use contextful_runtime::Resolver;
+use contextful_outbound::secrets::{assemble, LeaseProvider};
+use contextful_outbound::Resolver;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

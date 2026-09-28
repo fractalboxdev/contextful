@@ -776,8 +776,8 @@ dependencies = [
  "contextful-core",
  "contextful-engine",
  "contextful-memory",
+ "contextful-outbound",
  "contextful-policy",
- "contextful-runtime",
  "contextful-sync",
  "serde",
  "serde_json",
@@ -793,7 +793,7 @@ name = "contextful-connectors"
 version = "0.1.0"
 dependencies = [
  "contextful-core",
- "contextful-runtime",
+ "contextful-outbound",
  "libc",
  "quick-xml",
  "serde",
@@ -881,6 +881,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "contextful-outbound"
+version = "0.1.0"
+dependencies = [
+ "contextful-core",
+ "serde_json",
+ "tempfile",
+ "ureq",
+ "url",
+]
+
+[[package]]
 name = "contextful-policy"
 version = "0.1.0"
 dependencies = [
@@ -901,17 +912,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "time",
-]
-
-[[package]]
-name = "contextful-runtime"
-version = "0.1.0"
-dependencies = [
- "contextful-core",
- "serde_json",
- "tempfile",
- "ureq",
- "url",
 ]
 
 [[package]]
@@ -953,7 +953,7 @@ dependencies = [
  "arrow-schema 57.3.1",
  "bytes",
  "contextful-core",
- "contextful-runtime",
+ "contextful-outbound",
  "http",
  "http-body-util",
  "serde_json",

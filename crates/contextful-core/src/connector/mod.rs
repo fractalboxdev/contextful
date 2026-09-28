@@ -2,7 +2,7 @@
 //! lease wire, the limiter wire and permit pool, the allowlist, address vetting and origin
 //! rules, artifact pins and the forwarded guest table, the data fence around model-bound
 //! values, and the provider port.
-//! The resolver and the mediated client are `contextful-runtime`.
+//! The resolver and the mediated client are `contextful-outbound`.
 
 pub mod attach;
 pub mod error;

@@ -6,8 +6,8 @@ use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::probe::ScopeProbe;
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::run::{Failure, FailureTag};
-use contextful_runtime::client::{Client, HeaderValue};
-use contextful_runtime::probe::{open_session, probe};
+use contextful_outbound::client::{Client, HeaderValue};
+use contextful_outbound::probe::{open_session, probe};
 use url::Url;
 
 const HEADER: &str = "X-Granted-Scopes";

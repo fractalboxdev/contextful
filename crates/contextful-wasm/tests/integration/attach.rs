@@ -4,7 +4,7 @@ use crate::support::{loopback, open_with, text, Response, Server};
 use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::reference::Hydrated;
 use contextful_wasm::{Grant, Limits};
-use contextful_runtime::client::HeaderValue;
+use contextful_outbound::client::HeaderValue;
 
 fn bearer() -> Vec<(String, HeaderValue)> {
     vec![("Authorization".into(), HeaderValue::Sensitive(Hydrated::new("Bearer vendor-token-value")))]

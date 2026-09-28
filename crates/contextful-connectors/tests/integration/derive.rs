@@ -194,7 +194,7 @@ fn source(dir: &Path, parents: Value, engine_toml: &str) -> DeriveSource {
         binding: binding(engine_toml),
         output_table: "doc_text_passages".into(),
         reader: Box::new(Rows(vec![("documents".into(), parents)])),
-        resolver: Arc::new(contextful_runtime::Resolver::new(vec![], false, Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::from_unix_secs(0).unwrap())))),
+        resolver: Arc::new(contextful_outbound::Resolver::new(vec![], false, Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::from_unix_secs(0).unwrap())))),
         cwd: dir.to_path_buf(),
     }
 }

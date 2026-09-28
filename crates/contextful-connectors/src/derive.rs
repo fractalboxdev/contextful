@@ -13,7 +13,7 @@ use contextful_core::run::derive::exec::{
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
-use contextful_runtime::Resolver;
+use contextful_outbound::Resolver;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

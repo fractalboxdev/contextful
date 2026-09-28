@@ -149,9 +149,9 @@ fn a_crate_linking_a_javascript_runtime_is_refused() {
     );
     passes(&r);
 
-    package(&r, "contextful-runtime", "scripting = { path = \"../../stubs/scripting\" }\n");
+    package(&r, "contextful-outbound", "scripting = { path = \"../../stubs/scripting\" }\n");
     let err = refused(&topology(&r.root), "ScriptRuntimeLinked");
-    assert!(err.contains("`contextful-runtime` links JavaScript runtime `boa_engine` through contextful-runtime -> scripting -> boa_engine"), "{err}");
+    assert!(err.contains("`contextful-outbound` links JavaScript runtime `boa_engine` through contextful-outbound -> scripting -> boa_engine"), "{err}");
     assert!(!err.contains("`demo`"), "{err}");
 }
 

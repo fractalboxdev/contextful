@@ -2,7 +2,7 @@
 
 use crate::support::{proxy_env, Response, Server};
 use contextful_core::memory::synthesize::{Inference, Message};
-use contextful_runtime::infer::Endpoint;
+use contextful_outbound::infer::Endpoint;
 use serde_json::{json, Value};
 
 #[test]

@@ -8,11 +8,11 @@ publish = false
 
 # The sandboxed component host: guest connectors built against `wit/connector.wit` run
 # under wasmtime, reach the network only through the mediated client in
-# `contextful-runtime`, and hand batches over as Arrow IPC.
+# `contextful-outbound`, and hand batches over as Arrow IPC.
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }
-contextful-runtime = { path = "../contextful-runtime" }
+contextful-outbound = { path = "../contextful-outbound" }
 arrow-array = "57"
 arrow-ipc = { version = "57", default-features = false }
 arrow-schema = "57"
