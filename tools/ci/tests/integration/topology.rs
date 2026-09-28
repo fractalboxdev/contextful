@@ -153,6 +153,40 @@ fn an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refu
     assert!(err.contains("through contextful-outbound -> httpkit -> rustls"), "{err}");
 }
 
+/// `contextful-decode` reaching `contextful-outbound`, `ureq`, `hyper`, `reqwest`, `rustls`, `curl` or `tokio` through a normal dependency raises `DecodeLinksNetwork`, naming the path that pulled it.
+// spec: topology.package.decode-network-free@c8772a6c
+#[test]
+fn a_decode_package_linking_the_network_stack_is_refused() {
+    let r = Repo::init();
+    stub(&r, "rustls", "", "");
+    stub(&r, "ureq", "rustls = { path = \"../rustls\" }\n", "");
+    stub(&r, "tokio", "", "");
+    stub(&r, "zipkit", "tokio = { path = \"../tokio\" }\n", "");
+    package(&r, "contextful-core", "");
+    // A network stack reached as a dev-dependency, or by a dependent, leaves the decoders network-free.
+    r.write(
+        "crates/contextful-decode/Cargo.toml",
+        &format!(
+            "{}\n[dev-dependencies]\nureq = {{ path = \"../../stubs/ureq\" }}\n",
+            manifest("contextful-decode", "contextful-core = { path = \"../contextful-core\" }\n")
+        ),
+    );
+    r.write("crates/contextful-decode/src/lib.rs", "");
+    r.write("crates/contextful-decode/tests/integration/main.rs", "");
+    package(&r, "contextful-connectors", "contextful-decode = { path = \"../contextful-decode\" }\nureq = { path = \"../../stubs/ureq\" }\n");
+    passes(&r);
+
+    package(&r, "contextful-outbound", "ureq = { path = \"../../stubs/ureq\" }\n");
+    package(&r, "contextful-decode", "contextful-outbound = { path = \"../contextful-outbound\" }\n");
+    let err = refused(&topology(&r.root), "DecodeLinksNetwork");
+    assert!(err.contains("`contextful-decode` links `contextful-outbound` through contextful-decode -> contextful-outbound\n"), "{err}");
+    assert!(err.contains("links `rustls` through contextful-decode -> contextful-outbound -> ureq -> rustls"), "{err}");
+
+    package(&r, "contextful-decode", "zipkit = { path = \"../../stubs/zipkit\" }\n");
+    let err = refused(&topology(&r.root), "DecodeLinksNetwork");
+    assert!(err.contains("`contextful-decode` links `tokio` through contextful-decode -> zipkit -> tokio"), "{err}");
+}
+
 /// The dependency audit raises `VendorSdkLinked`, naming the crate and the dependency, for a crate declaring a model-vendor SDK or a second outbound path to a model.
 // spec: topology.compose.vendor-sdk@ba72d1fc
 #[test]
@@ -496,6 +530,28 @@ fn this_repository_outbound_crate_links_no_http_stack_without_its_transport() {
     assert!(tree.lines().any(|l| l.starts_with("contextful-core ")), "{tree}");
 }
 
+/// `contextful-decode` resolves no mediated-request crate and no package of the network stack.
+#[test]
+fn this_repository_decode_package_links_no_network_stack() {
+    let out = Command::new("cargo")
+        .args(["tree", "-q", "-p", "contextful-decode", "-e", "normal", "--prefix", "none", "--format", "{p}"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    let tree = String::from_utf8_lossy(&out.stdout).to_string();
+    let mut linked: Vec<&str> = tree
+        .lines()
+        .filter_map(|l| l.split_whitespace().next())
+        .filter(|name| ["contextful-outbound", "ureq", "hyper", "reqwest", "rustls", "curl", "tokio"].contains(name))
+        .collect();
+    linked.sort_unstable();
+    linked.dedup();
+    contextful_eval::record::emit("network-free-decoder", linked.len() as f64, tree.lines().count() as u64, 0);
+    assert!(linked.is_empty(), "{linked:?}");
+    assert!(tree.lines().any(|l| l.starts_with("contextful-core ")), "{tree}");
+}
+
 #[test]
 fn this_repository_holds_to_the_dependency_rules() {
     let meta = Command::new("cargo").args(["metadata", "--no-deps", "--format-version", "1", "-q"]).current_dir(repo_root()).output().unwrap();
@@ -583,11 +639,11 @@ fn a_crate_missing_from_the_crate_map_is_refused() {
     passes(&r);
 }
 
-/// Sixteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
-// spec: topology.package.crate-map@3bb0f4bc
+/// Seventeen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+// spec: topology.package.crate-map@398fd784
 #[test]
 fn this_repository_crate_map_names_every_crate() {
     let o = topology(repo_root());
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stdout(&o).contains("crate map: 16 crates"), "{}", stdout(&o));
+    assert!(stdout(&o).contains("crate map: 17 crates"), "{}", stdout(&o));
 }

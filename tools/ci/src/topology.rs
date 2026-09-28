@@ -2,11 +2,11 @@
 //! `cargo metadata`: the domain crate's purity and dependency direction, the model-vendor
 //! and script-runtime bans, and the run-path-to-read-path crate graph; and, per package
 //! off `cargo tree`, the store adapter's engine-free write half, its SQLite-free graph,
-//! the mediated-request crate's stack-free build without its transport feature and the
-//! external-assertion stack outside the binary; and off the manifests, the SQLite
-//! binding held to its one adapter package. The same walk holds every workspace package to
-//! `assurance.build.licence-field`, and every `crates/` package to the crate tree of
-//! `topology.package.crate-map-drift`.
+//! the mediated-request crate's stack-free build without its transport feature, the
+//! record decoders' network-free graph and the external-assertion stack outside the
+//! binary; and off the manifests, the SQLite binding held to its one adapter package. The
+//! same walk holds every workspace package to `assurance.build.licence-field`, and every
+//! `crates/` package to the crate tree of `topology.package.crate-map-drift`.
 
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
@@ -71,6 +71,11 @@ const SQLITE_LINK_FEATURES: [&str; 4] = ["bundled*", "sqlcipher", "in_gecko", "l
 const RUNTIME: &str = "contextful-outbound";
 const RUNTIME_TRANSPORT_FEATURE: &str = "transport-ureq";
 const HTTP_STACK: [&str; 5] = ["ureq", "hyper", "reqwest", "rustls", "curl"];
+
+/// The record-decoder package, and what it resolves through no normal dependency: the
+/// mediated-request crate and the network stack (`topology.package.decode-network-free`).
+const DECODE: &str = "contextful-decode";
+const DECODE_BANNED: [&str; 7] = [RUNTIME, "ureq", "hyper", "reqwest", "rustls", "curl", "tokio"];
 
 /// Model-vendor SDKs no workspace crate declares (`topology.compose.vendor-sdk`).
 const VENDOR_SDKS: [&str; 12] = [
@@ -433,6 +438,12 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
         for path in tree_paths(root, RUNTIME, true, &HTTP_STACK)? {
             let name = path.rsplit(" -> ").next().unwrap_or_default();
             out.push(("TransportStackLinked", format!("`{RUNTIME}` without `{RUNTIME_TRANSPORT_FEATURE}` links `{name}` through {path}")));
+        }
+    }
+    if g.id_of(DECODE).is_some() {
+        for path in tree_paths(root, DECODE, false, &DECODE_BANNED)? {
+            let name = path.rsplit(" -> ").next().unwrap_or_default();
+            out.push(("DecodeLinksNetwork", format!("`{DECODE}` links `{name}` through {path}")));
         }
     }
     out.extend(sqlite_link_forced(root, &workspace));

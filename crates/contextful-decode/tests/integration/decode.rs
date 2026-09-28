@@ -1,6 +1,6 @@
 //! The decoders the sources share.
 
-use contextful_connectors::decode::{decode, Format};
+use contextful_decode::{decode, Format};
 use serde_json::{json, Value};
 
 /// A delimited source lands every cell as a string and an empty unquoted field as null.

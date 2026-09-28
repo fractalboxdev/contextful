@@ -86,7 +86,7 @@ The two halves of the engine, the three crossings between them, complete mediati
 
 The domain crate, dependency direction, and the three build profiles with what each links.
 
-- `crate-map` — Sixteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+- `crate-map` — Seventeen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
 - `crate-map-drift` — A `crates/` package absent from the crate tree under `## Shapes`, or a {{topology.package.crate-map}} count differing from that tree's entries, raises `CrateMapDrift`, naming the package or both counts.
   *because a package added without a map entry otherwise passes every other gate*
 - `domain-crate` — `contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.
@@ -113,6 +113,8 @@ The domain crate, dependency direction, and the three build profiles with what e
 - `store-write-engine-free` — `contextful-context` resolved without its `read` feature and reaching `duckdb` or `libduckdb-sys` through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.
   *because a host that lands, folds or scans a store and serves no read otherwise links a bundled SQL engine it never calls*
 - `transport-optional` — `contextful-outbound` resolved without its `transport-ureq` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `TransportStackLinked`, naming the path that pulled it.
+  *A-connector*
+- `decode-network-free` — `contextful-decode` reaching `contextful-outbound`, `ureq`, `hyper`, `reqwest`, `rustls`, `curl` or `tokio` through a normal dependency raises `DecodeLinksNetwork`, naming the path that pulled it.
   *A-connector*
 - `exchange-optional` — `contextful-policy` links the external-assertion stack, `jsonwebtoken` and `rsa`, only under its non-default `exchange` feature, which only the binary may enable, and only alongside wiring {{authority.exchange.surface}}. Another `crates/` package whose resolved graph reaches either raises `ExchangeDependencyLeak`, naming the path.
   *because an embedder admitting credentials with no identity provider then links no RSA code, and `rsa` carries a timing advisory with no patched release*
@@ -345,6 +347,7 @@ crates/
   contextful-outbound/     mediated client, credential resolution, quota metering, inference
   contextful-wasm/         sandboxed component host
   contextful-connectors/   native sources
+  contextful-decode/       record decoders: JSON, JSON Lines, delimited text, workbook
   contextful-context/      table parts, query face, snapshot commit, retrieval
   contextful-memory/       deterministic memory synthesis
   contextful-sqlite/       the SQLite adapter behind the catalog and run store ports

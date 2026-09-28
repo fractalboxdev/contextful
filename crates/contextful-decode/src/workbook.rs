@@ -17,8 +17,8 @@
 //! fixed [`ENTRY_CHARGE`] for every shared string and stored cell, since `<c/>` inflates
 //! from 4 bytes into a map entry (`connector.source.worksheet-landing`).
 
-use super::ooxml::{cdata, in_ns, text, Archive};
-use super::unreadable;
+use crate::ooxml::{cdata, in_ns, text, Archive};
+use crate::unreadable;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Row;
 use contextful_core::run::{Failure, FailureTag};
