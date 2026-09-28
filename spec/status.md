@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 226 | 61 | 27 | 8 | 159 | 0 | 159 |
 | `connector` | 2 | 13 | 246 | 74 | 17 | 7 | 115 | 0 | 115 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
-| `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
+| `disclosure` | 3 | 16 | 69 | 57 | 12 | 13 | 13 | 0 | 13 |
 | `read` | 2 | 14 | 118 | 21 | 16 | 17 | 78 | 0 | 78 |
 | `run` | 3 | 24 | 300 | 82 | 34 | 25 | 165 | 0 | 165 |
 | `store` | 1 | 14 | 164 | 38 | 12 | 12 | 121 | 0 | 121 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 146 | 1521 | 482 | 171 | 110 | 783 | 0 | |
+| **total** | 19 | 146 | 1523 | 482 | 173 | 110 | 786 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ Decision records: 18.
 | 5 — The read face under enforcement | 16 | 206 | 122 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
-| 8 — Accountability | 5 | 24 | 3 | open |
+| 8 — Accountability | 5 | 26 | 6 | open |
 | 9 — Visibility | 6 | 22 | 3 | open |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
 | 11 — The derive tier | 7 | 68 | 44 | passing |
@@ -438,8 +438,11 @@ Unscheduled operations: 10.
 | `disclosure.bound-staleness.budget-grammar` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_budget_outside_the_grammar_is_refused_naming_table_and_text` | performed |
 | `disclosure.declare-fidelity.family-bound` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_level_the_family_does_not_permit_is_refused` | performed |
 | `disclosure.declare-fidelity.family-undeclared` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_block_naming_no_family_is_refused` | performed |
+| `disclosure.record.group-commit` | `crates/contextful-policy/tests/integration/audit.rs::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together` | performed |
 | `disclosure.record.segment` | `crates/contextful-policy/tests/integration/audit.rs::a_segment_closes_at_4096_entries_under_one_signed_root` | performed |
+| `disclosure.record.segment-open` | `crates/contextful-policy/tests/integration/audit.rs::an_append_group_that_creates_a_segment_adds_one_directory_sync` | performed |
 | `disclosure.record.single-writer` | `crates/contextful-policy/tests/integration/audit.rs::a_second_writer_on_one_directory_is_refused` | performed |
+| `disclosure.record.tip-signing` | `crates/contextful-policy/tests/integration/audit.rs::the_tip_signs_at_segment_close_on_idle_and_at_export` | performed |
 | `disclosure.suppress.contributor-share` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::contributor_share` | performed |
 | `disclosure.suppress.dominance-unverifiable` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::dominance_unverifiable` | performed |
 | `disclosure.suppress.empty-policy` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::empty_policy` | performed |
