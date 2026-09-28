@@ -116,3 +116,28 @@ fn a_ranked_read_names_its_excluded_arms() {
     let one = r.face.retrieve(&s, &RetrieveRequest { limit: Some(1), ..request }, Bounds::default()).unwrap();
     assert_eq!(&restriction(&one)["tables"], tables);
 }
+
+/// An owner read naming the request ledger of a zone-excluded table receives no call row,
+/// and the block names the ledger with its whole call count.
+#[test]
+fn a_zone_excluded_tables_ledger_is_named_with_its_call_count() {
+    use super::register::{call, record_calls};
+    let r = Reads::new();
+    record_calls(&r, "research/vendor", "run-0001", &[call("r1", Some(0), Some(200)), call("r2", None, None)]);
+    let owner = r.session(&["research/*"], None, None);
+    let calls = r.query(&owner, r#"SELECT request_id FROM "research/vendor__requests""#).unwrap();
+    assert!(calls.rows.is_empty());
+    assert_eq!(
+        restriction(&calls),
+        &json!({
+            "zone": "on-prem:hq",
+            "incognito": false,
+            "tables": [{ "table": "research/vendor__requests", "excluded": true, "rows_dropped": 2, "columns_masked": [] }],
+        })
+    );
+    // The admitting zone reads the calls and carries no block.
+    let public = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
+    let seen = r.query(&public, r#"SELECT request_id FROM "research/vendor__requests""#).unwrap();
+    assert_eq!(column(&seen, "request_id"), [json!("r1"), json!("r2")]);
+    assert!(!seen.blocks.contains_key("contextful.restriction"), "{:?}", seen.blocks);
+}

@@ -211,7 +211,7 @@ fn the_row_ceiling_bounds_delivery_with_one_probe_row() {
 }
 
 /// One mediated outbound call, as a test names it.
-fn call(id: &str, batch_seq: Option<i32>, status: Option<u16>) -> RequestRecord {
+pub(super) fn call(id: &str, batch_seq: Option<i32>, status: Option<u16>) -> RequestRecord {
     RequestRecord {
         request_id: id.into(),
         vendor_request_id: Some(format!("vendor-{id}")),
@@ -225,7 +225,7 @@ fn call(id: &str, batch_seq: Option<i32>, status: Option<u16>) -> RequestRecord 
     }
 }
 
-fn record_calls(r: &Reads, table: &str, run: &str, calls: &[RequestRecord]) {
+pub(super) fn record_calls(r: &Reads, table: &str, run: &str, calls: &[RequestRecord]) {
     let node = NodeId::parse("ingest-a").unwrap();
     contextful_context::ledger::append(&r.store, table, run, &node, calls).unwrap();
 }

@@ -314,7 +314,7 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
   *A-authority*
 - `serve-outcome` — Serving one row yields a drop flag and the list of zone-masked columns.
   *A-authority*
-- `envelope` — A response envelope carries row counts removed by predicate and by zone, column names masked by policy and by zone, the asserted zone and the incognito flag, and no removed value.
+- `envelope` — A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.
   *A-authority*
 - `excluded-disclosed` — `rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.
   *A-read*
@@ -347,7 +347,7 @@ flowchart LR
   NUL -- "masked column" --> ENV
 ```
 
-unsettled: Does the restriction block also carry the rows a row predicate removes, given that count discloses how much of a table the caller's scope withholds? owner: authority affects: authority.place
+unsettled: Does the restriction block also carry the rows a row predicate removes and the column names a mask policy nulls, given both disclose how much of a table the caller's scope withholds? owner: authority affects: authority.place
 
 unsettled: What fixes the completeness of the evidence list a synthesized row's floor intersects over, given that an empty list intersects to everything? owner: authority affects: authority.place
 
