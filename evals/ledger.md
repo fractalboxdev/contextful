@@ -9,7 +9,7 @@
 | `audit-append-durable` | `disclosure.record.unpersisted-entry` | `audit.append.lost_acknowledged` | gate | test `contextful_policy::audit::an_append_that_fails_to_persist_leaves_disk_and_tip_at_the_prior_entry` | `== 0` | gated |
 | `audit-append-latency` | `disclosure.record.group-commit` | `audit.append.p99_us` | trend | test `contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers` | — | recorded |
 | `audit-append-latency-lone` | `disclosure.record.group-commit` | `audit.append.lone_p99_us` | trend | test `contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers` | — | recorded |
-| `audit-inclusion-proof` | `disclosure.record.segment` | `audit.proof.hashes` | gate | issue 42 | `<= 12` | open (issue 42) |
+| `audit-inclusion-proof` | `disclosure.attest.inclusion-proof` | `audit.proof.hashes` | gate | test `contextful_policy::audit::an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment` | `<= 12` | gated |
 | `audit-open-bounded-heap` | `disclosure.record.single-writer` | `audit.open.retained_heap_delta_kib` | gate | issue 81 | `< 64` | open (issue 81) |
 | `audit-query-digest-keyed` | `disclosure.record.segment` | `audit.digest.dictionary_matches` | gate | issue 81 | `== 0` | open (issue 81) |
 | `audit-read-waits-on-entry` | `disclosure.record.unpersisted-entry` | `audit.read.rows_before_sync` | gate | issue 75 | `== 0` | open (issue 75) |

@@ -54,7 +54,15 @@ flowchart LR
 
 What a read leaves behind: the span, the hash-linked audit entry, and where telemetry lands.
 
-- `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes at 4096 entries under one signed root.
+- `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes under one signed root once it holds its chain header's segment size, 4096 entries by default.
+- `chain-header` — `header.json`, written before a new chain's first entry, fixes the chain's format, its digest, `sha256` or `blake3`, and a segment size of at most 65536 entries; the first v1 entry's `prev_hash` is the canonical header's digest.
+  *A-disclosure*
+- `header-unsupported` — Opening or verifying a chain whose header names another format or digest, or a segment size outside {{disclosure.record.chain-header}}, raises `AuditHeaderUnsupported`.
+  *because a verifier guessing at a digest it does not implement checks nothing*
+- `entry-format` — A v1 entry carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.
+  *A-disclosure*
+- `v0-chain` — A chain holding entries without `header.json` is a v0 chain: it verifies and appends under v0 rules, each entry digest over `seq`, `prev_hash` and attributes and each root its segment's last entry digest.
+  *A-disclosure*
 - `group-commit` — Concurrent appends form one append group, which issues 1 sync of its segment file between segment opens; every member returns after that sync, or every member raises {{disclosure.record.unpersisted-entry}}.
   *A-disclosure*
 - `segment-open` — An append group that creates a segment file adds 1 sync of the segments directory.
@@ -107,8 +115,18 @@ The access decision and its path, replay over a window with its coverage, and th
 
 Chain verification, signed segment roots, lineage attestations, and the reach of each guarantee.
 
-- `broken-chain` — A disagreeing digest, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the signed check opening a log runs, an absent or unverified tip or root raises `AuditChainBroken` at the earliest failing index.
+- `broken-chain` — A disagreeing digest, entry format or Merkle root, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the signed check, an absent or unverified tip or root raises `AuditChainBroken` at the earliest failing index.
   *A-disclosure*
+- `merkle-root` — A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry digests in `seq` order.
+  *A-disclosure*
+- `root-tag` — A v1 signed root carries its signing algorithm, `Ed25519` or `ES256`, and signs it with the header digest, segment number, entry count and root.
+  *A-disclosure*
+- `inclusion-proof` — `prove` returns one entry, its chain header, its RFC 6962 audit path and its segment's signed root; the proof verifies offline under the signer's public key alone.
+  *A-disclosure*
+- `proof-invalid` — A proof whose entry, audit path, header, root or root signature disagrees raises `AuditProofInvalid`.
+  *A-disclosure*
+- `proof-unavailable` — Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises `AuditProofUnavailable`.
+  *because an open segment has no signed root yet, and a v0 root commits to no tree*
 - `root-replication` — Signed roots reach the replication bucket asynchronously every 10 min.
 
 unsettled: Does a lineage attestation over evidence spanning a withheld table name that table or elide it? owner: disclosure affects: disclosure.attest
@@ -200,9 +218,10 @@ The audit segment and the ledger:
 ```
 .contextful/
   audit/
+    header.json             {format, digest, segment_entries}; absent on a v0 chain
     segments/
       000001.jsonl          one entry per line, seq ascending
-      000001.root.json      {root, count, signature} closing the segment
+      000001.root.json      the signed Merkle root closing the segment
     chain.tip               last accepted {seq, entry_hash}
   forget/
     <subject_hash>.stale    {subject_hash, executed_at}
@@ -211,12 +230,19 @@ The audit segment and the ledger:
                             requested_at, completed_at
 ```
 
-One entry:
+A chain header:
+
+```json
+{ "format": 1, "digest": "sha256", "segment_entries": 4096 }
+```
+
+One v1 entry, its `prev_hash` the header's digest:
 
 ```json
 {
+  "format": 1,
   "seq": 1,
-  "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "prev_hash": "sha256:5c2e...",
   "attributes": {
     "contextful.query.hash": "hmac-sha256:9f2c...",
     "contextful.subject.on_behalf_of": "user://ada",
@@ -227,6 +253,27 @@ One entry:
   },
   "entry_hash": "sha256:1b7e..."
 }
+```
+
+A v1 root, and an inclusion proof of one entry:
+
+```json
+{
+  "format": 1,
+  "alg": "Ed25519",
+  "header": "sha256:5c2e...",
+  "segment": 1,
+  "root": "sha256:a4f0...",
+  "count": 4096,
+  "signature": "9e41..."
+}
+```
+
+```json
+{ "header": { "format": 1, "digest": "sha256", "segment_entries": 4096 },
+  "entry": { "format": 1, "seq": 1, "...": "..." },
+  "path": ["3f9c...", "..."],
+  "root": { "format": 1, "segment": 1, "...": "..." } }
 ```
 
 A purge receipt:
