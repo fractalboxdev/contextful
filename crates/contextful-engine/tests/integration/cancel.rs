@@ -8,7 +8,7 @@ use contextful_core::run::ports::{Cancellation, PullRequest, Source};
 use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::time::Instant;
-use contextful_engine::cancel::{Cadence, CancelToken, Keeper};
+use contextful_engine::cancel::{Cadence, CancelToken, Due, Keeper, Schedule};
 use contextful_engine::EngineError;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -221,4 +221,79 @@ fn a_failed_poll_keeps_polling() {
         assert!(started.elapsed() < Duration::from_secs(2), "polling stopped after a failed read");
         std::thread::sleep(Duration::from_millis(5));
     }
+}
+
+/// A wait on the token returns at the fire, not at its deadline: a token fired before the
+/// wait or during it ends a 60 s wait, and an unfired one waits its whole duration. Bounds
+/// sit far from the deadlines, so a loaded host cannot flip them.
+#[test]
+fn a_fired_token_ends_a_wait_at_once() {
+    let token = CancelToken::default();
+    let started = std::time::Instant::now();
+    assert!(token.wait_timeout(Duration::from_millis(30)), "an unfired wait runs to its deadline");
+    assert!(started.elapsed() >= Duration::from_millis(30));
+
+    let fired = CancelToken::default();
+    fired.fire();
+    let started = std::time::Instant::now();
+    assert!(!fired.wait_timeout(Duration::from_secs(60)));
+    assert!(started.elapsed() < Duration::from_secs(30), "a fired token waits for nothing");
+
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let waiter = {
+        let token = token.clone();
+        std::thread::spawn(move || {
+            ready_tx.send(()).unwrap();
+            let started = std::time::Instant::now();
+            (token.wait_timeout(Duration::from_secs(60)), started.elapsed())
+        })
+    };
+    ready_rx.recv().unwrap();
+    std::thread::sleep(Duration::from_millis(20));
+    token.fire();
+    let (ran_out, waited) = waiter.join().unwrap();
+    assert!(!ran_out, "the fire ended the wait");
+    assert!(waited < Duration::from_secs(30), "the wait returned at the fire, not its 60 s deadline");
+}
+
+/// The keeper wakes only at a poll or renewal deadline: over 10 s at the default cadence it
+/// wakes 20 times, polling each time and renewing once, and a late wakeup runs each job
+/// once rather than catching up. The schedule takes its instants as arguments, so no wall
+/// clock enters the assertion.
+#[test]
+fn the_keeper_wakes_only_on_its_deadlines() {
+    let cadence = Cadence::default();
+    assert_eq!(cadence.renew, Duration::from_secs(10));
+    let t0 = std::time::Instant::now();
+    let mut schedule = Schedule::new(cadence, t0);
+    let (mut wakeups, mut polls, mut renewals) = (0, 0, 0);
+    while schedule.next() <= t0 + Duration::from_secs(10) {
+        let at = schedule.next();
+        let due = schedule.take(at);
+        assert!(due.poll || due.renew, "a wakeup with nothing due at {:?}", at - t0);
+        wakeups += 1;
+        polls += usize::from(due.poll);
+        renewals += usize::from(due.renew);
+    }
+    assert_eq!((wakeups, polls, renewals), (20, 20, 1));
+
+    // Nothing is due before the next deadline.
+    let mut schedule = Schedule::new(cadence, t0);
+    assert_eq!(schedule.take(t0 + Duration::from_millis(499)), Due::default());
+    // Woken 3 s late, the keeper polls once and renews once, then resumes from that instant.
+    let late = t0 + Duration::from_secs(13);
+    assert_eq!(schedule.take(late), Due { poll: true, renew: true });
+    assert_eq!(schedule.next(), late + Duration::from_millis(500));
+}
+
+/// Dropping a keeper whose next deadline is an hour away stops its thread at once.
+#[test]
+fn a_dropped_keeper_stops_at_once() {
+    let rig = Rig::new();
+    rig.catalog().put_run(&crate::support_row("run-1", RunStatus::Running)).unwrap();
+    let hour = Duration::from_secs(3600);
+    let keeper = Keeper::start(rig.engine.catalog.clone(), "run-1", CancelToken::default(), Cadence { poll: hour, renew: hour });
+    let started = std::time::Instant::now();
+    drop(keeper);
+    assert!(started.elapsed() < Duration::from_secs(30), "the drop waited on the keeper's deadline");
 }
