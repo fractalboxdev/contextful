@@ -204,4 +204,9 @@ fn m05_operator_query() {
     let whole = parse(&p.run(&cf, &["query", "--json", "--project", "research", sql]));
     assert_eq!(whole["rows"], json!([["n1"], ["n2"], ["n3"]]));
     assert_eq!(whole["truncated"], json!(false));
+
+    let two = p.run(&cf, &["query", "--json", "SELECT 1 AS a; SELECT 2 AS b"]);
+    assert!(!two.status.success() && two.stdout.is_empty());
+    let misspelt = p.run(&cf, &["query", "--json", "--project", "reserch", sql]);
+    assert!(!misspelt.status.success() && misspelt.stdout.is_empty());
 }

@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 249 | 74 | 17 | 8 | 118 | 0 | 118 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
-| `read` | 2 | 15 | 132 | 22 | 19 | 18 | 100 | 0 | 100 |
+| `read` | 2 | 15 | 135 | 24 | 19 | 18 | 103 | 0 | 103 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
 | `store` | 1 | 15 | 184 | 44 | 12 | 12 | 145 | 0 | 145 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1588 | 502 | 177 | 115 | 865 | 0 | |
+| **total** | 19 | 149 | 1591 | 504 | 177 | 115 | 868 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ Decision records: 18.
 | 2 — The store | 9 | 143 | 109 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 353 | 151 | passing |
-| 5 — The read face under enforcement | 17 | 220 | 144 | passing |
+| 5 — The read face under enforcement | 17 | 223 | 147 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
 | 8 — Accountability | 5 | 39 | 19 | open |
@@ -497,10 +497,13 @@ Unscheduled operations: 10.
 | `read.guard.template-reserved-parameter` | `crates/contextful-core/tests/integration/read/template.rs::a_parameter_named_for_a_read_argument_refuses_the_manifest` | performed |
 | `read.guard.unregistered-relation` | `crates/contextful-context/tests/integration/read/guard.rs::an_unregistered_relation_echoes_the_statements_spelling` | performed |
 | `read.guard.whole-tree-walk` | `crates/contextful-context/tests/integration/read/guard.rs::the_walk_covers_every_subtree` | performed |
+| `read.query.declaration-default` | `crates/contextful-cli/tests/integration/query.rs::a_declaration_path_supplies_the_manifest` | performed |
 | `read.query.engine-fault` | `crates/contextful-cli/tests/integration/query.rs::a_rejected_statement_prints_nothing` | performed |
 | `read.query.limit-truncates` | `crates/contextful-cli/tests/integration/query.rs::a_limit_truncates_exactly` | performed |
+| `read.query.one-statement` | `crates/contextful-cli/tests/integration/query.rs::text_holding_two_statements_runs_none` | performed |
 | `read.query.operator-verb` | `crates/contextful-cli/tests/integration/query.rs::a_statement_prints_the_one_projection` | performed |
 | `read.query.project-relations` | `crates/contextful-cli/tests/integration/query.rs::a_project_registers_every_table_under_its_bare_name` | performed |
+| `read.query.project-store` | `crates/contextful-cli/tests/integration/query.rs::a_project_with_no_store_is_refused` | performed |
 | `read.rank.absent-block` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_statement_carries_no_retrieval_block` | performed |
 | `read.rank.caller-embedding` | `crates/contextful-core/tests/integration/read/embed.rs::a_caller_embedding_adds_a_cosine_leg_and_omitting_it_leaves_lexical_order` | performed |
 | `read.rank.flat-window-full-credit` | `crates/contextful-core/tests/integration/read/rank.rs::a_flat_window_awards_full_credit` | performed |

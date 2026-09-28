@@ -232,7 +232,16 @@ impl Face {
     /// Run operator text raw over every table the store holds or the manifest declares,
     /// each registered under its bare name as its unrestricted base relation at the
     /// latest committed state (`read.query.project-relations`).
+    /// A store absent from disk raises `QueryProjectAbsent` (`read.query.project-store`).
     pub fn operator_query(&self, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
+        if !self.store.root().is_dir() {
+            return Err(ReadError::QueryProjectAbsent(format!(
+                "no store exists at `{}`; a declared table would read as quiet rather than as an answer",
+                self.store.root().display()
+            ))
+            .into());
+        }
+        one_statement(sql)?;
         let engine = SqlEngine::raw()?;
         for t in self.tables()? {
             engine.register(&t, &self.source(&t, Bounds::default())?.base)?;
@@ -424,7 +433,17 @@ fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, ReadFault> {
 /// Run operator text raw over no store: no relation registers, and local files and table
 /// functions stay reachable (`read.guard.statement-provenance`).
 pub fn operator_query(sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
+    one_statement(sql)?;
     respond(&SqlEngine::raw()?, sql, &Bindings::default(), opts.limit, opts)
+}
+
+/// Refuse operator text holding other than exactly one statement before any statement
+/// runs (`read.query.one-statement`).
+fn one_statement(sql: &str) -> Result<(), ReadFault> {
+    match SqlEngine::statement_count(sql)? {
+        1 => Ok(()),
+        n => Err(ReadError::QueryNotOneStatement(format!("the text holds {n} statements; the verb runs exactly one")).into()),
+    }
 }
 
 /// Execute `sql` under `ceiling` and serialize the one response projection

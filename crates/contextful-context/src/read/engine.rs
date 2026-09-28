@@ -128,10 +128,48 @@ impl SqlEngine {
     }
 
     /// An unlocked connection for operator text, which runs raw
-    /// (`read.guard.statement-provenance`): local files and table functions stay
-    /// reachable, and no extension installs or autoloads.
+    /// (`read.guard.statement-provenance`): local files, table functions and explicit
+    /// `INSTALL`/`LOAD` stay reachable, and no extension autoinstalls or autoloads.
     pub fn raw() -> Result<SqlEngine, ReadFault> {
         SqlEngine::connect()
+    }
+
+    /// The number of statements the engine's parser extracts from `sql`, found on a
+    /// private connection that runs none of them. Preparing multi-statement text on a
+    /// connection executes every statement but the last, so the count precedes any run.
+    pub fn statement_count(sql: &str) -> Result<u64, ReadFault> {
+        use duckdb::ffi;
+        let text = std::ffi::CString::new(sql).map_err(|e| ReadFault::Engine(format!("the statement holds a NUL byte: {e}")))?;
+        let mut db: ffi::duckdb_database = std::ptr::null_mut();
+        let mut con: ffi::duckdb_connection = std::ptr::null_mut();
+        let mut extracted: ffi::duckdb_extracted_statements = std::ptr::null_mut();
+        // SAFETY: each handle is created here, checked before use, and released once below
+        // whether or not the calls that follow it succeed.
+        unsafe {
+            if ffi::duckdb_open(std::ptr::null(), &mut db) != ffi::DuckDBSuccess {
+                ffi::duckdb_close(&mut db);
+                return Err(ReadFault::Engine("opening the statement parser failed".into()));
+            }
+            if ffi::duckdb_connect(db, &mut con) != ffi::DuckDBSuccess {
+                ffi::duckdb_disconnect(&mut con);
+                ffi::duckdb_close(&mut db);
+                return Err(ReadFault::Engine("connecting the statement parser failed".into()));
+            }
+            let count = ffi::duckdb_extract_statements(con, text.as_ptr(), &mut extracted);
+            let error = if count == 0 {
+                let e = ffi::duckdb_extract_statements_error(extracted);
+                (!e.is_null()).then(|| std::ffi::CStr::from_ptr(e).to_string_lossy().into_owned())
+            } else {
+                None
+            };
+            ffi::duckdb_destroy_extracted(&mut extracted);
+            ffi::duckdb_disconnect(&mut con);
+            ffi::duckdb_close(&mut db);
+            match error {
+                Some(e) => Err(ReadFault::Engine(e)),
+                None => Ok(count),
+            }
+        }
     }
 
     /// A connection for one session: the mask functions holding the pepper, the subject

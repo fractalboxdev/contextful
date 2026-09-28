@@ -67,7 +67,7 @@ fn keys(v: &Value) -> Vec<&str> {
 }
 
 /// `contextful query --json <sql>` prints the one projection for a statement over no store.
-// spec: read.query.operator-verb@86e30231
+// spec: read.query.operator-verb@1da4de1d
 #[test]
 fn a_statement_prints_the_one_projection() {
     let dir = tempfile::tempdir().unwrap();
@@ -149,4 +149,57 @@ fn a_rejected_statement_prints_nothing() {
     assert!(!out.status.success());
     assert!(out.stdout.is_empty());
     assert!(String::from_utf8_lossy(&out.stderr).contains("syntax"), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+fn stderr(out: &Output) -> String {
+    String::from_utf8_lossy(&out.stderr).to_string()
+}
+
+/// Text holding other than one statement is refused before any statement runs.
+// spec: read.query.one-statement@ecc01844
+#[test]
+fn text_holding_two_statements_runs_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = run(dir.path(), &["query", "--json", "SELECT 1 AS a; SELECT 2 AS b"]);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(stderr(&out).contains("QueryNotOneStatement"), "{}", stderr(&out));
+
+    let copied = dir.path().join("copied.csv");
+    let sql = format!("COPY (SELECT 1 AS a) TO '{}'; SELECT 2 AS b", copied.display());
+    let out = run(dir.path(), &["query", "--json", &sql]);
+    assert!(!out.status.success());
+    assert!(!copied.exists(), "the first statement ran");
+
+    let empty = run(dir.path(), &["query", "--json", " ; "]);
+    assert!(!empty.status.success());
+    assert!(stderr(&empty).contains("QueryNotOneStatement"), "{}", stderr(&empty));
+
+    let trailing = query(dir.path(), &["SELECT 1 AS a;"]);
+    assert_eq!(trailing["rows"], json!([[1]]));
+}
+
+/// A `--project` naming no store on disk is refused rather than answered with quiet tables.
+// spec: read.query.project-store@bb44fa8e
+#[test]
+fn a_project_with_no_store_is_refused() {
+    let p = project();
+    let out = run(p.path(), &["query", "--json", "--project", "reserch", "SELECT count(*) AS n FROM \"research/notes\""]);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(stderr(&out).contains("QueryProjectAbsent"), "{}", stderr(&out));
+    assert!(!p.path().join(".contextful/context/reserch").exists());
+}
+
+/// `--declaration` names the manifest whose declared tables register beside the store's.
+// spec: read.query.declaration-default@3a32905a
+#[test]
+fn a_declaration_path_supplies_the_manifest() {
+    let p = project();
+    std::fs::write(p.path().join("other.toml"), "[[pipeline.tables]]\nname = \"research/elsewhere\"\n").unwrap();
+    let sql = "SELECT * FROM \"research/elsewhere\"";
+    let out = query(p.path(), &["--project", "research", "--declaration", "other.toml", sql]);
+    assert_eq!(out["rows"], json!([]));
+    let absent = run(p.path(), &["query", "--json", "--project", "research", sql]);
+    assert!(!absent.status.success());
 }

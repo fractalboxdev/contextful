@@ -24,6 +24,12 @@ pub enum ReadError {
     /// A query parameter was missing, unused, untyped or mistyped. (`read.guard.query-binding`)
     #[error("QueryParameterRejected: {0}")]
     QueryParameterRejected(String),
+    /// A `--project` named no store on disk. (`read.query.project-store`)
+    #[error("QueryProjectAbsent: {0}")]
+    QueryProjectAbsent(String),
+    /// Operator text held other than exactly one statement. (`read.query.one-statement`)
+    #[error("QueryNotOneStatement: {0}")]
+    QueryNotOneStatement(String),
     /// Admitted text did not parse to exactly one read-only SELECT. (`read.guard.single-read-only-statement`)
     #[error("StatementNotReadOnly: {0}")]
     StatementNotReadOnly(String),
@@ -47,6 +53,8 @@ impl ReadError {
             ReadError::LedgerNotTenantScoped(_) => "LedgerNotTenantScoped",
             ReadError::QueryParameterRejected(_) => "QueryParameterRejected",
             ReadError::RequiredFaceAbsent(_) => "RequiredFaceAbsent",
+            ReadError::QueryProjectAbsent(_) => "QueryProjectAbsent",
+            ReadError::QueryNotOneStatement(_) => "QueryNotOneStatement",
             ReadError::StatementNotReadOnly(_) => "StatementNotReadOnly",
             ReadError::TableFunctionRefused(_) => "TableFunctionRefused",
             ReadError::TemplateArgumentRejected(_) => "TemplateArgumentRejected",
