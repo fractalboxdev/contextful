@@ -77,6 +77,23 @@ impl Repo {
             .output()
             .unwrap()
     }
+
+    /// The gate with `cargo` answered by `script`, a POSIX shell script placed first on PATH.
+    pub fn gate_with_cargo(&self, script: &str, args: &[&str]) -> Output {
+        let bin = tempfile::tempdir().unwrap();
+        let cargo = bin.path().join("cargo");
+        std::fs::write(&cargo, format!("#!/bin/sh\n{script}")).unwrap();
+        std::fs::set_permissions(&cargo, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let path = format!("{}:{}", bin.path().display(), std::env::var("PATH").unwrap_or_default());
+        Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+            .arg("gate")
+            .args(args)
+            .current_dir(&self.root)
+            .env_remove("CARGO_TARGET_DIR")
+            .env("PATH", path)
+            .output()
+            .unwrap()
+    }
 }
 
 pub fn manifest(name: &str, deps: &str) -> String {
