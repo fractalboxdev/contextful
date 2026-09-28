@@ -60,6 +60,23 @@ The tier's own output table is the single record of what is done, failed or sett
 Consequences: a marker written with no permanence value re-attempts its unit once.
 Revisit: the parent scan dominates tick cost on a real archive; a re-derive signal for changed parent rows becomes necessary.
 
+## A derivation key decides whether a settled unit is current
+
+**Status:** proposed; narrows the anti-join decision above, which settles a unit on `unit_ref` alone.
+
+Context: `run.exec.engine-id` is written on every row and read by nothing, so a changed binary, argument, output schema or parent value never re-derives. Decision: each content and marker row carries `derivation_key`, the SHA-256 over engine id, binding parameters, output schema and the parent row's content, plus the parent's own key when the parent is a derive table. `run.select` treats a unit whose latest row carries another key as outstanding; its rows keep answering until the new rows or marker land, then read as superseded. Attempts count per key. `run.emit.primary-key` becomes `["unit_ref", "derivation_key", "cue_seq"]`, and `run.emit.settled-revived` refuses a same-key revival only. Criteria: freshness decided it, no stale unit surviving a tick; no read sees an empty unit.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Derivation key compared each tick *(chosen)* | — | Every consumer filters to the latest key; each tick hashes parent rows; superseded rows occupy the table until fold. |
+| Compare the engine id alone | Freshness | A corrected parent row never re-derives. |
+| A change event from the parent table | Stranding | A missed event strands the unit, as a watermark does. |
+| An operator re-derive command | Freshness | A model upgrade leaves stale passages until someone remembers. |
+| Delete the unit's rows, then re-derive | Empty reads | The unit answers nothing until the engine returns. |
+
+Consequences: a re-derived unit re-indexes its vector and full-text sidecars; ordering between chained derive pipelines is a separate decision.
+Revisit: hashing parent rows dominates tick cost on a real archive.
+
 ## A derive engine is a machine-bound argv child with a cleared environment
 
 A manifest requests an engine by name; the machine's configuration defines what that name executes, and row data never becomes syntax. `run.bind` refuses an unbound name or a command key in a manifest; a `[derive.<name>]` block states argv chain or host list, environment allowlist, pins and bounds, and the adapter, not the operator's zone key, declares locality. `run.exec` spawns an argument array with no shell, a cleared environment plus allowlist, and wall-clock and output bounds, killing the process group on deadline.

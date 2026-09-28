@@ -121,3 +121,19 @@ Revisit: the base-commit build exceeds the stage wall clock; the refactor traile
 
 Consequences: a red evaluate stage is a correctness fact; timing movement is visible per commit and argued in review.
 Revisit: a dedicated runner class holds p95 within 5 percent across runs.
+
+## A version tag names a gated revision and counts closed milestones
+
+**Status:** proposed.
+
+Context: a consumer pinning a git dependency reads a bare commit that promises nothing. Decision: an annotated tag `v0.<closed>.<patch>` names a commit on the default branch whose gate passes; `<closed>` counts roadmap milestones whose acceptance test computes `passing` there, and `<patch>` counts tags since `<closed>` last rose. Below `v1` no surface promises compatibility. A maintainer runs a typed `contextful-ci` subcommand that computes the version from `spec/status.md`, refuses a commit off the default branch, a failing gate, a version below the last tag and a `[workspace.package]` version differing from it, then signs the tag. A tag never moves. Criteria: derivability from computed state decided it; no mislabelled tag can be cut.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Computed version, maintainer-invoked subcommand *(chosen)* | — | Tagging is a human step; a version bump commit precedes each tag; milestones closing out of roadmap order make `<closed>` a count, not a position. |
+| A tag cut by hand | Derivability | A version claims milestones its revision does not pass. |
+| A tag on every merge | Signal | Every commit is a version, and a pin reads no more than a commit id. |
+| Minor equal to the highest milestone number | Monotonic meaning | Milestone 11 closing before 8 claims milestones never reached. |
+
+Consequences: a consumer reads a tag's closed milestones from `spec/status.md` at that commit; publishing to a package registry stays a separate decision.
+Revisit: an external consumer needs a compatibility promise on a public surface, which opens `v1`.
