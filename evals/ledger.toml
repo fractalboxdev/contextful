@@ -82,15 +82,15 @@ clause = "connector.attach.private-address"
 metric = "egress.resolved_internal.admitted"
 kind   = "test"
 tier   = "gate"
-method = { issue = 50 }
+method = { test = "contextful_outbound::egress::a_name_resolving_inward_never_reaches_the_send_half" }
 target = { op = "==", value = 0 }
 
 [entry.egress-refusal-before-dns]
-clause = "connector.attach.mediation-covers-every-egress"
+clause = "connector.meter.hook-refusal"
 metric = "egress.refused.lookups"
 kind   = "test"
 tier   = "gate"
-method = { issue = 50 }
+method = { test = "contextful_outbound::egress::a_refused_intent_resolves_no_name_and_is_never_retried" }
 target = { op = "==", value = 0 }
 
 # ---------------------------------------------------------------- disclosure
@@ -355,11 +355,11 @@ method = { issue = 32 }
 target = { op = "==", value = 1 }
 
 [entry.network-free-runtime]
-clause = "topology.package.edge-eligibility"
+clause = "topology.package.transport-optional"
 metric = "topology.runtime.network_packages"
 kind   = "size"
 tier   = "gate"
-method = { issue = 49 }
+method = { test = "contextful_ci::topology::this_repository_outbound_crate_links_no_http_stack_without_its_transport" }
 target = { op = "==", value = 0 }
 
 [entry.network-free-decoder]

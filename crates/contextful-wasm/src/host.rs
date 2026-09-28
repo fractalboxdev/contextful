@@ -11,6 +11,7 @@
 
 use crate::limits::{Limits, ATTRIBUTION_ENTRIES, ATTRIBUTION_VALUE_BYTES, EPOCH_TICK};
 use crate::mediate::{Mediator, Reserve, Traffic};
+use contextful_outbound::egress::{PreSendHook, Transport};
 use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::package::{guest_config, Artifact, Digest, PinRequirement};
 use contextful_core::connector::ConnectorError;
@@ -114,6 +115,14 @@ pub struct Grant {
     pub attach: Vec<(String, HeaderValue)>,
     /// The reservation point, when the connector declares a limiter.
     pub gate: Option<Arc<dyn Reserve>>,
+    /// The operator's pre-send hook, composed in front of the reservation.
+    pub hook: Option<Arc<dyn PreSendHook>>,
+    /// The traffic class the connector's limiter declaration names; every intent carries it.
+    pub class: Option<String>,
+    /// The run the session serves; every intent carries it.
+    pub run_id: Option<String>,
+    /// The transport the session's requests take; the crate's default when absent.
+    pub transport: Option<Arc<dyn Transport>>,
 }
 
 /// A log line a guest emitted within its session budget.
@@ -351,7 +360,7 @@ fn instantiate(pre: &InstancePre<Ctx>, grant: &Grant, limits: &Limits, slots: &A
         http: WasiHttpCtx::new(),
         table: ResourceTable::new(),
         budget: Budget::new(usize::try_from(limits.memory_bytes).unwrap_or(usize::MAX)),
-        mediator: Mediator::new(grant.allow.clone(), grant.attach.clone(), grant.gate.clone(), slots.clone()),
+        mediator: Mediator::new(grant, slots.clone()),
         log_left: limits.log_bytes,
         logs: Vec::new(),
         logs_dropped: 0,

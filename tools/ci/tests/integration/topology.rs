@@ -123,6 +123,36 @@ fn a_store_adapter_linking_the_sql_engine_without_read_is_refused() {
     assert!(err.contains("through contextful-context -> sqlkit -> duckdb"), "{err}");
 }
 
+/// `contextful-outbound` resolved without its `transport-ureq` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `TransportStackLinked`, naming the path that pulled it.
+// spec: topology.package.transport-optional@80817ba0
+#[test]
+fn an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refused() {
+    let r = Repo::init();
+    stub(&r, "rustls", "", "");
+    stub(&r, "ureq", "rustls = { path = \"../rustls\" }\n", "");
+    stub(&r, "httpkit", "rustls = { path = \"../rustls\" }\n", "");
+    // The HTTP stack behind a default-on `transport-ureq` feature leaves the crate stack-free with it off.
+    package(&r, "contextful-outbound", "");
+    r.write(
+        "crates/contextful-outbound/Cargo.toml",
+        &format!(
+            "{}\n[features]\ndefault = [\"transport-ureq\"]\ntransport-ureq = [\"dep:ureq\"]\n",
+            manifest("contextful-outbound", "ureq = { path = \"../../stubs/ureq\", optional = true }\n")
+        ),
+    );
+    package(&r, "contextful-connectors", "contextful-outbound = { path = \"../contextful-outbound\" }\n");
+    passes(&r);
+
+    package(&r, "contextful-outbound", "ureq = { path = \"../../stubs/ureq\" }\n");
+    let err = refused(&topology(&r.root), "TransportStackLinked");
+    assert!(err.contains("`contextful-outbound` without `transport-ureq` links `ureq` through contextful-outbound -> ureq"), "{err}");
+    assert!(err.contains("links `rustls` through contextful-outbound -> ureq -> rustls"), "{err}");
+
+    package(&r, "contextful-outbound", "httpkit = { path = \"../../stubs/httpkit\" }\n");
+    let err = refused(&topology(&r.root), "TransportStackLinked");
+    assert!(err.contains("through contextful-outbound -> httpkit -> rustls"), "{err}");
+}
+
 /// The dependency audit raises `VendorSdkLinked`, naming the crate and the dependency, for a crate declaring a model-vendor SDK or a second outbound path to a model.
 // spec: topology.compose.vendor-sdk@ba72d1fc
 #[test]
@@ -443,6 +473,27 @@ fn every_package_of_this_repository_declares_the_apache_licence() {
     for p in packages {
         assert_eq!(p["license"], "Apache-2.0", "{} declares {}", p["name"], p["license"]);
     }
+}
+
+/// `contextful-outbound` built with every feature off resolves no package of the HTTP stack.
+#[test]
+fn this_repository_outbound_crate_links_no_http_stack_without_its_transport() {
+    let out = Command::new("cargo")
+        .args(["tree", "-q", "-p", "contextful-outbound", "--no-default-features", "-e", "normal", "--prefix", "none", "--format", "{p}"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    let tree = String::from_utf8_lossy(&out.stdout).to_string();
+    let mut linked: Vec<&str> = tree
+        .lines()
+        .filter_map(|l| l.split_whitespace().next())
+        .filter(|name| ["ureq", "hyper", "reqwest", "rustls", "curl"].contains(name))
+        .collect();
+    linked.dedup();
+    contextful_eval::record::emit("network-free-runtime", linked.len() as f64, tree.lines().count() as u64, 0);
+    assert!(linked.is_empty(), "{linked:?}");
+    assert!(tree.lines().any(|l| l.starts_with("contextful-core ")), "{tree}");
 }
 
 #[test]

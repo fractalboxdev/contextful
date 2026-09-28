@@ -11,7 +11,7 @@ publish = false
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }
-contextful-outbound = { path = "../contextful-outbound" }
+contextful-outbound = { path = "../contextful-outbound", default-features = false }
 quick-xml = "0.37"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -19,8 +19,16 @@ tempfile = "3"
 url = "2"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 
+[features]
+default = ["transport-ureq"]
+transport-ureq = ["contextful-outbound/transport-ureq"]
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# The suite drives loopback servers over the ureq adapter, with or without the feature.
+[dev-dependencies]
+contextful-outbound = { path = "../contextful-outbound", features = ["transport-ureq"] }
 
 [[test]]
 name = "integration"

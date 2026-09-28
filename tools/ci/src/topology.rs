@@ -1,8 +1,9 @@
 //! `contextful-ci topology` — the dependency rules of the `topology` contract, read off
 //! `cargo metadata`: the domain crate's purity and dependency direction, the model-vendor
 //! and script-runtime bans, and the run-path-to-read-path crate graph; and, per package
-//! off `cargo tree`, the store adapter's engine-free write half, its SQLite-free graph and
-//! the external-assertion stack outside the binary; and off the manifests, the SQLite
+//! off `cargo tree`, the store adapter's engine-free write half, its SQLite-free graph,
+//! the mediated-request crate's stack-free build without its transport feature and the
+//! external-assertion stack outside the binary; and off the manifests, the SQLite
 //! binding held to its one adapter package. The same walk holds every workspace package to
 //! `assurance.build.licence-field`, and every `crates/` package to the crate tree of
 //! `topology.package.crate-map-drift`.
@@ -64,6 +65,12 @@ const SQLITE_BUNDLED: &str = "bundled";
 
 /// Binding features choosing which SQLite build links. An entry ending `*` is a name prefix.
 const SQLITE_LINK_FEATURES: [&str; 4] = ["bundled*", "sqlcipher", "in_gecko", "loadable_extension"];
+
+/// The mediated-request crate, whose HTTP stack sits behind its default-on transport feature
+/// (`topology.package.transport-optional`).
+const RUNTIME: &str = "contextful-outbound";
+const RUNTIME_TRANSPORT_FEATURE: &str = "transport-ureq";
+const HTTP_STACK: [&str; 5] = ["ureq", "hyper", "reqwest", "rustls", "curl"];
 
 /// Model-vendor SDKs no workspace crate declares (`topology.compose.vendor-sdk`).
 const VENDOR_SDKS: [&str; 12] = [
@@ -420,6 +427,12 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
         }
         for path in tree_paths(root, STORE, false, &[SQLITE_SYS])? {
             out.push(("StoreLinksSqlite", format!("`{STORE}` links `{SQLITE_SYS}` through {path}")));
+        }
+    }
+    if g.id_of(RUNTIME).is_some() {
+        for path in tree_paths(root, RUNTIME, true, &HTTP_STACK)? {
+            let name = path.rsplit(" -> ").next().unwrap_or_default();
+            out.push(("TransportStackLinked", format!("`{RUNTIME}` without `{RUNTIME_TRANSPORT_FEATURE}` links `{name}` through {path}")));
         }
     }
     out.extend(sqlite_link_forced(root, &workspace));

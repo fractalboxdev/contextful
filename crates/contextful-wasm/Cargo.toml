@@ -12,7 +12,7 @@ publish = false
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }
-contextful-outbound = { path = "../contextful-outbound" }
+contextful-outbound = { path = "../contextful-outbound", default-features = false }
 arrow-array = "57"
 arrow-ipc = { version = "57", default-features = false }
 arrow-schema = "57"
@@ -25,6 +25,14 @@ url = "2"
 wasmtime = { version = "49", default-features = false, features = ["anyhow", "async", "cranelift", "runtime", "component-model", "std"] }
 wasmtime-wasi = { version = "49", default-features = false, features = ["p2"] }
 wasmtime-wasi-http = { version = "49", default-features = false, features = ["p2"] }
+
+[features]
+default = ["transport-ureq"]
+transport-ureq = ["contextful-outbound/transport-ureq"]
+
+# The suite drives loopback servers over the ureq adapter, with or without the feature.
+[dev-dependencies]
+contextful-outbound = { path = "../contextful-outbound", features = ["transport-ureq"] }
 
 [[test]]
 name = "integration"
