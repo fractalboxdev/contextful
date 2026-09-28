@@ -31,10 +31,10 @@ fn the_host_attaches_the_credential_and_the_guest_sees_only_the_response() {
 #[test]
 fn a_credential_beside_a_wildcard_or_second_host_refuses_the_session() {
     for hosts in [&["*.vendor.example"][..], &["api.vendor.example", "127.0.0.1"][..]] {
-        let grant = Grant { allow: Allowlist::parse(hosts).unwrap(), attach: bearer(), gate: None, hook: None, transport: None };
+        let grant = Grant { allow: Allowlist::parse(hosts).unwrap(), attach: bearer(), gate: None, hook: None, class: None, run_id: None, transport: None };
         let f = open_with(grant, &Limits::default(), None).err().expect("refused");
         assert!(f.message.starts_with("SecretWildcardHost"), "{hosts:?}: {f}");
     }
-    let unbound = Grant { allow: Allowlist::parse(&["*.vendor.example"]).unwrap(), attach: Vec::new(), gate: None, hook: None, transport: None };
+    let unbound = Grant { allow: Allowlist::parse(&["*.vendor.example"]).unwrap(), attach: Vec::new(), gate: None, hook: None, class: None, run_id: None, transport: None };
     assert!(open_with(unbound, &Limits::default(), None).is_ok(), "a wildcard binds no credential");
 }

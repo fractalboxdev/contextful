@@ -98,6 +98,9 @@ pub struct Client {
     /// The traffic class and run id each intent carries.
     class: Option<String>,
     run_id: Option<String>,
+    /// Headers the client itself frames every request with. They are no declaration, so
+    /// they never select the hardened client (`connector.attach.header-selects-client`).
+    framing: Vec<(String, HeaderValue)>,
     /// Whether a permitted host may resolve to an internal address: the operator's own
     /// limiter only (`connector.meter.limiter-address`).
     internal: bool,
@@ -124,6 +127,7 @@ impl Client {
             reserve: None,
             class: None,
             run_id: None,
+            framing: Vec::new(),
             internal: false,
         }
     }
@@ -144,6 +148,19 @@ impl Client {
     /// The client whose intents carry `run_id`.
     pub fn for_run(mut self, run_id: &str) -> Client {
         self.run_id = Some(run_id.to_string());
+        self
+    }
+
+    /// The client whose intents carry the traffic class `class`.
+    pub fn in_class(mut self, class: &str) -> Client {
+        self.class = Some(class.to_string());
+        self
+    }
+
+    /// The client framing every request with the plain header `name: value`. A request
+    /// declaring the same name sends its own value in its place.
+    pub(crate) fn framed(mut self, name: &str, value: &str) -> Client {
+        self.framing.push((name.to_string(), HeaderValue::Plain(value.to_string())));
         self
     }
 
@@ -283,11 +300,19 @@ impl Client {
                 }
             }
         }
+        let framed: Vec<(String, HeaderValue)>;
+        let wire = if self.framing.is_empty() {
+            headers
+        } else {
+            let own = self.framing.iter().filter(|(n, _)| !headers.iter().any(|(d, _)| d.eq_ignore_ascii_case(n)));
+            framed = own.chain(headers).cloned().collect();
+            &framed
+        };
         let outbound = Outbound {
             method,
             url,
             addrs: &addrs,
-            headers,
+            headers: wire,
             body,
             // A request carrying a declared header takes the hardened client, which bypasses the system proxy.
             direct: !headers.is_empty(),

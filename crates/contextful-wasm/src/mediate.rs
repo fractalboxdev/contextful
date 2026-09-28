@@ -86,6 +86,8 @@ pub(crate) struct Mediator {
     attach: Vec<(String, HeaderValue)>,
     gate: Option<Arc<dyn Reserve>>,
     hook: Option<Arc<dyn PreSendHook>>,
+    class: Option<String>,
+    run_id: Option<String>,
     transport: Arc<dyn Transport>,
     /// One mediated client per origin, so each client pins the origin its requests keep.
     clients: HashMap<String, Arc<Client>>,
@@ -102,6 +104,8 @@ impl Mediator {
             attach: grant.attach.clone(),
             gate: grant.gate.clone(),
             hook: grant.hook.clone(),
+            class: grant.class.clone(),
+            run_id: grant.run_id.clone(),
             transport: grant.transport.clone().unwrap_or_else(egress::system),
             clients: HashMap::new(),
             in_flight,
@@ -121,11 +125,18 @@ impl Mediator {
     fn client(&mut self, url: &Url) -> Arc<Client> {
         let origin = url.origin().ascii_serialization();
         let (allow, hook, transport) = (self.allow.clone(), self.hook.clone(), self.transport.clone());
+        let (class, run_id) = (self.class.clone(), self.run_id.clone());
         let reserve = self.gate.clone().map(|gate| Innermost { gate, traffic: self.traffic.clone() });
         let entry = self.clients.entry(origin.clone()).or_insert_with(|| {
             let mut c = Client::new(allow, Url::parse(&origin).unwrap_or_else(|_| url.clone())).with_transport(transport);
             if let Some(hook) = hook {
                 c = c.with_hook(hook);
+            }
+            if let Some(class) = class {
+                c = c.in_class(&class);
+            }
+            if let Some(run_id) = run_id {
+                c = c.for_run(&run_id);
             }
             if let Some(reserve) = reserve {
                 c = c.reserving(Arc::new(reserve));

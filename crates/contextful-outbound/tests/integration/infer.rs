@@ -61,3 +61,16 @@ fn a_completion_passes_the_hook_and_the_address_check() {
     assert!(err.starts_with("ConnectorPrivateAddress"), "{err}");
     assert_eq!((inward.lookups(), inward.sends()), (1, 0));
 }
+
+/// A model call with no configured key declares no header and keeps the system proxy; a configured key is a declared
+/// header and takes the hardened client under {{connector.attach.header-selects-client}}.
+#[test]
+fn a_completion_keeps_the_proxy_unless_a_key_is_configured() {
+    let answer = json!({ "choices": [{ "message": { "content": "ok" } }] }).to_string();
+    for (key, direct) in [(None, false), (Some("k-123".to_string()), true)] {
+        let t = Recording::new(&[("models.example", "93.184.216.34:0")], vec![ok(&answer)], std::sync::Arc::default());
+        let endpoint = Endpoint::new("https://models.example/v1", "m", key.clone()).unwrap().with_transport(t.clone());
+        assert_eq!(endpoint.complete(&[Message::new("user", "x")]).unwrap(), "ok");
+        assert_eq!(*t.directs.lock().unwrap(), [direct], "key {key:?}");
+    }
+}

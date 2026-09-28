@@ -28,7 +28,7 @@ pub fn host() -> &'static (ComponentHost, Connector, Connector) {
 }
 
 pub fn loopback() -> Grant {
-    Grant { allow: Allowlist::parse(&["127.0.0.1"]).unwrap(), attach: Vec::new(), gate: None, hook: None, transport: None }
+    Grant { allow: Allowlist::parse(&["127.0.0.1"]).unwrap(), attach: Vec::new(), gate: None, hook: None, class: None, run_id: None, transport: None }
 }
 
 pub fn open_with(grant: Grant, limits: &Limits, config: Option<&serde_json::Value>) -> Result<Session, Failure> {

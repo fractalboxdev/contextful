@@ -117,6 +117,10 @@ pub struct Grant {
     pub gate: Option<Arc<dyn Reserve>>,
     /// The operator's pre-send hook, composed in front of the reservation.
     pub hook: Option<Arc<dyn PreSendHook>>,
+    /// The traffic class the connector's limiter declaration names; every intent carries it.
+    pub class: Option<String>,
+    /// The run the session serves; every intent carries it.
+    pub run_id: Option<String>,
     /// The transport the session's requests take; the crate's default when absent.
     pub transport: Option<Arc<dyn Transport>>,
 }

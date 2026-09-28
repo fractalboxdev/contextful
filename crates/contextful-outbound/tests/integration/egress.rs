@@ -39,12 +39,14 @@ pub(crate) struct Recording {
     script: Mutex<Vec<Scripted>>,
     events: Arc<Mutex<Vec<String>>>,
     sent_addrs: Mutex<Vec<Vec<SocketAddr>>>,
+    /// Each send's proxy choice: `true` when it bypassed the system proxy.
+    pub(crate) directs: Mutex<Vec<bool>>,
 }
 
 impl Recording {
     pub(crate) fn new(answers: &[(&str, &str)], script: Vec<Scripted>, events: Arc<Mutex<Vec<String>>>) -> Arc<Recording> {
         let answers = answers.iter().map(|(h, a)| (h.to_string(), vec![a.parse().unwrap()])).collect();
-        Arc::new(Recording { answers, script: Mutex::new(script), events, sent_addrs: Mutex::default() })
+        Arc::new(Recording { answers, script: Mutex::new(script), events, sent_addrs: Mutex::default(), directs: Mutex::default() })
     }
 
     pub(crate) fn lookups(&self) -> usize {
@@ -66,6 +68,7 @@ impl Transport for Recording {
     fn send(&self, request: &Outbound<'_>) -> Result<Inbound, TransportFault> {
         self.events.lock().unwrap().push(format!("send {} {}", request.method, request.url));
         self.sent_addrs.lock().unwrap().push(request.addrs.to_vec());
+        self.directs.lock().unwrap().push(request.direct);
         let mut script = self.script.lock().unwrap();
         let next = if script.len() > 1 { script.remove(0) } else { script[0].clone() };
         match next {

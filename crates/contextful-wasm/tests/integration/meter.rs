@@ -104,3 +104,37 @@ fn a_guest_request_the_operator_hook_refuses_spends_no_permit() {
     assert_eq!(gate.asked.load(Ordering::SeqCst), 0, "no reservation followed a refusal");
     assert!(server.received().is_empty());
 }
+
+/// An operator hook admitting everything, keeping every intent it saw.
+#[derive(Default)]
+struct Watching(std::sync::Mutex<Vec<Intent>>);
+
+impl PreSendHook for Watching {
+    fn admit(&self, intent: &Intent) -> Result<(), String> {
+        self.0.lock().unwrap().push(intent.clone());
+        Ok(())
+    }
+
+    fn settle(&self, _intent: &Intent, _outcome: &Outcome) {}
+}
+
+/// Each outbound hop passes one pre-send hook after the allowlist and before name resolution, carrying the hop's
+/// intent: method, scrubbed URL, host, port, traffic class, run id and request body bytes.
+#[test]
+fn a_guest_request_hands_the_hook_its_traffic_class_and_run_id() {
+    let server = Server::start(|_| Response::text(200, "vendor"));
+    let hook = std::sync::Arc::new(Watching::default());
+    let grant = Grant {
+        hook: Some(hook.clone()),
+        class: Some("reads".into()),
+        run_id: Some("run-7f3a".into()),
+        ..gated(Gate::new(Reservation::Granted), &["127.0.0.1"])
+    };
+    let mut s = open_with(grant, &Limits::default(), None).unwrap();
+    s.open(&format!("fetch {}", server.url("/v1")), None).unwrap();
+    assert!(s.next().unwrap().is_some());
+    let intents = hook.0.lock().unwrap();
+    assert_eq!(intents.len(), 1);
+    assert_eq!((intents[0].method.as_str(), intents[0].host.as_str()), ("GET", "127.0.0.1"));
+    assert_eq!((intents[0].class.as_deref(), intents[0].run_id.as_deref()), (Some("reads"), Some("run-7f3a")));
+}
