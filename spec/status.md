@@ -5,9 +5,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 13 | 180 | 48 | 19 | 14 | 70 | 0 | 70 |
+| `assurance` | 2 | 14 | 197 | 51 | 22 | 15 | 78 | 0 | 78 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
-| `connector` | 2 | 13 | 241 | 74 | 15 | 8 | 98 | 0 | 98 |
+| `connector` | 2 | 13 | 241 | 74 | 15 | 8 | 99 | 0 | 99 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 17 | 75 | 0 | 75 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 157 | 37 | 12 | 13 | 113 | 0 | 113 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 60 | 15 | 5 | 5 | 14 | 0 | 14 |
-| **total** | 19 | 145 | 1471 | 472 | 164 | 109 | 723 | 0 | |
+| **total** | 19 | 146 | 1488 | 475 | 167 | 110 | 732 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 171 | 92 | passing |
-| 4 — Ingest | 22 | 341 | 127 | passing |
+| 4 — Ingest | 22 | 341 | 128 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
@@ -37,7 +37,7 @@ Decision records: 18.
 | 11 — The derive tier | 7 | 68 | 44 | passing |
 | 12 — The console | 11 | 30 | 0 | absent |
 | 13 — Disclosure | 5 | 21 | 4 | open |
-| 14 — Assurance | 5 | 87 | 22 | open |
+| 14 — Assurance | 6 | 104 | 30 | open |
 
 Unscheduled operations: 10.
 
@@ -85,8 +85,16 @@ Unscheduled operations: 10.
 | `assurance.evaluate.in-window-rate` | `tools/eval/tests/integration/floors.rs::a_bounded_case_under_ninety_five_percent_in_window_breaches_the_floor` | performed |
 | `assurance.evaluate.precision-floor` | `tools/eval/tests/integration/floors.rs::a_leg_below_sixty_percent_r_precision_breaches_the_floor` | performed |
 | `assurance.gate.fork-dispatch` | `tools/ci/tests/integration/workflow.rs::a_fork_pull_request_dispatches_no_stage` | performed |
+| `assurance.gate.free-disk` | `tools/ci/tests/integration/disk.rs::a_stage_starting_under_two_gib_free_refuses_with_exit_28_before_work` | performed |
 | `assurance.gate.secret-ciphertext` | `spec/pins.toml` | performed |
 | `assurance.gate.secret-scope` | `spec/pins.toml` | performed |
+| `assurance.measure.ledger` | `tools/eval/tests/integration/ledger.rs::an_entry_carries_its_clause_metric_tier_method_and_threshold` | performed |
+| `assurance.measure.open-entry` | `tools/ci/tests/integration/measure.rs::an_issue_entry_is_listed_open_and_gates_nothing` | performed |
+| `assurance.measure.record` | `tools/ci/tests/integration/measure.rs::a_gate_method_writing_no_record_is_refused` | performed |
+| `assurance.measure.runner-stamp` | `tools/eval/tests/integration/trend.rs::a_figure_compares_only_on_a_matching_runner` | performed |
+| `assurance.measure.seed-mismatch` | `tools/ci/tests/integration/measure.rs::a_record_under_another_seed_than_its_entry_declares_is_refused` | performed |
+| `assurance.measure.trend-band` | `tools/eval/tests/integration/trend.rs::a_figure_past_the_band_is_annotated_and_fails_nothing` | performed |
+| `assurance.measure.unresolved-entry` | `tools/ci/tests/integration/measure.rs::an_entry_naming_no_clause_refuses_before_any_test_runs` | performed |
 | `assurance.model.declared-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_require_stanza_is_refused` | performed |
 | `assurance.model.floor` | `formal/Contextful/Placement.lean::floor` | performed |
 | `assurance.model.layer` | `formal/Contextful/Layer.lean::composed` | performed |
@@ -275,6 +283,7 @@ Unscheduled operations: 10.
 | `connector.attach.credential-in-a-url` | `crates/contextful-core/tests/integration/connector/attach.rs::an_endpoint_carrying_userinfo_is_refused` | performed |
 | `connector.attach.landed-origin` | `crates/contextful-runtime/tests/integration/attach.rs::the_body_that_lands_comes_from_the_configured_origin` | performed |
 | `connector.attach.no-material-to-a-guest` | `crates/contextful-wasm/tests/integration/attach.rs::the_host_attaches_the_credential_and_the_guest_sees_only_the_response` | performed |
+| `connector.attach.private-address` | `crates/contextful-core/tests/integration/connector/attach.rs::a_permitted_name_resolving_inward_is_refused` | performed |
 | `connector.attach.redirect-pinning` | `crates/contextful-runtime/tests/integration/attach.rs::a_hop_is_followed_only_within_the_configured_origin` | performed |
 | `connector.attach.referer-off` | `crates/contextful-runtime/tests/integration/attach.rs::no_request_carries_a_referer` | performed |
 | `connector.attach.sensitive-header-record` | `crates/contextful-runtime/tests/integration/attach.rs::the_client_records_credential_header_names_and_no_value` | performed |
