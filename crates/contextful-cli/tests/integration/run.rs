@@ -232,3 +232,40 @@ fn run_start_journals_and_lands_only_masked_credentials() {
         assert_eq!(files_holding(dir.path(), secret), 1, "only the connector script holds `{secret}`");
     }
 }
+
+/// A run takes its site id from the manifest's `site_id` or `site_id_env`; `--site-id` replaces it for one run.
+#[test]
+fn a_run_takes_its_site_id_from_the_manifest_unless_the_flag_names_one() {
+    let dir = project();
+    let manifest = dir.path().join("contextful.toml");
+    let tables = std::fs::read_to_string(&manifest).unwrap();
+    std::fs::write(&manifest, format!("site_id = \"site-m\"\n\n{tables}")).unwrap();
+    let site = |run: &str| -> serde_json::Value {
+        let shown: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["run", "show", run, "--project", "research"]))).unwrap();
+        shown["site_id"].clone()
+    };
+    let bare = |run: &str, extra: &[&str]| {
+        let mut args = vec!["run", "start", "--plan", "feed-a.toml", "--project", "research", "--run-id", run, "--now", "2030-01-01T00:00:00Z"];
+        args.extend_from_slice(extra);
+        cf(dir.path(), &args)
+    };
+    ok(&bare("m1", &[]));
+    assert_eq!(site("m1"), "site-m");
+    ok(&bare("f1", &["--site-id", "site-f"]));
+    assert_eq!(site("f1"), "site-f");
+
+    std::fs::write(&manifest, format!("site_id_env = \"CONTEXTFUL_TEST_SITE\"\n\n{tables}")).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["run", "start", "--plan", "feed-a.toml", "--project", "research", "--run-id", "e1", "--now", "2030-01-01T00:00:00Z"])
+        .current_dir(dir.path())
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env("CONTEXTFUL_TEST_SITE", "site-e")
+        .output()
+        .unwrap();
+    ok(&out);
+    assert_eq!(site("e1"), "site-e");
+    refused(&bare("u1", &[]), "SiteIdUnresolved");
+
+    std::fs::write(&manifest, format!("site_id = \"site-m\"\nsite_id_env = \"CONTEXTFUL_TEST_SITE\"\n\n{tables}")).unwrap();
+    refused(&bare("b1", &[]), "SiteIdUnresolved");
+}

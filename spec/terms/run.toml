@@ -39,7 +39,7 @@ RunRetryTagUnretryable         = { clause = "run.retry.unretryable-tag", gloss =
 StepFailed                     = { clause = "run.retry.step-failed", gloss = "A step closed on a terminal failure, carrying its label and tag." }
 ExecutionPinMismatch           = { clause = "run.own.pinned-plan-changed", gloss = "A connector identity, component world, plan hash, plan reference or host identity moved under a pending owner." }
 CancelTargetNotInFlight        = { clause = "run.cancel.not-in-flight", gloss = "A stop matching no pending, running or waiting run." }
-SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", gloss = "A site id with no bound source, or two." }
+SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", gloss = "A site id with no declaration, two in one place, or an unset variable." }
 HistoryBoundSpelling           = { clause = "run.record.bound-spelling", gloss = "A history window bound outside the two accepted spellings." }
 RunMetadataTooLarge            = { clause = "run.project.metadata-too-large", gloss = "A snapshot metadata write past its serialized bound." }
 RunStreamUnauthorized          = { clause = "run.project.unauthenticated-upgrade", gloss = "A run-stream request with no valid credential before the upgrade." }

@@ -6190,7 +6190,7 @@
       "operation": "record",
       "subject": "site-id-unresolved",
       "kind": "refusal",
-      "statement": "A site id comes from the manifest or a named environment variable; an unset variable, or both sources declared, raises `SiteIdUnresolved` at startup.",
+      "statement": "A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.",
       "why": "P3",
       "file": "spec/30-run.md",
       "line": 349
@@ -21825,7 +21825,7 @@
           },
           "SiteIdUnresolved": {
             "clause": "run.record.site-id-unresolved",
-            "gloss": "A site id with no bound source, or two."
+            "gloss": "A site id with no declaration, two in one place, or an unset variable."
           },
           "StepFailed": {
             "clause": "run.retry.step-failed",

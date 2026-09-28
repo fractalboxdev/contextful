@@ -346,7 +346,7 @@ The durable run record, its statuses, its owner lease and windowed history over 
 - `writing-site` — The writing site is an engine-injected provenance column beside the ingestion stamp and run id; a row written without one reads null and renders unattributed.
 - `site-id-length` — A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.
   *because it is interpolated into run directories and request-ledger filenames*
-- `site-id-unresolved` — A site id comes from the manifest or a named environment variable; an unset variable, or both sources declared, raises `SiteIdUnresolved` at startup.
+- `site-id-unresolved` — A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.
   *P3*
 - `history-window` — History is read through a window, an inclusive start-instant lower bound plus a row ceiling, both applied in the storage adapter's `WHERE` clause, newest first.
 - `describe-window` — The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.

@@ -270,3 +270,18 @@ fn an_incremental_workbook_pipeline_is_refused_at_validation() {
     let err = stderr(&out);
     assert!(err.contains("ConnectorIncrementalUnsupported") && err.contains("incremental"), "{err}");
 }
+
+/// A fire takes its site id from the manifest's `site_id`; `--site-id` replaces it for one fire.
+#[test]
+fn a_fire_takes_its_site_id_from_the_manifest_unless_the_flag_names_one() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!("site_id = \"site-m\"\n\n{}", pipeline("shop", &vendor.url("/v1/{table}"), "", "tables = [\"orders\"]")));
+    let site = |run: &str| -> serde_json::Value {
+        let shown: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["run", "show", run, "--project", "research"]))).unwrap();
+        shown["site_id"].clone()
+    };
+    ok(&cf(dir.path(), &["pipeline", "run", "shop", "--project", "research", "--run-id", "m1", "--now", "2030-01-01T00:00:00Z"]));
+    assert_eq!(site("m1"), "site-m");
+    ok(&fire(dir.path(), "shop", "f1", "2030-01-01T00:01:00Z"));
+    assert_eq!(site("f1"), "site-a");
+}
