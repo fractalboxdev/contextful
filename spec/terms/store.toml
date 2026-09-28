@@ -28,6 +28,7 @@ StoreReservedColumnName      = { clause = "store.reserve.column-name", gloss = "
 StoreReservedTableName       = { clause = "store.reserve.table-name", gloss = "A declared table collides with a reserved table namespace." }
 StoreSchemaIncompatible      = { clause = "store.reconcile.incompatible", gloss = "Two observed types for one column have no supertype in the lattice." }
 StoreKeyWidened              = { clause = "store.reconcile.key-widening", gloss = "A primary-key column takes the float promotion." }
+StorePartitionColumnType     = { clause = "store.index.partition-type", gloss = "A `partition_by` column is typed binary or vector." }
 StorePartialSnapshot         = { clause = "store.fold.partial-snapshot", gloss = "A commit would expose snapshot data without its declared sidecars, or the reverse." }
 StoreIndexColumnAbsent       = { clause = "store.index.column-absent", gloss = "An index is declared over a column the reconciled schema lacks." }
 StoreValidTimeNotTimestamp   = { clause = "store.bound-time.valid-time-type", gloss = "A declared valid-time column is not timestamp-typed." }

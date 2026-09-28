@@ -5,6 +5,17 @@ use super::reserve::{check_table_name, is_injected, INGESTED_AT};
 use super::StoreError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
+
+fn spelled_types<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<BTreeMap<String, String>>, D::Error> {
+    let map = BTreeMap::<String, String>::deserialize(d)?;
+    for (column, spelled) in &map {
+        if ColumnType::parse(spelled).is_none() {
+            return Err(serde::de::Error::custom(format!("column `{column}` declares type `{spelled}`, which no landing reads")));
+        }
+    }
+    Ok(Some(map))
+}
 
 /// Default `retain_runs` window: 7 d (`store.fold.retention`).
 pub const DEFAULT_RETAIN_RUNS_SECS: u64 = 7 * 24 * 60 * 60;
@@ -61,6 +72,10 @@ pub struct TableDecl {
     pub partition_by: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retain_runs: Option<String>,
+    /// Column types every landing reads (`store.declare.column-types`), spelled as
+    /// [`ColumnType::parse`] reads them; an unreadable spelling refuses the block.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "spelled_types")]
+    pub columns: Option<BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -158,6 +173,11 @@ impl TableDecl {
         self.partition_by.as_deref().unwrap_or(&[])
     }
 
+    /// The declared column types (`store.declare.column-types`).
+    pub fn column_types(&self) -> BTreeMap<String, ColumnType> {
+        self.columns.iter().flatten().filter_map(|(c, t)| Some((c.clone(), ColumnType::parse(t)?))).collect()
+    }
+
     /// The `retain_runs` window in seconds: `<n>d`, `<n>h`, `<n>m` or `<n>s`.
     pub fn retain_runs_secs(&self) -> Result<u64, DeclarationMalformed> {
         let Some(s) = &self.retain_runs else { return Ok(DEFAULT_RETAIN_RUNS_SECS) };
@@ -201,6 +221,15 @@ impl TableDecl {
                         )))
                     }
                 }
+            }
+        }
+        for p in self.partition_by() {
+            if let Some(c) = schema.get(p).filter(|c| c.ty.is_binary() || c.ty.is_vector()) {
+                return Err(StoreError::StorePartitionColumnType(format!(
+                    "table `{}` partitions by `{p}`, typed {}; bytes name no directory",
+                    self.name,
+                    c.ty.name()
+                )));
             }
         }
         for k in self.primary_key() {

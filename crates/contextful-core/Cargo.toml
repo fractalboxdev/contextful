@@ -10,6 +10,7 @@ publish = false
 # runtime, no HTTP client, no columnar format (topology.package.domain-impurity).
 
 [dependencies]
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_path_to_error = "0.1"

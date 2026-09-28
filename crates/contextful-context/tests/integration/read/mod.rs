@@ -6,6 +6,7 @@ mod enforce;
 mod guard;
 mod register;
 mod retrieve;
+mod typed;
 
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::{Face, ReadFault, ReadOptions};

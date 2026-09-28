@@ -121,7 +121,9 @@ unsettled: How does a consumer discover the manifest format version a store or b
 
 A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row.
 
-- `table-block` — A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
+- `table-block` — A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
+- `column-types` — `columns` maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it; every landing into the table, a pipeline run included, lands that column in the declared type.
+  *because a JSON value alone cannot say it carries bytes or a vector*
 - `two-genres` — A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the engine does not enumerate. Both append, dedupe on content and carry a timestamp.
 - `unkeyed-union` — A table declaring no `primary_key` reads as the byte-identical union of its committed runs.
 - `dedup-view` — A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
@@ -171,12 +173,20 @@ The column and table namespaces the engine holds, the provenance columns it inje
 Schema evolution across a table's file set: the type lattice, additive columns, and what a scan may invent.
 
 - `explicit-file-list` — Every read hands `read_parquet` an explicit sorted file list resolved from the pointer and the manifests, never a glob; a stray file joins nothing.
-- `union-by-name` — Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation adds no per-column cast.
+- `union-by-name` — Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation casts no column but a vector, per {{store.reconcile.half-width}}.
 - `lattice` — The type lattice holds one promotion, `Int64` with `Float64` to `Float64`; a JSON type absorbs `Utf8`.
   *A-store*
 - `incompatible` — Any other pair of types observed for one column raises `StoreSchemaIncompatible` at the write, naming the column, the stored type and the arriving type.
   *A-store*
 - `float-loss` — An `Int64` value above 9007199254740992 loses precision once a `Float64` batch lands on its column.
+- `binary-and-vector` — The lattice holds `Binary`, `FixedSizeBinary(n)` and a `FixedSizeList` of `Float32` or `Float16` at dimension n; none takes a promotion, so a width, item or dimension change meets {{store.reconcile.incompatible}}.
+  *A-store*
+- `typed-landing` — A producer declares these types; a JSON batch carries bytes as padded base64 and a vector as a number array of its dimension, and any other value meets {{store.reconcile.incompatible}}.
+  *A-store*
+- `stored-type` — A column `schema.json` holds as a binary or vector type lands a later undeclared JSON value in that type, so a run after the first needs no declaration.
+  *A-store*
+- `half-width` — A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.
+  *A-store*
 - `key-widening` — A primary-key column takes no `Float64` promotion: the widening batch raises `StoreKeyWidened` before any Parquet, as does a fold meeting a key already reconciled to `Float64`.
   *A-store*
 - `additive` — An unseen column joins the merged schema, and files written before it read it as null.
@@ -187,8 +197,6 @@ Schema evolution across a table's file set: the type lattice, additive columns, 
 - `reserved-set-versioned` — Adding an injected column advances the semantics version, whose fingerprint recipe names the column.
 
 unsettled: What dimension caps a fixed-size vector column, given the engine bounds an `ARRAY` width? owner: store affects: store.reconcile
-
-unsettled: Does every engine version the read profile accepts widen a Parquet `FLOAT16` to `FLOAT`, or does an older one refuse the column? owner: store affects: store.reconcile
 
 ## fold
 
@@ -262,6 +270,8 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
   *because an index over a missing column builds empty and reads as no match*
 - `clustering` — `cluster_by` sorts rows within a file lexicographically over its columns in declared order; zone maps then skip row groups with no manifest entry and no sidecar.
 - `partitioning` — Partitioning is off unless `partition_by` declares it.
+- `partition-type` — A `partition_by` column typed binary or vector raises `StorePartitionColumnType` at validation, before any Parquet.
+  *because bytes name no directory that keeps two distinct values apart*
 - `partition-warnings` — Planning warns, naming the column, where a partition specification projects more than 1000 partitions or a median partition below 16 MiB.
 - `tenant-outermost` — A multi-tenant table carries the tenant identifier as its outermost partition column.
   *because a dropped tenant predicate then reads nothing instead of every tenant*

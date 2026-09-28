@@ -3,7 +3,7 @@
 use crate::error::{ContextError, IoPath, Result};
 use arrow_array::{new_null_array, Array, ArrayRef, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema as ArrowSchema, TimeUnit};
-use contextful_core::store::reconcile::{Column, ColumnType, Schema, EXTENSION_NAME, JSON_EXTENSION};
+use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema, EXTENSION_NAME, JSON_EXTENSION, VECTOR_ITEM};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
@@ -13,7 +13,8 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
-
+/// The Arrow type a column lands as. A vector is a fixed-size list of non-null floats, so
+/// a half-float column keeps 2 bytes an element in storage.
 pub fn data_type(ty: ColumnType) -> DataType {
     match ty {
         ColumnType::Null => DataType::Null,
@@ -23,7 +24,24 @@ pub fn data_type(ty: ColumnType) -> DataType {
         ColumnType::Float64 => DataType::Float64,
         ColumnType::Utf8 | ColumnType::Json => DataType::Utf8,
         ColumnType::Timestamp => DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into())),
+        ColumnType::Binary => DataType::Binary,
+        ColumnType::FixedSizeBinary(n) => DataType::FixedSizeBinary(width(n)),
+        ColumnType::FixedSizeList(item, n) => DataType::FixedSizeList(Arc::new(Field::new(VECTOR_ITEM, data_type_of(item), false)), width(n)),
     }
+}
+
+/// The Arrow type of a vector's elements.
+pub fn data_type_of(item: FloatItem) -> DataType {
+    match item {
+        FloatItem::Float32 => DataType::Float32,
+        FloatItem::Float16 => DataType::Float16,
+    }
+}
+
+/// A declared width as Arrow's signed width; the declaration parser admits none wider
+/// than [`contextful_core::store::reconcile::MAX_WIDTH`].
+pub fn width(n: u32) -> i32 {
+    i32::try_from(n).unwrap_or(i32::MAX)
 }
 
 pub fn field(c: &Column) -> Field {

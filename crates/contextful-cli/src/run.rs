@@ -204,7 +204,9 @@ impl Destination for StoreDestination {
     fn land(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
         let decl = self.decls.iter().find(|d| d.name == commit.table).cloned().unwrap_or_else(|| TableDecl::named(&commit.table));
         let rows: u64 = commit.batches.iter().map(|b| b.len() as u64).sum();
-        let batches: Vec<Batch> = commit.batches.into_iter().map(|rows| Batch { rows, types: Default::default() }).collect();
+        // The pulls' declared types type every batch of the commit (`run.land.typed-pull`).
+        let types: std::collections::HashMap<_, _> = commit.types.into_iter().collect();
+        let batches: Vec<Batch> = commit.batches.into_iter().map(|rows| Batch { rows, types: types.clone() }).collect();
         let ctx = RunContext {
             node: self.node.clone(),
             injection: Injection { run_id: commit.run_id.clone(), site_id: commit.site_id.clone(), batch_seq: None, authored_by: None },

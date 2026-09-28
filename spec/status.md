@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 14 | 197 | 51 | 22 | 15 | 78 | 0 | 78 |
-| `authority` | 2 | 16 | 225 | 60 | 27 | 8 | 158 | 0 | 158 |
-| `connector` | 2 | 13 | 241 | 74 | 15 | 7 | 110 | 0 | 110 |
+| `authority` | 2 | 16 | 226 | 61 | 27 | 8 | 159 | 0 | 159 |
+| `connector` | 2 | 13 | 242 | 74 | 15 | 7 | 111 | 0 | 111 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
-| `read` | 2 | 14 | 117 | 21 | 16 | 17 | 77 | 0 | 77 |
-| `run` | 3 | 24 | 296 | 82 | 34 | 25 | 160 | 0 | 160 |
-| `store` | 1 | 14 | 158 | 37 | 12 | 13 | 115 | 0 | 115 |
+| `read` | 2 | 14 | 118 | 21 | 16 | 17 | 78 | 0 | 78 |
+| `run` | 3 | 24 | 299 | 82 | 34 | 25 | 163 | 0 | 163 |
+| `store` | 1 | 14 | 164 | 38 | 12 | 12 | 121 | 0 | 121 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 146 | 1504 | 480 | 169 | 111 | 765 | 0 | |
+| **total** | 19 | 146 | 1516 | 482 | 169 | 110 | 777 | 0 | |
 
 Decision records: 18.
 
@@ -25,10 +25,10 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 192 | 136 | passing |
-| 2 — The store | 8 | 117 | 79 | passing |
+| 2 — The store | 8 | 123 | 85 | passing |
 | 3 — The run path | 11 | 183 | 107 | passing |
-| 4 — Ingest | 22 | 341 | 139 | passing |
-| 5 — The read face under enforcement | 16 | 204 | 120 | passing |
+| 4 — Ingest | 22 | 345 | 143 | passing |
+| 5 — The read face under enforcement | 16 | 206 | 122 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
 | 8 — Accountability | 5 | 24 | 3 | open |
@@ -211,6 +211,7 @@ Unscheduled operations: 10.
 | `authority.mask.pseudonymous` | `crates/contextful-policy/tests/integration/enforce/mask.rs::the_digest_is_an_hmac_under_the_pepper` | performed |
 | `authority.mask.token-width` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_token_is_20_chars` | performed |
 | `authority.mask.truncation-ceiling` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_truncation_past_the_class_ceiling_is_refused` | performed |
+| `authority.mask.typed-strategy` | `crates/contextful-policy/tests/integration/enforce/mask.rs::binary_and_vector_columns_admit_their_strategies_alone` | performed |
 | `authority.mask.unknown-class` | `crates/contextful-policy/tests/integration/enforce/mask.rs::an_unknown_class_is_refused` | performed |
 | `authority.place.allow-set-entries` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_allow_set_holds_at_most_32_entries` | performed |
 | `authority.place.allow-set-entry` | `crates/contextful-policy/tests/integration/enforce/zone.rs::allow_set_entries_take_six_forms` | performed |
@@ -302,6 +303,7 @@ Unscheduled operations: 10.
 | `connector.declare-capability.probe-transport` | `crates/contextful-outbound/tests/integration/probe.rs::the_probe_reaches_only_an_allowlisted_host_over_tls_or_loopback` | performed |
 | `connector.declare-capability.scope-exceeded` | `crates/contextful-outbound/tests/integration/probe.rs::a_grant_beyond_the_expectation_refuses_and_the_session_does_not_open` | performed |
 | `connector.declare-capability.scope-unverified` | `crates/contextful-outbound/tests/integration/probe.rs::a_grant_the_probe_cannot_read_refuses_and_the_session_does_not_open` | performed |
+| `connector.export.arrow-types` | `crates/contextful-wasm/tests/integration/export.rs::arrow_bytes_and_float_vectors_cross_in_their_own_types` | performed |
 | `connector.export.attribution-budget` | `crates/contextful-wasm/tests/integration/export.rs::attribution_keeps_512_values_of_at_most_512_bytes` | performed |
 | `connector.export.batch-encoding` | `crates/contextful-wasm/tests/integration/export.rs::a_batch_is_arrow_ipc_and_a_position_is_bytes_beside_a_kind` | performed |
 | `connector.export.optional-world` | `crates/contextful-wasm/tests/integration/export.rs::optional_interfaces_are_probed_and_a_base_guest_instantiates_untouched` | performed |
@@ -482,6 +484,7 @@ Unscheduled operations: 10.
 | `read.register.tool-set` | `crates/contextful-agent/tests/integration/mcp.rs::the_tool_list_is_the_closed_read_set` | performed |
 | `read.resolve-entity.ambiguous-mention` | `crates/contextful-core/tests/integration/memory/resolve.rs::a_mention_two_identities_share_is_ambiguous` | performed |
 | `read.resolve-entity.edge-endpoint` | `crates/contextful-core/tests/integration/memory/resolve.rs::an_edge_with_an_unresolved_endpoint_is_refused` | performed |
+| `read.respond.bytes-and-vectors` | `crates/contextful-core/tests/integration/read/respond.rs::bytes_are_base64_and_vectors_are_number_arrays` | performed |
 | `read.respond.cell-encoding` | `crates/contextful-core/tests/integration/read/respond.rs::cells_encode_by_their_sql_type` | performed |
 | `read.respond.in-band-error` | `crates/contextful-agent/tests/integration/mcp.rs::a_refusal_arrives_in_band` | performed |
 | `read.respond.match-count` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_block_reports_how_many_rows_matched` | performed |
@@ -594,6 +597,7 @@ Unscheduled operations: 10.
 | `run.journal.substrate-port` | `crates/contextful-engine/tests/integration/execution.rs::the_substrate_port_opens_steps_suspends_commits_and_closes_an_execution` | performed |
 | `run.journal.unwired-capability` | `crates/contextful-engine/tests/integration/execution.rs::suspending_on_an_engine_without_an_awakeable_store_is_refused_at_the_first_reach` | performed |
 | `run.land.table-failed` | `crates/contextful-cli/tests/integration/pipeline.rs::a_failing_table_is_named_with_its_kind_and_run` | performed |
+| `run.land.typed-pull` | `crates/contextful-cli/tests/integration/run.rs::a_pulled_type_lands_its_column_in_that_type` | performed |
 | `run.land.unknown-destination` | `crates/contextful-cli/tests/integration/pipeline.rs::another_destination_is_refused_before_any_request` | performed |
 | `run.land.unreadable-input` | `crates/contextful-connectors/tests/integration/http.rs::an_unreadable_body_refuses_naming_path_and_position` | performed |
 | `run.own.execution-id-keys-the-journal` | `crates/contextful-engine/tests/integration/runner.rs::a_second_attempt_under_one_owner_replays_the_firsts_recorded_pulls` | performed |
@@ -675,6 +679,8 @@ Unscheduled operations: 10.
 | `run.transform.chain` | `crates/contextful-core/tests/integration/pipeline/transform.rs::the_chain_runs_its_four_operations_in_order` | performed |
 | `run.transform.column-missing` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_filter_or_cast_over_an_absent_column_is_refused` | performed |
 | `run.transform.projection` | `crates/contextful-core/tests/integration/pipeline/transform.rs::select_fixes_the_column_set_and_rename_maps_a_name` | performed |
+| `run.transform.type-carry` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_pulled_type_follows_a_rename_and_leaves_with_a_select_or_a_scalar_cast` | performed |
+| `run.transform.typed-cast` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_cast_to_a_binary_or_vector_type_keeps_readable_values_and_types_the_column` | performed |
 | `store.bound-time.as-of` | `crates/contextful-core/tests/integration/store/bound_time.rs::as_of_resolves_to_the_newest_snapshot_at_or_before_it_plus_omitted_runs` | performed |
 | `store.bound-time.as-of-unretained` | `crates/contextful-core/tests/integration/store/bound_time.rs::an_as_of_before_collected_history_is_unretained` | performed |
 | `store.bound-time.covering-versions` | `crates/contextful-context/tests/integration/bound_time.rs::an_unkeyed_table_returns_every_covering_version` | performed |
@@ -685,6 +691,7 @@ Unscheduled operations: 10.
 | `store.bound-time.valid-as-of` | `crates/contextful-context/tests/integration/bound_time.rs::valid_as_of_selects_the_rows_valid_at_the_instant` | performed |
 | `store.bound-time.valid-time-type` | `crates/contextful-core/tests/integration/store/bound_time.rs::a_valid_time_column_not_timestamp_typed_is_refused` | performed |
 | `store.bound-time.valid-time-undeclared` | `crates/contextful-core/tests/integration/store/bound_time.rs::valid_as_of_on_a_table_declaring_no_pair_is_refused` | performed |
+| `store.declare.column-types` | `crates/contextful-context/tests/integration/reconcile.rs::a_declared_column_type_types_a_landing_that_declares_none` | performed |
 | `store.declare.dedup-view` | `crates/contextful-context/tests/integration/declare.rs::a_keyed_table_reads_one_row_per_key_before_and_after_a_fold` | performed |
 | `store.declare.empty-run` | `crates/contextful-context/tests/integration/declare.rs::a_zero_row_run_commits_no_parts_and_an_empty_table_registers` | performed |
 | `store.declare.key-unknown` | `crates/contextful-context/tests/integration/declare.rs::an_unknown_primary_key_refuses_the_first_batch_before_any_parquet` | performed |
@@ -712,6 +719,7 @@ Unscheduled operations: 10.
 | `store.fold.valid-time-line` | `crates/contextful-context/tests/integration/fold.rs::a_valid_time_table_keeps_one_row_per_key_and_line` | performed |
 | `store.index.clustering` | `crates/contextful-context/tests/integration/index.rs::cluster_by_sorts_rows_within_a_file_in_declared_order` | performed |
 | `store.index.not-in-file-set` | `crates/contextful-context/tests/integration/index.rs::a_sidecar_directory_joins_no_file_set` | performed |
+| `store.index.partition-type` | `crates/contextful-context/tests/integration/index.rs::a_binary_or_vector_partition_column_is_refused` | performed |
 | `store.index.partitioning` | `crates/contextful-context/tests/integration/index.rs::partitioning_is_off_unless_declared` | performed |
 | `store.index.tenant-verbatim` | `crates/contextful-context/tests/integration/index.rs::a_tenant_value_is_kept_byte_for_byte` | performed |
 | `store.lay-out.catalog-ports` | `crates/contextful-sqlite/tests/integration/derived.rs::both_catalogs_are_reached_through_the_core_ports` | performed |
@@ -767,15 +775,19 @@ Unscheduled operations: 10.
 | `store.push.schema-cas` | `crates/contextful-sync/tests/integration/converge.rs::two_nodes_landing_different_columns_both_keep_them` | performed |
 | `store.push.wire-format` | `crates/contextful-sync/tests/integration/push.rs::a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local` | performed |
 | `store.reconcile.additive` | `crates/contextful-core/tests/integration/store/reconcile.rs::an_unseen_column_joins_nullable` | performed |
+| `store.reconcile.binary-and-vector` | `crates/contextful-core/tests/integration/store/reconcile.rs::binary_and_vector_types_take_no_promotion` | performed |
 | `store.reconcile.explicit-file-list` | `crates/contextful-context/tests/integration/reconcile.rs::a_read_hands_read_parquet_an_explicit_sorted_list` | performed |
 | `store.reconcile.first-sight` | `crates/contextful-context/tests/integration/reconcile.rs::the_first_batch_creates_the_table` | performed |
 | `store.reconcile.float-loss` | `crates/contextful-context/tests/integration/reconcile.rs::an_integer_beyond_two_to_the_53_loses_precision_once_the_column_widens` | performed |
 | `store.reconcile.fold-never-narrows` | `crates/contextful-context/tests/integration/reconcile.rs::a_fold_backfills_and_widens` | performed |
+| `store.reconcile.half-width` | `crates/contextful-context/tests/integration/reconcile.rs::half_floats_store_at_half_width_and_read_as_float_arrays` | performed |
 | `store.reconcile.incompatible` | `crates/contextful-core/tests/integration/store/reconcile.rs::any_other_pair_is_incompatible` | performed |
 | `store.reconcile.key-widening` | `crates/contextful-core/tests/integration/store/reconcile.rs::a_key_column_takes_no_float_promotion` | performed |
 | `store.reconcile.lattice` | `crates/contextful-core/tests/integration/store/reconcile.rs::the_lattice_holds_one_promotion_and_json_absorbs_text` | performed |
 | `store.reconcile.no-history` | `crates/contextful-core/tests/integration/store/reconcile.rs::the_schema_document_keeps_the_current_shape_alone` | performed |
 | `store.reconcile.no-invented-column` | `crates/contextful-context/tests/integration/reconcile.rs::a_scan_invents_no_column` | performed |
+| `store.reconcile.stored-type` | `crates/contextful-context/tests/integration/reconcile.rs::a_stored_binary_or_vector_column_types_a_later_undeclared_batch` | performed |
+| `store.reconcile.typed-landing` | `crates/contextful-context/tests/integration/reconcile.rs::a_typed_batch_lands_bytes_from_base64_and_vectors_from_arrays` | performed |
 | `store.reconcile.union-by-name` | `crates/contextful-context/tests/integration/reconcile.rs::a_column_resolves_to_the_supertype_of_its_files_with_no_cast` | performed |
 | `store.replicate.partial-parquet` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_missing_a_snapshot_part_refuses_and_leaves_it_unpublished` | performed |
 | `store.replicate.sensitive-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_refresh_requesting_a_replicate_off_table_refuses` | performed |

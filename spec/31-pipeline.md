@@ -116,6 +116,8 @@ The declarative chain that rewrites a batch in place.
   *because a cast over an absent column otherwise lands the batch untransformed*
 - `cast` — A cast rewrites one column's type and keeps its name and position.
 - `projection` — `select` fixes the outgoing column set by name, and `rename` maps an incoming name onto an outgoing one.
+- `typed-cast` — A cast to `binary`, `binary(n)`, `float32[n]` or `float16[n]` keeps a value that type's JSON form reads, nulls any other, and lands the column in that type.
+- `type-carry` — A `rename` carries a pulled column type to the new name, a `select` drops it with its column, and a cast to a scalar type drops it.
 
 unsettled: Does the chain grow past these four operations, or does richer work stay post-landing SQL? owner: pipeline affects: run.transform
 
@@ -160,6 +162,7 @@ The stage order from pull to commit, the one destination, the ingest tally and c
 - `no-host-arm` — The destination world declares no host arm, so a guest supplies no destination.
   *A-topology*
 - `batch-write` — A landing table is created on first sight of its schema, {{store.reconcile.first-sight}}; each batch is written durably in its own call, optionally carrying its ordinal as the join key onto the run's request ledger.
+- `typed-pull` — A pull's `types` object maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it, and the run commit lands that column in it; an unreadable spelling fails the pull as {{store.reconcile.incompatible}}.
 - `irreconcilable-schema` — An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.
 - `commit-visibility` — A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed`, `dropped_low_quality` and a per-source breakdown; a non-zero `failed` exits non-zero.

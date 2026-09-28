@@ -4,11 +4,14 @@
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
 use crate::store::{create_new_file, FileLock, Store, LOCK_WAIT_SECS};
-use arrow_array::builder::{BooleanBuilder, Float64Builder, Int32Builder, Int64Builder, StringBuilder, TimestampNanosecondBuilder};
+use arrow_array::builder::{
+    BinaryBuilder, BooleanBuilder, FixedSizeBinaryBuilder, FixedSizeListBuilder, Float16Builder, Float32Builder, Float64Builder,
+    Int32Builder, Int64Builder, StringBuilder, TimestampNanosecondBuilder,
+};
 use arrow_array::{ArrayRef, NullArray, RecordBatch};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
-use contextful_core::store::reconcile::{supertype, Column, ColumnType, Schema};
+use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, VECTOR_ITEM};
 use contextful_core::store::reserve::{
     optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, INGESTED_AT, ROW_SEQ,
     RUN_ID, SITE_ID,
@@ -162,6 +165,68 @@ fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
             }
             Arc::new(b.finish())
         }
+        ColumnType::Binary => {
+            let mut b = BinaryBuilder::new();
+            for v in vals {
+                b.append_option(v.map(|v| v.as_str().and_then(decode_binary).ok_or_else(|| bad(v))).transpose()?);
+            }
+            Arc::new(b.finish())
+        }
+        ColumnType::FixedSizeBinary(n) => {
+            let mut b = FixedSizeBinaryBuilder::new(parquet_io::width(n));
+            for v in vals {
+                match v {
+                    None => b.append_null(),
+                    Some(v) => {
+                        let bytes = v.as_str().and_then(decode_binary).filter(|x| x.len() == n as usize).ok_or_else(|| bad(v))?;
+                        b.append_value(bytes).map_err(|_| bad(v))?;
+                    }
+                }
+            }
+            Arc::new(b.finish())
+        }
+        ColumnType::FixedSizeList(item, n) => {
+            // Each element is a JSON number and the array holds exactly the dimension.
+            let elements = |v: &Value| -> Result<Vec<f64>> {
+                let a = v.as_array().filter(|a| a.len() == n as usize).ok_or_else(|| bad(v))?;
+                a.iter().map(|x| x.as_f64().ok_or_else(|| bad(v))).collect()
+            };
+            let field = Arc::new(arrow_schema::Field::new(VECTOR_ITEM, parquet_io::data_type_of(item), false));
+            match item {
+                FloatItem::Float32 => {
+                    let mut b = FixedSizeListBuilder::new(Float32Builder::new(), parquet_io::width(n)).with_field(field);
+                    for v in vals {
+                        match v {
+                            None => {
+                                (0..n).for_each(|_| b.values().append_value(0.0));
+                                b.append(false);
+                            }
+                            Some(v) => {
+                                elements(v)?.into_iter().for_each(|x| b.values().append_value(x as f32));
+                                b.append(true);
+                            }
+                        }
+                    }
+                    Arc::new(b.finish())
+                }
+                FloatItem::Float16 => {
+                    let mut b = FixedSizeListBuilder::new(Float16Builder::new(), parquet_io::width(n)).with_field(field);
+                    for v in vals {
+                        match v {
+                            None => {
+                                (0..n).for_each(|_| b.values().append_value(half::f16::ZERO));
+                                b.append(false);
+                            }
+                            Some(v) => {
+                                elements(v)?.into_iter().for_each(|x| b.values().append_value(half::f16::from_f64(x)));
+                                b.append(true);
+                            }
+                        }
+                    }
+                    Arc::new(b.finish())
+                }
+            }
+        }
     })
 }
 
@@ -195,15 +260,22 @@ pub fn land_batches(
 ) -> Result<RunManifest> {
     store.check_writable("land")?;
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
-    let mut types: HashMap<String, ColumnType> = HashMap::new();
-    for b in batches {
-        types.extend(b.types.iter().map(|(k, v)| (k.clone(), *v)));
-    }
     let all_rows = || batches.iter().flat_map(|b| b.rows.iter());
     let table = decl.name.as_str();
     let run_id = ctx.injection.run_id.as_str();
     check_run_id(run_id)?;
     contextful_core::store::reserve::check_table_name(table)?;
+    // A column's type comes from the producer, then the declaration
+    // (`store.declare.column-types`), then a binary or vector type `schema.json` already
+    // holds (`store.reconcile.stored-type`); a JSON value alone carries none of these.
+    let mut types: HashMap<String, ColumnType> = HashMap::new();
+    if let Some(stored) = store.try_schema(table)? {
+        types.extend(stored.columns.iter().filter(|c| c.ty.is_binary() || c.ty.is_vector()).map(|c| (c.name.clone(), c.ty)));
+    }
+    types.extend(decl.column_types());
+    for b in batches {
+        types.extend(b.types.iter().map(|(k, v)| (k.clone(), *v)));
+    }
     let node_dir = store.table_dir(table)?.join("data").join("runs").join(run_id).join(ctx.node.as_str());
     let manifest_path = node_dir.join(MANIFEST_FILE);
     if manifest_path.exists() {

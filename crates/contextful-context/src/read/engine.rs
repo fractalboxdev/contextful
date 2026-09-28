@@ -6,7 +6,7 @@ use super::fault::ReadFault;
 use contextful_core::read::respond::Cell;
 use contextful_core::read::template::Bound;
 use contextful_core::time::Instant;
-use contextful_policy::enforce::mask::{Pepper, HASH_FUNCTION, TOKEN_FUNCTION};
+use contextful_policy::enforce::mask::{Pepper, HASH_BYTES_FUNCTION, HASH_FUNCTION, TOKEN_FUNCTION};
 use contextful_policy::enforce::session::{Session, TENANT_RELATION};
 use contextful_core::store::relation::{ident, literal};
 use duckdb::core::{DataChunkHandle, Inserter, LogicalTypeId};
@@ -20,8 +20,9 @@ use serde_json::Value;
 /// The engine's name, as the internals block reports it.
 pub const ENGINE: &str = "duckdb";
 
-/// Apply `f` to every non-null text cell of the first input column.
-fn map_text(input: &mut DataChunkHandle, output: &mut dyn WritableVector, f: impl Fn(&str) -> String) {
+/// Apply `f` to the bytes of every non-null text or blob cell of the first input column;
+/// the engine lays both out as one string type.
+fn map_bytes(input: &mut DataChunkHandle, output: &mut dyn WritableVector, f: impl Fn(&[u8]) -> String) {
     let n = input.len();
     let column = input.flat_vector(0);
     let cells = unsafe { column.as_slice_with_len::<duckdb_string_t>(n) };
@@ -30,10 +31,15 @@ fn map_text(input: &mut DataChunkHandle, output: &mut dyn WritableVector, f: imp
         if column.row_is_null(i as u64) {
             out.set_null(i);
         } else {
-            let text = DuckString::new(&mut { *cell }).as_str().to_string();
-            out.insert(i, f(&text).as_str());
+            let bytes = DuckString::new(&mut { *cell }).as_bytes().to_vec();
+            out.insert(i, f(&bytes).as_str());
         }
     }
+}
+
+/// Apply `f` to every non-null text cell of the first input column.
+fn map_text(input: &mut DataChunkHandle, output: &mut dyn WritableVector, f: impl Fn(&str) -> String) {
+    map_bytes(input, output, |b| f(&String::from_utf8_lossy(b)))
 }
 
 fn text_to_text() -> Vec<ScalarFunctionSignature> {
@@ -51,6 +57,20 @@ impl VScalar for MaskHash {
     }
     fn signatures() -> Vec<ScalarFunctionSignature> {
         text_to_text()
+    }
+}
+
+/// The keyed digest over a binary column's bytes, the pepper held as the function's state.
+struct MaskHashBytes;
+
+impl VScalar for MaskHashBytes {
+    type State = Pepper;
+    fn invoke(pepper: &Pepper, input: &mut DataChunkHandle, output: &mut dyn WritableVector) -> Result<(), Box<dyn std::error::Error>> {
+        map_bytes(input, output, |v| pepper.digest_bytes(v));
+        Ok(())
+    }
+    fn signatures() -> Vec<ScalarFunctionSignature> {
+        vec![ScalarFunctionSignature::exact(vec![LogicalTypeId::Blob.into()], LogicalTypeId::Varchar.into())]
     }
 }
 
@@ -115,6 +135,7 @@ impl SqlEngine {
         let engine = SqlEngine::connect()?;
         let conn = &engine.conn;
         conn.register_scalar_function_with_state::<MaskHash>(HASH_FUNCTION, session.pepper()).map_err(fault)?;
+        conn.register_scalar_function_with_state::<MaskHashBytes>(HASH_BYTES_FUNCTION, session.pepper()).map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskToken>(TOKEN_FUNCTION, session.pepper()).map_err(fault)?;
 
         let subject = session.subject_row();
@@ -243,6 +264,21 @@ pub fn cell(v: Engine) -> Cell {
         Engine::Time64(unit, v) => Cell::Time((nanos(unit, v) / 1000) as i64),
         Engine::Interval { months, days, nanos } => Cell::Interval { months, days, nanos },
         Engine::Enum(s) => Cell::Enum(s),
+        // A fixed-size array of non-null floats, a vector column among them, is a number array.
+        Engine::Array(items) => {
+            let floats: Option<Vec<f64>> = items
+                .iter()
+                .map(|v| match v {
+                    Engine::Float(f) => Some(f64::from(*f)),
+                    Engine::Double(f) => Some(*f),
+                    _ => None,
+                })
+                .collect();
+            match floats {
+                Some(v) => Cell::Vector(v),
+                None => Cell::Container(container_text(&Engine::Array(items))),
+            }
+        }
         other => Cell::Container(container_text(&other)),
     }
 }

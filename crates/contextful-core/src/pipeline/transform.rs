@@ -1,6 +1,7 @@
 //! `run.transform`: the declarative chain rewriting a batch in place.
 
-use crate::run::ports::Row;
+use crate::run::ports::{Row, Types};
+use crate::store::reconcile::{decode_binary, ColumnType};
 use crate::run::RunError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -13,14 +14,31 @@ pub enum TransformOp {
     Select { columns: Vec<String> },
     /// Map an incoming name onto an outgoing one.
     Rename { from: String, to: String },
-    /// Rewrite one column's type: `string`, `int64`, `float64` or `boolean`.
+    /// Rewrite one column's type: `string`, `int64`, `float64` or `boolean`, or a binary
+    /// or vector type (`run.transform.typed-cast`).
     Cast { column: String, to: String },
     /// Keep the rows whose single column equals a value.
     Filter { column: String, equals: Value },
 }
 
-/// The types a cast reaches.
+/// The scalar types a cast reaches.
 pub const CAST_TYPES: [&str; 4] = ["string", "int64", "float64", "boolean"];
+
+/// The binary or vector type a cast names, spelled as a declaration spells it.
+fn typed_cast(to: &str) -> Option<ColumnType> {
+    ColumnType::parse(to).filter(|t| t.is_binary() || t.is_vector())
+}
+
+/// Whether `v` is the JSON form of type `ty`: padded base64 of the width, or a number
+/// array of the dimension (`store.reconcile.typed-landing`).
+fn reads_as(v: &Value, ty: ColumnType) -> bool {
+    match ty {
+        ColumnType::Binary => v.as_str().and_then(decode_binary).is_some(),
+        ColumnType::FixedSizeBinary(n) => v.as_str().and_then(decode_binary).is_some_and(|b| b.len() == n as usize),
+        ColumnType::FixedSizeList(_, n) => v.as_array().is_some_and(|a| a.len() == n as usize && a.iter().all(Value::is_number)),
+        _ => false,
+    }
+}
 
 impl TransformOp {
     fn name(&self) -> &'static str {
@@ -35,8 +53,8 @@ impl TransformOp {
     /// Hold the operation's own declaration: a cast names a type it reaches.
     pub fn validate(&self) -> Result<(), RunError> {
         match self {
-            TransformOp::Cast { to, column } if !CAST_TYPES.contains(&to.as_str()) => Err(RunError::Invalid(format!(
-                "cast of `{column}` names type `{to}`; a cast reaches {}",
+            TransformOp::Cast { to, column } if !CAST_TYPES.contains(&to.as_str()) && typed_cast(to).is_none() => Err(RunError::Invalid(format!(
+                "cast of `{column}` names type `{to}`; a cast reaches {}, `binary`, `binary(n)`, `float32[n]` or `float16[n]`",
                 CAST_TYPES.join(", ")
             ))),
             _ => Ok(()),
@@ -46,6 +64,9 @@ impl TransformOp {
 
 /// A value converted to `to`; a value with no reading in the type becomes null.
 fn cast_value(v: &Value, to: &str) -> Value {
+    if let Some(ty) = typed_cast(to) {
+        return if reads_as(v, ty) { v.clone() } else { Value::Null };
+    }
     match (to, v) {
         (_, Value::Null) => Value::Null,
         ("string", Value::String(_)) => v.clone(),
@@ -140,8 +161,38 @@ pub struct Chain {
     pub table: String,
 }
 
+/// The column types after `chain`: a rename moves a type to the new name, a select drops
+/// it with its column, and a cast sets it or, to a scalar type, drops it
+/// (`run.transform.type-carry`).
+pub fn carry_types(chain: &[TransformOp], mut types: Types) -> Types {
+    for op in chain {
+        match op {
+            TransformOp::Select { columns } => types.retain(|c, _| columns.contains(c)),
+            TransformOp::Rename { from, to } => {
+                if let Some(t) = types.remove(from) {
+                    types.insert(to.clone(), t);
+                }
+            }
+            TransformOp::Cast { column, to } => match typed_cast(to) {
+                Some(t) => {
+                    types.insert(column.clone(), t);
+                }
+                None => {
+                    types.remove(column);
+                }
+            },
+            TransformOp::Filter { .. } => {}
+        }
+    }
+    types
+}
+
 impl crate::run::ports::Shape for Chain {
     fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, RunError> {
         apply(&self.ops, rows, &self.table)
+    }
+
+    fn shape_types(&self, types: Types) -> Types {
+        carry_types(&self.ops, types)
     }
 }

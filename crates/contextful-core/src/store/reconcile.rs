@@ -1,12 +1,38 @@
-//! `store.reconcile`: the column types a table carries, the one-promotion lattice, and
-//! the merged schema persisted as `schema.json` in Arrow JSON form.
+//! `store.reconcile`: the column types a table carries, the one-promotion lattice, the
+//! binary and vector types that take no promotion, and the merged schema persisted as
+//! `schema.json` in Arrow JSON form.
 
 use super::StoreError;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Largest integer a `Float64` holds exactly (`store.reconcile.float-loss`).
 pub const FLOAT_EXACT_INTEGER_LIMIT: i64 = 9_007_199_254_740_992;
+
+/// The element type of a fixed-size vector column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FloatItem {
+    Float32,
+    /// Half precision: stored at 2 bytes an element, read by the engine as `FLOAT`.
+    Float16,
+}
+
+impl FloatItem {
+    pub fn name(self) -> &'static str {
+        match self {
+            FloatItem::Float32 => "Float32",
+            FloatItem::Float16 => "Float16",
+        }
+    }
+
+    fn arrow_precision(self) -> &'static str {
+        match self {
+            FloatItem::Float32 => "SINGLE",
+            FloatItem::Float16 => "HALF",
+        }
+    }
+}
 
 /// The logical type of one column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -22,25 +48,74 @@ pub enum ColumnType {
     Json,
     /// `TIMESTAMP(UTC, NANOS)`.
     Timestamp,
+    /// Variable-length bytes.
+    Binary,
+    /// Bytes of one fixed width, such as a digest.
+    FixedSizeBinary(u32),
+    /// A vector of one fixed dimension over one float width.
+    FixedSizeList(FloatItem, u32),
 }
 
 impl ColumnType {
-    pub fn name(self) -> &'static str {
+    /// The type's name as a refusal reports it.
+    pub fn name(self) -> String {
         match self {
-            ColumnType::Null => "Null",
-            ColumnType::Boolean => "Boolean",
-            ColumnType::Int32 => "Int32",
-            ColumnType::Int64 => "Int64",
-            ColumnType::Float64 => "Float64",
-            ColumnType::Utf8 => "Utf8",
-            ColumnType::Json => "Json",
-            ColumnType::Timestamp => "Timestamp",
+            ColumnType::Null => "Null".into(),
+            ColumnType::Boolean => "Boolean".into(),
+            ColumnType::Int32 => "Int32".into(),
+            ColumnType::Int64 => "Int64".into(),
+            ColumnType::Float64 => "Float64".into(),
+            ColumnType::Utf8 => "Utf8".into(),
+            ColumnType::Json => "Json".into(),
+            ColumnType::Timestamp => "Timestamp".into(),
+            ColumnType::Binary => "Binary".into(),
+            ColumnType::FixedSizeBinary(n) => format!("FixedSizeBinary({n})"),
+            ColumnType::FixedSizeList(item, n) => format!("FixedSizeList<{}, {n}>", item.name()),
         }
     }
 
-    /// Parse a type as the command line and declarations spell it.
+    /// The type as a declaration spells it, the inverse of [`ColumnType::parse`].
+    pub fn spell(self) -> String {
+        match self {
+            ColumnType::Null => "null".into(),
+            ColumnType::Boolean => "boolean".into(),
+            ColumnType::Int32 => "int32".into(),
+            ColumnType::Int64 => "int64".into(),
+            ColumnType::Float64 => "float64".into(),
+            ColumnType::Utf8 => "utf8".into(),
+            ColumnType::Json => "json".into(),
+            ColumnType::Timestamp => "timestamp".into(),
+            ColumnType::Binary => "binary".into(),
+            ColumnType::FixedSizeBinary(n) => format!("binary({n})"),
+            ColumnType::FixedSizeList(FloatItem::Float32, n) => format!("float32[{n}]"),
+            ColumnType::FixedSizeList(FloatItem::Float16, n) => format!("float16[{n}]"),
+        }
+    }
+
+    /// Whether the column carries bytes.
+    pub fn is_binary(self) -> bool {
+        matches!(self, ColumnType::Binary | ColumnType::FixedSizeBinary(_))
+    }
+
+    /// Whether the column carries a fixed-size vector.
+    pub fn is_vector(self) -> bool {
+        matches!(self, ColumnType::FixedSizeList(..))
+    }
+
+    /// Parse a type as the command line and declarations spell it: `binary`, `binary(<n>)`
+    /// for a fixed width, and `float32[<n>]` or `float16[<n>]` for a vector.
     pub fn parse(s: &str) -> Option<ColumnType> {
-        Some(match s.to_ascii_lowercase().as_str() {
+        let lower = s.trim().to_ascii_lowercase();
+        let width = |digits: &str| digits.parse::<u32>().ok().filter(|n| (1..=MAX_WIDTH).contains(n));
+        if let Some(n) = lower.strip_prefix("binary(").and_then(|r| r.strip_suffix(')')) {
+            return width(n).map(ColumnType::FixedSizeBinary);
+        }
+        for (prefix, item) in [("float32[", FloatItem::Float32), ("float16[", FloatItem::Float16)] {
+            if let Some(n) = lower.strip_prefix(prefix).and_then(|r| r.strip_suffix(']')) {
+                return width(n).map(|n| ColumnType::FixedSizeList(item, n));
+            }
+        }
+        Some(match lower.as_str() {
             "boolean" | "bool" => ColumnType::Boolean,
             "int32" => ColumnType::Int32,
             "int64" | "integer" => ColumnType::Int64,
@@ -48,21 +123,26 @@ impl ColumnType {
             "utf8" | "string" | "text" => ColumnType::Utf8,
             "json" => ColumnType::Json,
             "timestamp" => ColumnType::Timestamp,
+            "binary" | "bytes" => ColumnType::Binary,
             _ => return None,
         })
     }
 
-    /// The SQL type a zero-row branch casts a literal null to.
-    pub fn sql(self) -> &'static str {
+    /// The SQL type the engine reads the column as, and a zero-row branch casts a literal
+    /// null to: bytes of either width as `BLOB`, a vector as a `FLOAT` array of its
+    /// dimension whatever its stored width.
+    pub fn sql(self) -> String {
         match self {
-            ColumnType::Null => "INTEGER",
-            ColumnType::Boolean => "BOOLEAN",
-            ColumnType::Int32 => "INTEGER",
-            ColumnType::Int64 => "BIGINT",
-            ColumnType::Float64 => "DOUBLE",
-            ColumnType::Utf8 => "VARCHAR",
-            ColumnType::Json => "JSON",
-            ColumnType::Timestamp => "TIMESTAMPTZ",
+            ColumnType::Null => "INTEGER".into(),
+            ColumnType::Boolean => "BOOLEAN".into(),
+            ColumnType::Int32 => "INTEGER".into(),
+            ColumnType::Int64 => "BIGINT".into(),
+            ColumnType::Float64 => "DOUBLE".into(),
+            ColumnType::Utf8 => "VARCHAR".into(),
+            ColumnType::Json => "JSON".into(),
+            ColumnType::Timestamp => "TIMESTAMPTZ".into(),
+            ColumnType::Binary | ColumnType::FixedSizeBinary(_) => "BLOB".into(),
+            ColumnType::FixedSizeList(_, n) => format!("FLOAT[{n}]"),
         }
     }
 
@@ -75,11 +155,28 @@ impl ColumnType {
             ColumnType::Float64 => json!({"name": "floatingpoint", "precision": "DOUBLE"}),
             ColumnType::Utf8 | ColumnType::Json => json!({"name": "utf8"}),
             ColumnType::Timestamp => json!({"name": "timestamp", "unit": "NANOSECOND", "timezone": "UTC"}),
+            ColumnType::Binary => json!({"name": "binary"}),
+            ColumnType::FixedSizeBinary(n) => json!({"name": "fixedsizebinary", "byteWidth": n}),
+            ColumnType::FixedSizeList(_, n) => json!({"name": "fixedsizelist", "listSize": n}),
         }
     }
 
-    fn from_arrow_json(ty: &Value, json_extension: bool) -> Option<ColumnType> {
+    /// The child fields the Arrow JSON form carries: a vector's one element field.
+    fn arrow_children(self) -> Value {
+        match self {
+            ColumnType::FixedSizeList(item, _) => json!([{
+                "name": VECTOR_ITEM,
+                "nullable": false,
+                "type": {"name": "floatingpoint", "precision": item.arrow_precision()},
+                "children": []
+            }]),
+            _ => json!([]),
+        }
+    }
+
+    fn from_arrow_json(ty: &Value, children: Option<&Value>, json_extension: bool) -> Option<ColumnType> {
         let name = ty.get("name")?.as_str()?;
+        let width = |key: &str| ty.get(key)?.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=MAX_WIDTH).contains(n));
         Some(match name {
             "null" => ColumnType::Null,
             "bool" => ColumnType::Boolean,
@@ -92,9 +189,38 @@ impl ColumnType {
             "utf8" if json_extension => ColumnType::Json,
             "utf8" => ColumnType::Utf8,
             "timestamp" if ty.get("unit")?.as_str()? == "NANOSECOND" => ColumnType::Timestamp,
+            "binary" => ColumnType::Binary,
+            "fixedsizebinary" => ColumnType::FixedSizeBinary(width("byteWidth")?),
+            "fixedsizelist" => {
+                let [child] = children?.as_array()?.as_slice() else { return None };
+                let item = match child.get("type")?.get("precision")?.as_str()? {
+                    "SINGLE" => FloatItem::Float32,
+                    "HALF" => FloatItem::Float16,
+                    _ => return None,
+                };
+                ColumnType::FixedSizeList(item, width("listSize")?)
+            }
             _ => return None,
         })
     }
+}
+
+/// Widest fixed width or dimension a declaration spells: Arrow carries it as a signed
+/// 32-bit count.
+pub const MAX_WIDTH: u32 = i32::MAX as u32;
+
+/// The name of a vector column's element field.
+pub const VECTOR_ITEM: &str = "item";
+
+/// Bytes as the JSON row path carries them: standard base64, padded
+/// (`read.respond.bytes-and-vectors`).
+pub fn encode_binary(bytes: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+/// The bytes a padded base64 value carries; `None` for any other text.
+pub fn decode_binary(text: &str) -> Option<Vec<u8>> {
+    base64::engine::general_purpose::STANDARD.decode(text).ok()
 }
 
 /// The common supertype of two observed types, or `None` where the lattice holds none
@@ -188,7 +314,7 @@ impl Schema {
             .columns
             .iter()
             .map(|c| {
-                let mut f = json!({"name": c.name, "nullable": c.nullable, "type": c.ty.arrow_json(), "children": []});
+                let mut f = json!({"name": c.name, "nullable": c.nullable, "type": c.ty.arrow_json(), "children": c.ty.arrow_children()});
                 if c.ty == ColumnType::Json {
                     f["metadata"] = json!([{"key": EXTENSION_NAME, "value": JSON_EXTENSION}]);
                 }
@@ -209,7 +335,7 @@ impl Schema {
             columns.push(Column {
                 name: f.get("name")?.as_str()?.to_string(),
                 nullable: f.get("nullable")?.as_bool()?,
-                ty: ColumnType::from_arrow_json(f.get("type")?, json_ext)?,
+                ty: ColumnType::from_arrow_json(f.get("type")?, f.get("children"), json_ext)?,
             });
         }
         Some(Schema { columns })

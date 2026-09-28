@@ -1,5 +1,6 @@
 //! A table's rows as JSON objects, read off its current file list and projected to the
-//! columns a caller names.
+//! columns a caller names. Bytes render as padded base64 and a fixed-size float vector as
+//! a number array (`read.respond.bytes-and-vectors`).
 
 use crate::error::{ContextError, Result};
 use crate::parquet_io;
@@ -15,6 +16,7 @@ use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{DataType, TimeUnit};
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::declare::TableDecl;
+use contextful_core::store::reconcile::encode_binary;
 use contextful_core::time::Instant;
 use serde_json::{Map, Value};
 
@@ -71,6 +73,14 @@ fn cell(column: &str, array: &dyn Array, i: usize) -> Result<Value> {
         DataType::Decimal32(..) | DataType::Decimal64(..) | DataType::Decimal128(..) | DataType::Decimal256(..) => {
             let f = ArrayFormatter::try_new(array, &FormatOptions::default()).map_err(|e| ContextError::Invalid(format!("column `{column}`: {e}")))?;
             Value::String(f.value(i).to_string())
+        }
+        DataType::Binary => Value::String(encode_binary(array.as_binary::<i32>().value(i))),
+        DataType::LargeBinary => Value::String(encode_binary(array.as_binary::<i64>().value(i))),
+        DataType::BinaryView => Value::String(encode_binary(array.as_binary_view().value(i))),
+        DataType::FixedSizeBinary(_) => Value::String(encode_binary(array.as_fixed_size_binary().value(i))),
+        DataType::FixedSizeList(item, _) if matches!(item.data_type(), DataType::Float16 | DataType::Float32 | DataType::Float64) => {
+            let v = array.as_fixed_size_list().value(i);
+            Value::Array((0..v.len()).map(|j| cell(column, v.as_ref(), j)).collect::<Result<_>>()?)
         }
         other => return Err(ContextError::ColumnType { column: column.to_string(), data_type: other.to_string() }),
     })

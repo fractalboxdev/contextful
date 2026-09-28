@@ -137,3 +137,38 @@ fn run_rows_live_in_the_store_roots_machine_catalog() {
     assert_eq!(shown["run_id"], "a1");
     assert_eq!(shown["status"], serde_json::to_value(row.status).unwrap());
 }
+
+/// A pull's `types` object maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it, and the
+/// run commit lands that column in it; an unreadable spelling fails the pull as {{store.reconcile.incompatible}}.
+// spec: run.land.typed-pull@cb800296
+#[test]
+fn a_pulled_type_lands_its_column_in_that_type() {
+    let dir = project();
+    let schema = |d: &Path| -> serde_json::Value {
+        serde_json::from_slice(&std::fs::read(d.join(".contextful/context/research/tables/filings/schema.json")).unwrap()).unwrap()
+    };
+    let field = |s: &serde_json::Value, name: &str| s["fields"].as_array().unwrap().iter().find(|f| f["name"] == name).cloned().unwrap_or_else(|| panic!("no `{name}` in {s}"));
+    std::fs::write(
+        dir.path().join("typed.sh"),
+        "printf '{\"rows\":[{\"id\":\"a\",\"digest\":\"3q2+7w==\",\"embedding\":[0.5,-1,0.25]}],\"types\":{\"digest\":\"binary(4)\",\"embedding\":\"float16[3]\"},\"more\":false}'\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("typed.toml"), "pipeline = \"typed\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"typed.sh\"]\n").unwrap();
+    ok(&start(dir.path(), "typed.toml", "t1", "2030-01-01T00:00:00Z"));
+    let s = schema(dir.path());
+    assert_eq!(field(&s, "digest")["type"], serde_json::json!({"name": "fixedsizebinary", "byteWidth": 4}), "{s}");
+    assert_eq!(field(&s, "embedding")["type"], serde_json::json!({"name": "fixedsizelist", "listSize": 3}), "{s}");
+    assert_eq!(field(&s, "embedding")["children"][0]["type"]["precision"], "HALF", "{s}");
+
+    // A later pull declaring nothing lands in the stored types.
+    std::fs::write(dir.path().join("untyped.sh"), "printf '{\"rows\":[{\"id\":\"b\",\"digest\":\"AAECAw==\",\"embedding\":[1,0,0]}],\"more\":false}'\n").unwrap();
+    std::fs::write(dir.path().join("untyped.toml"), "pipeline = \"untyped\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"untyped.sh\"]\n").unwrap();
+    ok(&start(dir.path(), "untyped.toml", "u1", "2030-01-01T00:01:00Z"));
+    assert_eq!(schema(dir.path()), s);
+
+    // An unreadable spelling fails the pull.
+    std::fs::write(dir.path().join("bad.sh"), "printf '{\"rows\":[{\"id\":\"c\",\"v\":\"qg==\"}],\"types\":{\"v\":\"bytes(4)\"},\"more\":false}'\n").unwrap();
+    std::fs::write(dir.path().join("bad.toml"), "pipeline = \"bad\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"bad.sh\"]\n").unwrap();
+    refused(&start(dir.path(), "bad.toml", "b1", "2030-01-01T00:02:00Z"), "StoreSchemaIncompatible");
+    assert_eq!(schema(dir.path()), s, "the failed pull lands nothing");
+}

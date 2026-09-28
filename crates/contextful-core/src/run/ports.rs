@@ -8,12 +8,17 @@ use super::own::{ConnectorPin, OwnerPins, OwnerScope};
 use super::record::RunRow;
 use super::retry::Schedule;
 use super::suspend::Awakeable;
+use crate::store::reconcile::ColumnType;
 use crate::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 
 /// A row as a source hands it over.
 pub type Row = Map<String, Value>;
+
+/// Column types a producer declares, by column name.
+pub type Types = BTreeMap<String, ColumnType>;
 
 /// What one pull asks the source for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,12 +42,16 @@ pub struct Pull {
     /// Whether another pull follows in this run.
     #[serde(default)]
     pub more: bool,
+    /// Column types the source declares, spelled as a declaration spells them
+    /// (`run.land.typed-pull`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub types: BTreeMap<String, String>,
 }
 
 impl Pull {
     /// Decode a pull. Bytes outside the shape are a deterministic `SchemaIncompatible`.
     pub fn decode(bytes: &[u8]) -> Result<Pull, Failure> {
-        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\"}}`: {e}")))
+        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\", \"types\"}}`: {e}")))
     }
 }
 
@@ -73,6 +82,8 @@ pub struct Commit {
     pub run_id: String,
     pub site_id: String,
     pub batches: Vec<Vec<Row>>,
+    /// The column types the pulls declared, carried through the shape stages.
+    pub types: Types,
     pub cursor: Option<Value>,
     pub committed_at: Instant,
     /// The fence of the single-writer lease the commit runs under.
@@ -112,6 +123,12 @@ pub trait Destination {
 /// the transform chain and write-path redaction (`run.land.stage-order`).
 pub trait Shape {
     fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, super::RunError>;
+
+    /// The column types after the stages: a stage renaming, dropping or retyping a
+    /// column moves its declared type with it.
+    fn shape_types(&self, types: Types) -> Types {
+        types
+    }
 }
 
 /// The shape that passes a batch through unchanged.
