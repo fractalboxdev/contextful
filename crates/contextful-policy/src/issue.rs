@@ -21,7 +21,15 @@ use std::path::Path;
 /// The command that writes a seed file, printed wherever an issuer key is missing.
 pub const KEYGEN_COMMAND: &str = "contextful token keygen --out .contextful/issuer.seed";
 
-/// An issuer key held in-process, loaded from a seed file or generated.
+/// An issuer key held in-process, loaded from a seed file or generated. It signs only
+/// through [`SigningPort`]; no accessor hands out the key pair
+/// (`authority.issue.signing-port`):
+///
+/// ```compile_fail
+/// use contextful_core::issue::SignatureAlgorithm;
+/// let signer = contextful_policy::issue::SeedSigner::generate(SignatureAlgorithm::Ed25519);
+/// let _ = signer.key_pair();
+/// ```
 pub struct SeedSigner {
     key: KeyPair,
 }
@@ -73,11 +81,6 @@ impl SeedSigner {
     /// The public key in static-pin form, `<algorithm>/<hex>`.
     pub fn public_key_text(&self) -> String {
         self.key.public().to_string()
-    }
-
-    /// The key the library signs blocks with.
-    pub fn key_pair(&self) -> &KeyPair {
-        &self.key
     }
 }
 
@@ -175,12 +178,6 @@ impl SignerKey {
 
 /// Mint a checked plan as a credential whose authority block `signer` signs. The plan's
 /// scheme must be the port's (`authority.issue.algorithm-mismatch`).
-///
-/// The library signs a root block only with a key pair it holds, so the credential is
-/// built under a throwaway key, then the authority block's signature is replaced by the
-/// port's over the same payload. The root key appears nowhere in the encoding, and the
-/// block's next key is the library's own ephemeral one, so the result verifies under
-/// the port's public key alone (`authority.issue.signing-port`).
 pub fn mint(plan: &MintPlan, claims: &MintClaims, signer: &dyn SigningPort) -> Result<String, AuthorityError> {
     let pinned = signer.algorithm();
     if plan.algorithm != pinned {
@@ -194,6 +191,18 @@ pub fn mint(plan: &MintPlan, claims: &MintClaims, signer: &dyn SigningPort) -> R
     for f in authority_facts(&block)? {
         builder = builder.fact(f).map_err(|e| AuthorityError::ProfileElementUnrecognized(e.to_string()))?;
     }
+    sign_root(builder, signer)
+}
+
+/// Encode `builder` as a credential whose authority block `signer` signs. It checks
+/// nothing about the block's facts; [`mint`] is the path that encodes a checked plan.
+///
+/// The library signs a root block only with a key pair it holds, so the credential is
+/// built under a throwaway key, then the authority block's signature is replaced by the
+/// port's over the same payload. The root key appears nowhere in the encoding, and the
+/// block's next key is the library's own ephemeral one, so the result verifies under
+/// the port's public key alone (`authority.issue.signing-port`).
+pub fn sign_root(builder: BiscuitBuilder, signer: &dyn SigningPort) -> Result<String, AuthorityError> {
     let unsigned = |e: &dyn std::fmt::Display| AuthorityError::IssuerKeyUnresolvable(format!("the credential encodes to nothing: {e}"));
     let bytes = builder
         .build(&KeyPair::new_with_algorithm(Algorithm::Ed25519))
@@ -204,8 +213,9 @@ pub fn mint(plan: &MintPlan, claims: &MintClaims, signer: &dyn SigningPort) -> R
     let signature = signer.sign(&payload)?;
     if !SignerKey::of(signer).verifies(&payload, &signature) {
         return Err(AuthorityError::IssuerKeyUnresolvable(format!(
-            "the signing port's {pinned} signature does not verify under its public key; \
-             it answers Ed25519 as 64 raw bytes and ES256 as ASN.1 DER"
+            "the signing port's {} signature does not verify under its public key; \
+             it answers Ed25519 as 64 raw bytes and ES256 as ASN.1 DER",
+            signer.algorithm()
         )));
     }
     proto.authority.signature = signature;
