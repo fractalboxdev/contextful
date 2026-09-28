@@ -2,13 +2,14 @@
 
 use crate::support::*;
 use contextful_core::grant::Action;
-use contextful_core::issue::SignatureAlgorithm;
+use contextful_core::issue::{SignatureAlgorithm, SignatureEncoding};
 use contextful_core::ports::SigningPort;
 use contextful_core::AuthorityError;
-use contextful_policy::issue::{mint, MintClaims, SeedSigner, KEYGEN_COMMAND};
+use contextful_policy::audit::{verify_signed, AuditError, AuditLog, SignedRoot, SignedTip, AUDIT_SEGMENT_ENTRIES};
+use contextful_policy::issue::{mint, MintClaims, SeedSigner, SignerKey, KEYGEN_COMMAND};
 use contextful_policy::keyset::{KeySet, KeySource, StaticPins};
 use contextful_policy::verify::{introspect, verify_local_bearer, Admission, AdmittedAuthority, BiscuitFormat, CredentialFormat};
-use std::cell::RefCell;
+use std::sync::Mutex;
 
 fn scratch(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("contextful-policy-issue-{}-{name}", std::process::id()));
@@ -87,21 +88,28 @@ fn a_plan_naming_another_scheme_than_the_signing_key_mints_nothing() {
 }
 
 /// A custodian reachable only through the signing port: its key never leaves it, it
-/// records every signature it returns, and in `raw` mode it answers ES256 in the fixed
-/// `r || s` form rather than DER.
+/// records every signature it returns, and it names one encoding tag while answering in
+/// another encoding when a test mislabels it.
 struct Custodian {
     key: SeedSigner,
-    raw: bool,
-    signatures: RefCell<Vec<Vec<u8>>>,
+    tag: SignatureEncoding,
+    answer: SignatureEncoding,
+    signatures: Mutex<Vec<Vec<u8>>>,
 }
 
 impl Custodian {
     fn new(algorithm: SignatureAlgorithm) -> Custodian {
-        Custodian { key: SeedSigner::generate(algorithm), raw: false, signatures: RefCell::default() }
+        let native = SignatureEncoding::canonical(algorithm);
+        Custodian::tagged(native, native)
+    }
+
+    /// A custodian naming `tag` and answering in `answer`.
+    fn tagged(tag: SignatureEncoding, answer: SignatureEncoding) -> Custodian {
+        Custodian { key: SeedSigner::generate(tag.scheme()), tag, answer, signatures: Mutex::default() }
     }
 
     fn calls(&self) -> usize {
-        self.signatures.borrow().len()
+        self.signatures.lock().unwrap().len()
     }
 
     /// The static pin a checkpoint reads, built from the port's public key alone.
@@ -116,18 +124,18 @@ impl Custodian {
 }
 
 impl SigningPort for Custodian {
-    fn algorithm(&self) -> SignatureAlgorithm {
-        self.key.algorithm()
+    fn encoding(&self) -> SignatureEncoding {
+        self.tag
     }
     fn public_key(&self) -> Vec<u8> {
         self.key.public_key()
     }
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, AuthorityError> {
         let mut signature = self.key.sign(message)?;
-        if self.raw && self.algorithm() == SignatureAlgorithm::Es256 {
+        if self.answer == SignatureEncoding::Es256Raw {
             signature = p256::ecdsa::Signature::from_der(&signature).unwrap().to_bytes().to_vec();
         }
-        self.signatures.borrow_mut().push(signature.clone());
+        self.signatures.lock().unwrap().push(signature.clone());
         Ok(signature)
     }
 }
@@ -177,21 +185,127 @@ fn the_custodian_records_one_signing_call_per_mint() {
     }
 }
 
-/// Through the port, an Ed25519 key is 32 raw bytes signing 64; an ES256 key is a SEC1 P-256 point signing ECDSA over SHA-256 of the message, encoded as ASN.1 DER.
-// spec: authority.issue.signature-encoding@d03c452a
+/// A signing port names its encoding: `ed25519`, a 32-byte key and 64-byte signature; `es256-der` or `es256-raw`, a SEC1 P-256 point signing ECDSA over SHA-256 of the message as ASN.1 DER or 64-byte `r ‖ s`.
+// spec: authority.issue.signature-encoding@f2216099
 #[test]
-fn a_port_signature_is_raw_ed25519_or_der_es256_and_another_encoding_mints_nothing() {
-    let ed25519 = Custodian::new(SignatureAlgorithm::Ed25519);
-    mint(&read_research(&ed25519), &MintClaims::default(), &ed25519).unwrap();
-    assert_eq!(ed25519.public_key().len(), 32);
-    assert_eq!(ed25519.signatures.borrow()[0].len(), 64);
+fn a_port_names_its_encoding_and_every_tag_mints_a_credential_that_admits() {
+    for tag in [SignatureEncoding::Ed25519, SignatureEncoding::Es256Der, SignatureEncoding::Es256Raw] {
+        assert_eq!(SignatureEncoding::parse(&tag.to_string()), Some(tag));
+        let custodian = Custodian::tagged(tag, tag);
+        assert_eq!(custodian.algorithm(), tag.scheme());
+        let credential = mint(&read_research(&custodian), &MintClaims::default(), &custodian).unwrap();
+        assert!(admit_under(&credential, &custodian).is_ok(), "{tag} admits");
+        let (key, signature) = (custodian.public_key(), custodian.signatures.lock().unwrap()[0].clone());
+        match tag {
+            SignatureEncoding::Ed25519 => assert_eq!((key.len(), signature.len()), (32, 64)),
+            SignatureEncoding::Es256Der => {
+                assert!(p256::PublicKey::from_sec1_bytes(&key).is_ok());
+                assert!(p256::ecdsa::Signature::from_der(&signature).is_ok());
+            }
+            SignatureEncoding::Es256Raw => {
+                assert!(p256::PublicKey::from_sec1_bytes(&key).is_ok());
+                assert_eq!(signature.len(), 64);
+            }
+        }
+    }
+    assert_eq!(SignatureEncoding::Ed25519.to_string(), "ed25519");
+    assert_eq!(SignatureEncoding::Es256Der.to_string(), "es256-der");
+    assert_eq!(SignatureEncoding::Es256Raw.to_string(), "es256-raw");
+    assert_eq!(SignatureEncoding::parse("es256"), None);
+    assert_eq!(SignatureEncoding::Es256Raw.scheme(), SignatureAlgorithm::Es256);
+}
 
-    let es256 = Custodian::new(SignatureAlgorithm::Es256);
-    mint(&read_research(&es256), &MintClaims::default(), &es256).unwrap();
-    assert!(p256::PublicKey::from_sec1_bytes(&es256.public_key()).is_ok());
-    assert!(p256::ecdsa::Signature::from_der(&es256.signatures.borrow()[0]).is_ok());
+/// The authority block's signature bytes inside an encoded credential.
+fn authority_signature(credential: &str) -> Vec<u8> {
+    use base64::Engine;
+    use prost::Message;
+    let bytes = base64::engine::general_purpose::URL_SAFE.decode(credential).unwrap();
+    biscuit_auth::format::schema::Biscuit::decode(bytes.as_slice()).unwrap().authority.signature
+}
 
-    // A custodian answering in the fixed `r || s` form, which a checkpoint rejects, mints nothing.
-    let raw = Custodian { raw: true, ..Custodian::new(SignatureAlgorithm::Es256) };
-    refused(mint(&read_research(&raw), &MintClaims::default(), &raw), "IssuerKeyUnresolvable");
+/// An `es256-raw` signature converts to DER where it leaves the port; a credential and an audit root or tip carry ES256 only as DER.
+// spec: authority.issue.der-at-the-edge@3426c5ab
+#[test]
+fn an_es256_raw_signature_leaves_the_port_as_der_in_the_credential_and_the_audit_chain() {
+    let raw = Custodian::tagged(SignatureEncoding::Es256Raw, SignatureEncoding::Es256Raw);
+    let credential = mint(&read_research(&raw), &MintClaims::default(), &raw).unwrap();
+    let stored = authority_signature(&credential);
+    assert!(p256::ecdsa::Signature::from_der(&stored).is_ok(), "the credential carries DER");
+    assert_ne!(stored, raw.signatures.lock().unwrap()[0], "the port answered r || s");
+
+    let dir = tempfile::tempdir().unwrap();
+    let key = SignerKey::of(&raw);
+    let log = AuditLog::open(dir.path(), raw).unwrap();
+    log.append_all((0..AUDIT_SEGMENT_ENTRIES).map(|i| serde_json::json!({ "n": i })).collect()).unwrap();
+    drop(log);
+    let root: SignedRoot = serde_json::from_str(&std::fs::read_to_string(dir.path().join("segments/000001.root.json")).unwrap()).unwrap();
+    let tip: SignedTip = serde_json::from_str(&std::fs::read_to_string(dir.path().join("chain.tip")).unwrap()).unwrap();
+    for signature in [root.signature, tip.signature.unwrap()] {
+        assert!(p256::ecdsa::Signature::from_der(&hex::decode(signature).unwrap()).is_ok(), "the chain carries DER");
+    }
+    assert_eq!(verify_signed(dir.path(), &key).unwrap().seq, AUDIT_SEGMENT_ENTRIES);
+}
+
+/// A port answering Ed25519 under the key of another port.
+struct Impostor {
+    named: SeedSigner,
+    signing: SeedSigner,
+}
+
+impl SigningPort for Impostor {
+    fn encoding(&self) -> SignatureEncoding {
+        SignatureEncoding::Ed25519
+    }
+    fn public_key(&self) -> Vec<u8> {
+        self.named.public_key()
+    }
+    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, AuthorityError> {
+        self.signing.sign(message)
+    }
+}
+
+/// A port signature that does not decode under its encoding tag, or does not verify under the port's public key, raises `SignatureEncodingInvalid`; nothing is minted and no root or tip is written.
+// spec: authority.issue.encoding-invalid@7d06e4f1
+#[test]
+fn a_signature_off_its_tag_or_its_key_raises_signature_encoding_invalid() {
+    refuses(Custodian::tagged(SignatureEncoding::Es256Raw, SignatureEncoding::Es256Der));
+    refuses(Custodian::tagged(SignatureEncoding::Es256Der, SignatureEncoding::Es256Raw));
+    refuses(Impostor { named: SeedSigner::generate(SignatureAlgorithm::Ed25519), signing: SeedSigner::generate(SignatureAlgorithm::Ed25519) });
+}
+
+/// `port` mints nothing, and a log opened through it writes no tip.
+fn refuses<P: SigningPort + Send + Sync + 'static>(port: P) {
+    refused(mint(&read_research(&port), &MintClaims::default(), &port), "SignatureEncodingInvalid");
+    let dir = tempfile::tempdir().unwrap();
+    match AuditLog::open(dir.path(), port) {
+        Err(AuditError::AuditEntryUnpersisted(why)) => assert!(why.contains("SignatureEncodingInvalid"), "{why}"),
+        other => panic!("expected the tip to refuse, got {other:?}"),
+    }
+    assert!(!dir.path().join("chain.tip").exists(), "no tip is written");
+}
+
+/// A port's public key prints as `ed25519:<hex>` or `es256:<hex>` of its SEC1 point; either form, with a compressed or uncompressed point, parses back to the key it names.
+// spec: authority.issue.public-key-text@5eaac8b5
+#[test]
+fn a_public_key_prints_under_its_scheme_tag_and_parses_back() {
+    let ed25519 = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let text = SignerKey::of(&ed25519).to_string();
+    assert_eq!(text, format!("ed25519:{}", hex::encode(ed25519.public_key())));
+    assert_eq!(text.parse::<SignerKey>().unwrap(), SignerKey::of(&ed25519));
+
+    let es256 = SeedSigner::generate(SignatureAlgorithm::Es256);
+    let text = SignerKey::of(&es256).to_string();
+    assert_eq!(text, format!("es256:{}", hex::encode(es256.public_key())));
+    let point = p256::PublicKey::from_sec1_bytes(&es256.public_key()).unwrap();
+    let signature = es256.sign(b"message").unwrap();
+    for compress in [true, false] {
+        use p256::elliptic_curve::sec1::ToEncodedPoint;
+        let text = format!("es256:{}", hex::encode(point.to_encoded_point(compress).as_bytes()));
+        let key: SignerKey = text.parse().unwrap();
+        assert_eq!(key.algorithm, SignatureAlgorithm::Es256);
+        assert!(key.verifies(b"message", &signature), "compressed: {compress}");
+    }
+    for bad in ["es256:zz", "rsa:00", "ed25519:0011", "es256:0011", "ed25519"] {
+        assert!(bad.parse::<SignerKey>().is_err(), "{bad}");
+    }
 }

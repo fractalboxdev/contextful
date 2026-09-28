@@ -246,8 +246,13 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority*
 - `oracle-custody` — Under the oracle adapter the seed stays inside the custodian, which records each mint as a signing call.
   *A-authority*
-- `signature-encoding` — Through the port, an Ed25519 key is 32 raw bytes signing 64; an ES256 key is a SEC1 P-256 point signing ECDSA over SHA-256 of the message, encoded as ASN.1 DER.
-  *because a hardware or cloud custodian adapter is written against the port alone, and the credential format verifies ES256 only in DER*
+- `signature-encoding` — A signing port names its encoding: `ed25519`, a 32-byte key and 64-byte signature; `es256-der` or `es256-raw`, a SEC1 P-256 point signing ECDSA over SHA-256 of the message as ASN.1 DER or 64-byte `r ‖ s`.
+  *because an enclave, a cloud KMS and a browser key each answer ES256 in one encoding, and the tag lets every adapter answer in its own*
+- `der-at-the-edge` — An `es256-raw` signature converts to DER where it leaves the port; a credential and an audit root or tip carry ES256 only as DER.
+  *because the credential format verifies ES256 only in DER, and one stored encoding holds a verifier to one decoder*
+- `encoding-invalid` — A port signature that does not decode under its encoding tag, or does not verify under the port's public key, raises `SignatureEncodingInvalid`; nothing is minted and no root or tip is written.
+  *because a mislabelled signature yields a credential every checkpoint rejects, and refusing at the port names the adapter at fault*
+- `public-key-text` — A port's public key prints as `ed25519:<hex>` or `es256:<hex>` of its SEC1 point; either form, with a compressed or uncompressed point, parses back to the key it names.
 - `algorithm` — A credential names Ed25519, the default, or ECDSA over P-256; the pinned key's scheme is authoritative.
   *A-authority*
 - `algorithm-mismatch` — A credential naming a scheme other than its pinned key's raises `SignatureAlgorithmMismatch`.

@@ -5,7 +5,7 @@
 //! outside this suite.
 
 use contextful_core::exchange::VerifyingMaterial;
-use contextful_core::issue::{IssuancePolicy, MintContext, MintPlan, NodeRole, SignatureAlgorithm};
+use contextful_core::issue::{IssuancePolicy, MintContext, MintPlan, NodeRole, SignatureEncoding};
 use contextful_core::ports::{FixedClock, SigningPort};
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
@@ -45,8 +45,8 @@ templates = ["quarterly_rollup"]
 struct FakeSigner;
 
 impl SigningPort for FakeSigner {
-    fn algorithm(&self) -> SignatureAlgorithm {
-        SignatureAlgorithm::Ed25519
+    fn encoding(&self) -> SignatureEncoding {
+        SignatureEncoding::Ed25519
     }
     fn public_key(&self) -> Vec<u8> {
         vec![7; 32]

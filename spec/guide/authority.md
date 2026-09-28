@@ -55,7 +55,8 @@ grants name actions, table patterns and optional tenant, template and aggregate 
 
 Minting needs a grant carrying `admin` ({{authority.issue.unauthorized-mint}}) and runs
 through one signing port ({{authority.issue.signing-port}}) under a persisted lifetime ceiling
-({{authority.issue.ceiling}}). An embedding application instead exchanges its signed-in
+({{authority.issue.ceiling}}). A port answering ES256 as `r ‖ s` converts to DER at the port
+({{authority.issue.der-at-the-edge}}). An embedding application instead exchanges its signed-in
 reader's assertion for that reader's short-lived credential
 ({{authority.exchange.per-reader}}), with grants drawn from the policy alone
 ({{authority.exchange.minted-grants}}).

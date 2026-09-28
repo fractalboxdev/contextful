@@ -31,13 +31,20 @@
 //! truncation only a replicated root catches.
 //!
 //! Roots and the tip sign through the signing port a mint signs through
-//! (`authority.issue.signing-port`), under either scheme, so a chain truncated under a
-//! rewritten tip fails signed verification. A replayed older signed tip is caught only
+//! (`authority.issue.signing-port`), under either scheme and stored as 64 raw Ed25519
+//! bytes or ES256 DER, so a chain truncated under a rewritten tip fails signed
+//! verification.
+//!
+//! A log opens under the custody its caller holds: held, signing through the port;
+//! unanchored, linking entries under an unsigned tip and writing no root; or read-only,
+//! verifying without the writer lock. Anchoring signs an unanchored chain's missing roots
+//! and its tip, and is the one path from unanchored to held. A replayed older signed tip is caught only
 //! against a replicated root (`disclosure.attest.root-replication`).
 
-use crate::issue::SignerKey;
-use contextful_core::issue::SignatureAlgorithm;
+use crate::issue::{sign_through, SignerKey};
+use contextful_core::issue::{SignatureAlgorithm, SignatureEncoding};
 use contextful_core::ports::SigningPort;
+use contextful_core::AuthorityError;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -101,6 +108,17 @@ pub enum AuditError {
     /// An entry no signed Merkle root covers. (`disclosure.attest.proof-unavailable`)
     #[error("AuditProofUnavailable: {0}")]
     AuditProofUnavailable(String),
+    /// An append through a read-only handle. (`disclosure.record.read-only`)
+    #[error("AuditLogReadOnly: {0}")]
+    AuditLogReadOnly(String),
+    /// An unanchored handle opened over a chain holding a signed tip or root.
+    /// (`disclosure.record.unanchored-over-signed`)
+    #[error("AuditLogAnchored: {0}")]
+    AuditLogAnchored(String),
+    /// A held open or signed check over a chain whose tip is unsigned.
+    /// (`disclosure.record.unsigned-tip`)
+    #[error("AuditLogUnanchored: {0}")]
+    AuditLogUnanchored(String),
     /// An audit file the process cannot read or parse.
     #[error("{0}")]
     Io(String),
@@ -506,14 +524,14 @@ impl SignedRoot {
 
     /// Sign a v0 `root` over `count` entries through `signer`.
     pub fn sign(root: &str, count: u64, signer: &dyn SigningPort) -> Result<SignedRoot, String> {
-        let signature = signer.sign(&Self::message(root, count)).map_err(|e| e.to_string())?;
+        let signature = sign_through(signer, &Self::message(root, count)).map_err(|e| e.to_string())?;
         Ok(SignedRoot { root: root.to_string(), count, signature: hex::encode(signature), ..SignedRoot::default() })
     }
 
     /// Sign the v1 root of segment `segment` of the chain whose header digest is `header`.
     pub fn sign_v1(header: &str, segment: u64, root: &str, count: u64, signer: &dyn SigningPort) -> Result<SignedRoot, String> {
         let alg = signer.algorithm();
-        let signature = signer.sign(&Self::message_v1(alg, header, segment, count, root)).map_err(|e| e.to_string())?;
+        let signature = sign_through(signer, &Self::message_v1(alg, header, segment, count, root)).map_err(|e| e.to_string())?;
         Ok(SignedRoot {
             format: AUDIT_FORMAT,
             alg: Some(alg),
@@ -545,8 +563,8 @@ impl SignedRoot {
 pub struct SignedTip {
     pub seq: u64,
     pub entry_hash: String,
-    /// Hex-encoded signing-port signature over [`SignedTip::message`]; absent on a tip
-    /// written by no signer, which signed verification refuses.
+    /// Hex-encoded signing-port signature over [`SignedTip::message`]; absent on a tip an
+    /// unanchored handle writes, which signed verification refuses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
 }
@@ -559,7 +577,7 @@ impl SignedTip {
     }
 
     pub fn sign(seq: u64, entry_hash: &str, signer: &dyn SigningPort) -> Result<SignedTip, String> {
-        let signature = signer.sign(&Self::message(seq, entry_hash)).map_err(|e| e.to_string())?;
+        let signature = sign_through(signer, &Self::message(seq, entry_hash)).map_err(|e| e.to_string())?;
         Ok(SignedTip { seq, entry_hash: entry_hash.to_string(), signature: Some(hex::encode(signature)) })
     }
 
@@ -755,16 +773,43 @@ fn read_tip(dir: &Path) -> Result<Option<SignedTip>, AuditError> {
 /// segments, each root's digest, count and binding, and the tip against the chain. Returns
 /// the chain end.
 pub fn verify(dir: &Path) -> Result<ChainTip, AuditError> {
-    walk(dir, None)
+    walk(dir, Check::Linkage).map(|w| w.end)
 }
 
 /// [`verify`], and every root's signature and the tip's under `key`: the check opening a
-/// log runs, and the offline verifier's. A non-empty chain needs a tip that verifies.
+/// log runs, and the offline verifier's. A non-empty chain needs a tip that verifies; an
+/// unsigned one raises `AuditLogUnanchored`.
 pub fn verify_signed(dir: &Path, key: &SignerKey) -> Result<ChainTip, AuditError> {
-    walk(dir, Some(key))
+    walk(dir, Check::Signed(key)).map(|w| w.end)
 }
 
-fn walk(dir: &Path, key: Option<&SignerKey>) -> Result<ChainTip, AuditError> {
+/// What a walk checks beyond digests, linkage, sequence and root counts.
+#[derive(Clone, Copy)]
+enum Check<'a> {
+    Linkage,
+    /// Every root and the tip verify under the key.
+    Signed(&'a SignerKey),
+    /// Every present root verifies under the key, and so does the tip when signed.
+    Anchoring(&'a SignerKey),
+}
+
+impl<'a> Check<'a> {
+    fn key(self) -> Option<&'a SignerKey> {
+        match self {
+            Check::Linkage => None,
+            Check::Signed(key) | Check::Anchoring(key) => Some(key),
+        }
+    }
+}
+
+/// A walked chain: its end, and each full segment carrying no root.
+struct Walked {
+    end: ChainTip,
+    unrooted: Vec<u64>,
+}
+
+fn walk(dir: &Path, check: Check) -> Result<Walked, AuditError> {
+    let key = check.key();
     let chain = read_format(dir)?;
     let size = chain.segment_entries();
     let (segments, roots) = listing(dir)?;
@@ -776,8 +821,11 @@ fn walk(dir: &Path, key: Option<&SignerKey>) -> Result<ChainTip, AuditError> {
         if let Some(&n) = roots.first() {
             return Err(broken(first_seq(n, size), format!("a signed root closes segment {n} and no segment exists")));
         }
-        return Ok(chain.genesis());
+        return Ok(Walked { end: chain.genesis(), unrooted: Vec::new() });
     };
+    // An unanchored chain carries no roots under its unsigned tip.
+    let unsigned_tip = tip_file.as_ref().is_some_and(|t| t.signature.is_none());
+    let mut unrooted = Vec::new();
     let mut end = chain.genesis();
     for n in 1..=last {
         if !segments.contains(&n) {
@@ -836,8 +884,10 @@ fn walk(dir: &Path, key: Option<&SignerKey>) -> Result<ChainTip, AuditError> {
             if key.is_some_and(|k| !root.verify(k)) {
                 return Err(broken(closing, format!("the root signature of segment {n} does not verify")));
             }
-        } else if n < last {
+        } else if n < last && !unsigned_tip {
             return Err(broken(closing, format!("segment {n} is followed by another and carries no signed root")));
+        } else if count == size {
+            unrooted.push(n);
         }
     }
     if let Some(&n) = roots.range(last + 1..).next() {
@@ -849,13 +899,37 @@ fn walk(dir: &Path, key: Option<&SignerKey>) -> Result<ChainTip, AuditError> {
     if let Some(key) = key.filter(|_| end.seq > 0) {
         match &tip_file {
             None => return Err(broken(1, "the chain carries entries and no chain.tip")),
+            Some(tip) if tip.signature.is_none() => {
+                if let Check::Signed(_) = check {
+                    return Err(AuditError::AuditLogUnanchored(format!(
+                        "{}: chain.tip at seq {} is unsigned; anchor the chain through the issuer's signing port",
+                        dir.display(),
+                        tip.seq
+                    )));
+                }
+            }
             Some(tip) if !tip.verify(key) => {
                 return Err(broken(tip.seq.max(1), "the chain.tip signature does not verify"));
             }
             Some(_) => {}
         }
     }
-    Ok(end)
+    Ok(Walked { end, unrooted })
+}
+
+/// Take the directory's writer lock, refusing one another handle holds.
+fn take_lock(dir: &Path) -> Result<File, AuditError> {
+    let seg_dir = segments_dir(dir);
+    fs::create_dir_all(&seg_dir).map_err(unreadable(&seg_dir))?;
+    let lock_path = dir.join("audit.lock");
+    let lock = OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(unreadable(&lock_path))?;
+    match lock.try_lock() {
+        Ok(()) => Ok(lock),
+        Err(fs::TryLockError::WouldBlock) => {
+            Err(AuditError::AuditLogHeld(format!("{} is held by another writer", lock_path.display())))
+        }
+        Err(fs::TryLockError::Error(e)) => Err(unreadable(&lock_path)(e)),
+    }
 }
 
 /// What one audit sync makes durable.
@@ -1030,20 +1104,48 @@ struct State {
     closing: bool,
 }
 
+/// The signer of a log opened with no issuer key: unanchored or read-only. It has no
+/// values, so no such log signs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoIssuerKey {}
+
+impl SigningPort for NoIssuerKey {
+    fn encoding(&self) -> SignatureEncoding {
+        match *self {}
+    }
+    fn public_key(&self) -> Vec<u8> {
+        match *self {}
+    }
+    fn sign(&self, _: &[u8]) -> Result<Vec<u8>, AuthorityError> {
+        match *self {}
+    }
+}
+
+/// The issuer key custody a log opens under.
+enum Custody<S> {
+    /// Roots and the tip sign through the port.
+    Held(S),
+    /// Entries link under an unsigned tip and no root is written.
+    Unanchored,
+    /// The chain verifies and nothing appends.
+    ReadOnly,
+}
+
 struct Inner<S> {
     dir: PathBuf,
     chain: ChainFormat,
-    signer: S,
+    custody: Custody<S>,
     fsync: Arc<dyn FsyncPort>,
     idle: Duration,
-    /// The exclusive lock on `audit.lock`, held for the log's lifetime.
-    _lock: File,
+    /// The exclusive lock on `audit.lock`, held for the log's lifetime by every handle
+    /// that appends.
+    _lock: Option<File>,
     state: Mutex<State>,
     turn: Condvar,
 }
 
 /// The node's audit log: appends link to the tip, commit in groups sharing one segment
-/// sync, return only once durable, and close each full segment under a signed root.
+/// sync, return only once durable, and, held, close each full segment under a signed root.
 pub struct AuditLog<S: SigningPort + Send + Sync + 'static> {
     inner: Arc<Inner<S>>,
     idler: Option<JoinHandle<()>>,
@@ -1065,27 +1167,60 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
     /// Open the log under `dir`: take the directory's writer lock, then verify the chain
     /// and every root and tip signature under the signer's key. A full last segment left
     /// without its root closes now, and a tip absent or behind the chain end advances to
-    /// it.
+    /// it. A tip that is unsigned raises `AuditLogUnanchored`: [`AuditLog::anchor`] signs it.
     pub fn open_with(dir: impl Into<PathBuf>, signer: S, options: AuditOptions) -> Result<AuditLog<S>, AuditError> {
-        let dir = dir.into();
-        let seg_dir = segments_dir(&dir);
-        fs::create_dir_all(&seg_dir).map_err(unreadable(&seg_dir))?;
-        let lock_path = dir.join("audit.lock");
-        let lock = OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(unreadable(&lock_path))?;
-        match lock.try_lock() {
-            Ok(()) => {}
-            Err(fs::TryLockError::WouldBlock) => {
-                return Err(AuditError::AuditLogHeld(format!("{} is held by another writer", lock_path.display())))
+        AuditLog::start(dir.into(), Custody::Held(signer), options, false)
+    }
+
+    /// [`AuditLog::anchor_with`] under the default options.
+    pub fn anchor(dir: impl Into<PathBuf>, signer: S) -> Result<AuditLog<S>, AuditError> {
+        AuditLog::anchor_with(dir, signer, AuditOptions::default())
+    }
+
+    /// Anchor the chain under `dir` through `signer`: verify its linkage and every present
+    /// root and signed tip under the signer's key, sign each full segment's missing root
+    /// and the tip, and open it held. An anchored chain opens as [`AuditLog::open_with`]
+    /// does.
+    pub fn anchor_with(dir: impl Into<PathBuf>, signer: S, options: AuditOptions) -> Result<AuditLog<S>, AuditError> {
+        AuditLog::start(dir.into(), Custody::Held(signer), options, true)
+    }
+
+    fn start(dir: PathBuf, custody: Custody<S>, options: AuditOptions, anchoring: bool) -> Result<AuditLog<S>, AuditError> {
+        let lock = match custody {
+            Custody::ReadOnly => None,
+            _ => Some(take_lock(&dir)?),
+        };
+        if let Custody::Unanchored = custody {
+            let anchored = |why: String| AuditError::AuditLogAnchored(format!("{}: {why}; open it with the issuer's signing port", dir.display()));
+            if read_tip(&dir)?.is_some_and(|t| t.signature.is_some()) {
+                return Err(anchored("chain.tip is signed".into()));
             }
-            Err(fs::TryLockError::Error(e)) => return Err(unreadable(&lock_path)(e)),
+            if let Some(n) = listing(&dir)?.1.first() {
+                return Err(anchored(format!("a signed root closes segment {n}")));
+            }
         }
-        drop_torn_tail(&dir, &*options.fsync)?;
-        let chain = open_format(&dir, &options)?;
-        let end = verify_signed(&dir, &SignerKey::of(&signer))?;
-        let recorded = read_tip(&dir)?.map(|t| ChainTip { seq: t.seq, entry_hash: t.entry_hash });
+        let chain = match lock {
+            Some(_) => {
+                drop_torn_tail(&dir, &*options.fsync)?;
+                open_format(&dir, &options)?
+            }
+            None => read_format(&dir)?,
+        };
+        let walked = match &custody {
+            Custody::Held(signer) if anchoring => walk(&dir, Check::Anchoring(&SignerKey::of(signer)))?,
+            Custody::Held(signer) => walk(&dir, Check::Signed(&SignerKey::of(signer)))?,
+            Custody::Unanchored | Custody::ReadOnly => walk(&dir, Check::Linkage)?,
+        };
+        let end = walked.end;
+        let recorded = read_tip(&dir)?;
+        let held = matches!(custody, Custody::Held(_));
+        let stale_tip = match &recorded {
+            None => true,
+            Some(t) => t.seq != end.seq || t.entry_hash != end.entry_hash || (held && t.signature.is_none()),
+        };
         let state = State {
             tip: end.clone(),
-            signed: recorded.clone().unwrap_or_else(ChainTip::genesis),
+            signed: recorded.map(|t| ChainTip { seq: t.seq, entry_hash: t.entry_hash }).unwrap_or_else(ChainTip::genesis),
             queue: Vec::new(),
             next_ticket: 0,
             done: HashMap::new(),
@@ -1094,24 +1229,26 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
             last_append: Instant::now(),
             closing: false,
         };
+        let read_only = lock.is_none();
         let inner = Arc::new(Inner {
             dir,
             chain,
-            signer,
+            custody,
             fsync: options.fsync,
             idle: options.idle,
             _lock: lock,
             state: Mutex::new(state),
             turn: Condvar::new(),
         });
-        let size = chain.segment_entries();
-        if end.seq > 0 && end.seq % size == 0 {
-            let n = segment_of(end.seq, size);
-            if !root_path(&inner.dir, n).exists() {
-                inner.close(n).map_err(AuditError::AuditEntryUnpersisted)?;
+        if read_only {
+            return Ok(AuditLog { inner, idler: None });
+        }
+        if held {
+            for n in &walked.unrooted {
+                inner.close(*n).map_err(AuditError::AuditEntryUnpersisted)?;
             }
         }
-        if recorded.as_ref() != Some(&end) {
+        if stale_tip {
             inner.write_tip(&end).map_err(AuditError::AuditEntryUnpersisted)?;
             inner.lock().signed = end;
         }
@@ -1150,6 +1287,7 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
     /// `AuditAttributeInexact` before it joins a group, and nothing of it appends.
     pub fn append_all(&self, batch: Vec<Value>) -> Result<Vec<AuditEntry>, AuditError> {
         let inner = &*self.inner;
+        inner.writable()?;
         if let Some(n) = batch.iter().find_map(|v| inner.chain.inexact(v)) {
             return Err(AuditError::AuditAttributeInexact(format!(
                 "an attribute holds {n}, an integer beyond ±{AUDIT_EXACT_INTEGER} that RFC 8785 writes inexactly"
@@ -1210,6 +1348,7 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
     /// the log now.
     pub fn export(&self) -> Result<SignedTip, AuditError> {
         let inner = &*self.inner;
+        inner.writable()?;
         let mut st = inner.lock();
         while st.busy {
             st = inner.turn.wait(st).unwrap_or_else(PoisonError::into_inner);
@@ -1248,6 +1387,14 @@ impl<S: SigningPort + Send + Sync + 'static> Drop for AuditLog<S> {
 impl<S: SigningPort> Inner<S> {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Refuse a write through a read-only handle.
+    fn writable(&self) -> Result<(), AuditError> {
+        match self.custody {
+            Custody::ReadOnly => Err(AuditError::AuditLogReadOnly(format!("{} is open read-only; nothing appends through it", self.dir.display()))),
+            _ => Ok(()),
+        }
     }
 
     /// Write one group after `tip`, reversing it on failure. The error carries the reason
@@ -1290,8 +1437,10 @@ impl<S: SigningPort> Inner<S> {
                 File::open(&seg_dir).and_then(|d| self.fsync.sync(Fsync::SegmentOpen(n), &d)).map_err(fail(&seg_dir))?;
             }
             if tip.seq == n * size {
-                undo.created.push(root_path(&self.dir, n));
-                self.close(n)?;
+                if let Custody::Held(_) = self.custody {
+                    undo.created.push(root_path(&self.dir, n));
+                    self.close(n)?;
+                }
                 closed = true;
             }
         }
@@ -1302,9 +1451,13 @@ impl<S: SigningPort> Inner<S> {
         Ok((entries, tip, signed))
     }
 
-    /// Sign `tip` and write it durably as `chain.tip`.
+    /// Write `tip` durably as `chain.tip`: signed when held, unsigned when unanchored.
     fn write_tip(&self, tip: &ChainTip) -> Result<SignedTip, String> {
-        let signed = SignedTip::sign(tip.seq, &tip.entry_hash, &self.signer)?;
+        let signed = match &self.custody {
+            Custody::Held(signer) => SignedTip::sign(tip.seq, &tip.entry_hash, signer)?,
+            Custody::Unanchored => SignedTip { seq: tip.seq, entry_hash: tip.entry_hash.clone(), signature: None },
+            Custody::ReadOnly => return Err("a read-only handle writes no tip".into()),
+        };
         let tpath = tip_path(&self.dir);
         write_durable(&tpath, &serde_json::to_vec(&signed).map_err(fail(&tpath))?, &*self.fsync, Fsync::Tip)?;
         Ok(signed)
@@ -1312,12 +1465,15 @@ impl<S: SigningPort> Inner<S> {
 
     /// Close full segment `n` under a signed root, read back from its synced file.
     fn close(&self, n: u64) -> Result<(), String> {
+        let Custody::Held(signer) = &self.custody else {
+            return Err(format!("segment {n} closes under no issuer key"));
+        };
         let size = self.chain.segment_entries();
         let entries = read_segment(&self.dir, n, n * size).map_err(|e| e.to_string())?;
         let root = self.chain.root_of(&entries)?;
         let root = match self.chain {
-            ChainFormat::V0 => SignedRoot::sign(&root, size, &self.signer)?,
-            ChainFormat::V1(h) => SignedRoot::sign_v1(&h.digest(), n, &root, size, &self.signer)?,
+            ChainFormat::V0 => SignedRoot::sign(&root, size, signer)?,
+            ChainFormat::V1(h) => SignedRoot::sign_v1(&h.digest(), n, &root, size, signer)?,
         };
         let path = root_path(&self.dir, n);
         write_durable(&path, &serde_json::to_vec(&root).map_err(fail(&path))?, &*self.fsync, Fsync::Root(n))
@@ -1352,5 +1508,25 @@ impl<S: SigningPort> Inner<S> {
             st.busy = false;
             self.turn.notify_all();
         }
+    }
+}
+
+impl AuditLog<NoIssuerKey> {
+    /// [`AuditLog::unanchored_with`] under the default options.
+    pub fn unanchored(dir: impl Into<PathBuf>) -> Result<AuditLog<NoIssuerKey>, AuditError> {
+        AuditLog::unanchored_with(dir, AuditOptions::default())
+    }
+
+    /// Open the log under `dir` with no issuer key: take the writer lock and verify the
+    /// chain's linkage. Appends link under an unsigned tip and write no root. A chain
+    /// holding a signed tip or root raises `AuditLogAnchored`.
+    pub fn unanchored_with(dir: impl Into<PathBuf>, options: AuditOptions) -> Result<AuditLog<NoIssuerKey>, AuditError> {
+        AuditLog::start(dir.into(), Custody::Unanchored, options, false)
+    }
+
+    /// Open the log under `dir` to verify it: no writer lock, the chain's linkage checked,
+    /// and every append and export refused with `AuditLogReadOnly`.
+    pub fn read_only(dir: impl Into<PathBuf>) -> Result<AuditLog<NoIssuerKey>, AuditError> {
+        AuditLog::start(dir.into(), Custody::ReadOnly, AuditOptions::default(), false)
     }
 }

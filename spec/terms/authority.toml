@@ -42,6 +42,7 @@ IssuancePrincipalRequired            = { clause = "authority.issue.principal-req
 IssuerKeyMissing                     = { clause = "authority.issue.missing-key", gloss = "A face configured with no issuer key." }
 IssuerKeyUnresolvable                = { clause = "authority.issue.unresolvable-key", gloss = "An issuer key reference resolving to no material." }
 SignatureAlgorithmMismatch           = { clause = "authority.issue.algorithm-mismatch", gloss = "A named scheme differing from the pinned key's." }
+SignatureEncodingInvalid             = { clause = "authority.issue.encoding-invalid", gloss = "A port signature that does not decode under its tag or verify under the port's key." }
 IssuanceUnauthorized                 = { clause = "authority.issue.unauthorized-mint", gloss = "A mint request without an admin grant." }
 ReplicaCannotIssue                   = { clause = "authority.issue.replica-mint", gloss = "A mint attempted on a replica." }
 IssuanceZoneWildcard                 = { clause = "authority.issue.zone-wildcard", gloss = "A subject declaring a wildcard inference zone at the mint." }

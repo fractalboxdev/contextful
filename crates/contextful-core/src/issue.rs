@@ -53,6 +53,58 @@ pub enum SignatureAlgorithm {
     Es256,
 }
 
+/// The encoding a signing port answers in, which names its scheme
+/// (`authority.issue.signature-encoding`). The tag text is `ed25519`, `es256-der` or
+/// `es256-raw`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SignatureEncoding {
+    /// A 32-byte key signing 64 bytes (RFC 8032).
+    Ed25519,
+    /// A SEC1 P-256 point; ECDSA over SHA-256 as an ASN.1 DER `Ecdsa-Sig-Value`.
+    Es256Der,
+    /// A SEC1 P-256 point; ECDSA over SHA-256 as the 64-byte `r ‖ s`.
+    Es256Raw,
+}
+
+impl SignatureEncoding {
+    /// The scheme the encoding signs under.
+    pub fn scheme(self) -> SignatureAlgorithm {
+        match self {
+            SignatureEncoding::Ed25519 => SignatureAlgorithm::Ed25519,
+            SignatureEncoding::Es256Der | SignatureEncoding::Es256Raw => SignatureAlgorithm::Es256,
+        }
+    }
+
+    /// The encoding a credential and the audit chain store for `scheme`
+    /// (`authority.issue.der-at-the-edge`).
+    pub fn canonical(scheme: SignatureAlgorithm) -> SignatureEncoding {
+        match scheme {
+            SignatureAlgorithm::Ed25519 => SignatureEncoding::Ed25519,
+            SignatureAlgorithm::Es256 => SignatureEncoding::Es256Der,
+        }
+    }
+
+    /// The encoding a tag names, if any.
+    pub fn parse(tag: &str) -> Option<SignatureEncoding> {
+        match tag {
+            "ed25519" => Some(SignatureEncoding::Ed25519),
+            "es256-der" => Some(SignatureEncoding::Es256Der),
+            "es256-raw" => Some(SignatureEncoding::Es256Raw),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for SignatureEncoding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            SignatureEncoding::Ed25519 => "ed25519",
+            SignatureEncoding::Es256Der => "es256-der",
+            SignatureEncoding::Es256Raw => "es256-raw",
+        })
+    }
+}
+
 /// Where a mint runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeRole {

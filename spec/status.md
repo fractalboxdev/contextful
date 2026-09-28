@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 14 | 197 | 51 | 22 | 15 | 78 | 0 | 78 |
-| `authority` | 2 | 16 | 226 | 61 | 27 | 8 | 159 | 0 | 159 |
+| `authority` | 2 | 16 | 229 | 62 | 27 | 8 | 162 | 0 | 162 |
 | `connector` | 2 | 13 | 246 | 74 | 17 | 7 | 115 | 0 | 115 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
-| `disclosure` | 3 | 16 | 79 | 61 | 13 | 13 | 23 | 0 | 23 |
+| `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
 | `read` | 2 | 14 | 118 | 21 | 16 | 17 | 83 | 0 | 83 |
 | `run` | 3 | 24 | 300 | 82 | 34 | 25 | 165 | 0 | 165 |
 | `store` | 1 | 14 | 170 | 41 | 12 | 12 | 131 | 0 | 131 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 146 | 1539 | 489 | 174 | 110 | 811 | 0 | |
+| **total** | 19 | 146 | 1545 | 493 | 174 | 110 | 817 | 0 | |
 
 Decision records: 18.
 
@@ -24,14 +24,14 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
-| 1 — The authority core | 14 | 192 | 136 | passing |
+| 1 — The authority core | 14 | 195 | 139 | passing |
 | 2 — The store | 8 | 129 | 95 | passing |
 | 3 — The run path | 11 | 184 | 109 | passing |
 | 4 — Ingest | 22 | 349 | 147 | passing |
 | 5 — The read face under enforcement | 16 | 206 | 127 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
-| 8 — Accountability | 5 | 36 | 16 | open |
+| 8 — Accountability | 5 | 39 | 19 | open |
 | 9 — Visibility | 6 | 22 | 3 | open |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
 | 11 — The derive tier | 7 | 68 | 44 | passing |
@@ -184,11 +184,14 @@ Unscheduled operations: 10.
 | `authority.issue.ceiling` | `crates/contextful-core/tests/integration/issue.rs::the_persisted_ceiling_holds_at_most_24_hours` | performed |
 | `authority.issue.ceiling-lowering` | `crates/contextful-core/tests/integration/issue.rs::lowering_the_ceiling_records_the_previous_value_until_its_credentials_lapse` | performed |
 | `authority.issue.default-read` | `crates/contextful-core/tests/integration/issue.rs::a_grant_naming_no_action_mints_read_alone` | performed |
+| `authority.issue.der-at-the-edge` | `crates/contextful-policy/tests/integration/issue.rs::an_es256_raw_signature_leaves_the_port_as_der_in_the_credential_and_the_audit_chain` | performed |
+| `authority.issue.encoding-invalid` | `crates/contextful-policy/tests/integration/issue.rs::a_signature_off_its_tag_or_its_key_raises_signature_encoding_invalid` | performed |
 | `authority.issue.key-rotation` | `crates/contextful-core/tests/integration/issue.rs::the_issuer_key_rotates_every_90_days_and_at_once_on_compromise` | performed |
 | `authority.issue.oracle-custody` | `crates/contextful-policy/tests/integration/issue.rs::the_custodian_records_one_signing_call_per_mint` | performed |
 | `authority.issue.principal-required` | `crates/contextful-core/tests/integration/issue.rs::a_write_or_execute_mint_without_a_principal_refuses` | performed |
+| `authority.issue.public-key-text` | `crates/contextful-policy/tests/integration/issue.rs::a_public_key_prints_under_its_scheme_tag_and_parses_back` | performed |
 | `authority.issue.replica-mint` | `crates/contextful-core/tests/integration/issue.rs::a_mint_on_a_replica_refuses` | performed |
-| `authority.issue.signature-encoding` | `crates/contextful-policy/tests/integration/issue.rs::a_port_signature_is_raw_ed25519_or_der_es256_and_another_encoding_mints_nothing` | performed |
+| `authority.issue.signature-encoding` | `crates/contextful-policy/tests/integration/issue.rs::a_port_names_its_encoding_and_every_tag_mints_a_credential_that_admits` | performed |
 | `authority.issue.signing-port` | `crates/contextful-policy/tests/integration/issue.rs::a_mint_signs_through_the_port_and_admits_under_the_ports_public_key` | performed |
 | `authority.issue.unauthorized-mint` | `crates/contextful-core/tests/integration/issue.rs::a_mint_request_presenting_no_admin_grant_refuses` | performed |
 | `authority.issue.unresolvable-key` | `crates/contextful-policy/tests/integration/issue.rs::an_issuer_key_reference_resolving_to_nothing_is_refused_and_fabricates_no_key` | performed |
@@ -448,10 +451,13 @@ Unscheduled operations: 10.
 | `disclosure.record.group-commit` | `crates/contextful-policy/tests/integration/audit.rs::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together` | performed |
 | `disclosure.record.header-unsupported` | `crates/contextful-policy/tests/integration/audit.rs::a_header_naming_another_format_digest_or_segment_size_raises_audit_header_unsupported` | performed |
 | `disclosure.record.inexact-integer` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_attribute_integer_beyond_2_53_raises_audit_attribute_inexact` | performed |
+| `disclosure.record.read-only` | `crates/contextful-policy/tests/integration/audit.rs::a_read_only_handle_verifies_beside_the_writer_and_refuses_appends` | performed |
 | `disclosure.record.segment` | `crates/contextful-policy/tests/integration/audit.rs::a_segment_closes_at_4096_entries_under_one_signed_root` | performed |
 | `disclosure.record.segment-open` | `crates/contextful-policy/tests/integration/audit.rs::an_append_group_that_creates_a_segment_adds_one_directory_sync` | performed |
 | `disclosure.record.single-writer` | `crates/contextful-policy/tests/integration/audit.rs::a_second_writer_on_one_directory_is_refused` | performed |
 | `disclosure.record.tip-signing` | `crates/contextful-policy/tests/integration/audit.rs::the_tip_signs_at_segment_close_on_idle_and_at_export` | performed |
+| `disclosure.record.unanchored-over-signed` | `crates/contextful-policy/tests/integration/audit.rs::an_unanchored_handle_links_under_an_unsigned_tip_and_refuses_a_signed_chain` | performed |
+| `disclosure.record.unsigned-tip` | `crates/contextful-policy/tests/integration/audit.rs::a_held_open_over_an_unsigned_tip_refuses_until_the_key_holder_anchors_it` | performed |
 | `disclosure.record.v0-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_v0_chain_verifies_and_appends_under_v0_rules` | performed |
 | `disclosure.suppress.contributor-share` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::contributor_share` | performed |
 | `disclosure.suppress.dominance-unverifiable` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::dominance_unverifiable` | performed |
