@@ -77,8 +77,8 @@ fn a_template_projects_into_a_tool_with_every_field_required() {
     assert!(t[1].tool().get("limits").is_none(), "no ceiling declared, none advertised");
 }
 
-/// A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders cover exactly the declared parameters.
-// spec: read.guard.template-binding@1c6a418b
+/// A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders are `$1`…`$n` or `?` in declaration order, or exactly the declared names.
+// spec: read.guard.template-binding@4ca6b3da
 #[test]
 fn arguments_bind_strictly_by_declared_type() {
     let t = parse_templates(MANIFEST).unwrap();

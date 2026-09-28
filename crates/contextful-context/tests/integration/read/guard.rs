@@ -245,6 +245,13 @@ fn query_parameters_bind_by_declared_type() {
         (tenant_sql, one("boolean", json!(1)), "`tenant`"),
         (tenant_sql, one("timestamp", json!("yesterday")), "`tenant`"),
         (r#"SELECT note_id FROM "research/notes" WHERE tenant = ?"#, json!({}), "`1`"),
+        // Numbered placeholders run contiguously from `1`; a gap is a placeholder with no parameter.
+        (r#"SELECT note_id FROM "research/notes" WHERE tenant = $2"#, json!({ "2": { "type": "string", "value": "acme" } }), "`1`"),
+        (
+            r#"SELECT note_id FROM "research/notes" WHERE tenant = $2 AND note_id <> $3"#,
+            json!({ "2": { "type": "string", "value": "acme" }, "3": { "type": "string", "value": "n2" } }),
+            "`1`",
+        ),
     ] {
         let message = refused_with(run(text, p.clone()), "QueryParameterRejected");
         assert!(message.contains(needle), "{p}: {message}");
@@ -257,4 +264,41 @@ fn query_parameters_bind_by_declared_type() {
     let tenant = |t: &str| params(json!({ "tenant": { "type": "string", "value": t } }));
     refused_with(r.face.query_with(&scoped, tenant_sql, &tenant("globex"), ReadOptions::default()), "EnforceScopeDenied");
     assert_eq!(r.face.query_with(&scoped, tenant_sql, &tenant("acme"), ReadOptions::default()).unwrap().rows.len(), 3);
+}
+
+/// Regression: a template's placeholders are `$1`…`$n` or `?` in declaration order, or the
+/// declared names; either spelling binds and runs, and any other placeholder set refuses
+/// the face at startup.
+#[test]
+fn a_template_binds_numbered_and_named_placeholders() {
+    let tail = r#"
+[[query_templates]]
+id = "notes_named"
+sql = "SELECT note_id FROM \"research/notes\" WHERE tenant = $tenant AND note_id <> $skip ORDER BY note_id"
+parameters = ["tenant:string", "skip:string"]
+
+[[query_templates]]
+id = "notes_numbered"
+sql = "SELECT note_id FROM \"research/notes\" WHERE note_id <> $2 AND tenant = $1 ORDER BY note_id"
+parameters = ["tenant:string", "skip:string"]
+"#;
+    let r = Reads::with_manifest(&format!("{MANIFEST}\n{tail}"));
+    let mut grant = read(&["research/*"], None);
+    grant.templates = Some(vec!["notes_named".into(), "notes_numbered".into()]);
+    let s = r.session_for(loop_subject("agent://research-loop"), vec![grant], None);
+    let args = json!({ "tenant": "acme", "skip": "n2" }).as_object().unwrap().clone();
+    for id in ["notes_named", "notes_numbered"] {
+        let rows = r.face.execute_template(&s, id, &args, ReadOptions::default()).unwrap();
+        assert_eq!(column(&rows, "note_id"), [json!("n1"), json!("n3")], "{id}");
+    }
+    for sql in [
+        r#"SELECT note_id FROM \"research/notes\" WHERE tenant = $tenant AND note_id <> $other"#,
+        r#"SELECT note_id FROM \"research/notes\" WHERE tenant = $2 AND note_id <> $3"#,
+        r#"SELECT note_id FROM \"research/notes\" WHERE tenant = $tenant"#,
+    ] {
+        let refused = refused_template(&format!(
+            "[[query_templates]]\nid = \"off\"\nsql = \"{sql}\"\nparameters = [\"tenant:string\", \"skip:string\"]\n"
+        ));
+        assert!(refused.starts_with("TemplateArgumentRejected"), "{sql}: {refused}");
+    }
 }

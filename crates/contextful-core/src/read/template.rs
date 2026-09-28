@@ -131,9 +131,9 @@ impl QueryTemplate {
     /// The startup check over the engine's serialization of the template's SQL
     /// (`read.guard.template-relation-shape`): an identifier clear of every built-in tool
     /// prefix, and base relations that are the store's own tables named as plain
-    /// identifiers, or common table expressions the statement declares. Placeholders
-    /// cover exactly the declared parameters (`read.guard.template-binding`). The check is
-    /// caller-independent (`read.guard.startup-time-check`).
+    /// identifiers, or common table expressions the statement declares. Placeholders are
+    /// `$1`…`$n` or `?` in declaration order, or exactly the declared names
+    /// (`read.guard.template-binding`). The check is caller-independent (`read.guard.startup-time-check`).
     pub fn check(&self, serialized: &Value, store_tables: &[String]) -> Result<(), ReadError> {
         if let Some(prefix) = TOOL_PREFIXES.iter().find(|p| self.id.starts_with(*p)) {
             return Err(ReadError::TemplateNamesForeignRelation(format!(
@@ -146,12 +146,15 @@ impl QueryTemplate {
             super::error::Refusal::Read(ReadError::TableFunctionRefused(why)) => foreign(why),
             other => foreign(other.to_string()),
         })?;
-        if admitted.placeholders.len() != self.parameters.len() {
+        let names: BTreeSet<String> = self.parameters.iter().map(|p| p.name.clone()).collect();
+        let numbered: BTreeSet<String> = (1..=self.parameters.len()).map(|i| i.to_string()).collect();
+        if admitted.placeholders != numbered && admitted.placeholders != names {
+            let list = |s: &BTreeSet<String>| s.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(", ");
             return Err(ReadError::TemplateArgumentRejected(format!(
-                "template `{}` carries {} placeholders and declares {} parameters",
+                "template `{}` carries placeholders [{}] and declares parameters [{}]; placeholders are `$1`…`$n` or `?` in declaration order, or the declared names",
                 self.id,
-                admitted.placeholders.len(),
-                self.parameters.len()
+                list(&admitted.placeholders),
+                list(&names)
             )));
         }
         Ok(())
@@ -190,6 +193,17 @@ impl QueryTemplate {
             })
             .collect()
     }
+
+    /// Key bound `values`, in declaration order, to the placeholders the startup check
+    /// admitted: under each declared name where the statement spells its placeholders by
+    /// name, else under `1`…`n` in declaration order.
+    pub fn bindings(&self, values: Vec<Bound>, placeholders: &BTreeSet<String>) -> Bindings {
+        if self.parameters.iter().all(|p| placeholders.contains(&p.name)) {
+            Bindings(self.parameters.iter().map(|p| p.name.clone()).zip(values).collect())
+        } else {
+            Bindings::positional(values)
+        }
+    }
 }
 
 impl ParamType {
@@ -212,6 +226,10 @@ impl ParamType {
 /// an unknown type or a mismatched value raises `QueryParameterRejected` with no coercion.
 pub fn bind_query(parameters: &Map<String, Value>, placeholders: &BTreeSet<String>) -> Result<Bindings, ReadError> {
     let reject = |why: String| ReadError::QueryParameterRejected(why);
+    let last = placeholders.iter().filter_map(|p| p.parse::<u64>().ok()).max().unwrap_or(0);
+    if let Some(gap) = (1..=last).find(|i| !placeholders.contains(&i.to_string())) {
+        return Err(reject(format!("placeholder `{gap}` has no parameter: numbered placeholders run from `1` without a gap")));
+    }
     if let Some(missing) = placeholders.iter().find(|p| !parameters.contains_key(*p)) {
         return Err(reject(format!("placeholder `{missing}` has no parameter")));
     }

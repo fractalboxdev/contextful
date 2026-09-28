@@ -3890,7 +3890,7 @@
       "operation": "guard",
       "subject": "template-binding",
       "kind": "refusal",
-      "statement": "A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders cover exactly the declared parameters.",
+      "statement": "A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders are `$1`…`$n` or `?` in declaration order, or exactly the declared names.",
       "why": "A-read",
       "file": "spec/20-read.md",
       "line": 118

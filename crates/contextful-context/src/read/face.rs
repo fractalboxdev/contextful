@@ -286,10 +286,11 @@ impl Face {
         let declared: Vec<String> = self.templates.iter().map(|t| t.id.clone()).collect();
         authorize_template(session.grants(), id, &declared)?;
         let template = self.templates.iter().find(|t| t.id == id).expect("an authorized template is declared");
-        let parameters = Bindings::positional(template.bind(arguments)?);
+        let values = template.bind(arguments)?;
         let engine = self.pool.engine(session)?;
         let tree = engine.serialize(&template.sql)?;
         let admitted = admit_in(session, &tree)?;
+        let parameters = template.bindings(values, &admitted.placeholders);
         scope::guard(&tree, session, &parameters)?;
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
