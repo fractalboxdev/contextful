@@ -1,6 +1,7 @@
 //! The native sources compiled into the binary (`connector.package.built-in-registry`).
 
-pub mod decode;
+/// The shared record decoders (`connector.source.body-format`).
+pub use contextful_decode as decode;
 pub mod derive;
 pub mod http;
 

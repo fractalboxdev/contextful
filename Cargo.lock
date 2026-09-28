@@ -794,9 +794,9 @@ name = "contextful-connectors"
 version = "0.1.0"
 dependencies = [
  "contextful-core",
+ "contextful-decode",
  "contextful-outbound",
  "libc",
- "quick-xml",
  "serde",
  "serde_json",
  "tempfile",
@@ -841,6 +841,16 @@ dependencies = [
  "time",
  "toml",
  "url",
+]
+
+[[package]]
+name = "contextful-decode"
+version = "0.1.0"
+dependencies = [
+ "contextful-core",
+ "quick-xml",
+ "serde_json",
+ "zip",
 ]
 
 [[package]]

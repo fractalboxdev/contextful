@@ -371,11 +371,11 @@ method = { test = "contextful_ci::topology::this_repository_outbound_crate_links
 target = { op = "==", value = 0 }
 
 [entry.network-free-decoder]
-clause = "topology.package.edge-eligibility"
+clause = "topology.package.decode-network-free"
 metric = "topology.decoder.network_packages"
 kind   = "size"
 tier   = "gate"
-method = { issue = 46 }
+method = { test = "contextful_ci::topology::this_repository_decode_package_links_no_network_stack" }
 target = { op = "==", value = 0 }
 
 [entry.profile-footprint]

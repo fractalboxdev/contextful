@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `run` | 3 | 24 | 296 | 82 | 34 | 25 | 160 | 0 | 160 |
 | `store` | 1 | 14 | 158 | 37 | 12 | 13 | 115 | 0 | 115 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
-| `topology` | 1 | 6 | 64 | 19 | 5 | 5 | 19 | 0 | 19 |
-| **total** | 19 | 146 | 1503 | 479 | 169 | 111 | 764 | 0 | |
+| `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
+| **total** | 19 | 146 | 1504 | 480 | 169 | 111 | 765 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 192 | 136 | passing |
 | 2 — The store | 8 | 117 | 79 | passing |
-| 3 — The run path | 11 | 182 | 106 | passing |
+| 3 — The run path | 11 | 183 | 107 | passing |
 | 4 — Ingest | 22 | 341 | 139 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
@@ -373,14 +373,14 @@ Unscheduled operations: 10.
 | `connector.resolve.resolver-per-source` | `crates/contextful-outbound/tests/integration/resolve.rs::concurrent_first_hydrations_make_one_call_and_resolvers_share_no_cache` | performed |
 | `connector.resolve.shadowed-name` | `crates/contextful-outbound/tests/integration/resolve.rs::a_name_two_adapters_answer_is_refused_at_first_hydration` | performed |
 | `connector.resolve.unresolved-name` | `crates/contextful-outbound/tests/integration/resolve.rs::an_unanswered_reference_refuses_at_preflight_and_at_the_call` | performed |
-| `connector.source.cell-out-of-range` | `crates/contextful-connectors/tests/integration/workbook.rs::a_cell_past_the_header_width_is_refused_rather_than_dropped` | performed |
-| `connector.source.decompression-budget` | `crates/contextful-connectors/tests/integration/workbook.rs::an_office_read_decompresses_at_most_64_mib_by_claim_and_by_arrival` | performed |
-| `connector.source.delimited-cell` | `crates/contextful-connectors/tests/integration/decode.rs::delimited_cells_land_as_strings_and_empty_unquoted_fields_as_null` | performed |
-| `connector.source.external-reference` | `crates/contextful-connectors/tests/integration/workbook.rs::every_form_of_external_reference_is_refused` | performed |
+| `connector.source.cell-out-of-range` | `crates/contextful-decode/tests/integration/workbook.rs::a_cell_past_the_header_width_is_refused_rather_than_dropped` | performed |
+| `connector.source.decompression-budget` | `crates/contextful-decode/tests/integration/workbook.rs::an_office_read_decompresses_at_most_64_mib_by_claim_and_by_arrival` | performed |
+| `connector.source.delimited-cell` | `crates/contextful-decode/tests/integration/decode.rs::delimited_cells_land_as_strings_and_empty_unquoted_fields_as_null` | performed |
+| `connector.source.external-reference` | `crates/contextful-decode/tests/integration/workbook.rs::every_form_of_external_reference_is_refused` | performed |
 | `connector.source.format-key-mismatch` | `crates/contextful-connectors/tests/integration/http.rs::a_json_key_on_another_format_is_refused_at_build` | performed |
 | `connector.source.http-headers` | `crates/contextful-connectors/tests/integration/http.rs::header_templates_hydrate_onto_each_read` | performed |
 | `connector.source.next-link-origin` | `crates/contextful-connectors/tests/integration/http.rs::a_next_link_off_the_configured_origin_fails_the_read` | performed |
-| `connector.source.office-part-selection` | `crates/contextful-connectors/tests/integration/workbook.rs::only_the_named_parts_open_and_an_entity_stays_literal` | performed |
+| `connector.source.office-part-selection` | `crates/contextful-decode/tests/integration/workbook.rs::only_the_named_parts_open_and_an_entity_stays_literal` | performed |
 | `connector.source.page-cap` | `crates/contextful-connectors/tests/integration/http.rs::a_walk_stops_at_1000_requests` | performed |
 | `connector.source.page-loop` | `crates/contextful-connectors/tests/integration/http.rs::a_repeated_token_is_a_page_loop` | performed |
 | `connector.source.pagination` | `crates/contextful-connectors/tests/integration/http.rs::each_pagination_shape_walks_to_its_end` | performed |
@@ -388,9 +388,9 @@ Unscheduled operations: 10.
 | `connector.source.placeholder-unbound` | `crates/contextful-connectors/tests/integration/http.rs::a_placeholder_other_than_the_table_is_refused_at_build` | performed |
 | `connector.source.table-pattern` | `crates/contextful-cli/tests/integration/pipeline.rs::each_table_binds_its_segment_and_keeps_its_own_position` | performed |
 | `connector.source.table-unmatched` | `crates/contextful-connectors/tests/integration/http.rs::a_table_off_the_pattern_is_refused_before_any_request` | performed |
-| `connector.source.workbook-cell-typing` | `crates/contextful-connectors/tests/integration/workbook.rs::cells_land_as_strings_a_date_as_its_serial_and_a_formula_as_its_cached_value` | performed |
+| `connector.source.workbook-cell-typing` | `crates/contextful-decode/tests/integration/workbook.rs::cells_land_as_strings_a_date_as_its_serial_and_a_formula_as_its_cached_value` | performed |
 | `connector.source.workbook-incremental` | `crates/contextful-connectors/tests/integration/workbook.rs::an_incremental_position_against_a_workbook_is_refused` | performed |
-| `connector.source.worksheet-landing` | `crates/contextful-connectors/tests/integration/workbook.rs::a_worksheet_lands_at_most_64_mib_of_resolved_text_and_1048576_rows` | performed |
+| `connector.source.worksheet-landing` | `crates/contextful-decode/tests/integration/workbook.rs::a_worksheet_lands_at_most_64_mib_of_resolved_text_and_1048576_rows` | performed |
 | `corpus.address.clause-id` | `tools/spec/tests/integration/readable.rs::a_clause_item_takes_its_contract_and_operation_from_its_file_and_section` | performed |
 | `corpus.anatomy.bad-anatomy` | `tools/spec/tests/integration/readable.rs::an_item_outside_the_clause_shape_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.clause-list` | `tools/spec/tests/integration/readable.rs::a_clause_list_split_by_prose_is_an_anatomy_finding` | performed |
@@ -802,6 +802,7 @@ Unscheduled operations: 10.
 | `topology.coordinate.lease-row` | `crates/contextful-engine/tests/integration/coordinate.rs::a_lease_row_carries_holder_expiry_and_fence_per_key` | performed |
 | `topology.package.crate-map` | `tools/ci/tests/integration/topology.rs::this_repository_crate_map_names_every_crate` | performed |
 | `topology.package.crate-map-drift` | `tools/ci/tests/integration/topology.rs::a_crate_missing_from_the_crate_map_is_refused` | performed |
+| `topology.package.decode-network-free` | `tools/ci/tests/integration/topology.rs::a_decode_package_linking_the_network_stack_is_refused` | performed |
 | `topology.package.dependency-direction` | `tools/ci/tests/integration/topology.rs::a_domain_crate_depending_on_an_adapter_is_refused` | performed |
 | `topology.package.domain-impurity` | `tools/ci/tests/integration/topology.rs::a_domain_crate_reaching_an_async_runtime_is_refused` | performed |
 | `topology.package.exchange-optional` | `tools/ci/tests/integration/topology.rs::a_library_reaching_the_exchange_stack_is_refused` | performed |

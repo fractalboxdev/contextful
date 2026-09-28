@@ -1,6 +1,9 @@
 //! The one decoder set every source shares (`connector.source.body-format`): JSON, JSON
 //! Lines, delimited text and a workbook. Input a decoder cannot read refuses whole, naming
 //! the input and the position inside it.
+//!
+//! The package reaches no mediated-request crate and no network stack, so an offline or
+//! sandboxed host links the decoders alone (`topology.package.decode-network-free`).
 
 mod ooxml;
 pub mod workbook;

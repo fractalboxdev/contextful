@@ -2,7 +2,7 @@
 //! one budget (`connector.source.office-part-selection`,
 //! `connector.source.decompression-budget`). Nothing is extracted to disk.
 
-use super::unreadable;
+use crate::unreadable;
 use contextful_core::run::{Failure, FailureTag, RunError};
 use quick_xml::events::{BytesCData, BytesText};
 use quick_xml::name::ResolveResult;
