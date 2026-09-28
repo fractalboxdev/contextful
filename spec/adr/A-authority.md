@@ -178,3 +178,23 @@ Revisit: fragment-level provenance through synthesis becomes observable; per-zon
 | Delete left-behind objects automatically | Bucket authority | The engine is not the retention arbiter; deletion is irreversible and can cut a replica from its readers. |
 
 Consequences: a push refuses until the bucket is clean; a replica keeps resolving permissions and staleness while tables are withheld.
+
+## Local transports bind possession to the operating-system peer
+
+**Status:** proposed
+
+Context: an MCP host spawns a server over stdio, or relays to a Unix socket, holding a static credential and signing nothing, so `authority.verify` admits none of them. The sender-constrained decision rejects bearer bytes on theft yield, judged for network transports.
+
+Decision: on a local transport the kernel's peer authentication replaces the per-request proof. A Unix socket admits a bearer only when the peer credential — `SO_PEERCRED` on Linux, `getpeereid` or `LOCAL_PEERCRED` on macOS — reports the uid the credential was issued to. A stdio credential carries confirmation `transport:stdio` and binds to the spawned child for the session; a network checkpoint refuses it with `PossessionProofInvalid`. A credential with no confirmation claim refuses on every path.
+
+Criteria: theft yield, then host compatibility; theft yield decided it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Peer uid on sockets, `transport:stdio` confirmation on pipes *(chosen)* | — | Admission rests on a per-platform peer call; the uid is the boundary. |
+| Per-request proof on every transport | Host compatibility | Every local client needs a signing shim. |
+| Unconstrained bearer on local transports | Theft yield | A copied credential admits over the network until expiry. |
+| Peer process identity, by pid or audit token | Portability | No call common to Linux and macOS names the process; a pid is reusable. |
+
+Consequences: the bearer rejection holds for network transports alone. The accepted cost: a same-uid process that reads the host's configuration acts with the credential locally, never over a network.
+Revisit: stdio hosts gain per-request signing; a portable call names the peer process.
