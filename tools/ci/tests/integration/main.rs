@@ -81,7 +81,7 @@ impl Repo {
 
 pub fn manifest(name: &str, deps: &str) -> String {
     format!(
-        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\n{deps}\n[[test]]\nname = \"integration\"\npath = \"tests/integration/main.rs\"\n"
+        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\nlicense = \"Apache-2.0\"\n\n[dependencies]\n{deps}\n[[test]]\nname = \"integration\"\npath = \"tests/integration/main.rs\"\n"
     )
 }
 

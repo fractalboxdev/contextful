@@ -47,6 +47,7 @@ TestFirstBaseUnrunnable          = { clause = "assurance.test.base-unrunnable", 
 TestNotFirst                     = { clause = "assurance.test.test-first", gloss = "A source change carrying no test that fails against the base commit's source." }
 AcceptanceLinksEngine            = { clause = "assurance.test.acceptance-surface", gloss = "The acceptance package depending on a workspace package." }
 ExtensionAutoloadRefused         = { clause = "assurance.build.runtime-extension-load", gloss = "A read path loading a query-engine extension into a statically linked binary." }
+PackageLicenceMissing            = { clause = "assurance.build.licence-field", gloss = "A workspace package whose manifest declares no licence, or one other than Apache-2.0." }
 SecretPlaintext                  = { clause = "assurance.gate.secret-ciphertext", gloss = "A tracked dotenv key holding a value other than dotenvx ciphertext, or a tracked private-key file." }
 SecretScopeMissing               = { clause = "assurance.gate.secret-scope", gloss = "A tracked dotenv key with no comment above it stating what it grants." }
 CrateGraphViolation           = { clause = "assurance.gate.crate-graph", gloss = "A run-path crate reaching a read-path crate outside the three crossing crates." }

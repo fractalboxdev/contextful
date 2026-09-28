@@ -1,7 +1,9 @@
 [package]
 name = "contextful-runtime"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 # Host mediation for every outbound request a connector makes: the allowlist, address

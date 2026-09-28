@@ -1,7 +1,9 @@
 [package]
 name = "contextful-context"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 # The store adapter and the read face: Parquet table parts, run and snapshot manifests, the table

@@ -1,7 +1,9 @@
 [package]
 name = "contextful-core"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 # Pure domain types and the port traits every adapter implements. No I/O, no async

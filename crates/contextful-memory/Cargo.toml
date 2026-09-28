@@ -1,7 +1,9 @@
 [package]
 name = "contextful-memory"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 # Memory synthesis over the store: a pass reads landed rows through the writing

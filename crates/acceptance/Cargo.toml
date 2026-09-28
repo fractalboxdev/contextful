@@ -1,7 +1,9 @@
 [package]
 name = "contextful-acceptance"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 # Acceptance tests drive built binaries through their public surfaces. This package

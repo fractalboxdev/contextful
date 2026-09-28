@@ -2,7 +2,8 @@
 //! `cargo metadata`: the domain crate's purity and dependency direction, the model-vendor
 //! and script-runtime bans, and the run-path-to-read-path crate graph; and, per package
 //! off `cargo tree`, the store adapter's engine-free write half and the external-assertion
-//! stack outside the binary.
+//! stack outside the binary. The same walk holds every workspace package to
+//! `assurance.build.licence-field`.
 
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
@@ -13,6 +14,9 @@ use std::process::Command;
 /// The domain crate (`topology.package.domain-crate`).
 const DOMAIN: &str = "contextful-core";
 const DOMAIN_MANIFEST: &str = "crates/contextful-core/Cargo.toml";
+
+/// The licence every workspace package declares (`assurance.build.licence-field`).
+const LICENCE: &str = "Apache-2.0";
 
 /// Packages the domain crate reaches through no normal dependency, by what each is
 /// (`topology.package.domain-impurity`). An entry ending `*` is a name prefix.
@@ -94,6 +98,8 @@ struct Package {
     manifest: String,
     /// Workspace packages are the members under `crates/` or `tools/`.
     workspace: bool,
+    /// The manifest's resolved `license` field.
+    license: Option<String>,
     /// Declared dependencies: `(package name, kind, optional)`.
     declared: Vec<(String, Option<String>, bool)>,
     /// `features` table: feature name to its enabled entries.
@@ -156,7 +162,8 @@ impl Graph {
                 })
                 .unwrap_or_default();
             let name = p["name"].as_str().unwrap_or_default().to_string();
-            packages.insert(id, Package { name, manifest, workspace, declared, features });
+            let license = p["license"].as_str().map(str::to_string);
+            packages.insert(id, Package { name, manifest, workspace, license, declared, features });
         }
         let mut edges = HashMap::new();
         let mut enabled = HashMap::new();
@@ -308,6 +315,14 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
     }
 
     for (id, p) in &workspace {
+        match p.license.as_deref() {
+            Some(LICENCE) => {}
+            Some(other) => out.push((
+                "PackageLicenceMissing",
+                format!("`{}` declares licence `{other}`, not `{LICENCE}` ({})", p.name, p.manifest),
+            )),
+            None => out.push(("PackageLicenceMissing", format!("`{}` declares no licence ({})", p.name, p.manifest))),
+        }
         for (dep, _, _) in &p.declared {
             if VENDOR_SDKS.contains(&dep.as_str()) {
                 out.push(("VendorSdkLinked", format!("`{}` declares model-vendor SDK `{dep}` ({})", p.name, manifest_line(root, &p.manifest, dep))));

@@ -129,6 +129,8 @@ Target directories, the engine-linked invocation, linked query functions, build 
 - `debug-info` — Development and test profiles carry line-tables-only debug information.
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin`, `x86_64-apple-darwin` and `x86_64-pc-windows-msvc`; edge also targets `wasm32-wasip2`.
 - `release-artifact` — Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
+- `licence-field` — Every workspace package under `crates/` or `tools/` declares `license = "Apache-2.0"`, inherited from `[workspace.package]`; a package declaring another value or none raises `PackageLicenceMissing`, naming its manifest.
+  *because cargo-deny, cargo-about and SBOM generators read the manifest field, not the `LICENSE` file, so an unlicensed package fails a consumer's licence check*
 - `dependency-allowlist` — The connector authoring dependency allowlist carries a linear-time regular-expression engine and bounded-depth deserialization, and admits no backtracking regex engine and no unbounded recursive parser.
 
 unsettled: Does the edge profile build for `wasm32-wasip2` with the SQL engine inside its footprint budget? owner: build affects: assurance.build

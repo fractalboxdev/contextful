@@ -1,7 +1,9 @@
 [package]
 name = "contextful-wasm"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 # The sandboxed component host: guest connectors built against `wit/connector.wit` run
