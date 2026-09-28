@@ -2,6 +2,10 @@
 
 use contextful_core::connector::reference::{check_material, Hydrated, Part, SecretName, Template, NAME_MAX};
 use contextful_core::connector::ConnectorError;
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::Mutex;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// `secret://<name>` carries a logical name matching `[a-z0-9-]+` of at most 128 chars. A reference is never a
 /// storage path, a file name or a key identifier.
@@ -98,12 +102,59 @@ fn a_hydrated_value_prints_as_a_sentinel() {
     assert_eq!(h.reveal(), "lease-9f8e7d6c5b4a3921");
 }
 
+/// Frees the watched block after recording whether every byte of it read zero. The
+/// integration binary's allocator; every other block passes straight to [`System`].
+struct Witness;
+
+static WATCHED: AtomicUsize = AtomicUsize::new(0);
+/// 0: the watched block is still live; 1: freed zeroed; 2: freed holding a nonzero byte.
+static VERDICT: AtomicU8 = AtomicU8::new(0);
+
+unsafe impl GlobalAlloc for Witness {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        unsafe { System.alloc(layout) }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if WATCHED.compare_exchange(ptr as usize, 0, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            // The block is still owned here: `System` has not reclaimed it.
+            let bytes = unsafe { std::slice::from_raw_parts(ptr, layout.size()) };
+            VERDICT.store(if bytes.iter().all(|&b| b == 0) { 1 } else { 2 }, Ordering::SeqCst);
+        }
+        unsafe { System.dealloc(ptr, layout) }
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: Witness = Witness;
+
+/// Serialises the tests that share [`WATCHED`] and [`VERDICT`].
+static WITNESS: Mutex<()> = Mutex::new(());
+
+/// Drops `h` and reports whether its heap block read all zeros as the allocator took it back.
+fn freed_zeroed(h: Hydrated) -> bool {
+    let _one = WITNESS.lock().unwrap_or_else(|p| p.into_inner());
+    VERDICT.store(0, Ordering::SeqCst);
+    WATCHED.store(h.reveal().as_ptr() as usize, Ordering::SeqCst);
+    drop(h);
+    WATCHED.store(0, Ordering::SeqCst);
+    match VERDICT.load(Ordering::SeqCst) {
+        1 => true,
+        2 => false,
+        _ => panic!("the hydrated buffer was not freed when the value dropped"),
+    }
+}
+
 /// The wrapper zeroes its bytes when dropped, each duplicate and cache entry included.
 // spec: connector.resolve.wiped-on-drop@87f553d1
 #[test]
 fn a_hydrated_value_zeroes_its_bytes_on_drop() {
-    fn wipes<T: zeroize::ZeroizeOnDrop>(_: &T) {}
+    // The wipe is the derived one: `Zeroize` exists only through the derive or a full
+    // hand-written wipe, never through the `ZeroizeOnDrop` marker alone.
+    fn wipes<T: Zeroize + ZeroizeOnDrop>(_: &T) {}
     let h = Hydrated::new("lease-9f8e7d6c5b4a3921");
     wipes(&h);
-    wipes(&h.clone());
+    let copy = h.clone();
+    assert!(freed_zeroed(h), "the original held its bytes after drop");
+    assert!(freed_zeroed(copy), "the duplicate held its bytes after drop");
 }
