@@ -97,6 +97,8 @@ connector-attribution-value     = { clause = "connector.export.attribution-budge
 connector-guest-config          = { clause = "connector.import.config-shape", value = 64, unit = "KiB", basis = "chosen", gloss = "Serialized guest configuration table." }
 connector-memory-default        = { clause = "connector.package.linear-memory", value = 256, unit = "MiB", basis = "chosen", gloss = "Default linear memory per connector instance." }
 connector-memory-ceiling        = { clause = "connector.package.linear-memory", value = 2, unit = "GiB", basis = "chosen", gloss = "Ceiling a per-connector override raises linear memory to." }
+connector-fence-token           = { clause = "connector.infer.marker-derivation", value = 16, unit = "B", basis = "chosen", gloss = "Content digest carried by every marker of one fenced call." }
+connector-fence-label           = { clause = "connector.infer.label-hygiene", value = 200, unit = "chars", basis = "chosen", gloss = "Provenance label on one data-block marker." }
 connector-read-deadline         = { clause = "connector.package.call-deadline", value = 30, unit = "s", basis = "chosen", gloss = "Wall-clock deadline on one read call." }
 connector-discovery-deadline    = { clause = "connector.package.call-deadline", value = 60, unit = "s", basis = "chosen", gloss = "Wall-clock deadline on one discovery call." }
 connector-deadline-granularity  = { clause = "connector.package.call-deadline", value = 100, unit = "ms", basis = "chosen", gloss = "Epoch-interruption granularity arming the deadlines." }

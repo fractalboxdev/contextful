@@ -238,9 +238,15 @@ Model egress: the single endpoint, the data fence and the trust label of model o
   *because spotlighting reduces injection and guarantees nothing*
 - `output-taint` — Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.
   *because output re-landing as fresh data launders injected text*
-- `marker-derivation` — A marker carries a token derived from the fenced content itself.
-  *because closing one's own fence then requires content containing its own digest*
-- `fenced-value-hygiene` — Control characters are stripped from a fenced value, and a value past its declared character cap is truncated with a truncation mark.
+- `marker-derivation` — Every marker of one call carries one token of 16 B, derived from every label and value the call fences, as fenced.
+  *because closing one's own block then requires content containing the digest of a batch that contains it*
+- `replay` — The same values, labels, cap and rules fence to the same bytes, and a change to any value or label moves the token.
+  *because a replayed call sends an identical prompt, and a token read from one batch closes no other*
+- `fenced-value-hygiene` — Control characters other than newline and tab are stripped from a fenced value.
+- `value-cap` — A value past its declared character cap keeps its first cap characters followed by a truncation mark, and the closing line still follows its block.
+- `label-hygiene` — A provenance label is cut at 200 chars and flattened to one line without brackets, so it opens or closes no block.
+  *because a label is built from connector-supplied table names and row ids*
+- `empty-batch` — A call fencing no value renders an explicit no-data line, never an empty section.
 - `operator-template` — The operator's prompt template stays unfenced in the system role. The idempotency hash covers the template alone.
   *because hardening the fence leaves a dedup key intact*
 

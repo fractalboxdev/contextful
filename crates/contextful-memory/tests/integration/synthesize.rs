@@ -260,8 +260,8 @@ fn a_landing_rereads_the_writers_authority() {
     assert!(facts(&f, &writer, r#"SELECT * FROM "memory/facts""#).1.is_empty());
 }
 
-/// A row is fenced at 16384 chars under {{connector.infer.fenced-value-hygiene}}; a truncated row still reaches the model, its batch commits and advances the cursor, and the pass report counts it in `truncated`.
-// spec: read.synthesize.row-cap@bec6ed3e
+/// A row is fenced at 16384 chars under {{connector.infer.value-cap}}; a truncated row still reaches the model, its batch commits and advances the cursor, and the pass report counts it in `truncated`.
+// spec: read.synthesize.row-cap@bd014561
 #[test]
 fn a_row_over_the_cap_reaches_the_model_truncated_and_counted() {
     use contextful_core::connector::infer::TRUNCATION_MARK;
@@ -274,12 +274,12 @@ fn a_row_over_the_cap_reaches_the_model_truncated_and_counted() {
     let inference = Scripted::new(&[claims("acme", "cfo", "Dana", "run-0001")]);
     let report = pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
     let sent = prompt(&inference, 0);
-    assert!(sent.contains("<<<data label=\"research/notes\" ref=\"research/notes#run-0001:0\""), "{sent}");
+    assert!(sent.contains(" — table=research/notes ref=research/notes#run-0001:0]\n"), "{sent}");
     assert!(sent.contains("Dana\\u001b[2J is Acme's CFO.") && !sent.contains('\u{1b}'), "{sent}");
-    assert!(sent.contains(&format!("{TRUNCATION_MARK}\n<<<end ")), "the row ends in the truncation mark");
+    assert!(sent.contains(&format!("{TRUNCATION_MARK}\n[END DATA BLOCK ")), "the row ends in the truncation mark");
     assert!(!sent.contains("TAIL"), "the tail past the cap is cut");
-    let block = sent.split("<<<end ").next().unwrap().rsplit(">>>\n").next().unwrap().trim_end_matches('\n');
-    assert_eq!(block.chars().count(), VALUE_CHARS, "the fenced row holds the cap in all");
+    let block = sent.split(&format!("{TRUNCATION_MARK}\n[END DATA BLOCK ")).next().unwrap().rsplit("#run-0001:0]\n").next().unwrap();
+    assert_eq!(block.chars().count(), VALUE_CHARS, "the fenced row keeps the cap's head");
     assert!(sent.contains("research/notes#run-0001:1") && sent.contains("Lee is Acme's CTO."), "its neighbour still reaches the model");
     assert_eq!((report.truncated, report.batches, report.landed), (1, 1, 1), "{report:?}");
     assert_eq!(report.dead_lettered, 0, "a truncated row is no dead letter");
