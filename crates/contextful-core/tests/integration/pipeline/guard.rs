@@ -52,6 +52,8 @@ const BASE64: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012345
 const TOKEN68: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
 /// Assignment values: no delimiter the matcher stops at, and no `-` or `_` opening another shape.
 const VALUE: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%*+/";
+/// Heads a key carries before its keyword: none, or a word joined by `_`, `-` or `.`.
+const COMPOUND_PREFIXES: [&str; 6] = ["", "", "client_", "x-", "app.", "OAUTH_"];
 /// Words around a sample; none is a keyword or opens a credential shape.
 const CONTEXT: [&str; 8] = ["id", "row", "note", "ref", "for", "the", "cell", "sent"];
 
@@ -139,6 +141,7 @@ fn positive(r: &mut Lcg, kind: Kind) -> (String, std::ops::Range<usize>) {
                 1 => k.to_ascii_uppercase(),
                 _ => k[..1].to_ascii_uppercase() + &k[1..],
             };
+            let key = format!("{}{key}", r.pick(&COMPOUND_PREFIXES));
             let (open, close) = [("=", ""), (": ", ""), (" = ", ""), ("=\"", "\""), (": '", "'")][r.below(5)];
             let value = r.text(VALUE, 8, 40);
             let head = format!("{key}{open}");
@@ -189,7 +192,7 @@ fn near_miss(r: &mut Lcg, kind: Kind) -> String {
             let k = r.pick(&KEYWORDS);
             match r.below(3) {
                 0 => format!("{k}={}", r.text(VALUE, 1, 7)),
-                1 => format!("{}{k}={}", r.pick(&["session_", "my_", "x", "o"]), r.chars(VALUE, 16)),
+                1 => format!("{}{k}={}", r.pick(&["session", "my", "x", "o"]), r.chars(VALUE, 16)),
                 _ => format!("the {k} is {}", r.chars(ALNUM, 16)),
             }
         }
@@ -303,11 +306,64 @@ fn a_keyword_assignment_is_masked_from_8_chars_keeping_its_key() {
             }
         }
     }
-    // A keyword closing a longer key is no whole word, so its assignment stays.
-    assert_eq!(mask("session_token=abcdefgh12"), None);
+    // A keyword glued to a letter is no keyword, so its assignment stays.
+    assert_eq!(mask("sessiontoken=abcdefgh12"), None);
     let rate = masked as f64 / total as f64;
     crate::emit("guard-short-assignment", rate, total, SHORT_ASSIGNMENT_SEED);
     assert_eq!(masked, total, "{masked} of {total} short assignments masked with their key kept");
+}
+
+/// Seed of the compound-key slice's value generator.
+const COMPOUND_KEYS_SEED: u64 = 0x5eed_0004;
+
+/// Compound keys: a keyword closing a key after `_`, `-` or `.`, with `-` read as `_`.
+const COMPOUND_KEYS: [&str; 12] = [
+    "client_secret",
+    "access_token",
+    "refresh_token",
+    "api-key",
+    "x-api-key",
+    "X-API-Key",
+    "CLIENT_SECRET",
+    "db.password",
+    "aws_secret_access_key",
+    "slack-token",
+    "access-key",
+    "proxy_auth",
+];
+
+/// An assignment key qualifies when it is a keyword or ends in one after `_`, `-` or `.`, reading `-` as `_`, so
+/// `client_secret`, `x-api-key` and `db.password` qualify and `clientsecret` does not.
+// spec: run.guard-secrets.assignment-key@f4f3e5d7
+#[test]
+fn a_compound_key_assignment_is_masked_keeping_its_key() {
+    let mut state = COMPOUND_KEYS_SEED;
+    let (mut masked, mut total) = (0u64, 0u64);
+    for key in COMPOUND_KEYS {
+        for len in [8, 16, 40] {
+            let v = value(&mut state, len);
+            for (text, kept) in [
+                (format!("{key}={v}"), format!("{key}={MARKER}")),
+                (format!("{key}: {v}"), format!("{key}: {MARKER}")),
+                (format!("--{key} = '{v}'"), format!("--{key} = '{MARKER}'")),
+            ] {
+                total += 1;
+                let out = mask(&text);
+                if out.as_deref() == Some(kept.as_str()) {
+                    masked += 1;
+                } else {
+                    eprintln!("{text:?} -> {out:?}");
+                }
+            }
+        }
+    }
+    let rate = masked as f64 / total as f64;
+    crate::emit("guard-compound-keys", rate, total, COMPOUND_KEYS_SEED);
+    assert_eq!(masked, total, "{masked} of {total} compound-key assignments masked with their key kept");
+    // A keyword glued to a letter or digit, or running on into more key, stays part of a longer word.
+    for miss in ["clientsecret=abcdefgh12", "secret2=abcdefgh12", "api-keys=abcdefgh12", "token_type=abcdefgh12", "tokenizer=whitespace_standard"] {
+        assert_eq!(mask(miss), None, "{miss}");
+    }
 }
 
 /// The replacement covers only the matched byte ranges, widened to character boundaries; overlapping spans merge

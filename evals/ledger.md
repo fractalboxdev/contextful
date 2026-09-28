@@ -2,7 +2,7 @@
 
 # Target ledger
 
-61 entries: 37 gated, 3 recorded, 1 scheduled, 20 open.
+61 entries: 38 gated, 3 recorded, 1 scheduled, 19 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -30,7 +30,7 @@
 | `execution-resume` | `run.journal.plan-pin` | `execution.replayed_effects` | gate | test `contextful_engine::execution::a_dropped_execution_resumes_under_its_scope_and_replays_its_steps` | `== 0` | gated |
 | `fold-single-publisher` | `store.fold.pointer-commit` | `fold.publishes_per_start_etag` | gate | test `contextful_context::fold::a_pass_losing_the_pointer_publishes_nothing` | `== 1` | gated |
 | `guard-catalogue` | `run.guard-secrets.matchers` | `guard.recall_per_kind.min` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 1` | gated |
-| `guard-compound-keys` | `run.guard-secrets.matchers` | `guard.compound_keys.masked_rate` | gate | issue 73 | `== 1` | open (issue 73) |
+| `guard-compound-keys` | `run.guard-secrets.assignment-key` | `guard.compound_keys.masked_rate` | gate | test `contextful_core::pipeline::guard::a_compound_key_assignment_is_masked_keeping_its_key` | `== 1` | gated |
 | `guard-false-positives` | `run.guard-secrets.matchers` | `guard.false_positives` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 0` | gated |
 | `guard-short-assignment` | `run.guard-secrets.mask-span` | `guard.short_assignment.masked_rate` | gate | test `contextful_core::pipeline::guard::a_keyword_assignment_is_masked_from_8_chars_keeping_its_key` | `== 1` | gated |
 | `guest-pulley-throughput` | `connector.package.native-verification` | `wasm.pulley_throughput_ratio` | trend | issue 52 | — | open (issue 52) |

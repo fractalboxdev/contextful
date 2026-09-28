@@ -42,12 +42,13 @@ target = { op = "==", value = 1 }
 seed   = 0x5eed_0002
 
 [entry.guard-compound-keys]
-clause = "run.guard-secrets.matchers"
+clause = "run.guard-secrets.assignment-key"
 metric = "guard.compound_keys.masked_rate"
 kind   = "test"
 tier   = "gate"
-method = { issue = 73 }
+method = { test = "contextful_core::pipeline::guard::a_compound_key_assignment_is_masked_keeping_its_key" }
 target = { op = "==", value = 1 }
+seed   = 0x5eed_0004
 
 # ---------------------------------------------------------------- store.encrypt
 
