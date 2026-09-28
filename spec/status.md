@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 14 | 197 | 51 | 22 | 15 | 78 | 0 | 78 |
 | `authority` | 2 | 16 | 226 | 61 | 27 | 8 | 159 | 0 | 159 |
-| `connector` | 2 | 13 | 242 | 74 | 15 | 7 | 111 | 0 | 111 |
+| `connector` | 2 | 13 | 246 | 74 | 17 | 7 | 115 | 0 | 115 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 118 | 21 | 16 | 17 | 78 | 0 | 78 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 164 | 38 | 12 | 12 | 121 | 0 | 121 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 146 | 1517 | 482 | 169 | 110 | 779 | 0 | |
+| **total** | 19 | 146 | 1521 | 482 | 171 | 110 | 783 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 192 | 136 | passing |
 | 2 — The store | 8 | 123 | 85 | passing |
 | 3 — The run path | 11 | 184 | 109 | passing |
-| 4 — Ingest | 22 | 345 | 143 | passing |
+| 4 — Ingest | 22 | 349 | 147 | passing |
 | 5 — The read face under enforcement | 16 | 206 | 122 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
@@ -313,10 +313,14 @@ Unscheduled operations: 10.
 | `connector.import.config-unclaimed` | `crates/contextful-wasm/tests/integration/import.rs::a_guest_table_for_a_guest_without_the_config_interface_is_refused` | performed |
 | `connector.import.empty-context` | `crates/contextful-wasm/tests/integration/import.rs::a_guest_standard_library_sees_no_environment_arguments_or_files` | performed |
 | `connector.import.forwarded-config` | `crates/contextful-wasm/tests/integration/import.rs::the_guest_table_arrives_once_ahead_of_discovery` | performed |
-| `connector.infer.data-fence` | `crates/contextful-core/tests/integration/connector/infer.rs::a_prompt_holds_labelled_blocks_between_a_data_preamble_and_the_callers_rules` | performed |
-| `connector.infer.fenced-value-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::control_characters_go_and_a_long_value_ends_in_the_mark` | performed |
-| `connector.infer.marker-derivation` | `crates/contextful-core/tests/integration/connector/infer.rs::a_value_cannot_close_its_own_fence` | performed |
+| `connector.infer.data-fence` | `crates/contextful-core/tests/integration/connector/infer.rs::ordinary_rows_are_fenced_labelled_and_declared_data` | performed |
+| `connector.infer.empty-batch` | `crates/contextful-core/tests/integration/connector/infer.rs::an_empty_batch_says_so` | performed |
+| `connector.infer.fenced-value-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::control_characters_are_stripped_and_newlines_survive` | performed |
+| `connector.infer.label-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::a_label_cannot_smuggle_a_marker` | performed |
+| `connector.infer.marker-derivation` | `crates/contextful-core/tests/integration/connector/infer.rs::a_fence_lookalike_in_content_cannot_close_its_own_block` | performed |
 | `connector.infer.mediated-call` | `crates/contextful-outbound/tests/integration/infer.rs::a_completion_passes_the_hook_and_the_address_check` | performed |
+| `connector.infer.replay` | `crates/contextful-core/tests/integration/connector/infer.rs::the_token_is_content_bound_not_a_constant` | performed |
+| `connector.infer.value-cap` | `crates/contextful-core/tests/integration/connector/infer.rs::an_over_long_value_is_capped_and_marked` | performed |
 | `connector.lease.bootstrap-declared-leased` | `crates/contextful-outbound/tests/integration/lease.rs::the_bootstrap_name_cannot_be_leased` | performed |
 | `connector.lease.bootstrap-non-recursion` | `crates/contextful-outbound/tests/integration/lease.rs::the_mint_credential_comes_from_the_adapters_behind_the_provider` | performed |
 | `connector.lease.bootstrap-unserved` | `crates/contextful-outbound/tests/integration/lease.rs::an_unanswered_bootstrap_refuses_before_any_mint` | performed |

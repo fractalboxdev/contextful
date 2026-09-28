@@ -69,7 +69,7 @@ Extract, Resolve and Consolidate; the dedup key, evidence support, the audit rec
 - `pass-cursor` — A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under {{read.synthesize.prompt-bound}}, recording each batch once its claims commit.
 - `prompt-bound` — A batch packs fenced rows up to 32 KiB; a fenced row over that bound travels in a batch of its own.
   *because one oversized row neither stalls the pass nor drags its neighbours past the bound*
-- `row-cap` — A row is fenced at 16384 chars under {{connector.infer.fenced-value-hygiene}}; a truncated row still reaches the model, its batch commits and advances the cursor, and the pass report counts it in `truncated`.
+- `row-cap` — A row is fenced at 16384 chars under {{connector.infer.value-cap}}; a truncated row still reaches the model, its batch commits and advances the cursor, and the pass report counts it in `truncated`.
   *because a silent cut hides that a conclusion rests on a partial row*
 - `attribution` — Every landed claim carries `grant_id`, the chain-final revocation identifier of the credential that wrote it, `agent`, that credential's agent member, and `_authored_by`, its on-behalf-of principal.
   *because a reader weighs a conclusion by which grant could have produced it*
