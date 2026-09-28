@@ -3,6 +3,7 @@
 
 use super::ConnectorError;
 use crate::pipeline::guard;
+use zeroize::Zeroizing;
 
 /// Longest logical credential name: 128 chars (`connector.reference.reference-scheme`).
 pub const NAME_MAX: usize = 128;
@@ -168,13 +169,16 @@ fn without_references(value: &str) -> String {
 pub const SENTINEL: &str = "[secret]";
 
 /// A hydrated value. Its debug and display forms print [`SENTINEL`]; the bytes are
-/// reached only through [`Hydrated::reveal`], where the host writes the request.
+/// reached only through [`Hydrated::reveal`], where the host writes the request, and
+/// are zeroed when the value drops. Copies taken from `reveal` belong to their holder.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Hydrated(String);
+pub struct Hydrated(Zeroizing<String>);
+
+impl zeroize::ZeroizeOnDrop for Hydrated {}
 
 impl Hydrated {
     pub fn new(value: impl Into<String>) -> Hydrated {
-        Hydrated(value.into())
+        Hydrated(Zeroizing::new(value.into()))
     }
 
     pub fn reveal(&self) -> &str {

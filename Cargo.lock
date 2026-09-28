@@ -869,6 +869,7 @@ dependencies = [
  "time",
  "toml",
  "url",
+ "zeroize",
 ]
 
 [[package]]

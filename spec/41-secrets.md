@@ -86,6 +86,8 @@ The provider port, the chain and its precedence, hydration timing, the redacting
 - `hydration-is-just-in-time` — Material enters the process per read, while the request is built. No declaration, journal entry, audit record, run record or log line carries a hydrated value.
   *A-connector*
 - `redacting-wrapper` — Every hydrated value, a pure-literal template included, rides a wrapper whose debug and display forms print a fixed sentinel. The bytes are revealed only where the host writes the request.
+- `wiped-on-drop` — The wrapper zeroes its bytes when dropped, each duplicate and cache entry included. Bytes copied out of a revealed value, into a request header or a transport buffer, are outside the wrapper.
+  *because a freed credential otherwise stays readable until the allocator reuses its memory*
 - `resolver-per-source` — One resolver with its own cache is built per source, and concurrent first hydrations of one name collapse under a single-flight gate.
 - `cache-ttl` — A cache entry lives at most 300 s.
 - `unresolved-name` — A reference no assembled adapter answers raises `SecretUnresolvedReference` naming it, at preflight where the binding is static and at the call otherwise.

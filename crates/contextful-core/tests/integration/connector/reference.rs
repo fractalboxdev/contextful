@@ -97,3 +97,13 @@ fn a_hydrated_value_prints_as_a_sentinel() {
     assert_eq!(format!("{h} {h:?}"), "[secret] [secret]");
     assert_eq!(h.reveal(), "lease-9f8e7d6c5b4a3921");
 }
+
+/// The wrapper zeroes its bytes when dropped, each duplicate and cache entry included.
+// spec: connector.resolve.wiped-on-drop@87f553d1
+#[test]
+fn a_hydrated_value_zeroes_its_bytes_on_drop() {
+    fn wipes<T: zeroize::ZeroizeOnDrop>(_: &T) {}
+    let h = Hydrated::new("lease-9f8e7d6c5b4a3921");
+    wipes(&h);
+    wipes(&h.clone());
+}
