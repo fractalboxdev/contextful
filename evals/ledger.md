@@ -18,8 +18,8 @@
 | `cjk-subrun` | `read.retrieve.script-split-matching` | `retrieve.cjk.reciprocal_rank` | gate | test `contextful_core::read::retrieve::a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg` | `== 1` | gated |
 | `derivation-freshness` | `run.select.anti-join` | `derive.empty_reads` | gate | issue 45 | `== 0` | open (issue 45) |
 | `egress-internal-address` | `connector.attach.private-address` | `egress.internal.admitted` | gate | test `contextful_core::connector::attach::a_permitted_name_resolving_inward_is_refused` | `== 0` | gated |
-| `egress-internal-address-resolved` | `connector.attach.private-address` | `egress.resolved_internal.admitted` | gate | issue 50 | `== 0` | open (issue 50) |
-| `egress-refusal-before-dns` | `connector.attach.mediation-covers-every-egress` | `egress.refused.lookups` | gate | issue 50 | `== 0` | open (issue 50) |
+| `egress-internal-address-resolved` | `connector.attach.private-address` | `egress.resolved_internal.admitted` | gate | test `contextful_outbound::egress::a_name_resolving_inward_never_reaches_the_send_half` | `== 0` | gated |
+| `egress-refusal-before-dns` | `connector.meter.hook-refusal` | `egress.refused.lookups` | gate | test `contextful_outbound::egress::a_refused_intent_resolves_no_name_and_is_never_retried` | `== 0` | gated |
 | `encrypt-declared-refuses` | `store.encrypt.key-unbound` | `encrypt.declared.opens_and_files` | gate | test `contextful_context::encrypt::a_declared_encryption_opens_no_store_and_writes_no_file` | `== 0` | gated |
 | `encrypt-no-plaintext` | `store.encrypt.cipher` | `encrypt.canary_hits` | gate | issue 74 | `== 0` | open (issue 74) |
 | `eval-absolute-floors` | `assurance.baseline.floors-are-absolute` | `floors.red_on_baseline_pass` | gate | test `contextful_eval::baseline::each_floor_reds_a_run_its_baseline_passes` | `== 4` | gated |
@@ -44,7 +44,7 @@
 | `memory-live-claims` | `read.recall.ranked-arm` | `recall.expired_returned` | gate | test `contextful_memory::synthesize::a_ranked_arm_over_claims_serves_live_claims_alone` | `== 0` | gated |
 | `native-golden-floor` | `assurance.baseline.native-gate` | `retrieval.hybrid.r_precision` | gate | issue 78 | `>= 0.6` | open (issue 78) |
 | `network-free-decoder` | `topology.package.edge-eligibility` | `topology.decoder.network_packages` | gate | issue 46 | `== 0` | open (issue 46) |
-| `network-free-runtime` | `topology.package.edge-eligibility` | `topology.runtime.network_packages` | gate | issue 49 | `== 0` | open (issue 49) |
+| `network-free-runtime` | `topology.package.transport-optional` | `topology.runtime.network_packages` | gate | test `contextful_ci::topology::this_repository_outbound_crate_links_no_http_stack_without_its_transport` | `== 0` | gated |
 | `network-volume-refuses-cas` | `store.probe.unproven` | `probe.network_class_cas_pushes` | gate | issue 53 | `== 0` | open (issue 53) |
 | `no-sqlite-link` | `topology.package.store-sqlite-free` | `topology.libsqlite3_sys_links` | gate | test `contextful_ci::topology::this_repository_links_sqlite_only_through_its_adapter` | `== 0` | gated |
 | `one-arrow-tree` | `topology.package.crate-map` | `topology.arrow_versions.max` | gate | issue 32 | `== 1` | open (issue 32) |

@@ -18,7 +18,7 @@ contextful-core = { path = "../contextful-core" }
 contextful-engine = { path = "../contextful-engine" }
 contextful-memory = { path = "../contextful-memory" }
 contextful-policy = { path = "../contextful-policy" }
-contextful-outbound = { path = "../contextful-outbound" }
+contextful-outbound = { path = "../contextful-outbound", default-features = false }
 # The binary is the one package compiling SQLite into the build (`topology.package.sqlite-adapter`).
 contextful-sqlite = { path = "../contextful-sqlite", features = ["bundled"] }
 contextful-sync = { path = "../contextful-sync" }
@@ -31,6 +31,10 @@ tempfile = "3"
 thiserror = "2"
 toml = "0.8"
 toml_edit = "0.22"
+
+[features]
+default = ["transport-ureq"]
+transport-ureq = ["contextful-outbound/transport-ureq", "contextful-connectors/transport-ureq"]
 
 [[test]]
 name = "integration"

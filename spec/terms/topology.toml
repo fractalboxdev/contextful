@@ -17,6 +17,7 @@ ComponentHostMissing        = { clause = "topology.package.host-missing", gloss 
 ProfileDependencyLeak       = { clause = "topology.package.crdt-leak", gloss = "The CRDT library appears in the edge or full profile's dependency graph." }
 StoreWriteLinksEngine       = { clause = "topology.package.store-write-engine-free", gloss = "The store adapter without its read feature resolves the embedded SQL engine." }
 CrateMapDrift               = { clause = "topology.package.crate-map-drift", gloss = "A workspace crate is missing from the crate tree, or the crate-map count disagrees with it." }
+TransportStackLinked        = { clause = "topology.package.transport-optional", gloss = "The mediated-request crate without its transport feature resolves an HTTP stack." }
 ExchangeDependencyLeak      = { clause = "topology.package.exchange-optional", gloss = "A package other than the binary resolves the external-assertion stack in its own dependency graph." }
 SqliteLinkForced            = { clause = "topology.package.sqlite-adapter", gloss = "A package other than the SQLite adapter declares the binding, or one other than the binary chooses the SQLite build." }
 StoreLinksSqlite            = { clause = "topology.package.store-sqlite-free", gloss = "The store adapter resolves the SQLite link package through a normal dependency." }

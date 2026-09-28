@@ -179,7 +179,7 @@ Reservation against a shared vendor quota and the one pre-send hook it implement
   *A-connector*
 - `hook-refusal` — A hook refusing an intent raises `ConnectorEgressRefused` naming the host and the hook's reason. No name is resolved, and the retry schedule never retries it.
   *P6*
-- `hook-settle` — The hook receives each admitted hop's outcome after the body read or the failure: the status or transport failure, bytes sent and bytes received. A followed redirect is two intents.
+- `hook-settle` — The hook receives each admitted hop's outcome after the body read or the failure: the status or transport failure, the request body bytes sent, and the response body bytes the host read. A followed redirect is two intents.
   *A-connector*
 - `held-back-request` — A guest swallowing a held-back request still fails its call, and a fault inside the reservation machinery fails the request rather than passing it unmetered.
   *P2*
@@ -221,8 +221,6 @@ sequenceDiagram
   end
   H->>L: POST report: granted, spent, responses, run id
 ```
-
-unsettled: Does a hop's received byte count include a response body a guest abandons mid-stream, or only the bytes the host read? owner: connector affects: connector.meter
 
 ## infer
 

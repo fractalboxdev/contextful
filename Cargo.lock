@@ -898,6 +898,7 @@ name = "contextful-outbound"
 version = "0.1.0"
 dependencies = [
  "contextful-core",
+ "contextful-eval",
  "serde_json",
  "tempfile",
  "ureq",

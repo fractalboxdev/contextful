@@ -1,6 +1,7 @@
 //! The guest's one path to the network: its `wasi:http/outgoing-handler` import. Each
-//! request passes the allowlist, then the reservation, then the mediated client of its
-//! origin, which vets the address, pins the origin and attaches the host-held headers.
+//! request passes the allowlist, then the mediated client of its origin, whose every hop
+//! passes the operator's pre-send hook and the reservation ahead of resolution, vets the
+//! address, pins the origin and attaches the host-held headers.
 //! The guest names a request and receives a response; no import hands it credential
 //! bytes (`connector.attach.no-material-to-a-guest`).
 //!
@@ -10,8 +11,10 @@
 use crate::limits::{IN_FLIGHT, REQUEST_BODY_BYTES};
 use bytes::Bytes;
 use contextful_core::connector::attach::{scrub, Allowlist};
-use contextful_core::run::Failure;
+use contextful_core::connector::ConnectorError;
+use contextful_core::run::{Failure, FailureTag};
 use contextful_outbound::client::{Client, HeaderValue, Response};
+use contextful_outbound::egress::{self, Intent, PreSendHook, Transport};
 use http_body_util::{BodyExt, Empty, Full};
 use std::collections::HashMap;
 use std::future::Future;
@@ -33,6 +36,31 @@ pub enum Reservation {
 /// The reservation point a session draws a permit from ahead of each outbound request.
 pub trait Reserve: Send + Sync {
     fn reserve(&self) -> Reservation;
+}
+
+/// A session's reservation point as the innermost stage of each hop's pre-send hook
+/// (`connector.meter.hook-composition`). A denial fails the hop as the `429` it stands
+/// for; an unreachable limiter holds the request back.
+struct Innermost {
+    gate: Arc<dyn Reserve>,
+    traffic: Arc<Mutex<Traffic>>,
+}
+
+impl egress::Reserve for Innermost {
+    fn reserve(&self, _intent: &Intent) -> Result<(), Failure> {
+        match self.gate.reserve() {
+            Reservation::Granted => Ok(()),
+            Reservation::Denied { retry_after_secs } => {
+                self.traffic.lock().unwrap_or_else(|e| e.into_inner()).throttled += 1;
+                Err(Failure::new(FailureTag::RateLimited, "the limiter denied the reservation").with_retry_after(retry_after_secs))
+            }
+            Reservation::Unreachable(why) => {
+                self.traffic.lock().unwrap_or_else(|e| e.into_inner()).held_back.push(why.clone());
+                let unmetered = ConnectorError::ConnectorUnmetered(format!("the limiter could not answer: {why}"));
+                Err(Failure::new(FailureTag::Transient, unmetered.to_string()))
+            }
+        }
+    }
 }
 
 /// What the mediation point did during a session, by host and name, never by value.
@@ -57,6 +85,8 @@ pub(crate) struct Mediator {
     allow: Allowlist,
     attach: Vec<(String, HeaderValue)>,
     gate: Option<Arc<dyn Reserve>>,
+    hook: Option<Arc<dyn PreSendHook>>,
+    transport: Arc<dyn Transport>,
     /// One mediated client per origin, so each client pins the origin its requests keep.
     clients: HashMap<String, Arc<Client>>,
     in_flight: Arc<tokio::sync::Semaphore>,
@@ -66,8 +96,17 @@ pub(crate) struct Mediator {
 impl Mediator {
     /// A mediator drawing from `in_flight`, the session's slots. An instance replacing a
     /// trapped one shares them, so requests its predecessor abandoned still count.
-    pub(crate) fn new(allow: Allowlist, attach: Vec<(String, HeaderValue)>, gate: Option<Arc<dyn Reserve>>, in_flight: Arc<tokio::sync::Semaphore>) -> Mediator {
-        Mediator { allow, attach, gate, clients: HashMap::new(), in_flight, traffic: Arc::default() }
+    pub(crate) fn new(grant: &crate::host::Grant, in_flight: Arc<tokio::sync::Semaphore>) -> Mediator {
+        Mediator {
+            allow: grant.allow.clone(),
+            attach: grant.attach.clone(),
+            gate: grant.gate.clone(),
+            hook: grant.hook.clone(),
+            transport: grant.transport.clone().unwrap_or_else(egress::system),
+            clients: HashMap::new(),
+            in_flight,
+            traffic: Arc::default(),
+        }
     }
 
     /// The [`IN_FLIGHT`] slots one session's requests share.
@@ -81,8 +120,19 @@ impl Mediator {
 
     fn client(&mut self, url: &Url) -> Arc<Client> {
         let origin = url.origin().ascii_serialization();
-        let allow = self.allow.clone();
-        self.clients.entry(origin.clone()).or_insert_with(|| Arc::new(Client::new(allow, Url::parse(&origin).unwrap_or_else(|_| url.clone())))).clone()
+        let (allow, hook, transport) = (self.allow.clone(), self.hook.clone(), self.transport.clone());
+        let reserve = self.gate.clone().map(|gate| Innermost { gate, traffic: self.traffic.clone() });
+        let entry = self.clients.entry(origin.clone()).or_insert_with(|| {
+            let mut c = Client::new(allow, Url::parse(&origin).unwrap_or_else(|_| url.clone())).with_transport(transport);
+            if let Some(hook) = hook {
+                c = c.with_hook(hook);
+            }
+            if let Some(reserve) = reserve {
+                c = c.reserving(Arc::new(reserve));
+            }
+            Arc::new(c)
+        });
+        entry.clone()
     }
 }
 
@@ -133,7 +183,6 @@ impl WasiHttpHooks for Mediator {
             self.note(|t| t.denied.push(host));
             return answered(Err(Error::HttpRequestDenied));
         }
-        let gate = self.gate.clone();
         let mut headers: Vec<(String, HeaderValue)> = request
             .headers()
             .iter()
@@ -146,20 +195,6 @@ impl WasiHttpHooks for Mediator {
         let slots = self.in_flight.clone();
         let traffic = self.traffic.clone();
         Box::new(async move {
-            if let Some(gate) = gate {
-                let reservation = tokio::task::spawn_blocking(move || gate.reserve()).await.map_err(|e| Error::InternalError(Some(e.to_string())))?;
-                match reservation {
-                    Reservation::Granted => {}
-                    Reservation::Denied { retry_after_secs } => {
-                        traffic.lock().unwrap_or_else(|e| e.into_inner()).throttled += 1;
-                        return Ok((synthesized_429(retry_after_secs), done()));
-                    }
-                    Reservation::Unreachable(why) => {
-                        traffic.lock().unwrap_or_else(|e| e.into_inner()).held_back.push(why.clone());
-                        return Err(Error::InternalError(Some(format!("the limiter could not answer: {why}"))));
-                    }
-                }
-            }
             let slot = slots.acquire_owned().await.map_err(|e| Error::InternalError(Some(e.to_string())))?;
             let Some(body) = bounded_body(request.into_body()).await? else {
                 let why = format!("a guest request body to `{}` runs past {REQUEST_BODY_BYTES} bytes", scrub(&url));
@@ -181,6 +216,9 @@ impl WasiHttpHooks for Mediator {
                     traffic.lock().unwrap_or_else(|e| e.into_inner()).sent.push(host);
                     Ok((to_http(resp), done()))
                 }
+                // A denied reservation is the one failure the client tags `RateLimited`; a
+                // vendor's own 429 arrives as a response.
+                Err(failure) if failure.tag == FailureTag::RateLimited => Ok((synthesized_429(failure.retry_after_secs.unwrap_or_default()), done())),
                 Err(failure) => Err(refusal(&traffic, &sent, failure)),
             }
         })

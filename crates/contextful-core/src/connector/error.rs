@@ -82,6 +82,9 @@ pub enum ConnectorError {
     /// Host access a connector reaches for that its manifest does not list. (`connector.declare-capability.undeclared-access`)
     #[error("ConnectorUndeclaredAccess: {0}")]
     ConnectorUndeclaredAccess(String),
+    /// An outbound hop the pre-send hook refused before name resolution. (`connector.meter.hook-refusal`)
+    #[error("ConnectorEgressRefused: {0}")]
+    ConnectorEgressRefused(String),
     /// A vendor request without a granted reservation under a declared limiter. (`connector.meter.unmetered-request`)
     #[error("ConnectorUnmetered: {0}")]
     ConnectorUnmetered(String),

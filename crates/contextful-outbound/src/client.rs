@@ -1,21 +1,18 @@
-//! The mediated client: the one path every outbound request takes. It judges the request
-//! against the declaration ahead of socket I/O, resolves the host once and connects to
-//! the address it vetted, attaches credentials, and follows a hop only within the
-//! configured origin. A metered client reserves one permit per request after the
-//! allowlist admits it and before any byte leaves.
+//! The mediated client: the one path every outbound request takes. Each hop passes the
+//! allowlist, then the pre-send hook carrying its intent (an operator hook in front of
+//! the limiter reservation), then name resolution through the transport port; the client
+//! vets every address it answers, attaches credentials, sends through the port to a
+//! vetted address, and follows a hop only within the configured origin.
 
+use crate::egress::{self, Inbound, Intent, Outbound, Outcome, PreSendHook, Reserve, Transport, TransportFault};
 use crate::limiter::Meter;
 use contextful_core::connector::attach::{check_hop, check_transport, scrub, vet_address, Allowlist};
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag};
-use std::net::{SocketAddr, ToSocketAddrs};
-use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use ureq::config::Config;
-use ureq::unversioned::resolver::{ResolvedSocketAddrs, Resolver};
-use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 use url::Url;
 
 /// Hops one request follows before it fails.
@@ -33,7 +30,8 @@ pub enum HeaderValue {
 }
 
 impl HeaderValue {
-    fn text(&self) -> &str {
+    /// The value as it goes on the wire; only a transport reads it.
+    pub fn text(&self) -> &str {
         match self {
             HeaderValue::Plain(s) => s,
             HeaderValue::Sensitive(h) => h.reveal(),
@@ -58,47 +56,6 @@ impl Response {
     pub fn header(&self, name: &str) -> Option<&str> {
         self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
     }
-}
-
-/// A resolver answering the address the client vetted for each host and port, so the
-/// connect uses the address the check judged, with no second lookup
-/// (`connector.attach.resolve-once`). A host the client never vetted resolves to nothing.
-#[derive(Debug, Clone, Default)]
-struct Vetted(Arc<Mutex<HashMap<String, Vec<SocketAddr>>>>);
-
-impl Vetted {
-    fn key(host: &str, port: u16) -> String {
-        format!("{}:{port}", host.to_ascii_lowercase())
-    }
-
-    fn pin(&self, host: &str, port: u16, addrs: Vec<SocketAddr>) {
-        self.0.lock().unwrap_or_else(|e| e.into_inner()).insert(Vetted::key(host, port), addrs);
-    }
-}
-
-impl Resolver for Vetted {
-    fn resolve(&self, uri: &ureq::http::Uri, _: &Config, _: NextTimeout) -> Result<ResolvedSocketAddrs, ureq::Error> {
-        let host = uri.host().unwrap_or_default();
-        let port = uri.port_u16().unwrap_or(if uri.scheme_str() == Some("https") { 443 } else { 80 });
-        let pinned = self.0.lock().unwrap_or_else(|e| e.into_inner()).get(&Vetted::key(host, port)).cloned().unwrap_or_default();
-        if pinned.is_empty() {
-            return Err(ureq::Error::HostNotFound);
-        }
-        let mut v = self.empty();
-        for addr in pinned.into_iter().take(16) {
-            v.push(addr);
-        }
-        Ok(v)
-    }
-}
-
-fn agent(vetted: &Vetted, hardened: bool, timeout: Duration) -> ureq::Agent {
-    let mut builder = Config::builder().max_redirects(0).http_status_as_error(false).timeout_global(Some(timeout)).save_redirect_history(false);
-    if hardened {
-        // A request carrying a declared header takes the hardened client, which bypasses the system proxy.
-        builder = builder.proxy(None);
-    }
-    ureq::Agent::with_parts(builder.build(), DefaultConnector::new(), vetted.clone())
 }
 
 fn deny(e: ConnectorError) -> Failure {
@@ -126,32 +83,79 @@ pub struct Client {
     origin: Url,
     /// Header names that carried a credential on any request, by name only.
     sensitive: Mutex<Vec<String>>,
-    vetted: Vetted,
+    /// The network port every lookup and every send takes.
+    transport: Arc<dyn Transport>,
+    /// Wall clock one request may take.
+    timeout: Duration,
     /// The largest response body a request reads.
     max_body: u64,
     /// Whether a request reads the response body at all.
     read_body: bool,
-    /// One agent per proxy posture, reused across every request of the client's life.
-    hardened: ureq::Agent,
-    proxied: ureq::Agent,
-    /// The shared quota every request reserves against, when the connector declares one.
-    meter: Option<Meter>,
+    /// The operator hook every hop passes ahead of the reservation.
+    hook: Option<Arc<dyn PreSendHook>>,
+    /// The reservation every hop takes, when the connector declares a limiter.
+    reserve: Option<Arc<dyn Reserve>>,
+    /// The traffic class and run id each intent carries.
+    class: Option<String>,
+    run_id: Option<String>,
     /// Whether a permitted host may resolve to an internal address: the operator's own
     /// limiter only (`connector.meter.limiter-address`).
     internal: bool,
 }
 
+/// A hop the hook admitted, and what it came to.
+enum Hop {
+    Answered(Inbound),
+    Failed(Failure),
+}
+
 impl Client {
+    /// A client over the [`egress::system`] transport.
     pub fn new(allow: Allowlist, origin: Url) -> Client {
-        let vetted = Vetted::default();
-        let (hardened, proxied) = (agent(&vetted, true, REQUEST_TIMEOUT), agent(&vetted, false, REQUEST_TIMEOUT));
-        Client { allow, origin, sensitive: Mutex::default(), vetted, max_body: MAX_BODY_BYTES, read_body: true, hardened, proxied, meter: None, internal: false }
+        Client {
+            allow,
+            origin,
+            sensitive: Mutex::default(),
+            transport: egress::system(),
+            timeout: REQUEST_TIMEOUT,
+            max_body: MAX_BODY_BYTES,
+            read_body: true,
+            hook: None,
+            reserve: None,
+            class: None,
+            run_id: None,
+            internal: false,
+        }
+    }
+
+    /// The client reaching the network through `transport` (`connector.attach.transport-port`).
+    pub fn with_transport(mut self, transport: Arc<dyn Transport>) -> Client {
+        self.transport = transport;
+        self
+    }
+
+    /// The client passing every hop through the operator's `hook`, in front of any
+    /// reservation (`connector.meter.hook-composition`).
+    pub fn with_hook(mut self, hook: Arc<dyn PreSendHook>) -> Client {
+        self.hook = Some(hook);
+        self
+    }
+
+    /// The client whose intents carry `run_id`.
+    pub fn for_run(mut self, run_id: &str) -> Client {
+        self.run_id = Some(run_id.to_string());
+        self
     }
 
     /// The client with a shorter wall clock per request than [`REQUEST_TIMEOUT`].
     pub fn with_timeout(mut self, timeout: Duration) -> Client {
-        let timeout = timeout.min(REQUEST_TIMEOUT);
-        (self.hardened, self.proxied) = (agent(&self.vetted, true, timeout), agent(&self.vetted, false, timeout));
+        self.timeout = timeout.min(REQUEST_TIMEOUT);
+        self
+    }
+
+    /// The client with the wall clock of the one inference endpoint.
+    pub(crate) fn with_completion_timeout(mut self, timeout: Duration) -> Client {
+        self.timeout = timeout;
         self
     }
 
@@ -176,8 +180,19 @@ impl Client {
     }
 
     /// The client reserving every request against `meter` (`connector.meter.reservation-point`).
+    /// Its intents carry the declared traffic class and, unless set, the limiter's run id.
     pub fn metered(mut self, meter: Meter) -> Client {
-        self.meter = Some(meter);
+        self.class = Some(meter.declaration.class.clone());
+        if self.run_id.is_none() {
+            self.run_id = meter.run_id();
+        }
+        self.reserve = Some(Arc::new(meter));
+        self
+    }
+
+    /// The client taking every hop's reservation from `reserve`.
+    pub fn reserving(mut self, reserve: Arc<dyn Reserve>) -> Client {
+        self.reserve = Some(reserve);
         self
     }
 
@@ -186,8 +201,8 @@ impl Client {
         self.sensitive.lock().map(|v| v.clone()).unwrap_or_default()
     }
 
-    /// Judge `url` against the declaration and vet every address its host resolves to.
-    fn admit(&self, url: &Url, headers: &[(String, HeaderValue)]) -> Result<Vec<SocketAddr>, Failure> {
+    /// Judge `url` against the declaration, ahead of any hook or lookup.
+    fn permit(&self, url: &Url, headers: &[(String, HeaderValue)]) -> Result<(), Failure> {
         let host = url.host_str().unwrap_or_default();
         if !self.allow.permits(host) {
             return Err(deny(ConnectorError::SecretUnpermittedRequest(format!("`{}` is not a host the declaration covers", scrub(url)))));
@@ -197,12 +212,29 @@ impl Client {
                 check_transport(url, name).map_err(deny)?;
             }
         }
+        Ok(())
+    }
+
+    /// The pre-send hook: the operator hook, then the reservation
+    /// (`connector.meter.pre-send-hook`). Answers whether the operator hook admitted.
+    fn admit(&self, intent: &Intent) -> Result<(), (Failure, bool)> {
+        if let Some(hook) = &self.hook {
+            hook.admit(intent).map_err(|why| {
+                let refused = ConnectorError::ConnectorEgressRefused(format!("`{}`: {why}", intent.host));
+                (Failure::deterministic(FailureTag::Config, refused.to_string()), false)
+            })?;
+        }
+        if let Some(reserve) = &self.reserve {
+            reserve.reserve(intent).map_err(|f| (f, true))?;
+        }
+        Ok(())
+    }
+
+    /// Resolve `url`'s host through the transport and vet every address it answers.
+    fn resolve(&self, url: &Url) -> Result<Vec<SocketAddr>, Failure> {
+        let host = url.host_str().unwrap_or_default();
         let port = url.port_or_known_default().unwrap_or(443);
-        let bare = host.trim_start_matches('[').trim_end_matches(']');
-        let addrs: Vec<SocketAddr> = (bare, port)
-            .to_socket_addrs()
-            .map_err(|e| Failure::new(FailureTag::Transient, format!("resolving `{host}`: {e}")))?
-            .collect();
+        let addrs = self.transport.resolve(host, port).map_err(|e| Failure::new(FailureTag::Transient, format!("resolving `{host}`: {e}")))?;
         if addrs.is_empty() {
             return Err(Failure::new(FailureTag::Transient, format!("`{host}` resolves to no address")));
         }
@@ -224,35 +256,87 @@ impl Client {
         self.exchange(method, url, headers, body, false)
     }
 
-    fn exchange(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: Option<&[u8]>, follow: bool) -> Result<Response, Failure> {
-        let mut current = url.clone();
-        check_hop(&self.origin, &current).map_err(deny)?;
-        for _ in 0..=MAX_HOPS {
-            let addr = self.admit(&current, headers)?;
-            // A request the allowlist refuses never reaches the limiter (`connector.meter.allowlist-precedence`).
-            if let Some(meter) = &self.meter {
-                meter.reserve()?;
-            }
-            self.vetted.pin(current.host_str().unwrap_or_default(), current.port_or_known_default().unwrap_or(443), addr);
-            let agent = if headers.is_empty() { &self.proxied } else { &self.hardened };
-            let mut req = ureq::http::Request::builder().method(method).uri(current.as_str());
-            for (name, v) in headers {
-                req = req.header(name.as_str(), v.text());
-                if matches!(v, HeaderValue::Sensitive(_)) {
-                    if let Ok(mut s) = self.sensitive.lock() {
-                        if !s.contains(name) {
-                            s.push(name.clone());
-                        }
+    fn intent(&self, method: &str, url: &Url, body: &[u8]) -> Intent {
+        Intent {
+            method: method.to_string(),
+            url: scrub(url),
+            host: url.host_str().unwrap_or_default().to_string(),
+            port: url.port_or_known_default().unwrap_or(443),
+            class: self.class.clone(),
+            run_id: self.run_id.clone(),
+            body_bytes: body.len() as u64,
+        }
+    }
+
+    /// One hop the hook admitted: resolve, vet, send.
+    fn hop(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: &[u8]) -> Hop {
+        let addrs = match self.resolve(url) {
+            Ok(a) => a,
+            Err(f) => return Hop::Failed(f),
+        };
+        for (name, v) in headers {
+            if matches!(v, HeaderValue::Sensitive(_)) {
+                if let Ok(mut s) = self.sensitive.lock() {
+                    if !s.contains(name) {
+                        s.push(name.clone());
                     }
                 }
             }
-            let request = req.body(body.map(<[u8]>::to_vec).unwrap_or_default()).map_err(|e| Failure::new(FailureTag::Permanent, format!("building a request to `{}`: {e}", scrub(&current))))?;
-            let mut resp = agent.run(request).map_err(|e| Failure::new(FailureTag::Transient, format!("request to `{}` failed: {}", scrub(&current), transport_error(&e))))?;
-            let status = resp.status().as_u16();
-            let headers_out: Vec<(String, String)> =
-                resp.headers().iter().map(|(k, v)| (k.as_str().to_string(), String::from_utf8_lossy(v.as_bytes()).into_owned())).collect();
-            if let Some(meter) = &self.meter {
-                meter.observe(status, &headers_out);
+        }
+        let outbound = Outbound {
+            method,
+            url,
+            addrs: &addrs,
+            headers,
+            body,
+            // A request carrying a declared header takes the hardened client, which bypasses the system proxy.
+            direct: !headers.is_empty(),
+            timeout: self.timeout,
+            max_body: self.max_body,
+            read_body: self.read_body,
+        };
+        match self.transport.send(&outbound) {
+            Ok(inbound) => Hop::Answered(inbound),
+            // A body past the ceiling is past it on every retry.
+            Err(TransportFault::BodyOverLimit) => {
+                Hop::Failed(Failure::deterministic(FailureTag::Permanent, format!("`{}` answered a body over {} bytes", scrub(url), self.max_body)))
+            }
+            Err(TransportFault::Failed(why)) => Hop::Failed(Failure::new(FailureTag::Transient, format!("request to `{}` failed: {why}", scrub(url)))),
+        }
+    }
+
+    fn settle(&self, intent: &Intent, outcome: &Outcome) {
+        if let Some(hook) = &self.hook {
+            hook.settle(intent, outcome);
+        }
+    }
+
+    fn exchange(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: Option<&[u8]>, follow: bool) -> Result<Response, Failure> {
+        let mut current = url.clone();
+        let body = body.unwrap_or_default();
+        check_hop(&self.origin, &current).map_err(deny)?;
+        for _ in 0..=MAX_HOPS {
+            // A request the allowlist refuses never reaches the hook or the limiter
+            // (`connector.meter.allowlist-precedence`).
+            self.permit(&current, headers)?;
+            let intent = self.intent(method, &current, body);
+            if let Err((f, operator_admitted)) = self.admit(&intent) {
+                if operator_admitted {
+                    self.settle(&intent, &Outcome { failure: Some(f.message.clone()), ..Outcome::default() });
+                }
+                return Err(f);
+            }
+            let inbound = match self.hop(method, &current, headers, body) {
+                Hop::Answered(inbound) => inbound,
+                Hop::Failed(f) => {
+                    self.settle(&intent, &Outcome { failure: Some(f.message.clone()), sent: 0, ..Outcome::default() });
+                    return Err(f);
+                }
+            };
+            let Inbound { status, headers: headers_out, body: read } = inbound;
+            self.settle(&intent, &Outcome { status: Some(status), failure: None, sent: body.len() as u64, received: read.len() as u64 });
+            if let Some(reserve) = &self.reserve {
+                reserve.observe(status, &headers_out);
             }
             if follow && (300..400).contains(&status) {
                 let location = headers_out.iter().find(|(k, _)| k.eq_ignore_ascii_case("location")).map(|(_, v)| v.clone());
@@ -263,24 +347,8 @@ impl Client {
                     continue;
                 }
             }
-            if !self.read_body {
-                return Ok(Response { status, headers: headers_out, body: Vec::new(), url: current });
-            }
-            let body = resp.body_mut().with_config().limit(self.max_body).read_to_vec().map_err(|e| match e {
-                // A body past the ceiling is past it on every retry.
-                ureq::Error::BodyExceedsLimit(_) => {
-                    Failure::deterministic(FailureTag::Permanent, format!("`{}` answered a body over {} bytes", scrub(&current), self.max_body))
-                }
-                other => Failure::new(FailureTag::Transient, format!("reading `{}`: {}", scrub(&current), transport_error(&other))),
-            })?;
-            return Ok(Response { status, headers: headers_out, body, url: current });
+            return Ok(Response { status, headers: headers_out, body: read, url: current });
         }
         Err(Failure::new(FailureTag::Permanent, format!("`{}` redirected more than {MAX_HOPS} times", scrub(url))))
     }
-}
-
-/// A transport error's text, with any URL it quotes scrubbed.
-fn transport_error(e: &ureq::Error) -> String {
-    let text = e.to_string();
-    text.split_whitespace().map(|w| if w.contains("://") { contextful_core::connector::attach::scrub_text(w) } else { w.to_string() }).collect::<Vec<_>>().join(" ")
 }

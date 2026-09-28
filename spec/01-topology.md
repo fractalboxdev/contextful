@@ -112,6 +112,8 @@ The domain crate, dependency direction, and the three build profiles with what e
   *A-topology*
 - `store-write-engine-free` — `contextful-context` resolved without its `read` feature and reaching `duckdb` or `libduckdb-sys` through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.
   *because a host that lands, folds or scans a store and serves no read otherwise links a bundled SQL engine it never calls*
+- `transport-optional` — `contextful-outbound` resolved without its `transport-ureq` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `TransportStackLinked`, naming the path that pulled it.
+  *A-connector*
 - `exchange-optional` — `contextful-policy` links the external-assertion stack, `jsonwebtoken` and `rsa`, only under its non-default `exchange` feature, which only the binary may enable, and only alongside wiring {{authority.exchange.surface}}. Another `crates/` package whose resolved graph reaches either raises `ExchangeDependencyLeak`, naming the path.
   *because an embedder admitting credentials with no identity provider then links no RSA code, and `rsa` carries a timing advisory with no patched release*
 - `sqlite-adapter` — `contextful-sqlite` alone declares the SQLite binding and enables no link feature itself; only `contextful-cli` turns on its `bundled` feature. Any other declaration or enablement raises `SqliteLinkForced`, naming the manifest line.

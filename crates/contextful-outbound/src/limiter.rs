@@ -3,6 +3,7 @@
 //! went unspent.
 
 use crate::client::{classify, Client, HeaderValue};
+use crate::egress::{Intent, PreSendHook, Reserve, Transport};
 use crate::secrets::Resolver;
 use contextful_core::connector::attach::{scrub, Allowlist};
 use contextful_core::connector::meter::{acquire_body, require_binding, Decision, LimiterBinding, LimiterDeclaration, Pool, Report, Usage};
@@ -58,7 +59,7 @@ impl Limiter {
     pub fn new(binding: LimiterBinding, resolver: Arc<Resolver>, run_id: &str, clock: Arc<dyn Clock + Send + Sync>) -> Result<Limiter, Failure> {
         let host = binding.endpoint.host_str().unwrap_or_default().to_string();
         let allow = Allowlist::parse(&[host]).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
-        let client = Client::new(allow, binding.endpoint.clone()).admitting_internal().with_timeout(LIMITER_TIMEOUT);
+        let client = Client::new(allow, binding.endpoint.clone()).admitting_internal().with_timeout(LIMITER_TIMEOUT).for_run(run_id);
         Ok(Limiter { binding, resolver, run_id: run_id.to_string(), clock, client, pools: Mutex::default(), audit: Mutex::default() })
     }
 
@@ -73,6 +74,19 @@ impl Limiter {
     ) -> Result<Limiter, Failure> {
         let binding = require_binding(declaration, bindings).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
         Limiter::new(binding.clone(), resolver, run_id, clock)
+    }
+
+    /// The limiter reaching its endpoint through `transport`.
+    pub fn with_transport(mut self, transport: Arc<dyn Transport>) -> Limiter {
+        self.client = self.client.with_transport(transport);
+        self
+    }
+
+    /// The limiter passing each of its own calls through the operator's `hook`
+    /// (`connector.attach.mediation-covers-every-egress`).
+    pub fn with_hook(mut self, hook: Arc<dyn PreSendHook>) -> Limiter {
+        self.client = self.client.with_hook(hook);
+        self
     }
 
     /// The limiter with a shorter wall clock per call than [`LIMITER_TIMEOUT`].
@@ -233,6 +247,11 @@ impl Meter {
         Meter { declaration, limiter }
     }
 
+    /// The run the bound limiter reports for.
+    pub fn run_id(&self) -> Option<String> {
+        self.limiter.as_ref().map(|l| l.run_id.clone())
+    }
+
     /// Reserve one permit ahead of one outbound request (`connector.meter.reservation-point`).
     pub fn reserve(&self) -> Result<(), Failure> {
         match &self.limiter {
@@ -246,5 +265,16 @@ impl Meter {
         if let Some(l) = &self.limiter {
             l.observe(&self.declaration.class, Usage::observe(&self.declaration, status, headers, l.clock.now()));
         }
+    }
+}
+
+/// The reservation as the innermost stage of the pre-send hook (`connector.meter.hook-composition`).
+impl Reserve for Meter {
+    fn reserve(&self, _intent: &Intent) -> Result<(), Failure> {
+        Meter::reserve(self)
+    }
+
+    fn observe(&self, status: u16, headers: &[(String, String)]) {
+        Meter::observe(self, status, headers);
     }
 }

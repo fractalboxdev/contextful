@@ -32,12 +32,14 @@ optional scope probe checks the bound credential's grant before the first read
 ({{connector.declare-capability.scope-probe}}).
 
 The host implements outbound HTTP itself ({{connector.attach.host-mediation}}), and a guest,
-a built-in source, a limiter call and an exec step all pass the same point
-({{connector.attach.mediation-covers-every-egress}}). For each request it checks the
-allowlist, resolves the host name once and connects to the address it vetted
-({{connector.attach.resolve-once}}), refuses internal ranges
-({{connector.attach.private-address}}), reserves a quota permit
-({{connector.meter.reservation-point}}), writes the credential header
+a built-in source, a model call, a limiter call and an exec step all pass the same point
+({{connector.attach.mediation-covers-every-egress}}). For each hop it checks the
+allowlist, passes one pre-send hook carrying the hop's intent
+({{connector.meter.pre-send-hook}}), an operator hook in front of the quota reservation
+({{connector.meter.hook-composition}}), and only then resolves the host name through the
+transport port ({{connector.attach.resolve-half}}), once, connecting to the address it vetted
+({{connector.attach.resolve-once}}). It refuses internal ranges
+({{connector.attach.private-address}}), writes the credential header
 ({{connector.attach.attach-block}}), and refuses to send it in cleartext
 ({{connector.attach.cleartext-endpoint}}). Redirects keep the configured host and port and
 never weaken transport ({{connector.attach.redirect-pinning}}).
@@ -71,7 +73,7 @@ shape passes ({{connector.declare-capability.allowlist-shape}}) and the declared
 its operator binding ({{connector.meter.limiter-binding}}). At session open the scope probe
 reports grants within the expectation, and discovery runs.
 
-The first read asks for that host. The host finds it allowlisted and resolving to a public address, then acquires a permit. It hydrates the `Authorization`
+The first read asks for that host. The host finds it allowlisted, acquires a permit, then resolves it to a public address. It hydrates the `Authorization`
 template: the lease provider heads the chain and answers for the declared name
 ({{connector.lease.head-of-chain}}), holding material plus one expiry in memory
 ({{connector.lease.lease}}). The request goes out over TLS, and the vendor's quota

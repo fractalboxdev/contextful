@@ -6,19 +6,28 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-# Host mediation for every outbound request a connector makes: the allowlist, address
-# vetting, origin pinning and credential attachment; and the credential resolver chain
-# with its lease provider.
+# Host mediation for every outbound request a connector makes: the allowlist, the
+# pre-send hook, address vetting, origin pinning and credential attachment over one
+# transport port; and the credential resolver chain with its lease provider.
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }
 serde_json = "1"
 url = "2"
-ureq = { version = "3", default-features = false, features = ["rustls"] }
+ureq = { version = "3", default-features = false, features = ["rustls"], optional = true }
+
+[features]
+default = ["transport-ureq"]
+# The ureq adapter of the transport port. Without it the crate links no HTTP stack, and
+# an embedder supplies its own `egress::Transport`.
+transport-ureq = ["dep:ureq"]
 
 [dev-dependencies]
+contextful-eval = { path = "../../tools/eval" }
 tempfile = "3"
 
+# The suite drives loopback servers over the ureq adapter.
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
+required-features = ["transport-ureq"]
