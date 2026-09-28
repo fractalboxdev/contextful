@@ -115,6 +115,8 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
 
 unsettled: How does a consumer discover the manifest format version a store or bucket carries, and what does it do with a version newer than it parses? owner: store affects: store.lay-out
 
+unsettled: Does `components` name the SQLite files, or only the derived and machine catalog ports a host may back with its own connection? owner: store affects: store.lay-out
+
 ## declare
 
 A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row.
@@ -183,6 +185,10 @@ Schema evolution across a table's file set: the type lattice, additive columns, 
 - `fold-never-narrows` — A fold backfills nulls and widens types; it narrows no type and drops no column.
 - `no-history` — Reconciliation keeps the current shape alone; a past widening is attributed from the run files.
 - `reserved-set-versioned` — Adding an injected column advances the semantics version, whose fingerprint recipe names the column.
+
+unsettled: What dimension caps a fixed-size vector column, given the engine bounds an `ARRAY` width? owner: store affects: store.reconcile
+
+unsettled: Does every engine version the read profile accepts widen a Parquet `FLOAT16` to `FLOAT`, or does an older one refuse the column? owner: store affects: store.reconcile
 
 ## fold
 
@@ -265,6 +271,10 @@ unsettled: Is the on-disk vector graph format stable enough to commit to, and ho
 
 unsettled: Is a tenant partition value validated against a canonical form, given the build rewrites nothing? owner: store affects: store.index
 
+unsettled: Which filter columns may a sidecar copy for filtered traversal, given a copy sits outside the enforced relation? owner: store affects: store.index
+
+unsettled: What resident bound replaces the stored-vector cap for a memory-mapped plaintext sidecar, and what counts toward it? owner: store affects: read.retrieve
+
 ## bound-time
 
 The two clocks a row carries, the parameter bounding each, and what a bounded read resolves to.
@@ -305,6 +315,8 @@ At-rest encryption of Parquet, sidecars and ledgers, the key derivation, and for
   *A-authority*
 - `at-rest-scope` — A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.
 - `rotation` — Rotation writes forward: new files take the new key version, published files keep theirs until collected, and a key version retires once no retained file names it.
+
+unsettled: How long does a sidecar decrypted into process memory stay resident across reads, and what evicts it? owner: store affects: store.encrypt
 
 ## push
 

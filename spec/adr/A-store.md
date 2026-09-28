@@ -1,6 +1,6 @@
 # A-store — The store and its sync decisions
 
-**Status:** accepted
+**Status:** accepted, except a section carrying its own proposed status
 
 ## The schema lattice has one promotion, and a key never widens
 
@@ -60,3 +60,72 @@ Consequences: a replica's answer is complete for the snapshot it names, or a ref
 
 Consequences: a contended bucket can leave a writer's objects durable and unlisted, visible in the refusal.
 Revisit: a key shape whose ownership is not derivable from the key; retries exhausting under ordinary concurrency; the index outgrowing a single-object commit.
+
+## A sidecar is memory-mapped only over plaintext
+
+**Status:** proposed
+
+Context: `store.encrypt.cipher` seals every sidecar with AES-256-GCM per file, and a sealed file cannot be memory-mapped, while the HNSW and Tantivy readers scale past memory only by mapping plaintext. Criteria: the at-rest scope holds on local disk and in the bucket; no bespoke cipher format; an unencrypted project reads a sidecar larger than memory.
+
+Decision: in an unencrypted project a sidecar is plaintext and memory-mapped read-only. In an encrypted project the files stay sealed; a reader opens one into anonymous process memory, writes no cleartext to disk, and the resident bound applies to the decrypted bytes.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Mmap over plaintext; decrypt into anonymous memory when encrypted *(chosen)* | — | An encrypted project holds each open sidecar whole in memory, so its size cap stays binding. |
+| A chunked AEAD format decrypted per page fault | Bespoke cipher format | A custom reader per builder and a cryptographic format of our own to audit. |
+| Decrypt to a private on-disk cache | At-rest scope | A stolen disk yields the cleartext graph the cipher exists to withhold. |
+| Plaintext sidecars in encrypted projects | At-rest scope | A stolen bucket credential admits nearest-neighbour search over the embedding space. |
+
+Consequences: the memory-mapped path and its relaxed bound serve unencrypted projects alone, and an encrypted project's search scale is set by resident memory.
+Revisit: a builder that reads through a caller-supplied page source, making per-page decryption a reader rather than a format.
+
+## Every sidecar names one id column
+
+**Status:** proposed
+
+Context: `store.index.vector-by-fold` builds only under a single-column primary key, so an unkeyed append table (`store.declare.unkeyed-union`) or a composite key gets no sidecar. Criteria: keyed, composite-key and unkeyed tables alike; ids stable across folds; one declaration every kind shares.
+
+Decision: a sidecar declaration names one `id_column`, unique within each snapshot, defaulting to a single-column primary key and required otherwise. Vector and full-text sidecars share it, their candidate ids are its values, and `store.index.candidate-ids` re-joins on it. A fold meeting a repeated value refuses the pass.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A declared unique `id_column` shared by every kind *(chosen)* | — | An unkeyed producer emits a unique row id, such as a content digest, and a repeat fails its pass. |
+| An encoded composite primary key | Unkeyed coverage | An append table has no key to encode. |
+| File and row ordinal | Stability across folds | Every fold renumbers rows, so no sidecar extends incrementally. |
+| An id declaration per sidecar kind | One declaration | Two arms fuse candidates only through a common id, and two declarations drift. |
+
+Consequences: an unkeyed embedding table gains a sidecar at the cost of one unique column the producer owns.
+
+## Binary and fixed-size vector columns take no promotion
+
+**Status:** proposed
+
+Context: the lattice holds scalar types alone, so a digest lands as text and an embedding as a JSON array, at several times the float16 size and a parse per vector read. Criteria: storage width; a type the engine and a vector builder read without per-row validation; no masked output leaking structure.
+
+Decision: the lattice adds `Binary`, `FixedSizeBinary(n)` and `FixedSizeList` of `Float32` or `Float16` at a fixed dimension, each with no promotion; a width, item or dimension change is `store.reconcile.incompatible`. The JSON row path renders binary as padded base64 and a vector as a number array. A binary column masks by `drop` or `hash` over its bytes, a vector column by `drop` alone. The engine reads `Float16` as `FLOAT` and a fixed list as `ARRAY`; storage keeps half width.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Typed binary and vector columns; widen half floats on read *(chosen)* | — | A read materializes float16 vectors at twice their stored width, and a JSON consumer decodes base64. |
+| Hex text and JSON arrays in `Utf8` | Storage width | Five to eight times the float16 bytes, and a parse per vector read. |
+| A variable-length float list | Validation-free read | Every row checks its dimension before a builder accepts it. |
+| Half floats kept through the query face | Engine support | The engine has no half-precision type. |
+
+Consequences: `read.embed.model-identifier` gains a typed vector column, and an Arrow batch lands without a JSON round trip.
+
+## The store's catalogs sit behind a port with SQLite in its own package
+
+**Status:** proposed
+
+Context: `store.lay-out.components` puts two SQLite catalogs in every store, and Cargo admits one `links = "sqlite3"` package per graph; a store forcing a `libsqlite3-sys` major or `bundled` breaks a host linking its own. Criteria: a host resolves with its own SQLite build; the write path links no SQLite; a cursor compare-and-swap stays one conditional update.
+
+Decision: the store reaches `derived.sqlite` and `machine.sqlite` through port traits in `contextful-core`, beside the `Catalog` port of `topology.coordinate.catalog-port`. One adapter package holds the SQLite implementation and is the sole package depending on `rusqlite`; it enables no link feature, and `contextful-cli` enables `bundled`. A host implements the ports over its own connection or depends on the adapter.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Ports in core; SQLite adapter in its own package *(chosen)* | — | One more workspace package, and a host on another `rusqlite` major writes its own adapter. |
+| A `rusqlite` version range in the store package | Write path free of SQLite | Every host resolving the store resolves SQLite, and the range breaks at the next major. |
+| JSON catalogs beside the manifests | One conditional update | Lease and cursor rows lose the transactional update `topology.coordinate.cursor-cas` rests on. |
+| Loading the system SQLite at run time | Host resolves its own build | Two SQLite builds share one process with no link-time check. |
+
+Consequences: a gate rule like `topology.package.store-write-engine-free` holds `contextful-context` free of `libsqlite3-sys`.
