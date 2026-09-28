@@ -1,7 +1,7 @@
 //! `connector.attach`: the mediated client judges each request, pins every hop to the
 //! configured origin and records which headers carried a credential.
 
-use crate::support::{Response, Server};
+use crate::support::{proxy_env, Response, Server};
 use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::run::FailureTag;
@@ -37,6 +37,7 @@ fn redirecting(to: impl Fn(u16) -> String + Send + Sync + 'static) -> Server {
 // spec: connector.attach.unpermitted-request@06ec9181
 #[test]
 fn a_request_to_an_uncovered_host_fails_before_any_socket() {
+    let _env = proxy_env();
     let server = Server::start(|_| Response::json(200, "{}"));
     // The origin is the server; the declaration covers another host.
     let c = Client::new(Allowlist::parse(&["api.vendor.example"]).unwrap(), Url::parse(&server.url("/")).unwrap());
@@ -54,6 +55,7 @@ fn a_request_to_an_uncovered_host_fails_before_any_socket() {
 // spec: connector.attach.redirect-pinning@b54ab05f
 #[test]
 fn a_hop_is_followed_only_within_the_configured_origin() {
+    let _env = proxy_env();
     // Same host and port: followed, with or without a credential.
     let server = redirecting(|_| "/landed".into());
     for headers in [plain(), bearer()] {
@@ -89,6 +91,7 @@ fn redirecting_to_tls() -> Server {
 // spec: connector.attach.weakened-hop@5d335517
 #[test]
 fn a_hop_off_the_origin_or_down_to_cleartext_is_refused() {
+    let _env = proxy_env();
     let elsewhere = Server::start(|_| Response::json(200, "{\"leaked\":true}"));
     let other_port = elsewhere.url("/landed");
     let off_port = redirecting(move |_| other_port.clone());
@@ -109,6 +112,7 @@ fn a_hop_off_the_origin_or_down_to_cleartext_is_refused() {
 // spec: connector.attach.landed-origin@342100c9
 #[test]
 fn the_body_that_lands_comes_from_the_configured_origin() {
+    let _env = proxy_env();
     let server = redirecting(|_| "/landed".into());
     let configured = url(&server.url("/"));
     let resp = client(&server).send("GET", &url(&server.url("/start")), &plain(), None).unwrap();
@@ -121,6 +125,7 @@ fn the_body_that_lands_comes_from_the_configured_origin() {
 // spec: connector.attach.cleartext-endpoint@88b2d8b0
 #[test]
 fn a_credential_never_travels_in_cleartext_outside_loopback() {
+    let _env = proxy_env();
     let c = Client::new(Allowlist::parse(&["api.vendor.example"]).unwrap(), url("http://api.vendor.example/v1"));
     let f = c.send("GET", &url("http://api.vendor.example/v1"), &bearer(), None).unwrap_err();
     assert!(f.message.starts_with("SecretCleartextEndpoint") && f.message.contains("Authorization"), "{f}");
@@ -142,6 +147,7 @@ fn a_credential_never_travels_in_cleartext_outside_loopback() {
 // spec: connector.attach.sensitive-header-record@65cfc3a7
 #[test]
 fn the_client_records_credential_header_names_and_no_value() {
+    let _env = proxy_env();
     let server = Server::start(|_| Response::json(200, "{}"));
     let c = client(&server);
     let mut headers = bearer();
@@ -157,6 +163,7 @@ fn the_client_records_credential_header_names_and_no_value() {
 // spec: connector.attach.referer-off@42f41c3a
 #[test]
 fn no_request_carries_a_referer() {
+    let _env = proxy_env();
     let server = redirecting(|_| "/landed".into());
     for headers in [plain(), bearer()] {
         client(&server).send("GET", &url(&server.url("/start")), &headers, None).unwrap();
@@ -171,6 +178,7 @@ fn no_request_carries_a_referer() {
 // spec: connector.attach.url-scrubbing@543ce135
 #[test]
 fn a_failed_requests_message_carries_no_query_or_fragment() {
+    let _env = proxy_env();
     // A port nothing listens on: the request fails at connect.
     let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
     let origin = url(&format!("http://127.0.0.1:{dead}/v1"));
@@ -189,6 +197,7 @@ fn a_failed_requests_message_carries_no_query_or_fragment() {
 
 #[test]
 fn a_body_past_the_ceiling_is_permanent() {
+    let _env = proxy_env();
     let server = Server::start(|_| Response::json(200, "{\"rows\":[1,2,3,4,5,6,7,8,9]}"));
     let c = client(&server).with_body_limit(8);
     let f = c.send("GET", &url(&server.url("/v1")), &plain(), None).unwrap_err();

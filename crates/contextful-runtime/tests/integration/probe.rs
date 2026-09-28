@@ -1,7 +1,7 @@
 //! `connector.declare-capability`: the scope probe judges the bound credential's grant at
 //! session open, ahead of the first read.
 
-use crate::support::{Response, Server};
+use crate::support::{proxy_env, Response, Server};
 use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::probe::ScopeProbe;
 use contextful_core::connector::reference::Hydrated;
@@ -53,6 +53,7 @@ fn paths(server: &Server) -> Vec<String> {
 /// `open_session` calls a declared probe's identity endpoint with the bound credential ahead of the first read.
 #[test]
 fn the_probe_calls_the_identity_endpoint_with_the_bound_credential_before_the_first_read() {
+    let _env = proxy_env();
     let server = vendor(Some("reports.read, accounts.read"));
     assert_eq!(open(&server, Some(&declared(&server))).unwrap(), 200);
     assert_eq!(paths(&server), ["/identity", "/read"], "the probe precedes the first read");
@@ -68,6 +69,7 @@ fn the_probe_calls_the_identity_endpoint_with_the_bound_credential_before_the_fi
 // spec: connector.declare-capability.probe-transport@f4786ed7
 #[test]
 fn the_probe_reaches_only_an_allowlisted_host_over_tls_or_loopback() {
+    let _env = proxy_env();
     let server = vendor(Some("reports.read"));
     // An identity endpoint the allowlist does not cover refuses before any socket.
     let elsewhere = Allowlist::parse(&["api.vendor.example"]).unwrap();
@@ -89,6 +91,7 @@ fn the_probe_reaches_only_an_allowlisted_host_over_tls_or_loopback() {
 // spec: connector.declare-capability.scope-exceeded@0edb85a1
 #[test]
 fn a_grant_beyond_the_expectation_refuses_and_the_session_does_not_open() {
+    let _env = proxy_env();
     let server = vendor(Some("reports.read,admin.write, some.future.scope"));
     let f = open(&server, Some(&declared(&server))).unwrap_err();
     assert!(f.message.starts_with("ConnectorScopeExceeded"), "{f}");
@@ -102,6 +105,7 @@ fn a_grant_beyond_the_expectation_refuses_and_the_session_does_not_open() {
 
 #[test]
 fn a_scopes_header_line_outside_visible_ascii_beside_a_clean_line_refuses_the_whole_grant() {
+    let _env = proxy_env();
     let beside = Server::start(|r| match r.path() {
         "/identity" => Response {
             status: 200,
@@ -117,6 +121,7 @@ fn a_scopes_header_line_outside_visible_ascii_beside_a_clean_line_refuses_the_wh
 
 #[test]
 fn the_identity_body_is_not_read_so_its_size_does_not_refuse_the_grant() {
+    let _env = proxy_env();
     let server = Server::start(|r| match r.path() {
         "/identity" => Response { status: 200, headers: vec![(HEADER.to_string(), "reports.read".to_string())], body: vec![b' '; 256 * 1024] },
         "/read" => Response::json(200, "[{\"id\":1}]"),
@@ -131,6 +136,7 @@ fn the_identity_body_is_not_read_so_its_size_does_not_refuse_the_grant() {
 // spec: connector.declare-capability.scope-unverified@d672e057
 #[test]
 fn a_grant_the_probe_cannot_read_refuses_and_the_session_does_not_open() {
+    let _env = proxy_env();
     let server = vendor(None);
     let f = open(&server, Some(&declared(&server))).unwrap_err();
     assert!(f.message.starts_with("ConnectorScopeUnverified"), "{f}");
@@ -147,6 +153,7 @@ fn a_grant_the_probe_cannot_read_refuses_and_the_session_does_not_open() {
 
 #[test]
 fn a_scope_on_a_repeated_scopes_header_line_counts_toward_the_grant() {
+    let _env = proxy_env();
     let server = Server::start(|r| match r.path() {
         "/identity" => Response {
             status: 200,
@@ -163,6 +170,7 @@ fn a_scope_on_a_repeated_scopes_header_line_counts_toward_the_grant() {
 
 #[test]
 fn a_rejected_credential_at_the_probe_classifies_as_expired_auth() {
+    let _env = proxy_env();
     let server = Server::start(|_| Response::json(401, "{}"));
     let f = open(&server, Some(&declared(&server))).unwrap_err();
     assert_eq!(f.tag, FailureTag::AuthExpired, "{f}");

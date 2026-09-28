@@ -1,8 +1,53 @@
 //! A loopback HTTP/1.1 server a test scripts, a settable clock and a counting provider.
 
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+/// The variables a ureq agent reads its proxy and bypass list from, at the moment the agent is built.
+const PROXY_VARS: [&str; 8] = ["ALL_PROXY", "all_proxy", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy"];
+
+/// The process's proxy environment: shared by every test that builds an HTTP client, held
+/// exclusively by the one test that configures a proxy.
+static PROXY_ENV: RwLock<()> = RwLock::new(());
+
+/// A share of the proxy environment. Every test in a module that sends HTTP holds one for
+/// its whole body, so no client it builds sees a proxy another test configured.
+pub fn proxy_env() -> RwLockReadGuard<'static, ()> {
+    PROXY_ENV.read().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The process environment routing every scheme through one proxy with no bypass list,
+/// held while no [`proxy_env`] share is out. Dropping it restores each variable as it was.
+pub struct ProxyConfigured {
+    saved: Vec<(&'static str, Option<OsString>)>,
+    _exclusive: RwLockWriteGuard<'static, ()>,
+}
+
+pub fn configure_proxy(url: &str) -> ProxyConfigured {
+    let exclusive = PROXY_ENV.write().unwrap_or_else(PoisonError::into_inner);
+    let saved = PROXY_VARS.iter().map(|k| (*k, std::env::var_os(k))).collect();
+    for k in PROXY_VARS {
+        if k.eq_ignore_ascii_case("no_proxy") {
+            std::env::remove_var(k);
+        } else {
+            std::env::set_var(k, url);
+        }
+    }
+    ProxyConfigured { saved, _exclusive: exclusive }
+}
+
+impl Drop for ProxyConfigured {
+    fn drop(&mut self) {
+        for (k, v) in &self.saved {
+            match v {
+                Some(v) => std::env::set_var(k, v),
+                None => std::env::remove_var(k),
+            }
+        }
+    }
+}
 
 /// One request the server received.
 #[derive(Debug, Clone)]

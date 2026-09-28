@@ -1,12 +1,13 @@
 //! The inference endpoint adapter against a loopback OpenAI-compatible server.
 
-use crate::support::{Response, Server};
+use crate::support::{proxy_env, Response, Server};
 use contextful_core::memory::synthesize::{Inference, Message};
 use contextful_runtime::infer::Endpoint;
 use serde_json::{json, Value};
 
 #[test]
 fn a_completion_posts_the_conversation_and_returns_the_content() {
+    let _env = proxy_env();
     let server = Server::start(|_| Response::json(200, &json!({ "choices": [{ "message": { "role": "assistant", "content": "{\"claims\": []}" } }] }).to_string()));
     let endpoint = Endpoint::new(&server.url("/v1/"), "fixture", Some("k-123".into())).unwrap();
     let content = endpoint.complete(&[Message::new("system", "rules"), Message::new("user", "data")]).unwrap();
@@ -22,6 +23,7 @@ fn a_completion_posts_the_conversation_and_returns_the_content() {
 
 #[test]
 fn a_failed_or_malformed_answer_is_an_error() {
+    let _env = proxy_env();
     let failing = Server::start(|_| Response::json(503, "{\"error\": \"overloaded\"}"));
     let err = Endpoint::new(&failing.url("/v1"), "m", None).unwrap().complete(&[Message::new("user", "x")]).unwrap_err();
     assert!(err.contains("503"), "{err}");
