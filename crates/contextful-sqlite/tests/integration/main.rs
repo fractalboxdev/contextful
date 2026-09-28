@@ -6,7 +6,7 @@ mod machine;
 mod stores;
 
 use contextful_core::ports::Clock;
-use contextful_core::run::own::{ConnectorPin, ExecutionOwner, Pins};
+use contextful_core::run::own::{ConnectorPin, ExecutionOwner, OwnerScope, Pins};
 use contextful_core::run::record::{Phase, RunRow, RunStatus};
 use contextful_core::time::Instant;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -61,6 +61,7 @@ pub fn run_row(run_id: &str, pipeline: &str, status: RunStatus) -> RunRow {
         phase: Phase::Plan,
         execution_id: "x-1".into(),
         stop: None,
+        host_scope: None,
     }
 }
 
@@ -68,13 +69,13 @@ pub fn run_row(run_id: &str, pipeline: &str, status: RunStatus) -> RunRow {
 pub fn owner(execution_id: &str) -> ExecutionOwner {
     ExecutionOwner {
         execution_id: execution_id.into(),
-        pipeline_id: "feed".into(),
-        table: "filings".into(),
+        scope: OwnerScope::table("feed", "filings"),
         pins: Pins {
             connector: ConnectorPin { id: "vendor".into(), version: "1".into(), world: "native".into(), hash: "h".into() },
             content_hash: "plan-1".into(),
             input_hash: "input-1".into(),
-        },
+        }
+        .into(),
         attempts: vec!["run-1".into()],
         opened_at: at(T0),
     }

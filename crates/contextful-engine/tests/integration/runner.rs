@@ -113,9 +113,10 @@ fn a_marker_the_catalog_missed_retires_its_owner_before_replay() {
     assert_eq!(row.rows, 0);
 }
 
-/// While an owner is pending, a changed connector identity, component world or pipeline `content_hash` raises
-/// `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the pipeline and both identities.
-// spec: run.own.pinned-plan-changed@af6a9dd9
+/// While an owner is pending, a changed pin — connector identity, component world, pipeline `content_hash`, or a
+/// host's plan reference or identities — raises `ExecutionPinMismatch` before replay, terminal and non-retryable,
+/// naming the scope and both pin sets.
+// spec: run.own.pinned-plan-changed@8e47a280
 #[test]
 fn a_moved_build_under_a_pending_owner_is_refused_before_replay() {
     let rig = Rig::new();

@@ -3,6 +3,7 @@
 mod cancel;
 mod command;
 mod coordinate;
+mod execution;
 mod guard;
 mod journal;
 mod project;
@@ -37,5 +38,6 @@ pub fn support_row(run_id: &str, status: RunStatus) -> RunRow {
         phase: Phase::Plan,
         execution_id: "x-1".into(),
         stop: None,
+        host_scope: None,
     }
 }

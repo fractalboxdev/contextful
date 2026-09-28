@@ -45,6 +45,7 @@ fn row(run_id: &str, st: RunStatus) -> RunRow {
         phase: Phase::Commit,
         execution_id: "exec-1".into(),
         stop: None,
+        host_scope: None,
     }
 }
 

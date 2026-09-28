@@ -154,6 +154,10 @@ pub struct RunRow {
     pub execution_id: String,
     #[serde(default)]
     pub stop: Option<StopMark>,
+    /// The host scope an execution opened under; `None` for a table or chunk run, whose
+    /// pipeline and table name its scope (`run.own.host-scope`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_scope: Option<String>,
 }
 
 impl RunRow {

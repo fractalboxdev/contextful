@@ -1,9 +1,12 @@
 //! The ports the runner drives: the source a pull reaches, the destination a run lands
-//! through, the cancellation every await observes, and the journal, blob and awakeable
-//! stores replay state persists through.
+//! through, the cancellation every await observes, the journal, blob and awakeable stores
+//! replay state persists through, and the substrate port a host opens executions on.
 
 use super::failure::{Failure, FailureTag};
 use super::journal::{EntryKey, Row as JournalRow, Stored};
+use super::own::{ConnectorPin, OwnerPins, OwnerScope};
+use super::record::RunRow;
+use super::retry::Schedule;
 use super::suspend::Awakeable;
 use crate::time::Instant;
 use serde::{Deserialize, Serialize};
@@ -186,4 +189,114 @@ pub trait AwakeableStore: Send + Sync {
     fn update(&self, token: &str, edit: &mut dyn FnMut(&mut Awakeable) -> Result<bool, Failure>) -> Result<Option<Awakeable>, Failure>;
     /// Every row, in no particular order.
     fn rows(&self) -> Result<Vec<Awakeable>, Failure>;
+}
+
+impl<T: AwakeableStore + ?Sized> AwakeableStore for std::sync::Arc<T> {
+    fn insert(&self, row: &Awakeable) -> Result<(), Failure> {
+        (**self).insert(row)
+    }
+    fn get(&self, token: &str) -> Result<Option<Awakeable>, Failure> {
+        (**self).get(token)
+    }
+    fn update(&self, token: &str, edit: &mut dyn FnMut(&mut Awakeable) -> Result<bool, Failure>) -> Result<Option<Awakeable>, Failure> {
+        (**self).update(token, edit)
+    }
+    fn rows(&self) -> Result<Vec<Awakeable>, Failure> {
+        (**self).rows()
+    }
+}
+
+/// What opening an execution names: its scope, the pins a pending owner is held to, the
+/// attempt's run identity and the retry schedule its steps run under
+/// (`run.journal.substrate-port`).
+#[derive(Debug, Clone)]
+pub struct OpenExecution {
+    pub scope: OwnerScope,
+    pub pins: OwnerPins,
+    /// The catalog run id of this attempt; one id names one attempt.
+    pub run_id: String,
+    pub site_id: String,
+    pub pid: u32,
+    pub boot_id: String,
+    pub trace_id: Option<String>,
+    /// The connector build admitted for a table or chunk scope; `None` for a host scope.
+    pub connector: Option<ConnectorPin>,
+    /// The schedule every step of the execution retries under.
+    pub schedule: Schedule,
+}
+
+/// What a substrate hosts: the connector worlds it runs and whether it wires an
+/// awakeable store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Capabilities {
+    pub worlds: Vec<String>,
+    pub awakeables: bool,
+}
+
+impl Capabilities {
+    /// Whether a connector implementing `world` runs on this substrate.
+    pub fn hosts(&self, world: &str) -> bool {
+        self.worlds.iter().any(|w| w == world)
+    }
+}
+
+/// What an execution reads for an awakeable it suspended on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Wake {
+    /// Still suspended.
+    Pending,
+    /// The resume payload, read back from the journal.
+    Resumed(Vec<u8>),
+    TimedOut,
+}
+
+/// A step's effect: it runs under the execution's cancellation and answers the bytes to record.
+pub type StepEffect<'a> = dyn FnMut(&dyn Cancellation) -> Result<Vec<u8>, Failure> + 'a;
+
+/// The outcome an execution closes on.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Outcome {
+    Success { rows: u64, bytes: u64, batches: u64 },
+    Failed(Failure),
+}
+
+/// The run-path substrate (`run.journal.substrate-port`): it describes what it hosts and
+/// opens or resumes an execution under a scope for a content-hashed plan reference.
+pub trait Substrate {
+    type Error;
+    type Execution<'s>: ExecutionPort<Error = Self::Error>
+    where
+        Self: 's;
+
+    fn capabilities(&self) -> Capabilities;
+    /// Open an execution under `open.scope`, resuming the scope's pending owner when its
+    /// pins hold; a moved pin refuses before any replay.
+    fn open(&self, open: &OpenExecution) -> Result<Self::Execution<'_>, Self::Error>;
+}
+
+/// One open execution: it records step outputs, commits a cursor, suspends on awakeables
+/// and closes. Dropped unclosed, it records nothing and its owner stays pending
+/// (`run.own.unclosed-execution`).
+pub trait ExecutionPort {
+    type Error;
+
+    /// The id the execution's recorded work keys on.
+    fn execution_id(&self) -> &str;
+    /// The content-hashed plan the execution resolves for its whole life.
+    fn plan_ref(&self) -> &str;
+    /// The position the scope's cursor held when the execution opened.
+    fn position(&self) -> Option<&Value>;
+    /// Resolve step `label` over `input`: the recorded value on replay, else `effect`
+    /// under the execution's retry schedule, recorded once.
+    fn step(&mut self, label: &str, input: &[u8], effect: &mut StepEffect<'_>) -> Result<Vec<u8>, Self::Error>;
+    /// Commit `position` as the scope's cursor and retire the owner in one transaction.
+    fn commit(&mut self, position: Option<Value>) -> Result<(), Self::Error>;
+    /// Suspend step `label` on a fresh awakeable living `ttl_secs`; returns its token.
+    fn suspend(&mut self, label: &str, ttl_secs: u64) -> Result<String, Self::Error>;
+    /// What the awakeable under `token` holds for this execution.
+    fn awaited(&mut self, token: &str) -> Result<Wake, Self::Error>;
+    /// Close on `outcome`, returning the run row as closed.
+    fn close(self, outcome: Outcome) -> Result<RunRow, Self::Error>
+    where
+        Self: Sized;
 }

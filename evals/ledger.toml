@@ -258,7 +258,7 @@ clause = "run.journal.plan-pin"
 metric = "execution.replayed_effects"
 kind   = "test"
 tier   = "gate"
-method = { issue = 38 }
+method = { test = "contextful_engine::execution::a_dropped_execution_resumes_under_its_scope_and_replays_its_steps" }
 target = { op = "==", value = 0 }
 
 [entry.orphan-reap-spares-live]

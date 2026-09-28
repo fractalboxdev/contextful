@@ -5,14 +5,16 @@
 //! ```text
 //! <root>/catalog.lock
 //! <root>/runs/<run_id>.json                  one run row
-//! <root>/scopes/<pipeline>/<table>.json      the cursor row and the pending owner, together
+//! <root>/scopes/<pipeline>/<table>.json      a live table's cursor row and pending owner
+//! <root>/scopes/<pipeline>/%chunk/<table>/<chunk>.json   a backfill chunk's
+//! <root>/scopes/%host/<scope>.json           a host scope's
 //! <root>/leases/<key>.json                   one lease row
 //! ```
 
 use crate::fsutil::{read_json, replace, to_json, FileLock};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
 use contextful_core::ports::Clock;
-use contextful_core::run::own::ExecutionOwner;
+use contextful_core::run::own::{ExecutionOwner, OwnerScope};
 use contextful_core::run::record::RunRow;
 use contextful_core::run::{Failure, RunError};
 use contextful_core::store::StoreError;
@@ -21,8 +23,10 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// A table's cursor row and pending owner share one file, so retiring the owner and
-/// caching the position it committed is one rename.
+/// A scope's cursor row and pending owner share one file, so retiring the owner and
+/// caching the position it committed is one rename. A `%` in a stored segment is always
+/// followed by a two-digit escape, so the `%chunk` and `%host` directories name no table
+/// or pipeline, and a table's file keeps the path a table-keyed catalog gave it.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct ScopeRow {
     #[serde(default)]
@@ -60,8 +64,15 @@ impl LocalCatalog {
         self.root.join("runs").join(format!("{}.json", segment(run_id)))
     }
 
-    fn scope_path(&self, pipeline_id: &str, table: &str) -> PathBuf {
-        self.root.join("scopes").join(segment(pipeline_id)).join(format!("{}.json", segment(table)))
+    fn scope_path(&self, scope: &OwnerScope) -> PathBuf {
+        let scopes = self.root.join("scopes");
+        match scope {
+            OwnerScope::Table { pipeline_id, table } => scopes.join(segment(pipeline_id)).join(format!("{}.json", segment(table))),
+            OwnerScope::Chunk { pipeline_id, table, chunk } => {
+                scopes.join(segment(pipeline_id)).join("%chunk").join(segment(table)).join(format!("{}.json", segment(chunk)))
+            }
+            OwnerScope::Host { host_scope } => scopes.join("%host").join(format!("{}.json", segment(host_scope))),
+        }
     }
 
     fn lease_path(&self, key: &LeaseKey) -> PathBuf {
@@ -70,19 +81,20 @@ impl LocalCatalog {
 
     /// The refusal a commit carrying `fence` meets when a later acquisition moved the
     /// lease past it; `None` when the fence is current or the commit carries none.
-    fn fenced(&self, pipeline_id: &str, table: &str, fence: Option<&Lease>) -> Result<Option<Cas>, Failure> {
+    fn fenced(&self, scope: &OwnerScope, fence: Option<&Lease>) -> Result<Option<Cas>, Failure> {
         let Some(lease) = fence else { return Ok(None) };
         let row: LeaseRow = read_json(&self.root.join("leases").join(format!("{}.json", lease.key)))?.unwrap_or_default();
+        let at = match scope.pipeline_table() {
+            Some((p, t)) => format!("`{p}`/`{t}`"),
+            None => scope.to_string(),
+        };
         Ok((!row.admits(lease.fence)).then(|| {
-            Cas::Fenced(StoreError::LeaseFenced(format!(
-                "cursor commit for `{pipeline_id}`/`{table}` carries fence {} and lease `{}` is at fence {}",
-                lease.fence, lease.key, row.fence
-            )))
+            Cas::Fenced(StoreError::LeaseFenced(format!("cursor commit for {at} carries fence {} and lease `{}` is at fence {}", lease.fence, lease.key, row.fence)))
         }))
     }
 
-    fn scope(&self, pipeline_id: &str, table: &str) -> Result<ScopeRow, Failure> {
-        Ok(read_json(&self.scope_path(pipeline_id, table))?.unwrap_or_default())
+    fn scope(&self, scope: &OwnerScope) -> Result<ScopeRow, Failure> {
+        Ok(read_json(&self.scope_path(scope))?.unwrap_or_default())
     }
 }
 
@@ -130,41 +142,41 @@ impl Catalog for LocalCatalog {
         Ok(read_json(&self.lease_path(key))?.unwrap_or_default())
     }
 
-    fn cursor(&self, pipeline_id: &str, table: &str) -> Result<CursorRow, Failure> {
-        Ok(self.scope(pipeline_id, table)?.cursor)
+    fn cursor_at(&self, scope: &OwnerScope) -> Result<CursorRow, Failure> {
+        Ok(self.scope(scope)?.cursor)
     }
 
-    fn cursor_cas(&self, pipeline_id: &str, table: &str, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> {
+    fn cursor_cas_at(&self, at: &OwnerScope, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> {
         let _lock = self.lock()?;
-        let mut scope = self.scope(pipeline_id, table)?;
+        let mut scope = self.scope(at)?;
         if scope.cursor.version != expected_version {
             return Ok(Cas::VersionMoved);
         }
-        if let Some(fenced) = self.fenced(pipeline_id, table, fence)? {
+        if let Some(fenced) = self.fenced(at, fence)? {
             return Ok(fenced);
         }
         scope.cursor = CursorRow { version: expected_version + 1, ..next };
-        replace(&self.scope_path(pipeline_id, table), &to_json(&scope)?)?;
+        replace(&self.scope_path(at), &to_json(&scope)?)?;
         Ok(Cas::Applied)
     }
 
-    fn owner(&self, pipeline_id: &str, table: &str) -> Result<Option<ExecutionOwner>, Failure> {
-        Ok(self.scope(pipeline_id, table)?.owner)
+    fn owner_at(&self, scope: &OwnerScope) -> Result<Option<ExecutionOwner>, Failure> {
+        Ok(self.scope(scope)?.owner)
     }
 
     fn put_owner(&self, owner: &ExecutionOwner) -> Result<(), Failure> {
         let _lock = self.lock()?;
-        let mut scope = self.scope(&owner.pipeline_id, &owner.table)?;
+        let mut scope = self.scope(&owner.scope)?;
         scope.owner = Some(owner.clone());
-        replace(&self.scope_path(&owner.pipeline_id, &owner.table), &to_json(&scope)?)
+        replace(&self.scope_path(&owner.scope), &to_json(&scope)?)
     }
 
-    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> {
+    fn retire_at(&self, at: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> {
         let _lock = self.lock()?;
-        if let Some(fenced) = self.fenced(pipeline_id, table, fence)? {
+        if let Some(fenced) = self.fenced(at, fence)? {
             return Ok(fenced);
         }
-        let mut scope = self.scope(pipeline_id, table)?;
+        let mut scope = self.scope(at)?;
         if let Some((next, expected)) = cursor {
             if scope.cursor.version != expected {
                 return Ok(Cas::VersionMoved);
@@ -174,7 +186,7 @@ impl Catalog for LocalCatalog {
         if scope.owner.as_ref().is_some_and(|o| o.execution_id == execution_id) {
             scope.owner = None;
         }
-        replace(&self.scope_path(pipeline_id, table), &to_json(&scope)?)?;
+        replace(&self.scope_path(at), &to_json(&scope)?)?;
         Ok(Cas::Applied)
     }
 

@@ -228,19 +228,21 @@ unsettled: Where does an in-flight schedule's attempt counter persist, so a cras
 
 The execution owner a scope holds and the connector build it pins while pending.
 
-- `execution-owner` — One durable execution owner exists per live table and per backfill chunk, holding the connector identity with its component world, the pipeline `content_hash` and the input hash.
-- `host-scope` — A host-declared scope id owns an execution beside live tables and backfill chunks; the catalog keys every owner on its scope, and a host owner pins the plan reference and identities the host supplies.
+- `execution-owner` — One durable execution owner exists per scope; a table or chunk owner holds the connector identity with its component world, the pipeline `content_hash` and the input hash.
+- `host-scope` — The catalog keys every owner on its scope — live table, backfill chunk or host-declared id — a table owner keeping its stored key byte for byte, and a host owner pinning the plan reference and identities the host supplies.
   *A-run*
 - `execution-id-keys-the-journal` — Recorded work keys on the execution id; a catalog run id is the provenance of one attempt, so attempts under one owner resolve the same recorded values.
 - `retirement` — Retiring an owner and caching its committed position share one catalog transaction; a later fire receives a fresh execution id even at a byte-identical position. A completed backfill chunk retires the same way.
 - `marker-reconciles` — At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced it before any replay.
   *because a crash between marker and catalog otherwise replays a recorded pull into rows already committed*
-- `pinned-plan-changed` — While an owner is pending, a changed connector identity, component world or pipeline `content_hash` raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the pipeline and both identities.
+- `pinned-plan-changed` — While an owner is pending, a changed pin — connector identity, component world, pipeline `content_hash`, or a host's plan reference or identities — raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the scope and both pin sets.
   *A-connector*
 - `pin-recovery` — Restoring the recorded build and resuming to completion clears a pending owner; an explicit chunk rewind retires the owners its window covers.
 - `scope-independence` — A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.
 - `unclosed-execution` — An execution handle dropped without close records no status; its owner stays pending, and the next open under its scope resumes it once {{run.record.owner-lease}} lapses.
   *A-run*
+- `live-owner` — An open under a host scope whose pending owner has an attempt on an unexpired {{run.record.owner-lease}} fails `Transient` naming that attempt, and its run row closes `failed` without joining the owner.
+  *because two live handles on one owner share its journal, and either one retiring it strands the other*
 - `pin-release` — `success`, and a failure that wrote no batch, release the owner; every other status holds it.
 - `admission-pin` — A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.
   *A-connector*
@@ -262,6 +264,12 @@ flowchart LR
   CLOSE -->|"any other status"| HOLD["held owner"]
 ```
 
+#### Scenarios
+
+- `run.own.unclosed-execution`: WHEN a host execution records two steps and its process dies mid-third, THEN the next open under its scope after the lease lapses replays both steps without running their effects.
+- `run.own.live-owner`: WHEN attempt `job-a` holds host scope `index-42` open and `job-b` opens under it, THEN `job-b` fails `Transient` naming `job-a`, and `job-a` alone holds the owner.
+- `run.own.pinned-plan-changed`: WHEN a host scope's pending owner pins plan reference `plan-a` and an open asks for `plan-b`, THEN the open refuses with `ExecutionPinMismatch` and its run row closes `failed`.
+
 
 ## cancel
 
@@ -269,6 +277,7 @@ Stopping work in flight at either grain, the one token every await observes, and
 
 - `catalog-channel` — A stop is written onto the run row as a requested-at instant, a scope and an optional reason; the catalog is the only channel.
 - `two-grains` — A `run`-scoped stop halts one run and the fire continues; a `pipeline`-scoped stop halts every in-flight run of the pipeline and every table or chunk the fire had left. An unrecognized stored scope reads as `run`.
+- `host-grain` — A `pipeline`-scoped stop on a host execution's run halts every in-flight run under the same host-declared scope and no run of another scope.
 - `one-token` — Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait, a meter acquire and a subprocess wait.
   *because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled*
 - `poll-interval` — The token is fed by one catalog read before the run's first await and then one every 500 ms, the cancellation arm evaluated ahead of the work arm.

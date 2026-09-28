@@ -1,26 +1,25 @@
-//! The runner: opens a run against its pinned plan, resolves each pull through the
-//! journal under the step's retry schedule, lands every batch in one commit carrying the
-//! position, retires the owner, and closes the run row.
+//! The runner: a client of the execution handle. It opens an execution for a table
+//! against its pinned plan, resolves each pull through the journal under the step's retry
+//! schedule, lands every batch in one commit carrying the position, retires the owner, and
+//! closes the run row.
 
-use crate::cancel::{Cadence, CancelToken, Keeper};
+use crate::cancel::Cadence;
+use crate::execution::{Close, Execution};
+use crate::journal::{Journal, Resolved};
 use crate::project::Emitter;
-use crate::journal::{Journal, Resolved, StepError};
 use crate::stores::{FileBlobStore, FileJournalStore};
-use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey};
+use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
 use contextful_core::run::advance::{admits, advance, frontier, open_watermark, resolve_concurrent, watermark, CursorKind};
-use contextful_core::run::cancel::{mark, Scope};
-use contextful_core::run::journal::{sha256_hex, EntryKey};
-use contextful_core::run::own::{releases, ConnectorPin, ExecutionOwner, Pins};
-use contextful_core::run::plan::{Plan, NATIVE_WORLD};
-use contextful_core::run::ports::{BlobStore, Cancellation, JournalStore, Commit, Destination, Landed, Pull, PullRequest, Row, Shape, Source, Unshaped};
-use contextful_core::run::project::{Change, StepPatch, StepStatus};
-use contextful_core::run::record::{cap_error, select_history, HistoryPage, Owner, Phase, RunRow, RunStatus, Window, OWNER_LEASE_TTL_SECS};
-use contextful_core::run::retry::{decide, Decision};
+use contextful_core::run::cancel::{mark, same_grain, Scope};
+use contextful_core::run::journal::EntryKey;
+use contextful_core::run::own::{ConnectorPin, OwnerScope, Pins};
+use contextful_core::run::plan::Plan;
+use contextful_core::run::ports::{AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Pull, PullRequest, Row, Shape, Source, Unshaped};
+use contextful_core::run::record::{select_history, HistoryPage, RunRow, Window, OWNER_LEASE_TTL_SECS};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::topology::TopologyError;
 use serde_json::Value;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Arc;
 
 /// Why a run could not open, or a call on the engine refused.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -47,76 +46,20 @@ pub struct RunSpec {
 }
 
 /// The engine: the catalog behind its port, the journal over its row and blob stores,
-/// and the keeper's cadences.
+/// the awakeable store when one is wired, and the keeper's cadences.
 #[derive(Clone)]
 pub struct Engine<J = FileJournalStore, B = FileBlobStore> {
     pub catalog: Arc<dyn Catalog + Send + Sync>,
     pub journal: Journal<J, B>,
+    /// Where awakeables persist; `None` leaves suspension unwired.
+    pub awakeables: Option<Arc<dyn AwakeableStore>>,
     pub cadence: Cadence,
     /// The live projection's emitter; every event follows the durable change it reports.
     pub emitter: Option<Emitter>,
 }
 
-/// A failure the body of a run closes on.
-enum Close {
-    Refused(RunError),
-    Failed(Failure),
-}
-
-impl From<Failure> for Close {
-    fn from(f: Failure) -> Close {
-        Close::Failed(f)
-    }
-}
-
-impl From<RunError> for Close {
-    fn from(e: RunError) -> Close {
-        Close::Refused(e)
-    }
-}
-
-impl From<StepError> for Close {
-    fn from(e: StepError) -> Close {
-        match e {
-            StepError::Failed(f) | StepError::Storage(f) => Close::Failed(f),
-            StepError::Journal(r) => Close::Refused(r),
-        }
-    }
-}
-
-impl Close {
-    /// The tag and message the run row records.
-    fn recorded(&self) -> (FailureTag, String) {
-        match self {
-            Close::Failed(f) => (f.tag, f.to_string()),
-            Close::Refused(RunError::StepFailed { failure, .. }) => (failure.tag, self.message()),
-            Close::Refused(_) => (FailureTag::Permanent, self.message()),
-        }
-    }
-
-    fn message(&self) -> String {
-        match self {
-            Close::Failed(f) => f.to_string(),
-            Close::Refused(e) => e.to_string(),
-        }
-    }
-}
-
-/// A fresh opaque execution id.
-fn fresh_id() -> Result<String, Failure> {
-    let mut bytes = [0u8; 12];
-    getrandom::fill(&mut bytes).map_err(|e| Failure::new(FailureTag::Storage, format!("minting an execution id: {e}")))?;
-    Ok(format!("x-{}", bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()))
-}
-
 fn json_bytes(v: &Option<Value>) -> Vec<u8> {
     serde_json::to_vec(v).unwrap_or_default()
-}
-
-/// A seed for the retry jitter, fixed per run.
-fn seed(run_id: &str) -> u64 {
-    let hex = sha256_hex(run_id.as_bytes());
-    u64::from_str_radix(&hex[..16], 16).unwrap_or_default()
 }
 
 impl<J: JournalStore, B: BlobStore> Engine<J, B> {
@@ -147,7 +90,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     }
 
     /// Whether the run holding a journal claim is alive: in flight under an unexpired owner lease.
-    fn holder_live(&self, run_id: &str) -> Result<bool, Failure> {
+    pub(crate) fn holder_live(&self, run_id: &str) -> Result<bool, Failure> {
         let now = self.catalog.now()?;
         Ok(match self.catalog.run(run_id)? {
             Some(row) => row.status.is_in_flight() && row.owner.as_ref().is_some_and(|o| !o.expired(now)),
@@ -190,7 +133,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     pub fn run_with(&self, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
         let plan = &spec.plan;
         plan.validate()?;
-        if plan.spec.connector.world != NATIVE_WORLD {
+        if !self.capabilities().hosts(&plan.spec.connector.world) {
             return Err(TopologyError::ComponentHostMissing(format!(
                 "connector `{}` implements component world `{}` and this build links no component host; no native source stands in for it",
                 plan.spec.connector.id, plan.spec.connector.world
@@ -202,119 +145,23 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         }
         let (pipeline_id, table) = (plan.spec.pipeline.as_str(), plan.spec.table.as_str());
         self.reconcile(pipeline_id, table, dest)?;
-        let now = self.catalog.now()?;
-        let pending = self.catalog.owner(pipeline_id, table)?;
-        let execution_id = match &pending {
-            Some(o) => o.execution_id.clone(),
-            None => fresh_id()?,
-        };
-
-        // The row is written at open, before the first pull.
-        let mut row = RunRow {
+        let open = OpenExecution {
+            scope: OwnerScope::table(pipeline_id, table),
+            pins: Pins { connector: spec.connector.clone(), content_hash: plan.content_hash.clone(), input_hash: String::new() }.into(),
             run_id: spec.run_id.clone(),
-            pipeline_id: pipeline_id.to_string(),
-            table: table.to_string(),
             site_id: spec.site_id.clone(),
-            status: RunStatus::Running,
-            owner: Some(Owner::leased(spec.pid, spec.boot_id.clone(), now)),
-            started_at: now,
-            ended_at: None,
-            rows: 0,
-            bytes: 0,
-            batches: 0,
-            error_kind: None,
-            error_message: None,
-            connector_id: spec.connector.id.clone(),
-            connector_version: spec.connector.version.clone(),
-            connector_hash: spec.connector.hash.clone(),
+            pid: spec.pid,
+            boot_id: spec.boot_id.clone(),
             trace_id: spec.trace_id.clone(),
-            phase: Phase::Plan,
-            execution_id: execution_id.clone(),
-            stop: None,
+            connector: Some(spec.connector.clone()),
+            schedule: plan.schedule.clone(),
         };
-        self.catalog.put_run(&row)?;
-        self.emit(spec, Change::Status { status: RunStatus::Running, at: Some(now), error: None });
-
-        let token = CancelToken::default();
-        let held: Arc<Mutex<Option<Lease>>> = Arc::default();
-        let keeper = Keeper::start_holding(self.catalog.clone(), &spec.run_id, token.clone(), self.cadence, held.clone());
-        let mut owned = false;
-        let outcome = self.body(spec, &execution_id, pending, &token, &held, &mut owned, source, shape, dest);
-        drop(keeper);
-        let lease = held.lock().unwrap_or_else(|e| e.into_inner()).take();
-        if let Some(l) = &lease {
-            self.catalog.release(l)?;
-        }
-
-        let now = self.catalog.now()?;
-        let closed = self.catalog.update_run(&spec.run_id, &mut |r| {
-            r.ended_at = Some(now);
-            r.phase = Phase::Commit;
-            r.owner = None;
-            match &outcome {
-                Ok((landed, batches)) => {
-                    r.status = RunStatus::Success;
-                    r.rows = landed.rows;
-                    r.bytes = landed.bytes;
-                    r.batches = *batches;
-                }
-                Err(close) => {
-                    let (tag, message) = close.recorded();
-                    r.status = if tag == FailureTag::Canceled { RunStatus::Canceled } else { RunStatus::Failed };
-                    r.error_kind = Some(tag);
-                    r.error_message = Some(cap_error(&message));
-                }
-            }
-            Ok(())
-        })?;
-        row = match closed {
-            Some(Ok(r)) => r,
-            _ => row,
-        };
-        let error = row.error_kind.map(|tag| Failure::new(tag, row.error_message.clone().unwrap_or_default()));
-        self.emit(spec, Change::Status { status: row.status, at: row.ended_at, error });
-        if row.status != RunStatus::Success && owned && releases(row.status, self.journal.recorded(&execution_id)?) && !self.shared_with_a_live_attempt(pipeline_id, table, &execution_id, &spec.run_id)? {
-            self.catalog.retire(pipeline_id, table, &execution_id, None, None)?;
-            self.journal.collect(&execution_id)?;
-        }
-        Ok(row)
+        let mut execution = self.begin(&open)?;
+        let outcome = self.body(spec, &mut execution, source, shape, dest);
+        execution.close_with(outcome)
     }
 
-    /// Emit one projection event; emission never blocks and is no journal step.
-    fn emit(&self, spec: &RunSpec, change: Change) {
-        if let Some(e) = &self.emitter {
-            e.emit(&spec.run_id, &spec.plan.spec.pipeline, change);
-        }
-    }
-
-    /// Whether the pending owner of the table holds `execution_id` under another attempt
-    /// still in flight on a live owner lease; such an execution is never retired or collected.
-    fn shared_with_a_live_attempt(&self, pipeline_id: &str, table: &str, execution_id: &str, run_id: &str) -> Result<bool, Failure> {
-        let Some(owner) = self.catalog.owner(pipeline_id, table)? else { return Ok(false) };
-        if owner.execution_id != execution_id {
-            return Ok(true);
-        }
-        for attempt in owner.attempts.iter().filter(|a| a.as_str() != run_id) {
-            if self.holder_live(attempt)? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn body(
-        &self,
-        spec: &RunSpec,
-        execution_id: &str,
-        pending: Option<ExecutionOwner>,
-        token: &CancelToken,
-        held: &Arc<Mutex<Option<Lease>>>,
-        owned: &mut bool,
-        source: &mut dyn Source,
-        shape: &dyn Shape,
-        dest: &mut dyn Destination,
-    ) -> Result<(Landed, u64), Close> {
+    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<(Landed, u64), Close> {
         let plan = &spec.plan;
         let (pipeline_id, table) = (plan.spec.pipeline.as_str(), plan.spec.table.as_str());
 
@@ -326,29 +173,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             })?;
             let fence = lease.fence;
             // The lease joins the slot first, so a refused fence record still releases it.
-            *held.lock().unwrap_or_else(|e| e.into_inner()) = Some(lease);
+            execution.hold(lease);
             dest.open_fence(pipeline_id, table, fence)?;
         }
 
-        let cached = self.catalog.cursor(pipeline_id, table)?;
-        let pins = Pins { connector: spec.connector.clone(), content_hash: plan.content_hash.clone(), input_hash: sha256_hex(&json_bytes(&cached.position)) };
-        let mut owner = match pending {
-            Some(owner) => {
-                owner.check_pins(&pins)?;
-                owner
-            }
-            None => ExecutionOwner {
-                execution_id: execution_id.to_string(),
-                pipeline_id: pipeline_id.to_string(),
-                table: table.to_string(),
-                pins,
-                attempts: Vec::new(),
-                opened_at: self.catalog.now()?,
-            },
-        };
-        owner.attempts.push(spec.run_id.clone());
-        self.catalog.put_owner(&owner)?;
-        *owned = true;
+        let cached = execution.cursor_row()?;
+        execution.claim()?;
+        let execution_id = execution.execution_id().to_string();
 
         let field = plan.spec.cursor.field.clone().unwrap_or_default();
         let mut position = cached.position.clone();
@@ -358,13 +189,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         };
         let mut batches: Vec<Vec<Row>> = Vec::new();
         for ordinal in 0.. {
-            if token.requested() {
+            if execution.token().requested() {
                 return Err(Close::Failed(Failure::canceled("stopped between pulls")));
             }
             let label = format!("pull-{ordinal}");
-            let key = EntryKey::new(execution_id, &label, &json_bytes(&position));
+            let key = EntryKey::new(&execution_id, &label, &json_bytes(&position));
             let request = PullRequest { step_label: label.clone(), position: position.clone(), idempotency_key: key.idempotency_key() };
-            let resolved = self.step(spec, &key, &request, token, source)?;
+            let resolved = self.step(spec, execution, &key, &request, source)?;
             let pull = Pull::decode(resolved.bytes())?;
             let (rows, last) = match plan.cursor_kind {
                 CursorKind::Monotonic => {
@@ -402,13 +233,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
 
         // The land path carries no stop check. Under a lease, the commit point re-reads the
         // lease: a writer a later acquisition fenced out lands nothing.
-        let lease = held.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let lease = execution.lease();
         let moved = position != cached.position;
         let batch_count = batches.len() as u64;
         let committed_at = self.catalog.now()?;
         let landed = if batch_count > 0 || moved {
             let precommit = || -> Result<(), Failure> {
-                let Some(l) = held.lock().unwrap_or_else(|e| e.into_inner()).clone() else { return Ok(()) };
+                let Some(l) = execution.lease() else { return Ok(()) };
                 if self.catalog.lease_holds(&l)? {
                     Ok(())
                 } else {
@@ -443,7 +274,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         };
         let mut expected = cached.version;
         loop {
-            match self.catalog.retire(pipeline_id, table, execution_id, Some((next.clone(), expected)), lease.as_ref())? {
+            match execution.retire(Some((next.clone(), expected)), lease.as_ref())? {
                 Cas::Applied => break,
                 Cas::Fenced(e) => return Err(Close::Failed(Failure::new(FailureTag::Storage, e.to_string()))),
                 Cas::VersionMoved if plan.cursor_kind == CursorKind::Monotonic => {
@@ -461,49 +292,20 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 Cas::VersionMoved => return Err(Close::Failed(Failure::new(FailureTag::Storage, "the cursor row moved under the retiring run's lease"))),
             }
         }
-        self.journal.collect(execution_id)?;
+        self.journal.collect(&execution_id)?;
         Ok((landed, batch_count))
     }
 
-    /// Resolve one pull through the journal under the plan's retry schedule.
-    fn step(&self, spec: &RunSpec, key: &EntryKey, request: &PullRequest, token: &CancelToken, source: &mut dyn Source) -> Result<Resolved, Close> {
+    /// Resolve one pull through the execution's journal under the plan's retry schedule.
+    fn step(&self, spec: &RunSpec, execution: &Execution<'_, J, B>, key: &EntryKey, request: &PullRequest, source: &mut dyn Source) -> Result<Resolved, Close> {
         let journaled = spec.plan.spec.journal;
         // An empty pull is never journaled.
         let journal_it = |bytes: &[u8]| journaled && Pull::decode(bytes).is_ok_and(|p| !p.rows.is_empty());
-        let holder_live = |run: &str| self.holder_live(run);
-        let mut attempt = 1;
-        let label = request.step_label.as_str();
-        loop {
-            self.emit(spec, Change::Step(StepPatch { attempts: Some(attempt), ..StepPatch::new(label).status(StepStatus::Running) }));
-            let failure = match self.journal.step(key, &spec.run_id, &holder_live, token, &journal_it, &mut || source.pull(request, token)) {
-                Ok(r) => {
-                    self.emit(spec, Change::Step(StepPatch::new(label).status(StepStatus::Completed)));
-                    return Ok(r);
-                }
-                Err(StepError::Failed(f)) => f,
-                Err(e) => return Err(e.into()),
-            };
-            if failure.tag == FailureTag::Canceled {
-                return Err(Close::Failed(failure));
-            }
-            match decide(&spec.plan.schedule, label, attempt, &failure, seed(&spec.run_id)) {
-                Decision::Retry { delay_ms } => {
-                    self.emit(spec, Change::Step(StepPatch { failure: Some(failure.clone()), ..StepPatch::new(label).status(StepStatus::Retrying) }));
-                    if !token.wait_timeout(Duration::from_millis(delay_ms)) {
-                        return Err(Close::Failed(Failure::canceled(format!("stopped during the retry sleep of `{label}`"))));
-                    }
-                    attempt += 1;
-                }
-                Decision::Fail { error, .. } | Decision::Reschedule { error, .. } => {
-                    self.emit(spec, Change::Step(StepPatch { failure: Some(failure), ..StepPatch::new(label).status(StepStatus::Failed) }));
-                    return Err(Close::Refused(error));
-                }
-            }
-        }
+        execution.step_keyed(key, &journal_it, &mut |token| source.pull(request, token))
     }
 
     /// Write a stop onto a run row, and under `pipeline` scope onto every in-flight run of
-    /// its pipeline. Returns the marked run ids.
+    /// its pipeline, or of its host scope for a host execution's run. Returns the marked run ids.
     pub fn cancel(&self, run_id: &str, scope: Scope, reason: Option<String>) -> Result<Vec<String>, EngineError> {
         let now = self.catalog.now()?;
         let not_found = || RunError::CancelTargetNotInFlight(format!("no run `{run_id}` is pending, running or waiting"));
@@ -514,7 +316,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let mut marked = vec![target.run_id.clone()];
         if scope == Scope::Pipeline {
             for other in self.catalog.runs(Some(&target.pipeline_id))? {
-                if other.run_id != target.run_id && other.status.is_in_flight() {
+                if other.run_id != target.run_id && other.status.is_in_flight() && same_grain(&target, &other) {
                     if let Some(Ok(_)) = self.catalog.update_run(&other.run_id, &mut |r| mark(r, scope, reason.clone(), now))? {
                         marked.push(other.run_id);
                     }

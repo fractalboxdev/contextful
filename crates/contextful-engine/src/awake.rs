@@ -42,14 +42,7 @@ impl From<StepError> for AwakeError {
 }
 
 /// What a waiting run reads for its awakeable.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Awaited {
-    /// Still suspended.
-    Pending,
-    /// The resume payload, read back from the journal.
-    Resumed(Vec<u8>),
-    TimedOut,
-}
+pub use contextful_core::run::ports::Wake as Awaited;
 
 /// The journal key a resume payload records under.
 pub fn resume_key(execution_id: &str, token: &str) -> EntryKey {

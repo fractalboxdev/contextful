@@ -1,4 +1,4 @@
-//! `machine.sqlite` behind the `Catalog` port: lease rows, each table's cursor row and
+//! `machine.sqlite` behind the `Catalog` port: lease rows, each scope's cursor row and
 //! pending owner, and run rows. Every write runs in an immediate transaction, so SQLite's
 //! one write lock serializes it against every other connection to the file and each
 //! conditional update is linearizable on the machine (`topology.coordinate.backends`).
@@ -6,7 +6,7 @@
 use crate::{open, storage};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
 use contextful_core::ports::Clock;
-use contextful_core::run::own::ExecutionOwner;
+use contextful_core::run::own::{ExecutionOwner, OwnerScope};
 use contextful_core::run::record::RunRow;
 use contextful_core::run::{Failure, RunError};
 use contextful_core::store::StoreError;
@@ -15,20 +15,27 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBe
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+/// One row per owner scope: a table keys on `kind = 'table'` and an empty part, a backfill
+/// chunk on `kind = 'chunk'` and its chunk, a host scope on `kind = 'host'` and its id.
+const SCOPE_TABLE: &str = "
+CREATE TABLE scope (
+    pipeline_id TEXT NOT NULL,
+    tbl         TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    part        TEXT NOT NULL,
+    version     INTEGER NOT NULL,
+    cursor      TEXT NOT NULL,
+    owner       TEXT,
+    PRIMARY KEY (pipeline_id, tbl, kind, part)
+);
+";
+
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS lease (
     key        TEXT PRIMARY KEY,
     holder     TEXT,
     expires_at TEXT,
     fence      INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS scope (
-    pipeline_id TEXT NOT NULL,
-    tbl         TEXT NOT NULL,
-    version     INTEGER NOT NULL,
-    cursor      TEXT NOT NULL,
-    owner       TEXT,
-    PRIMARY KEY (pipeline_id, tbl)
 );
 CREATE TABLE IF NOT EXISTS run (
     run_id      TEXT PRIMARY KEY,
@@ -49,7 +56,9 @@ impl MachineCatalog {
     /// (`topology.coordinate.catalog-clock`).
     pub fn open(path: &Path, clock: Arc<dyn Clock + Send + Sync>) -> Result<MachineCatalog, Failure> {
         let conn = open(path, SCHEMA)?;
-        Ok(MachineCatalog { path: path.to_path_buf(), conn: Mutex::new(conn), clock })
+        let catalog = MachineCatalog { path: path.to_path_buf(), conn: Mutex::new(conn), clock };
+        catalog.with(true, migrate_scope_keys)?;
+        Ok(catalog)
     }
 
     pub fn path(&self) -> &Path {
@@ -105,11 +114,48 @@ fn put_lease_row(tx: &Transaction, key: &str, row: &LeaseRow, fail: Fail) -> Res
     Ok(())
 }
 
-/// A table's cursor row, its version read from the column a compare-and-swap predicates
+/// Create the scope-keyed `scope` table, or rebuild one keyed on `(pipeline_id, tbl)`
+/// alone into it. Every stored row becomes a table scope with its pipeline, table, cursor
+/// and owner text unchanged, so a pending table owner resumes as it was.
+fn migrate_scope_keys(tx: &Transaction, fail: Fail) -> Result<(), Failure> {
+    let columns: Vec<String> = tx
+        .prepare("SELECT name FROM pragma_table_info('scope')")
+        .and_then(|mut q| q.query_map([], |r| r.get::<_, String>(0))?.collect())
+        .map_err(|e| fail(&e))?;
+    if columns.iter().any(|c| c == "kind") {
+        return Ok(());
+    }
+    if columns.is_empty() {
+        return tx.execute_batch(SCOPE_TABLE).map_err(|e| fail(&e));
+    }
+    tx.execute_batch(&format!(
+        "ALTER TABLE scope RENAME TO scope_by_table;
+         {SCOPE_TABLE}
+         INSERT INTO scope (pipeline_id, tbl, kind, part, version, cursor, owner)
+             SELECT pipeline_id, tbl, 'table', '', version, cursor, owner FROM scope_by_table;
+         DROP TABLE scope_by_table;"
+    ))
+    .map_err(|e| fail(&e))
+}
+
+/// The row key of a scope: pipeline, table, kind and part. A table keeps the pipeline and
+/// table columns it was always keyed on.
+fn key(scope: &OwnerScope) -> [&str; 4] {
+    match scope {
+        OwnerScope::Table { pipeline_id, table } => [pipeline_id, table, "table", ""],
+        OwnerScope::Chunk { pipeline_id, table, chunk } => [pipeline_id, table, "chunk", chunk],
+        OwnerScope::Host { host_scope } => ["", "", "host", host_scope],
+    }
+}
+
+const WHERE_KEY: &str = "pipeline_id = ?1 AND tbl = ?2 AND kind = ?3 AND part = ?4";
+
+/// A scope's cursor row, its version read from the column a compare-and-swap predicates
 /// on, and its pending owner.
-fn scope(tx: &Transaction, pipeline_id: &str, table: &str, fail: Fail) -> Result<(CursorRow, Option<ExecutionOwner>), Failure> {
+fn scope(tx: &Transaction, at: &OwnerScope, fail: Fail) -> Result<(CursorRow, Option<ExecutionOwner>), Failure> {
+    let [p, t, k, c] = key(at);
     let row = tx
-        .query_row("SELECT version, cursor, owner FROM scope WHERE pipeline_id = ?1 AND tbl = ?2", params![pipeline_id, table], |r| {
+        .query_row(&format!("SELECT version, cursor, owner FROM scope WHERE {WHERE_KEY}"), params![p, t, k, c], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?))
         })
         .optional()
@@ -121,9 +167,10 @@ fn scope(tx: &Transaction, pipeline_id: &str, table: &str, fail: Fail) -> Result
 }
 
 /// Insert the zero-version row a first compare-and-swap predicates on.
-fn seed_scope(tx: &Transaction, pipeline_id: &str, table: &str, fail: Fail) -> Result<(), Failure> {
+fn seed_scope(tx: &Transaction, at: &OwnerScope, fail: Fail) -> Result<(), Failure> {
+    let [p, t, k, c] = key(at);
     let empty = to_text(&CursorRow::default(), fail)?;
-    tx.execute("INSERT OR IGNORE INTO scope (pipeline_id, tbl, version, cursor) VALUES (?1, ?2, 0, ?3)", params![pipeline_id, table, empty])
+    tx.execute("INSERT OR IGNORE INTO scope (pipeline_id, tbl, kind, part, version, cursor) VALUES (?1, ?2, ?3, ?4, 0, ?5)", params![p, t, k, c, empty])
         .map_err(|e| fail(&e))?;
     Ok(())
 }
@@ -131,28 +178,27 @@ fn seed_scope(tx: &Transaction, pipeline_id: &str, table: &str, fail: Fail) -> R
 /// One conditional update: the new cursor lands only while the stored version still
 /// equals `expected`, and the affected-row count says whether it did
 /// (`topology.coordinate.cursor-cas`).
-fn swap_cursor(tx: &Transaction, pipeline_id: &str, table: &str, expected: u64, next: CursorRow, fail: Fail) -> Result<Cas, Failure> {
-    seed_scope(tx, pipeline_id, table, fail)?;
+fn swap_cursor(tx: &Transaction, at: &OwnerScope, expected: u64, next: CursorRow, fail: Fail) -> Result<Cas, Failure> {
+    seed_scope(tx, at, fail)?;
+    let [p, t, k, c] = key(at);
     let stored = to_text(&CursorRow { version: expected + 1, ..next }, fail)?;
     let n = tx
-        .execute(
-            "UPDATE scope SET cursor = ?3, version = version + 1 WHERE pipeline_id = ?1 AND tbl = ?2 AND version = ?4",
-            params![pipeline_id, table, stored, expected as i64],
-        )
+        .execute(&format!("UPDATE scope SET cursor = ?5, version = version + 1 WHERE {WHERE_KEY} AND version = ?6"), params![p, t, k, c, stored, expected as i64])
         .map_err(|e| fail(&e))?;
     Ok(if n == 1 { Cas::Applied } else { Cas::VersionMoved })
 }
 
 /// The refusal a commit carrying `fence` meets once a later acquisition moved the lease
 /// past it; `None` when the fence is current or the commit carries none.
-fn fenced(tx: &Transaction, pipeline_id: &str, table: &str, fence: Option<&Lease>, fail: Fail) -> Result<Option<Cas>, Failure> {
+fn fenced(tx: &Transaction, scope: &OwnerScope, fence: Option<&Lease>, fail: Fail) -> Result<Option<Cas>, Failure> {
     let Some(lease) = fence else { return Ok(None) };
     let row = lease_row(tx, &lease.key, fail)?;
+    let at = match scope.pipeline_table() {
+        Some((p, t)) => format!("`{p}`/`{t}`"),
+        None => scope.to_string(),
+    };
     Ok((!row.admits(lease.fence)).then(|| {
-        Cas::Fenced(StoreError::LeaseFenced(format!(
-            "cursor commit for `{pipeline_id}`/`{table}` carries fence {} and lease `{}` is at fence {}",
-            lease.fence, lease.key, row.fence
-        )))
+        Cas::Fenced(StoreError::LeaseFenced(format!("cursor commit for {at} carries fence {} and lease `{}` is at fence {}", lease.fence, lease.key, row.fence)))
     }))
 }
 
@@ -222,50 +268,50 @@ impl Catalog for MachineCatalog {
         self.with(false, |tx, fail| lease_row(tx, &key.spelling(), fail))
     }
 
-    fn cursor(&self, pipeline_id: &str, table: &str) -> Result<CursorRow, Failure> {
-        self.with(false, |tx, fail| Ok(scope(tx, pipeline_id, table, fail)?.0))
+    fn cursor_at(&self, at: &OwnerScope) -> Result<CursorRow, Failure> {
+        self.with(false, |tx, fail| Ok(scope(tx, at, fail)?.0))
     }
 
-    fn cursor_cas(&self, pipeline_id: &str, table: &str, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> {
+    fn cursor_cas_at(&self, at: &OwnerScope, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> {
         self.with(true, |tx, fail| {
-            if scope(tx, pipeline_id, table, fail)?.0.version != expected_version {
+            if scope(tx, at, fail)?.0.version != expected_version {
                 return Ok(Cas::VersionMoved);
             }
-            if let Some(refused) = fenced(tx, pipeline_id, table, fence, fail)? {
+            if let Some(refused) = fenced(tx, at, fence, fail)? {
                 return Ok(refused);
             }
-            swap_cursor(tx, pipeline_id, table, expected_version, next, fail)
+            swap_cursor(tx, at, expected_version, next, fail)
         })
     }
 
-    fn owner(&self, pipeline_id: &str, table: &str) -> Result<Option<ExecutionOwner>, Failure> {
-        self.with(false, |tx, fail| Ok(scope(tx, pipeline_id, table, fail)?.1))
+    fn owner_at(&self, at: &OwnerScope) -> Result<Option<ExecutionOwner>, Failure> {
+        self.with(false, |tx, fail| Ok(scope(tx, at, fail)?.1))
     }
 
     fn put_owner(&self, owner: &ExecutionOwner) -> Result<(), Failure> {
         self.with(true, |tx, fail| {
-            seed_scope(tx, &owner.pipeline_id, &owner.table, fail)?;
+            seed_scope(tx, &owner.scope, fail)?;
+            let [p, t, k, c] = key(&owner.scope);
             let text = to_text(owner, fail)?;
-            tx.execute("UPDATE scope SET owner = ?3 WHERE pipeline_id = ?1 AND tbl = ?2", params![owner.pipeline_id, owner.table, text])
-                .map_err(|e| fail(&e))?;
+            tx.execute(&format!("UPDATE scope SET owner = ?5 WHERE {WHERE_KEY}"), params![p, t, k, c, text]).map_err(|e| fail(&e))?;
             Ok(())
         })
     }
 
-    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> {
+    fn retire_at(&self, at: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> {
         self.with(true, |tx, fail| {
-            if let Some(refused) = fenced(tx, pipeline_id, table, fence, fail)? {
+            if let Some(refused) = fenced(tx, at, fence, fail)? {
                 return Ok(refused);
             }
             if let Some((next, expected)) = cursor {
                 // A moved version applies nothing, the owner's retirement included.
-                if swap_cursor(tx, pipeline_id, table, expected, next, fail)? == Cas::VersionMoved {
+                if swap_cursor(tx, at, expected, next, fail)? == Cas::VersionMoved {
                     return Ok(Cas::VersionMoved);
                 }
             }
-            if scope(tx, pipeline_id, table, fail)?.1.is_some_and(|o| o.execution_id == execution_id) {
-                tx.execute("UPDATE scope SET owner = NULL WHERE pipeline_id = ?1 AND tbl = ?2", params![pipeline_id, table])
-                    .map_err(|e| fail(&e))?;
+            if scope(tx, at, fail)?.1.is_some_and(|o| o.execution_id == execution_id) {
+                let [p, t, k, c] = key(at);
+                tx.execute(&format!("UPDATE scope SET owner = NULL WHERE {WHERE_KEY}"), params![p, t, k, c]).map_err(|e| fail(&e))?;
             }
             Ok(Cas::Applied)
         })

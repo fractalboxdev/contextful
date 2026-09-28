@@ -37,3 +37,28 @@ fn only_an_in_flight_row_accepts_a_mark_and_scopes_read_by_grain() {
     assert!(stops(&target, &sibling));
     assert!(!stops(&target, &elsewhere));
 }
+
+/// A `pipeline`-scoped stop on a host execution's run halts every in-flight run under the same host-declared
+/// scope and no run of another scope.
+#[test]
+fn a_host_runs_pipeline_grain_is_its_host_scope() {
+    let host = |id: &str, scope: &str| {
+        let mut r = row(id, "2030-01-01T00:00:00Z");
+        r.pipeline_id = String::new();
+        r.table = String::new();
+        r.host_scope = Some(scope.into());
+        r
+    };
+    let mut target = host("job-a", "index-42");
+    mark(&mut target, Scope::Pipeline, None, at("2030-01-01T00:00:01Z")).unwrap();
+    assert!(stops(&target, &host("job-0", "index-42")));
+    assert!(!stops(&target, &host("job-b", "unrelated-scope")));
+    let mut table = row("run-1", "2030-01-01T00:00:00Z");
+    table.pipeline_id = String::new();
+    assert!(!stops(&target, &table), "a host stop reaches no table run");
+    let mut table_target = row("run-2", "2030-01-01T00:00:00Z");
+    mark(&mut table_target, Scope::Pipeline, None, at("2030-01-01T00:00:01Z")).unwrap();
+    let mut hosted = host("job-c", "index-42");
+    hosted.pipeline_id = table_target.pipeline_id.clone();
+    assert!(!stops(&table_target, &hosted), "a table stop reaches no host run");
+}
