@@ -7,7 +7,7 @@ use contextful_core::ports::SigningPort;
 use contextful_core::AuthorityError;
 use contextful_policy::issue::{mint, MintClaims, SeedSigner, KEYGEN_COMMAND};
 use contextful_policy::keyset::{KeySet, KeySource, StaticPins};
-use contextful_policy::verify::{introspect, verify, Admission, AdmittedAuthority};
+use contextful_policy::verify::{introspect, verify, Admission, AdmittedAuthority, BiscuitFormat, CredentialFormat};
 use std::cell::RefCell;
 
 fn scratch(name: &str) -> std::path::PathBuf {
@@ -152,6 +152,10 @@ fn a_mint_signs_through_the_port_and_admits_under_the_ports_public_key() {
         assert!(admit_under(&credential, &custodian).is_ok(), "{algorithm} admits under the port's key");
         // The build key is discarded: another key of the same scheme admits nothing.
         refused(admit_under(&credential, &Custodian::new(algorithm)), "SignatureInvalid");
+        // The format interface mints through the same port.
+        let format: &dyn CredentialFormat = &BiscuitFormat;
+        let issued = format.issue(&read_research(&custodian), &MintClaims::default(), &custodian).unwrap();
+        assert!(admit_under(&issued, &custodian).is_ok(), "{algorithm} mints through the format interface");
     }
     // The port's scheme is authoritative, and a mismatch reaches no signing call.
     let ed25519 = Custodian::new(SignatureAlgorithm::Ed25519);
