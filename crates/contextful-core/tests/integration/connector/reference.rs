@@ -73,7 +73,11 @@ fn an_unclosed_empty_or_nested_placeholder_is_malformed() {
 // spec: connector.reference.material-in-a-declaration@3ddcdc4d
 #[test]
 fn a_credential_literal_in_a_declaration_is_refused() {
-    for value in ["Bearer ghp_0123456789abcdefghijABCDEFGHIJ012345", "Bearer 9f8e7d6c5b4a39218a7b", "Basic dXNlcjpodW50ZXIy", "AKIAIOSFODNN7EXAMPLE"] {
+    for value in [
+        "Bearer ghp_0123456789abcdefghijABCDEFGHIJ012345", "Bearer 9f8e7d6c5b4a39218a7b", "Basic dXNlcjpodW50ZXIy", "AKIAIOSFODNN7EXAMPLE",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJlLXNpZ25hdHVyZQ",
+        "sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z_AbCdEfGh",
+    ] {
         match check_material("headers.Authorization", value) {
             Err(ConnectorError::SecretMaterialInDeclaration(m)) => {
                 assert!(m.contains("headers.Authorization"), "{m}");

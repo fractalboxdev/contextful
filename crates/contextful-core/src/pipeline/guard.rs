@@ -13,9 +13,17 @@ pub const MARKER: &str = "[REDACTED:secret]";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Kind {
     PemPrivateKey,
+    /// OpenAI and Anthropic keys: `sk-`, `sk-proj-`, `sk-ant-`.
+    LlmProviderKey,
+    GoogleApiKey,
+    /// Stripe secret and restricted keys: `sk_live_`, `rk_live_`.
+    StripeKey,
+    Jwt,
     AwsAccessKeyId,
     GithubToken,
     SlackToken,
+    /// The token of an `Authorization: Bearer <token>` header; the scheme stays.
+    Bearer,
     Assignment,
 }
 
@@ -32,6 +40,109 @@ fn find_all<'a>(hay: &'a str, needle: &'a str) -> impl Iterator<Item = usize> + 
 
 fn run_len(bytes: &[u8], from: usize, ok: impl Fn(u8) -> bool) -> usize {
     bytes[from.min(bytes.len())..].iter().take_while(|b| ok(**b)).count()
+}
+
+fn base64url(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'-' || b == b'_'
+}
+
+/// `s[i..]` starts a word: `-` and `_` count as word characters, so `my-sk-learn-...` starts none.
+fn word_start(b: &[u8], i: usize) -> bool {
+    i == 0 || !base64url(b[i - 1])
+}
+
+fn llm_provider(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
+    let b = s.as_bytes();
+    let mut floor = 0;
+    for i in find_all(s, "sk-") {
+        if i < floor || !word_start(b, i) {
+            continue;
+        }
+        let n = run_len(b, i + 3, base64url);
+        floor = i + 3 + n;
+        // Real keys run 48 to 164 characters; 32 clears hyphenated slugs such as `sk-learn-...`.
+        if n >= 32 {
+            out.push((Kind::LlmProviderKey, i..i + 3 + n));
+        }
+    }
+}
+
+fn google(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
+    let b = s.as_bytes();
+    for i in find_all(s, "AIza") {
+        if !word_start(b, i) {
+            continue;
+        }
+        // At most 36 bytes are read: the 35 of the key and one proving it ends.
+        let tail = b[(i + 4).min(b.len())..].iter().take(36).take_while(|c| base64url(**c)).count();
+        if tail == 35 {
+            out.push((Kind::GoogleApiKey, i..i + 39));
+        }
+    }
+}
+
+fn stripe(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
+    let b = s.as_bytes();
+    for prefix in ["sk_live_", "rk_live_"] {
+        let mut floor = 0;
+        for i in find_all(s, prefix) {
+            if i < floor || !word_start(b, i) {
+                continue;
+            }
+            let n = run_len(b, i + 8, |c| c.is_ascii_alphanumeric());
+            floor = i + 8 + n;
+            if n >= 24 {
+                out.push((Kind::StripeKey, i..i + 8 + n));
+            }
+        }
+    }
+}
+
+/// Three base64url segments joined by `.`, the header and payload each opening `eyJ` (`{"`).
+fn jwt(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
+    let b = s.as_bytes();
+    let mut floor = 0;
+    for i in find_all(s, "eyJ") {
+        // A start after `.` sits inside a dotted run, so no token begins there.
+        if i < floor || !word_start(b, i) || (i > 0 && b[i - 1] == b'.') {
+            continue;
+        }
+        let header_end = i + run_len(b, i, base64url);
+        floor = header_end;
+        let payload = header_end + 1;
+        if header_end >= b.len() || b[header_end] != b'.' || !b[payload..].starts_with(b"eyJ") {
+            continue;
+        }
+        let payload_end = payload + run_len(b, payload, base64url);
+        floor = payload_end;
+        if payload_end >= b.len() || b[payload_end] != b'.' {
+            continue;
+        }
+        let end = payload_end + 1 + run_len(b, payload_end + 1, base64url);
+        floor = end;
+        if end > payload_end + 1 {
+            out.push((Kind::Jwt, i..end));
+        }
+    }
+}
+
+/// `Bearer <token68>`, case-insensitive on the scheme, over the lowercase copy the assignment matcher shares.
+fn bearer(s: &str, lower: &str, out: &mut Vec<(Kind, Range<usize>)>) {
+    let b = s.as_bytes();
+    let mut floor = 0;
+    for i in find_all(lower, "bearer ") {
+        if i < floor || (i > 0 && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_')) {
+            continue;
+        }
+        let j = i + 7 + run_len(b, i + 7, |c| c == b' ');
+        let n = run_len(b, j, |c| c.is_ascii_alphanumeric() || b"-._~+/".contains(&c));
+        let end = j + n + run_len(b, j + n, |c| c == b'=');
+        // A token under 20 bytes is reread at most once by the next candidate, so the scan stays linear.
+        floor = if n >= 20 { end } else { j };
+        if n >= 20 {
+            out.push((Kind::Bearer, j..end));
+        }
+    }
 }
 
 fn aws(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
@@ -107,13 +218,12 @@ fn slack(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
     }
 }
 
-fn assignment(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
-    let lower = s.to_ascii_lowercase();
+fn assignment(s: &str, lower: &str, out: &mut Vec<(Kind, Range<usize>)>) {
     let b = s.as_bytes();
     for k in KEYWORDS {
         // A later keyword inside a value already scanned starts no scan of its own, so each byte is read once per keyword.
         let mut floor = 0;
-        for i in find_all(&lower, k) {
+        for i in find_all(lower, k) {
             if i < floor {
                 continue;
             }
@@ -144,12 +254,19 @@ fn assignment(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
 /// Every credential-shaped span of `s`, merged: overlapping spans join under the kind
 /// with the higher priority (`run.guard-secrets.mask-span`).
 pub fn spans(s: &str) -> Vec<(Kind, Range<usize>)> {
+    // ASCII lowercasing keeps every byte offset, so a span found in `lower` indexes `s`.
+    let lower = s.to_ascii_lowercase();
     let mut found = Vec::new();
     pem(s, &mut found);
+    llm_provider(s, &mut found);
+    google(s, &mut found);
+    stripe(s, &mut found);
+    jwt(s, &mut found);
     aws(s, &mut found);
     github(s, &mut found);
     slack(s, &mut found);
-    assignment(s, &mut found);
+    bearer(s, &lower, &mut found);
+    assignment(s, &lower, &mut found);
     found.sort_by_key(|(k, r)| (r.start, *k));
     let mut merged: Vec<(Kind, Range<usize>)> = Vec::new();
     for (k, r) in found {

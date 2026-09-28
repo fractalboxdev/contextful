@@ -142,7 +142,7 @@ unsettled: Where does a schema-diff event land, given that the store keeps only 
 The write-time mask over credential-shaped spans in a pulled batch.
 
 - `placement` — The secret guard runs at the one pull path streaming and backfill share, ahead of the recorded pull and the land path, so a replay reintroduces no credential.
-- `matchers` — Matchers are linear-time and regex-free, covering AWS access-key ids, PEM private keys, GitHub and Slack tokens, and `keyword=<token>` assignments; the pattern catalogue lives in code under a precision and recall fixture test.
+- `matchers` — Matchers are linear-time, regex-free forward scans, each anchored on a literal prefix; the credential catalogue lives in code under a precision and recall fixture test.
 - `mask-span` — The replacement covers only the matched byte ranges, widened to character boundaries; overlapping spans merge under the higher-priority pattern.
 - `mask-replacement` — The replacement is the fixed `[REDACTED:secret]` marker, never a shape-preserving transform; an assignment keeps its `key=` prefix.
 - `mask-only` — The guard is on by default and blocks no run; each pull logs the count of masked cells per column.
