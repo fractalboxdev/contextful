@@ -109,6 +109,23 @@ Decision: each v1 entry carries its format version, and its digest covers the wh
 Criteria: offline per-entry evidence decided it; every released version verifies; append cost; hardware-held keys.
 Consequences: `disclosure.record.segment` and `disclosure.attest.broken-chain` restate over v1.
 
+## An audit log opens under the key custody its caller holds
+
+**Status:** accepted
+
+Context: a read path holding no issuer key still appends, and a verifier needs no writer lock.
+Decision: a log opens held, unanchored or read-only. Held signs roots and tip through `SigningPort`. Unanchored links entries under an unsigned tip, writes no root and refuses a chain already signed (`disclosure.record.unanchored-over-signed`). Read-only verifies without the lock and refuses appends. A held open over an unsigned tip refuses (`disclosure.record.unsigned-tip`); anchoring, an explicit act of the key holder, signs the missing roots and tip. A signed `chain.held` record or root marks a chain held for good, so a stripped tip over it breaks the chain rather than reading as unanchored.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Held, unanchored or read-only, with explicit anchoring *(chosen)* | — | A chain appended unanchored carries no signature until its owner anchors it. |
+| Require a key for every append | Availability | A read path without issuer custody cannot record, so it cannot serve. |
+| Anchor silently at the first held open | Tamper evidence | Stripping every signature and rewriting entries reads as an unanchored chain the next open signs. |
+| Generate a local key on first append | Key custody | A read fabricates durable key material nobody chose. |
+
+Criteria: tamper evidence decided it; availability of reads without custody; no fabricated keys.
+Consequences: an unanchored interval is evident until anchored; a verifier runs beside the writer; deleting every root and `chain.held` along with the tip leaves a chain only a replicated root tells from an unanchored one.
+
 ## Erasure is a forced rewrite, a bounded cascade and a measured receipt
 
 `disclosure.erase` rewrites columnar files under the complement of the tenant grant filter; an undeclared subject column raises `ErasureSubjectUndeclared`. The cascade walks provenance to 16 hops, else `ErasureCascadeUnbounded` commits nothing; fact reads refuse with `ErasureRestagingRequired` until re-synthesis. Files holding erased rows are rewritten or collected within 24 h. A token-presented purge raises `PurgeRequiresOwner`. `disclosure.receipt` attests rewrite-and-exclude over the canonical store, names exclusions in `coverage`, and widens only with `receipt_version`.

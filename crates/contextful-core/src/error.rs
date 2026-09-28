@@ -116,6 +116,10 @@ pub enum AuthorityError {
     /// A named scheme differing from the pinned key's. (`authority.issue.algorithm-mismatch`)
     #[error("SignatureAlgorithmMismatch: {0}")]
     SignatureAlgorithmMismatch(String),
+    /// A port signature that does not decode under its tag or verify under the port's key.
+    /// (`authority.issue.encoding-invalid`)
+    #[error("SignatureEncodingInvalid: {0}")]
+    SignatureEncodingInvalid(String),
     /// A block signature failing against every pinned key. (`authority.verify.bad-signature`)
     #[error("SignatureInvalid: {0}")]
     SignatureInvalid(String),

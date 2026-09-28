@@ -11,7 +11,7 @@ use base64::Engine;
 use biscuit_auth::format::schema;
 use biscuit_auth::{Algorithm, BiscuitBuilder, KeyPair, PrivateKey};
 use contextful_core::claims::{AuthorityBlock, Confirmation, Revocation};
-use contextful_core::issue::{MintPlan, SignatureAlgorithm};
+use contextful_core::issue::{MintPlan, SignatureAlgorithm, SignatureEncoding};
 use contextful_core::ports::SigningPort;
 use contextful_core::AuthorityError;
 use prost::Message;
@@ -84,11 +84,12 @@ impl SeedSigner {
     }
 }
 
+/// The library signs Ed25519 as 64 raw bytes and ES256 as DER.
 impl SigningPort for SeedSigner {
-    fn algorithm(&self) -> SignatureAlgorithm {
+    fn encoding(&self) -> SignatureEncoding {
         match self.key.public() {
-            biscuit_auth::PublicKey::Ed25519(_) => SignatureAlgorithm::Ed25519,
-            biscuit_auth::PublicKey::P256(_) => SignatureAlgorithm::Es256,
+            biscuit_auth::PublicKey::Ed25519(_) => SignatureEncoding::Ed25519,
+            biscuit_auth::PublicKey::P256(_) => SignatureEncoding::Es256Der,
         }
     }
 
@@ -135,8 +136,11 @@ pub fn authority_block(plan: &MintPlan, claims: &MintClaims) -> AuthorityBlock {
     }
 }
 
-/// The public half of a signing port's key, which verifies what the port signs
-/// (`authority.issue.signature-encoding`).
+/// The public half of a signing port's key, which verifies what the port signs once
+/// [`sign_through`] has brought it to the stored encoding.
+///
+/// Its text form is `ed25519:<hex>` or `es256:<hex>` of the SEC1 point, compressed or
+/// not (`authority.issue.public-key-text`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignerKey {
     pub algorithm: SignatureAlgorithm,
@@ -150,7 +154,8 @@ impl SignerKey {
         SignerKey { algorithm: port.algorithm(), public_key: port.public_key() }
     }
 
-    /// Whether `signature`, in the port's encoding, verifies over `message`.
+    /// Whether `signature`, in the stored encoding for the key's scheme (64 raw bytes, or
+    /// DER), verifies over `message`.
     pub fn verifies(&self, message: &[u8], signature: &[u8]) -> bool {
         match self.algorithm {
             SignatureAlgorithm::Ed25519 => {
@@ -174,6 +179,67 @@ impl SignerKey {
             }
         }
     }
+}
+
+impl std::fmt::Display for SignerKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let tag = match self.algorithm {
+            SignatureAlgorithm::Ed25519 => "ed25519",
+            SignatureAlgorithm::Es256 => "es256",
+        };
+        write!(f, "{tag}:{}", hex::encode(&self.public_key))
+    }
+}
+
+impl std::str::FromStr for SignerKey {
+    type Err = String;
+
+    /// Parse `ed25519:<hex>` or `es256:<hex>`, refusing bytes that name no key of the scheme.
+    fn from_str(text: &str) -> Result<SignerKey, String> {
+        let text = text.trim();
+        let (tag, hex_key) = text.split_once(':').ok_or_else(|| format!("`{text}` is not `<scheme>:<hex>`"))?;
+        let public_key = hex::decode(hex_key).map_err(|e| format!("`{text}`: {e}"))?;
+        let algorithm = match tag {
+            "ed25519" => {
+                let key = <[u8; 32]>::try_from(public_key.as_slice())
+                    .map_err(|_| format!("`{text}`: an Ed25519 key is 32 bytes, not {}", public_key.len()))?;
+                ed25519_dalek::VerifyingKey::from_bytes(&key).map_err(|e| format!("`{text}`: {e}"))?;
+                SignatureAlgorithm::Ed25519
+            }
+            "es256" => {
+                p256::ecdsa::VerifyingKey::from_sec1_bytes(&public_key).map_err(|e| format!("`{text}`: no P-256 point: {e}"))?;
+                SignatureAlgorithm::Es256
+            }
+            _ => return Err(format!("`{text}`: unknown key scheme `{tag}`")),
+        };
+        Ok(SignerKey { algorithm, public_key })
+    }
+}
+
+/// Sign `message` through `port` and return the signature in the stored encoding: 64
+/// bytes for Ed25519, low-S DER for ES256, converting an `es256-raw` answer at this edge
+/// (`authority.issue.der-at-the-edge`). An answer that does not decode under the port's
+/// tag, or does not verify under its public key, raises `SignatureEncodingInvalid`.
+pub fn sign_through(port: &dyn SigningPort, message: &[u8]) -> Result<Vec<u8>, AuthorityError> {
+    let encoding = port.encoding();
+    let answer = port.sign(message)?;
+    let invalid = |why: String| AuthorityError::SignatureEncodingInvalid(format!("the port tagged `{encoding}` {why}"));
+    let stored = match encoding {
+        SignatureEncoding::Ed25519 => answer,
+        SignatureEncoding::Es256Der | SignatureEncoding::Es256Raw => {
+            let decoded = if encoding == SignatureEncoding::Es256Der {
+                p256::ecdsa::Signature::from_der(&answer)
+            } else {
+                p256::ecdsa::Signature::from_slice(&answer)
+            };
+            let signature = decoded.map_err(|e| invalid(format!("answered {} bytes that do not decode: {e}", answer.len())))?;
+            signature.normalize_s().unwrap_or(signature).to_der().as_bytes().to_vec()
+        }
+    };
+    if !SignerKey::of(port).verifies(message, &stored) {
+        return Err(invalid("answered a signature its public key does not verify".into()));
+    }
+    Ok(stored)
 }
 
 /// Mint a checked plan as a credential whose authority block `signer` signs. The plan's
@@ -210,15 +276,7 @@ pub fn sign_root(builder: BiscuitBuilder, signer: &dyn SigningPort) -> Result<St
         .map_err(|e| unsigned(&e))?;
     let mut proto = schema::Biscuit::decode(bytes.as_slice()).map_err(|e| unsigned(&e))?;
     let payload = authority_signature_payload(&proto.authority)?;
-    let signature = signer.sign(&payload)?;
-    if !SignerKey::of(signer).verifies(&payload, &signature) {
-        return Err(AuthorityError::IssuerKeyUnresolvable(format!(
-            "the signing port's {} signature does not verify under its public key; \
-             it answers Ed25519 as 64 raw bytes and ES256 as ASN.1 DER",
-            signer.algorithm()
-        )));
-    }
-    proto.authority.signature = signature;
+    proto.authority.signature = sign_through(signer, &payload)?;
     Ok(TOKEN_BASE64.encode(proto.encode_to_vec()))
 }
 

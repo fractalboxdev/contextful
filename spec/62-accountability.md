@@ -52,7 +52,7 @@ flowchart LR
 
 ## record
 
-What a read leaves behind: the span, the hash-linked audit entry, and where telemetry lands.
+What a read leaves behind: the span, the hash-linked audit entry, where telemetry lands, and the key custody a log opens under.
 
 - `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes under one signed root once it holds its chain header's segment size, 4096 entries by default.
 - `chain-header` — `header.json`, written before a new chain's first entry, fixes the chain's format, its digest, `sha256` or `blake3`, and a segment size of at most 65536 entries; the first v1 entry's `prev_hash` is the canonical header's digest.
@@ -75,6 +75,12 @@ What a read leaves behind: the span, the hash-linked audit entry, and where tele
   *A-disclosure*
 - `single-writer` — One process holds a directory's audit log at a time; opening a log another holds raises `AuditLogHeld`.
   *because two writers caching one tip append the same seq twice, and every later verification breaks there*
+- `read-only` — A read-only audit handle verifies the chain without the writer lock; an append through it raises `AuditLogReadOnly`.
+  *A-disclosure*
+- `unanchored-over-signed` — An unanchored handle links entries under an unsigned tip and writes no root; opening one over a signed tip, a signed root or the signed `chain.held` a held open writes raises `AuditLogAnchored`.
+  *A-disclosure*
+- `unsigned-tip` — A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.
+  *A-disclosure*
 - `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
 
 One read's entry under group commit:
@@ -117,7 +123,7 @@ The access decision and its path, replay over a window with its coverage, and th
 
 Chain verification, signed segment roots, lineage attestations, and the reach of each guarantee.
 
-- `broken-chain` — A disagreeing digest, entry format or Merkle root, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the signed check, an absent or unverified tip or root raises `AuditChainBroken` at the earliest failing index.
+- `broken-chain` — A disagreeing digest, entry format or Merkle root, a sequence gap, a failing signature, or, beside `chain.tip`, `chain.held` or a signed root, an absent chain or a missing or unsigned tip raises `AuditChainBroken` at the earliest failing index.
   *A-disclosure*
 - `merkle-root` — A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry digests in `seq` order.
   *A-disclosure*
@@ -225,6 +231,7 @@ The audit segment and the ledger:
       000001.jsonl          one entry per line, seq ascending
       000001.root.json      the signed Merkle root closing the segment
     chain.tip               last accepted {seq, entry_hash}
+    chain.held              signed {seq, entry_hash} where the issuer first held the log
   forget/
     <subject_hash>.stale    {subject_hash, executed_at}
   catalog.db

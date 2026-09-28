@@ -76,9 +76,11 @@ Accountability starts at the read. Rows leave only after the audit entry is dura
 ({{disclosure.record.unpersisted-entry}}); entries hash-link into segments closed by signed
 roots ({{disclosure.record.segment}}), and verification reports the earliest break
 ({{disclosure.attest.broken-chain}}). A chain header fixes the digest
-({{disclosure.record.chain-header}}), and each root is a Merkle tree hash
-({{disclosure.attest.merkle-root}}), so one entry and its audit path prove membership to a
-verifier holding only the public key ({{disclosure.attest.inclusion-proof}}).
+({{disclosure.record.chain-header}}), each root a Merkle tree hash
+({{disclosure.attest.merkle-root}}), so an entry's audit path proves membership under the
+public key alone ({{disclosure.attest.inclusion-proof}}). A keyless node appends unanchored
+until anchored ({{disclosure.record.unsigned-tip}}); a held chain stays held
+({{disclosure.record.unanchored-over-signed}}).
 
 ## Worked example
 

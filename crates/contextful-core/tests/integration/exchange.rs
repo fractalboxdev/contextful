@@ -4,7 +4,7 @@ use contextful_core::exchange::{
     ExchangePolicy, VerifyingMaterial, EXCHANGE_LIFETIME_CEILING_SECS, EXCHANGE_LIFETIME_DEFAULT_SECS,
 };
 use contextful_core::grant::{Action, TablePattern, TenantScope};
-use contextful_core::issue::{IssuancePolicy, MintContext, MintPlan, NodeRole, PolicyError, SignatureAlgorithm};
+use contextful_core::issue::{IssuancePolicy, MintContext, MintPlan, NodeRole, PolicyError, SignatureEncoding};
 use contextful_core::ports::{FixedClock, SigningPort};
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
@@ -40,8 +40,8 @@ tables  = ["research/filings"]
 struct FakeSigner;
 
 impl SigningPort for FakeSigner {
-    fn algorithm(&self) -> SignatureAlgorithm {
-        SignatureAlgorithm::Ed25519
+    fn encoding(&self) -> SignatureEncoding {
+        SignatureEncoding::Ed25519
     }
     fn public_key(&self) -> Vec<u8> {
         vec![7; 32]

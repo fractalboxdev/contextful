@@ -11491,10 +11491,43 @@
       "operation": "issue",
       "subject": "signature-encoding",
       "kind": "behavior",
-      "statement": "Through the port, an Ed25519 key is 32 raw bytes signing 64; an ES256 key is a SEC1 P-256 point signing ECDSA over SHA-256 of the message, encoded as ASN.1 DER.",
-      "why": "because a hardware or cloud custodian adapter is written against the port alone, and the credential format verifies ES256 only in DER",
+      "statement": "A signing port names its encoding: `ed25519`, a 32-byte key and 64-byte signature; `es256-der` or `es256-raw`, a SEC1 P-256 point signing ECDSA over SHA-256 of the message as ASN.1 DER or 64-byte `r ‖ s`.",
+      "why": "because an enclave, a cloud KMS and a browser key each answer ES256 in one encoding, and the tag lets every adapter answer in its own",
       "file": "spec/50-authority.md",
       "line": 249
+    },
+    {
+      "id": "authority.issue.der-at-the-edge",
+      "contract": "authority",
+      "operation": "issue",
+      "subject": "der-at-the-edge",
+      "kind": "behavior",
+      "statement": "An `es256-raw` signature converts to DER where it leaves the port; a credential and an audit root or tip carry ES256 only as DER.",
+      "why": "because the credential format verifies ES256 only in DER, and one stored encoding holds a verifier to one decoder",
+      "file": "spec/50-authority.md",
+      "line": 251
+    },
+    {
+      "id": "authority.issue.encoding-invalid",
+      "contract": "authority",
+      "operation": "issue",
+      "subject": "encoding-invalid",
+      "kind": "refusal",
+      "statement": "A port signature that does not decode under its encoding tag, or does not verify under the port's public key, raises `SignatureEncodingInvalid`; nothing is minted and no root or tip is written.",
+      "why": "because a mislabelled signature yields a credential every checkpoint rejects, and refusing at the port names the adapter at fault",
+      "file": "spec/50-authority.md",
+      "line": 253
+    },
+    {
+      "id": "authority.issue.public-key-text",
+      "contract": "authority",
+      "operation": "issue",
+      "subject": "public-key-text",
+      "kind": "behavior",
+      "statement": "A port's public key prints as `ed25519:<hex>` or `es256:<hex>` of its SEC1 point; either form, with a compressed or uncompressed point, parses back to the key it names.",
+      "why": "",
+      "file": "spec/50-authority.md",
+      "line": 255
     },
     {
       "id": "authority.issue.algorithm",
@@ -11505,7 +11538,7 @@
       "statement": "A credential names Ed25519, the default, or ECDSA over P-256; the pinned key's scheme is authoritative.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 251
+      "line": 256
     },
     {
       "id": "authority.issue.algorithm-mismatch",
@@ -11516,7 +11549,7 @@
       "statement": "A credential naming a scheme other than its pinned key's raises `SignatureAlgorithmMismatch`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 253
+      "line": 258
     },
     {
       "id": "authority.issue.unauthorized-mint",
@@ -11527,7 +11560,7 @@
       "statement": "A mint request presenting no grant carrying `admin` raises `IssuanceUnauthorized`.",
       "why": "because issuance authorizes itself with the same primitive as every other action, and a separate mint secret is a second perimeter to guard",
       "file": "spec/50-authority.md",
-      "line": 255
+      "line": 260
     },
     {
       "id": "authority.issue.replica-mint",
@@ -11538,7 +11571,7 @@
       "statement": "A replica holds the issuer's public key and no signing material; a mint there raises `ReplicaCannotIssue`.",
       "why": "because a replica verifies every credential the primary mints and needs no power to produce one",
       "file": "spec/50-authority.md",
-      "line": 257
+      "line": 262
     },
     {
       "id": "authority.issue.zone-wildcard",
@@ -11549,7 +11582,7 @@
       "statement": "A mint whose subject declares a wildcard inference zone raises `IssuanceZoneWildcard`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 259
+      "line": 264
     },
     {
       "id": "authority.issue.key-rotation",
@@ -11560,7 +11593,7 @@
       "statement": "The issuer signing key rotates every 90 d, and at once on suspected compromise.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 261
+      "line": 266
     },
     {
       "id": "authority.verify.admitted-authority",
@@ -11571,7 +11604,7 @@
       "statement": "Verification yields an admitted-authority value carrying the normalized subject tuple and its grants. Every read surface and row-landing effect takes that value as an argument; nothing downstream re-parses a credential or reads ambient state.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 268
+      "line": 273
     },
     {
       "id": "authority.verify.no-bypass-constructor",
@@ -11582,7 +11615,7 @@
       "statement": "The admitted-authority type has no constructor that produces a value without a verification.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 270
+      "line": 275
     },
     {
       "id": "authority.verify.effect-boundary",
@@ -11593,7 +11626,7 @@
       "statement": "A statement's start and each commit are effect boundaries. Each boundary re-reads expiry, revocation and policy version against the carried value; a lapse between boundaries stops the effect at the next one.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 272
+      "line": 277
     },
     {
       "id": "authority.verify.format-interface",
@@ -11604,7 +11637,7 @@
       "statement": "The credential format sits behind one interface of issue, attenuate, verify and introspect; no enforcement call site names a credential type.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 274
+      "line": 279
     },
     {
       "id": "authority.verify.bad-signature",
@@ -11615,7 +11648,7 @@
       "statement": "A credential with any block signature failing against a pinned key raises `SignatureInvalid` and admits nothing, no verified prefix included.",
       "why": "because a partially verified chain is an unauthenticated credential, and admitting its prefix hands out authority nobody signed as presented",
       "file": "spec/50-authority.md",
-      "line": 276
+      "line": 281
     },
     {
       "id": "authority.verify.audience-mismatch",
@@ -11626,7 +11659,7 @@
       "statement": "A checkpoint declaring an expected audience raises `AudienceMismatch` for a credential with a different audience or none; a checkpoint declaring none performs no audience check.",
       "why": "because a credential minted for one store is otherwise replayable against another; the undeclared case is local development",
       "file": "spec/50-authority.md",
-      "line": 278
+      "line": 283
     },
     {
       "id": "authority.verify.timestamps",
@@ -11637,7 +11670,7 @@
       "statement": "Every checkpoint decodes timestamps into UTC instants under one grammar and compares instants.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 280
+      "line": 285
     },
     {
       "id": "authority.verify.malformed-timestamp",
@@ -11648,7 +11681,7 @@
       "statement": "A timestamp that does not decode under that grammar raises `TimestampMalformed` at every checkpoint alike.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 282
+      "line": 287
     },
     {
       "id": "authority.verify.expired",
@@ -11659,7 +11692,7 @@
       "statement": "A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 284
+      "line": 289
     },
     {
       "id": "authority.verify.possession-binding",
@@ -11670,7 +11703,7 @@
       "statement": "A credential's confirmation claim holds a client public-key thumbprint. Each request carries a proof signed by the matching private key over method, target, body digest, issue instant and nonce.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 286
+      "line": 291
     },
     {
       "id": "authority.verify.possession-invalid",
@@ -11681,7 +11714,7 @@
       "statement": "A request whose proof does not verify against the confirmation thumbprint raises `PossessionProofInvalid`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 288
+      "line": 293
     },
     {
       "id": "authority.verify.replay-window",
@@ -11692,7 +11725,7 @@
       "statement": "A proof issued more than 300 s before the checkpoint clock is refused as {{authority.verify.possession-invalid}}; the nonce cache retains each nonce for that window.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 290
+      "line": 295
     },
     {
       "id": "authority.verify.clock-skew",
@@ -11703,7 +11736,7 @@
       "statement": "A proof issued more than 30 s after the checkpoint clock is refused as {{authority.verify.possession-invalid}}.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 292
+      "line": 297
     },
     {
       "id": "authority.verify.replayed-nonce",
@@ -11714,7 +11747,7 @@
       "statement": "A proof whose nonce repeats inside the replay window raises `PossessionProofReplayed`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 294
+      "line": 299
     },
     {
       "id": "authority.verify.nonce-cache",
@@ -11725,7 +11758,7 @@
       "statement": "A checkpoint's nonce cache holds at most 100000 entries; a proof arriving while it is full answers `503` and admits nothing.",
       "why": "because a proof the cache cannot record is a replay it cannot detect",
       "file": "spec/50-authority.md",
-      "line": 296
+      "line": 301
     },
     {
       "id": "authority.verify.public-key-only",
@@ -11736,7 +11769,7 @@
       "statement": "A checkpoint holds public key material and no signing secret, and admits with no call to an issuer, identity provider or policy service.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 298
+      "line": 303
     },
     {
       "id": "authority.verify.key-set",
@@ -11747,7 +11780,7 @@
       "statement": "A checkpoint accepts a set of issuer keys: comma-separated static pins, or a project-published unauthenticated key route returning the current and non-retired versions, opted into per key.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 300
+      "line": 305
     },
     {
       "id": "authority.verify.key-set-refresh",
@@ -11758,7 +11791,7 @@
       "statement": "A published key set refreshes every 300 s, single-flight, plus one refresh on a signature failure, with failure-forced refreshes throttled.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 302
+      "line": 307
     },
     {
       "id": "authority.verify.key-set-unavailable",
@@ -11769,7 +11802,7 @@
       "statement": "A checkpoint opted into a published key set that obtains none, or holding a malformed pin, raises `KeySetUnavailable`: the engine declines to start and a gateway answers `503`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 304
+      "line": 309
     },
     {
       "id": "authority.verify.key-set-stale",
@@ -11780,7 +11813,7 @@
       "statement": "After a failed fetch the last-known-good set serves while its age since the last successful fetch stays under 1 h; past that the checkpoint raises `KeySetStale`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 306
+      "line": 311
     },
     {
       "id": "authority.revoke.short-lifetime",
@@ -11791,7 +11824,7 @@
       "statement": "A short lifetime is the primary withdrawal: a credential's remaining lifetime bounds its exposure after a provider sign-out or before a denylist entry propagates.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 317
+      "line": 322
     },
     {
       "id": "authority.revoke.denylist",
@@ -11802,7 +11835,7 @@
       "statement": "A checkpoint reads a denylist keyed on credential identifier. An entry ages out once its identifier verifies under no live key version.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 319
+      "line": 324
     },
     {
       "id": "authority.revoke.revocation-id",
@@ -11813,7 +11846,7 @@
       "statement": "Every derivation carries its own revocation identifier, withdrawing one subtree without ending the root it descends from.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 321
+      "line": 326
     },
     {
       "id": "authority.revoke.epoch",
@@ -11824,7 +11857,7 @@
       "statement": "A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 323
+      "line": 328
     },
     {
       "id": "authority.revoke.revoked",
@@ -11835,7 +11868,7 @@
       "statement": "A credential on the denylist, or carrying an epoch below the current scoped epoch, raises `AuthorityRevoked` at the next effect boundary.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 325
+      "line": 330
     },
     {
       "id": "authority.revoke.compromise",
@@ -11846,7 +11879,7 @@
       "statement": "Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 327
+      "line": 332
     },
     {
       "id": "authority.revoke.rotation-grace",
@@ -11857,7 +11890,7 @@
       "statement": "A rotation policy declares a cadence and a grace window, validated against the persisted issuance policy, during which the retiring key version still verifies.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 329
+      "line": 334
     },
     {
       "id": "authority.revoke.short-grace",
@@ -11868,7 +11901,7 @@
       "statement": "A declared or overridden grace window shorter than the effective issuance ceiling raises `RotationGraceTooShort`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 331
+      "line": 336
     },
     {
       "id": "authority.revoke.immediate-retire",
@@ -11879,7 +11912,7 @@
       "statement": "Immediate retirement removes a key version from the published set and every static pin; a checkpoint drops it at its next refresh.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 333
+      "line": 338
     },
     {
       "id": "authority.revoke.format-withdrawn",
@@ -11890,7 +11923,7 @@
       "statement": "From a declared cutover instant, every admission path raises `CredentialFormatWithdrawn` for a credential in a withdrawn format. Only an explicit declaration restores acceptance.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 335
+      "line": 340
     },
     {
       "id": "authority.exchange.surface",
@@ -11901,7 +11934,7 @@
       "statement": "`contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 356
+      "line": 361
     },
     {
       "id": "authority.exchange.policy",
@@ -11912,7 +11945,7 @@
       "statement": "An exchange policy declares `expected_iss`, optional `expected_aud`, `subject_map`, `tenant_claim`, `role_claim`, `role_grants`, `default_grants`, `ttl_secs`, `minted_iss` and `minted_aud`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 358
+      "line": 363
     },
     {
       "id": "authority.exchange.injected-material",
@@ -11923,7 +11956,7 @@
       "statement": "Verifying material is operator-injected: a shared secret, an RS256 public key in PEM form, or a key-set document selected by the assertion's `kid`. The exchange makes no network call.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 360
+      "line": 365
     },
     {
       "id": "authority.exchange.minted-grants",
@@ -11934,7 +11967,7 @@
       "statement": "Minted grants come from `role_grants` and `default_grants` alone. A verified role matching no entry earns `default_grants`, which is empty unless declared.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 362
+      "line": 367
     },
     {
       "id": "authority.exchange.tenant",
@@ -11945,7 +11978,7 @@
       "statement": "The assertion claim `tenant_claim` names becomes the tenant scope of every minted grant; no subject member carries tenancy.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 364
+      "line": 369
     },
     {
       "id": "authority.exchange.lifetime-default",
@@ -11956,7 +11989,7 @@
       "statement": "A minted credential lives 900 s where the policy declares no `ttl_secs`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 366
+      "line": 371
     },
     {
       "id": "authority.exchange.lifetime-ceiling",
@@ -11967,7 +12000,7 @@
       "statement": "A configured `ttl_secs` clamps down to 3600 s and never extends.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 368
+      "line": 373
     },
     {
       "id": "authority.exchange.audience",
@@ -11978,7 +12011,7 @@
       "statement": "A minted credential carries `minted_aud`, falling back to the project's persisted default audience.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 370
+      "line": 375
     },
     {
       "id": "authority.exchange.assertion-invalid",
@@ -11989,7 +12022,7 @@
       "statement": "A bad signature, a lapsed assertion, an untrusted issuer or audience, or a mapped claim absent from the assertion raises `ExchangeAssertionInvalid` and mints nothing.",
       "why": "because no credential exists whose subject the assertion did not verify",
       "file": "spec/50-authority.md",
-      "line": 372
+      "line": 377
     },
     {
       "id": "authority.exchange.material-missing",
@@ -12000,7 +12033,7 @@
       "statement": "An exchange configured with no verifying material raises `ExchangeMaterialMissing` and mints nothing.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 374
+      "line": 379
     },
     {
       "id": "authority.exchange.per-reader",
@@ -12011,7 +12044,7 @@
       "statement": "An embedding application holds no project-wide credential; per request it exchanges its signed-in reader's assertion for that reader's short-lived credential and reads as them.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 376
+      "line": 381
     },
     {
       "id": "authority.exchange.no-cross-reader",
@@ -12022,7 +12055,7 @@
       "statement": "An exchanged credential serves only the reader it was minted for.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 378
+      "line": 383
     },
     {
       "id": "authority.redact.write-time",
@@ -13818,6 +13851,39 @@
       "line": 76
     },
     {
+      "id": "disclosure.record.read-only",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "read-only",
+      "kind": "refusal",
+      "statement": "A read-only audit handle verifies the chain without the writer lock; an append through it raises `AuditLogReadOnly`.",
+      "why": "A-disclosure",
+      "file": "spec/62-accountability.md",
+      "line": 78
+    },
+    {
+      "id": "disclosure.record.unanchored-over-signed",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "unanchored-over-signed",
+      "kind": "refusal",
+      "statement": "An unanchored handle links entries under an unsigned tip and writes no root; opening one over a signed tip, a signed root or the signed `chain.held` a held open writes raises `AuditLogAnchored`.",
+      "why": "A-disclosure",
+      "file": "spec/62-accountability.md",
+      "line": 80
+    },
+    {
+      "id": "disclosure.record.unsigned-tip",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "unsigned-tip",
+      "kind": "refusal",
+      "statement": "A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.",
+      "why": "A-disclosure",
+      "file": "spec/62-accountability.md",
+      "line": 82
+    },
+    {
       "id": "disclosure.record.projection",
       "contract": "disclosure",
       "operation": "record",
@@ -13826,7 +13892,7 @@
       "statement": "The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 78
+      "line": 84
     },
     {
       "id": "disclosure.explain.no-row",
@@ -13837,7 +13903,7 @@
       "statement": "An explanation returning a row, field value or excerpt from the resource it decides about raises `VisibilityDiagnosticRow`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 107
+      "line": 113
     },
     {
       "id": "disclosure.explain.empty-window",
@@ -13848,7 +13914,7 @@
       "statement": "A window holding no observations raises `VisibilityNoObservations` and states that no claim is available.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 109
+      "line": 115
     },
     {
       "id": "disclosure.explain.unqualified-assurance",
@@ -13859,7 +13925,7 @@
       "statement": "A negative assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 111
+      "line": 117
     },
     {
       "id": "disclosure.explain.groups-not-members",
@@ -13870,7 +13936,7 @@
       "statement": "A reader-facing explanation rendering the member identities of a group on the path raises `VisibilityIndividualNamed`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 113
+      "line": 119
     },
     {
       "id": "disclosure.attest.broken-chain",
@@ -13878,10 +13944,10 @@
       "operation": "attest",
       "subject": "broken-chain",
       "kind": "refusal",
-      "statement": "A disagreeing digest, entry format or Merkle root, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the signed check, an absent or unverified tip or root raises `AuditChainBroken` at the earliest failing index.",
+      "statement": "A disagreeing digest, entry format or Merkle root, a sequence gap, a failing signature, or, beside `chain.tip`, `chain.held` or a signed root, an absent chain or a missing or unsigned tip raises `AuditChainBroken` at the earliest failing index.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 120
+      "line": 126
     },
     {
       "id": "disclosure.attest.merkle-root",
@@ -13892,7 +13958,7 @@
       "statement": "A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry digests in `seq` order.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 122
+      "line": 128
     },
     {
       "id": "disclosure.attest.root-tag",
@@ -13903,7 +13969,7 @@
       "statement": "A v1 signed root carries its signing algorithm, `Ed25519` or `ES256`, and signs it with the header digest, segment number, entry count and root.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 124
+      "line": 130
     },
     {
       "id": "disclosure.attest.inclusion-proof",
@@ -13914,7 +13980,7 @@
       "statement": "`prove` returns one entry, its chain header, its RFC 6962 audit path and its segment's signed root; the proof verifies offline under the signer's public key alone.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 126
+      "line": 132
     },
     {
       "id": "disclosure.attest.proof-invalid",
@@ -13925,7 +13991,7 @@
       "statement": "A proof whose entry, audit path, header, root or root signature disagrees raises `AuditProofInvalid`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 128
+      "line": 134
     },
     {
       "id": "disclosure.attest.proof-unavailable",
@@ -13936,7 +14002,7 @@
       "statement": "Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises `AuditProofUnavailable`.",
       "why": "because an open segment has no signed root yet, and a v0 root commits to no tree",
       "file": "spec/62-accountability.md",
-      "line": 130
+      "line": 136
     },
     {
       "id": "disclosure.attest.root-replication",
@@ -13947,7 +14013,7 @@
       "statement": "Signed roots reach the replication bucket asynchronously every 10 min.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 132
+      "line": 138
     },
     {
       "id": "disclosure.erase.privilege",
@@ -13958,7 +14024,7 @@
       "statement": "Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.",
       "why": "A-read",
       "file": "spec/62-accountability.md",
-      "line": 140
+      "line": 146
     },
     {
       "id": "disclosure.erase.subject-column",
@@ -13969,7 +14035,7 @@
       "statement": "A table names its subject column as `subject_id = \"<column>\"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 142
+      "line": 148
     },
     {
       "id": "disclosure.erase.cascade",
@@ -13980,7 +14046,7 @@
       "statement": "In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 144
+      "line": 150
     },
     {
       "id": "disclosure.erase.cascade-unbounded",
@@ -13991,7 +14057,7 @@
       "statement": "A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 146
+      "line": 152
     },
     {
       "id": "disclosure.erase.physical-removal",
@@ -14002,7 +14068,7 @@
       "statement": "Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 148
+      "line": 154
     },
     {
       "id": "disclosure.erase.restaging-gate",
@@ -14013,7 +14079,7 @@
       "statement": "`--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 150
+      "line": 156
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -14024,7 +14090,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 152
+      "line": 158
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -14035,7 +14101,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 154
+      "line": 160
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -14046,7 +14112,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 156
+      "line": 162
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -14057,7 +14123,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 185
+      "line": 191
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -14068,7 +14134,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 187
+      "line": 193
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -14079,7 +14145,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 189
+      "line": 195
     },
     {
       "id": "disclosure.receipt.no-rewrite-engine",
@@ -14090,7 +14156,7 @@
       "statement": "A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.",
       "why": "because a receipt over a rewrite that did not run states a false claim",
       "file": "spec/62-accountability.md",
-      "line": 191
+      "line": 197
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -17201,7 +17267,7 @@
     "disclosure.pack": "The reviewed unit landing one source: a manifest fragment plus a connector pin, its access mapping, defaults and container allowlist.",
     "disclosure.reach": "Per-request resolution of a subject to the resources it reaches, the bounded group closure, and the reachable-set cache.",
     "disclosure.receipt": "The signed artifact a tenant purge returns: its claim, its coverage block, its pseudonym and its idempotence.",
-    "disclosure.record": "What a read leaves behind: the span, the hash-linked audit entry, and where telemetry lands.",
+    "disclosure.record": "What a read leaves behind: the span, the hash-linked audit entry, where telemetry lands, and the key custody a log opens under.",
     "disclosure.release": "The ordered statistics release, the write-time disclosure policy, and the per-unit budget reservation.",
     "disclosure.set-mode": "The two deployment settings a derived result is computed in, the offline diagnostic, and the cross-owner hashed join.",
     "disclosure.suppress": "The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves.",
@@ -18800,6 +18866,10 @@
             "clause": "authority.issue.algorithm-mismatch",
             "gloss": "A named scheme differing from the pinned key's."
           },
+          "SignatureEncodingInvalid": {
+            "clause": "authority.issue.encoding-invalid",
+            "gloss": "A port signature that does not decode under its tag or verify under the port's key."
+          },
           "SignatureInvalid": {
             "clause": "authority.verify.bad-signature",
             "gloss": "A block signature failing against every pinned key."
@@ -19980,9 +20050,21 @@
             "clause": "disclosure.record.header-unsupported",
             "gloss": "A chain header names a format, digest or segment size this build does not verify."
           },
+          "AuditLogAnchored": {
+            "clause": "disclosure.record.unanchored-over-signed",
+            "gloss": "An unanchored handle opened over a chain holding a signed tip, a signed root or a held record."
+          },
           "AuditLogHeld": {
             "clause": "disclosure.record.single-writer",
             "gloss": "An audit log another process holds open."
+          },
+          "AuditLogReadOnly": {
+            "clause": "disclosure.record.read-only",
+            "gloss": "An append through a read-only audit handle."
+          },
+          "AuditLogUnanchored": {
+            "clause": "disclosure.record.unsigned-tip",
+            "gloss": "A held open or signed check over a chain whose tip is unsigned, carrying no held record or signed root."
           },
           "AuditProofInvalid": {
             "clause": "disclosure.attest.proof-invalid",

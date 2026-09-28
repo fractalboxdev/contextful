@@ -4,7 +4,7 @@ use contextful_core::grant::{Action, Grant, TablePattern};
 use contextful_core::identify::Subject;
 use contextful_core::issue::{
     key_rotation_due, IssuancePolicy, Lifetime, MintAuthority, MintContext, MintRequest, NodeRole, PolicyError,
-    SignatureAlgorithm, ISSUANCE_LIFETIME_CEILING_SECS, ISSUER_KEY_ROTATION_CADENCE_SECS,
+    SignatureAlgorithm, SignatureEncoding, ISSUANCE_LIFETIME_CEILING_SECS, ISSUER_KEY_ROTATION_CADENCE_SECS,
 };
 use contextful_core::ports::{Clock, FixedClock, SigningPort};
 use contextful_core::time::Instant;
@@ -16,8 +16,8 @@ const NOW: &str = "2030-01-01T00:00:00Z";
 struct FakeSigner(SignatureAlgorithm);
 
 impl SigningPort for FakeSigner {
-    fn algorithm(&self) -> SignatureAlgorithm {
-        self.0
+    fn encoding(&self) -> SignatureEncoding {
+        SignatureEncoding::canonical(self.0)
     }
     fn public_key(&self) -> Vec<u8> {
         vec![7; 32]
