@@ -62,7 +62,7 @@ Revisit: the parent scan dominates tick cost on a real archive; a re-derive sign
 
 ## A derivation key decides whether a settled unit is current
 
-**Status:** proposed; narrows the anti-join decision above, which settles a unit on `unit_ref` alone.
+**Status:** accepted; narrows the anti-join decision above, which settles a unit on `unit_ref` alone.
 
 Context: `run.exec.engine-id` is written on every row and read by nothing, so a changed binary, argument, output schema or parent value never re-derives. Decision: each content and marker row carries `derivation_key`, the SHA-256 over engine id, binding parameters, output schema and the parent row's content, plus the parent's own key when the parent is a derive table. `run.select` treats a unit whose latest row carries another key as outstanding; its rows keep answering until the new rows or marker land, then read as superseded. Attempts count per key. `run.emit.primary-key` becomes `["unit_ref", "derivation_key", "cue_seq"]`, and `run.emit.settled-revived` refuses a same-key revival only. Criteria: freshness decided it, no stale unit surviving a tick; no read sees an empty unit.
 

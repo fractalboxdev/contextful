@@ -8018,7 +8018,7 @@
       "statement": "A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.",
       "why": "P4",
       "file": "spec/32-derive.md",
-      "line": 234
+      "line": 232
     },
     {
       "id": "run.parse-cues.passage-chars",
@@ -8029,7 +8029,7 @@
       "statement": "A passage stays open while it holds fewer than 600 chars.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 236
+      "line": 234
     },
     {
       "id": "run.parse-cues.passage-span",
@@ -8040,7 +8040,7 @@
       "statement": "A passage stays open while it spans less than 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 237
+      "line": 235
     },
     {
       "id": "run.parse-cues.passage-bytes",
@@ -8051,7 +8051,7 @@
       "statement": "One passage's text holds at most 8 KiB.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 238
+      "line": 236
     },
     {
       "id": "run.parse-cues.passages-per-document",
@@ -8062,7 +8062,7 @@
       "statement": "One document yields at most 2000 rows of passages.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 239
+      "line": 237
     },
     {
       "id": "run.parse-cues.grammar",
@@ -8073,7 +8073,7 @@
       "statement": "SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 240
+      "line": 238
     },
     {
       "id": "run.test-engine.unsupported-driver",
@@ -8084,7 +8084,7 @@
       "statement": "A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.",
       "why": "because the verb drives a transcriber over media, and a link engine takes no media",
       "file": "spec/32-derive.md",
-      "line": 246
+      "line": 244
     },
     {
       "id": "connector.export.authoring-path",
