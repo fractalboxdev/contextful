@@ -54,9 +54,9 @@ fn land_both(r: &Reads, manifest: &str, bodies: &[String], run: &str, fold_at: &
     }
 }
 
-/// 300 passages per table. The three oldest sit outside a limit-10 recency window: `p00000`
-/// holds a Japanese sentence, `p00001` a near miss sharing its first character, and
-/// `p00002` a plural.
+/// 300 passages per table. The five oldest sit outside a limit-10 recency window: `p00000`
+/// holds a Japanese sentence, `p00001` a near miss sharing its first character, `p00002` a
+/// plural, `p00003` both bigrams of `東京駅` apart, and `p00004` the same bigrams adjacent.
 fn text_reads(extra: &str) -> Reads {
     let manifest = format!("{MANIFEST}{TEXT}{extra}");
     let mut r = Reads::with_manifest(&format!("{MANIFEST}{TEXT}"));
@@ -65,6 +65,8 @@ fn text_reads(extra: &str) -> Reads {
             0 => "メニューの設定画面を開く".to_string(),
             1 => "設計図を確認する".to_string(),
             2 => "Overdue invoices from March".to_string(),
+            3 => "京駅と東京".to_string(),
+            4 => "東京駅で会う".to_string(),
             _ => format!("routine passage {i}"),
         })
         .collect();
@@ -93,6 +95,9 @@ fn a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot() {
     assert_eq!((id_column.as_str(), design), ("passage_id", vec!["p00001".to_string()]));
     // A phrase needs its bigrams adjacent: `設定` and `画面` both occur, `定を` does not.
     assert!(r.face.fulltext_candidates(&s, "lab/text", &["設定を".to_string()], 10).unwrap().1.is_empty());
+    // `p00003` holds `東京` and `京駅` apart and `p00004` holds them adjacent: only the second matches `東京駅`.
+    let (_, station) = r.face.fulltext_candidates(&s, "lab/text", &["東京駅".to_string()], 10).unwrap();
+    assert_eq!(station, ["p00004"]);
     // One should-clause per token: a row matching either token is a candidate.
     let (_, either) = r.face.fulltext_candidates(&s, "lab/text", &["画面".to_string(), "invoice".to_string()], 10).unwrap();
     assert_eq!(either.len(), 2, "{either:?}");

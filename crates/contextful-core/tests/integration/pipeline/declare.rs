@@ -78,6 +78,22 @@ fn an_explicit_default_hashes_as_its_absence() {
     assert_eq!(a.content_hash(), b.content_hash());
     assert_eq!(canonical_json(&json!({"b": [1, 2.5, 1e21, 0.000001], "a": "é"})), r#"{"a":"é","b":[1,2.5,1e+21,0.000001]}"#);
     assert_eq!(a.content_hash(), contextful_core::run::journal::sha256_hex(canonical_json(&a.canonical_value()).as_bytes()));
+    // A vector sidecar's metric and a full-text sidecar's tokenizer hash the same declared or not; a vector
+    // sidecar's canonical block always carries its metric.
+    let vector = "[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"body\"\nmodel = \"m\"\ndim = 4\n";
+    let vector_bare = spec(&doc("", vector));
+    let vector_explicit = spec(&doc("", &format!("{vector}metric = \"cosine\"\n")));
+    assert_eq!(vector_bare.content_hash(), vector_explicit.content_hash());
+    assert_eq!(
+        vector_bare.canonical_value()["tables"][0]["indexes"][0],
+        json!({"kind": "vector", "column": "body", "model": "m", "dim": 4, "metric": "cosine"})
+    );
+    let fulltext = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";
+    let fulltext_bare = spec(&doc("", fulltext));
+    let fulltext_explicit = spec(&doc("", &format!("{fulltext}tokenizer = \"unicode\"\n")));
+    assert_eq!(fulltext_bare.content_hash(), fulltext_explicit.content_hash());
+    assert_eq!(fulltext_bare.canonical_value()["tables"][0]["indexes"][0], json!({"kind": "fulltext", "column": "body"}));
+    assert_ne!(fulltext_bare.content_hash(), spec(&doc("", &format!("{fulltext}tokenizer = \"cjk\"\n"))).content_hash());
 }
 
 /// A destination table is named `<pipeline id>_<table name>`, each non-alphanumeric character folded to `_` and

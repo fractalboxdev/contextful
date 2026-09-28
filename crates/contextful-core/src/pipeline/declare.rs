@@ -6,6 +6,7 @@ use super::transform::TransformOp;
 use crate::run::journal::sha256_hex;
 use crate::run::RunError;
 use crate::store::declare::{TableDecl, WriteMode};
+use crate::store::index::{IndexDecl, IndexKind, Tokenizer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -24,6 +25,20 @@ fn empty_object() -> Value {
 
 fn is_empty_object(v: &Value) -> bool {
     v.as_object().is_some_and(|m| m.is_empty())
+}
+
+/// An index block in canonical form: a vector block always carries its metric, whether
+/// declared or not, so its hash is independent of the explicit default; a full-text block
+/// elides the default `unicode` tokenizer.
+fn canonical_index(index: &mut IndexDecl) {
+    match index.kind {
+        IndexKind::Vector => index.metric = Some(index.metric()),
+        IndexKind::Fulltext => {
+            if index.tokenizer == Some(Tokenizer::default()) {
+                index.tokenizer = None;
+            }
+        }
+    }
 }
 
 /// The destination every pipeline lands in unless it names another: the local store.
@@ -115,6 +130,9 @@ impl PipelineSpec {
                 }
                 if d.order_by.as_deref() == Some(crate::store::reserve::INGESTED_AT) {
                     d.order_by = None;
+                }
+                for index in d.indexes.iter_mut().flatten() {
+                    canonical_index(index);
                 }
                 if **d == TableDecl::named(d.name.clone()) {
                     *t = TableEntry::Name(d.name.clone());
