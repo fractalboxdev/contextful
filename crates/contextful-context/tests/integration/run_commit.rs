@@ -144,3 +144,27 @@ fn each_node_keeps_its_own_commit_log() {
     assert_eq!(contextful_context::commit_log::append(&f.store, "feed", "ingest-b", &entry(1)).unwrap(), 1);
     assert!(f.store.root().join("cursors/feed/ingest-b/00000000000000000001.json").exists());
 }
+
+/// A store on an exFAT volume, which holds no hard links, commits a run's manifest and a
+/// commit-log entry, and refuses a second commit of the same run.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_store_on_exfat_commits_a_run_and_its_log_entry() {
+    use contextful_core::store::commit_log::{CommitEntry, Kind};
+    let volume = contextful_fs::test_volume::ExfatVolume::mount();
+    let store = contextful_context::Store::open(volume.path(), "research").unwrap();
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-x".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None },
+        committed_at: at("2030-01-01T00:01:00Z"),
+    };
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: Some(1), logged: true };
+    let d = decl("name = \"filings\"");
+    land_batches(&store, &d, &[batch(json!([{"id": "d1"}]))], &ctx, &position, &|| Ok(())).unwrap();
+    let again = land_batches(&store, &d, &[batch(json!([{"id": "d1"}]))], &ctx, &position, &|| Ok(()));
+    assert!(again.unwrap_err().to_string().contains("already committed"));
+    contextful_context::commit_log::open_fence(&store, "feed", "ingest-a", "filings", 1).unwrap();
+    let entry = CommitEntry { kind: Kind::Commit, table: "filings".into(), run_id: Some("run-x".into()), cursor: Some(json!("p1")), fence: 1 };
+    assert_eq!(contextful_context::commit_log::append(&store, "feed", "ingest-a", &entry).unwrap(), 2);
+    assert_eq!(store.committed_runs("filings").unwrap().into_iter().map(|m| m.run_id).collect::<Vec<_>>(), ["run-x"]);
+}

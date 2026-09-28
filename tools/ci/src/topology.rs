@@ -3,7 +3,8 @@
 //! and script-runtime bans, and the run-path-to-read-path crate graph; and, per package
 //! off `cargo tree`, the store adapter's engine-free write half and the external-assertion
 //! stack outside the binary. The same walk holds every workspace package to
-//! `assurance.build.licence-field`.
+//! `assurance.build.licence-field`, and every `crates/` package to the crate tree of
+//! `topology.package.crate-map-drift`.
 
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
@@ -84,6 +85,19 @@ const EXCHANGE_MODULE: &str = "contextful_policy::exchange";
 /// The external-assertion stack no other `crates/` package resolves
 /// (`topology.package.exchange-optional`).
 const EXCHANGE_STACK: [&str; 2] = ["jsonwebtoken", "rsa"];
+
+/// The page holding the crate-map clause and the crate tree under its `## Shapes`
+/// (`topology.package.crate-map-drift`).
+const TOPOLOGY_PAGE: &str = "spec/01-topology.md";
+const CRATE_MAP_CLAUSE: &str = "- `crate-map` — ";
+
+/// Count words the crate-map clause opens with.
+const NUMBERS: [&str; 30] = [
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+    "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "twenty-one",
+    "twenty-two", "twenty-three", "twenty-four", "twenty-five", "twenty-six", "twenty-seven", "twenty-eight",
+    "twenty-nine",
+];
 
 fn matches(pattern: &str, name: &str) -> bool {
     match pattern.strip_suffix('*') {
@@ -387,6 +401,69 @@ fn exchange_leaks(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>>
     Ok(out)
 }
 
+/// The crate-map clause's stated count and the crate tree's entries, read off
+/// [`TOPOLOGY_PAGE`]; `None` when the page is absent.
+fn crate_map(root: &Path) -> Result<Option<(Option<usize>, Vec<String>)>> {
+    let Ok(text) = std::fs::read_to_string(root.join(TOPOLOGY_PAGE)) else { return Ok(None) };
+    let stated = text.lines().find_map(|l| l.strip_prefix(CRATE_MAP_CLAUSE)).map(|rest| {
+        let word = rest.split_whitespace().next().unwrap_or_default().to_lowercase();
+        NUMBERS.iter().position(|n| *n == word)
+    });
+    let Some(stated) = stated else { bail!("{TOPOLOGY_PAGE} holds no `crate-map` clause") };
+    let mut entries = Vec::new();
+    let mut in_shapes = false;
+    let mut in_tree = false;
+    for line in text.lines() {
+        if line.starts_with("## ") {
+            in_shapes = line.trim_end() == "## Shapes";
+            continue;
+        }
+        if !in_shapes {
+            continue;
+        }
+        if line.trim_end() == "crates/" {
+            in_tree = true;
+        } else if in_tree && line.starts_with("  ") {
+            if let Some(dir) = line.split_whitespace().next().and_then(|t| t.strip_suffix('/')) {
+                entries.push(dir.to_string());
+            }
+        } else if in_tree {
+            break;
+        }
+    }
+    if entries.is_empty() {
+        bail!("{TOPOLOGY_PAGE} holds no crate tree under `## Shapes`");
+    }
+    Ok(Some((stated, entries)))
+}
+
+/// `CrateMapDrift` per `crates/` package the crate tree omits, and for a stated count
+/// differing from the tree's entries.
+fn crate_map_drift(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
+    let Some((stated, entries)) = crate_map(root)? else { return Ok(Vec::new()) };
+    let mut dirs: Vec<&str> = g
+        .packages
+        .values()
+        .filter(|p| p.workspace)
+        .filter_map(|p| p.manifest.strip_prefix("crates/")?.strip_suffix("/Cargo.toml"))
+        .collect();
+    dirs.sort_unstable();
+    let mut out = Vec::new();
+    for dir in dirs {
+        if !entries.iter().any(|e| e == dir) {
+            out.push(("CrateMapDrift", format!("`crates/{dir}` is absent from the crate tree in {TOPOLOGY_PAGE}")));
+        }
+    }
+    if stated != Some(entries.len()) {
+        let stated = stated.map_or("no count".to_string(), |n| format!("{n} crates"));
+        out.push((
+            "CrateMapDrift",
+            format!("`topology.package.crate-map` states {stated}; the crate tree lists {}", entries.len()),
+        ));
+    }
+    Ok(out)
+}
+
 /// Whether any `.rs` file under `dir` contains `needle`.
 fn mentions(dir: &Path, needle: &str) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else { return false };
@@ -406,6 +483,7 @@ pub fn check(root: &Path) -> Result<()> {
     let g = Graph::load(root)?;
     let mut found = findings(root, &g)?;
     found.extend(exchange_leaks(root, &g)?);
+    found.extend(crate_map_drift(root, &g)?);
     for (code, message) in &found {
         eprintln!("{code}: {message}");
     }
@@ -415,5 +493,8 @@ pub fn check(root: &Path) -> Result<()> {
     let n = g.packages.values().filter(|p| p.workspace).count();
     let domain = if g.id_of(DOMAIN).is_some() { format!("; `{DOMAIN}` is pure and depends on no adapter") } else { String::new() };
     println!("topology: {n} workspace package(s) hold to the dependency rules{domain}");
+    if let Some((_, entries)) = crate_map(root)? {
+        println!("crate map: {} crates, every `crates/` package named", entries.len());
+    }
     Ok(())
 }

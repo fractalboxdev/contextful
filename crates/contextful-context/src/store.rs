@@ -13,6 +13,7 @@ use contextful_core::store::StoreError;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
+use contextful_fs::tmp_sibling;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -427,24 +428,9 @@ pub fn replace_file(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 /// Create `path` holding `bytes` only if nothing is there: the bytes land in a sibling
-/// temporary file and a hard link publishes them, failing where `path` exists.
+/// temporary file one exclusive create publishes, `false` where `path` exists.
 pub(crate) fn create_new_file(path: &Path, bytes: &[u8]) -> Result<bool> {
-    let tmp = tmp_sibling(path);
-    fs::write(&tmp, bytes).at(&tmp)?;
-    let linked = fs::hard_link(&tmp, path);
-    let _ = fs::remove_file(&tmp);
-    match linked {
-        Ok(()) => Ok(true),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-        Err(e) => Err(ContextError::Io { path: path.to_path_buf(), source: e }),
-    }
-}
-
-fn tmp_sibling(path: &Path) -> PathBuf {
-    let mut nonce = [0u8; 8];
-    getrandom::fill(&mut nonce).expect("the platform supplies randomness");
-    let name = format!(".{}.{}.tmp", file_name(path), hex(&nonce));
-    path.with_file_name(name)
+    contextful_fs::create_new(path, bytes).at(path)
 }
 
 /// A table or project name: `/`-separated segments of `[A-Za-z0-9._-]`, none `.` or `..`.

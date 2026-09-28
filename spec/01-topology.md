@@ -86,7 +86,9 @@ The two halves of the engine, the three crossings between them, complete mediati
 
 The domain crate, dependency direction, and the three build profiles with what each links.
 
-- `crate-map` — Thirteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+- `crate-map` — Fifteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+- `crate-map-drift` — A `crates/` package absent from the crate tree under `## Shapes`, or a {{topology.package.crate-map}} count differing from that tree's entries, raises `CrateMapDrift`, naming the package or both counts.
+  *because a package added without a map entry otherwise passes every other gate*
 - `domain-crate` — `contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.
   *A-topology*
 - `domain-impurity` — `contextful-core` declaring an async runtime, a component host, an HTTP client or a columnar-format implementation raises `DomainCrateImpurity`, naming the dependency and the feature that pulled it.
@@ -332,6 +334,7 @@ The workspace:
 ```
 crates/
   contextful-core/         pure domain types and ports, no I/O
+  contextful-fs/           exclusive-create publish the store and the journal share
   contextful-engine/       runner, journal, catalog, awakeables, cancellation
   contextful-outbound/     mediated client, credential resolution, quota metering, inference
   contextful-wasm/         sandboxed component host
@@ -344,6 +347,7 @@ crates/
   contextful-eval/         read-path quality harness
   contextful-control/      control plane; the one CRDT consumer
   contextful-cli/          the `contextful` binary; dependency injection per profile
+  acceptance/              black-box suite driving the built binary
 contextful.toml            the deployment declaration, identical across providers
 ```
 

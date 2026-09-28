@@ -2,31 +2,17 @@
 //! an exclusive create, and an advisory lock the kernel releases when its holder exits.
 
 use contextful_core::run::{Failure, FailureTag};
+use contextful_fs::tmp_sibling;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 /// A storage failure naming the path it met.
 pub fn storage(path: &Path, e: impl std::fmt::Display) -> Failure {
     Failure::new(FailureTag::Storage, format!("{}: {e}", path.display()))
-}
-
-fn nonce() -> String {
-    let mut bytes = [0u8; 8];
-    // A platform without a randomness source still yields a distinct name per process.
-    if getrandom::fill(&mut bytes).is_err() {
-        bytes = u64::from(std::process::id()).to_le_bytes();
-    }
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// A private sibling path for staging a write to `path`.
-pub fn tmp_sibling(path: &Path) -> PathBuf {
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    path.with_file_name(format!(".{name}.{}.tmp", nonce()))
 }
 
 /// Replace `path` with `bytes` in one rename: a reader sees the old file or the new one.
@@ -47,15 +33,7 @@ pub fn create_new(path: &Path, bytes: &[u8]) -> Result<bool, Failure> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| storage(dir, e))?;
     }
-    let tmp = tmp_sibling(path);
-    fs::write(&tmp, bytes).map_err(|e| storage(&tmp, e))?;
-    let linked = fs::hard_link(&tmp, path);
-    let _ = fs::remove_file(&tmp);
-    match linked {
-        Ok(()) => Ok(true),
-        Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(false),
-        Err(e) => Err(storage(path, e)),
-    }
+    contextful_fs::create_new(path, bytes).map_err(|e| storage(path, e))
 }
 
 /// Serialize `value` as pretty JSON.
