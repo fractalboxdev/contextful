@@ -12,7 +12,7 @@ use contextful_core::ports::{Clock, FixedClock, SigningPort};
 use contextful_core::time::Instant;
 use contextful_policy::attenuate::{attenuate, Derivation};
 use contextful_policy::issue::{mint, MintClaims, SeedSigner};
-use contextful_policy::keyset::{KeySource, StaticPins};
+use contextful_policy::keyset::KeySource;
 use contextful_policy::revoke::{parse_denylist, RevocationState};
 use contextful_policy::verify::{introspect, verify_local_bearer, Admission};
 use std::path::{Path, PathBuf};
@@ -93,10 +93,10 @@ pub enum TokenCmd {
         #[arg(long)]
         token: String,
         /// Comma-separated issuer key pins.
-        #[arg(long)]
-        public_key: String,
+        #[arg(long, env = crate::admit::PUBKEY_VAR)]
+        public_key: Option<String>,
         /// Expected audience; absent performs no audience check.
-        #[arg(long)]
+        #[arg(long, env = crate::admit::AUDIENCE_VAR)]
         audience: Option<String>,
         /// Evaluation instant (RFC 3339); absent reads the system clock.
         #[arg(long)]
@@ -164,7 +164,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             Ok(())
         }
         TokenCmd::Verify { token, public_key, audience, at, denylist } => {
-            let keys = StaticPins::parse(&public_key)?.keys()?;
+            let keys = crate::admit::static_pins(public_key.as_deref())?.keys()?;
             let at = instant_or_now(at.as_deref())?;
             let mut revocation = RevocationState::default();
             if let Some(path) = denylist {

@@ -11963,6 +11963,17 @@
       "line": 305
     },
     {
+      "id": "authority.verify.pin-source",
+      "contract": "authority",
+      "operation": "verify",
+      "subject": "pin-source",
+      "kind": "behavior",
+      "statement": "A command-line checkpoint reads its pins from `--public-key`, else `CONTEXTFUL_ISSUER_PUBKEY`, and its audience from `--audience`, else `CONTEXTFUL_AUDIENCE`. A bare 64-hex pin reads as `ed25519/<hex>`; an unknown scheme prefix is refused as {{authority.verify.key-set-unavailable}}, naming the accepted forms.",
+      "why": "because an operator exports the issuer key once per shell, and key tools commonly print a bare Ed25519 key with no scheme prefix",
+      "file": "spec/50-authority.md",
+      "line": 307
+    },
+    {
       "id": "authority.verify.key-set-refresh",
       "contract": "authority",
       "operation": "verify",
@@ -11971,7 +11982,7 @@
       "statement": "A published key set refreshes every 300 s, single-flight, plus one refresh on a signature failure, with failure-forced refreshes throttled.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 307
+      "line": 309
     },
     {
       "id": "authority.verify.key-set-unavailable",
@@ -11982,7 +11993,7 @@
       "statement": "A checkpoint opted into a published key set that obtains none, or holding a malformed pin, raises `KeySetUnavailable`: the engine declines to start and a gateway answers `503`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 309
+      "line": 311
     },
     {
       "id": "authority.verify.key-set-stale",
@@ -11993,7 +12004,7 @@
       "statement": "After a failed fetch the last-known-good set serves while its age since the last successful fetch stays under 1 h; past that the checkpoint raises `KeySetStale`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "authority.revoke.short-lifetime",
@@ -12004,7 +12015,7 @@
       "statement": "A short lifetime is the primary withdrawal: a credential's remaining lifetime bounds its exposure after a provider sign-out or before a denylist entry propagates.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 322
+      "line": 324
     },
     {
       "id": "authority.revoke.denylist",
@@ -12015,7 +12026,7 @@
       "statement": "A checkpoint reads a denylist keyed on credential identifier. An entry ages out once its identifier verifies under no live key version.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 324
+      "line": 326
     },
     {
       "id": "authority.revoke.revocation-id",
@@ -12026,7 +12037,7 @@
       "statement": "Every derivation carries its own revocation identifier, withdrawing one subtree without ending the root it descends from.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 326
+      "line": 328
     },
     {
       "id": "authority.revoke.epoch",
@@ -12037,7 +12048,7 @@
       "statement": "A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 328
+      "line": 330
     },
     {
       "id": "authority.revoke.revoked",
@@ -12048,7 +12059,7 @@
       "statement": "A credential on the denylist, or carrying an epoch below the current scoped epoch, raises `AuthorityRevoked` at the next effect boundary.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 330
+      "line": 332
     },
     {
       "id": "authority.revoke.compromise",
@@ -12059,7 +12070,7 @@
       "statement": "Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 332
+      "line": 334
     },
     {
       "id": "authority.revoke.rotation-grace",
@@ -12070,7 +12081,7 @@
       "statement": "A rotation policy declares a cadence and a grace window, validated against the persisted issuance policy, during which the retiring key version still verifies.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 334
+      "line": 336
     },
     {
       "id": "authority.revoke.short-grace",
@@ -12081,7 +12092,7 @@
       "statement": "A declared or overridden grace window shorter than the effective issuance ceiling raises `RotationGraceTooShort`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 336
+      "line": 338
     },
     {
       "id": "authority.revoke.immediate-retire",
@@ -12092,7 +12103,7 @@
       "statement": "Immediate retirement removes a key version from the published set and every static pin; a checkpoint drops it at its next refresh.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 338
+      "line": 340
     },
     {
       "id": "authority.revoke.format-withdrawn",
@@ -12103,7 +12114,7 @@
       "statement": "From a declared cutover instant, every admission path raises `CredentialFormatWithdrawn` for a credential in a withdrawn format. Only an explicit declaration restores acceptance.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 340
+      "line": 342
     },
     {
       "id": "authority.exchange.surface",
@@ -12114,7 +12125,7 @@
       "statement": "`contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 361
+      "line": 363
     },
     {
       "id": "authority.exchange.policy",
@@ -12125,7 +12136,7 @@
       "statement": "An exchange policy declares `expected_iss`, optional `expected_aud`, `subject_map`, `tenant_claim`, `role_claim`, `role_grants`, `default_grants`, `ttl_secs`, `minted_iss` and `minted_aud`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 363
+      "line": 365
     },
     {
       "id": "authority.exchange.injected-material",
@@ -12136,7 +12147,7 @@
       "statement": "Verifying material is operator-injected: a shared secret, an RS256 public key in PEM form, or a key-set document selected by the assertion's `kid`. The exchange makes no network call.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 365
+      "line": 367
     },
     {
       "id": "authority.exchange.minted-grants",
@@ -12147,7 +12158,7 @@
       "statement": "Minted grants come from `role_grants` and `default_grants` alone. A verified role matching no entry earns `default_grants`, which is empty unless declared.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 367
+      "line": 369
     },
     {
       "id": "authority.exchange.tenant",
@@ -12158,7 +12169,7 @@
       "statement": "The assertion claim `tenant_claim` names becomes the tenant scope of every minted grant; no subject member carries tenancy.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 369
+      "line": 371
     },
     {
       "id": "authority.exchange.lifetime-default",
@@ -12169,7 +12180,7 @@
       "statement": "A minted credential lives 900 s where the policy declares no `ttl_secs`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 371
+      "line": 373
     },
     {
       "id": "authority.exchange.lifetime-ceiling",
@@ -12180,7 +12191,7 @@
       "statement": "A configured `ttl_secs` clamps down to 3600 s and never extends.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 373
+      "line": 375
     },
     {
       "id": "authority.exchange.audience",
@@ -12191,7 +12202,7 @@
       "statement": "A minted credential carries `minted_aud`, falling back to the project's persisted default audience.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 375
+      "line": 377
     },
     {
       "id": "authority.exchange.assertion-invalid",
@@ -12202,7 +12213,7 @@
       "statement": "A bad signature, a lapsed assertion, an untrusted issuer or audience, or a mapped claim absent from the assertion raises `ExchangeAssertionInvalid` and mints nothing.",
       "why": "because no credential exists whose subject the assertion did not verify",
       "file": "spec/50-authority.md",
-      "line": 377
+      "line": 379
     },
     {
       "id": "authority.exchange.material-missing",
@@ -12213,7 +12224,7 @@
       "statement": "An exchange configured with no verifying material raises `ExchangeMaterialMissing` and mints nothing.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 379
+      "line": 381
     },
     {
       "id": "authority.exchange.per-reader",
@@ -12224,7 +12235,7 @@
       "statement": "An embedding application holds no project-wide credential; per request it exchanges its signed-in reader's assertion for that reader's short-lived credential and reads as them.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 381
+      "line": 383
     },
     {
       "id": "authority.exchange.no-cross-reader",
@@ -12235,7 +12246,7 @@
       "statement": "An exchanged credential serves only the reader it was minted for.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 383
+      "line": 385
     },
     {
       "id": "authority.redact.write-time",
@@ -14732,7 +14743,7 @@
       "statement": "The streaming redactor buffers 128 chars across each chunk boundary, and no denylist entry is longer than the buffer.",
       "why": "because an identifier split between two chunks otherwise passes unredacted",
       "file": "spec/71-console.md",
-      "line": 125
+      "line": 127
     },
     {
       "id": "surface.speak.unanswerable-suggestion",
@@ -14743,7 +14754,7 @@
       "statement": "A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 127
+      "line": 129
     },
     {
       "id": "surface.ground.ungrounded-answer",
@@ -14754,7 +14765,7 @@
       "statement": "A path composing answer prose in a turn holding no tool result raises `ConsoleUngroundedAnswer`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 134
+      "line": 136
     },
     {
       "id": "surface.ground.unadmitted-tool",
@@ -14765,7 +14776,7 @@
       "statement": "A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 136
+      "line": 138
     },
     {
       "id": "surface.ground.mutating-tool",
@@ -14776,7 +14787,7 @@
       "statement": "The visitor-facing endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 138
+      "line": 140
     },
     {
       "id": "surface.ground.org-face-read-only",
@@ -14787,7 +14798,7 @@
       "statement": "A pack registering a write tool on an organization-wide face raises `ConsoleWriteToolOnOrgFace` at startup, naming the pack and the tool, and the face serves nothing.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 140
+      "line": 142
     },
     {
       "id": "surface.ground.direct-file-read",
@@ -14798,7 +14809,7 @@
       "statement": "A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on this surface.",
       "why": "P5",
       "file": "spec/71-console.md",
-      "line": 142
+      "line": 144
     },
     {
       "id": "surface.ground.mint-refused",
@@ -14809,7 +14820,7 @@
       "statement": "A refused mint raises `ConsoleTokenExchangeRefused`. A store carrying a shared credential falls back to it; one carrying none surfaces the refusal to the reader.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 144
+      "line": 146
     },
     {
       "id": "surface.ground.sources-per-turn",
@@ -14820,7 +14831,7 @@
       "statement": "A source list carries at most 8 entries.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 146
+      "line": 148
     },
     {
       "id": "surface.plan-turn.planner-reached-memory",
@@ -14831,7 +14842,7 @@
       "statement": "Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises `ConsolePlannerReachedMemory`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 184
+      "line": 186
     },
     {
       "id": "surface.plan-turn.code-path-bounds",
@@ -14842,7 +14853,7 @@
       "statement": "The code path reads at most 5000 rows per data table and stops after 10 s.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 186
+      "line": 188
     },
     {
       "id": "surface.plan-turn.overlay-cache",
@@ -14853,7 +14864,7 @@
       "statement": "The overlay caches for 5 min, a miss included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 187
+      "line": 189
     },
     {
       "id": "surface.plan-turn.overlay-length",
@@ -14864,7 +14875,7 @@
       "statement": "An overlay is truncated at 8000 chars.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 188
+      "line": 190
     },
     {
       "id": "surface.set-vantage.unparseable",
@@ -14875,7 +14886,7 @@
       "statement": "A vantage that is neither a calendar day nor an instant raises `ConsoleVantageUnparseable`, answered `400`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 196
+      "line": 198
     },
     {
       "id": "surface.set-vantage.web-bound-unparseable",
@@ -14886,7 +14897,7 @@
       "statement": "A web leg whose bound fails to parse fails that leg and raises `ConsoleWebBoundUnparseable`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 198
+      "line": 200
     },
     {
       "id": "surface.set-vantage.sample-labels",
@@ -14897,7 +14908,7 @@
       "statement": "A table's arrivals contribute at most 3 entries of sampled label.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 200
+      "line": 202
     },
     {
       "id": "surface.learn.distillation",
@@ -14908,7 +14919,7 @@
       "statement": "After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 210
+      "line": 212
     },
     {
       "id": "surface.learn.unscoped",
@@ -14919,7 +14930,7 @@
       "statement": "A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 211
+      "line": 213
     },
     {
       "id": "surface.render.client-authored-view",
@@ -14930,7 +14941,7 @@
       "statement": "A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 220
+      "line": 222
     },
     {
       "id": "surface.render.component-choice",
@@ -14941,7 +14952,7 @@
       "statement": "One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 222
+      "line": 224
     },
     {
       "id": "surface.brief.absence-is-earned",
@@ -14952,7 +14963,7 @@
       "statement": "The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 259
+      "line": 261
     },
     {
       "id": "surface.brief.topic-tier",
@@ -14963,7 +14974,7 @@
       "statement": "The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 261
+      "line": 263
     },
     {
       "id": "surface.brief.card-subjects",
@@ -14974,7 +14985,7 @@
       "statement": "A card carries at most 3 subjects.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 262
+      "line": 264
     },
     {
       "id": "surface.brief.articles-per-subject",
@@ -14985,7 +14996,7 @@
       "statement": "A subject carries at most 3 entries of matched article.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 263
+      "line": 265
     },
     {
       "id": "surface.brief.catchup-window",
@@ -14996,7 +15007,7 @@
       "statement": "The backend caps the requested window at 7 d.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "surface.publish-answer.share-affordance",
@@ -15007,7 +15018,7 @@
       "statement": "A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "surface.publish-answer.askerless-audience",
@@ -15018,7 +15029,7 @@
       "statement": "A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "assurance.model.package",
@@ -17952,6 +17963,10 @@
     [
       "authority.verify.clock-skew",
       "authority.verify.possession-invalid"
+    ],
+    [
+      "authority.verify.pin-source",
+      "authority.verify.key-set-unavailable"
     ],
     [
       "authority.redact.before-the-record",

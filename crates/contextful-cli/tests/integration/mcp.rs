@@ -91,3 +91,25 @@ fn a_server_with_no_admissible_credential_writes_no_framing() {
     let unmanifested = serve(dir.path(), &args, Some(&token), &hello);
     assert!(!unmanifested.status.success() && unmanifested.stdout.is_empty());
 }
+
+/// Over the process transport a credential is mandatory, a capability token or an explicit owner flag; an unset one raises `StdioCredentialMissing` and does not resolve to the owner context.
+#[test]
+fn a_server_with_no_credential_raises_stdio_credential_missing() {
+    let (dir, public, _token) = project();
+    let hello = [json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} })];
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
+    cmd.args(["mcp", "--project", "research"]).current_dir(dir.path()).env_remove("CONTEXTFUL_TOKEN");
+    cmd.env("CONTEXTFUL_ISSUER_PUBKEY", &public).env("CONTEXTFUL_AUDIENCE", AUD);
+    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    for token in [None, Some("  ")] {
+        if let Some(t) = token {
+            cmd.env("CONTEXTFUL_TOKEN", t);
+        }
+        let mut child = cmd.spawn().unwrap();
+        writeln!(child.stdin.take().unwrap(), "{}", hello[0]).ok();
+        let out = child.wait_with_output().unwrap();
+        assert!(!out.status.success() && out.stdout.is_empty(), "no owner context answers");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.starts_with("StdioCredentialMissing") && err.contains("CONTEXTFUL_TOKEN"), "{err}");
+    }
+}
