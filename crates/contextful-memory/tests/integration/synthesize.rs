@@ -260,6 +260,24 @@ fn a_landing_rereads_the_writers_authority() {
     assert!(facts(&f, &writer, r#"SELECT * FROM "memory/facts""#).1.is_empty());
 }
 
+/// A row reaches the model through the connector's data fence: labelled with its source
+/// table, free of control characters, and cut at the row's character cap.
+#[test]
+fn a_row_reaches_the_model_labelled_clean_and_capped() {
+    use contextful_core::connector::infer::TRUNCATION_MARK;
+    use contextful_memory::synthesize::VALUE_CHARS;
+    let f = Fixture::new();
+    let (writer, node) = (f.writer(), NodeId::parse("memory-a").unwrap());
+    let text = format!("Dana\u{1b}[2J is Acme's CFO. {}", "x".repeat(VALUE_CHARS));
+    land_rows(&f.face, "research/notes", "run-0001", json!([{ "note_id": "n1", "text": text }]));
+    let inference = Scripted::new(&[claims("acme", "cfo", "Dana", "run-0001")]);
+    pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
+    let sent = prompt(&inference, 0);
+    assert!(sent.contains("<<<data label=\"research/notes\" ref=\"research/notes#run-0001:0\""), "{sent}");
+    assert!(sent.contains("is Acme's CFO.") && !sent.contains('\u{1b}'));
+    assert!(sent.contains(&format!("{TRUNCATION_MARK}\n<<<end ")), "the row ends in the truncation mark");
+}
+
 /// Regression: a backlog past the prompt bound goes out in batches, each committing and
 /// advancing the cursor on its own; a failed batch keeps the batches before it.
 #[test]
