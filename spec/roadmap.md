@@ -125,8 +125,6 @@ Acceptance: `contextful_acceptance::m07::m07_memory`
 
 Reach: An operator answers what a named person could have seen over a past window, from the store, in SQL.
 
-Depth: operation
-
 Acceptance: `contextful_acceptance::m08::m08_accountability`
 
 ## 9 — Visibility

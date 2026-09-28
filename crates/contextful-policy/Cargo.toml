@@ -25,6 +25,9 @@ sha2 = "0.10"
 p256 = "0.13"
 # The audit chain: the keyed query digest.
 hmac = "0.12"
+# Audit format v1: the RFC 8785 canonical entry and the BLAKE3 chain digest.
+serde_json_canonicalizer = "0.3"
+blake3 = "1"
 # The exchange: external assertion verification under injected material, behind the
 # `exchange` feature (`topology.package.exchange-optional`).
 jsonwebtoken = { version = "11", features = ["rust_crypto"], optional = true }

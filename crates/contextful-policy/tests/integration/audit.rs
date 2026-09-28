@@ -3,11 +3,13 @@
 
 use contextful_core::issue::SignatureAlgorithm;
 use contextful_policy::audit::{
-    query_digest, verify, verify_signed, AuditEntry, AuditError, AuditLog, AuditOptions, FileFsync, Fsync, FsyncPort, SignedRoot, SignedTip,
-    AUDIT_SEGMENT_ENTRIES, AUDIT_TIP_IDLE, GENESIS,
+    prove, query_digest, verify, verify_signed, AuditEntry, AuditError, AuditLog, AuditOptions, ChainFormat, ChainHeader, DigestAlgorithm,
+    FileFsync, Fsync, FsyncPort, InclusionProof, SignedRoot, SignedTip, AUDIT_FORMAT, AUDIT_SEGMENT_ENTRIES, AUDIT_SEGMENT_MAX, AUDIT_TIP_IDLE,
+    GENESIS,
 };
 use contextful_policy::issue::{SeedSigner, SignerKey};
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -70,7 +72,8 @@ fn entries_link_from_genesis_with_seq_starting_at_one() {
     let dir = log_of(3);
     let entries = lines(&segment(dir.path(), 1));
     assert_eq!(entries.iter().map(|e| e.seq).collect::<Vec<_>>(), [1, 2, 3]);
-    assert_eq!(entries[0].prev_hash, GENESIS);
+    assert_eq!(entries[0].prev_hash, ChainHeader::default().digest(), "a v1 chain links its first entry to its header");
+    assert!(entries.iter().all(|e| e.format == AUDIT_FORMAT));
     assert_eq!(entries[1].prev_hash, entries[0].entry_hash);
     assert_eq!(entries[2].prev_hash, entries[1].entry_hash);
     assert!(entries.iter().all(|e| e.entry_hash.starts_with("sha256:")));
@@ -86,10 +89,12 @@ fn entries_link_from_genesis_with_seq_starting_at_one() {
 fn the_entry_digest_is_independent_of_attribute_order() {
     let a: Value = serde_json::from_str(r#"{"contextful.result.rows":1,"contextful.tables":["orders"]}"#).unwrap();
     let b: Value = serde_json::from_str(r#"{"contextful.tables":["orders"],"contextful.result.rows":1}"#).unwrap();
-    assert_eq!(AuditEntry::link(1, GENESIS, a).entry_hash, AuditEntry::link(1, GENESIS, b).entry_hash);
+    for chain in [ChainFormat::V0, ChainFormat::V1(ChainHeader::default())] {
+        assert_eq!(chain.link(1, GENESIS, a.clone()).entry_hash, chain.link(1, GENESIS, b.clone()).entry_hash);
+    }
 }
 
-// spec: disclosure.record.segment@10125400
+// spec: disclosure.record.segment@ef83fc56
 #[test]
 fn a_segment_closes_at_4096_entries_under_one_signed_root() {
     let dir = tempfile::tempdir().unwrap();
@@ -104,20 +109,20 @@ fn a_segment_closes_at_4096_entries_under_one_signed_root() {
 
     let root: SignedRoot = serde_json::from_str(&fs::read_to_string(root_file(dir.path(), 1)).unwrap()).unwrap();
     assert_eq!(root.count, AUDIT_SEGMENT_ENTRIES);
-    assert_eq!(root.root, first.last().unwrap().entry_hash);
+    assert_eq!(root.root, merkle(DigestAlgorithm::Sha256, &first));
     assert!(root.verify(&SignerKey::of(&key())));
 
     let second = lines(&segment(dir.path(), 2));
     assert_eq!(second.iter().map(|e| e.seq).collect::<Vec<_>>(), [AUDIT_SEGMENT_ENTRIES + 1]);
-    assert_eq!(second[0].prev_hash, root.root);
+    assert_eq!(second[0].prev_hash, first.last().unwrap().entry_hash);
     assert!(!root_file(dir.path(), 2).exists(), "an open segment carries no root");
     assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 1);
 }
 
-/// A disagreeing digest, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the
-/// signed check opening a log runs, an absent or unverified tip or root raises `AuditChainBroken` at the earliest
+/// A disagreeing digest, entry format or Merkle root, a sequence gap, an absent chain beside `chain.tip` or a signed
+/// root, or, under the signed check, an absent or unverified tip or root raises `AuditChainBroken` at the earliest
 /// failing index.
-// spec: disclosure.attest.broken-chain@0683f91b
+// spec: disclosure.attest.broken-chain@4c95d01d
 #[test]
 fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     // A disagreeing digest: entry 2's attributes rewritten after the fact.
@@ -126,6 +131,17 @@ fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     entries[1].attributes = attrs("agent://attacker", 999);
     write_lines(&segment(dir.path(), 1), &entries);
     assert_eq!(broken_at(verify(dir.path())), 2);
+
+    // A disagreeing entry format: entry 2 claims v0 inside a v1 chain, and the header removed
+    // leaves v1 entries a v0 walk refuses at the first.
+    let dir = log_of(3);
+    let mut entries = lines(&segment(dir.path(), 1));
+    entries[1] = ChainFormat::V0.link(2, &entries[0].entry_hash, entries[1].attributes.clone());
+    write_lines(&segment(dir.path(), 1), &entries);
+    assert_eq!(broken_at(verify(dir.path())), 2);
+    let dir = log_of(3);
+    fs::remove_file(dir.path().join("header.json")).unwrap();
+    assert_eq!(broken_at(verify(dir.path())), 1);
 
     // A sequence gap: entry 2 removed.
     let dir = log_of(3);
@@ -169,23 +185,35 @@ fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     fs::remove_file(dir.path().join("chain.tip")).unwrap();
     assert_eq!(broken_at(verify_signed(dir.path(), &SignerKey::of(&key()))), 1);
 
-    // A closed segment rewritten wholesale, re-linked, under a root with a garbage signature.
+    // A disagreeing Merkle root: the root names the last entry's digest, as a v0 root does.
+    let dir = small_log(8, 8);
+    let path = root_file(dir.path(), 1);
+    let mut root: SignedRoot = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    root.root = lines(&segment(dir.path(), 1)).last().unwrap().entry_hash.clone();
+    fs::write(&path, serde_json::to_string(&root).unwrap()).unwrap();
+    assert_eq!(broken_at(verify(dir.path())), 8);
+
+    // A closed segment rewritten wholesale, re-linked, under its recomputed root with a garbage signature.
     let dir = tempfile::tempdir().unwrap();
     AuditLog::open(dir.path(), key()).unwrap().append_all((0..AUDIT_SEGMENT_ENTRIES + 1).map(|i| attrs("agent://a", i)).collect()).unwrap();
-    let mut prev = GENESIS.to_string();
+    let chain = ChainFormat::V1(ChainHeader::default());
+    let mut prev = ChainHeader::default().digest();
     let forged: Vec<AuditEntry> = lines(&segment(dir.path(), 1))
         .into_iter()
         .map(|e| {
-            let f = AuditEntry::link(e.seq, &prev, attrs("agent://attacker", e.seq));
+            let f = chain.link(e.seq, &prev, attrs("agent://attacker", e.seq));
             prev = f.entry_hash.clone();
             f
         })
         .collect();
     write_lines(&segment(dir.path(), 1), &forged);
-    let root = SignedRoot { root: prev.clone(), count: AUDIT_SEGMENT_ENTRIES, signature: "00".repeat(64) };
-    fs::write(root_file(dir.path(), 1), serde_json::to_string(&root).unwrap()).unwrap();
+    let path = root_file(dir.path(), 1);
+    let mut root: SignedRoot = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    root.root = merkle(DigestAlgorithm::Sha256, &forged);
+    root.signature = "00".repeat(64);
+    fs::write(&path, serde_json::to_string(&root).unwrap()).unwrap();
     let mut second = lines(&segment(dir.path(), 2));
-    second[0] = AuditEntry::link(second[0].seq, &prev, second[0].attributes.clone());
+    second[0] = chain.link(second[0].seq, &prev, second[0].attributes.clone());
     write_lines(&segment(dir.path(), 2), &second);
     fs::write(dir.path().join("chain.tip"), json!({ "seq": second[0].seq, "entry_hash": second[0].entry_hash }).to_string()).unwrap();
     assert!(verify(dir.path()).is_ok(), "the unsigned walk accepts the forged history");
@@ -433,7 +461,7 @@ impl FsyncPort for Probe {
 
 /// Options routing every sync through `probe`, with an idle interval no test outlasts.
 fn quiet(probe: &Arc<Probe>) -> AuditOptions {
-    AuditOptions { idle: Duration::from_secs(3600), fsync: probe.clone() }
+    AuditOptions { idle: Duration::from_secs(3600), fsync: probe.clone(), ..AuditOptions::default() }
 }
 
 /// Wait up to 10 s for `cond`.
@@ -652,4 +680,469 @@ fn append_latency_under_group_commit_at_one_and_sixteen_writers() {
         contextful_eval::record::emit(id, p99.as_micros() as f64, appends, 0);
         assert!(syncs <= appends, "a group issues at most one segment sync");
     }
+}
+
+/// A chain header under `digest` closing a segment every `segment_entries` entries.
+fn header(digest: DigestAlgorithm, segment_entries: u64) -> ChainHeader {
+    ChainHeader { format: AUDIT_FORMAT, digest, segment_entries }
+}
+
+fn with_header(header: ChainHeader) -> AuditOptions {
+    AuditOptions { header, ..AuditOptions::default() }
+}
+
+/// A SHA-256 log of `n` entries whose segments close every `size` entries.
+fn small_log(size: u64, n: u64) -> tempfile::TempDir {
+    small_log_under(DigestAlgorithm::Sha256, size, n)
+}
+
+fn small_log_under(digest: DigestAlgorithm, size: u64, n: u64) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let log = AuditLog::open_with(dir.path(), key(), with_header(header(digest, size))).unwrap();
+    log.append_all((0..n).map(|i| attrs("agent://a", i)).collect()).unwrap();
+    dir
+}
+
+/// `parts` concatenated under `digest`, computed apart from the library.
+fn hash(digest: DigestAlgorithm, parts: &[&[u8]]) -> [u8; 32] {
+    match digest {
+        DigestAlgorithm::Sha256 => {
+            let mut h = sha2::Sha256::new();
+            parts.iter().for_each(|p| h.update(p));
+            h.finalize().into()
+        }
+        DigestAlgorithm::Blake3 => {
+            let mut h = blake3::Hasher::new();
+            parts.iter().for_each(|p| {
+                h.update(p);
+            });
+            *h.finalize().as_bytes()
+        }
+    }
+}
+
+fn prefix(digest: DigestAlgorithm) -> &'static str {
+    match digest {
+        DigestAlgorithm::Sha256 => "sha256",
+        DigestAlgorithm::Blake3 => "blake3",
+    }
+}
+
+/// The RFC 6962 Merkle tree hash over leaf inputs `leaves`, by the recursive definition.
+fn tree_hash(digest: DigestAlgorithm, leaves: &[Vec<u8>]) -> [u8; 32] {
+    match leaves.len() {
+        0 => hash(digest, &[]),
+        1 => hash(digest, &[&[0], &leaves[0]]),
+        n => {
+            let mut k = 1;
+            while k * 2 < n {
+                k *= 2;
+            }
+            hash(digest, &[&[1], &tree_hash(digest, &leaves[..k]), &tree_hash(digest, &leaves[k..])])
+        }
+    }
+}
+
+/// The root a segment of `entries` closes under: the tree hash of their raw digests.
+fn merkle(digest: DigestAlgorithm, entries: &[AuditEntry]) -> String {
+    let leaves: Vec<Vec<u8>> = entries.iter().map(|e| hex::decode(e.entry_hash.split_once(':').unwrap().1).unwrap()).collect();
+    format!("{}:{}", prefix(digest), hex::encode(tree_hash(digest, &leaves)))
+}
+
+/// A v0 chain of `n` entries written as a v0 writer leaves it: no header, roots over the
+/// last entry digest, and a signed tip at the end.
+fn v0_chain(dir: &Path, n: u64) -> Vec<AuditEntry> {
+    fs::create_dir_all(dir.join("segments")).unwrap();
+    let mut prev = GENESIS.to_string();
+    let all: Vec<AuditEntry> = (1..=n)
+        .map(|seq| {
+            let e = ChainFormat::V0.link(seq, &prev, attrs("agent://v0", seq));
+            prev = e.entry_hash.clone();
+            e
+        })
+        .collect();
+    for (i, chunk) in all.chunks(AUDIT_SEGMENT_ENTRIES as usize).enumerate() {
+        let k = i as u64 + 1;
+        write_lines(&segment(dir, k), chunk);
+        if chunk.len() as u64 == AUDIT_SEGMENT_ENTRIES {
+            let root = SignedRoot::sign(&chunk.last().unwrap().entry_hash, AUDIT_SEGMENT_ENTRIES, &key()).unwrap();
+            fs::write(root_file(dir, k), serde_json::to_string(&root).unwrap()).unwrap();
+        }
+    }
+    let tip = SignedTip::sign(n, &prev, &key()).unwrap();
+    fs::write(dir.join("chain.tip"), serde_json::to_string(&tip).unwrap()).unwrap();
+    all
+}
+
+/// A v1 entry carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical
+/// JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.
+// spec: disclosure.record.entry-format@bda9d3a6
+#[test]
+fn a_v1_entry_digests_the_rfc_8785_form_of_its_whole_entry() {
+    // Keys sort by UTF-16 code unit (U+1F600 before U+E000), numbers take the ECMAScript form,
+    // and U+2028 stays literal.
+    let attributes = json!({
+        "z": 1e21,
+        "b": [1.5, "é\u{2028}"],
+        "a": { "y": 0.000001, "x": 1e-7 },
+        "\u{e000}": 1,
+        "\u{1f600}": 2,
+    });
+    let canonical = |prev: &str| {
+        format!(
+            "{{\"attributes\":{{\"a\":{{\"x\":1e-7,\"y\":0.000001}},\"b\":[1.5,\"é\u{2028}\"],\"z\":1e+21,\"\u{1f600}\":2,\"\u{e000}\":1}},\"format\":1,\"prev_hash\":\"{prev}\",\"seq\":1}}"
+        )
+    };
+    for digest in [DigestAlgorithm::Sha256, DigestAlgorithm::Blake3] {
+        let dir = tempfile::tempdir().unwrap();
+        let log = AuditLog::open_with(dir.path(), key(), with_header(header(digest, AUDIT_SEGMENT_ENTRIES))).unwrap();
+        let entry = log.append(attributes.clone()).unwrap();
+        drop(log);
+        assert_eq!(entry.format, AUDIT_FORMAT);
+        let expected = hash(digest, &[canonical(&entry.prev_hash).as_bytes()]);
+        assert_eq!(entry.entry_hash, format!("{}:{}", prefix(digest), hex::encode(expected)), "{digest:?}");
+        assert_eq!(lines(&segment(dir.path(), 1)), std::slice::from_ref(&entry), "the line reads back as written");
+        assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().entry_hash, entry.entry_hash);
+    }
+}
+
+/// Appending a v1 entry whose attributes hold an integer beyond ±(2^53 − 1) raises `AuditAttributeInexact` and
+/// appends nothing; verifying a chain holding such an entry raises {{disclosure.attest.broken-chain}}.
+// spec: disclosure.record.inexact-integer@e172e4f3
+#[test]
+fn a_v1_attribute_integer_beyond_2_53_raises_audit_attribute_inexact() {
+    const EXACT: u64 = (1 << 53) - 1;
+    let inexact = |r: Result<_, AuditError>| matches!(r, Err(AuditError::AuditAttributeInexact(_)));
+    let rows = |n: Value| json!({ "contextful.subject.agent": "agent://a", "contextful.result.rows": n });
+
+    // RFC 8785 writes 2^53 + 1 and 2^53 as one number, so their digests agree.
+    let chain = ChainFormat::V1(ChainHeader::default());
+    let genesis = chain.genesis().entry_hash;
+    assert_eq!(
+        chain.link(1, &genesis, rows(json!(EXACT + 2))).entry_hash,
+        chain.link(1, &genesis, rows(json!(EXACT + 1))).entry_hash
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let log = AuditLog::open(dir.path(), key()).unwrap();
+    log.append(rows(json!(EXACT))).unwrap();
+    log.append(rows(json!(-(EXACT as i64)))).unwrap();
+    log.append(rows(json!(1e300))).unwrap();
+    for value in [
+        rows(json!(EXACT + 1)),
+        rows(json!(u64::MAX)),
+        rows(json!(-(EXACT as i64) - 1)),
+        json!({ "nested": [{ "id": EXACT + 2 }] }),
+    ] {
+        assert!(inexact(log.append(value.clone()).map(|_| ())), "{value}");
+        assert!(inexact(log.append_all(vec![rows(json!(1)), value.clone()]).map(|_| ())), "a batch holding {value}");
+    }
+    assert_eq!(log.tip().seq, 3, "a refused append leaves the chain as it was");
+    assert_eq!(log.append(rows(json!(4))).unwrap().seq, 4);
+    drop(log);
+    assert_eq!(lines(&segment(dir.path(), 1)).len(), 4);
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 4);
+
+    // An entry written with such an integer, and its edit to a neighbour, both break the chain.
+    let mut entries = lines(&segment(dir.path(), 1));
+    let rewritten = chain.link(5, &entries[3].entry_hash, rows(json!(EXACT + 2)));
+    entries.push(rewritten.clone());
+    write_lines(&segment(dir.path(), 1), &entries);
+    fs::remove_file(dir.path().join("chain.tip")).unwrap();
+    assert_eq!(broken_at(verify(dir.path())), 5);
+    entries[4].attributes = rows(json!(EXACT + 1));
+    write_lines(&segment(dir.path(), 1), &entries);
+    assert_eq!(broken_at(verify(dir.path())), 5);
+    assert!(!chain.digest_agrees(&rewritten));
+
+    // A v0 chain digests the integer's exact decimal form and admits it.
+    let dir = tempfile::tempdir().unwrap();
+    v0_chain(dir.path(), 1);
+    let log = AuditLog::open(dir.path(), key()).unwrap();
+    assert_eq!(log.append(rows(json!(EXACT + 2))).unwrap().seq, 2);
+}
+
+/// `header.json`, written before a new chain's first entry, fixes the chain's format, its digest, `sha256` or
+/// `blake3`, and a segment size of at most 65536 entries; the first v1 entry's `prev_hash` is the canonical header's
+/// digest.
+// spec: disclosure.record.chain-header@5ec9601b
+#[test]
+fn a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link() {
+    let dir = log_of(1);
+    let written: ChainHeader = serde_json::from_str(&fs::read_to_string(dir.path().join("header.json")).unwrap()).unwrap();
+    assert_eq!(written, ChainHeader::default());
+    assert_eq!(written, header(DigestAlgorithm::Sha256, AUDIT_SEGMENT_ENTRIES));
+    let canonical = r#"{"digest":"sha256","format":1,"segment_entries":4096}"#;
+    assert_eq!(written.digest(), format!("sha256:{}", hex::encode(sha2::Sha256::digest(canonical.as_bytes()))));
+    assert_eq!(lines(&segment(dir.path(), 1))[0].prev_hash, written.digest());
+
+    // BLAKE3 under 3-entry segments: two closed segments and one open.
+    let dir = small_log_under(DigestAlgorithm::Blake3, 3, 7);
+    for n in 1..=2 {
+        let root: SignedRoot = serde_json::from_str(&fs::read_to_string(root_file(dir.path(), n)).unwrap()).unwrap();
+        assert_eq!(root.count, 3);
+        assert_eq!(root.root, merkle(DigestAlgorithm::Blake3, &lines(&segment(dir.path(), n))));
+    }
+    assert!(!root_file(dir.path(), 3).exists());
+    assert!(lines(&segment(dir.path(), 3)).iter().all(|e| e.entry_hash.starts_with("blake3:")));
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 7);
+
+    // The chain's header outlives the options a later open names.
+    let log = AuditLog::open_with(dir.path(), key(), with_header(ChainHeader::default())).unwrap();
+    let next = log.append(attrs("agent://b", 0)).unwrap();
+    assert!(next.entry_hash.starts_with("blake3:"));
+    drop(log);
+    assert_eq!(lines(&segment(dir.path(), 3)).len(), 2);
+    assert!(!root_file(dir.path(), 3).exists());
+
+    // A rewritten header breaks the chain at its first entry.
+    fs::write(dir.path().join("header.json"), serde_json::to_string(&header(DigestAlgorithm::Sha256, 3)).unwrap()).unwrap();
+    assert_eq!(broken_at(verify(dir.path())), 1);
+
+    // A segment size at the bound opens.
+    let dir = tempfile::tempdir().unwrap();
+    let log = AuditLog::open_with(dir.path(), key(), with_header(header(DigestAlgorithm::Sha256, AUDIT_SEGMENT_MAX))).unwrap();
+    assert_eq!(log.append(attrs("agent://a", 0)).unwrap().seq, 1);
+    assert_eq!(AUDIT_SEGMENT_MAX, 65_536);
+}
+
+/// Opening or verifying a chain whose header names another format or digest, or a segment size outside
+/// {{disclosure.record.chain-header}}, raises `AuditHeaderUnsupported`.
+// spec: disclosure.record.header-unsupported@437479de
+#[test]
+fn a_header_naming_another_format_digest_or_segment_size_raises_audit_header_unsupported() {
+    let unsupported = |r: Result<_, AuditError>| matches!(r, Err(AuditError::AuditHeaderUnsupported(_)));
+    for text in [
+        r#"{"format":2,"digest":"sha256","segment_entries":4096}"#.to_string(),
+        r#"{"format":1,"digest":"md5","segment_entries":4096}"#.to_string(),
+        r#"{"format":1,"digest":"sha256","segment_entries":0}"#.to_string(),
+        format!(r#"{{"format":1,"digest":"sha256","segment_entries":{}}}"#, AUDIT_SEGMENT_MAX + 1),
+        "sha256".to_string(),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("header.json"), &text).unwrap();
+        assert!(unsupported(verify(dir.path()).map(|_| ())), "{text}");
+        assert!(unsupported(AuditLog::open(dir.path(), key()).map(|_| ())), "{text}");
+    }
+    for size in [0, AUDIT_SEGMENT_MAX + 1] {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(unsupported(AuditLog::open_with(dir.path(), key(), with_header(header(DigestAlgorithm::Sha256, size))).map(|_| ())));
+        assert!(!dir.path().join("header.json").exists(), "a refused header is never written");
+    }
+}
+
+/// A chain holding entries without `header.json` is a v0 chain: it verifies and appends under v0 rules, each entry
+/// digest over `seq`, `prev_hash` and attributes and each root its segment's last entry digest.
+// spec: disclosure.record.v0-chain@c806b311
+#[test]
+fn a_v0_chain_verifies_and_appends_under_v0_rules() {
+    let dir = tempfile::tempdir().unwrap();
+    let written = v0_chain(dir.path(), AUDIT_SEGMENT_ENTRIES + 1);
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 1);
+
+    let log = AuditLog::open(dir.path(), key()).unwrap();
+    let next = log.append(attrs("agent://v0", 0)).unwrap();
+    drop(log);
+    let last = written.last().unwrap();
+    assert_eq!(next, ChainFormat::V0.link(last.seq + 1, &last.entry_hash, attrs("agent://v0", 0)));
+    assert_eq!(next.format, 0);
+    assert!(!dir.path().join("header.json").exists(), "a v0 chain gains no header");
+    assert!(!fs::read_to_string(segment(dir.path(), 2)).unwrap().contains("format"), "a v0 line carries no format");
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 2);
+
+    // v0 rules still catch a rewrite.
+    let mut entries = lines(&segment(dir.path(), 1));
+    entries[4].attributes = attrs("agent://attacker", 0);
+    write_lines(&segment(dir.path(), 1), &entries);
+    assert_eq!(broken_at(verify(dir.path())), 5);
+
+    // A chain the v0 writer left on disk, byte for byte: four entries, its signed tip, and
+    // the signed root it gives the last entry digest over a 4096-entry segment.
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("segments")).unwrap();
+    fs::write(segment(dir.path(), 1), V0_SEGMENT).unwrap();
+    fs::write(dir.path().join("chain.tip"), V0_TIP).unwrap();
+    let written = lines(&segment(dir.path(), 1));
+    let mut prev = GENESIS.to_string();
+    for e in &written {
+        assert_eq!(e, &ChainFormat::V0.link(e.seq, &prev, e.attributes.clone()), "entry {} under the v0 digest", e.seq);
+        prev = e.entry_hash.clone();
+    }
+    assert_eq!(written[2].attributes["contextful.result.rows"], json!(9_007_199_254_740_993u64), "v0 keeps every integer");
+    assert_eq!(prev, "sha256:447b5841d4f80e512e4c850fdc94f57c8a03fc3d0781e0224da67f6ceec1c2cf");
+    let end = verify_signed(dir.path(), &SignerKey::of(&key())).unwrap();
+    assert_eq!((end.seq, end.entry_hash.as_str()), (4, prev.as_str()));
+    let root: SignedRoot = serde_json::from_str(V0_ROOT).unwrap();
+    assert_eq!(root, SignedRoot::sign(&prev, AUDIT_SEGMENT_ENTRIES, &key()).unwrap());
+    assert!(root.verify(&SignerKey::of(&key())));
+    let log = AuditLog::open(dir.path(), key()).unwrap();
+    let next = log.append(attrs("agent://v0", 5)).unwrap();
+    drop(log);
+    assert_eq!(next, ChainFormat::V0.link(5, &prev, attrs("agent://v0", 5)));
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 5);
+}
+
+/// The v0 writer's segment, tip and root, under [`key`].
+const V0_SEGMENT: &str = include_str!("../fixtures/audit-v0/chain/segments/000001.jsonl");
+const V0_TIP: &str = include_str!("../fixtures/audit-v0/chain/chain.tip");
+const V0_ROOT: &str = include_str!("../fixtures/audit-v0/root.json");
+
+/// A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry
+/// digests in `seq` order.
+// spec: disclosure.attest.merkle-root@4e9b04e0
+#[test]
+fn a_v1_segment_root_is_the_rfc_6962_tree_hash_of_its_entry_digests() {
+    for digest in [DigestAlgorithm::Sha256, DigestAlgorithm::Blake3] {
+        for size in [1u64, 2, 5, 8, 13] {
+            let dir = small_log_under(digest, size, size * 2);
+            for n in 1..=2 {
+                let root: SignedRoot = serde_json::from_str(&fs::read_to_string(root_file(dir.path(), n)).unwrap()).unwrap();
+                assert_eq!(root.root, merkle(digest, &lines(&segment(dir.path(), n))), "{digest:?}, {size} entries, segment {n}");
+            }
+        }
+    }
+}
+
+/// A v1 signed root carries its signing algorithm, `Ed25519` or `ES256`, and signs it with the header digest,
+/// segment number, entry count and root.
+// spec: disclosure.attest.root-tag@82d85637
+#[test]
+fn a_v1_root_names_and_signs_its_algorithm_header_and_segment() {
+    for algorithm in [SignatureAlgorithm::Ed25519, SignatureAlgorithm::Es256] {
+        let dir = tempfile::tempdir().unwrap();
+        let signer = seeded(7, algorithm);
+        let log = AuditLog::open_with(dir.path(), seeded(7, algorithm), with_header(header(DigestAlgorithm::Sha256, 4))).unwrap();
+        log.append_all((0..9).map(|i| attrs("agent://a", i)).collect()).unwrap();
+        drop(log);
+        let key = SignerKey::of(&signer);
+        let root: SignedRoot = serde_json::from_str(&fs::read_to_string(root_file(dir.path(), 2)).unwrap()).unwrap();
+        assert_eq!(root.format, AUDIT_FORMAT);
+        assert_eq!(root.alg, Some(algorithm));
+        assert_eq!(root.header.as_deref(), Some(header(DigestAlgorithm::Sha256, 4).digest().as_str()));
+        assert_eq!(root.segment, Some(2));
+        assert!(root.verify(&key), "{algorithm}");
+
+        let other = match algorithm {
+            SignatureAlgorithm::Ed25519 => SignatureAlgorithm::Es256,
+            SignatureAlgorithm::Es256 => SignatureAlgorithm::Ed25519,
+        };
+        for tampered in [
+            SignedRoot { alg: Some(other), ..root.clone() },
+            SignedRoot { alg: None, ..root.clone() },
+            SignedRoot { segment: Some(1), ..root.clone() },
+            SignedRoot { header: Some(ChainHeader::default().digest()), ..root.clone() },
+            SignedRoot { count: 3, ..root.clone() },
+        ] {
+            assert!(!tampered.verify(&key), "{tampered:?}");
+        }
+        // Segment 1's root copied over segment 2's names the wrong segment.
+        fs::copy(root_file(dir.path(), 1), root_file(dir.path(), 2)).unwrap();
+        assert_eq!(broken_at(verify(dir.path())), 8);
+    }
+}
+
+/// `prove` returns one entry, its chain header, its RFC 6962 audit path and its segment's signed root; the proof
+/// verifies offline under the signer's public key alone.
+// spec: disclosure.attest.inclusion-proof@371c6a1b
+#[test]
+fn an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment() {
+    let dir = log_of(AUDIT_SEGMENT_ENTRIES + 1);
+    let key = SignerKey::of(&key());
+    let mut seqs: Vec<u64> = (1..=AUDIT_SEGMENT_ENTRIES).step_by(97).collect();
+    seqs.extend([2, 3, 2048, 2049, AUDIT_SEGMENT_ENTRIES - 1, AUDIT_SEGMENT_ENTRIES]);
+    let proofs: Vec<String> = seqs
+        .iter()
+        .map(|&seq| {
+            let proof = prove(dir.path(), seq).unwrap();
+            assert_eq!(proof.entry.seq, seq);
+            serde_json::to_string(&proof).unwrap()
+        })
+        .collect();
+    drop(dir);
+    // The chain is gone: each proof verifies from its own bytes and the public key.
+    let mut hashes = 0;
+    for text in &proofs {
+        let proof: InclusionProof = serde_json::from_str(text).unwrap();
+        proof.verify(&key).unwrap_or_else(|e| panic!("seq {}: {e}", proof.entry.seq));
+        hashes = hashes.max(proof.path.len());
+    }
+    contextful_eval::record::emit("audit-inclusion-proof", hashes as f64, proofs.len() as u64, 0);
+    assert_eq!(hashes, 12);
+
+    // Every entry of a segment whose size is no power of two, under either digest.
+    for digest in [DigestAlgorithm::Sha256, DigestAlgorithm::Blake3] {
+        let dir = small_log_under(digest, 7, 14);
+        for seq in 1..=14 {
+            prove(dir.path(), seq).unwrap().verify(&key).unwrap_or_else(|e| panic!("{digest:?} seq {seq}: {e}"));
+        }
+    }
+}
+
+/// A proof whose entry, audit path, header, root or root signature disagrees raises `AuditProofInvalid`.
+// spec: disclosure.attest.proof-invalid@22d38afb
+#[test]
+fn a_proof_disagreeing_anywhere_raises_audit_proof_invalid() {
+    let dir = small_log(8, 8);
+    let key = SignerKey::of(&key());
+    let proof = prove(dir.path(), 3).unwrap();
+    proof.verify(&key).unwrap();
+    let neighbour = prove(dir.path(), 4).unwrap();
+
+    let mut cases: Vec<(&str, InclusionProof)> = Vec::new();
+    let mut p = proof.clone();
+    p.entry.attributes = attrs("agent://attacker", 0);
+    cases.push(("rewritten attributes", p));
+    let mut p = proof.clone();
+    p.entry = neighbour.entry.clone();
+    cases.push(("another entry under this path", p));
+    let mut p = proof.clone();
+    p.path[1] = "00".repeat(32);
+    cases.push(("a flipped path hash", p));
+    let mut p = proof.clone();
+    p.path.pop();
+    cases.push(("a truncated path", p));
+    let mut p = proof.clone();
+    p.path.push("00".repeat(32));
+    cases.push(("an extended path", p));
+    let mut p = proof.clone();
+    p.header = header(DigestAlgorithm::Blake3, 8);
+    cases.push(("another header", p));
+    let mut p = proof.clone();
+    p.root.root = neighbour.entry.entry_hash.clone();
+    cases.push(("another root", p));
+    let mut p = proof.clone();
+    p.root = SignedRoot::sign_v1(&proof.header.digest(), 1, &proof.root.root, 8, &seeded(9, SignatureAlgorithm::Ed25519)).unwrap();
+    cases.push(("a root signed under another key", p));
+    let mut p = proof.clone();
+    p.entry.format = 0;
+    cases.push(("a v0 entry", p));
+
+    for (what, p) in cases {
+        match p.verify(&key) {
+            Err(AuditError::AuditProofInvalid(_)) => {}
+            other => panic!("{what}: expected AuditProofInvalid, got {other:?}"),
+        }
+    }
+    match proof.verify(&SignerKey::of(&seeded(9, SignatureAlgorithm::Ed25519))) {
+        Err(AuditError::AuditProofInvalid(_)) => {}
+        other => panic!("a foreign key: expected AuditProofInvalid, got {other:?}"),
+    }
+}
+
+/// Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises
+/// `AuditProofUnavailable`.
+// spec: disclosure.attest.proof-unavailable@cbdaaec3
+#[test]
+fn proving_an_unrooted_or_absent_entry_raises_audit_proof_unavailable() {
+    let unavailable = |r: Result<InclusionProof, AuditError>| matches!(r, Err(AuditError::AuditProofUnavailable(_)));
+    let dir = small_log(4, 6);
+    assert!(prove(dir.path(), 4).is_ok());
+    assert!(unavailable(prove(dir.path(), 5)), "segment 2 is open");
+    assert!(unavailable(prove(dir.path(), 0)));
+    assert!(unavailable(prove(dir.path(), 7)), "past the chain end");
+    assert!(unavailable(prove(dir.path(), 9)), "past the chain end, in an absent segment");
+
+    let dir = tempfile::tempdir().unwrap();
+    v0_chain(dir.path(), AUDIT_SEGMENT_ENTRIES);
+    assert!(unavailable(prove(dir.path(), 1)), "a v0 root is no tree");
 }

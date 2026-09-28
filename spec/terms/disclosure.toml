@@ -65,7 +65,11 @@ VisibilityDiagnosticRow        = { clause = "disclosure.explain.no-row", gloss =
 VisibilityNoObservations       = { clause = "disclosure.explain.empty-window", gloss = "A replay window holds no observations; no claim is available." }
 VisibilityUnqualifiedAssurance = { clause = "disclosure.explain.unqualified-assurance", gloss = "A negative assurance answer lacks its coverage block." }
 VisibilityIndividualNamed      = { clause = "disclosure.explain.groups-not-members", gloss = "An explanation rendered the members of a group on the path." }
-AuditChainBroken         = { clause = "disclosure.attest.broken-chain", gloss = "A digest mismatch, sequence gap or vanished chain, with the earliest failing index." }
+AuditHeaderUnsupported   = { clause = "disclosure.record.header-unsupported", gloss = "A chain header names a format, digest or segment size this build does not verify." }
+AuditAttributeInexact    = { clause = "disclosure.record.inexact-integer", gloss = "A v1 entry's attribute holds an integer the canonical form cannot write exactly." }
+AuditChainBroken         = { clause = "disclosure.attest.broken-chain", gloss = "A digest, format or Merkle root mismatch, sequence gap or vanished chain, with the earliest failing index." }
+AuditProofInvalid        = { clause = "disclosure.attest.proof-invalid", gloss = "An inclusion proof's entry, path, header, root or signature disagrees." }
+AuditProofUnavailable    = { clause = "disclosure.attest.proof-unavailable", gloss = "No signed Merkle root covers the entry to prove." }
 ErasureUngranted         = { clause = "disclosure.erase.privilege", gloss = "A caller erased without the forget grant." }
 ErasureSubjectUndeclared = { clause = "disclosure.erase.subject-column", gloss = "A subject erasure names a table with no subject column." }
 ErasureCascadeUnbounded  = { clause = "disclosure.erase.cascade-unbounded", gloss = "A provenance chain exceeds the cascade bound; nothing commits." }
@@ -90,7 +94,8 @@ template-overfetch            = { clause = "disclosure.template.overfetch", valu
 audit-group-syncs             = { clause = "disclosure.record.group-commit", value = 1, unit = "sync", basis = "chosen", gloss = "Durable syncs one append group issues between segment opens." }
 audit-segment-open-syncs      = { clause = "disclosure.record.segment-open", value = 1, unit = "sync", basis = "chosen", gloss = "Directory syncs an append group adds when it creates a segment file." }
 audit-tip-idle                = { clause = "disclosure.record.tip-signing", value = 1, unit = "s", basis = "chosen", gloss = "Quiet time after the last append at which the log signs its tip." }
-audit-segment-entries         = { clause = "disclosure.record.segment", value = 4096, unit = "entries", basis = "chosen", gloss = "Entries a segment holds before its signed root closes it." }
+audit-segment-entries         = { clause = "disclosure.record.segment", value = 4096, unit = "entries", basis = "chosen", gloss = "Entries a segment holds before its signed root closes it, unless its header names another size." }
+audit-segment-max             = { clause = "disclosure.record.chain-header", value = 65536, unit = "entries", basis = "chosen", gloss = "Largest segment size a chain header names." }
 telemetry-projection-window   = { clause = "disclosure.record.projection", value = 24, unit = "h", basis = "chosen", gloss = "Rolling window the telemetry projection answers over." }
 telemetry-projection-latency  = { clause = "disclosure.record.projection", value = 1, unit = "s", basis = "chosen", gloss = "Response time of a projection lookup." }
 audit-root-cadence            = { clause = "disclosure.attest.root-replication", value = 10, unit = "min", basis = "chosen", gloss = "Cadence at which signed roots reach the replication bucket." }

@@ -142,11 +142,11 @@ method = { issue = 75 }
 target = { op = "==", value = 0 }
 
 [entry.audit-inclusion-proof]
-clause = "disclosure.record.segment"
+clause = "disclosure.attest.inclusion-proof"
 metric = "audit.proof.hashes"
 kind   = "size"
 tier   = "gate"
-method = { issue = 42 }
+method = { test = "contextful_policy::audit::an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment" }
 target = { op = "<=", value = 12 }
 
 [entry.audit-query-digest-keyed]
