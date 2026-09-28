@@ -91,3 +91,37 @@ fn scan_prints_files_relation_and_bounds() {
         serde_json::from_str(&stdout(&run(p.path(), &["context", "scan", "filings", "--project", "research"]))).unwrap();
     assert!(unbounded.get("contextful.bounds").is_none());
 }
+
+/// `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from the pointers, the manifests they reach, every committed run manifest and every `schema.json`. It is never synced and commits nothing.
+// spec: store.lay-out.derived-catalog@da56c778
+#[test]
+fn rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree() {
+    use contextful_core::store::catalog::{DerivedCatalog, DerivedRows};
+    let p = project();
+    land(p.path(), "filings", "run-1", "2030-01-01T00:00:00Z");
+    stdout(&run(p.path(), &["context", "compact", "filings", "--project", "research", "--now", "2030-01-01T01:00:00Z"]));
+    land(p.path(), "events", "run-1", "2030-01-01T02:00:00Z");
+    let root = p.path().join(".contextful/context/research");
+    let rebuild = || stdout(&run(p.path(), &["context", "rebuild-catalog", "--project", "research"]));
+
+    let printed: DerivedRows = serde_json::from_str(&rebuild()).unwrap();
+    let file = root.join("derived.sqlite");
+    let stored = contextful_sqlite::DerivedSqlite::open(&file).unwrap().rows().unwrap();
+    assert_eq!(stored, printed);
+    let tables: Vec<(&str, bool)> = stored.tables.iter().map(|t| (t.table.as_str(), t.snapshot_id.is_some())).collect();
+    assert_eq!(tables, [("events", false), ("filings", true)]);
+    assert_eq!(stored.snapshots.len(), 1);
+    assert_eq!(stored.runs.iter().map(|r| r.table.as_str()).collect::<Vec<_>>(), ["events", "filings"]);
+
+    // The file is disposable: deleted, it comes back row for row from the tree alone.
+    std::fs::remove_file(&file).unwrap();
+    let again: DerivedRows = serde_json::from_str(&rebuild()).unwrap();
+    assert_eq!(again, stored);
+
+    // A table landed afterwards reaches the catalog on the next rebuild, and a rebuild writes nothing into the tree.
+    let pointer = std::fs::read(root.join("tables/filings/_pointer.json")).unwrap();
+    land(p.path(), "filings", "run-2", "2030-01-01T03:00:00Z");
+    let next: DerivedRows = serde_json::from_str(&rebuild()).unwrap();
+    assert_eq!(next.runs.len(), 3);
+    assert_eq!(std::fs::read(root.join("tables/filings/_pointer.json")).unwrap(), pointer);
+}

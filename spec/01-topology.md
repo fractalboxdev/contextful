@@ -86,7 +86,7 @@ The two halves of the engine, the three crossings between them, complete mediati
 
 The domain crate, dependency direction, and the three build profiles with what each links.
 
-- `crate-map` — Fifteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+- `crate-map` — Sixteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
 - `crate-map-drift` — A `crates/` package absent from the crate tree under `## Shapes`, or a {{topology.package.crate-map}} count differing from that tree's entries, raises `CrateMapDrift`, naming the package or both counts.
   *because a package added without a map entry otherwise passes every other gate*
 - `domain-crate` — `contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.
@@ -114,6 +114,10 @@ The domain crate, dependency direction, and the three build profiles with what e
   *because a host that lands, folds or scans a store and serves no read otherwise links a bundled SQL engine it never calls*
 - `exchange-optional` — `contextful-policy` links the external-assertion stack, `jsonwebtoken` and `rsa`, only under its non-default `exchange` feature, which only the binary may enable, and only alongside wiring {{authority.exchange.surface}}. Another `crates/` package whose resolved graph reaches either raises `ExchangeDependencyLeak`, naming the path.
   *because an embedder admitting credentials with no identity provider then links no RSA code, and `rsa` carries a timing advisory with no patched release*
+- `sqlite-adapter` — `contextful-sqlite` alone declares the SQLite binding and enables no link feature itself; only `contextful-cli` turns on its `bundled` feature. Any other declaration or enablement raises `SqliteLinkForced`, naming the manifest line.
+  *A-store*
+- `store-sqlite-free` — `contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, raises `StoreLinksSqlite`, naming the path that pulled it.
+  *A-store*
 
 Profiles, the domain crate they share, and the dependency edges the gates raise on.
 
@@ -339,8 +343,9 @@ crates/
   contextful-outbound/     mediated client, credential resolution, quota metering, inference
   contextful-wasm/         sandboxed component host
   contextful-connectors/   native sources
-  contextful-context/      catalog, table parts, query face, snapshot commit, retrieval
+  contextful-context/      table parts, query face, snapshot commit, retrieval
   contextful-memory/       deterministic memory synthesis
+  contextful-sqlite/       the SQLite adapter behind the catalog ports
   contextful-policy/       predicates, masks, redaction, zones, audit chain, token trait
   contextful-sync/         bucket push and pull
   contextful-agent/        tool server and connector scaffolder

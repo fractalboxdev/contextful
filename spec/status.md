@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 117 | 21 | 16 | 17 | 77 | 0 | 77 |
 | `run` | 3 | 24 | 293 | 82 | 34 | 25 | 152 | 0 | 152 |
-| `store` | 1 | 14 | 157 | 37 | 12 | 13 | 113 | 0 | 113 |
+| `store` | 1 | 14 | 158 | 37 | 12 | 13 | 115 | 0 | 115 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
-| `topology` | 1 | 6 | 61 | 16 | 5 | 5 | 16 | 0 | 16 |
-| **total** | 19 | 146 | 1496 | 476 | 169 | 112 | 743 | 0 | |
+| `topology` | 1 | 6 | 63 | 18 | 5 | 5 | 18 | 0 | 18 |
+| **total** | 19 | 146 | 1499 | 478 | 169 | 112 | 747 | 0 | |
 
 Decision records: 18.
 
@@ -25,8 +25,8 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 192 | 136 | passing |
-| 2 — The store | 8 | 116 | 77 | passing |
-| 3 — The run path | 11 | 176 | 95 | passing |
+| 2 — The store | 8 | 117 | 79 | passing |
+| 3 — The run path | 11 | 178 | 97 | passing |
 | 4 — Ingest | 22 | 341 | 131 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
@@ -698,6 +698,8 @@ Unscheduled operations: 10.
 | `store.index.not-in-file-set` | `crates/contextful-context/tests/integration/index.rs::a_sidecar_directory_joins_no_file_set` | performed |
 | `store.index.partitioning` | `crates/contextful-context/tests/integration/index.rs::partitioning_is_off_unless_declared` | performed |
 | `store.index.tenant-verbatim` | `crates/contextful-context/tests/integration/index.rs::a_tenant_value_is_kept_byte_for_byte` | performed |
+| `store.lay-out.catalog-ports` | `crates/contextful-sqlite/tests/integration/derived.rs::both_catalogs_are_reached_through_the_core_ports` | performed |
+| `store.lay-out.derived-catalog` | `crates/contextful-cli/tests/integration/context.rs::rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree` | performed |
 | `store.lay-out.immutable-files` | `crates/contextful-context/tests/integration/lay_out.rs::a_fold_writes_a_new_snapshot_and_edits_nothing_published` | performed |
 | `store.lay-out.manifest-default` | `crates/contextful-core/tests/integration/store/lay_out.rs::a_manifest_missing_later_fields_decodes_with_defaults` | performed |
 | `store.lay-out.manifest-unreadable` | `crates/contextful-context/tests/integration/lay_out.rs::an_unparseable_manifest_refuses_the_table_until_it_parses` | performed |
@@ -787,4 +789,6 @@ Unscheduled operations: 10.
 | `topology.package.dependency-direction` | `tools/ci/tests/integration/topology.rs::a_domain_crate_depending_on_an_adapter_is_refused` | performed |
 | `topology.package.domain-impurity` | `tools/ci/tests/integration/topology.rs::a_domain_crate_reaching_an_async_runtime_is_refused` | performed |
 | `topology.package.exchange-optional` | `tools/ci/tests/integration/topology.rs::a_library_reaching_the_exchange_stack_is_refused` | performed |
+| `topology.package.sqlite-adapter` | `tools/ci/tests/integration/topology.rs::a_sqlite_link_forced_outside_the_binary_is_refused` | performed |
+| `topology.package.store-sqlite-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_reaching_the_sqlite_link_package_is_refused` | performed |
 | `topology.package.store-write-engine-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_linking_the_sql_engine_without_read_is_refused` | performed |

@@ -5,16 +5,19 @@
 
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
+use contextful_context::catalog::rebuild;
 use contextful_context::fold::fold;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::scan::scan;
 use contextful_context::{node, Store};
 use contextful_core::store::bound_time::{Bound, Bounds};
+use contextful_core::store::catalog::DERIVED_CATALOG_FILE;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::{scheduled, FoldOutcome};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
+use contextful_sqlite::DerivedSqlite;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -76,6 +79,12 @@ pub enum ContextCmd {
         store: StoreArgs,
         #[arg(long)]
         now: Option<String>,
+    },
+    /// Reconstruct `derived.sqlite` from the tree and print the rows it now holds as JSON.
+    RebuildCatalog {
+        /// The project whose store root is `.contextful/context/<project>/`.
+        #[arg(long)]
+        project: String,
     },
 }
 
@@ -196,6 +205,13 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             if failed > 0 {
                 bail!("{failed} table(s) failed to fold");
             }
+            Ok(())
+        }
+        ContextCmd::RebuildCatalog { project } => {
+            let store = Store::open(&std::env::current_dir()?, &project)?;
+            let catalog = DerivedSqlite::open(&store.root().join(DERIVED_CATALOG_FILE))?;
+            let rows = rebuild(&store, &catalog)?;
+            println!("{}", serde_json::to_string_pretty(&rows)?);
             Ok(())
         }
     }

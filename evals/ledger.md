@@ -2,7 +2,7 @@
 
 # Target ledger
 
-58 entries: 23 gated, 0 recorded, 0 scheduled, 35 open.
+58 entries: 24 gated, 0 recorded, 0 scheduled, 34 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -46,7 +46,7 @@
 | `network-free-decoder` | `topology.package.edge-eligibility` | `topology.decoder.network_packages` | gate | issue 46 | `== 0` | open (issue 46) |
 | `network-free-runtime` | `topology.package.edge-eligibility` | `topology.runtime.network_packages` | gate | issue 49 | `== 0` | open (issue 49) |
 | `network-volume-refuses-cas` | `store.probe.unproven` | `probe.network_class_cas_pushes` | gate | issue 53 | `== 0` | open (issue 53) |
-| `no-sqlite-link` | `store.lay-out.components` | `topology.libsqlite3_sys_links` | gate | issue 55 | `== 0` | open (issue 55) |
+| `no-sqlite-link` | `topology.package.store-sqlite-free` | `topology.libsqlite3_sys_links` | gate | test `contextful_ci::topology::this_repository_links_sqlite_only_through_its_adapter` | `== 0` | gated |
 | `one-arrow-tree` | `topology.package.crate-map` | `topology.arrow_versions.max` | gate | issue 32 | `== 1` | open (issue 32) |
 | `orphan-reap-spares-live` | `run.record.orphan-reap` | `reap.live_rows_reaped` | gate | test `contextful_core::run::record::only_an_in_flight_row_with_a_lapsed_lease_is_reaped` | `== 0` | gated |
 | `output-taint` | `connector.infer.output-taint` | `infer.over_trusted_rows` | gate | issue 48 | `== 0` | open (issue 48) |

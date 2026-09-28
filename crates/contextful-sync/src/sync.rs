@@ -2,6 +2,7 @@
 
 use contextful_context::{ContextError, Store};
 use contextful_core::run::journal::sha256_hex;
+use contextful_core::store::catalog::{DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE};
 use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer};
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
@@ -63,13 +64,15 @@ fn io(path: &Path, e: std::io::Error) -> SyncError {
 }
 
 /// Files under the store root that never leave the machine: its configuration, the
-/// machine-local catalogs, locks, staging directories, dot-files, and table pointers,
-/// which commit by a fenced compare-and-set instead.
+/// machine-local catalogs with the journal or log SQLite keeps beside each, locks, staging
+/// directories, dot-files, and table pointers, which commit by a fenced compare-and-set
+/// instead.
 fn syncable(rel: &str) -> bool {
     let name = rel.rsplit('/').next().unwrap_or(rel);
+    let catalog = |file: &str| rel == file || rel.strip_prefix(file).is_some_and(|rest| ["-journal", "-wal", "-shm"].contains(&rest));
     !(rel == "config.toml"
-        || rel == "derived.sqlite"
-        || rel == "machine.sqlite"
+        || catalog(DERIVED_CATALOG_FILE)
+        || catalog(MACHINE_CATALOG_FILE)
         || name.starts_with('.')
         || name.ends_with(".lock")
         || rel.split('/').any(|s| s.ends_with(".staging"))

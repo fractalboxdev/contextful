@@ -1,6 +1,7 @@
 //! The store adapter's one integration binary, one module per operation.
 
 mod bound_time;
+mod catalog;
 mod declare;
 mod encrypt;
 mod fold;

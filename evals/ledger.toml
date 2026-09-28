@@ -339,11 +339,11 @@ method = { issue = 80 }
 target = { op = "==", value = 0 }
 
 [entry.no-sqlite-link]
-clause = "store.lay-out.components"
+clause = "topology.package.store-sqlite-free"
 metric = "topology.libsqlite3_sys_links"
 kind   = "size"
 tier   = "gate"
-method = { issue = 55 }
+method = { test = "contextful_ci::topology::this_repository_links_sqlite_only_through_its_adapter" }
 target = { op = "==", value = 0 }
 
 [entry.one-arrow-tree]

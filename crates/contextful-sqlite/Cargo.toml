@@ -1,0 +1,32 @@
+[package]
+name = "contextful-sqlite"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# The SQLite adapter behind the store's catalog ports: `machine.sqlite` behind `Catalog`,
+# `derived.sqlite` behind `DerivedCatalog`. The one package declaring `rusqlite`; it links
+# whichever SQLite the host resolves, and only the binary turns on `bundled`
+# (`topology.package.sqlite-adapter`).
+
+[dependencies]
+contextful-core = { path = "../contextful-core" }
+rusqlite = { version = "0.40", default-features = false }
+serde = "1"
+serde_json = "1"
+
+[features]
+# Compile SQLite from source into the build. Only `contextful-cli` enables it.
+bundled = ["rusqlite/bundled"]
+
+[dev-dependencies]
+# The suites run against a compiled-in SQLite, so no test build needs a system library.
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
+serde_json = "1"
+tempfile = "3"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"

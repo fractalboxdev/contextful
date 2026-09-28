@@ -1,8 +1,9 @@
 //! `contextful run` — the run-path surface of the command line.
 //!
-//! Each subcommand wires the engine to this process: the local catalog, journal and
-//! awakeable registry under `.contextful/run/<project>/`, a command source, and the
-//! store as the destination. No run rule lives here.
+//! Each subcommand wires the engine to this process: the machine catalog at
+//! `.contextful/context/<project>/machine.sqlite`, the journal and awakeable registry under
+//! `.contextful/run/<project>/`, a command source, and the store as the destination. No
+//! run rule lives here.
 
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
@@ -23,7 +24,10 @@ use contextful_core::time::Instant;
 use contextful_engine::awake::{AwakeError, Registry};
 use contextful_engine::cancel::Cadence;
 use contextful_engine::command::CommandSource;
-use contextful_engine::{Engine, Journal, LocalCatalog, RunSpec};
+use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
+use contextful_core::store::lay_out::store_root;
+use contextful_engine::{Engine, Journal, RunSpec};
+use contextful_sqlite::MachineCatalog;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -145,7 +149,8 @@ pub(crate) fn wire(args: &ProjectArgs) -> Result<Wired> {
     let root = std::env::current_dir()?.join(".contextful").join("run").join(&args.project);
     let clock = clock(&args.now)?;
     let journal = Journal::open(&root);
-    let catalog = Arc::new(LocalCatalog::open(&root, clock.clone()));
+    let store_root = std::env::current_dir()?.join(store_root(&args.project));
+    let catalog = Arc::new(MachineCatalog::open(&store_root.join(MACHINE_CATALOG_FILE), clock.clone())?);
     let registry = Registry::open(&root, journal.clone());
     Ok(Wired { engine: Engine { catalog, journal, cadence: Cadence::default(), emitter: None }, registry, clock })
 }

@@ -115,3 +115,25 @@ fn an_unknown_stop_scope_is_refused() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("fire") && stderr.contains("pipeline"), "{stderr}");
 }
+
+/// The binary keeps its run rows, cursor cache and lease rows in the store root's
+/// `machine.sqlite`, and every run surface reads them back from there.
+#[test]
+fn run_rows_live_in_the_store_roots_machine_catalog() {
+    use contextful_core::coordinate::Catalog;
+    use contextful_core::ports::FixedClock;
+    use contextful_core::time::Instant;
+    let dir = project();
+    ok(&start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z"));
+    let file = dir.path().join(".contextful/context/research/machine.sqlite");
+    assert!(file.is_file(), "no machine catalog at {}", file.display());
+    assert!(!dir.path().join(".contextful/run/research/runs").exists(), "no run row lands beside the journal");
+
+    let clock = std::sync::Arc::new(FixedClock(Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+    let catalog = contextful_sqlite::MachineCatalog::open(&file, clock).unwrap();
+    let row = catalog.run("a1").unwrap().expect("the run row");
+    assert_eq!((row.pipeline_id.as_str(), row.table.as_str()), ("feed-a", "filings"));
+    let shown: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["run", "show", "a1", "--project", "research"]))).unwrap();
+    assert_eq!(shown["run_id"], "a1");
+    assert_eq!(shown["status"], serde_json::to_value(row.status).unwrap());
+}
