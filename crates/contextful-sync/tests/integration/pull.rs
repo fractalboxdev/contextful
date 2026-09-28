@@ -116,6 +116,9 @@ fn a_pointer_is_written_only_once_its_snapshot_is_home() {
     let order = order.lock().unwrap();
     let part_at = order.iter().position(|k| *k == part).unwrap();
     let pointer_at = order.iter().position(|k| k.ends_with("_pointer.json")).unwrap();
+    // A pointer read ahead of a part it names is a snapshot a reader could meet torn.
+    let torn = u64::from(pointer_at < part_at);
+    contextful_eval::record::emit("pull-no-torn-snapshot", torn as f64, order.len() as u64, 0);
     assert!(part_at < pointer_at, "the part lands before the pointer is read and written");
     assert_eq!(files(&c), [format!("tables/filings/data/snapshots/{snapshot_id}/part-00000.parquet")]);
 }

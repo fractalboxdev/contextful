@@ -1,7 +1,7 @@
 //! `read.retrieve`: content tokens, matching, the relevance floor and the candidate window.
 
 use super::strings;
-use contextful_core::read::rank::{candidate_window, saw_recency_slice, CANDIDATE_WINDOW_FACTOR, CANDIDATE_WINDOW_FLOOR};
+use contextful_core::read::rank::{candidate_window, saw_recency_slice, LexicalIndex, CANDIDATE_WINDOW_FACTOR, CANDIDATE_WINDOW_FLOOR};
 use contextful_core::read::tokens::{
     content_tokens, lexical_score, matches, passes_floor, relevance_floor, CONTENT_TOKEN_CAP, PLURAL_SUFFIX_FLOOR,
     RELEVANCE_FLOOR_NARROW, RELEVANCE_FLOOR_SPLIT, RELEVANCE_FLOOR_WIDE, TOKEN_LENGTH_FLOOR,
@@ -95,4 +95,45 @@ fn the_candidate_window_is_the_larger_of_a_multiple_and_a_floor() {
     assert_eq!(candidate_window(50), 400);
     assert!(saw_recency_slice(200, 200));
     assert!(!saw_recency_slice(61, 200));
+}
+
+/// Whether a row reaches a lexical-only read: it scores in the BM25 leg and passes the relevance floor.
+fn reaches(tokens: &[String], index: &LexicalIndex, i: usize, text: &str) -> bool {
+    index.bm25(tokens)[i].is_some() && passes_floor(relevance_floor(tokens, None), lexical_score(tokens, Some(text)), None)
+}
+
+#[test]
+fn a_substring_trap_row_scores_zero_and_never_returns() {
+    // (query, relevant row, a row holding every token only inside longer words)
+    let cases = [
+        ("grid", "regional grids report", "gridlock downtown"),
+        ("solar battery storage", "solar battery storage costs", "solarpanel batterybank storageunit"),
+        ("the battery of the grid", "battery for the grid", "batterybank of the gridlock"),
+    ];
+    let mut forbidden = 0u64;
+    for (query, relevant, trap) in cases {
+        let tokens = content_tokens(query);
+        let index = LexicalIndex::build(&[Some(relevant), Some(trap)]);
+        assert!(reaches(&tokens, &index, 0, relevant), "{query}: the relevant row reaches the read");
+        assert_eq!(lexical_score(&tokens, Some(trap)), Some(0), "{query}");
+        forbidden += u64::from(reaches(&tokens, &index, 1, trap));
+    }
+    crate::emit("word-boundary-precision", forbidden as f64, cases.len() as u64, 0);
+    assert_eq!(forbidden, 0);
+}
+
+#[test]
+fn a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg() {
+    let docs = ["設計の変更について", "太陽能電池の価格", "battery prices fell"];
+    let tokens = content_tokens("電池");
+    assert_eq!(tokens, strings(&["電池"]));
+    let index = LexicalIndex::build(&docs.map(Some));
+    let scores = index.bm25(&tokens);
+    assert_eq!(scores.iter().map(Option::is_some).collect::<Vec<_>>(), [false, true, false], "{scores:?}");
+    assert_eq!(docs.map(|d| lexical_score(&tokens, Some(d))), [Some(0), Some(1), Some(0)]);
+    let mut ranked: Vec<usize> = (0..docs.len()).filter(|i| scores[*i].is_some()).collect();
+    ranked.sort_by(|a, b| scores[*b].partial_cmp(&scores[*a]).unwrap());
+    let reciprocal_rank = ranked.iter().position(|i| *i == 1).map_or(0.0, |p| 1.0 / (p + 1) as f64);
+    crate::emit("cjk-subrun", reciprocal_rank, 1, 0);
+    assert_eq!(reciprocal_rank, 1.0);
 }

@@ -194,6 +194,36 @@ fn a_second_writer_on_one_directory_is_refused() {
 }
 
 #[test]
+fn every_trailing_truncation_under_a_rewritten_tip_is_detected() {
+    const N: u64 = 40;
+    let dir = log_of(N);
+    let full = lines(&segment(dir.path(), 1));
+    let foreign = SigningKey::from_bytes(&[9; 32]);
+    let (mut undetected, mut cases) = (0u64, 0u64);
+    for k in 1..N {
+        let kept = &full[..(N - k) as usize];
+        let end = kept.last().unwrap();
+        write_lines(&segment(dir.path(), 1), kept);
+        let unsigned = json!({ "seq": end.seq, "entry_hash": end.entry_hash }).to_string();
+        let forged = serde_json::to_string(&SignedTip::sign(end.seq, &end.entry_hash, &foreign).unwrap()).unwrap();
+        for tip in [unsigned, forged] {
+            fs::write(dir.path().join("chain.tip"), tip).unwrap();
+            cases += 1;
+            match verify_signed(dir.path(), &key().verifying_key()) {
+                Err(AuditError::AuditChainBroken { .. }) => {}
+                other => {
+                    undetected += 1;
+                    eprintln!("{k} trailing entries removed went undetected: {other:?}");
+                }
+            }
+        }
+    }
+    assert_eq!(broken_at(AuditLog::open(dir.path(), key())), 1, "opening runs the signed check");
+    contextful_eval::record::emit("audit-truncation-detected", undetected as f64, cases, 0);
+    assert_eq!(undetected, 0);
+}
+
+#[test]
 fn reordered_entries_break_the_chain_at_the_first_moved_entry() {
     let dir = log_of(3);
     let mut entries = lines(&segment(dir.path(), 1));
@@ -264,7 +294,10 @@ fn an_append_that_fails_to_persist_leaves_disk_and_tip_at_the_prior_entry() {
     let next = log.append(attrs("agent://b", 2)).unwrap();
     assert_eq!(next.seq, 2);
     assert_eq!(next.prev_hash, before.entry_hash);
-    assert_eq!(verify(dir.path()).unwrap().seq, 2);
+    // Two entries were acknowledged, the log's first and this one; verification reaches both.
+    let lost = 2 - verify(dir.path()).unwrap().seq.min(2);
+    contextful_eval::record::emit("audit-append-durable", lost as f64, 2, 0);
+    assert_eq!(lost, 0);
 }
 
 #[test]

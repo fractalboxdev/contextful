@@ -96,6 +96,57 @@ fn a_racing_caller_waits_for_the_first_callers_value() {
     }
 }
 
+/// Seed of the racers' start jitter.
+const RACE_SEED: u64 = 0x5eed_0001;
+const RACE_ITERATIONS: u64 = 100;
+const RACERS: u64 = 8;
+
+#[test]
+fn racers_on_one_key_run_the_effect_once_and_read_equal_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let j = Journal::open(dir.path());
+    let mut state = RACE_SEED;
+    let mut most = 0usize;
+    for iteration in 0..RACE_ITERATIONS {
+        let key = EntryKey::new(&format!("x-{iteration}"), "pull-0", b"null");
+        let effects = AtomicUsize::new(0);
+        let start = std::sync::Barrier::new(RACERS as usize);
+        let jitter: Vec<u64> = (0..RACERS)
+            .map(|_| {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                (state >> 33) % 400
+            })
+            .collect();
+        let values: Vec<Vec<u8>> = std::thread::scope(|s| {
+            let handles: Vec<_> = (0..RACERS as usize)
+                .map(|r| {
+                    let (j, key, effects, start, delay) = (&j, &key, &effects, &start, jitter[r]);
+                    s.spawn(move || {
+                        start.wait();
+                        std::thread::sleep(std::time::Duration::from_micros(delay));
+                        let resolved = j
+                            .step(key, &format!("run-{r}"), &live, &Never, &always, &mut || {
+                                let n = effects.fetch_add(1, Ordering::SeqCst);
+                                std::thread::sleep(std::time::Duration::from_millis(2));
+                                Ok(format!("billed by {r} as effect {n}").into_bytes())
+                            })
+                            .unwrap();
+                        match resolved {
+                            Resolved::Recorded(v) | Resolved::Replayed(v) => v,
+                            other => panic!("{other:?}"),
+                        }
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        assert!(values.windows(2).all(|w| w[0] == w[1]), "iteration {iteration}: racers read different bytes");
+        most = most.max(effects.load(Ordering::SeqCst));
+    }
+    contextful_eval::record::emit("journal-effect-once", most as f64, RACE_ITERATIONS, RACE_SEED);
+    assert_eq!(most, 1, "the effect ran {most} times under one key");
+}
+
 /// A pending claim whose run owner lease has expired, {{run.record.owner-lease}}, is taken over by the next
 /// caller under that key.
 // spec: run.journal.claim-takeover@2cfa59aa
@@ -110,14 +161,20 @@ fn a_claim_whose_holder_lapsed_is_taken_over() {
         Ok(!lapsed.load(Ordering::SeqCst))
     };
     // While the holder's lease is live, a caller waits; once it lapses, the caller takes over.
+    let effects = AtomicUsize::new(0);
     let flip = std::thread::scope(|s| {
         s.spawn(|| {
             std::thread::sleep(std::time::Duration::from_millis(100));
             lapsed.store(true, Ordering::SeqCst);
         });
-        j.step(&key(), "run-b", &holder_live, &Never, &always, &mut || Ok(b"taken over".to_vec()))
+        j.step(&key(), "run-b", &holder_live, &Never, &always, &mut || {
+            effects.fetch_add(1, Ordering::SeqCst);
+            Ok(b"taken over".to_vec())
+        })
     });
     assert_eq!(flip.unwrap(), Resolved::Recorded(b"taken over".to_vec()));
+    contextful_eval::record::emit("journal-holder-liveness", effects.load(Ordering::SeqCst) as f64, 1, 0);
+    assert_eq!(effects.load(Ordering::SeqCst), 1, "the taker runs the effect once");
 }
 
 /// A blob writer stages a private temporary file and renames it over the destination; concurrent writers of one
@@ -180,8 +237,11 @@ fn the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day() {
     let deleted = j.sweep_if_due(&awaited, now + 60 + 86_400).unwrap().unwrap();
     assert_eq!(deleted, ["orphan"]);
     assert!(j.blob_path(&sha256_hex(&recorded)).exists(), "a blob a journal row names stays");
+    // Unreferenced blobs past the grace window a due sweep leaves behind.
+    let stale = u64::from(j.blob_path("orphan").exists());
+    contextful_eval::record::emit("journal-storage-bounded", stale as f64, 3, 0);
     assert!(j.blob_path("awaited").exists(), "a blob an awakeable names stays");
-    assert!(!j.blob_path("orphan").exists());
+    assert_eq!(stale, 0);
 }
 
 #[test]

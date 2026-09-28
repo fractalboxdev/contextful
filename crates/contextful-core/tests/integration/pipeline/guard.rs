@@ -1,6 +1,6 @@
 //! `run.guard-secrets`: the mask over credential-shaped spans.
 
-use contextful_core::pipeline::guard::{guard_rows, mask, spans, Kind, MARKER};
+use contextful_core::pipeline::guard::{guard_rows, mask, spans, Kind, KEYWORDS, MARKER};
 use contextful_core::run::ports::Row;
 use serde_json::json;
 
@@ -32,9 +32,11 @@ fn the_catalogue_holds_its_precision_and_recall_fixture() {
         ),
         ("Authorization: Bearer 9f8e7d6c5b4a39218a7b6c5d4e3f2a1b", Kind::Bearer),
     ];
+    let mut held = std::collections::BTreeSet::new();
     for (text, kind) in positives {
         let found = spans(text);
         assert_eq!(found.iter().map(|(k, _)| *k).collect::<Vec<_>>(), [kind], "{text}");
+        held.insert(kind);
     }
     let negatives = [
         "AKIAIOSFODNN7EXAMPL",                    // 15 characters after the prefix
@@ -65,6 +67,51 @@ fn the_catalogue_holds_its_precision_and_recall_fixture() {
     let started = std::time::Instant::now();
     let _ = spans(&long);
     assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
+    // Every kind reached here matched each of its positives exactly and no negative.
+    crate::emit("guard-catalogue", held.len() as f64, (positives.len() + negatives.len()) as u64, 0);
+}
+
+/// Seed of the short-assignment table's value generator.
+const SHORT_ASSIGNMENT_SEED: u64 = 0x5eed_0002;
+
+/// A value of `len` characters from `[a-z0-9]`, drawn from a linear congruential sequence.
+fn value(state: &mut u64, len: usize) -> String {
+    const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    (0..len)
+        .map(|_| {
+            *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ALPHABET[((*state >> 33) % ALPHABET.len() as u64) as usize] as char
+        })
+        .collect()
+}
+
+#[test]
+fn a_keyword_assignment_is_masked_from_8_chars_keeping_its_key() {
+    let mut state = SHORT_ASSIGNMENT_SEED;
+    let (mut masked, mut total) = (0u64, 0u64);
+    for keyword in KEYWORDS {
+        for len in 1..=15 {
+            let v = value(&mut state, len);
+            for (text, kept) in [
+                (format!("{keyword}={v}"), format!("{keyword}={MARKER}")),
+                (format!("{keyword}: {v}"), format!("{keyword}: {MARKER}")),
+                (format!("{keyword}=\"{v}\""), format!("{keyword}=\"{MARKER}\"")),
+            ] {
+                let out = mask(&text);
+                if len >= 8 {
+                    total += 1;
+                    masked += u64::from(out.as_deref() == Some(kept.as_str()));
+                } else {
+                    assert_eq!(out, None, "{text}: a value under 8 chars stays");
+                }
+            }
+        }
+    }
+    // A keyword closing a longer key is no whole word, so its assignment stays.
+    assert_eq!(mask("session_token=abcdefgh12"), None);
+    let rate = masked as f64 / total as f64;
+    crate::emit("guard-short-assignment", rate, total, SHORT_ASSIGNMENT_SEED);
+    assert_eq!(masked, total, "{masked} of {total} short assignments masked with their key kept");
 }
 
 /// The replacement covers only the matched byte ranges, widened to character boundaries; overlapping spans merge

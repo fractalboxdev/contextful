@@ -146,6 +146,8 @@ fn a_ranked_arm_over_claims_serves_live_claims_alone() {
         Bounds::default(),
     )
     .unwrap();
+    let expired = recalled.rows.iter().chain(&before.rows).filter(|r| r[1]["object"] == json!("Dana")).count();
+    contextful_eval::record::emit("memory-live-claims", expired as f64, (recalled.rows.len() + before.rows.len()) as u64, 0);
     assert!(before.rows.iter().all(|r| r[1]["object"] != json!("Dana")), "a superseded claim is not live at any anchor");
 }
 

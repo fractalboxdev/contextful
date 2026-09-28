@@ -171,12 +171,16 @@ fn a_nonce_repeating_inside_the_window_raises_possession_proof_replayed() {
 
     // The captured request re-sent, and a fresh proof reusing the nonce, both refuse.
     let later = FixedClock(issued.plus_secs(120));
-    match verify_proof(&jkt, &proof, &request(), &later, &mut nonces) {
+    let replayed = verify_proof(&jkt, &proof, &request(), &later, &mut nonces);
+    let reused = sign_proof(&key, &request(), issued.plus_secs(120), "r-1");
+    let reused = verify_proof(&jkt, &reused, &request(), &later, &mut nonces);
+    let admitted = [&replayed, &reused].iter().filter(|r| r.is_ok()).count();
+    contextful_eval::record::emit("possession-replay", admitted as f64, 2, 0);
+    match replayed {
         Err(ProofRefusal::Refused(AuthorityError::PossessionProofReplayed(m))) => assert!(m.contains("r-1"), "{m}"),
         other => panic!("expected PossessionProofReplayed, got {other:?}"),
     }
-    let reused = sign_proof(&key, &request(), issued.plus_secs(120), "r-1");
-    let err = verify_proof(&jkt, &reused, &request(), &later, &mut nonces).unwrap_err();
+    let err = reused.unwrap_err();
     assert!(err.to_string().starts_with("PossessionProofReplayed"), "{err}");
 
     // A distinct nonce admits.
