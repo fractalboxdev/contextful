@@ -134,8 +134,19 @@ struct Package {
     declared: Vec<(String, Option<String>, bool)>,
     /// `features` table: feature name to its enabled entries.
     features: HashMap<String, Vec<String>>,
-    /// Features each declared dependency turns on: `(package name, kind, features)`.
-    enables: Vec<(String, Option<String>, Vec<String>)>,
+    /// Each declared dependency and the features its line turns on.
+    enables: Vec<Declared>,
+}
+
+struct Declared {
+    /// Package name.
+    name: String,
+    /// The key feature entries use: the rename, or the package name.
+    key: String,
+    /// Normal, build or dev (`None` is normal).
+    kind: Option<String>,
+    /// Features the declaration turns on, with `default` when its default features stay on.
+    features: Vec<String>,
 }
 
 struct Edge {
@@ -198,11 +209,18 @@ impl Graph {
                 .into_iter()
                 .flatten()
                 .map(|d| {
-                    (
-                        d["name"].as_str().unwrap_or_default().to_string(),
-                        d["kind"].as_str().map(str::to_string),
-                        d["features"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect(),
-                    )
+                    let name = d["name"].as_str().unwrap_or_default().to_string();
+                    let mut features: Vec<String> =
+                        d["features"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
+                    if d["uses_default_features"].as_bool().unwrap_or(true) {
+                        features.push("default".to_string());
+                    }
+                    Declared {
+                        key: d["rename"].as_str().map_or_else(|| name.clone(), str::to_string),
+                        name,
+                        kind: d["kind"].as_str().map(str::to_string),
+                        features,
+                    }
                 })
                 .collect();
             let name = p["name"].as_str().unwrap_or_default().to_string();
@@ -408,43 +426,135 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
     Ok(out)
 }
 
-/// `SqliteLinkForced` per normal declaration of the SQLite binding outside the adapter, per
-/// link feature the adapter turns on by itself, and per package other than the binary
-/// enabling the adapter's `bundled` feature (`topology.package.sqlite-adapter`).
+/// `SqliteLinkForced` per normal declaration of the SQLite binding outside the adapter, and
+/// per package other than the binary whose dependency lines or feature table reach a choice
+/// of SQLite build: the adapter's `bundled`, or a link feature of the binding. The adapter
+/// is held to its own `bundled` forwarding alone. A feature chain is followed through the
+/// package's own table; another workspace package's features answer for that package, so
+/// each finding names the package that makes the choice (`topology.package.sqlite-adapter`).
 fn sqlite_link_forced(root: &Path, workspace: &[(&String, &Package)]) -> Vec<(&'static str, String)> {
-    let link = |f: &str| SQLITE_LINK_FEATURES.iter().any(|p| matches(p, f));
     let mut out = Vec::new();
     for (_, p) in workspace {
         let adapter = p.name == SQLITE_ADAPTER;
-        for (dep, kind, features) in &p.enables {
-            if kind.is_some() {
-                continue;
-            }
-            let at = || manifest_line(root, &p.manifest, dep);
-            if SQLITE_BINDINGS.contains(&dep.as_str()) && !adapter {
-                out.push(("SqliteLinkForced", format!("`{}` declares `{dep}` at {}; only `{SQLITE_ADAPTER}` declares the SQLite binding", p.name, at())));
-            }
-            if SQLITE_BINDINGS.contains(&dep.as_str()) && adapter {
-                for f in features.iter().filter(|f| link(f)) {
-                    out.push(("SqliteLinkForced", format!("`{SQLITE_ADAPTER}` turns on `{dep}/{f}` at {}; the host chooses the SQLite build", at())));
-                }
-            }
-            if dep == SQLITE_ADAPTER && p.name != BINARY && features.iter().any(|f| f == SQLITE_BUNDLED) {
-                out.push(("SqliteLinkForced", format!("`{}` enables `{SQLITE_ADAPTER}/{SQLITE_BUNDLED}` at {}; only `{BINARY}` compiles SQLite in", p.name, at())));
+        for d in p.enables.iter().filter(|d| d.kind.is_none()) {
+            if SQLITE_BINDINGS.contains(&d.name.as_str()) && !adapter {
+                let at = manifest_line(root, &p.manifest, &d.key);
+                out.push(("SqliteLinkForced", format!("`{}` declares `{}` at {at}; only `{SQLITE_ADAPTER}` declares the SQLite binding", p.name, d.name)));
             }
         }
-        if adapter {
-            let default = p.features.get("default").cloned().unwrap_or_default();
-            let forced = default.iter().filter(|e| {
-                e.as_str() == SQLITE_BUNDLED
-                    || e.split_once('/').is_some_and(|(dep, f)| SQLITE_BINDINGS.contains(&dep.trim_end_matches('?')) && link(f))
-            });
-            for e in forced {
-                out.push(("SqliteLinkForced", format!("`{SQLITE_ADAPTER}` turns on `{e}` by default ({}); the host chooses the SQLite build", p.manifest)));
+        if p.name == BINARY {
+            continue;
+        }
+        let mut reported: Vec<(String, String)> = Vec::new();
+        for d in p.enables.iter().filter(|d| d.kind.is_none()) {
+            for f in d.features.iter().filter(|f| sqlite_choice(&d.name, f)) {
+                let at = manifest_line(root, &p.manifest, &d.key);
+                reported.push((d.name.clone(), f.clone()));
+                out.push(("SqliteLinkForced", sqlite_message(p, &format!("{}/{f}", d.name), &format!("at {at}"))));
+            }
+        }
+        let mut roots: Vec<&String> = p.features.keys().filter(|f| !(adapter && f.as_str() == SQLITE_BUNDLED)).collect();
+        roots.sort_by_key(|f| (f.as_str() != "default", f.as_str()));
+        for f in roots {
+            for chain in feature_chains(p, f) {
+                let Some((dep, feature)) = chain.last().cloned() else { continue };
+                // A chain passing through a choice reports that choice, not what it forwards to.
+                let through = chain[..chain.len() - 1].iter().any(|(q, g)| sqlite_choice(q, g));
+                if through || !sqlite_choice(&dep, &feature) || reported.contains(&(dep.clone(), feature.clone())) {
+                    continue;
+                }
+                reported.push((dep.clone(), feature.clone()));
+                let shown = |(q, g): &(String, String)| if q == &p.name { g.clone() } else { format!("{q}/{g}") };
+                let path = chain.iter().map(shown).collect::<Vec<_>>().join(" -> ");
+                let how = if f == "default" { "by default".to_string() } else { format!("through feature `{f}`") };
+                let at = feature_line(root, &p.manifest, f);
+                out.push(("SqliteLinkForced", sqlite_message(p, &shown(&(dep, feature)), &format!("{how} ({path}, {at})"))));
             }
         }
     }
     out
+}
+
+/// Whether feature `feature` of package `dep` chooses the SQLite build: the adapter's
+/// `bundled`, or a link feature of the binding.
+fn sqlite_choice(dep: &str, feature: &str) -> bool {
+    (dep == SQLITE_ADAPTER && feature == SQLITE_BUNDLED)
+        || (SQLITE_BINDINGS.contains(&dep) && SQLITE_LINK_FEATURES.iter().any(|l| matches(l, feature)))
+}
+
+fn sqlite_message(p: &Package, target: &str, how: &str) -> String {
+    if p.name == SQLITE_ADAPTER {
+        format!("`{SQLITE_ADAPTER}` turns on `{target}` {how}; the host chooses the SQLite build")
+    } else {
+        format!("`{}` enables `{target}` {how}; only `{BINARY}` compiles SQLite in", p.name)
+    }
+}
+
+/// Every `(package, feature)` feature `root` of `p` turns on, each as the chain of nodes that
+/// first reaches it. The chain walks `p`'s own feature table; a node on another package ends
+/// it. Turning on a dependency, by `dep:x` or an optional dependency's own name, turns on the
+/// features its declaration lists.
+fn feature_chains(p: &Package, root: &str) -> Vec<Vec<(String, String)>> {
+    let dep_of = |key: &str| p.enables.iter().find(|d| d.kind.as_deref() != Some("dev") && d.key == key);
+    let mut seen = vec![(p.name.clone(), root.to_string())];
+    let mut queue = VecDeque::from([vec![(p.name.clone(), root.to_string())]]);
+    let mut chains = Vec::new();
+    while let Some(chain) = queue.pop_front() {
+        let Some((q, f)) = chain.last().cloned() else { continue };
+        if q != p.name {
+            continue;
+        }
+        let mut next: Vec<(String, String)> = Vec::new();
+        let activate = |key: &str, next: &mut Vec<(String, String)>| {
+            if let Some(d) = dep_of(key) {
+                next.extend(d.features.iter().map(|g| (d.name.clone(), g.clone())));
+            }
+        };
+        for e in p.features.get(&f).into_iter().flatten() {
+            if let Some(key) = e.strip_prefix("dep:") {
+                activate(key, &mut next);
+            } else if let Some((key, g)) = e.split_once('/') {
+                let weak = key.ends_with('?');
+                let key = key.trim_end_matches('?');
+                if let Some(d) = dep_of(key) {
+                    next.push((d.name.clone(), g.to_string()));
+                }
+                if !weak {
+                    activate(key, &mut next);
+                }
+            } else if p.features.contains_key(e) {
+                next.push((p.name.clone(), e.clone()));
+            } else {
+                activate(e, &mut next);
+            }
+        }
+        for n in next {
+            if seen.contains(&n) {
+                continue;
+            }
+            seen.push(n.clone());
+            let mut longer = chain.clone();
+            longer.push(n);
+            chains.push(longer.clone());
+            queue.push_back(longer);
+        }
+    }
+    chains
+}
+
+/// The line of `manifest` defining feature `feature` in its `[features]` table.
+fn feature_line(root: &Path, manifest: &str, feature: &str) -> String {
+    let text = std::fs::read_to_string(root.join(manifest)).unwrap_or_default();
+    let mut table = false;
+    for (n, l) in text.lines().enumerate() {
+        let t = l.trim();
+        if t.starts_with('[') {
+            table = t == "[features]";
+        } else if table && t.strip_prefix(feature).is_some_and(|rest| rest.trim_start().starts_with('=')) {
+            return format!("{manifest}:{}", n + 1);
+        }
+    }
+    manifest.to_string()
 }
 
 /// `ExchangeDependencyLeak` per `crates/` package whose own resolved normal graph reaches

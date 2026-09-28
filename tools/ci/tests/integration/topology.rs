@@ -315,6 +315,30 @@ fn a_sqlite_link_forced_outside_the_binary_is_refused() {
     sqlite(&r, "", "default = [\"bundled\"]\n");
     let err = refused(&topology(&r.root), "SqliteLinkForced");
     assert!(err.contains("`contextful-sqlite` turns on `bundled` by default"), "{err}");
+
+    // The same choices reached through a feature chain rather than spelled on the line.
+    sqlite(&r, "", "default = [\"fast\"]\nfast = [\"bundled\"]\n");
+    let err = refused(&topology(&r.root), "SqliteLinkForced");
+    assert!(err.contains("`contextful-sqlite` turns on `bundled` by default (default -> fast -> bundled, crates/contextful-sqlite/Cargo.toml:"), "{err}");
+    sqlite(&r, "", "turbo = [\"rusqlite/bundled\"]\n");
+    let err = refused(&topology(&r.root), "SqliteLinkForced");
+    assert!(err.contains("`contextful-sqlite` turns on `rusqlite/bundled` through feature `turbo` (turbo -> rusqlite/bundled, crates/contextful-sqlite/Cargo.toml:"), "{err}");
+    sqlite(&r, "", "");
+    let fast = |default: &str| {
+        let deps = "contextful-sqlite = { path = \"../contextful-sqlite\" }\n";
+        r.write(
+            "crates/contextful-memory/Cargo.toml",
+            &format!("{}\n[features]\n{default}fast = [\"contextful-sqlite/bundled\"]\n", manifest("contextful-memory", deps)),
+        );
+    };
+    fast("default = [\"fast\"]\n");
+    let err = refused(&topology(&r.root), "SqliteLinkForced");
+    assert!(err.contains("`contextful-memory` enables `contextful-sqlite/bundled` by default (default -> fast -> contextful-sqlite/bundled, crates/contextful-memory/Cargo.toml:"), "{err}");
+    assert_eq!(err.matches("`contextful-memory` enables").count(), 1, "one finding per package and choice: {err}");
+    fast("");
+    let err = refused(&topology(&r.root), "SqliteLinkForced");
+    assert!(err.contains("`contextful-memory` enables `contextful-sqlite/bundled` through feature `fast` (fast -> contextful-sqlite/bundled, crates/contextful-memory/Cargo.toml:"), "{err}");
+    assert!(!err.contains("`contextful-sqlite` turns on"), "{err}");
 }
 
 /// This repository's store adapter resolves no SQLite, and its binary alone compiles one in.
@@ -508,11 +532,11 @@ fn a_crate_missing_from_the_crate_map_is_refused() {
     passes(&r);
 }
 
-/// Fifteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
-// spec: topology.package.crate-map@a2182044
+/// Sixteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+// spec: topology.package.crate-map@3bb0f4bc
 #[test]
 fn this_repository_crate_map_names_every_crate() {
     let o = topology(repo_root());
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stdout(&o).contains("crate map: 15 crates"), "{}", stdout(&o));
+    assert!(stdout(&o).contains("crate map: 16 crates"), "{}", stdout(&o));
 }
