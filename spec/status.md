@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
 | `connector` | 2 | 13 | 241 | 74 | 15 | 8 | 98 | 0 | 98 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
-| `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
-| `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
+| `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
+| `read` | 2 | 14 | 115 | 21 | 14 | 17 | 75 | 0 | 75 |
 | `run` | 3 | 24 | 289 | 82 | 34 | 24 | 151 | 0 | 151 |
 | `store` | 1 | 14 | 157 | 37 | 12 | 13 | 113 | 0 | 113 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 60 | 15 | 5 | 5 | 14 | 0 | 14 |
-| **total** | 19 | 145 | 1470 | 472 | 163 | 108 | 723 | 0 | |
+| **total** | 19 | 145 | 1471 | 472 | 164 | 109 | 723 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ Decision records: 18.
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
-| 8 — Accountability | 5 | 23 | 3 | open |
+| 8 — Accountability | 5 | 24 | 3 | open |
 | 9 — Visibility | 6 | 22 | 3 | open |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
 | 11 — The derive tier | 7 | 68 | 44 | passing |

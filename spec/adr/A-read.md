@@ -15,6 +15,25 @@
 
 Consequences: a preview and a query apply identical row restriction, masks and zone gate; a socket connection mutates nothing.
 
+## A pooled engine reuses a resolved session only while its whole key holds
+
+**Status:** accepted
+
+Context: each `Face` call walks `tables/`, reads every granted `schema.json` and run manifest, then opens a connection, registers the mask functions, fills subject and tenant tables and creates one view per relation; every Parquet footer re-reads.
+Decision: `Face` pools resolved sessions with their connections, keyed on the admitted authority with token id and revocation epoch, the request zone, the bounds, the table set under `tables/`, and per granted table its `schema.json` digest, pointer and ledger file set. Any change misses. The pool sits behind the guard, masks and zone gate.
+Gate: a `contextful-context` benchmark reports cold and warm `Face::query` p50 and p95 at 1, 50 and 500 unfolded runs, one statement, 200 iterations after 20 warm-up, on the reference target. Setup above 25% of warm p95 at 50 runs admits the pool.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Whole-key pool inside `Face`, benchmark-gated *(chosen)* | — | Key computation still lists ledgers and stats schemas; connections hold memory per authority. |
+| Key on the pointer set alone | Freshness | An appended run, schema edit or new table serves a stale view set. |
+| Cache in the embedder | Enforcement | Guard, masks and zone gate sit outside the cache. |
+| A time-to-live on sessions | Invalidation by construction | A revoked token reads until expiry. |
+| Rebuild per call | Warm latency | Setup scales with unfolded runs on every read. |
+
+Criteria: no reuse crosses a snapshot, schema, table set or revocation, fixed; warm latency decides.
+Consequences: `read.register.connection-views` rewords from per statement to per pool entry once the gate admits the pool.
+
 ## Memory writes validate or dead-letter, and outcomes settle under their source
 
 `read.synthesize` validates every candidate against the declared output schema, retries with the error up to 3 attempts per batch, then dead-letters the response, template hash and drop reason with the cursor held. The relation vocabulary is a reserved core plus declared types; an undeclared edge dead-letters while the batch lands. `read.resolve-entity` dead-letters ambiguous mentions and dangling endpoints. `read.settle` requires one resolution form and one source — `metric`, `adjudicator` or `manual`; metric comparators evaluate outside the engine, verdicts carry an `http`/`https` citation, self-rated outcomes carry a null verdict, and the scored and unresolved views partition the join.

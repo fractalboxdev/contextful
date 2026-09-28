@@ -55,6 +55,8 @@ flowchart LR
 What a read leaves behind: the span, the hash-linked audit entry, and where telemetry lands.
 
 - `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes at 4096 entries under one signed root.
+- `group-commit` — Between segment opens, an append group, the appends one sync covers, issues 1 sync, of its segment file; the signed tip writes at segment close, on idle and at export.
+  *A-disclosure*
 - `unpersisted-entry` — A read whose entry fails to reach local durable storage raises `AuditEntryUnpersisted` and returns no rows.
   *A-disclosure*
 - `single-writer` — One process holds a directory's audit log at a time; opening a log another holds raises `AuditLogHeld`.

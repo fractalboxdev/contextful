@@ -15,6 +15,7 @@ rows     = { gloss = "table rows" }
 batches  = { gloss = "record batches" }
 files    = { gloss = "files" }
 parts    = { gloss = "parquet parts" }
+sync     = { gloss = "durable storage sync", aliases = ["syncs"] }
 calls    = { gloss = "host calls" }
 requests = { gloss = "outbound requests" }
 subjects = { gloss = "distinct subjects contributing to a cell" }
