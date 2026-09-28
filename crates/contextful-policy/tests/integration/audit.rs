@@ -208,7 +208,7 @@ fn every_trailing_truncation_under_a_rewritten_tip_is_detected() {
     const N: u64 = 40;
     let dir = log_of(N);
     let full = lines(&segment(dir.path(), 1));
-    let foreign = SigningKey::from_bytes(&[9; 32]);
+    let foreign = seeded(9, SignatureAlgorithm::Ed25519);
     let (mut undetected, mut cases) = (0u64, 0u64);
     for k in 1..N {
         let kept = &full[..(N - k) as usize];
@@ -219,7 +219,7 @@ fn every_trailing_truncation_under_a_rewritten_tip_is_detected() {
         for tip in [unsigned, forged] {
             fs::write(dir.path().join("chain.tip"), tip).unwrap();
             cases += 1;
-            match verify_signed(dir.path(), &key().verifying_key()) {
+            match verify_signed(dir.path(), &SignerKey::of(&key())) {
                 Err(AuditError::AuditChainBroken { .. }) => {}
                 other => {
                     undetected += 1;
