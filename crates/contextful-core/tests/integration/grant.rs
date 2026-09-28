@@ -104,7 +104,7 @@ fn malformed_pattern() {
 fn fields() {
     let g: Grant = serde_json::from_str(r#"{"actions":["read"],"tables":["research/*"]}"#).unwrap();
     assert_eq!(g, grant(&[Action::Read], &["research/*"]));
-    // No tenant: every tenant's rows; no aggregate: raw reads; no row ceiling: none imposed.
+    // No tenant: every tenant's rows; no aggregate: raw reads; no row ceiling: only the face ceiling applies.
     assert!(g.tenant.is_none());
     assert!(raw_read_covers(std::slice::from_ref(&g), "research/filings"));
     assert_eq!(least_row_ceiling([g.max_rows, None, None, None]), FACE_ROW_CEILING);
