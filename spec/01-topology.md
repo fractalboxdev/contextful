@@ -110,6 +110,8 @@ The domain crate, dependency direction, and the three build profiles with what e
   *A-topology*
 - `store-write-engine-free` — `contextful-context` resolved without its `read` feature and reaching `duckdb` or `libduckdb-sys` through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.
   *because a host that lands, folds or scans a store and serves no read otherwise links a bundled SQL engine it never calls*
+- `exchange-optional` — `contextful-policy` links the external-assertion stack, `jsonwebtoken` and `rsa`, only under its non-default `exchange` feature, which only the binary may enable, and only alongside wiring {{authority.exchange.surface}}. Another `crates/` package whose resolved graph reaches either raises `ExchangeDependencyLeak`, naming the path.
+  *because an embedder admitting credentials with no identity provider then links no RSA code, and `rsa` carries a timing advisory with no patched release*
 
 Profiles, the domain crate they share, and the dependency edges the gates raise on.
 

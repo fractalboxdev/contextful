@@ -1,7 +1,8 @@
 //! `contextful-ci topology` — the dependency rules of the `topology` contract, read off
 //! `cargo metadata`: the domain crate's purity and dependency direction, the model-vendor
-//! and script-runtime bans, the run-path-to-read-path crate graph, and the store adapter's
-//! engine-free write half.
+//! and script-runtime bans, and the run-path-to-read-path crate graph; and, per package
+//! off `cargo tree`, the store adapter's engine-free write half and the external-assertion
+//! stack outside the binary.
 
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
@@ -68,6 +69,17 @@ const SCRIPT_RUNTIMES: [&str; 9] =
 /// (`topology.compose.undeclared-crossing`).
 const RUN_PATH: [&str; 4] = ["contextful-engine", "contextful-runtime", "contextful-wasm", "contextful-connectors"];
 const READ_PATH: [&str; 5] = ["contextful-context", "contextful-memory", "contextful-sync", "contextful-agent", "contextful-eval"];
+
+/// The binary crate, the one package that may link the exchange, and only while its
+/// source reaches [`EXCHANGE_MODULE`] (`topology.package.exchange-optional`).
+const BINARY: &str = "contextful-cli";
+
+/// The path through which the binary wires `authority.exchange.surface`.
+const EXCHANGE_MODULE: &str = "contextful_policy::exchange";
+
+/// The external-assertion stack no other `crates/` package resolves
+/// (`topology.package.exchange-optional`).
+const EXCHANGE_STACK: [&str; 2] = ["jsonwebtoken", "rsa"];
 
 fn matches(pattern: &str, name: &str) -> bool {
     match pattern.strip_suffix('*') {
@@ -239,15 +251,18 @@ fn manifest_line(root: &Path, manifest: &str, dep: &str) -> String {
 }
 
 /// Each normal-dependency path from `package` to a package named in `targets`, resolved
-/// by `cargo tree` with every feature of `package` off, as `a -> b -> c`.
-fn engine_paths(root: &Path, package: &str, targets: &[&str]) -> Result<Vec<String>> {
-    let out = Command::new("cargo")
-        .args(["tree", "-q", "-p", package, "--no-default-features", "-e", "normal", "--prefix", "depth", "--format", "{p}"])
-        .current_dir(root)
-        .output()
-        .context("running cargo tree")?;
+/// by `cargo tree` for `package` alone — with its default features, or with every feature
+/// off when `features_off` — as `a -> b -> c`. `cargo metadata` unifies features across
+/// the workspace, so a per-package graph comes from `cargo tree -p`.
+fn tree_paths(root: &Path, package: &str, features_off: bool, targets: &[&str]) -> Result<Vec<String>> {
+    let mut args = vec!["tree", "-q", "-p", package];
+    if features_off {
+        args.push("--no-default-features");
+    }
+    args.extend(["-e", "normal", "--prefix", "depth", "--format", "{p}"]);
+    let out = Command::new("cargo").args(&args).current_dir(root).output().context("running cargo tree")?;
     if !out.status.success() {
-        bail!("cargo tree: {}", String::from_utf8_lossy(&out.stderr).trim());
+        bail!("cargo tree -p {package}: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
     let mut stack: Vec<String> = Vec::new();
     let mut paths = Vec::new();
@@ -322,7 +337,7 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
     }
 
     if g.id_of(STORE).is_some() {
-        for path in engine_paths(root, STORE, &SQL_ENGINE)? {
+        for path in tree_paths(root, STORE, true, &SQL_ENGINE)? {
             let name = path.rsplit(" -> ").next().unwrap_or_default();
             out.push(("StoreWriteLinksEngine", format!("`{STORE}` without `{STORE_READ_FEATURE}` links `{name}` through {path}")));
         }
@@ -330,10 +345,52 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
     Ok(out)
 }
 
+/// `ExchangeDependencyLeak` per `crates/` package whose own resolved normal graph reaches
+/// the exchange stack, naming the first path; the binary is excepted while its source
+/// names [`EXCHANGE_MODULE`].
+fn exchange_leaks(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
+    let mut packages: Vec<&Package> =
+        g.packages.values().filter(|p| p.workspace && p.manifest.starts_with("crates/")).collect();
+    packages.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+    let mut out = Vec::new();
+    for package in packages {
+        let name = package.name.as_str();
+        let src = Path::new(&package.manifest).parent().unwrap_or(Path::new("")).join("src");
+        if name == BINARY && mentions(&root.join(&src), EXCHANGE_MODULE) {
+            continue;
+        }
+        if let Some(path) = tree_paths(root, name, false, &EXCHANGE_STACK)?.into_iter().next() {
+            let dep = path.rsplit(" -> ").next().unwrap_or_default();
+            let unwired = if name == BINARY {
+                format!(", and no source under {} names `{EXCHANGE_MODULE}`", src.display())
+            } else {
+                String::new()
+            };
+            out.push(("ExchangeDependencyLeak", format!("`{name}` links `{dep}` through {path}{unwired}")));
+        }
+    }
+    Ok(out)
+}
+
+/// Whether any `.rs` file under `dir` contains `needle`.
+fn mentions(dir: &Path, needle: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else { return false };
+    entries.flatten().any(|e| {
+        let path = e.path();
+        if path.is_dir() {
+            mentions(&path, needle)
+        } else {
+            path.extension().is_some_and(|x| x == "rs")
+                && std::fs::read_to_string(&path).is_ok_and(|text| text.contains(needle))
+        }
+    })
+}
+
 /// Run every topology dependency rule over the workspace at `root`.
 pub fn check(root: &Path) -> Result<()> {
     let g = Graph::load(root)?;
-    let found = findings(root, &g)?;
+    let mut found = findings(root, &g)?;
+    found.extend(exchange_leaks(root, &g)?);
     for (code, message) in &found {
         eprintln!("{code}: {message}");
     }

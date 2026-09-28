@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 const STAGES: [&str; 5] = ["schema", "test-first", "workspace", "acceptance", "features"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
-const STORE_MANIFEST: &str = "crates/contextful-context/Cargo.toml";
 /// The features stage's own target directory, under the workspace root.
 const FEATURES_TARGET: &str = "target/features";
 const REFACTOR_TRAILER: &str = "refactor";
@@ -148,23 +147,32 @@ fn workspace(root: &Path) -> Result<()> {
 }
 
 /// The feature combinations the workspace stage's unified build does not reach
-/// (`assurance.build.staged-feature-runs`): the store adapter with the read face off, whose
-/// write suites build and pass without it (`topology.package.store-write-engine-free`).
+/// (`assurance.build.staged-feature-runs`): each workspace package declaring a feature other
+/// than `default` runs its suite alone, once with no features and once with every feature.
+/// `cargo test -p` resolves the selected package's features without its dependents', so the
+/// store adapter's write suites run with the read face off
+/// (`topology.package.store-write-engine-free`) and the policy package's without `exchange`.
 /// The stage builds into `target/features`, reclaimed once it passes, because a
 /// different feature unification shares no artifacts with the workspace build
 /// (`assurance.build.target-dir-per-stage`).
 fn features(root: &Path) -> Result<()> {
-    if !root.join(STORE_MANIFEST).exists() {
-        return Ok(());
+    let featured = featured_packages(root)?;
+    if featured.is_empty() {
+        eprintln!("features: no workspace package declares a feature");
     }
     let target = root.join(FEATURES_TARGET);
-    let status = Command::new("cargo")
-        .args(["test", "-p", "contextful-context", "--no-default-features"])
-        .env("CARGO_TARGET_DIR", &target)
-        .current_dir(root)
-        .status()?;
-    if !status.success() {
-        bail!("`cargo test -p contextful-context --no-default-features` exited {}", status.code().unwrap_or(-1));
+    for name in &featured {
+        for combination in ["--no-default-features", "--all-features"] {
+            eprintln!("features: {name} {combination}");
+            let status = Command::new("cargo")
+                .args(["test", "-p", name, combination])
+                .env("CARGO_TARGET_DIR", &target)
+                .current_dir(root)
+                .status()?;
+            if !status.success() {
+                bail!("`cargo test -p {name} {combination}` exited {}", status.code().unwrap_or(-1));
+            }
+        }
     }
     let _ = std::fs::remove_dir_all(&target);
     Ok(())
@@ -363,8 +371,24 @@ fn acceptance(root: &Path) -> Result<()> {
     run(root, "cargo", &["test", "-p", ACCEPTANCE_PACKAGE])
 }
 
-/// Package names of every workspace member, from `cargo metadata`.
-fn workspace_packages(root: &Path) -> Result<Vec<String>> {
+/// Workspace members declaring a feature other than `default`, sorted by name.
+fn featured_packages(root: &Path) -> Result<Vec<String>> {
+    let meta = metadata(root)?;
+    let mut names: Vec<String> = meta["packages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|p| p["features"].as_object().is_some_and(|f| f.keys().any(|k| k != "default")))
+        .filter_map(|p| p["name"].as_str())
+        .filter(|n| *n != ACCEPTANCE_PACKAGE)
+        .map(str::to_string)
+        .collect();
+    names.sort_unstable();
+    Ok(names)
+}
+
+/// `cargo metadata` over the workspace members alone.
+fn metadata(root: &Path) -> Result<serde_json::Value> {
     let out = Command::new("cargo")
         .args(["metadata", "--no-deps", "--format-version", "1", "-q"])
         .current_dir(root)
@@ -372,7 +396,12 @@ fn workspace_packages(root: &Path) -> Result<Vec<String>> {
     if !out.status.success() {
         bail!("cargo metadata: {}", String::from_utf8_lossy(&out.stderr));
     }
-    let meta: serde_json::Value = serde_json::from_slice(&out.stdout).context("parsing cargo metadata")?;
+    serde_json::from_slice(&out.stdout).context("parsing cargo metadata")
+}
+
+/// Package names of every workspace member, from `cargo metadata`.
+fn workspace_packages(root: &Path) -> Result<Vec<String>> {
+    let meta = metadata(root)?;
     let names = meta["packages"]
         .as_array()
         .map(|ps| ps.iter().filter_map(|p| p["name"].as_str()).map(str::to_string).collect::<Vec<_>>())

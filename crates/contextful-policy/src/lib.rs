@@ -3,6 +3,7 @@
 pub mod attenuate;
 pub mod audit;
 pub mod enforce;
+#[cfg(feature = "exchange")]
 pub mod exchange;
 pub mod issue;
 pub mod keyset;

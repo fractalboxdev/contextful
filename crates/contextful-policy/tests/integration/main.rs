@@ -3,6 +3,7 @@
 mod attenuate;
 mod audit;
 mod enforce;
+#[cfg(feature = "exchange")]
 mod exchange;
 mod issue;
 mod keyset;
