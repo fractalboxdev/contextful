@@ -91,7 +91,7 @@ Revisit: orphaned children from root-level filtering become a reported data-qual
 
 ## The run substrate is three storage ports, and the file tree is one adapter
 
-Status: Proposed. The journal, its blobs and the awakeable registry write the file tree directly, so a host keeping its own transactional store holds replay state twice, the second copy outside its retention and export. Three ports in the domain package carry the substrate: a journal store (create pending, read, replace if pending, record, release, rows and retire per execution), a blob store (put by sha256, get, sweep over a reference set and a grace) and an awakeable store. The file tree is the default adapter. Every `run.journal` and `run.suspend` clause holds per adapter, so `blob-write` states converging writers, and a staged rename is the file adapter's means.
+Status: accepted. The journal, its blobs and the awakeable registry write the file tree directly, so a host keeping its own transactional store holds replay state twice, the second copy outside its retention and export. Three ports in the domain package carry the substrate: a journal store (create pending, read, replace if pending, record, release, rows and retire per execution), a blob store (put by sha256, get, sweep over a reference set and a grace) and an awakeable store. The file tree is the default adapter. Every `run.journal` and `run.suspend` clause holds per adapter, so `blob-write` states converging writers, and a staged rename is the file adapter's means.
 
 Criteria: one home for replay state per host, which decided it; an I/O-free domain package; one conformance suite per port.
 
@@ -106,7 +106,7 @@ Consequences: a journal store apart from the catalog shares no transaction with 
 
 ## A host opens an execution through one handle keyed on a declared scope
 
-Status: Proposed. `run_with` is the only way to open an execution and binds it to a native plan, a source pulled to exhaustion, one destination commit and an owner keyed on pipeline and table, so a derive step or a host job restates owner claim, pin check and retirement. The engine opens an `Execution` for a scope, a content-hashed plan reference and pins; the handle records steps, commits a cursor, suspends and closes, and `run_with` is its client with unchanged behavior. The catalog keys owners on a scope: live table, backfill chunk or host-declared id. Each catalog adapter migrates its owner rows, a table owner keeping its key byte for byte.
+Status: accepted. `run_with` is the only way to open an execution and binds it to a native plan, a source pulled to exhaustion, one destination commit and an owner keyed on pipeline and table, so a derive step or a host job restates owner claim, pin check and retirement. The engine opens an `Execution` for a scope, a content-hashed plan reference and pins; the handle records steps, commits a cursor, suspends and closes, and `run_with` is its client with unchanged behavior. The catalog keys owners on a scope: live table, backfill chunk or host-declared id. Each catalog adapter migrates its owner rows, a table owner keeping its key byte for byte.
 
 Criteria: one implementation of owner claim, pin mismatch and retirement, which decided it; pending owners resume across the migration.
 
@@ -121,7 +121,7 @@ Consequences: `ExecutionPinMismatch` under a host scope names the plan reference
 
 ## An unclosed execution recovers by lease takeover, and one keeper per engine renews leases
 
-Status: Proposed. A crashed process runs no destructor, so a status written when a handle drops covers only the clean exit, and one event reads two ways. Dropping an `Execution` unclosed records nothing: its keeper registration ends, the owner lease lapses and the next open under the scope resumes the pending owner, taking over pending claims. One keeper thread per engine holds a deadline heap of registered executions, renews each lease, feeds each token its poll and sleeps until the earliest deadline; open registers, close or drop deregisters.
+Status: accepted. A crashed process runs no destructor, so a status written when a handle drops covers only the clean exit, and one event reads two ways. Dropping an `Execution` unclosed records nothing: its keeper registration ends, the owner lease lapses and the next open under the scope resumes the pending owner, taking over pending claims. One keeper thread per engine holds a deadline heap of registered executions, renews each lease, feeds each token its poll and sleeps until the earliest deadline; open registers, close or drop deregisters.
 
 Criteria: one outcome per event, which decided it; wakeups scale with deadlines, not with open executions.
 
