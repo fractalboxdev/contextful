@@ -114,7 +114,7 @@ Consequences: `disclosure.record.segment` and `disclosure.attest.broken-chain` r
 **Status:** accepted
 
 Context: a read path holding no issuer key still appends, and a verifier needs no writer lock.
-Decision: a log opens held, unanchored or read-only. Held signs roots and tip through `SigningPort`. Unanchored links entries under an unsigned tip, writes no root and refuses a chain already signed (`disclosure.record.unanchored-over-signed`). Read-only verifies without the lock and refuses appends. A held open over an unsigned tip refuses (`disclosure.record.unsigned-tip`); anchoring, an explicit act of the key holder, signs the missing roots and tip.
+Decision: a log opens held, unanchored or read-only. Held signs roots and tip through `SigningPort`. Unanchored links entries under an unsigned tip, writes no root and refuses a chain already signed (`disclosure.record.unanchored-over-signed`). Read-only verifies without the lock and refuses appends. A held open over an unsigned tip refuses (`disclosure.record.unsigned-tip`); anchoring, an explicit act of the key holder, signs the missing roots and tip. A signed `chain.held` record or root marks a chain held for good, so a stripped tip over it breaks the chain rather than reading as unanchored.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -124,7 +124,7 @@ Decision: a log opens held, unanchored or read-only. Held signs roots and tip th
 | Generate a local key on first append | Key custody | A read fabricates durable key material nobody chose. |
 
 Criteria: tamper evidence decided it; availability of reads without custody; no fabricated keys.
-Consequences: an unanchored interval is evident until anchored; a verifier runs beside the writer.
+Consequences: an unanchored interval is evident until anchored; a verifier runs beside the writer; deleting every root and `chain.held` along with the tip leaves a chain only a replicated root tells from an unanchored one.
 
 ## Erasure is a forced rewrite, a bounded cascade and a measured receipt
 

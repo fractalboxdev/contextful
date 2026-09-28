@@ -13867,7 +13867,7 @@
       "operation": "record",
       "subject": "unanchored-over-signed",
       "kind": "refusal",
-      "statement": "An unanchored handle links entries under an unsigned tip and writes no root; opening one over a chain holding a signed tip or root raises `AuditLogAnchored`.",
+      "statement": "An unanchored handle links entries under an unsigned tip and writes no root; opening one over a signed tip, a signed root or the signed `chain.held` a held open writes raises `AuditLogAnchored`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
       "line": 80
@@ -13878,7 +13878,7 @@
       "operation": "record",
       "subject": "unsigned-tip",
       "kind": "refusal",
-      "statement": "A held open or signed check over a chain whose tip is unsigned raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.",
+      "statement": "A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
       "line": 82
@@ -13944,7 +13944,7 @@
       "operation": "attest",
       "subject": "broken-chain",
       "kind": "refusal",
-      "statement": "A disagreeing digest, entry format or Merkle root, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the signed check, an absent tip or a failing signature raises `AuditChainBroken` at the earliest failing index.",
+      "statement": "A disagreeing digest, entry format or Merkle root, a sequence gap, a failing signature, or, beside `chain.tip`, `chain.held` or a signed root, an absent chain or a missing or unsigned tip raises `AuditChainBroken` at the earliest failing index.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
       "line": 126
@@ -20052,7 +20052,7 @@
           },
           "AuditLogAnchored": {
             "clause": "disclosure.record.unanchored-over-signed",
-            "gloss": "An unanchored handle opened over a chain holding a signed tip or root."
+            "gloss": "An unanchored handle opened over a chain holding a signed tip, a signed root or a held record."
           },
           "AuditLogHeld": {
             "clause": "disclosure.record.single-writer",
@@ -20064,7 +20064,7 @@
           },
           "AuditLogUnanchored": {
             "clause": "disclosure.record.unsigned-tip",
-            "gloss": "A held open or signed check over a chain whose tip is unsigned."
+            "gloss": "A held open or signed check over a chain whose tip is unsigned, carrying no held record or signed root."
           },
           "AuditProofInvalid": {
             "clause": "disclosure.attest.proof-invalid",

@@ -9,6 +9,7 @@
 //! segments/000001.jsonl       one entry per line, seq ascending from 1
 //! segments/000001.root.json   the signed root closing the segment
 //! chain.tip                   a signed {seq, entry_hash} at or behind the chain end
+//! chain.held                  the signed {seq, entry_hash} at which the issuer first held the log
 //! audit.lock                  held by the one process writing the log
 //! ```
 //!
@@ -38,8 +39,12 @@
 //! A log opens under the custody its caller holds: held, signing through the port;
 //! unanchored, linking entries under an unsigned tip and writing no root; or read-only,
 //! verifying without the writer lock. Anchoring signs an unanchored chain's missing roots
-//! and its tip, and is the one path from unanchored to held. A replayed older signed tip is caught only
-//! against a replicated root (`disclosure.attest.root-replication`).
+//! and its tip, and is the one path from unanchored to held. A chain carrying `chain.held`
+//! or a signed root is held for good (`disclosure.attest.broken-chain`): an absent or unsigned tip
+//! over it breaks the chain under every check, so a truncation under a stripped tip never
+//! reads as an unanchored interval. Deleting every root and `chain.held` as well leaves a
+//! chain no local check tells from an unanchored one; that, and a replayed older signed
+//! tip, are caught only against a replicated root (`disclosure.attest.root-replication`).
 
 use crate::issue::{sign_through, SignerKey};
 use contextful_core::issue::{SignatureAlgorithm, SignatureEncoding};
@@ -82,9 +87,9 @@ pub const AUDIT_TIP_IDLE: Duration = Duration::from_secs(1);
 /// A refusal of the audit chain.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AuditError {
-    /// A disagreeing digest, entry format or Merkle root, a sequence gap, or an absent
-    /// chain beside a tip or root; `index` is the seq of the earliest failure.
-    /// (`disclosure.attest.broken-chain`)
+    /// A disagreeing digest, entry format or Merkle root, a sequence gap, an absent chain
+    /// beside a tip or root, entries without a tip, or an unsigned tip over a held chain;
+    /// `index` is the seq of the earliest failure. (`disclosure.attest.broken-chain`)
     #[error("AuditChainBroken: entry {index}: {reason}")]
     AuditChainBroken { index: u64, reason: String },
     /// An entry that did not reach local durable storage; the log keeps its prior tip.
@@ -111,11 +116,12 @@ pub enum AuditError {
     /// An append through a read-only handle. (`disclosure.record.read-only`)
     #[error("AuditLogReadOnly: {0}")]
     AuditLogReadOnly(String),
-    /// An unanchored handle opened over a chain holding a signed tip or root.
+    /// An unanchored handle opened over a chain holding a signed tip, a signed root or `chain.held`.
     /// (`disclosure.record.unanchored-over-signed`)
     #[error("AuditLogAnchored: {0}")]
     AuditLogAnchored(String),
-    /// A held open or signed check over a chain whose tip is unsigned.
+    /// A held open or signed check over a chain whose tip is unsigned, carrying no
+    /// `chain.held` or signed root.
     /// (`disclosure.record.unsigned-tip`)
     #[error("AuditLogUnanchored: {0}")]
     AuditLogUnanchored(String),
@@ -700,6 +706,21 @@ fn header_path(dir: &Path) -> PathBuf {
     dir.join("header.json")
 }
 
+fn held_path(dir: &Path) -> PathBuf {
+    dir.join("chain.held")
+}
+
+/// The signed bytes of `chain.held`: `contextful.audit.held`, the seq and the entry digest,
+/// one per line, apart from a tip's and a root's so none replays as another.
+fn held_message(seq: u64, entry_hash: &str) -> Vec<u8> {
+    format!("contextful.audit.held\n{seq}\n{entry_hash}").into_bytes()
+}
+
+fn held_verifies(record: &SignedTip, key: &SignerKey) -> bool {
+    let Some(Ok(bytes)) = record.signature.as_ref().map(hex::decode) else { return false };
+    key.verifies(&held_message(record.seq, &record.entry_hash), &bytes)
+}
+
 /// The segment holding `seq` (1-based) under `size`-entry segments.
 fn segment_of(seq: u64, size: u64) -> u64 {
     (seq - 1) / size + 1
@@ -759,13 +780,21 @@ fn listing(dir: &Path) -> Result<(BTreeSet<u64>, BTreeSet<u64>), AuditError> {
 }
 
 fn read_tip(dir: &Path) -> Result<Option<SignedTip>, AuditError> {
-    let path = tip_path(dir);
-    match fs::read_to_string(&path) {
+    read_position(&tip_path(dir))
+}
+
+fn read_held(dir: &Path) -> Result<Option<SignedTip>, AuditError> {
+    read_position(&held_path(dir))
+}
+
+/// A `{seq, entry_hash, signature?}` file, or `None` when absent.
+fn read_position(path: &Path) -> Result<Option<SignedTip>, AuditError> {
+    match fs::read_to_string(path) {
         Ok(text) => serde_json::from_str(&text)
             .map(Some)
             .map_err(|e| AuditError::Io(format!("{}: {e}", path.display()))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(unreadable(&path)(e)),
+        Err(e) => Err(unreadable(path)(e)),
     }
 }
 
@@ -778,7 +807,8 @@ pub fn verify(dir: &Path) -> Result<ChainTip, AuditError> {
 
 /// [`verify`], and every root's signature and the tip's under `key`: the check opening a
 /// log runs, and the offline verifier's. A non-empty chain needs a tip that verifies; an
-/// unsigned one raises `AuditLogUnanchored`.
+/// unsigned one raises `AuditLogUnanchored` over an unheld chain and `AuditChainBroken` over
+/// a held one.
 pub fn verify_signed(dir: &Path, key: &SignerKey) -> Result<ChainTip, AuditError> {
     walk(dir, Check::Signed(key)).map(|w| w.end)
 }
@@ -814,17 +844,23 @@ fn walk(dir: &Path, check: Check) -> Result<Walked, AuditError> {
     let size = chain.segment_entries();
     let (segments, roots) = listing(dir)?;
     let tip_file = read_tip(dir)?;
+    let held_file = read_held(dir)?;
     let Some(&last) = segments.last() else {
         if let Some(tip) = tip_file.as_ref().filter(|t| t.seq > 0) {
             return Err(broken(1, format!("chain.tip names seq {} and no segment exists", tip.seq)));
+        }
+        if let Some(held) = held_file.as_ref().filter(|h| h.seq > 0) {
+            return Err(broken(1, format!("chain.held names seq {} and no segment exists", held.seq)));
         }
         if let Some(&n) = roots.first() {
             return Err(broken(first_seq(n, size), format!("a signed root closes segment {n} and no segment exists")));
         }
         return Ok(Walked { end: chain.genesis(), unrooted: Vec::new() });
     };
-    // An unanchored chain carries no roots under its unsigned tip.
-    let unsigned_tip = tip_file.as_ref().is_some_and(|t| t.signature.is_none());
+    // A held chain carries `chain.held` or a signed root; an unanchored one carries neither,
+    // under an unsigned tip, and only it leaves a full segment before the last unrooted.
+    let held = held_file.is_some() || !roots.is_empty();
+    let unanchored = !held && tip_file.as_ref().is_some_and(|t| t.signature.is_none());
     let mut unrooted = Vec::new();
     let mut end = chain.genesis();
     for n in 1..=last {
@@ -861,6 +897,11 @@ fn walk(dir: &Path, check: Check) -> Result<Walked, AuditError> {
                     return Err(broken(index, "chain.tip disagrees with the entry it names"));
                 }
             }
+            if let Some(record) = held_file.as_ref().filter(|h| h.seq == index) {
+                if record.entry_hash != entry.entry_hash {
+                    return Err(broken(index, "chain.held disagrees with the entry it names"));
+                }
+            }
             end = entry.tip();
             entries.push(entry);
         }
@@ -884,7 +925,7 @@ fn walk(dir: &Path, check: Check) -> Result<Walked, AuditError> {
             if key.is_some_and(|k| !root.verify(k)) {
                 return Err(broken(closing, format!("the root signature of segment {n} does not verify")));
             }
-        } else if n < last && !unsigned_tip {
+        } else if n < last && !unanchored {
             return Err(broken(closing, format!("segment {n} is followed by another and carries no signed root")));
         } else if count == size {
             unrooted.push(n);
@@ -895,6 +936,22 @@ fn walk(dir: &Path, check: Check) -> Result<Walked, AuditError> {
     }
     if let Some(tip) = tip_file.as_ref().filter(|t| t.seq > end.seq) {
         return Err(broken(end.seq + 1, format!("chain.tip names seq {} beyond the chain end", tip.seq)));
+    }
+    if let Some(record) = held_file.as_ref().filter(|h| h.seq > end.seq) {
+        return Err(broken(end.seq + 1, format!("chain.held names seq {} beyond the chain end", record.seq)));
+    }
+    // Held and unanchored logs both write `chain.tip` before their first entry.
+    if end.seq > 0 {
+        match &tip_file {
+            None => return Err(broken(1, "the chain carries entries and no chain.tip")),
+            Some(tip) if held && tip.signature.is_none() => {
+                return Err(broken(tip.seq.max(1), "chain.tip is unsigned over a held chain"));
+            }
+            Some(_) => {}
+        }
+    }
+    if let Some(record) = held_file.as_ref().filter(|h| key.is_some_and(|k| !held_verifies(h, k))) {
+        return Err(broken(record.seq.max(1), "the chain.held signature does not verify"));
     }
     if let Some(key) = key.filter(|_| end.seq > 0) {
         match &tip_file {
@@ -948,6 +1005,8 @@ pub enum Fsync {
     Tip,
     /// `header.json`, or its directory after the header is renamed in.
     Header,
+    /// `chain.held`, or its directory after the record is renamed in.
+    Held,
 }
 
 /// The port every audit sync runs through.
@@ -1198,6 +1257,9 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
             if let Some(n) = listing(&dir)?.1.first() {
                 return Err(anchored(format!("a signed root closes segment {n}")));
             }
+            if read_held(&dir)?.is_some() {
+                return Err(anchored("chain.held records the chain held".into()));
+            }
         }
         let chain = match lock {
             Some(_) => {
@@ -1242,6 +1304,9 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
         });
         if read_only {
             return Ok(AuditLog { inner, idler: None });
+        }
+        if held && read_held(&inner.dir)?.is_none() {
+            inner.write_held(&end).map_err(AuditError::AuditEntryUnpersisted)?;
         }
         if held {
             for n in &walked.unrooted {
@@ -1461,6 +1526,17 @@ impl<S: SigningPort> Inner<S> {
         let tpath = tip_path(&self.dir);
         write_durable(&tpath, &serde_json::to_vec(&signed).map_err(fail(&tpath))?, &*self.fsync, Fsync::Tip)?;
         Ok(signed)
+    }
+
+    /// Record the chain held from `at`, signed, as `chain.held`.
+    fn write_held(&self, at: &ChainTip) -> Result<(), String> {
+        let Custody::Held(signer) = &self.custody else {
+            return Err("only a held log records the chain held".into());
+        };
+        let signature = sign_through(signer, &held_message(at.seq, &at.entry_hash)).map_err(|e| e.to_string())?;
+        let record = SignedTip { seq: at.seq, entry_hash: at.entry_hash.clone(), signature: Some(hex::encode(signature)) };
+        let path = held_path(&self.dir);
+        write_durable(&path, &serde_json::to_vec(&record).map_err(fail(&path))?, &*self.fsync, Fsync::Held)
     }
 
     /// Close full segment `n` under a signed root, read back from its synced file.

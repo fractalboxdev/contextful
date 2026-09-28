@@ -53,10 +53,7 @@ fn write_lines(path: &Path, entries: &[AuditEntry]) {
 /// A log of `n` entries in a fresh directory.
 fn log_of(n: u64) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
-    let log = AuditLog::open(dir.path(), key()).unwrap();
-    for i in 0..n {
-        log.append(attrs("agent://a", i)).unwrap();
-    }
+    AuditLog::open(dir.path(), key()).unwrap().append_all((0..n).map(|i| attrs("agent://a", i)).collect()).unwrap();
     dir
 }
 
@@ -119,10 +116,10 @@ fn a_segment_closes_at_4096_entries_under_one_signed_root() {
     assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 1);
 }
 
-/// A disagreeing digest, entry format or Merkle root, a sequence gap, an absent chain beside `chain.tip` or a signed
-/// root, or, under the signed check, an absent tip or a failing signature raises `AuditChainBroken` at the earliest
-/// failing index.
-// spec: disclosure.attest.broken-chain@8cbc3f89
+/// A disagreeing digest, entry format or Merkle root, a sequence gap, a failing signature, or, beside `chain.tip`,
+/// `chain.held` or a signed root, an absent chain or a missing or unsigned tip raises `AuditChainBroken` at the
+/// earliest failing index.
+// spec: disclosure.attest.broken-chain@f9ce9dfc
 #[test]
 fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     // A disagreeing digest: entry 2's attributes rewritten after the fact.
@@ -218,7 +215,7 @@ fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     second[0] = chain.link(second[0].seq, &prev, second[0].attributes.clone());
     write_lines(&segment(dir.path(), 2), &second);
     fs::write(dir.path().join("chain.tip"), json!({ "seq": second[0].seq, "entry_hash": second[0].entry_hash }).to_string()).unwrap();
-    assert!(verify(dir.path()).is_ok(), "the unsigned walk accepts the forged history");
+    assert_eq!(broken_at(verify(dir.path())), second[0].seq, "an unsigned tip over a held chain breaks the unsigned walk");
     assert_eq!(broken_at(AuditLog::open(dir.path(), key())), AUDIT_SEGMENT_ENTRIES);
 }
 
@@ -271,8 +268,8 @@ fn tip_of(dir: &Path) -> SignedTip {
     serde_json::from_str(&fs::read_to_string(dir.join("chain.tip")).unwrap()).unwrap()
 }
 
-/// An unanchored handle links entries under an unsigned tip and writes no root; opening one over a chain holding a signed tip or root raises `AuditLogAnchored`.
-// spec: disclosure.record.unanchored-over-signed@b1adc16d
+/// An unanchored handle links entries under an unsigned tip and writes no root; opening one over a signed tip, a signed root or the signed `chain.held` a held open writes raises `AuditLogAnchored`.
+// spec: disclosure.record.unanchored-over-signed@20d9a83f
 #[test]
 fn an_unanchored_handle_links_under_an_unsigned_tip_and_refuses_a_signed_chain() {
     let dir = unanchored_of(2 * AUDIT_SEGMENT_ENTRIES + 1);
@@ -295,11 +292,15 @@ fn an_unanchored_handle_links_under_an_unsigned_tip_and_refuses_a_signed_chain()
     let tip = tip_of(rooted.path());
     fs::write(rooted.path().join("chain.tip"), serde_json::to_vec(&SignedTip { signature: None, ..tip }).unwrap()).unwrap();
     assert!(anchored(AuditLog::unanchored(rooted.path())).contains("root"));
+    let held = log_of(2);
+    let tip = tip_of(held.path());
+    fs::write(held.path().join("chain.tip"), serde_json::to_vec(&SignedTip { signature: None, ..tip }).unwrap()).unwrap();
+    assert!(anchored(AuditLog::unanchored(held.path())).contains("chain.held"));
     assert_eq!(verify(signed.path()).unwrap().seq, 2, "a refused open leaves the chain as it was");
 }
 
-/// A held open or signed check over a chain whose tip is unsigned raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.
-// spec: disclosure.record.unsigned-tip@91156870
+/// A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.
+// spec: disclosure.record.unsigned-tip@713acc68
 #[test]
 fn a_held_open_over_an_unsigned_tip_refuses_until_the_key_holder_anchors_it() {
     let unanchored = |r: Result<ChainTip, AuditError>| match r {
@@ -329,6 +330,82 @@ fn a_held_open_over_an_unsigned_tip_refuses_until_the_key_holder_anchors_it() {
     assert_eq!(verify_signed(es256.path(), &SignerKey::of(&seeded(7, SignatureAlgorithm::Es256))).unwrap().seq, AUDIT_SEGMENT_ENTRIES);
 }
 
+/// A held open writes `chain.held`, the signed chain end at which the issuer first holds the log; an absent or
+/// unsigned tip beside it or a signed root breaks the chain under every check.
+#[test]
+fn a_held_chain_stays_held_under_a_stripped_or_deleted_tip() {
+    let signer = SignerKey::of(&key());
+    let held: SignedTip = {
+        let dir = log_of(0);
+        let record: SignedTip = serde_json::from_str(&fs::read_to_string(dir.path().join("chain.held")).unwrap()).unwrap();
+        assert_eq!((record.seq, record.entry_hash.clone()), (0, ChainHeader::default().digest()), "a fresh log is held from its genesis");
+        record
+    };
+    assert!(!held.verify(&signer), "the held record signs apart from a tip");
+    let broken_everywhere = |dir: &Path, why: &str| {
+        broken_at(verify(dir));
+        broken_at(verify_signed(dir, &signer));
+        broken_at(AuditLog::read_only(dir));
+        broken_at(AuditLog::anchor(dir, key()));
+        match AuditLog::unanchored(dir) {
+            Err(AuditError::AuditLogAnchored(_) | AuditError::AuditChainBroken { .. }) => {}
+            other => panic!("{why}: expected the unanchored open to refuse, got {other:?}"),
+        }
+    };
+
+    // Past a signed root: the last 5 entries dropped under an unsigned tip.
+    let dir = log_of(AUDIT_SEGMENT_ENTRIES + 10);
+    let mut second = lines(&segment(dir.path(), 2));
+    second.truncate(5);
+    write_lines(&segment(dir.path(), 2), &second);
+    let end = second.last().unwrap();
+    fs::write(dir.path().join("chain.tip"), json!({ "seq": end.seq, "entry_hash": end.entry_hash }).to_string()).unwrap();
+    broken_everywhere(dir.path(), "a truncation past a root");
+
+    // A deleted segment root under a stripped tip.
+    let dir = log_of(AUDIT_SEGMENT_ENTRIES + 3);
+    fs::remove_file(root_file(dir.path(), 1)).unwrap();
+    let tip = tip_of(dir.path());
+    fs::write(dir.path().join("chain.tip"), serde_json::to_vec(&SignedTip { signature: None, ..tip }).unwrap()).unwrap();
+    assert_eq!(broken_at(verify(dir.path())), AUDIT_SEGMENT_ENTRIES);
+    broken_everywhere(dir.path(), "a deleted root");
+
+    // Inside the first segment: a truncation under a deleted tip, and under an unsigned one.
+    for stripped in [false, true] {
+        let dir = log_of(9);
+        let mut entries = lines(&segment(dir.path(), 1));
+        entries.truncate(4);
+        write_lines(&segment(dir.path(), 1), &entries);
+        let tip = dir.path().join("chain.tip");
+        match stripped {
+            false => fs::remove_file(&tip).unwrap(),
+            true => fs::write(&tip, json!({ "seq": 4, "entry_hash": entries[3].entry_hash }).to_string()).unwrap(),
+        }
+        broken_everywhere(dir.path(), "a truncation in the first segment");
+    }
+
+    // A held record under a foreign key, or naming an entry the chain lacks, breaks the chain.
+    let dir = log_of(3);
+    let foreign = SignedTip::sign(0, GENESIS, &seeded(9, SignatureAlgorithm::Ed25519)).unwrap();
+    fs::write(dir.path().join("chain.held"), serde_json::to_vec(&foreign).unwrap()).unwrap();
+    assert!(verify(dir.path()).is_ok());
+    broken_at(verify_signed(dir.path(), &signer));
+    let entries = lines(&segment(dir.path(), 1));
+    fs::write(dir.path().join("chain.held"), json!({ "seq": 5, "entry_hash": entries[2].entry_hash }).to_string()).unwrap();
+    assert_eq!(broken_at(verify(dir.path())), 4);
+
+    // Anchoring an unanchored chain records it held from the chain end it anchors.
+    let dir = unanchored_of(3);
+    assert!(!dir.path().join("chain.held").exists());
+    drop(AuditLog::anchor(dir.path(), key()).unwrap());
+    let record: SignedTip = serde_json::from_str(&fs::read_to_string(dir.path().join("chain.held")).unwrap()).unwrap();
+    assert_eq!(record.seq, 3);
+    match AuditLog::unanchored(dir.path()) {
+        Err(AuditError::AuditLogAnchored(m)) => assert!(m.contains("chain"), "{m}"),
+        other => panic!("expected AuditLogAnchored, got {other:?}"),
+    }
+}
+
 #[test]
 fn every_trailing_truncation_under_a_rewritten_tip_is_detected() {
     const N: u64 = 40;
@@ -345,12 +422,12 @@ fn every_trailing_truncation_under_a_rewritten_tip_is_detected() {
         for tip in [unsigned, forged] {
             fs::write(dir.path().join("chain.tip"), tip).unwrap();
             cases += 1;
-            match verify_signed(dir.path(), &SignerKey::of(&key())) {
-                Err(AuditError::AuditChainBroken { .. } | AuditError::AuditLogUnanchored(_)) => {}
-                other => {
-                    undetected += 1;
-                    eprintln!("{k} trailing entries removed went undetected: {other:?}");
-                }
+            // Detected: the signed check, and anchoring, both break the chain.
+            let checked = verify_signed(dir.path(), &SignerKey::of(&key()));
+            let anchored = AuditLog::anchor(dir.path(), key()).map(|l| l.tip());
+            if !matches!((&checked, &anchored), (Err(AuditError::AuditChainBroken { .. }), Err(AuditError::AuditChainBroken { .. }))) {
+                undetected += 1;
+                eprintln!("{k} trailing entries removed went undetected: {checked:?}, anchoring {anchored:?}");
             }
         }
     }

@@ -62,8 +62,8 @@ DisclosureSingletonCohort            = { clause = "disclosure.bound-cohort.singl
 AuditLogHeld             = { clause = "disclosure.record.single-writer", gloss = "An audit log another process holds open." }
 AuditEntryUnpersisted    = { clause = "disclosure.record.unpersisted-entry", gloss = "A read's audit entry did not persist; no rows are returned." }
 AuditLogReadOnly         = { clause = "disclosure.record.read-only", gloss = "An append through a read-only audit handle." }
-AuditLogAnchored         = { clause = "disclosure.record.unanchored-over-signed", gloss = "An unanchored handle opened over a chain holding a signed tip or root." }
-AuditLogUnanchored       = { clause = "disclosure.record.unsigned-tip", gloss = "A held open or signed check over a chain whose tip is unsigned." }
+AuditLogAnchored         = { clause = "disclosure.record.unanchored-over-signed", gloss = "An unanchored handle opened over a chain holding a signed tip, a signed root or a held record." }
+AuditLogUnanchored       = { clause = "disclosure.record.unsigned-tip", gloss = "A held open or signed check over a chain whose tip is unsigned, carrying no held record or signed root." }
 VisibilityDiagnosticRow        = { clause = "disclosure.explain.no-row", gloss = "An explanation returned content from the resource it decides about." }
 VisibilityNoObservations       = { clause = "disclosure.explain.empty-window", gloss = "A replay window holds no observations; no claim is available." }
 VisibilityUnqualifiedAssurance = { clause = "disclosure.explain.unqualified-assurance", gloss = "A negative assurance answer lacks its coverage block." }
