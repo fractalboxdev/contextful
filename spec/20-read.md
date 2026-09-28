@@ -69,6 +69,8 @@ The relations, tools and templates one connection sees, and the engine executing
   *A-read*
 - `bound-arguments` — Every read tool, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
   *because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it*
+- `bound-listing` — `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
+  *because valid time narrows rows, and a listing returns files and table names, never rows*
 - `describe-payload` — `context.describe` returns row count, schema fingerprint, description, per-column hints, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
 - `advertised-is-enforced` — A table's published `limits` block lists a bound exactly when the engine applies it.
   *because a published number and a delivered guarantee cannot disagree when one derives from the other*
@@ -109,6 +111,8 @@ Admission of caller-written SQL: what parses, what a base relation names, whose 
   *A-read*
 - `quoted-identifiers` — Every schema- or manifest-derived identifier is double-quoted where rendered, admitting any UTF-8 vendor field name as an identifier and never as an expression.
 - `template-declaration` — A template declares an identifier, one SQL statement, positional parameters written `name:type` over integer, float, string, timestamp and boolean, and an optional row ceiling.
+- `template-reserved-parameter` — A template parameter named `as_of`, `valid_as_of` or `zone` refuses the manifest; those names carry the read's bounds and zone on every template tool.
+  *because a parameter sharing a read argument's name hides that bound from the template tool*
 - `template-relation-shape` — Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier collides with a built-in tool prefix, raising `TemplateNamesForeignRelation`.
   *A-read*
 - `template-binding` — A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders cover exactly the declared parameters.

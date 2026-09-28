@@ -84,9 +84,14 @@ struct ManifestTemplates {
     query_templates: Vec<RawTemplate>,
 }
 
+/// The read arguments every template tool admits beside its own parameters, so no
+/// parameter takes their names (`read.guard.template-reserved-parameter`).
+pub const READ_ARGUMENTS: [&str; 3] = ["as_of", "valid_as_of", "zone"];
+
 /// Every template a manifest declares. A parameter is `name:type` over integer, float,
 /// string, timestamp and boolean (`read.guard.template-declaration`); any other spelling
 /// refuses the manifest.
+/// A parameter named for a read argument refuses it too.
 pub fn parse_templates(toml_text: &str) -> Result<Vec<QueryTemplate>, DeclarationMalformed> {
     let value: toml::Value = toml::from_str(toml_text).map_err(|e| DeclarationMalformed(e.to_string()))?;
     let raw: ManifestTemplates = value.try_into().map_err(|e: toml::de::Error| DeclarationMalformed(e.to_string()))?;
@@ -98,6 +103,12 @@ pub fn parse_templates(toml_text: &str) -> Result<Vec<QueryTemplate>, Declaratio
                 .iter()
                 .map(|p| {
                     let (name, ty) = p.split_once(':').unwrap_or((p, ""));
+                    if READ_ARGUMENTS.contains(&name) {
+                        return Err(DeclarationMalformed(format!(
+                            "template `{}`: parameter `{name}` is a read argument every template tool admits",
+                            t.id
+                        )));
+                    }
                     match ParamType::parse(ty) {
                         Some(ty) if !name.is_empty() => Ok(Parameter { name: name.to_string(), ty }),
                         _ => Err(DeclarationMalformed(format!(

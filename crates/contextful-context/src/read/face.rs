@@ -297,7 +297,7 @@ impl Face {
         tools.extend(self.templates.iter().filter(|t| allowed.contains(&t.id.as_str())).map(|t| {
             let mut tool = t.tool();
             for (name, schema) in bound_properties() {
-                tool["inputSchema"]["properties"].as_object_mut().expect("a template schema lists properties").entry(name).or_insert(schema);
+                tool["inputSchema"]["properties"].as_object_mut().expect("a template schema lists properties").insert(name, schema);
             }
             tool
         }));
@@ -312,9 +312,10 @@ impl Face {
     /// session is absent from the listing and refused by name
     /// (`authority.refuse.ungranted-table`). `limits.max_rows` appears exactly when the
     /// engine applies it (`read.register.advertised-is-enforced`). The row count reads
-    /// under `bounds`, which a bounded description echoes.
+    /// under `bounds`, which a bounded description echoes; a listing reads under `as_of`
+    /// alone and echoes only it (`read.register.bound-listing`).
     pub fn describe(&self, session: &Session, table: Option<&str>, bounds: Bounds) -> Result<Value, ReadFault> {
-        let echo = |mut v: Value| {
+        let echo = |mut v: Value, bounds: Bounds| {
             if let Some(b) = bounds.echo() {
                 v["contextful.bounds"] = b;
             }
@@ -325,7 +326,7 @@ impl Face {
                 .relations()
                 .map(|r| json!({ "table": r.name(), "description": self.decl(r.name()).agent_description }))
                 .collect();
-            return Ok(echo(json!({ "tables": tables })));
+            return Ok(echo(json!({ "tables": tables }), Bounds { valid_as_of: None, ..bounds }));
         };
         let r = self.registered(session, table)?;
         self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
@@ -356,12 +357,12 @@ impl Face {
         if let Some(max) = policy.max_rows {
             out["limits"] = json!({ "max_rows": max });
         }
-        Ok(echo(out))
+        Ok(echo(out, bounds))
     }
 
     /// Committed data files of the tables the session reads, store-root-relative; a table
     /// outside the session contributes no path (`read.register.file-listing`). Only `as_of`
-    /// selects files; `valid_as_of` narrows rows, never a file list.
+    /// selects files and only it echoes (`read.register.bound-listing`).
     pub fn files(&self, session: &Session, bounds: Bounds) -> Result<Response, ReadFault> {
         let transaction = Bounds { valid_as_of: None, ..bounds };
         let mut rows = Vec::new();
@@ -374,7 +375,7 @@ impl Face {
             }
         }
         let response = Response::cut(vec!["table".into(), "path".into()], rows, None);
-        Ok(match bounds.echo() {
+        Ok(match transaction.echo() {
             Some(b) => response.with_block("bounds", b),
             None => response,
         })

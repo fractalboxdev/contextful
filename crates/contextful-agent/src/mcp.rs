@@ -7,6 +7,7 @@
 
 use contextful_context::read::{Face, ReadFault, ReadOptions, RetrieveRequest};
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
+use contextful_core::read::template::READ_ARGUMENTS;
 use contextful_core::read::Refusal;
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::ports::Clock;
@@ -82,9 +83,6 @@ fn required(args: &Map<String, Value>, name: &str) -> Result<String, Protocol> {
     string(args, name)?.ok_or_else(|| invalid(format!("`{name}` is required")))
 }
 
-/// The two bound arguments every read tool admits (`read.register.bound-arguments`).
-const BOUND_ARGS: [&str; 2] = ["as_of", "valid_as_of"];
-
 fn bound(args: &Map<String, Value>, name: &str) -> Result<Option<Bound>, Protocol> {
     string(args, name)?.map(|s| Bound::parse(&s)).transpose().map_err(|e| invalid(format!("`{name}`: {e}")))
 }
@@ -93,9 +91,10 @@ fn bounds(args: &Map<String, Value>) -> Result<Bounds, Protocol> {
     Ok(Bounds { as_of: bound(args, "as_of")?, valid_as_of: bound(args, "valid_as_of")? })
 }
 
-/// Refuse an argument a tool does not declare; every read tool declares both bounds and `zone`.
+/// Refuse an argument a tool does not declare; every read tool declares both bounds and `zone`
+/// (`read.register.bound-arguments`).
 fn only(args: &Map<String, Value>, tool: &str, known: &[&str]) -> Result<(), Protocol> {
-    match args.keys().find(|k| !known.contains(&k.as_str()) && !BOUND_ARGS.contains(&k.as_str()) && k.as_str() != "zone") {
+    match args.keys().find(|k| !known.contains(&k.as_str()) && !READ_ARGUMENTS.contains(&k.as_str())) {
         Some(k) => Err(invalid(format!("`{tool}` takes no argument `{k}`"))),
         None => Ok(()),
     }
@@ -289,21 +288,13 @@ impl<'a> Server<'a> {
                 self.session(zone, b).and_then(|s| self.face.retrieve(&s, &request, b)).map(|r| r.to_json())
             }
             template if self.face.templates().iter().any(|t| t.id == template) => {
-                // A template's own parameters keep their names; `zone` and each bound the
-                // template does not declare are read arguments.
-                let declared = &self.face.templates().iter().find(|t| t.id == template).expect("matched above").parameters;
+                // No template parameter takes a read argument's name (`read.guard.template-reserved-parameter`).
                 let mut arguments = args.clone();
-                let mut read = Map::new();
-                for key in BOUND_ARGS.iter().chain(["zone"].iter()) {
-                    if !declared.iter().any(|p| p.name == *key) {
-                        if let Some(v) = arguments.remove(*key) {
-                            read.insert((*key).to_string(), v);
-                        }
-                    }
+                for key in READ_ARGUMENTS {
+                    arguments.remove(key);
                 }
-                let zone = string(&read, "zone")?;
-                let opts = ReadOptions { bounds: bounds(&read)?, ..ReadOptions::default() };
-                self.session(zone.as_deref(), opts.bounds)
+                let opts = ReadOptions { bounds: bounds(args)?, ..ReadOptions::default() };
+                self.session(zone, opts.bounds)
                     .and_then(|s| self.face.execute_template(&s, template, &arguments, opts))
                     .map(|r| r.to_json())
             }

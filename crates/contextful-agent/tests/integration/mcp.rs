@@ -176,6 +176,11 @@ to = "to_ts"
 id = "filing"
 sql = "SELECT CAST(v AS VARCHAR) AS v FROM \"research/filings\" WHERE doc = ?"
 parameters = ["doc:string"]
+
+[[query_templates]]
+id = "rates"
+sql = "SELECT ccy FROM \"research/rates\" WHERE ccy <> ? ORDER BY ccy"
+parameters = ["skip:string"]
 "#;
 
 /// A keyed table folded after its second run, beside a table declaring a valid-time pair.
@@ -272,6 +277,13 @@ fn valid_as_of_wraps_only_the_tables_a_read_touches() {
     let both = call(&server, "context.query", json!({ "sql": sql, "valid_as_of": "2030-01-20T00:00:00Z" }));
     assert_eq!(rows(&both), &json!([["eur"], ["gbp"]]));
 
+    let executed = call(&server, "context.execute_query", json!({ "id": "rates", "arguments": { "skip": "usd" }, "valid_as_of": when }));
+    assert_eq!(rows(&executed), &json!([["eur"]]));
+    assert_eq!(echoed(&executed), &echo);
+    let template = call(&server, "rates", json!({ "skip": "usd", "valid_as_of": when }));
+    assert_eq!(rows(&template), &json!([["eur"]]));
+    assert_eq!(echoed(&template), &echo);
+
     let undeclared = call(&server, "context.query", json!({ "sql": r#"SELECT v FROM "research/filings""#, "valid_as_of": when }));
     assert_eq!(undeclared["result"]["isError"], json!(true), "{undeclared}");
     assert!(undeclared["result"]["content"][0]["text"].as_str().unwrap().contains("research/filings"), "{undeclared}");
@@ -289,6 +301,31 @@ fn valid_as_of_wraps_only_the_tables_a_read_touches() {
     let retrieved = call(&server, "corpus.retrieve", json!({ "prefix": "research/rates", "query": "eur gbp", "valid_as_of": when }));
     assert_eq!(rows(&retrieved).as_array().unwrap().len(), 1, "{retrieved}");
     assert_eq!(echoed(&retrieved), &echo);
+}
+
+/// `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
+// spec: read.register.bound-listing@9360c1d2
+#[test]
+fn a_listing_ignores_valid_as_of_and_echoes_only_as_of() {
+    let f = bounded();
+    let clock = FixedClock(at("2030-01-01T04:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let when = "2030-01-10T00:00:00Z";
+    let before = "2030-01-01T01:00:00Z";
+    let echo = json!({ "as_of": "2030-01-01T01:00:00.000000000Z", "inclusive": true });
+
+    let unbounded = call(&server, "context.files", json!({}));
+    let valid_only = call(&server, "context.files", json!({ "valid_as_of": when }));
+    assert_eq!(rows(&valid_only), rows(&unbounded));
+    assert!(valid_only["result"]["structuredContent"].get("contextful.bounds").is_none(), "{valid_only}");
+    let both = call(&server, "context.files", json!({ "as_of": before, "valid_as_of": when }));
+    assert_eq!(rows(&both), rows(&call(&server, "context.files", json!({ "as_of": before }))));
+    assert_eq!(echoed(&both), &echo);
+
+    let tables = call(&server, "context.describe", json!({ "valid_as_of": when }));
+    assert!(tables["result"]["structuredContent"].get("contextful.bounds").is_none(), "{tables}");
+    let tables = call(&server, "context.describe", json!({ "as_of": before, "valid_as_of": when }));
+    assert_eq!(echoed(&tables), &echo, "{tables}");
 }
 
 #[test]
