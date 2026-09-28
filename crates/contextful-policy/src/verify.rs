@@ -185,8 +185,9 @@ pub(crate) fn token_bytes(credential: &str) -> Result<Vec<u8>, AuthorityError> {
         .map_err(|e| AuthorityError::SignatureInvalid(format!("the credential is not a signed chain: {e}")))
 }
 
-/// Admit a credential with no possession proof.
-pub fn verify(credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError> {
+/// Admit a bearer credential with no possession proof: the local path stdio and socket
+/// callers take while `authority.verify` leaves transport-bound possession unsettled.
+pub fn verify_local_bearer(credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError> {
     admit(credential, keys, admission, |_| Ok(()))
 }
 
@@ -340,7 +341,7 @@ impl CredentialFormat for BiscuitFormat {
         crate::attenuate::attenuate(credential, derivation)
     }
     fn verify(&self, credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError> {
-        verify(credential, keys, admission)
+        verify_local_bearer(credential, keys, admission)
     }
     fn introspect(&self, credential: &str) -> Result<Introspection, AuthorityError> {
         introspect(credential)

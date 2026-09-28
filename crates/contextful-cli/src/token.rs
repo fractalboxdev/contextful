@@ -14,7 +14,7 @@ use contextful_policy::attenuate::{attenuate, Derivation};
 use contextful_policy::issue::{mint, MintClaims, SeedSigner};
 use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::{parse_denylist, RevocationState};
-use contextful_policy::verify::{introspect, verify, Admission};
+use contextful_policy::verify::{introspect, verify_local_bearer, Admission};
 use std::path::{Path, PathBuf};
 
 /// The key version a denylist entry records for credentials verified under static pins.
@@ -175,7 +175,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             if let Some(aud) = audience.as_deref() {
                 admission = admission.expecting(aud);
             }
-            println!("{}", verify(&token, &keys, &admission)?.to_json());
+            println!("{}", verify_local_bearer(&token, &keys, &admission)?.to_json());
             Ok(())
         }
         TokenCmd::Introspect { token } => {

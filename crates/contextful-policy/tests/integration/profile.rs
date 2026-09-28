@@ -8,7 +8,7 @@ use contextful_policy::attenuate::{attenuate, Derivation};
 use contextful_policy::issue::{mint, MintClaims};
 use contextful_policy::profile::{authority_facts, ENGINE_FACTS, EVALUATOR_FACT_CEILING, PROFILE_VERSION, SUPPORTED_PROFILE_VERSIONS};
 use contextful_policy::revoke::RevocationState;
-use contextful_policy::verify::{introspect, verify, Admission};
+use contextful_policy::verify::{introspect, verify_local_bearer, Admission};
 
 /// Delegated authority travels in one attenuable, chain-signed library format. The library owns serialization, signatures, block chaining and evaluation; a versioned profile names every fact, check and restriction the engine admits.
 // spec: authority.profile.delegation-profile@8fba5b66
@@ -244,5 +244,5 @@ fn a_profile_version_outside_the_supported_set_is_refused() {
     // A checkpoint whose supported set names the version admits it.
     let revocation = RevocationState::default();
     let widened = Admission { profiles: &[1, 2], ..Admission::new(at(DURING), &revocation) };
-    assert_eq!(verify(&v2, &keys(&signer), &widened).unwrap().profile(), 2);
+    assert_eq!(verify_local_bearer(&v2, &keys(&signer), &widened).unwrap().profile(), 2);
 }
