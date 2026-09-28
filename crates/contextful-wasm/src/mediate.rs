@@ -11,7 +11,7 @@ use crate::limits::{IN_FLIGHT, REQUEST_BODY_BYTES};
 use bytes::Bytes;
 use contextful_core::connector::attach::{scrub, Allowlist};
 use contextful_core::run::Failure;
-use contextful_runtime::client::{Client, HeaderValue, Response};
+use contextful_outbound::client::{Client, HeaderValue, Response};
 use http_body_util::{BodyExt, Empty, Full};
 use std::collections::HashMap;
 use std::future::Future;

@@ -71,7 +71,7 @@ const SCRIPT_RUNTIMES: [&str; 9] =
 /// Run-path and read-path crates of the crate map. The tree holds no crossing crate, so
 /// every path from the first set to the second is an undeclared crossing
 /// (`topology.compose.undeclared-crossing`).
-const RUN_PATH: [&str; 4] = ["contextful-engine", "contextful-runtime", "contextful-wasm", "contextful-connectors"];
+const RUN_PATH: [&str; 4] = ["contextful-engine", "contextful-outbound", "contextful-wasm", "contextful-connectors"];
 const READ_PATH: [&str; 5] = ["contextful-context", "contextful-memory", "contextful-sync", "contextful-agent", "contextful-eval"];
 
 /// The binary crate, the one package that may link the exchange, and only while its

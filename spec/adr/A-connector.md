@@ -80,7 +80,7 @@ Revisit: workload identity becomes unattestable on a needed runtime; a broker be
 
 Status: accepted.
 
-Context: the client resolves a name before any gate, a reservation sees no request, the model endpoint bypasses mediation, and `contextful-runtime` links its HTTP stack unconditionally.
+Context: the client resolves a name before any gate, a reservation sees no request, the model endpoint bypasses mediation, and `contextful-outbound` links its HTTP stack unconditionally.
 
 Decision: the runtime defines a transport port with a resolve half and a send half; its HTTP adapter sits behind a default-on `transport-ureq` feature. The model call sends through the mediated client. Each hop passes the allowlist, then one hook carrying the request intent, then resolution; the limiter reservation is the hook's innermost implementation, and an operator hook composes in front.
 
@@ -94,5 +94,5 @@ Criteria: one attachment point, no lookup before a refusal, `connector.meter.all
 | A send-only port, resolution through the system | Lookup containment | A refused hop has already sent its host name to a resolver. |
 | The HTTP stack unconditional | Embeddability | An embedder with its own client links a second TLS stack. |
 
-Consequences: `contextful-decode` then holds the record decoders with no edge to `contextful-runtime`, a split needing no section here. Each transport adapter is audited against the attach clauses.
+Consequences: `contextful-decode` then holds the record decoders with no edge to `contextful-outbound`, a split needing no section here. Each transport adapter is audited against the attach clauses.
 Revisit: a transport that must resolve remotely, such as a proxy-only deployment.

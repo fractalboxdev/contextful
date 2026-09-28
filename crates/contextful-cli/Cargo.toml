@@ -18,7 +18,7 @@ contextful-core = { path = "../contextful-core" }
 contextful-engine = { path = "../contextful-engine" }
 contextful-memory = { path = "../contextful-memory" }
 contextful-policy = { path = "../contextful-policy" }
-contextful-runtime = { path = "../contextful-runtime" }
+contextful-outbound = { path = "../contextful-outbound" }
 contextful-sync = { path = "../contextful-sync" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

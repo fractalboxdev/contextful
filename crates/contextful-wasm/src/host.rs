@@ -15,7 +15,7 @@ use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::package::{guest_config, Artifact, Digest, PinRequirement};
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag};
-use contextful_runtime::client::HeaderValue;
+use contextful_outbound::client::HeaderValue;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

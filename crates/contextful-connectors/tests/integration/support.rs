@@ -121,7 +121,7 @@ use contextful_core::ports::FixedClock;
 use contextful_core::run::ports::{Cancellation, PullRequest};
 use contextful_core::run::Failure;
 use contextful_core::time::Instant;
-use contextful_runtime::Resolver;
+use contextful_outbound::Resolver;
 
 /// A provider answering every name from a fixed map.
 pub struct Fixed(pub Vec<(&'static str, &'static str)>);

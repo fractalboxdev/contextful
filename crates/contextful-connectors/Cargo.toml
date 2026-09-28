@@ -7,11 +7,11 @@ repository.workspace = true
 publish = false
 
 # The native sources compiled into the binary. Each reaches the network only through the
-# mediated client in `contextful-runtime`.
+# mediated client in `contextful-outbound`.
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }
-contextful-runtime = { path = "../contextful-runtime" }
+contextful-outbound = { path = "../contextful-outbound" }
 quick-xml = "0.37"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

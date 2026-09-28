@@ -5,7 +5,7 @@ use crate::support::{proxy_env, Response, Server};
 use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::run::FailureTag;
-use contextful_runtime::client::{Client, HeaderValue};
+use contextful_outbound::client::{Client, HeaderValue};
 use url::Url;
 
 fn client(server: &Server) -> Client {

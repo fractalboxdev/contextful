@@ -332,8 +332,8 @@ The workspace:
 ```
 crates/
   contextful-core/         pure domain types and ports, no I/O
-  contextful-engine/       driver trait, native driver, journal, cursor, awakeables
-  contextful-runtime/      connector drive inside journaled steps, host mediation
+  contextful-engine/       runner, journal, catalog, awakeables, cancellation
+  contextful-outbound/     mediated client, credential resolution, quota metering, inference
   contextful-wasm/         sandboxed component host
   contextful-connectors/   native sources
   contextful-context/      catalog, table parts, query face, snapshot commit, retrieval

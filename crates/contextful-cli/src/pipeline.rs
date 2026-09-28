@@ -198,7 +198,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
             let checked = check(&spec, &declaration)?;
             let w = wire(&project)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
-            let resolver = Arc::new(contextful_runtime::assemble(&vars, w.clock.clone())?);
+            let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
             if let Checked::Http(config) = &checked {
                 resolver.preflight(config.headers.values())?;
             }
