@@ -67,7 +67,7 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
 - `inline-cutoff` — A value of 1 MiB or smaller is stored inline in its row as bytes; a larger value lands in a content-addressed blob named by its sha256, and the row holds the reference.
 - `blob-write` — Concurrent writers of one blob hash converge on one stored value without waiting or erroring, and no partial write survives beside it.
   *A-run*
-- `missing-blob` — A row whose blob reference resolves to no file raises `BlobMissing` carrying the reference, never an empty value in place of the recorded one.
+- `missing-blob` — A row whose blob reference resolves to no stored blob raises `BlobMissing` carrying the reference, never an empty value in place of the recorded one.
   *P6*
 - `collection` — Retiring an execution owner deletes its journal rows in the retiring transaction.
   *because recorded work is needed only while a replay can reach it, and an uncollected journal grows with total ingest*

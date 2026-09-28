@@ -1,13 +1,11 @@
-//! The journal and its blob store: machine-local files beside the catalog.
-//!
-//! ```text
-//! <root>/journal/<execution_id>/<entry digest>.json   a pending claim or a recorded value
-//! <root>/blobs/<sha256>                               a value above the inline cutoff
-//! ```
+//! The journal: the claim, takeover and record rules over a [`JournalStore`], and value
+//! placement over a [`BlobStore`] (`run.journal.storage-ports`). The file tree of
+//! [`crate::stores::file`] is the default adapter pair.
 
-use crate::fsutil::{self, create_new, read_json, replace, sleep_unless, storage, to_json, FileLock};
-use contextful_core::run::journal::{sweep_due, sweepable, EntryKey, Row, Stored};
-use contextful_core::run::ports::Cancellation;
+use crate::fsutil::sleep_unless;
+use crate::stores::{FileBlobStore, FileJournalStore};
+use contextful_core::run::journal::{sweep_due, EntryKey, Row, Stored};
+use contextful_core::run::ports::{BlobStore, Cancellation, JournalStore};
 use contextful_core::run::{Failure, RunError};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -51,37 +49,50 @@ impl From<Failure> for StepError {
     }
 }
 
-/// A journal rooted in the engine's machine-local directory.
+/// A journal over a row store and a blob store.
 #[derive(Debug, Clone)]
-pub struct Journal {
-    root: PathBuf,
+pub struct Journal<J = FileJournalStore, B = FileBlobStore> {
+    rows: J,
+    blobs: B,
 }
 
 impl Journal {
+    /// The journal over the file tree rooted at `root`.
     pub fn open(root: &Path) -> Journal {
-        Journal { root: root.to_path_buf() }
+        Journal::over(FileJournalStore::open(root), FileBlobStore::open(root))
     }
 
-    fn execution_dir(&self, execution_id: &str) -> PathBuf {
-        self.root.join("journal").join(execution_id)
-    }
-
-    fn row_path(&self, key: &EntryKey) -> PathBuf {
-        self.execution_dir(&key.execution_id).join(format!("{}.json", key.digest()))
-    }
-
+    /// The directory holding every blob.
     pub fn blob_dir(&self) -> PathBuf {
-        self.root.join("blobs")
+        self.blobs.dir()
     }
 
+    /// The file a blob lives in.
     pub fn blob_path(&self, sha256: &str) -> PathBuf {
-        self.blob_dir().join(sha256)
+        self.blobs.path(sha256)
+    }
+}
+
+impl<J: JournalStore, B: BlobStore> Journal<J, B> {
+    /// The journal over `rows` and `blobs`.
+    pub fn over(rows: J, blobs: B) -> Journal<J, B> {
+        Journal { rows, blobs }
     }
 
-    /// Write a blob: stage a private temporary file and rename it over the destination,
-    /// so concurrent writers of one hash converge on one file without waiting or erroring.
+    /// The row store.
+    pub fn row_store(&self) -> &J {
+        &self.rows
+    }
+
+    /// The blob store.
+    pub fn blob_store(&self) -> &B {
+        &self.blobs
+    }
+
+    /// Write a blob. Concurrent writers of one hash converge on one stored value without
+    /// waiting or erroring (`run.journal.blob-write`).
     pub fn write_blob(&self, sha256: &str, bytes: &[u8]) -> Result<(), Failure> {
-        replace(&self.blob_path(sha256), bytes)
+        self.blobs.put(sha256, bytes)
     }
 
     /// Place `value` for a row: inline, or a blob written ahead of the row naming it.
@@ -93,38 +104,31 @@ impl Journal {
         Ok(stored)
     }
 
-    /// The bytes a stored value holds. A blob reference resolving to no file refuses
-    /// with `BlobMissing`, never an empty value in the recorded one's place.
+    /// The bytes a stored value holds. A blob reference resolving to no stored blob
+    /// refuses with `BlobMissing`, never an empty value in the recorded one's place.
     pub fn load(&self, stored: &Stored) -> Result<Vec<u8>, StepError> {
         if let Some(bytes) = stored.inline_bytes() {
             return Ok(bytes);
         }
         let sha = stored.blob().unwrap_or_default();
-        let path = self.blob_path(sha);
-        match std::fs::read(&path) {
-            Ok(bytes) => Ok(bytes),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Err(StepError::Journal(RunError::BlobMissing(format!("blob `{sha}` names no file under the journal's blob store"))))
-            }
-            Err(e) => Err(StepError::Storage(storage(&path, e))),
-        }
+        self.blobs.get(sha)?.ok_or_else(|| StepError::Journal(RunError::BlobMissing(format!("blob `{sha}` names nothing in the journal's blob store"))))
     }
 
     /// The row under `key`, if any.
     pub fn row(&self, key: &EntryKey) -> Result<Option<Row>, Failure> {
-        read_json(&self.row_path(key))
+        self.rows.read(key)
     }
 
     /// Record `value` under `key` outside a claim: the first value stands.
     pub fn record(&self, key: &EntryKey, value: &[u8]) -> Result<Vec<u8>, StepError> {
-        let path = self.row_path(key);
-        let _lock = FileLock::acquire(&path.with_extension("lock"))?;
-        if let Some(Row::Recorded { value: stored, .. }) = read_json::<Row>(&path)? {
+        if let Some(Row::Recorded { value: stored, .. }) = self.rows.read(key)? {
             return self.load(&stored);
         }
         let stored = self.store(value)?;
-        replace(&path, &to_json(&Row::Recorded { key: key.clone(), value: stored })?)?;
-        Ok(value.to_vec())
+        match self.rows.record(key, &stored)? {
+            Some(standing) => self.load(&standing),
+            None => Ok(value.to_vec()),
+        }
     }
 
     /// Resolve one journaled step.
@@ -143,27 +147,21 @@ impl Journal {
         journal_it: &dyn Fn(&[u8]) -> bool,
         effect: &mut dyn FnMut() -> Result<Vec<u8>, Failure>,
     ) -> Result<Resolved, StepError> {
-        let path = self.row_path(key);
-        let pending = to_json(&Row::Pending { key: key.clone(), run_id: run_id.to_string() })?;
         loop {
-            if create_new(&path, &pending)? {
+            if self.rows.create_pending(key, run_id)? {
                 break;
             }
-            match read_json::<Row>(&path)? {
+            match self.rows.read(key)? {
                 None => continue,
                 Some(Row::Recorded { value, .. }) => return self.load(&value).map(Resolved::Replayed),
                 Some(Row::Pending { run_id: holder, .. }) if holder == run_id => break,
                 Some(Row::Pending { run_id: holder, .. }) => {
                     if !holder_live(&holder)? {
-                        let _lock = FileLock::acquire(&path.with_extension("lock"))?;
-                        // The holder may have recorded, or another caller taken over, since the read.
-                        match read_json::<Row>(&path)? {
-                            Some(Row::Pending { run_id: h, .. }) if h == holder => {
-                                replace(&path, &pending)?;
-                                break;
-                            }
-                            _ => continue,
+                        if self.rows.replace_if_pending(key, &holder, run_id)? {
+                            break;
                         }
+                        // The holder recorded, or another caller took over, since the read.
+                        continue;
                     }
                     if !sleep_unless(CLAIM_POLL, &|| cancel.requested()) {
                         return Err(StepError::Failed(Failure::canceled(format!("stopped waiting on step `{}`", key.step_label))));
@@ -175,87 +173,40 @@ impl Journal {
         let value = match effect() {
             Ok(v) => v,
             Err(f) => {
-                self.release(key, run_id)?;
+                self.rows.release(key, run_id)?;
                 return Err(StepError::Failed(f));
             }
         };
         if !journal_it(&value) {
-            self.release(key, run_id)?;
+            self.rows.release(key, run_id)?;
             return Ok(Resolved::Unrecorded(value));
         }
-        let _lock = FileLock::acquire(&path.with_extension("lock"))?;
-        match read_json::<Row>(&path)? {
-            // A caller that took the claim over recorded first: its value stands.
-            Some(Row::Recorded { value: stored, .. }) => self.load(&stored).map(Resolved::Replayed),
-            _ => {
-                let stored = self.store(&value)?;
-                replace(&path, &to_json(&Row::Recorded { key: key.clone(), value: stored })?)?;
-                Ok(Resolved::Recorded(value))
-            }
+        // A caller that took the claim over and recorded first: its value stands.
+        if let Some(Row::Recorded { value: standing, .. }) = self.rows.read(key)? {
+            return self.load(&standing).map(Resolved::Replayed);
         }
-    }
-
-    /// Drop `run_id`'s pending claim on `key`, leaving a recorded row alone.
-    fn release(&self, key: &EntryKey, run_id: &str) -> Result<(), Failure> {
-        let path = self.row_path(key);
-        let _lock = FileLock::acquire(&path.with_extension("lock"))?;
-        if let Some(Row::Pending { run_id: h, .. }) = read_json::<Row>(&path)? {
-            if h == run_id {
-                std::fs::remove_file(&path).map_err(|e| storage(&path, e))?;
-            }
+        let stored = self.store(&value)?;
+        match self.rows.record(key, &stored)? {
+            Some(standing) => self.load(&standing).map(Resolved::Replayed),
+            None => Ok(Resolved::Recorded(value)),
         }
-        // The lock file stays: unlinking it under the lock lets a later caller lock a new
-        // inode while this holder still holds the old one.
-        Ok(())
     }
 
     /// Recorded entries under an execution.
     pub fn recorded(&self, execution_id: &str) -> Result<usize, Failure> {
-        Ok(self.rows(execution_id)?.iter().filter(|r| matches!(r, Row::Recorded { .. })).count())
-    }
-
-    fn rows(&self, execution_id: &str) -> Result<Vec<Row>, Failure> {
-        let dir = self.execution_dir(execution_id);
-        let entries = match std::fs::read_dir(&dir) {
-            Ok(e) => e,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(storage(&dir, e)),
-        };
-        let mut rows = Vec::new();
-        for entry in entries {
-            let path = entry.map_err(|e| storage(&dir, e))?.path();
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            if name.ends_with(".json") && !name.starts_with('.') {
-                if let Some(row) = read_json(&path)? {
-                    rows.push(row);
-                }
-            }
-        }
-        Ok(rows)
+        Ok(self.rows.rows(execution_id)?.iter().filter(|r| matches!(r, Row::Recorded { .. })).count())
     }
 
     /// Delete every row of a retired execution (`run.journal.collection`).
     pub fn collect(&self, execution_id: &str) -> Result<(), Failure> {
-        let dir = self.execution_dir(execution_id);
-        match std::fs::remove_dir_all(&dir) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(storage(&dir, e)),
-        }
+        self.rows.retire(execution_id)
     }
 
     /// Every blob a journal row references.
     pub fn referenced_blobs(&self) -> Result<Vec<String>, Failure> {
-        let dir = self.root.join("journal");
-        let executions = match std::fs::read_dir(&dir) {
-            Ok(e) => e,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(storage(&dir, e)),
-        };
         let mut refs = Vec::new();
-        for entry in executions {
-            let entry = entry.map_err(|e| storage(&dir, e))?;
-            for row in self.rows(&entry.file_name().to_string_lossy())? {
+        for execution_id in self.rows.executions()? {
+            for row in self.rows.rows(&execution_id)? {
                 if let Row::Recorded { value, .. } = row {
                     refs.extend(value.blob().map(str::to_string));
                 }
@@ -270,46 +221,18 @@ impl Journal {
     pub fn sweep(&self, also_referenced: &[String], now_unix: i64) -> Result<Vec<String>, Failure> {
         let mut marked = self.referenced_blobs()?;
         marked.extend_from_slice(also_referenced);
-        let dir = self.blob_dir();
-        let blobs = match std::fs::read_dir(&dir) {
-            Ok(e) => e,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(storage(&dir, e)),
-        };
-        let mut deleted = Vec::new();
-        for entry in blobs {
-            let entry = entry.map_err(|e| storage(&dir, e))?;
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') {
-                continue;
-            }
-            let path = entry.path();
-            let modified = entry
-                .metadata()
-                .and_then(|m| m.modified())
-                .map_err(|e| storage(&path, e))?
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            let age = u64::try_from(now_unix - modified).unwrap_or(0);
-            if sweepable(marked.contains(&name), age) {
-                fsutil::remove_file(&path)?;
-                deleted.push(name);
-            }
-        }
-        Ok(deleted)
+        self.blobs.sweep(&marked, now_unix)
     }
 
     /// Run a sweep when the previous one ran at least 24 h before `now_unix`, recording
     /// this pass's instant. `None` when no pass was due.
     pub fn sweep_if_due(&self, also_referenced: &[String], now_unix: i64) -> Result<Option<Vec<String>>, Failure> {
-        let stamp = self.blob_dir().join(".swept");
-        let last: Option<i64> = read_json(&stamp)?;
+        let last = self.blobs.swept_at()?;
         if !sweep_due(last.map(|l| u64::try_from(now_unix - l).unwrap_or(0))) {
             return Ok(None);
         }
         let deleted = self.sweep(also_referenced, now_unix)?;
-        replace(&stamp, &to_json(&now_unix)?)?;
+        self.blobs.mark_swept(now_unix)?;
         Ok(Some(deleted))
     }
 }

@@ -4593,7 +4593,7 @@
       "operation": "journal",
       "subject": "missing-blob",
       "kind": "refusal",
-      "statement": "A row whose blob reference resolves to no file raises `BlobMissing` carrying the reference, never an empty value in place of the recorded one.",
+      "statement": "A row whose blob reference resolves to no stored blob raises `BlobMissing` carrying the reference, never an empty value in place of the recorded one.",
       "why": "P6",
       "file": "spec/30-run.md",
       "line": 70
@@ -20169,7 +20169,7 @@
           },
           "BlobMissing": {
             "clause": "run.journal.missing-blob",
-            "gloss": "A journal row's blob reference resolves to no file."
+            "gloss": "A journal row's blob reference resolves to no stored blob."
           },
           "CancelTargetNotInFlight": {
             "clause": "run.cancel.not-in-flight",

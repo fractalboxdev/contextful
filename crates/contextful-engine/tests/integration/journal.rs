@@ -196,9 +196,9 @@ fn concurrent_blob_writers_converge_on_one_file() {
     assert_eq!(std::fs::read(j.blob_path(&sha)).unwrap(), value);
 }
 
-/// A row whose blob reference resolves to no file raises `BlobMissing` carrying the reference, never an empty
+/// A row whose blob reference resolves to no stored blob raises `BlobMissing` carrying the reference, never an empty
 /// value in place of the recorded one.
-// spec: run.journal.missing-blob@4d0749cf
+// spec: run.journal.missing-blob@e0644c95
 #[test]
 fn a_missing_blob_refuses_rather_than_reading_empty() {
     let dir = tempfile::tempdir().unwrap();
