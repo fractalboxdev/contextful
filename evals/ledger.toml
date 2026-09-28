@@ -112,19 +112,26 @@ method = { test = "contextful_policy::audit::an_append_that_fails_to_persist_lea
 target = { op = "==", value = 0 }
 
 [entry.audit-sync-per-group]
-clause = "disclosure.record.unpersisted-entry"
+clause = "disclosure.record.group-commit"
 metric = "audit.syncs_per_group.max"
 kind   = "test"
 tier   = "gate"
-method = { issue = 42 }
+method = { test = "contextful_policy::audit::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together" }
 target = { op = "<=", value = 1 }
 
 [entry.audit-append-latency]
-clause = "disclosure.record.unpersisted-entry"
-metric = "audit.append.p95_us"
+clause = "disclosure.record.group-commit"
+metric = "audit.append.p99_us"
 kind   = "bench"
 tier   = "trend"
-method = { issue = 42 }
+method = { test = "contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers" }
+
+[entry.audit-append-latency-lone]
+clause = "disclosure.record.group-commit"
+metric = "audit.append.lone_p99_us"
+kind   = "bench"
+tier   = "trend"
+method = { test = "contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers" }
 
 [entry.audit-read-waits-on-entry]
 clause = "disclosure.record.unpersisted-entry"

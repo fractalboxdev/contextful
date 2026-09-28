@@ -88,6 +88,8 @@ contributor-share-floor       = { clause = "disclosure.suppress.contributor-shar
 contributor-share-ceiling     = { clause = "disclosure.suppress.contributor-share", value = 100, unit = "percent", basis = "chosen", gloss = "Inclusive upper bound of a declared contributor share." }
 template-overfetch            = { clause = "disclosure.template.overfetch", value = 1, unit = "rows", basis = "chosen", gloss = "Rows read past the effective ceiling to set the truncation flag." }
 audit-group-syncs             = { clause = "disclosure.record.group-commit", value = 1, unit = "sync", basis = "chosen", gloss = "Durable syncs one append group issues between segment opens." }
+audit-segment-open-syncs      = { clause = "disclosure.record.segment-open", value = 1, unit = "sync", basis = "chosen", gloss = "Directory syncs an append group adds when it creates a segment file." }
+audit-tip-idle                = { clause = "disclosure.record.tip-signing", value = 1, unit = "s", basis = "chosen", gloss = "Quiet time after the last append at which the log signs its tip." }
 audit-segment-entries         = { clause = "disclosure.record.segment", value = 4096, unit = "entries", basis = "chosen", gloss = "Entries a segment holds before its signed root closes it." }
 telemetry-projection-window   = { clause = "disclosure.record.projection", value = 24, unit = "h", basis = "chosen", gloss = "Rolling window the telemetry projection answers over." }
 telemetry-projection-latency  = { clause = "disclosure.record.projection", value = 1, unit = "s", basis = "chosen", gloss = "Response time of a projection lookup." }
