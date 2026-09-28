@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 14 | 197 | 51 | 22 | 15 | 78 | 0 | 78 |
 | `authority` | 2 | 16 | 225 | 60 | 27 | 8 | 158 | 0 | 158 |
-| `connector` | 2 | 13 | 241 | 74 | 15 | 8 | 102 | 0 | 102 |
+| `connector` | 2 | 13 | 241 | 74 | 15 | 7 | 110 | 0 | 110 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 117 | 21 | 16 | 17 | 77 | 0 | 77 |
 | `run` | 3 | 24 | 293 | 82 | 34 | 25 | 152 | 0 | 152 |
 | `store` | 1 | 14 | 158 | 37 | 12 | 13 | 115 | 0 | 115 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
-| `topology` | 1 | 6 | 63 | 18 | 5 | 5 | 18 | 0 | 18 |
-| **total** | 19 | 146 | 1499 | 478 | 169 | 112 | 747 | 0 | |
+| `topology` | 1 | 6 | 64 | 19 | 5 | 5 | 19 | 0 | 19 |
+| **total** | 19 | 146 | 1500 | 479 | 169 | 111 | 756 | 0 | |
 
 Decision records: 18.
 
@@ -26,8 +26,8 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 192 | 136 | passing |
 | 2 — The store | 8 | 117 | 79 | passing |
-| 3 — The run path | 11 | 178 | 97 | passing |
-| 4 — Ingest | 22 | 341 | 131 | passing |
+| 3 — The run path | 11 | 179 | 98 | passing |
+| 4 — Ingest | 22 | 341 | 139 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
@@ -289,7 +289,10 @@ Unscheduled operations: 10.
 | `connector.attach.private-address` | `crates/contextful-core/tests/integration/connector/attach.rs::a_permitted_name_resolving_inward_is_refused` | performed |
 | `connector.attach.redirect-pinning` | `crates/contextful-outbound/tests/integration/attach.rs::a_hop_is_followed_only_within_the_configured_origin` | performed |
 | `connector.attach.referer-off` | `crates/contextful-outbound/tests/integration/attach.rs::no_request_carries_a_referer` | performed |
+| `connector.attach.resolve-half` | `crates/contextful-outbound/tests/integration/egress.rs::resolution_follows_the_hook_and_runs_through_the_port` | performed |
+| `connector.attach.resolve-once` | `crates/contextful-outbound/tests/integration/egress.rs::one_lookup_per_hop_and_the_connect_takes_its_answer` | performed |
 | `connector.attach.sensitive-header-record` | `crates/contextful-outbound/tests/integration/attach.rs::the_client_records_credential_header_names_and_no_value` | performed |
+| `connector.attach.transport-port` | `crates/contextful-outbound/tests/integration/egress.rs::the_send_half_receives_only_vetted_addresses_and_follows_no_redirect` | performed |
 | `connector.attach.unpermitted-request` | `crates/contextful-outbound/tests/integration/attach.rs::a_request_to_an_uncovered_host_fails_before_any_socket` | performed |
 | `connector.attach.url-scrubbing` | `crates/contextful-outbound/tests/integration/attach.rs::a_failed_requests_message_carries_no_query_or_fragment` | performed |
 | `connector.attach.weakened-hop` | `crates/contextful-outbound/tests/integration/attach.rs::a_hop_off_the_origin_or_down_to_cleartext_is_refused` | performed |
@@ -311,6 +314,7 @@ Unscheduled operations: 10.
 | `connector.infer.data-fence` | `crates/contextful-core/tests/integration/connector/infer.rs::a_prompt_holds_labelled_blocks_between_a_data_preamble_and_the_callers_rules` | performed |
 | `connector.infer.fenced-value-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::control_characters_go_and_a_long_value_ends_in_the_mark` | performed |
 | `connector.infer.marker-derivation` | `crates/contextful-core/tests/integration/connector/infer.rs::a_value_cannot_close_its_own_fence` | performed |
+| `connector.infer.mediated-call` | `crates/contextful-outbound/tests/integration/infer.rs::a_completion_passes_the_hook_and_the_address_check` | performed |
 | `connector.lease.bootstrap-declared-leased` | `crates/contextful-outbound/tests/integration/lease.rs::the_bootstrap_name_cannot_be_leased` | performed |
 | `connector.lease.bootstrap-non-recursion` | `crates/contextful-outbound/tests/integration/lease.rs::the_mint_credential_comes_from_the_adapters_behind_the_provider` | performed |
 | `connector.lease.bootstrap-unserved` | `crates/contextful-outbound/tests/integration/lease.rs::an_unanswered_bootstrap_refuses_before_any_mint` | performed |
@@ -336,9 +340,13 @@ Unscheduled operations: 10.
 | `connector.meter.counting-not-pricing` | `crates/contextful-core/tests/integration/connector/meter.rs::the_wire_counts_requests_and_prices_none` | performed |
 | `connector.meter.denial-ceiling` | `crates/contextful-core/tests/integration/connector/meter.rs::a_limiter_wait_caps_at_the_retry_after_ceiling` | performed |
 | `connector.meter.held-back-request` | `crates/contextful-wasm/tests/integration/meter.rs::a_swallowed_held_back_request_still_fails_the_call` | performed |
+| `connector.meter.hook-composition` | `crates/contextful-outbound/tests/integration/egress.rs::an_operator_refusal_makes_no_limiter_call` | performed |
+| `connector.meter.hook-refusal` | `crates/contextful-outbound/tests/integration/egress.rs::a_refused_intent_resolves_no_name_and_is_never_retried` | performed |
+| `connector.meter.hook-settle` | `crates/contextful-outbound/tests/integration/egress.rs::each_admitted_hop_settles_its_status_and_byte_counts` | performed |
 | `connector.meter.limiter-address` | `crates/contextful-outbound/tests/integration/meter.rs::a_limiter_on_a_private_address_is_not_refused_as_one` | performed |
 | `connector.meter.limiter-binding` | `crates/contextful-core/tests/integration/connector/meter.rs::a_binding_names_an_endpoint_a_token_reference_and_a_batch_size` | performed |
 | `connector.meter.permit-batch` | `crates/contextful-outbound/tests/integration/meter.rs::a_batch_is_spent_one_permit_per_request_and_surrendered_on_report` | performed |
+| `connector.meter.pre-send-hook` | `crates/contextful-outbound/tests/integration/egress.rs::the_hook_sees_each_hops_intent_after_the_allowlist` | performed |
 | `connector.meter.report` | `crates/contextful-outbound/tests/integration/meter.rs::the_report_carries_the_accounting_the_responses_and_the_run` | performed |
 | `connector.meter.reservation-point` | `crates/contextful-outbound/tests/integration/meter.rs::each_outbound_request_spends_one_permit` | performed |
 | `connector.meter.synthesized-throttle` | `crates/contextful-wasm/tests/integration/meter.rs::a_denied_reservation_is_a_synthesized_429_and_an_unreachable_limiter_a_transport_failure` | performed |
@@ -792,3 +800,4 @@ Unscheduled operations: 10.
 | `topology.package.sqlite-adapter` | `tools/ci/tests/integration/topology.rs::a_sqlite_link_forced_outside_the_binary_is_refused` | performed |
 | `topology.package.store-sqlite-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_reaching_the_sqlite_link_package_is_refused` | performed |
 | `topology.package.store-write-engine-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_linking_the_sql_engine_without_read_is_refused` | performed |
+| `topology.package.transport-optional` | `tools/ci/tests/integration/topology.rs::an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refused` | performed |
