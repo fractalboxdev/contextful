@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 249 | 74 | 17 | 8 | 118 | 0 | 118 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
-| `read` | 2 | 14 | 124 | 21 | 19 | 16 | 90 | 0 | 90 |
+| `read` | 2 | 14 | 125 | 21 | 19 | 16 | 91 | 0 | 90 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 170 | 0 | 170 |
 | `store` | 1 | 14 | 173 | 41 | 12 | 12 | 134 | 0 | 134 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 147 | 1569 | 498 | 177 | 113 | 843 | 0 | |
+| **total** | 19 | 147 | 1570 | 498 | 177 | 113 | 844 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ Decision records: 18.
 | 2 — The store | 8 | 132 | 98 | passing |
 | 3 — The run path | 11 | 184 | 109 | passing |
 | 4 — Ingest | 22 | 353 | 151 | passing |
-| 5 — The read face under enforcement | 16 | 212 | 134 | passing |
+| 5 — The read face under enforcement | 16 | 213 | 135 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
 | 8 — Accountability | 5 | 39 | 19 | open |
@@ -512,6 +512,7 @@ Unscheduled operations: 10.
 | `read.recall.suppression-count` | `crates/contextful-memory/tests/integration/synthesize.rs::a_suppressed_claim_is_counted_and_never_named` | performed |
 | `read.register.advertised-is-enforced` | `crates/contextful-context/tests/integration/read/register.rs::the_published_limit_is_the_applied_one` | performed |
 | `read.register.bare-name` | `crates/contextful-context/tests/integration/read/register.rs::every_bare_name_resolves_to_the_callers_relation` | performed |
+| `read.register.bound-arguments` | `crates/contextful-agent/tests/integration/mcp.rs::valid_as_of_wraps_only_the_tables_a_read_touches` | performed |
 | `read.register.connection-views` | `crates/contextful-context/tests/integration/read/register.rs::a_session_connection_registers_views_over_the_current_file_lists` | performed |
 | `read.register.engine` | `crates/contextful-context/tests/integration/read/register.rs::the_embedded_engine_reads_the_parquet_an_external_reader_opens` | performed |
 | `read.register.file-listing` | `crates/contextful-context/tests/integration/read/register.rs::file_listing_covers_the_callers_tables_alone` | performed |
