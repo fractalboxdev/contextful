@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 14 | 197 | 51 | 22 | 15 | 78 | 0 | 78 |
-| `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
+| `authority` | 2 | 16 | 225 | 60 | 27 | 7 | 158 | 0 | 158 |
 | `connector` | 2 | 13 | 241 | 74 | 15 | 8 | 99 | 0 | 99 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 157 | 37 | 12 | 13 | 113 | 0 | 113 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 60 | 15 | 5 | 5 | 14 | 0 | 14 |
-| **total** | 19 | 146 | 1488 | 475 | 167 | 110 | 732 | 0 | |
+| **total** | 19 | 146 | 1489 | 475 | 167 | 110 | 735 | 0 | |
 
 Decision records: 18.
 
@@ -24,7 +24,7 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
-| 1 — The authority core | 14 | 191 | 133 | passing |
+| 1 — The authority core | 14 | 192 | 136 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 171 | 92 | passing |
 | 4 — Ingest | 22 | 341 | 128 | passing |
@@ -185,8 +185,11 @@ Unscheduled operations: 10.
 | `authority.issue.ceiling-lowering` | `crates/contextful-core/tests/integration/issue.rs::lowering_the_ceiling_records_the_previous_value_until_its_credentials_lapse` | performed |
 | `authority.issue.default-read` | `crates/contextful-core/tests/integration/issue.rs::a_grant_naming_no_action_mints_read_alone` | performed |
 | `authority.issue.key-rotation` | `crates/contextful-core/tests/integration/issue.rs::the_issuer_key_rotates_every_90_days_and_at_once_on_compromise` | performed |
+| `authority.issue.oracle-custody` | `crates/contextful-policy/tests/integration/issue.rs::the_custodian_records_one_signing_call_per_mint` | performed |
 | `authority.issue.principal-required` | `crates/contextful-core/tests/integration/issue.rs::a_write_or_execute_mint_without_a_principal_refuses` | performed |
 | `authority.issue.replica-mint` | `crates/contextful-core/tests/integration/issue.rs::a_mint_on_a_replica_refuses` | performed |
+| `authority.issue.signature-encoding` | `crates/contextful-policy/tests/integration/issue.rs::a_port_signature_is_raw_ed25519_or_der_es256_and_another_encoding_mints_nothing` | performed |
+| `authority.issue.signing-port` | `crates/contextful-policy/tests/integration/issue.rs::a_mint_signs_through_the_port_and_admits_under_the_ports_public_key` | performed |
 | `authority.issue.unauthorized-mint` | `crates/contextful-core/tests/integration/issue.rs::a_mint_request_presenting_no_admin_grant_refuses` | performed |
 | `authority.issue.unresolvable-key` | `crates/contextful-policy/tests/integration/issue.rs::an_issuer_key_reference_resolving_to_nothing_is_refused_and_fabricates_no_key` | performed |
 | `authority.issue.zone-wildcard` | `crates/contextful-core/tests/integration/issue.rs::a_subject_declaring_a_wildcard_zone_refuses` | performed |

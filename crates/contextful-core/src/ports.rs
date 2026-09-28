@@ -5,15 +5,25 @@ use crate::issue::SignatureAlgorithm;
 use crate::time::Instant;
 use crate::AuthorityError;
 
-/// The one signing port every mint runs through (`authority.issue.signing-port`). A seed
-/// file, a secret reference resolved at mint time and a remote signing oracle are
-/// adapters behind it.
+/// The one signing port every signature runs through: a credential's authority block and
+/// the audit chain's segment roots and tip (`authority.issue.signing-port`). A seed file,
+/// a secret reference resolved at mint time and a remote signing oracle (an HSM, a cloud
+/// KMS, a platform enclave) are adapters behind it; the private key never crosses it.
+///
+/// Encodings, by [`SigningPort::algorithm`] (`authority.issue.signature-encoding`):
+///
+/// | Scheme | `public_key` | `sign` returns |
+/// | --- | --- | --- |
+/// | Ed25519 | the 32-byte key | the 64-byte RFC 8032 signature over `message` |
+/// | ES256 | a SEC1 P-256 point, compressed (33 bytes) or not (65) | ECDSA over the SHA-256 digest of `message`, as an ASN.1 DER `Ecdsa-Sig-Value`, never the 64-byte `r ‖ s` form |
+///
+/// A port hashes `message` itself: it receives the payload, never a digest.
 pub trait SigningPort {
     /// The scheme of the key behind the port; it is authoritative for the credential.
     fn algorithm(&self) -> SignatureAlgorithm;
-    /// The public half of the signing key, in the scheme's raw encoding.
+    /// The public half of the signing key, in the scheme's encoding above.
     fn public_key(&self) -> Vec<u8>;
-    /// A signature over `message`.
+    /// A signature over `message`, in the scheme's encoding above.
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, AuthorityError>;
 }
 

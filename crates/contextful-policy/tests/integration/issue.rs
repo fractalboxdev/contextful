@@ -1,11 +1,14 @@
 //! `authority.issue`, credential side: the seed-file adapter and the mint.
 
 use crate::support::*;
+use contextful_core::grant::Action;
 use contextful_core::issue::SignatureAlgorithm;
 use contextful_core::ports::SigningPort;
+use contextful_core::AuthorityError;
 use contextful_policy::issue::{mint, MintClaims, SeedSigner, KEYGEN_COMMAND};
-use contextful_policy::keyset::{KeySource, StaticPins};
-use contextful_policy::verify::introspect;
+use contextful_policy::keyset::{KeySet, KeySource, StaticPins};
+use contextful_policy::verify::{introspect, verify, Admission, AdmittedAuthority, BiscuitFormat, CredentialFormat};
+use std::cell::RefCell;
 
 fn scratch(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("contextful-policy-issue-{}-{name}", std::process::id()));
@@ -81,4 +84,114 @@ fn a_plan_naming_another_scheme_than_the_signing_key_mints_nothing() {
     let mut p = plan(&signer);
     p.algorithm = SignatureAlgorithm::Es256;
     refused(mint(&p, &MintClaims::default(), &signer), "SignatureAlgorithmMismatch");
+}
+
+/// A custodian reachable only through the signing port: its key never leaves it, it
+/// records every signature it returns, and in `raw` mode it answers ES256 in the fixed
+/// `r || s` form rather than DER.
+struct Custodian {
+    key: SeedSigner,
+    raw: bool,
+    signatures: RefCell<Vec<Vec<u8>>>,
+}
+
+impl Custodian {
+    fn new(algorithm: SignatureAlgorithm) -> Custodian {
+        Custodian { key: SeedSigner::generate(algorithm), raw: false, signatures: RefCell::default() }
+    }
+
+    fn calls(&self) -> usize {
+        self.signatures.borrow().len()
+    }
+
+    /// The static pin a checkpoint reads, built from the port's public key alone.
+    fn pin(&self) -> KeySet {
+        let scheme = match self.algorithm() {
+            SignatureAlgorithm::Ed25519 => "ed25519",
+            SignatureAlgorithm::Es256 => "secp256r1",
+        };
+        let pins = StaticPins::parse(&format!("{scheme}/{}", hex::encode(self.public_key()))).unwrap();
+        (*pins.keys().unwrap()).clone()
+    }
+}
+
+impl SigningPort for Custodian {
+    fn algorithm(&self) -> SignatureAlgorithm {
+        self.key.algorithm()
+    }
+    fn public_key(&self) -> Vec<u8> {
+        self.key.public_key()
+    }
+    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, AuthorityError> {
+        let mut signature = self.key.sign(message)?;
+        if self.raw && self.algorithm() == SignatureAlgorithm::Es256 {
+            signature = p256::ecdsa::Signature::from_der(&signature).unwrap().to_bytes().to_vec();
+        }
+        self.signatures.borrow_mut().push(signature.clone());
+        Ok(signature)
+    }
+}
+
+fn read_research(port: &dyn SigningPort) -> contextful_core::issue::MintPlan {
+    plan_for(port, dana(), vec![grant(&[Action::Read], &["research/*"])])
+}
+
+fn admit_under(credential: &str, custodian: &Custodian) -> Result<AdmittedAuthority, AuthorityError> {
+    let revocation = no_revocation();
+    verify(credential, &custodian.pin(), &Admission::new(at(DURING), &revocation).expecting(AUD))
+}
+
+/// One signing port signs every credential's authority block and every audit root and tip; no mint path reads a private key. Seed files, secret references resolved at mint time and remote signing oracles are its adapters.
+// spec: authority.issue.signing-port@2b15aa2a
+#[test]
+fn a_mint_signs_through_the_port_and_admits_under_the_ports_public_key() {
+    for algorithm in [SignatureAlgorithm::Ed25519, SignatureAlgorithm::Es256] {
+        let custodian = Custodian::new(algorithm);
+        let credential = mint(&read_research(&custodian), &MintClaims::default(), &custodian).unwrap();
+        assert_eq!(introspect(&credential).unwrap().authority.alg, algorithm.to_string());
+        assert!(admit_under(&credential, &custodian).is_ok(), "{algorithm} admits under the port's key");
+        // The build key is discarded: another key of the same scheme admits nothing.
+        refused(admit_under(&credential, &Custodian::new(algorithm)), "SignatureInvalid");
+        // The format interface mints through the same port.
+        let format: &dyn CredentialFormat = &BiscuitFormat;
+        let issued = format.issue(&read_research(&custodian), &MintClaims::default(), &custodian).unwrap();
+        assert!(admit_under(&issued, &custodian).is_ok(), "{algorithm} mints through the format interface");
+    }
+    // The port's scheme is authoritative, and a mismatch reaches no signing call.
+    let ed25519 = Custodian::new(SignatureAlgorithm::Ed25519);
+    let mut p = read_research(&ed25519);
+    p.algorithm = SignatureAlgorithm::Es256;
+    refused(mint(&p, &MintClaims::default(), &ed25519), "SignatureAlgorithmMismatch");
+    assert_eq!(ed25519.calls(), 0);
+}
+
+/// Under the oracle adapter the seed stays inside the custodian, which records each mint as a signing call.
+// spec: authority.issue.oracle-custody@a8ed7d90
+#[test]
+fn the_custodian_records_one_signing_call_per_mint() {
+    let custodian = Custodian::new(SignatureAlgorithm::Es256);
+    let p = read_research(&custodian);
+    for n in 1..=3 {
+        mint(&p, &MintClaims::default(), &custodian).unwrap();
+        assert_eq!(custodian.calls(), n);
+    }
+}
+
+/// Through the port, an Ed25519 key is 32 raw bytes signing 64; an ES256 key is a SEC1 P-256 point signing ECDSA over SHA-256 of the message, encoded as ASN.1 DER.
+// spec: authority.issue.signature-encoding@d03c452a
+#[test]
+fn a_port_signature_is_raw_ed25519_or_der_es256_and_another_encoding_mints_nothing() {
+    let ed25519 = Custodian::new(SignatureAlgorithm::Ed25519);
+    mint(&read_research(&ed25519), &MintClaims::default(), &ed25519).unwrap();
+    assert_eq!(ed25519.public_key().len(), 32);
+    assert_eq!(ed25519.signatures.borrow()[0].len(), 64);
+
+    let es256 = Custodian::new(SignatureAlgorithm::Es256);
+    mint(&read_research(&es256), &MintClaims::default(), &es256).unwrap();
+    assert!(p256::PublicKey::from_sec1_bytes(&es256.public_key()).is_ok());
+    assert!(p256::ecdsa::Signature::from_der(&es256.signatures.borrow()[0]).is_ok());
+
+    // A custodian answering in the fixed `r || s` form, which a checkpoint rejects, mints nothing.
+    let raw = Custodian { raw: true, ..Custodian::new(SignatureAlgorithm::Es256) };
+    refused(mint(&read_research(&raw), &MintClaims::default(), &raw), "IssuerKeyUnresolvable");
 }

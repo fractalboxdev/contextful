@@ -8,7 +8,7 @@
 //! subject member.
 
 use crate::attenuate::Derivation;
-use crate::issue::{MintClaims, SeedSigner};
+use crate::issue::MintClaims;
 use crate::keyset::KeySet;
 use crate::profile::{read_chain, Chain, Hop, SUPPORTED_PROFILE_VERSIONS};
 use crate::revoke::RevocationState;
@@ -20,6 +20,7 @@ use contextful_core::claims::AuthorityBlock;
 use contextful_core::grant::{Action, Grant};
 use contextful_core::identify::NormalizedSubject;
 use contextful_core::issue::{MintPlan, SignatureAlgorithm};
+use contextful_core::ports::SigningPort;
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
 use serde::Serialize;
@@ -31,7 +32,7 @@ pub const BISCUIT_FORMAT: &str = "biscuit";
 const ADMISSION_SURFACE: &str = "the checkpoint";
 
 /// The library's encoding: URL-safe base64, padded on output, either way on input.
-const TOKEN_BASE64: GeneralPurpose = GeneralPurpose::new(
+pub(crate) const TOKEN_BASE64: GeneralPurpose = GeneralPurpose::new(
     &base64::alphabet::URL_SAFE,
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
@@ -318,7 +319,7 @@ pub fn introspect(credential: &str) -> Result<Introspection, AuthorityError> {
 /// (`authority.verify.format-interface`); no enforcement call site names a credential type.
 pub trait CredentialFormat {
     fn name(&self) -> &'static str;
-    fn issue(&self, plan: &MintPlan, claims: &MintClaims, signer: &SeedSigner) -> Result<String, AuthorityError>;
+    fn issue(&self, plan: &MintPlan, claims: &MintClaims, signer: &dyn SigningPort) -> Result<String, AuthorityError>;
     fn attenuate(&self, credential: &str, derivation: &Derivation) -> Result<String, AuthorityError>;
     fn verify(&self, credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError>;
     fn introspect(&self, credential: &str) -> Result<Introspection, AuthorityError>;
@@ -332,7 +333,7 @@ impl CredentialFormat for BiscuitFormat {
     fn name(&self) -> &'static str {
         BISCUIT_FORMAT
     }
-    fn issue(&self, plan: &MintPlan, claims: &MintClaims, signer: &SeedSigner) -> Result<String, AuthorityError> {
+    fn issue(&self, plan: &MintPlan, claims: &MintClaims, signer: &dyn SigningPort) -> Result<String, AuthorityError> {
         crate::issue::mint(plan, claims, signer)
     }
     fn attenuate(&self, credential: &str, derivation: &Derivation) -> Result<String, AuthorityError> {

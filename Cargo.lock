@@ -892,6 +892,7 @@ dependencies = [
  "hex",
  "hmac",
  "jsonwebtoken",
+ "p256",
  "prost",
  "rand 0.8.8",
  "serde",

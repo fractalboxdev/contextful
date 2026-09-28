@@ -6,18 +6,30 @@
 //! `ed25519/<hex>` or `secp256r1/<hex>`, the static-pin form a checkpoint reads.
 
 use crate::profile::authority_facts;
+use crate::verify::TOKEN_BASE64;
+use base64::Engine;
+use biscuit_auth::format::schema;
 use biscuit_auth::{Algorithm, BiscuitBuilder, KeyPair, PrivateKey};
 use contextful_core::claims::{AuthorityBlock, Confirmation, Revocation};
 use contextful_core::issue::{MintPlan, SignatureAlgorithm};
 use contextful_core::ports::SigningPort;
 use contextful_core::AuthorityError;
+use prost::Message;
 use rand::RngCore;
 use std::path::Path;
 
 /// The command that writes a seed file, printed wherever an issuer key is missing.
 pub const KEYGEN_COMMAND: &str = "contextful token keygen --out .contextful/issuer.seed";
 
-/// An issuer key held in-process, loaded from a seed file or generated.
+/// An issuer key held in-process, loaded from a seed file or generated. It signs only
+/// through [`SigningPort`]; no accessor hands out the key pair
+/// (`authority.issue.signing-port`):
+///
+/// ```compile_fail
+/// use contextful_core::issue::SignatureAlgorithm;
+/// let signer = contextful_policy::issue::SeedSigner::generate(SignatureAlgorithm::Ed25519);
+/// let _ = signer.key_pair();
+/// ```
 pub struct SeedSigner {
     key: KeyPair,
 }
@@ -69,11 +81,6 @@ impl SeedSigner {
     /// The public key in static-pin form, `<algorithm>/<hex>`.
     pub fn public_key_text(&self) -> String {
         self.key.public().to_string()
-    }
-
-    /// The key the library signs blocks with.
-    pub fn key_pair(&self) -> &KeyPair {
-        &self.key
     }
 }
 
@@ -128,9 +135,50 @@ pub fn authority_block(plan: &MintPlan, claims: &MintClaims) -> AuthorityBlock {
     }
 }
 
-/// Mint a checked plan as a credential, signed by `signer`. The plan's scheme must be
-/// the signing key's (`authority.issue.algorithm-mismatch`).
-pub fn mint(plan: &MintPlan, claims: &MintClaims, signer: &SeedSigner) -> Result<String, AuthorityError> {
+/// The public half of a signing port's key, which verifies what the port signs
+/// (`authority.issue.signature-encoding`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignerKey {
+    pub algorithm: SignatureAlgorithm,
+    /// The port's public key encoding: 32 raw bytes, or a SEC1 P-256 point.
+    pub public_key: Vec<u8>,
+}
+
+impl SignerKey {
+    /// The key `port` signs under.
+    pub fn of(port: &dyn SigningPort) -> SignerKey {
+        SignerKey { algorithm: port.algorithm(), public_key: port.public_key() }
+    }
+
+    /// Whether `signature`, in the port's encoding, verifies over `message`.
+    pub fn verifies(&self, message: &[u8], signature: &[u8]) -> bool {
+        match self.algorithm {
+            SignatureAlgorithm::Ed25519 => {
+                let (Ok(key), Ok(signature)) = (
+                    <[u8; 32]>::try_from(self.public_key.as_slice()),
+                    ed25519_dalek::Signature::from_slice(signature),
+                ) else {
+                    return false;
+                };
+                ed25519_dalek::VerifyingKey::from_bytes(&key).is_ok_and(|k| k.verify_strict(message, &signature).is_ok())
+            }
+            SignatureAlgorithm::Es256 => {
+                use p256::ecdsa::signature::Verifier;
+                let (Ok(key), Ok(signature)) = (
+                    p256::ecdsa::VerifyingKey::from_sec1_bytes(&self.public_key),
+                    p256::ecdsa::Signature::from_der(signature),
+                ) else {
+                    return false;
+                };
+                key.verify(message, &signature).is_ok()
+            }
+        }
+    }
+}
+
+/// Mint a checked plan as a credential whose authority block `signer` signs. The plan's
+/// scheme must be the port's (`authority.issue.algorithm-mismatch`).
+pub fn mint(plan: &MintPlan, claims: &MintClaims, signer: &dyn SigningPort) -> Result<String, AuthorityError> {
     let pinned = signer.algorithm();
     if plan.algorithm != pinned {
         return Err(AuthorityError::SignatureAlgorithmMismatch(format!(
@@ -143,8 +191,55 @@ pub fn mint(plan: &MintPlan, claims: &MintClaims, signer: &SeedSigner) -> Result
     for f in authority_facts(&block)? {
         builder = builder.fact(f).map_err(|e| AuthorityError::ProfileElementUnrecognized(e.to_string()))?;
     }
-    let token = builder
-        .build(signer.key_pair())
-        .map_err(|e| AuthorityError::IssuerKeyUnresolvable(format!("the issuer key signs nothing: {e}")))?;
-    token.to_base64().map_err(|e| AuthorityError::IssuerKeyUnresolvable(format!("the credential encodes to nothing: {e}")))
+    sign_root(builder, signer)
+}
+
+/// Encode `builder` as a credential whose authority block `signer` signs. It checks
+/// nothing about the block's facts; [`mint`] is the path that encodes a checked plan.
+///
+/// The library signs a root block only with a key pair it holds, so the credential is
+/// built under a throwaway key, then the authority block's signature is replaced by the
+/// port's over the same payload. The root key appears nowhere in the encoding, and the
+/// block's next key is the library's own ephemeral one, so the result verifies under
+/// the port's public key alone (`authority.issue.signing-port`).
+pub fn sign_root(builder: BiscuitBuilder, signer: &dyn SigningPort) -> Result<String, AuthorityError> {
+    let unsigned = |e: &dyn std::fmt::Display| AuthorityError::IssuerKeyUnresolvable(format!("the credential encodes to nothing: {e}"));
+    let bytes = builder
+        .build(&KeyPair::new_with_algorithm(Algorithm::Ed25519))
+        .and_then(|token| token.to_vec())
+        .map_err(|e| unsigned(&e))?;
+    let mut proto = schema::Biscuit::decode(bytes.as_slice()).map_err(|e| unsigned(&e))?;
+    let payload = authority_signature_payload(&proto.authority)?;
+    let signature = signer.sign(&payload)?;
+    if !SignerKey::of(signer).verifies(&payload, &signature) {
+        return Err(AuthorityError::IssuerKeyUnresolvable(format!(
+            "the signing port's {} signature does not verify under its public key; \
+             it answers Ed25519 as 64 raw bytes and ES256 as ASN.1 DER",
+            signer.algorithm()
+        )));
+    }
+    proto.authority.signature = signature;
+    Ok(TOKEN_BASE64.encode(proto.encode_to_vec()))
+}
+
+/// The bytes the authority block's signature covers, per the block's signature version:
+/// the library's layout, which a checkpoint recomputes to verify.
+fn authority_signature_payload(block: &schema::SignedBlock) -> Result<Vec<u8>, AuthorityError> {
+    let next_algorithm = block.next_key.algorithm.to_le_bytes();
+    let next_key = &block.next_key.key;
+    match block.version.unwrap_or_default() {
+        0 => Ok([block.block.as_slice(), &next_algorithm, next_key].concat()),
+        1 => Ok([
+            b"\0BLOCK\0\0VERSION\0".as_slice(),
+            &1u32.to_le_bytes(),
+            b"\0PAYLOAD\0",
+            &block.block,
+            b"\0ALGORITHM\0",
+            &next_algorithm,
+            b"\0NEXTKEY\0",
+            next_key,
+        ]
+        .concat()),
+        v => Err(AuthorityError::IssuerKeyUnresolvable(format!("the library signs an authority block under unknown version {v}"))),
+    }
 }

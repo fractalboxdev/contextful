@@ -6,11 +6,11 @@ use contextful_core::claims::AuthorityBlock;
 use contextful_core::grant::{Action, Grant, TablePattern};
 use contextful_core::identify::Subject;
 use contextful_core::issue::{IssuancePolicy, Lifetime, MintContext, MintPlan, MintRequest, NodeRole, SignatureAlgorithm};
-use contextful_core::ports::FixedClock;
+use contextful_core::ports::{FixedClock, SigningPort};
 use contextful_core::revoke::Denylist;
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
-use contextful_policy::issue::{authority_block, mint, MintClaims, SeedSigner};
+use contextful_policy::issue::{authority_block, mint, sign_root, MintClaims, SeedSigner};
 use contextful_policy::keyset::{KeySet, KeySource, StaticPins};
 use contextful_policy::profile::authority_facts;
 use contextful_policy::revoke::RevocationState;
@@ -53,7 +53,7 @@ pub fn dana() -> Subject {
     }
 }
 
-pub fn plan_for(signer: &SeedSigner, subject: Subject, grants: Vec<Grant>) -> MintPlan {
+pub fn plan_for(signer: &dyn SigningPort, subject: Subject, grants: Vec<Grant>) -> MintPlan {
     let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
     let mut req = MintRequest::custody(subject, grants);
     req.lifetime = Lifetime::Requested(TTL);
@@ -93,9 +93,9 @@ pub fn block(signer: &SeedSigner) -> AuthorityBlock {
     authority_block(&plan(signer), &MintClaims::default())
 }
 
-/// An authority block signed by `signer` holding `block`'s facts except those named in
-/// `drop`, plus the datalog `extra`.
-pub fn craft(signer: &SeedSigner, block: &AuthorityBlock, drop: &[&str], extra: &str) -> String {
+/// An authority block signed through `signer`'s port, as a mint signs, holding `block`'s
+/// facts except those named in `drop`, plus the datalog `extra`.
+pub fn craft(signer: &dyn SigningPort, block: &AuthorityBlock, drop: &[&str], extra: &str) -> String {
     let mut builder = BiscuitBuilder::new();
     for f in authority_facts(block).unwrap() {
         if !drop.contains(&f.predicate.name.as_str()) {
@@ -105,7 +105,7 @@ pub fn craft(signer: &SeedSigner, block: &AuthorityBlock, drop: &[&str], extra: 
     if !extra.is_empty() {
         builder = builder.code(extra).unwrap();
     }
-    builder.build(signer.key_pair()).unwrap().to_base64().unwrap()
+    sign_root(builder, signer).unwrap()
 }
 
 /// Append a block holding the datalog `code`, bypassing the holder-side checks.

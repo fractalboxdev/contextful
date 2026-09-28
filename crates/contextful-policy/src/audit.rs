@@ -10,7 +10,8 @@
 //! audit.lock                  held by the one process writing the log
 //! ```
 //!
-//! The tip is signed through the same signer as the roots, so a chain truncated under a
+//! Roots and the tip sign through the signing port a mint signs through
+//! (`authority.issue.signing-port`), under either scheme, so a chain truncated under a
 //! rewritten tip fails signed verification. A replayed older signed tip is caught only
 //! against a replicated root (`disclosure.attest.root-replication`).
 //!
@@ -20,7 +21,8 @@
 //! so the digest is independent of the order attributes were built in and of how the
 //! JSON library orders a map.
 
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use crate::issue::SignerKey;
+use contextful_core::ports::SigningPort;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -158,7 +160,8 @@ pub fn query_digest(audit_key: &[u8], statement: &str) -> String {
 pub struct SignedRoot {
     pub root: String,
     pub count: u64,
-    /// Hex-encoded Ed25519 signature over [`SignedRoot::message`].
+    /// Hex-encoded signing-port signature over [`SignedRoot::message`], in the port's
+    /// encoding for its scheme.
     pub signature: String,
 }
 
@@ -170,16 +173,14 @@ impl SignedRoot {
     }
 
     /// Sign `root` over `count` entries through `signer`.
-    pub fn sign(root: &str, count: u64, signer: &impl RootSigner) -> Result<SignedRoot, String> {
-        let signature = signer.sign_root(&Self::message(root, count))?;
+    pub fn sign(root: &str, count: u64, signer: &dyn SigningPort) -> Result<SignedRoot, String> {
+        let signature = signer.sign(&Self::message(root, count)).map_err(|e| e.to_string())?;
         Ok(SignedRoot { root: root.to_string(), count, signature: hex::encode(signature) })
     }
 
     /// Whether the signature verifies under `key`.
-    pub fn verify(&self, key: &VerifyingKey) -> bool {
-        let Ok(bytes) = hex::decode(&self.signature) else { return false };
-        let Ok(signature) = Signature::from_slice(&bytes) else { return false };
-        key.verify(&Self::message(&self.root, self.count), &signature).is_ok()
+    pub fn verify(&self, key: &SignerKey) -> bool {
+        hex::decode(&self.signature).is_ok_and(|s| key.verifies(&Self::message(&self.root, self.count), &s))
     }
 }
 
@@ -189,8 +190,8 @@ impl SignedRoot {
 pub struct SignedTip {
     pub seq: u64,
     pub entry_hash: String,
-    /// Hex-encoded Ed25519 signature over [`SignedTip::message`]; absent on a tip written
-    /// by no signer, which signed verification refuses.
+    /// Hex-encoded signing-port signature over [`SignedTip::message`]; absent on a tip
+    /// written by no signer, which signed verification refuses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
 }
@@ -202,34 +203,15 @@ impl SignedTip {
         format!("contextful.audit.tip\n{seq}\n{entry_hash}").into_bytes()
     }
 
-    pub fn sign(seq: u64, entry_hash: &str, signer: &impl RootSigner) -> Result<SignedTip, String> {
-        let signature = signer.sign_root(&Self::message(seq, entry_hash))?;
+    pub fn sign(seq: u64, entry_hash: &str, signer: &dyn SigningPort) -> Result<SignedTip, String> {
+        let signature = signer.sign(&Self::message(seq, entry_hash)).map_err(|e| e.to_string())?;
         Ok(SignedTip { seq, entry_hash: entry_hash.to_string(), signature: Some(hex::encode(signature)) })
     }
 
     /// Whether the signature verifies under `key`.
-    pub fn verify(&self, key: &VerifyingKey) -> bool {
+    pub fn verify(&self, key: &SignerKey) -> bool {
         let Some(Ok(bytes)) = self.signature.as_ref().map(hex::decode) else { return false };
-        let Ok(signature) = Signature::from_slice(&bytes) else { return false };
-        key.verify(&Self::message(self.seq, &self.entry_hash), &signature).is_ok()
-    }
-}
-
-/// The signing port for segment roots and the chain tip. Custody stays behind it: a local
-/// key signs in-process, and a remote custodian returns the raw Ed25519 signature bytes
-/// and publishes the key they verify under.
-pub trait RootSigner {
-    fn sign_root(&self, message: &[u8]) -> Result<Vec<u8>, String>;
-    fn verifying_key(&self) -> VerifyingKey;
-}
-
-impl RootSigner for SigningKey {
-    fn sign_root(&self, message: &[u8]) -> Result<Vec<u8>, String> {
-        Ok(self.sign(message).to_bytes().to_vec())
-    }
-
-    fn verifying_key(&self) -> VerifyingKey {
-        SigningKey::verifying_key(self)
+        key.verifies(&Self::message(self.seq, &self.entry_hash), &bytes)
     }
 }
 
@@ -298,11 +280,11 @@ pub fn verify(dir: &Path) -> Result<ChainTip, AuditError> {
 
 /// [`verify`], and every root's signature and the tip's under `key`: the check opening a
 /// log runs, and the offline verifier's. A non-empty chain needs a tip that verifies.
-pub fn verify_signed(dir: &Path, key: &VerifyingKey) -> Result<ChainTip, AuditError> {
+pub fn verify_signed(dir: &Path, key: &SignerKey) -> Result<ChainTip, AuditError> {
     walk(dir, Some(key))
 }
 
-fn walk(dir: &Path, key: Option<&VerifyingKey>) -> Result<ChainTip, AuditError> {
+fn walk(dir: &Path, key: Option<&SignerKey>) -> Result<ChainTip, AuditError> {
     let (segments, roots) = listing(dir)?;
     let tip_file = read_tip(dir)?;
     let Some(&last) = segments.last() else {
@@ -450,7 +432,7 @@ impl Undo {
 
 /// The node's audit log: appends link to the tip, reach local durable storage before
 /// they return, and close each full segment under a signed root.
-pub struct AuditLog<S: RootSigner> {
+pub struct AuditLog<S: SigningPort> {
     dir: PathBuf,
     signer: S,
     tip: ChainTip,
@@ -462,13 +444,13 @@ pub struct AuditLog<S: RootSigner> {
 }
 
 /// The signer stays out of the debug form.
-impl<S: RootSigner> std::fmt::Debug for AuditLog<S> {
+impl<S: SigningPort> std::fmt::Debug for AuditLog<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AuditLog").field("dir", &self.dir).field("tip", &self.tip).finish_non_exhaustive()
     }
 }
 
-impl<S: RootSigner> AuditLog<S> {
+impl<S: SigningPort> AuditLog<S> {
     /// Open the log under `dir`: take the directory's writer lock, then verify the chain
     /// and every root and tip signature under the signer's key. A full last segment left
     /// without its root closes now, and a tip behind the chain end advances to it.
@@ -485,7 +467,7 @@ impl<S: RootSigner> AuditLog<S> {
             Err(fs::TryLockError::Error(e)) => return Err(unreadable(&lock_path)(e)),
         }
         drop_torn_tail(&dir)?;
-        let end = verify_signed(&dir, &signer.verifying_key())?;
+        let end = verify_signed(&dir, &SignerKey::of(&signer))?;
         let log = AuditLog { dir, signer, tip: end, _lock: lock, poisoned: None };
         if log.tip.seq > 0 && log.tip.seq % AUDIT_SEGMENT_ENTRIES == 0 {
             let n = segment_of(log.tip.seq);
