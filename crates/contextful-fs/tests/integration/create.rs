@@ -36,9 +36,11 @@ fn first_wins_and_the_second_is_refused(create: Create, dir: &Path) {
     assert_eq!(entries(dir), ["_manifest.json"]);
 }
 
-/// Sixteen threads create one path at once; exactly one lands and its bytes stand.
-fn one_of_sixteen_racers_wins(create: Create, dir: &Path) {
-    const RACERS: usize = 16;
+const RACERS: usize = 16;
+
+/// Sixteen threads create one path at once; exactly one lands and its bytes stand. Returns
+/// the winner count.
+fn one_of_sixteen_racers_wins(create: Create, dir: &Path) -> usize {
     let path: Arc<PathBuf> = Arc::new(dir.join("entry-0001.json"));
     let start = Arc::new(Barrier::new(RACERS));
     let handles: Vec<_> = (0..RACERS)
@@ -56,6 +58,7 @@ fn one_of_sixteen_racers_wins(create: Create, dir: &Path) {
     assert_eq!(winners.len(), 1, "winners: {winners:?}");
     assert_eq!(std::fs::read_to_string(&*path).unwrap(), format!("racer-{}", winners[0]));
     assert_eq!(entries(dir), ["entry-0001.json"]);
+    winners.len()
 }
 
 #[test]
@@ -73,7 +76,8 @@ fn the_locked_fallback_lands_the_first_and_refuses_the_second() {
 #[test]
 fn racing_creates_land_exactly_one() {
     let dir = tempfile::tempdir().unwrap();
-    one_of_sixteen_racers_wins(create_exclusive, dir.path());
+    let winners = one_of_sixteen_racers_wins(create_exclusive, dir.path());
+    contextful_eval::record::emit("exclusive-create-no-hardlink", winners as f64, RACERS as u64, 0);
 }
 
 #[test]

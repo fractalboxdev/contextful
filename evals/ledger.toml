@@ -317,7 +317,7 @@ clause = "store.lease.commit-log"
 metric = "lease.race_winners.max"
 kind   = "test"
 tier   = "gate"
-method = { issue = 41 }
+method = { test = "contextful_fs::create::racing_creates_land_exactly_one" }
 target = { op = "==", value = 1 }
 
 # ---------------------------------------------------------------- topology
