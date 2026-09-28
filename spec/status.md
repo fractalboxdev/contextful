@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `run` | 3 | 24 | 289 | 82 | 34 | 24 | 151 | 0 | 151 |
 | `store` | 1 | 14 | 157 | 37 | 12 | 13 | 113 | 0 | 113 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
-| `topology` | 1 | 6 | 60 | 15 | 5 | 5 | 14 | 0 | 14 |
-| **total** | 19 | 146 | 1491 | 475 | 169 | 111 | 740 | 0 | |
+| `topology` | 1 | 6 | 61 | 16 | 5 | 5 | 16 | 0 | 16 |
+| **total** | 19 | 146 | 1492 | 476 | 169 | 111 | 742 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 192 | 136 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
-| 3 — The run path | 11 | 171 | 92 | passing |
+| 3 — The run path | 11 | 172 | 94 | passing |
 | 4 — Ingest | 22 | 341 | 131 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
@@ -781,6 +781,8 @@ Unscheduled operations: 10.
 | `topology.coordinate.fence-advances` | `crates/contextful-engine/tests/integration/coordinate.rs::every_acquisition_takes_a_new_fence` | performed |
 | `topology.coordinate.fenced-commit` | `crates/contextful-engine/tests/integration/coordinate.rs::a_commit_carrying_a_superseded_fence_is_refused` | performed |
 | `topology.coordinate.lease-row` | `crates/contextful-engine/tests/integration/coordinate.rs::a_lease_row_carries_holder_expiry_and_fence_per_key` | performed |
+| `topology.package.crate-map` | `tools/ci/tests/integration/topology.rs::this_repository_crate_map_names_every_crate` | performed |
+| `topology.package.crate-map-drift` | `tools/ci/tests/integration/topology.rs::a_crate_missing_from_the_crate_map_is_refused` | performed |
 | `topology.package.dependency-direction` | `tools/ci/tests/integration/topology.rs::a_domain_crate_depending_on_an_adapter_is_refused` | performed |
 | `topology.package.domain-impurity` | `tools/ci/tests/integration/topology.rs::a_domain_crate_reaching_an_async_runtime_is_refused` | performed |
 | `topology.package.exchange-optional` | `tools/ci/tests/integration/topology.rs::a_library_reaching_the_exchange_stack_is_refused` | performed |

@@ -384,3 +384,46 @@ fn one_workspace_compiles_every_package_and_ships_one_binary() {
         .collect();
     assert_eq!(bins, ["contextful"]);
 }
+
+/// A topology page whose crate-map clause states `count` and whose `## Shapes` tree lists `entries`.
+fn crate_map(r: &Repo, count: &str, entries: &[&str]) {
+    let tree: String = entries.iter().map(|e| format!("  {e}/   a package\n")).collect();
+    r.write(
+        "spec/01-topology.md",
+        &format!(
+            "# System topology\n\n## package\n\n- `crate-map` — {count} crates compose the workspace. `contextful-cli` is the binary.\n\n## Shapes\n\nThe workspace:\n\n```\ncrates/\n{tree}contextful.toml            the deployment declaration\n```\n\n```toml\n[features]\nedge = []\n```\n"
+        ),
+    );
+}
+
+/// A `crates/` package absent from the crate tree under `## Shapes`, or a {{topology.package.crate-map}} count differing from that tree's entries, raises `CrateMapDrift`, naming the package or both counts.
+// spec: topology.package.crate-map-drift@bc8872b2
+#[test]
+fn a_crate_missing_from_the_crate_map_is_refused() {
+    let r = Repo::init();
+    package(&r, "contextful-core", "");
+    // A tree may name a crate the workspace does not hold yet.
+    crate_map(&r, "Three", &["contextful-core", "demo", "contextful-control"]);
+    assert!(passes(&r).contains("crate map: 3 crates"));
+
+    package(&r, "contextful-fs", "");
+    let err = refused(&topology(&r.root), "CrateMapDrift");
+    assert!(err.contains("`crates/contextful-fs` is absent from the crate tree in spec/01-topology.md"), "{err}");
+
+    crate_map(&r, "Three", &["contextful-core", "contextful-fs", "demo", "contextful-control"]);
+    let err = refused(&topology(&r.root), "CrateMapDrift");
+    assert!(err.contains("`topology.package.crate-map` states 3 crates; the crate tree lists 4"), "{err}");
+    assert!(!err.contains("is absent"), "{err}");
+
+    crate_map(&r, "Four", &["contextful-core", "contextful-fs", "demo", "contextful-control"]);
+    passes(&r);
+}
+
+/// Fifteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+// spec: topology.package.crate-map@a2182044
+#[test]
+fn this_repository_crate_map_names_every_crate() {
+    let o = topology(repo_root());
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("crate map: 15 crates"), "{}", stdout(&o));
+}

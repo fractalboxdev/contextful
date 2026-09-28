@@ -16,6 +16,7 @@ TopologyDependencyInversion = { clause = "topology.package.dependency-direction"
 ComponentHostMissing        = { clause = "topology.package.host-missing", gloss = "A component connector is dispatched on a profile linking no component host." }
 ProfileDependencyLeak       = { clause = "topology.package.crdt-leak", gloss = "The CRDT library appears in the edge or full profile's dependency graph." }
 StoreWriteLinksEngine       = { clause = "topology.package.store-write-engine-free", gloss = "The store adapter without its read feature resolves the embedded SQL engine." }
+CrateMapDrift               = { clause = "topology.package.crate-map-drift", gloss = "A workspace crate is missing from the crate tree, or the crate-map count disagrees with it." }
 ExchangeDependencyLeak      = { clause = "topology.package.exchange-optional", gloss = "A package other than the binary resolves the external-assertion stack in its own dependency graph." }
 TargetShapeUnsupported      = { clause = "topology.deploy.unsupported-shape", gloss = "A target profile claims a shape its provider's primitives do not express." }
 ParityDivergence            = { clause = "topology.deploy.parity-divergence", gloss = "A target's table parts differ byte-wise from the reference target's." }
