@@ -2525,7 +2525,7 @@
       "operation": "index",
       "subject": "id-column",
       "kind": "behavior",
-      "statement": "A sidecar's `id_column` defaults to a single-column primary key, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.",
+      "statement": "A sidecar's `id_column` defaults to a single-column primary key on a table declaring no `valid_time`, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.",
       "why": "A-store",
       "file": "spec/10-store.md",
       "line": 261
@@ -2536,7 +2536,7 @@
       "operation": "index",
       "subject": "id-column-unresolved",
       "kind": "refusal",
-      "statement": "A declaration naming no `id_column` on a table without a single-column primary key, or two sidecars of one table naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.",
+      "statement": "A declaration naming no `id_column` on a table without a single-column primary key or declaring `valid_time`, one naming a valid-time table's single key, or two sidecars naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.",
       "why": "A-store",
       "file": "spec/10-store.md",
       "line": 263
@@ -2646,7 +2646,7 @@
       "operation": "index",
       "subject": "column-absent",
       "kind": "refusal",
-      "statement": "An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at manifest validation, before the pass that builds it.",
+      "statement": "An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at the fold, before the pass that builds it stages anything.",
       "why": "because an index over a missing column builds empty and reads as no match",
       "file": "spec/10-store.md",
       "line": 278
@@ -2657,7 +2657,7 @@
       "operation": "index",
       "subject": "column-type",
       "kind": "refusal",
-      "statement": "A vector sidecar over a column not typed as a vector of its declared `dim`, or an `id_column` typed other than text or integer, raises `StoreIndexColumnType` at manifest validation.",
+      "statement": "A vector sidecar over a column not typed as a vector of its declared `dim`, or an `id_column` typed other than text or integer, raises `StoreIndexColumnType` at manifest validation where `columns` types it, else before a landing's rows land.",
       "why": "because a builder reading another width, or an identifier the re-join casts differently, indexes rows no reader finds",
       "file": "spec/10-store.md",
       "line": 280

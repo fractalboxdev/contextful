@@ -1,6 +1,8 @@
 //! `store.index`: the sidecar declaration, its shared identifier column and the checks a
 //! pass runs before building one.
 
+use contextful_core::pipeline::declare::{read_manifest, ManifestFile};
+use contextful_core::run::RunError;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::index::{IndexKind, Metric, DEFAULT_EF_CONSTRUCTION, DEFAULT_M};
 use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema};
@@ -12,6 +14,14 @@ fn table(block: &str) -> TableDecl {
 
 fn schema(columns: &[(&str, ColumnType)]) -> Schema {
     Schema { columns: columns.iter().map(|(n, ty)| Column { name: n.to_string(), ty: *ty, nullable: true }).collect() }
+}
+
+/// Manifest validation of a pipeline whose one table carries `block`.
+fn validate_manifest(block: &str) -> Result<(), RunError> {
+    let text = format!(
+        "[[pipeline]]\nid = \"docs\"\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"https://api.example.test/v1\" }}\n[[pipeline.tables]]\n{block}\n"
+    );
+    read_manifest(&ManifestFile { path: "contextful.toml".into(), text }).unwrap().remove(0).spec.validate()
 }
 
 const VECTOR: &str = "[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5-small\"\ndim = 4\n";
@@ -41,8 +51,8 @@ fn a_vector_sidecar_declares_its_column_identifier_and_builder_parameters() {
     assert!(plain.indexes().is_empty() && !plain.canonical().contains("indexes"));
 }
 
-/// A sidecar's `id_column` defaults to a single-column primary key, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.
-// spec: store.index.id-column@180e9809
+/// A sidecar's `id_column` defaults to a single-column primary key on a table declaring no `valid_time`, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.
+// spec: store.index.id-column@7ca40f13
 #[test]
 fn the_identifier_defaults_to_a_single_key_and_serves_every_table_shape() {
     let keyed = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
@@ -58,10 +68,15 @@ fn the_identifier_defaults_to_a_single_key_and_serves_every_table_shape() {
     ));
     assert_eq!(two.id_column().unwrap(), Some("passage_id"));
     assert_eq!(table("name = \"passages\"").id_column().unwrap(), None);
+    // A valid-time table keeps one row per key and line, so its key is no default.
+    let lined = table(&format!(
+        "name = \"rates\"\nprimary_key = [\"ccy\"]\n[pipeline.tables.valid_time]\nfrom = \"from_ts\"\n{VECTOR}id_column = \"rate_id\"\n"
+    ));
+    assert_eq!(lined.id_column().unwrap(), Some("rate_id"));
 }
 
-/// A declaration naming no `id_column` on a table without a single-column primary key, or two sidecars of one table naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.
-// spec: store.index.id-column-unresolved@df72ec88
+/// A declaration naming no `id_column` on a table without a single-column primary key or declaring `valid_time`, one naming a valid-time table's single key, or two sidecars naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.
+// spec: store.index.id-column-unresolved@0ec32ff9
 #[test]
 fn a_sidecar_without_one_shared_identifier_is_refused() {
     let s = schema(&[("doc", ColumnType::Utf8), ("page", ColumnType::Int64), ("embedding", ColumnType::FixedSizeList(FloatItem::Float32, 4))]);
@@ -76,14 +91,25 @@ fn a_sidecar_without_one_shared_identifier_is_refused() {
         let t = table(&block);
         assert!(matches!(t.id_column(), Err(StoreError::StoreIndexIdColumnUnresolved(_))), "{block}");
         assert!(matches!(t.validate_indexes(&s), Err(StoreError::StoreIndexIdColumnUnresolved(_))), "{block}");
+        // Manifest validation refuses the declaration before any row lands.
+        let got = validate_manifest(&block);
+        assert!(matches!(got, Err(RunError::Store(StoreError::StoreIndexIdColumnUnresolved(_)))), "{block}: {got:?}");
     }
+    // A valid-time table keeps one row per key and line: its key neither defaults nor serves.
+    let lined = "name = \"rates\"\nprimary_key = [\"ccy\"]\n[pipeline.tables.valid_time]\nfrom = \"from_ts\"\n";
+    for block in [format!("{lined}{VECTOR}"), format!("{lined}{VECTOR}id_column = \"ccy\"\n")] {
+        assert!(matches!(table(&block).id_column(), Err(StoreError::StoreIndexIdColumnUnresolved(_))), "{block}");
+        let got = validate_manifest(&block);
+        assert!(matches!(got, Err(RunError::Store(StoreError::StoreIndexIdColumnUnresolved(_)))), "{block}: {got:?}");
+    }
+    validate_manifest(&format!("{lined}{VECTOR}id_column = \"rate_id\"\n")).unwrap();
     // The same shapes naming one identifier validate.
     let named = table(&format!("name = \"passages\"\nprimary_key = [\"doc\", \"page\"]\n{VECTOR}id_column = \"doc\"\n"));
     named.validate_indexes(&s).unwrap();
 }
 
-/// An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at manifest validation, before the pass that builds it.
-// spec: store.index.column-absent@84536ec5
+/// An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at the fold, before the pass that builds it stages anything.
+// spec: store.index.column-absent@0d83310b
 #[test]
 fn an_index_or_identifier_the_schema_lacks_is_refused() {
     let t = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
@@ -95,8 +121,8 @@ fn an_index_or_identifier_the_schema_lacks_is_refused() {
     assert!(matches!(named.validate_indexes(&whole), Err(StoreError::StoreIndexColumnAbsent(m)) if m.contains("digest")));
 }
 
-/// A vector sidecar over a column not typed as a vector of its declared `dim`, or an `id_column` typed other than text or integer, raises `StoreIndexColumnType` at manifest validation.
-// spec: store.index.column-type@65dea3d8
+/// A vector sidecar over a column not typed as a vector of its declared `dim`, or an `id_column` typed other than text or integer, raises `StoreIndexColumnType` at manifest validation where `columns` types it, else before a landing's rows land.
+// spec: store.index.column-type@716751d8
 #[test]
 fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
     let t = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
@@ -111,6 +137,21 @@ fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
         let s = schema(&[("passage_id", id_ty), ("embedding", vector_ty)]);
         let got = t.validate_indexes(&s);
         assert_eq!(matches!(got, Err(StoreError::StoreIndexColumnType(_))), refused, "{id_ty:?} {vector_ty:?}: {got:?}");
+        if !refused {
+            got.unwrap();
+        }
+    }
+    // A type `columns` declares refuses at manifest validation, before any row lands.
+    for (columns, refused) in [
+        ("passage_id = \"text\", embedding = \"float32[4]\"", false),
+        ("passage_id = \"int64\"", false),
+        ("passage_id = \"float64\"", true),
+        ("passage_id = \"binary(32)\"", true),
+        ("embedding = \"float32[3]\"", true),
+        ("embedding = \"json\"", true),
+    ] {
+        let got = validate_manifest(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\ncolumns = {{ {columns} }}\n{VECTOR}"));
+        assert_eq!(matches!(got, Err(RunError::Store(StoreError::StoreIndexColumnType(_)))), refused, "{columns}: {got:?}");
         if !refused {
             got.unwrap();
         }

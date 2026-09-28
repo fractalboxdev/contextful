@@ -323,6 +323,7 @@ pub fn land_batches(
         c.nullable = false;
     }
     decl.validate(&merged)?;
+    decl.validate_index_types(&merged)?;
     // Every refusal of the batch has fired. The schema commits before the manifest, so
     // a fold reading a run finds its columns in the schema it reads after.
     store.write_schema(table, &merged)?;

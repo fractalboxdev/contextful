@@ -123,6 +123,9 @@ pub enum RunError {
     /// A table's visibility block refused by the `disclosure` contract, carried typed.
     #[error(transparent)]
     Visibility(#[from] crate::disclosure::VisibilityError),
+    /// A table declaration refused by the `store` contract at manifest validation, carried typed.
+    #[error(transparent)]
+    Store(#[from] crate::store::StoreError),
     /// An input outside a shape the contract bounds without naming a refusal.
     #[error("invalid: {0}")]
     Invalid(String),

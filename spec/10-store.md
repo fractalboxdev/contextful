@@ -258,9 +258,9 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
 
 - `kinds` — Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW vector graph, a Tantivy full-text index, and opt-in per-column bloom filters.
 - `declaration` — A sidecar is declared per table under `indexes` with a kind, a `column`, an `id_column` and builder parameters; the vector kind takes `model`, `dim`, the `cosine` metric, `m` and `ef_construction`.
-- `id-column` — A sidecar's `id_column` defaults to a single-column primary key, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.
+- `id-column` — A sidecar's `id_column` defaults to a single-column primary key on a table declaring no `valid_time`, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.
   *A-store*
-- `id-column-unresolved` — A declaration naming no `id_column` on a table without a single-column primary key, or two sidecars of one table naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.
+- `id-column-unresolved` — A declaration naming no `id_column` on a table without a single-column primary key or declaring `valid_time`, one naming a valid-time table's single key, or two sidecars naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.
   *A-store*
 - `id-unique` — A fold meeting one `id_column` value on two rows of the snapshot it stages raises `StoreIndexIdNotUnique`, naming the table, the column and the value, and publishes nothing.
   *A-store*
@@ -275,9 +275,9 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
   *A-store*
 - `graph` — A vector sidecar is an HNSW graph over unit-length `Float32` vectors whose layers draw from a seed of the snapshot id and column, so one staged row set builds one byte-identical graph.
   *because a rebuilt sidecar then differs from its predecessor only where the rows do, and a recall figure replays from its snapshot*
-- `column-absent` — An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at manifest validation, before the pass that builds it.
+- `column-absent` — An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at the fold, before the pass that builds it stages anything.
   *because an index over a missing column builds empty and reads as no match*
-- `column-type` — A vector sidecar over a column not typed as a vector of its declared `dim`, or an `id_column` typed other than text or integer, raises `StoreIndexColumnType` at manifest validation.
+- `column-type` — A vector sidecar over a column not typed as a vector of its declared `dim`, or an `id_column` typed other than text or integer, raises `StoreIndexColumnType` at manifest validation where `columns` types it, else before a landing's rows land.
   *because a builder reading another width, or an identifier the re-join casts differently, indexes rows no reader finds*
 - `clustering` — `cluster_by` sorts rows within a file lexicographically over its columns in declared order; zone maps then skip row groups with no manifest entry and no sidecar.
 - `partitioning` — Partitioning is off unless `partition_by` declares it.

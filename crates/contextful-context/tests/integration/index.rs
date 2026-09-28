@@ -251,6 +251,41 @@ fn a_repeated_identifier_refuses_the_pass() {
     assert_eq!(entry(&current(&f, "keyed").0).row_count, 1);
 }
 
+/// A landing whose identifier or vector reconciles to a type the sidecar does not read
+/// refuses before any row lands (`store.index.column-type`).
+#[test]
+fn a_landing_of_an_unreadable_identifier_or_vector_lands_nothing() {
+    let f32x2 = ColumnType::FixedSizeList(FloatItem::Float32, 2);
+    for (column, value, types) in [
+        ("digest", json!(1.5), vec![("embedding", f32x3()[0].1), ("digest", ColumnType::Float64)]),
+        ("embedding", json!([1.0, 0.0]), vec![("embedding", f32x2)]),
+    ] {
+        let f = Fixture::new();
+        let d = decl(&format!("name = \"passages\"\n{INDEX}id_column = \"digest\"\n"));
+        let mut row = json!({"digest": "d1", "embedding": [1.0, 0.0, 0.0]});
+        row[column] = value;
+        let err = f.land_typed(&d, "run-1", json!([row]), "2030-01-01T00:00:00Z", &types).unwrap_err();
+        assert!(matches!(err.store(), Some(StoreError::StoreIndexColumnType(_))), "{column}: {err}");
+        assert!(!f.table_dir("passages").join("data/runs/run-1").exists(), "{column}");
+    }
+}
+
+/// A keyed valid-time table keeps one row per key and line; its sidecar keys on the
+/// declared identifier, and every fold publishes.
+#[test]
+fn a_valid_time_table_folds_its_sidecar_over_a_declared_identifier() {
+    let f = Fixture::new();
+    let d = decl(&format!(
+        "name = \"rates\"\nprimary_key = [\"ccy\"]\n[pipeline.tables.valid_time]\nfrom = \"from_ts\"\n{INDEX}id_column = \"rate_id\"\n"
+    ));
+    let types = [("embedding", ColumnType::FixedSizeList(FloatItem::Float32, 3)), ("from_ts", ColumnType::Timestamp)];
+    f.land_typed(&d, "run-1", json!([{"ccy": "eur", "rate_id": "eur-1", "from_ts": "2030-01-01T00:00:00Z", "embedding": [1.0, 0.0, 0.0]}]), "2030-01-01T00:00:00Z", &types).unwrap();
+    f.land_typed(&d, "run-2", json!([{"ccy": "eur", "rate_id": "eur-2", "from_ts": "2030-01-02T00:00:00Z", "embedding": [0.0, 1.0, 0.0]}]), "2030-01-02T00:00:00Z", &types).unwrap();
+    fold(&f.store, &d, at("2030-01-02T01:00:00Z")).unwrap();
+    let e = entry(&current(&f, "rates").0);
+    assert_eq!((e.id_column.as_str(), e.row_count), ("rate_id", 2));
+}
+
 /// Sidecar recall@10 against exact search over seeded vectors (ledger `vector-recall`).
 #[test]
 fn vector_recall_at_10_holds_against_exact_search() {

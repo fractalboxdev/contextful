@@ -119,21 +119,37 @@ impl TableDecl {
     }
 
     /// The one identifier column every sidecar of the table shares: each declaration's
-    /// `id_column`, defaulting to a single-column primary key (`store.index.id-column`).
-    /// `None` when the table declares no sidecar.
+    /// `id_column`, defaulting to a single-column primary key on a table declaring no
+    /// `valid_time` (`store.index.id-column`). `None` when the table declares no sidecar.
+    ///
+    /// A valid-time table keeps one row per key and valid-time line
+    /// (`store.fold.valid-time-line`), so its key repeats within a snapshot and names no
+    /// identifier (`store.index.id-column-unresolved`).
     pub fn id_column(&self) -> Result<Option<&str>, StoreError> {
-        let default = match self.primary_key() {
+        let single_key = match self.primary_key() {
             [k] => Some(k.as_str()),
             _ => None,
         };
+        let default = single_key.filter(|_| self.valid_time.is_none());
         let mut resolved: Option<&str> = None;
         for idx in self.indexes() {
             let Some(id) = idx.id_column.as_deref().or(default) else {
+                let why = if single_key.is_some() {
+                    "the table declares `valid_time`, so its key repeats across valid-time lines"
+                } else {
+                    "the table has no single-column primary key"
+                };
                 return Err(StoreError::StoreIndexIdColumnUnresolved(format!(
-                    "table `{}`: the sidecar over `{}` names no `id_column`, and the table has no single-column primary key",
+                    "table `{}`: the sidecar over `{}` names no `id_column`, and {why}",
                     self.name, idx.column
                 )));
             };
+            if self.valid_time.is_some() && Some(id) == single_key {
+                return Err(StoreError::StoreIndexIdColumnUnresolved(format!(
+                    "table `{}`: `id_column` `{id}` is the key of a valid-time table, which repeats across valid-time lines",
+                    self.name
+                )));
+            }
             match resolved {
                 Some(r) if r != id => {
                     return Err(StoreError::StoreIndexIdColumnUnresolved(format!(
@@ -147,18 +163,42 @@ impl TableDecl {
         Ok(resolved)
     }
 
+    /// Hold the sidecar declarations to the manifest alone: one shared identifier, and the
+    /// types `columns` declares (`store.index.id-column-unresolved`, `store.index.column-type`).
+    pub fn validate_index_declaration(&self) -> Result<(), StoreError> {
+        let declared = Schema {
+            columns: self
+                .column_types()
+                .into_iter()
+                .map(|(name, ty)| super::reconcile::Column { name, ty, nullable: true })
+                .collect(),
+        };
+        self.check_indexes(&declared, false)
+    }
+
+    /// Hold the sidecar declarations to a landing's reconciled schema: every column it
+    /// carries is typed as the sidecar reads it, before any row lands (`store.index.column-type`).
+    pub fn validate_index_types(&self, schema: &Schema) -> Result<(), StoreError> {
+        self.check_indexes(schema, false)
+    }
+
     /// Hold the sidecar declarations to the reconciled schema before the pass that builds
     /// them (`store.index.column-absent`, `store.index.column-type`).
     pub fn validate_indexes(&self, schema: &Schema) -> Result<(), StoreError> {
+        self.check_indexes(schema, true)
+    }
+
+    /// `require` refuses a column `schema` lacks; otherwise an absent column passes.
+    fn check_indexes(&self, schema: &Schema, require: bool) -> Result<(), StoreError> {
         let Some(id) = self.id_column()? else { return Ok(()) };
         match schema.get(id).map(|c| c.ty) {
-            None => {
+            None if require => {
                 return Err(StoreError::StoreIndexColumnAbsent(format!(
                     "table `{}`: `id_column` `{id}` is no column of the table",
                     self.name
                 )))
             }
-            Some(ColumnType::Utf8 | ColumnType::Int64 | ColumnType::Int32) => {}
+            None | Some(ColumnType::Utf8 | ColumnType::Int64 | ColumnType::Int32) => {}
             Some(ty) => {
                 return Err(StoreError::StoreIndexColumnType(format!(
                     "table `{}`: `id_column` `{id}` is typed {}; an identifier is text or integer",
@@ -169,12 +209,13 @@ impl TableDecl {
         }
         for idx in self.indexes() {
             match schema.get(&idx.column).map(|c| c.ty) {
-                None => {
+                None if require => {
                     return Err(StoreError::StoreIndexColumnAbsent(format!(
                         "table `{}`: a vector sidecar indexes `{}`, which is no column of the table",
                         self.name, idx.column
                     )))
                 }
+                None => {}
                 Some(ColumnType::FixedSizeList(_, n)) if n == idx.dim => {}
                 Some(ty) => {
                     return Err(StoreError::StoreIndexColumnType(format!(
