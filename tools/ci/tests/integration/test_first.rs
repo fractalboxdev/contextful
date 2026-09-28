@@ -192,14 +192,14 @@ fn a_test_quoting_an_infrastructure_fault_still_reads_as_red() {
 #[test]
 fn a_slow_base_build_is_not_charged_to_the_bound() {
     let r = Repo::init();
-    // The base's build script outlasts the bound; only test execution is bounded.
-    r.write("crates/demo/build.rs", "fn main() {\n    std::thread::sleep(std::time::Duration::from_secs(8));\n}\n");
-    r.commit("a slow base build");
     let base = r.head();
-    r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 {\n    x * 2\n}\n\npub fn triple(x: i32) -> i32 {\n    x * 3\n}\n");
+    r.write("crates/demo/src/lib.rs", TRIPLE);
     r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() {\n    assert_eq!(demo::double(4), 8);\n}\n");
     r.commit("triple, with a double test green at base");
-    let o = r.gate(&["--stage", "test-first", "--base", &base, "--base-bound-secs", "3"]);
+    // The build outlasts the 2 s bound by at least 2 s; listing and running pass at once, so
+    // only charging the build to the bound kills an invocation.
+    let cargo = "case \" $* \" in\n  *\" --no-run \"*) sleep 4 ;;\n  *\" --list \"*) echo 'double::doubles: test' ;;\nesac\n";
+    let o = r.gate_with_cargo(cargo, &["--stage", "test-first", "--base", &base, "--base-bound-secs", "2"]);
     let err = stderr(&o);
     assert!(!o.status.success(), "a build killed at the bound read as red: {err}");
     assert!(err.contains("TestNotFirst"), "{err}");

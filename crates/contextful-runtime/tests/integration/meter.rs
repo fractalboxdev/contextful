@@ -1,7 +1,7 @@
 //! `connector.meter`: a metered client reserves one permit per outbound request against
 //! the bound limiter, and reports what the vendor said.
 
-use crate::support::{Fixed, Request, Response, Server, SetClock};
+use crate::support::{proxy_env, Fixed, Request, Response, Server, SetClock};
 use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::meter::{LimiterBinding, LimiterDeclaration};
 use contextful_core::connector::resolve::Provider;
@@ -81,6 +81,7 @@ fn vendor_hits(server: &Server) -> usize {
 /// a header it does not name stays home.
 #[test]
 fn the_declaration_names_the_quota_the_class_and_the_forwarded_headers() {
+    let _env = proxy_env();
     let (v, l, clock) = (vendor(), granting(8, 10), SetClock::new());
     let limiter = limiter_at(&l.url(""), 8, &clock);
     get(&metered(&v, &limiter), &v, "/v1").unwrap();
@@ -97,6 +98,7 @@ fn the_declaration_names_the_quota_the_class_and_the_forwarded_headers() {
 // spec: connector.meter.reservation-point@d6f1791b
 #[test]
 fn each_outbound_request_spends_one_permit() {
+    let _env = proxy_env();
     let (v, l, clock) = (vendor(), granting(8, 10), SetClock::new());
     let limiter = limiter_at(&l.url(""), 8, &clock);
     let c = metered(&v, &limiter);
@@ -114,6 +116,7 @@ fn each_outbound_request_spends_one_permit() {
 // spec: connector.meter.permit-batch@6dd4f50c
 #[test]
 fn a_batch_is_spent_one_permit_per_request_and_surrendered_on_report() {
+    let _env = proxy_env();
     let (v, l, clock) = (vendor(), granting(2, 10), SetClock::new());
     let limiter = limiter_at(&l.url(""), 2, &clock);
     let c = metered(&v, &limiter);
@@ -137,6 +140,7 @@ fn a_batch_is_spent_one_permit_per_request_and_surrendered_on_report() {
 // spec: connector.meter.acquire@8dead24a
 #[test]
 fn a_denial_a_bare_429_and_a_zero_grant_all_hold_the_request_back() {
+    let _env = proxy_env();
     let (v, clock) = (vendor(), SetClock::new());
     let l = granting(8, 10);
     let limiter = limiter_at(&l.url(""), 8, &clock);
@@ -170,6 +174,7 @@ fn a_denial_a_bare_429_and_a_zero_grant_all_hold_the_request_back() {
 // spec: connector.meter.unreadable-answer@398c4b5f
 #[test]
 fn an_unreadable_answer_fails_the_request_before_the_vendor() {
+    let _env = proxy_env();
     let (v, clock) = (vendor(), SetClock::new());
     let l = Server::start(|_| Response::json(200, "<html>limiter</html>"));
     let f = get(&metered(&v, &limiter_at(&l.url(""), 8, &clock)), &v, "/v1").unwrap_err();
@@ -182,6 +187,7 @@ fn an_unreadable_answer_fails_the_request_before_the_vendor() {
 // spec: connector.meter.report@e4610fca
 #[test]
 fn the_report_carries_the_accounting_the_responses_and_the_run() {
+    let _env = proxy_env();
     let (v, l, clock) = (vendor(), granting(8, 10), SetClock::new());
     let limiter = limiter_at(&l.url(""), 8, &clock);
     let c = metered(&v, &limiter);
@@ -204,6 +210,7 @@ fn the_report_carries_the_accounting_the_responses_and_the_run() {
 /// takes the report is recorded in the audit and fails no request.
 #[test]
 fn a_report_retries_then_lands_in_the_audit_and_fails_nothing() {
+    let _env = proxy_env();
     let clock = SetClock::new();
     // Two failures, then success: delivered on the third attempt.
     let flaky = Arc::new(AtomicUsize::new(0));
@@ -243,6 +250,7 @@ fn a_report_retries_then_lands_in_the_audit_and_fails_nothing() {
 /// goes unreported.
 #[test]
 fn an_undelivered_report_folds_into_the_next() {
+    let _env = proxy_env();
     let clock = SetClock::new();
     let reports = Arc::new(AtomicUsize::new(0));
     let seen = reports.clone();
@@ -272,6 +280,7 @@ fn an_undelivered_report_folds_into_the_next() {
 /// timeout, not by a vendor request's.
 #[test]
 fn a_hanging_report_endpoint_stalls_no_request() {
+    let _env = proxy_env();
     let clock = SetClock::new();
     let l = Server::start(|r| match r.path() {
         "/acquire" => Response::json(200, "{\"permits\":1,\"ttl_secs\":10}"),
@@ -294,6 +303,7 @@ fn a_hanging_report_endpoint_stalls_no_request() {
 /// never as an expired vendor credential.
 #[test]
 fn a_failing_limiter_answer_is_never_a_vendor_credential_expiry() {
+    let _env = proxy_env();
     let clock = SetClock::new();
     for status in [401u16, 403, 400, 404, 503] {
         let v = vendor();
@@ -310,6 +320,7 @@ fn a_failing_limiter_answer_is_never_a_vendor_credential_expiry() {
 // spec: connector.meter.limiter-address@26640b2d
 #[test]
 fn a_limiter_on_a_private_address_is_not_refused_as_one() {
+    let _env = proxy_env();
     let (v, clock) = (vendor(), SetClock::new());
     let binding = LimiterBinding::parse("graph-app", "https://10.255.255.1", "secret://limiter-token", Some(1)).unwrap();
     let limiter = Arc::new(Limiter::new(binding, resolver(&clock), RUN, Arc::new(clock.clone())).unwrap().with_timeout(Duration::from_millis(200)));
@@ -325,6 +336,7 @@ fn a_limiter_on_a_private_address_is_not_refused_as_one() {
 // spec: connector.meter.unmetered-request@df535b45
 #[test]
 fn no_granted_reservation_means_no_request() {
+    let _env = proxy_env();
     let clock = SetClock::new();
     let v = vendor();
     // Unreachable: a port nothing listens on.
@@ -358,6 +370,7 @@ fn no_granted_reservation_means_no_request() {
 /// and sends no acquire.
 #[test]
 fn an_unresolved_limiter_token_is_named_as_such() {
+    let _env = proxy_env();
     let (v, l, clock) = (vendor(), granting(8, 10), SetClock::new());
     let empty: Arc<dyn Provider> = Fixed::new("store", &[]);
     let resolver = Arc::new(Resolver::new(vec![empty], false, Arc::new(clock.clone())));
@@ -376,6 +389,7 @@ fn an_unresolved_limiter_token_is_named_as_such() {
 // spec: connector.meter.allowlist-precedence@a04fd503
 #[test]
 fn a_refused_request_never_reaches_the_limiter() {
+    let _env = proxy_env();
     let (v, l, clock) = (vendor(), granting(8, 10), SetClock::new());
     let limiter = limiter_at(&l.url(""), 8, &clock);
     let c = Client::new(Allowlist::parse(&["api.vendor.example"]).unwrap(), url(&v.url("/"))).metered(Meter::new(declaration(), Some(limiter.clone())));

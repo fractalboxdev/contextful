@@ -1,7 +1,7 @@
 //! `connector.lease`: the lease provider at the head of the chain, its mint wire and its
 //! bootstrap credential.
 
-use crate::support::{name, Fixed, Response, Server, SetClock};
+use crate::support::{configure_proxy, proxy_env, name, Fixed, Response, Server, SetClock};
 use contextful_core::connector::lease::Scopes;
 use contextful_core::connector::resolve::Provider;
 use contextful_core::run::FailureTag;
@@ -52,6 +52,7 @@ fn mints(server: &Server) -> usize {
 // spec: connector.lease.head-of-chain@dccd7e48
 #[test]
 fn the_lease_provider_answers_a_declared_name_ahead_of_every_adapter() {
+    let _env = proxy_env();
     let server = leased(600);
     let clock = SetClock::new();
     let r = resolver(&server, "vendor-token", &clock);
@@ -72,6 +73,7 @@ fn the_lease_provider_answers_a_declared_name_ahead_of_every_adapter() {
 // spec: connector.lease.undeclared-name-defers@b2abe5be
 #[test]
 fn an_undeclared_name_passes_the_provider_by() {
+    let _env = proxy_env();
     let server = leased(600);
     let clock = SetClock::new();
     let behind: Vec<Arc<dyn Provider>> = vec![Fixed::new("env", &[("lease-mint", MINT)]), Fixed::new("manager", &[("other-token", "from-manager")]), Fixed::new("keychain", &[])];
@@ -88,6 +90,7 @@ fn an_undeclared_name_passes_the_provider_by() {
 // spec: connector.lease.empty-scope-set@4ed767e3
 #[test]
 fn the_lease_backend_with_no_scope_refuses_at_assembly() {
+    let _env = proxy_env();
     let server = leased(600);
     for scopes in ["", " , "] {
         let err = assemble(&env(&server, scopes), Arc::new(SetClock::new())).err().unwrap();
@@ -101,6 +104,7 @@ fn the_lease_backend_with_no_scope_refuses_at_assembly() {
 // spec: connector.lease.lease@cde859ef
 #[test]
 fn a_lease_is_evicted_at_its_expiry_and_reminted() {
+    let _env = proxy_env();
     let dir = tempfile::tempdir().unwrap();
     let before: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
     let server = leased(60);
@@ -122,6 +126,7 @@ fn a_lease_is_evicted_at_its_expiry_and_reminted() {
 // spec: connector.lease.cache-window@695b6b2e
 #[test]
 fn a_leased_entry_retires_by_the_tighter_bound() {
+    let _env = proxy_env();
     for (expires_in, held, reminted) in [(60, 50, 60), (3_600, 260, 300)] {
         let server = leased(expires_in);
         let clock = SetClock::new();
@@ -141,6 +146,7 @@ fn a_leased_entry_retires_by_the_tighter_bound() {
 // spec: connector.lease.endpoint@421208bc
 #[test]
 fn a_mint_is_a_bearer_post_naming_the_scope() {
+    let _env = proxy_env();
     let server = leased(600);
     let r = resolver(&server, "vendor-token=orders.read", &SetClock::new());
     r.hydrate(&name("vendor-token")).unwrap();
@@ -155,6 +161,7 @@ fn a_mint_is_a_bearer_post_naming_the_scope() {
 // spec: connector.lease.unknown-scope@ac4f5fbf
 #[test]
 fn an_unknown_scope_is_a_configuration_fault_with_no_fallthrough() {
+    let _env = proxy_env();
     let server = provider(404, "{}");
     let mut vars = env(&server, "vendor-token");
     vars.insert("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES".into(), "1".into());
@@ -169,6 +176,7 @@ fn an_unknown_scope_is_a_configuration_fault_with_no_fallthrough() {
 // spec: connector.lease.mint-rejected@df32bcc5
 #[test]
 fn a_rejected_mint_credential_is_auth_expired() {
+    let _env = proxy_env();
     for status in [401, 403] {
         let server = provider(status, "{}");
         let f = resolver(&server, "vendor-token", &SetClock::new()).hydrate(&name("vendor-token")).unwrap_err();
@@ -181,6 +189,7 @@ fn a_rejected_mint_credential_is_auth_expired() {
 // spec: connector.lease.rate-limited@360b9787
 #[test]
 fn a_throttled_mint_carries_its_retry_after() {
+    let _env = proxy_env();
     let server = Server::start(|_| Response { status: 429, headers: vec![("Retry-After".into(), "7".into())], body: Vec::new() });
     let f = resolver(&server, "vendor-token", &SetClock::new()).hydrate(&name("vendor-token")).unwrap_err();
     assert_eq!((f.tag, f.retry_after_secs), (FailureTag::RateLimited, Some(7)));
@@ -190,6 +199,7 @@ fn a_throttled_mint_carries_its_retry_after() {
 // spec: connector.lease.request-rejected@eb775f32
 #[test]
 fn another_client_error_is_a_permanent_configuration_fault() {
+    let _env = proxy_env();
     for status in [400, 409, 422] {
         let server = provider(status, "{}");
         let f = resolver(&server, "vendor-token", &SetClock::new()).hydrate(&name("vendor-token")).unwrap_err();
@@ -204,6 +214,7 @@ fn another_client_error_is_a_permanent_configuration_fault() {
 // spec: connector.lease.transient-class@4cf439db
 #[test]
 fn server_and_transport_failures_are_transient_and_tried_once() {
+    let _env = proxy_env();
     let server = provider(503, "{}");
     let f = resolver(&server, "vendor-token", &SetClock::new()).hydrate(&name("vendor-token")).unwrap_err();
     assert_eq!(f.tag, FailureTag::Transient);
@@ -219,6 +230,7 @@ fn server_and_transport_failures_are_transient_and_tried_once() {
 // spec: connector.lease.calls-per-resolver@510ace2f
 #[test]
 fn one_mint_per_name_per_window() {
+    let _env = proxy_env();
     assert_eq!(contextful_core::connector::lease::MINT_CALLS_PER_WINDOW, 1);
     let server = leased(600);
     let clock = SetClock::new();
@@ -243,6 +255,7 @@ fn one_mint_per_name_per_window() {
 // spec: connector.lease.bootstrap-non-recursion@072ce297
 #[test]
 fn the_mint_credential_comes_from_the_adapters_behind_the_provider() {
+    let _env = proxy_env();
     let server = leased(600);
     let clock = SetClock::new();
     // The environment answers no template, yet it holds the mint credential for the provider in front of it.
@@ -257,6 +270,7 @@ fn the_mint_credential_comes_from_the_adapters_behind_the_provider() {
 // spec: connector.lease.bootstrap-unserved@928fba5b
 #[test]
 fn an_unanswered_bootstrap_refuses_before_any_mint() {
+    let _env = proxy_env();
     let server = leased(600);
     let mut vars = env(&server, "vendor-token");
     vars.remove("LEASE_MINT");
@@ -269,6 +283,7 @@ fn an_unanswered_bootstrap_refuses_before_any_mint() {
 // spec: connector.lease.bootstrap-declared-leased@dd32c146
 #[test]
 fn the_bootstrap_name_cannot_be_leased() {
+    let _env = proxy_env();
     let server = leased(600);
     let err = assemble(&env(&server, "vendor-token,lease-mint"), Arc::new(SetClock::new())).err().unwrap();
     assert!(err.message.starts_with("SecretBootstrapLeased"), "{err}");
@@ -287,14 +302,10 @@ fn the_mint_endpoint_is_tls_or_loopback_and_bypasses_the_proxy() {
     assert!(assemble(&vars, Arc::new(SetClock::new())).is_ok());
     // A proxy configured for the process is not used: the mint reaches the provider directly.
     let proxy = Server::start(|_| Response::json(502, "{}"));
-    let proxied = proxy.url("");
-    std::env::set_var("HTTP_PROXY", &proxied);
-    std::env::set_var("http_proxy", &proxied);
-    std::env::set_var("ALL_PROXY", &proxied);
-    let hydrated = resolver(&server, "vendor-token", &SetClock::new()).hydrate(&name("vendor-token"));
-    for k in ["HTTP_PROXY", "http_proxy", "ALL_PROXY"] {
-        std::env::remove_var(k);
-    }
+    let hydrated = {
+        let _proxied = configure_proxy(&proxy.url(""));
+        resolver(&server, "vendor-token", &SetClock::new()).hydrate(&name("vendor-token"))
+    };
     assert_eq!(hydrated.unwrap().reveal(), "leased-value");
     assert!(proxy.requests.lock().unwrap().is_empty());
 }
@@ -304,6 +315,7 @@ fn the_mint_endpoint_is_tls_or_loopback_and_bypasses_the_proxy() {
 // spec: connector.lease.redirect@f0c889b1
 #[test]
 fn a_redirected_mint_refuses_and_the_target_sees_nothing() {
+    let _env = proxy_env();
     let server = Server::start(|r| match r.path() {
         "/leases" => Response { status: 307, headers: vec![("Location".into(), "/elsewhere".into())], body: Vec::new() },
         _ => Response::json(200, "{\"value\":\"x\",\"expires_in\":60}"),
@@ -315,6 +327,7 @@ fn a_redirected_mint_refuses_and_the_target_sees_nothing() {
 
 #[test]
 fn a_provider_named_localhost_mints_over_loopback() {
+    let _env = proxy_env();
     let server = leased(600);
     let clock = SetClock::new();
     let mut vars = env(&server, "vendor-token");
