@@ -10,6 +10,7 @@ use contextful_core::memory::recall::{gate, EvidenceRead};
 use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::read::embed::cosine;
 use contextful_core::read::template::Bound;
+use crate::fulltext::{self, FulltextSidecar, SidecarCache};
 use crate::vector::{self, Fallback, VectorSidecar};
 use contextful_core::read::rank::{
     candidate_window, sidecar_probe_size, fuse, min_max, order, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
@@ -18,6 +19,7 @@ use contextful_core::read::rank::{
 use contextful_core::read::respond::{Cell, Response};
 use contextful_core::read::tokens::{content_tokens, lexical_score, passes_floor, relevance_floor};
 use contextful_core::store::bound_time::Bounds;
+use contextful_core::store::index::IndexKind;
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::relation::ident;
 use contextful_core::store::reserve::{AUTHORED_BY, INGESTED_AT, ROW_SEQ, RUN_ID};
@@ -225,36 +227,45 @@ impl Face {
                     break;
                 }
             }
-            // The vector sidecar adds its candidates to the window, each read through the
-            // relation, so a row it recalls scores exactly as the exact path scores it
+            // Each sidecar adds its candidates to the window, each read through the relation,
+            // so a row it recalls scores exactly as the exact path scores it
             // (`read.retrieve.sidecar-generates-candidates`).
-            if let (false, Some(query)) = (claims, request.query_embedding.as_deref()) {
-                if let Ok((id_column, ids)) = self.sidecar_candidates(session, table, query, limit) {
-                    let cx = ArmContext {
-                        engine: &engine,
-                        session,
-                        table,
-                        claims,
-                        anchor,
-                        window: u64::MAX,
-                        snippet: &snippet,
-                        basis: &basis,
-                        tokens: &tokens,
-                        request,
-                        memory_tables: &memory_tables,
-                    };
-                    let present: std::collections::HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
-                    let mut recalled_rows = Vec::new();
-                    let mut added = 0u64;
-                    for chunk in ids.chunks(REJOIN_CHUNK) {
-                        let marks = vec!["?"; chunk.len()].join(", ");
-                        let sql = format!("SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks})", ident(table), ident(&id_column));
-                        let parameters: Vec<Bound> = chunk.iter().map(|id| Bound::Text(id.clone())).collect();
-                        let (columns, values) = engine.run_values(&sql, &parameters, None)?;
-                        self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut suppressed);
-                    }
-                    rows.extend(recalled_rows.into_iter().filter(|r| !present.contains(&r.id)));
+            let mut probes: Vec<(String, Vec<String>)> = Vec::new();
+            if !claims {
+                if let Some(query) = request.query_embedding.as_deref() {
+                    probes.extend(self.sidecar_candidates(session, table, query, limit).ok());
                 }
+                // A table declaring no full-text sidecar reads no snapshot manifest here.
+                let fulltext = decl.indexes().iter().any(|i| i.kind == IndexKind::Fulltext);
+                if fulltext && !tokens.is_empty() {
+                    probes.extend(self.fulltext_candidates(session, table, &tokens, limit).ok());
+                }
+            }
+            for (id_column, ids) in probes {
+                let cx = ArmContext {
+                    engine: &engine,
+                    session,
+                    table,
+                    claims,
+                    anchor,
+                    window: u64::MAX,
+                    snippet: &snippet,
+                    basis: &basis,
+                    tokens: &tokens,
+                    request,
+                    memory_tables: &memory_tables,
+                };
+                let present: std::collections::HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
+                let mut recalled_rows = Vec::new();
+                let mut added = 0u64;
+                for chunk in ids.chunks(REJOIN_CHUNK) {
+                    let marks = vec!["?"; chunk.len()].join(", ");
+                    let sql = format!("SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks})", ident(table), ident(&id_column));
+                    let parameters: Vec<Bound> = chunk.iter().map(|id| Bound::Text(id.clone())).collect();
+                    let (columns, values) = engine.run_values(&sql, &parameters, None)?;
+                    self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut suppressed);
+                }
+                rows.extend(recalled_rows.into_iter().filter(|r| !present.contains(&r.id)));
             }
         }
         let prefloor = rows.len() as u64;
@@ -375,6 +386,57 @@ impl Face {
         let k = usize::try_from(sidecar_probe_size(limit, restricted)).unwrap_or(usize::MAX);
         let ids = sidecar.probe(query, k)?.into_iter().map(|c| c.id).collect();
         Ok((id_column, ids))
+    }
+
+    /// The `id_column` and the candidate identifiers the table's current full-text
+    /// sidecars yield for the content `tokens`, or why the arm adds none
+    /// (`read.retrieve.fulltext-probe`, `read.retrieve.sidecar-falls-back`). A sidecar over
+    /// a column the session masks, classes or zone-withholds, or keyed on an identifier it
+    /// masks or withholds, is never probed, since its matches would rank rows by text the
+    /// reader cannot see.
+    pub fn fulltext_candidates(&self, session: &Session, table: &str, tokens: &[String], limit: u64) -> Result<(String, Vec<String>), Fallback> {
+        let (dir, snapshot_id, entries) = fulltext::current_entries(&self.store, table)?;
+        let policy = session.policy(table);
+        let restricted =
+            session.tenant_scoped() || policy.is_some_and(|p| p.rows.is_some() || p.columns.values().any(|c| c.mask.is_some()));
+        let k = usize::try_from(sidecar_probe_size(limit, restricted)).unwrap_or(usize::MAX);
+        let (mut id_column, mut first_fallback) = (None, None);
+        let mut ids: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for entry in &entries {
+            let probed = (|| -> Result<(String, Vec<String>), Fallback> {
+                let field = |k: &str| entry.get(k).and_then(|v| v.as_str()).ok_or(Fallback::ManifestMismatch);
+                let (id, column, path) = (field("id_column")?, field("column")?, field("path")?);
+                let key_version = entry.get("key_version").and_then(|v| v.as_u64()).ok_or(Fallback::ManifestMismatch)?;
+                if let Some(p) = policy {
+                    let withheld = |c: &str| p.columns.get(c).is_some_and(|c| c.mask.is_some()) || !p.column_set(c).admits(session.zone());
+                    if withheld(id) || withheld(column) || p.columns.get(column).is_some_and(|c| c.class.is_some()) {
+                        return Err(Fallback::Withheld);
+                    }
+                }
+                let key = fulltext::fingerprint(table, &snapshot_id, path, u32::try_from(key_version).unwrap_or(u32::MAX));
+                let sidecar = self.fulltext.get_or_open(&key, || FulltextSidecar::open(&dir, table, entry, &self.store.sealing()))?;
+                Ok((id.to_string(), sidecar.probe(tokens, k)?.candidates.into_iter().map(|c| c.id).collect()))
+            })();
+            match probed {
+                Ok((id, found)) => {
+                    id_column = Some(id);
+                    ids.extend(found.into_iter().filter(|i| seen.insert(i.clone())));
+                }
+                Err(f) => {
+                    first_fallback.get_or_insert(f);
+                }
+            }
+        }
+        match id_column {
+            Some(c) => Ok((c, ids)),
+            None => Err(first_fallback.unwrap_or(Fallback::NoSidecar)),
+        }
+    }
+
+    /// The face's cache of opened full-text sidecars (`read.rank.lexical-index-cache`).
+    pub fn fulltext_cache(&self) -> &SidecarCache<FulltextSidecar> {
+        &self.fulltext
     }
 
     /// How one evidence row reads through the caller's session: its table registered, the

@@ -256,15 +256,15 @@ sequenceDiagram
 
 Sidecar index kinds and identity, clustering, partitioning and the tenant partition.
 
-- `kinds` — Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW vector graph, a Tantivy full-text index, and opt-in per-column bloom filters.
-- `declaration` — A sidecar is declared per table under `indexes` with a kind, a `column`, an `id_column` and builder parameters; the vector kind takes `model`, `dim`, the `cosine` metric, `m` and `ef_construction`.
+- `kinds` — Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW vector graph, a positional full-text index, and opt-in per-column bloom filters.
+- `declaration` — A sidecar is declared per table under `indexes` with a kind, a `column`, an `id_column` and builder parameters; the `vector` kind takes `model`, `dim`, the `cosine` metric, `m` and `ef_construction`, the `fulltext` kind a `tokenizer`.
 - `id-column` — A sidecar's `id_column` defaults to a single-column primary key on a table declaring no `valid_time`, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.
   *A-store*
 - `id-column-unresolved` — A declaration naming no `id_column` on a table without a single-column primary key or declaring `valid_time`, one naming a valid-time table's single key, or two sidecars naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.
   *A-store*
 - `id-unique` — A fold meeting one `id_column` value on two rows of the snapshot it stages raises `StoreIndexIdNotUnique`, naming the table, the column and the value, and publishes nothing.
   *A-store*
-- `paths` — A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>/`, inside the snapshot directory it indexes.
+- `paths` — A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>-<tokenizer>/`, inside the snapshot directory it indexes.
 - `identity` — A sidecar's identity is `(column, builder, builder-version)`; two builders over one column coexist, the caller picks at query time, and `derived.sqlite` records each builder.
 - `rebuild` — Swapping a builder rebuilds the sidecar, leaves the Parquet untouched, and callers on the existing identity read through the cutover.
 - `not-in-file-set` — `indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names.
@@ -275,9 +275,15 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
   *A-store*
 - `graph` — A vector sidecar is an HNSW graph over unit-length `Float32` vectors whose layers draw from a seed of the snapshot id and column, so one staged row set builds one byte-identical graph.
   *because a rebuilt sidecar then differs from its predecessor only where the rows do, and a recall figure replays from its snapshot*
+- `fulltext-by-fold` — The fold builds each declared full-text sidecar over the staged rows whose identifier is non-null and whose text yields a term, and records its entry in the snapshot manifest.
+  *A-store*
+- `postings` — A full-text sidecar is one file holding a sorted term dictionary and, per term, the rows and positions it occurs at, which a reader binary-searches in mapped or decrypted bytes.
+  *because one layout then serves a mapped plaintext file and a decrypted sealed one, and a probe reads only its own terms' postings*
+- `tokenizer` — A `tokenizer` is `unicode`, the default, indexing each lowercased alphanumeric run as one term, or `cjk`, which indexes each Han, Kana or Hangul stretch of a run as overlapping character bigrams.
+  *because an unspaced script puts no boundary inside a sentence, so a word within one is never a whole term*
 - `column-absent` — An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at the fold, before the pass that builds it stages anything.
   *because an index over a missing column builds empty and reads as no match*
-- `column-type` — A vector sidecar over a column not typed as a vector of its declared `dim`, or an `id_column` typed other than text or integer, raises `StoreIndexColumnType` at manifest validation where `columns` types it, else before a landing's rows land.
+- `column-type` — An `id_column` typed other than text or integer, a vector sidecar's column other than a vector of its `dim`, or a full-text sidecar's other than text raises `StoreIndexColumnType` at manifest validation where `columns` types it, else before any row lands.
   *because a builder reading another width, or an identifier the re-join casts differently, indexes rows no reader finds*
 - `clustering` — `cluster_by` sorts rows within a file lexicographically over its columns in declared order; zone maps then skip row groups with no manifest entry and no sidecar.
 - `partitioning` — Partitioning is off unless `partition_by` declares it.
@@ -534,6 +540,7 @@ The store tree and its bucket mirror:
     data/snapshots/snapshot-01742054400000000000/part-00000.parquet
     data/snapshots/snapshot-01742054400000000000/_manifest.json
     data/snapshots/snapshot-01742054400000000000/indexes/vec-<col>-<model>/zone=<label>/
+    data/snapshots/snapshot-01742054400000000000/indexes/fts-<col>-<tokenizer>/
     data/snapshots/<id>.staging/
     requests/<run-id>.<node-id>.parquet
     requests/folded-<snapshot-id>.parquet
@@ -569,6 +576,12 @@ dim             = 384
 metric          = "cosine"
 m               = 16
 ef_construction = 200
+
+[[pipeline.tables.indexes]]
+kind      = "fulltext"
+column    = "body"
+id_column = "passage_id"
+tokenizer = "cjk"
 ```
 
 A run manifest, a snapshot manifest and a table pointer:
@@ -588,7 +601,10 @@ A run manifest, a snapshot manifest and a table pointer:
   "indexes": [{ "kind": "vector", "path": "indexes/vec-embedding-e5-small/zone=all",
                 "column": "embedding", "id_column": "passage_id", "model": "e5-small", "dim": 384,
                 "metric": "cosine", "m": 16, "ef_construction": 200, "row_count": 128400,
-                "key_version": 3 }] }
+                "key_version": 3 },
+              { "kind": "fulltext", "path": "indexes/fts-body-cjk", "column": "body",
+                "id_column": "passage_id", "tokenizer": "cjk", "row_count": 128400,
+                "term_count": 902113, "key_version": 3 }] }
 
 { "snapshot_id": "snapshot-01742054400000000000", "fence": 12 }
 ```

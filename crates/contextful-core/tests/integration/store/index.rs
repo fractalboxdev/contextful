@@ -4,7 +4,7 @@
 use contextful_core::pipeline::declare::{read_manifest, ManifestFile};
 use contextful_core::run::RunError;
 use contextful_core::store::declare::TableDecl;
-use contextful_core::store::index::{IndexKind, Metric, DEFAULT_EF_CONSTRUCTION, DEFAULT_M};
+use contextful_core::store::index::{is_cjk, IndexKind, Metric, Tokenizer, DEFAULT_EF_CONSTRUCTION, DEFAULT_M};
 use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema};
 use contextful_core::store::StoreError;
 
@@ -26,24 +26,43 @@ fn validate_manifest(block: &str) -> Result<(), RunError> {
 
 const VECTOR: &str = "[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5-small\"\ndim = 4\n";
 
-/// A sidecar is declared per table under `indexes` with a kind, a `column`, an `id_column` and builder parameters; the vector kind takes `model`, `dim`, the `cosine` metric, `m` and `ef_construction`.
-// spec: store.index.declaration@7dc16b5c
+const FULLTEXT: &str = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";
+
+/// A sidecar is declared per table under `indexes` with a kind, a `column`, an `id_column` and builder parameters; the `vector` kind takes `model`, `dim`, the `cosine` metric, `m` and `ef_construction`, the `fulltext` kind a `tokenizer`.
+// spec: store.index.declaration@bffdbef1
 #[test]
-fn a_vector_sidecar_declares_its_column_identifier_and_builder_parameters() {
+fn each_sidecar_kind_declares_its_column_identifier_and_builder_parameters() {
     let t = table(
         "name = \"passages\"\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nid_column = \"passage_id\"\n\
          model = \"e5-small\"\ndim = 384\nmetric = \"cosine\"\nm = 8\nef_construction = 64\n",
     );
     let idx = &t.indexes()[0];
     assert_eq!((idx.kind, idx.column.as_str(), idx.id_column.as_deref()), (IndexKind::Vector, "embedding", Some("passage_id")));
-    assert_eq!((idx.model.as_str(), idx.dim, idx.metric, idx.m(), idx.ef_construction()), ("e5-small", 384, Metric::Cosine, 8, 64));
+    assert_eq!((idx.model(), idx.dim(), idx.metric(), idx.m(), idx.ef_construction()), ("e5-small", 384, Metric::Cosine, 8, 64));
     assert!(t.canonical().contains("\"indexes\":[{\"kind\":\"vector\""), "{}", t.canonical());
 
     // The metric and builder parameters default; an unknown metric or key refuses the block.
     let d = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
-    assert_eq!((d.indexes()[0].metric, d.indexes()[0].m(), d.indexes()[0].ef_construction()), (Metric::Cosine, DEFAULT_M, DEFAULT_EF_CONSTRUCTION));
-    for bad in ["metric = \"l2\"", "graph = \"flat\""] {
+    assert_eq!((d.indexes()[0].metric(), d.indexes()[0].m(), d.indexes()[0].ef_construction()), (Metric::Cosine, DEFAULT_M, DEFAULT_EF_CONSTRUCTION));
+    for bad in ["metric = \"l2\"", "graph = \"flat\"", "tokenizer = \"cjk\""] {
         let block = format!("[[pipeline.tables]]\nname = \"passages\"\n{VECTOR}{bad}\n");
+        assert!(TableDecl::parse_pipeline(&block).is_err(), "{bad}");
+    }
+    // A vector block without its model or dimension refuses.
+    for missing in ["kind = \"vector\"\ncolumn = \"embedding\"\ndim = 4", "kind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5\""] {
+        let block = format!("[[pipeline.tables]]\nname = \"passages\"\n[[pipeline.tables.indexes]]\n{missing}\n");
+        assert!(TableDecl::parse_pipeline(&block).is_err(), "{missing}");
+    }
+
+    // The fulltext kind takes a tokenizer, `unicode` unless declared, and no vector key.
+    let f = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{FULLTEXT}tokenizer = \"cjk\"\n"));
+    let idx = &f.indexes()[0];
+    assert_eq!((idx.kind, idx.column.as_str(), idx.tokenizer()), (IndexKind::Fulltext, "body", Tokenizer::Cjk));
+    assert!(f.canonical().contains("{\"kind\":\"fulltext\",\"column\":\"body\",\"tokenizer\":\"cjk\"}"), "{}", f.canonical());
+    let plain = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{FULLTEXT}"));
+    assert_eq!(plain.indexes()[0].tokenizer(), Tokenizer::Unicode);
+    for bad in ["model = \"e5\"", "dim = 4", "metric = \"cosine\"", "m = 8", "ef_construction = 64", "tokenizer = \"whitespace\""] {
+        let block = format!("[[pipeline.tables]]\nname = \"passages\"\n{FULLTEXT}{bad}\n");
         assert!(TableDecl::parse_pipeline(&block).is_err(), "{bad}");
     }
     // A table without a declaration has no sidecar and omits the key.
@@ -121,8 +140,8 @@ fn an_index_or_identifier_the_schema_lacks_is_refused() {
     assert!(matches!(named.validate_indexes(&whole), Err(StoreError::StoreIndexColumnAbsent(m)) if m.contains("digest")));
 }
 
-/// A vector sidecar over a column not typed as a vector of its declared `dim`, or an `id_column` typed other than text or integer, raises `StoreIndexColumnType` at manifest validation where `columns` types it, else before a landing's rows land.
-// spec: store.index.column-type@716751d8
+/// An `id_column` typed other than text or integer, a vector sidecar's column other than a vector of its `dim`, or a full-text sidecar's other than text raises `StoreIndexColumnType` at manifest validation where `columns` types it, else before any row lands.
+// spec: store.index.column-type@5a53304a
 #[test]
 fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
     let t = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
@@ -155,5 +174,39 @@ fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
         if !refused {
             got.unwrap();
         }
+    }
+    // A full-text sidecar reads text alone.
+    let f = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{FULLTEXT}"));
+    for (body_ty, refused) in [(ColumnType::Utf8, false), (ColumnType::Int64, true), (ColumnType::Json, true), (ColumnType::Binary, true)] {
+        let got = f.validate_indexes(&schema(&[("passage_id", ColumnType::Utf8), ("body", body_ty)]));
+        assert_eq!(matches!(got, Err(StoreError::StoreIndexColumnType(_))), refused, "{body_ty:?}: {got:?}");
+    }
+    for (columns, refused) in [("body = \"text\"", false), ("body = \"int64\"", true), ("body = \"binary\"", true)] {
+        let got = validate_manifest(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\ncolumns = {{ {columns} }}\n{FULLTEXT}"));
+        assert_eq!(matches!(got, Err(RunError::Store(StoreError::StoreIndexColumnType(_)))), refused, "{columns}: {got:?}");
+    }
+    let absent = schema(&[("passage_id", ColumnType::Utf8)]);
+    assert!(matches!(f.validate_indexes(&absent), Err(StoreError::StoreIndexColumnAbsent(m)) if m.contains("body")));
+}
+
+/// A `tokenizer` is `unicode`, the default, indexing each lowercased alphanumeric run as one term, or `cjk`, which indexes each Han, Kana or Hangul stretch of a run as overlapping character bigrams.
+// spec: store.index.tokenizer@8d0fa491
+#[test]
+fn the_cjk_tokenizer_indexes_unspaced_stretches_as_bigrams() {
+    let strings = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    // Unicode: lowercased alphanumeric runs, whatever their script.
+    assert_eq!(Tokenizer::Unicode.terms("Solar-Battery, CAFÉ 2030"), strings(&["solar", "battery", "café", "2030"]));
+    assert_eq!(Tokenizer::Unicode.terms("メニューの設定画面を開く"), strings(&["メニューの設定画面を開く"]));
+    // CJK: each Han, Kana or Hangul stretch as overlapping bigrams, the rest of a run whole.
+    assert_eq!(Tokenizer::Cjk.terms("設定画面を開く"), strings(&["設定", "定画", "画面", "面を", "を開", "開く"]));
+    assert_eq!(Tokenizer::Cjk.terms("iPhone設定"), strings(&["iphone", "設定"]));
+    assert_eq!(Tokenizer::Cjk.terms("電池 x 電"), strings(&["電池", "x", "電"]));
+    assert_eq!(Tokenizer::Cjk.terms("한국어 텍스트"), strings(&["한국", "국어", "텍스", "스트"]));
+    assert_eq!(Tokenizer::Cjk.terms("Solar battery"), Tokenizer::Unicode.terms("Solar battery"));
+    for c in ['漢', 'ひ', 'カ', 'ｶ', '한', 'ᄀ', '\u{20000}'] {
+        assert!(is_cjk(c), "{c}");
+    }
+    for c in ['a', 'é', '1', 'ß', 'Ж'] {
+        assert!(!is_cjk(c), "{c}");
     }
 }

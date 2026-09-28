@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 246 | 74 | 17 | 7 | 115 | 0 | 115 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
-| `read` | 2 | 14 | 118 | 21 | 16 | 17 | 83 | 0 | 83 |
+| `read` | 2 | 14 | 120 | 21 | 17 | 17 | 86 | 0 | 86 |
 | `run` | 3 | 24 | 300 | 82 | 34 | 25 | 165 | 0 | 165 |
-| `store` | 1 | 14 | 170 | 41 | 12 | 12 | 131 | 0 | 131 |
+| `store` | 1 | 14 | 173 | 41 | 12 | 12 | 134 | 0 | 134 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 146 | 1545 | 493 | 174 | 110 | 817 | 0 | |
+| **total** | 19 | 146 | 1550 | 493 | 175 | 110 | 823 | 0 | |
 
 Decision records: 18.
 
@@ -25,10 +25,10 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 195 | 139 | passing |
-| 2 — The store | 8 | 129 | 95 | passing |
+| 2 — The store | 8 | 132 | 98 | passing |
 | 3 — The run path | 11 | 184 | 109 | passing |
 | 4 — Ingest | 22 | 349 | 147 | passing |
-| 5 — The read face under enforcement | 16 | 206 | 127 | passing |
+| 5 — The read face under enforcement | 16 | 208 | 130 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
 | 8 — Accountability | 5 | 39 | 19 | open |
@@ -484,6 +484,7 @@ Unscheduled operations: 10.
 | `read.rank.flat-window-full-credit` | `crates/contextful-core/tests/integration/read/rank.rs::a_flat_window_awards_full_credit` | performed |
 | `read.rank.fusion` | `crates/contextful-core/tests/integration/read/rank.rs::fusion_weights_clamps_and_breaks_ties_by_identifier` | performed |
 | `read.rank.internal-score-stays-internal` | `crates/contextful-context/tests/integration/read/retrieve.rs::only_the_integer_score_crosses` | performed |
+| `read.rank.lexical-index-cache` | `crates/contextful-context/tests/integration/read/fulltext.rs::an_opened_sidecar_serves_repeated_reads_until_a_new_snapshot` | performed |
 | `read.rank.lexical-leg-matches-only` | `crates/contextful-core/tests/integration/read/rank.rs::the_lexical_leg_holds_matching_documents_alone` | performed |
 | `read.rank.ordering-casts-first` | `crates/contextful-core/tests/integration/read/rank.rs::publication_text_casts_to_an_instant_before_comparison` | performed |
 | `read.rank.question-window-is-a-tier` | `crates/contextful-core/tests/integration/read/rank.rs::the_in_window_flag_leads_and_an_out_of_window_row_stays` | performed |
@@ -519,6 +520,8 @@ Unscheduled operations: 10.
 | `read.retrieve.candidate-window` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_candidate_window_is_the_larger_of_a_multiple_and_a_floor` | performed |
 | `read.retrieve.content-tokens` | `crates/contextful-core/tests/integration/read/retrieve.rs::content_tokens_are_lowercased_split_stopped_and_deduplicated` | performed |
 | `read.retrieve.engine-resolved-date` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_engine_resolves_the_publication_column` | performed |
+| `read.retrieve.fulltext-probe` | `crates/contextful-context/tests/integration/read/fulltext.rs::a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot` | performed |
+| `read.retrieve.fulltext-sealed-cap` | `crates/contextful-context/tests/integration/encrypt.rs::a_sealed_full_text_sidecar_past_256_mib_stays_unopened` | performed |
 | `read.retrieve.gain-never-loss` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_accelerated_arm_returns_every_exact_row_and_readers_can_differ` | performed |
 | `read.retrieve.identifiers-never-snippet` | `crates/contextful-context/tests/integration/read/retrieve.rs::identifier_columns_never_enter_a_snippet` | performed |
 | `read.retrieve.plural-suffix-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_short_token_takes_no_plural_suffix` | performed |
@@ -752,7 +755,8 @@ Unscheduled operations: 10.
 | `store.index.clustering` | `crates/contextful-context/tests/integration/index.rs::cluster_by_sorts_rows_within_a_file_in_declared_order` | performed |
 | `store.index.column-absent` | `crates/contextful-core/tests/integration/store/index.rs::an_index_or_identifier_the_schema_lacks_is_refused` | performed |
 | `store.index.column-type` | `crates/contextful-core/tests/integration/store/index.rs::a_vector_of_another_width_or_an_unreadable_identifier_is_refused` | performed |
-| `store.index.declaration` | `crates/contextful-core/tests/integration/store/index.rs::a_vector_sidecar_declares_its_column_identifier_and_builder_parameters` | performed |
+| `store.index.declaration` | `crates/contextful-core/tests/integration/store/index.rs::each_sidecar_kind_declares_its_column_identifier_and_builder_parameters` | performed |
+| `store.index.fulltext-by-fold` | `crates/contextful-context/tests/integration/index.rs::the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms` | performed |
 | `store.index.graph` | `crates/contextful-context/tests/integration/index.rs::one_staged_row_set_builds_one_byte_identical_graph` | performed |
 | `store.index.id-column` | `crates/contextful-core/tests/integration/store/index.rs::the_identifier_defaults_to_a_single_key_and_serves_every_table_shape` | performed |
 | `store.index.id-column-unresolved` | `crates/contextful-core/tests/integration/store/index.rs::a_sidecar_without_one_shared_identifier_is_refused` | performed |
@@ -760,7 +764,9 @@ Unscheduled operations: 10.
 | `store.index.not-in-file-set` | `crates/contextful-context/tests/integration/index.rs::a_sidecar_directory_joins_no_file_set` | performed |
 | `store.index.partition-type` | `crates/contextful-context/tests/integration/index.rs::a_binary_or_vector_partition_column_is_refused` | performed |
 | `store.index.partitioning` | `crates/contextful-context/tests/integration/index.rs::partitioning_is_off_unless_declared` | performed |
+| `store.index.postings` | `crates/contextful-context/tests/integration/index.rs::one_row_set_lays_out_one_postings_file_a_probe_reads_by_term` | performed |
 | `store.index.tenant-verbatim` | `crates/contextful-context/tests/integration/index.rs::a_tenant_value_is_kept_byte_for_byte` | performed |
+| `store.index.tokenizer` | `crates/contextful-core/tests/integration/store/index.rs::the_cjk_tokenizer_indexes_unspaced_stretches_as_bigrams` | performed |
 | `store.index.vector-by-fold` | `crates/contextful-context/tests/integration/index.rs::the_fold_builds_each_declared_sidecar_over_identified_nonzero_vectors_of_its_model` | performed |
 | `store.lay-out.catalog-ports` | `crates/contextful-sqlite/tests/integration/derived.rs::both_catalogs_are_reached_through_the_core_ports` | performed |
 | `store.lay-out.derived-catalog` | `crates/contextful-cli/tests/integration/context.rs::rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree` | performed |

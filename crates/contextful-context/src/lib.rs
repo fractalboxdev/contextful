@@ -6,6 +6,7 @@ pub mod catalog;
 pub mod commit_log;
 pub mod error;
 pub mod fold;
+pub mod fulltext;
 pub mod land;
 pub mod ledger;
 pub mod node;

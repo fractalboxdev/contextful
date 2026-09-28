@@ -2,7 +2,7 @@
 
 # Target ledger
 
-61 entries: 34 gated, 2 recorded, 0 scheduled, 25 open.
+61 entries: 35 gated, 2 recorded, 1 scheduled, 23 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -40,8 +40,8 @@
 | `journal-effect-once` | `run.journal.entry-key` | `journal.effects_per_key.max` | gate | test `contextful_engine::journal::racers_on_one_key_run_the_effect_once_and_read_equal_bytes` | `== 1` | gated |
 | `journal-holder-liveness` | `run.journal.claim-takeover` | `journal.takeover.effects` | gate | test `contextful_engine::journal::a_claim_whose_holder_lapsed_is_taken_over` | `== 1` | gated |
 | `journal-storage-bounded` | `run.journal.blob-sweep` | `journal.sweep.stale_blobs` | gate | test `contextful_engine::journal::the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day` | `== 0` | gated |
-| `lexical-deep-recall` | `read.retrieve.candidate-window` | `slices.deep_recall.retrieval.lexical.hit_rate_at_k` | gate | issue 44 | `== 1` | open (issue 44) |
-| `lexical-sidecar-cost` | `read.retrieve.candidate-window` | `lexical.postings_scored_per_query` | scheduled | issue 44 | — | open (issue 44) |
+| `lexical-deep-recall` | `read.retrieve.candidate-window` | `slices.deep_recall.retrieval.lexical.hit_rate_at_k` | gate | test `contextful_context::read::fulltext::a_term_on_one_row_behind_10000_newer_rows_returns_for_limit_10` | `== 1` | gated |
+| `lexical-sidecar-cost` | `read.retrieve.fulltext-probe` | `lexical.postings_scored_per_query` | scheduled | test `contextful_context::index::one_row_set_lays_out_one_postings_file_a_probe_reads_by_term` | — | scheduled |
 | `memory-evidence-gate` | `read.recall.evidence-unresolved` | `recall.unresolved_admitted` | gate | test `contextful_core::memory::recall::unresolvable_evidence_suppresses_the_claim` | `== 0` | gated |
 | `memory-live-claims` | `read.recall.ranked-arm` | `recall.expired_returned` | gate | test `contextful_memory::synthesize::a_ranked_arm_over_claims_serves_live_claims_alone` | `== 0` | gated |
 | `native-golden-floor` | `assurance.baseline.native-gate` | `retrieval.hybrid.r_precision` | gate | issue 78 | `>= 0.6` | open (issue 78) |

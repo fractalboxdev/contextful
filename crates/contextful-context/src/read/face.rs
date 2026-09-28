@@ -45,6 +45,8 @@ pub struct Face {
     templates: Vec<QueryTemplate>,
     memory: MemoryDeclarations,
     pepper: Pepper,
+    /// Opened full-text sidecars (`read.rank.lexical-index-cache`).
+    pub(crate) fulltext: crate::fulltext::SidecarCache<crate::fulltext::FulltextSidecar>,
 }
 
 /// The columns a table with no landed batch registers over: the injected columns every
@@ -86,7 +88,8 @@ impl Face {
             decls.insert(d.name.clone(), d);
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
-        let face = Face { store, decls, policies, templates, memory, pepper };
+        let fulltext = crate::fulltext::SidecarCache::new(contextful_core::read::rank::LEXICAL_INDEX_CACHE_ENTRIES);
+        let face = Face { store, decls, policies, templates, memory, pepper, fulltext };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {

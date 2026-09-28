@@ -243,8 +243,8 @@ fn sidecar_dirs(r: &Reads, table: &str) -> (std::path::PathBuf, std::path::PathB
     (dir.clone(), dir.join(path))
 }
 
-/// The vector sidecar arm adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
-// spec: read.retrieve.sidecar-generates-candidates@40da3a56
+/// Each sidecar arm, vector over a query embedding and full-text over the content tokens, adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
+// spec: read.retrieve.sidecar-generates-candidates@f6d3b339
 #[test]
 fn the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores() {
     let r = sidecar_reads("");
@@ -303,8 +303,8 @@ fn sidecar_candidates_are_identifier_values_rejoined_through_the_relation() {
     assert!(!ids(&ranked, "passage_id").contains(&"p000".to_string()));
 }
 
-/// Any sidecar precondition failure — no snapshot, no matching sidecar, a masked or zone-withheld identifier or vector column, a dimension or manifest mismatch, an unreadable dump — falls back to the exact scan.
-// spec: read.retrieve.sidecar-falls-back@9e31e8be
+/// Any sidecar precondition failure — no snapshot, no matching sidecar, a masked or zone-withheld identifier or indexed column, a classed text column, a dimension or manifest mismatch, an unreadable dump — falls back to the exact scan.
+// spec: read.retrieve.sidecar-falls-back@d9f25051
 #[test]
 fn every_failed_precondition_falls_back_to_the_exact_scan() {
     use contextful_context::vector::Fallback;

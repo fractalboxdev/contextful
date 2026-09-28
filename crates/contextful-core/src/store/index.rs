@@ -1,5 +1,5 @@
 //! `store.index`: the sidecar declaration, the identifier column every sidecar of a table
-//! shares, and the manifest entry a built vector sidecar records.
+//! shares, the full-text tokenizer, and the manifest entry each built sidecar records.
 
 use super::declare::TableDecl;
 use super::reconcile::{ColumnType, Schema};
@@ -29,11 +29,82 @@ pub const VECTOR_BUILDER: &str = "contextful-hnsw";
 /// The on-disk graph format version the builder writes and the reader accepts.
 pub const VECTOR_BUILDER_VERSION: u32 = 1;
 
+/// The builder a full-text sidecar records, with [`FULLTEXT_BUILDER_VERSION`] its identity
+/// (`store.index.identity`).
+pub const FULLTEXT_BUILDER: &str = "contextful-postings";
+
+/// The on-disk postings format version the builder writes and the reader accepts.
+pub const FULLTEXT_BUILDER_VERSION: u32 = 1;
+
 /// A sidecar kind a declaration names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IndexKind {
     Vector,
+    Fulltext,
+}
+
+/// How a full-text sidecar splits text into terms (`store.index.tokenizer`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tokenizer {
+    /// Each lowercased alphanumeric run is one term.
+    #[default]
+    Unicode,
+    /// As `Unicode`, except that each Han, Kana or Hangul stretch of a run indexes as
+    /// overlapping character bigrams, and a one-character stretch as itself.
+    Cjk,
+}
+
+impl Tokenizer {
+    pub fn name(self) -> &'static str {
+        match self {
+            Tokenizer::Unicode => "unicode",
+            Tokenizer::Cjk => "cjk",
+        }
+    }
+
+    /// The terms of `text` in position order: the i-th term sits at position i.
+    pub fn terms(self, text: &str) -> Vec<String> {
+        let lowered = text.to_lowercase();
+        let mut out = Vec::new();
+        for run in lowered.split(|c: char| !c.is_alphanumeric()).filter(|r| !r.is_empty()) {
+            match self {
+                Tokenizer::Unicode => out.push(run.to_string()),
+                Tokenizer::Cjk => cjk_terms(run, &mut out),
+            }
+        }
+        out
+    }
+}
+
+/// Whether `c` is a Han ideograph, a Hiragana or Katakana kana, or a Hangul syllable or
+/// jamo: the scripts written without spaces between words.
+pub fn is_cjk(c: char) -> bool {
+    matches!(u32::from(c),
+        0x1100..=0x11FF | 0x3040..=0x309F | 0x30A0..=0x30FF | 0x3130..=0x318F | 0x31F0..=0x31FF
+        | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF | 0xFF66..=0xFF9F
+        | 0x20000..=0x323AF)
+}
+
+/// Split one alphanumeric run into its CJK stretches, each as overlapping bigrams, and the
+/// stretches between them, each as one term.
+fn cjk_terms(run: &str, out: &mut Vec<String>) {
+    let chars: Vec<char> = run.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let cjk = is_cjk(chars[i]);
+        let start = i;
+        while i < chars.len() && is_cjk(chars[i]) == cjk {
+            i += 1;
+        }
+        let stretch = &chars[start..i];
+        if cjk && stretch.len() > 1 {
+            out.extend(stretch.windows(2).map(|w| w.iter().collect::<String>()));
+        } else {
+            out.push(stretch.iter().collect());
+        }
+    }
 }
 
 /// A vector sidecar's distance.
@@ -44,25 +115,113 @@ pub enum Metric {
     Cosine,
 }
 
-/// One `[[pipeline.tables.indexes]]` block (`store.index.declaration`).
+/// One `[[pipeline.tables.indexes]]` block (`store.index.declaration`): a `vector` block
+/// takes `model`, `dim`, `metric`, `m` and `ef_construction`, a `fulltext` block a
+/// `tokenizer`, and a key of the other kind refuses the block.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "IndexBlock")]
 pub struct IndexDecl {
     pub kind: IndexKind,
     pub column: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id_column: Option<String>,
-    pub model: String,
-    pub dim: u32,
-    #[serde(default)]
-    pub metric: Metric,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dim: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metric: Option<Metric>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub m: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ef_construction: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokenizer: Option<Tokenizer>,
+}
+
+/// An index block as written, before its keys are held to its kind.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IndexBlock {
+    kind: IndexKind,
+    column: String,
+    #[serde(default)]
+    id_column: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    dim: Option<u32>,
+    #[serde(default)]
+    metric: Option<Metric>,
+    #[serde(default)]
+    m: Option<u32>,
+    #[serde(default)]
+    ef_construction: Option<u32>,
+    #[serde(default)]
+    tokenizer: Option<Tokenizer>,
+}
+
+impl TryFrom<IndexBlock> for IndexDecl {
+    type Error = String;
+
+    fn try_from(b: IndexBlock) -> Result<IndexDecl, String> {
+        let column = &b.column;
+        match b.kind {
+            IndexKind::Vector => {
+                if b.model.is_none() || b.dim.is_none() {
+                    return Err(format!("the vector sidecar over `{column}` declares no `model` or no `dim`"));
+                }
+                if b.tokenizer.is_some() {
+                    return Err(format!("the vector sidecar over `{column}` declares a `tokenizer`, which only a full-text sidecar takes"));
+                }
+            }
+            IndexKind::Fulltext => {
+                let vector_keys = [
+                    ("model", b.model.is_some()),
+                    ("dim", b.dim.is_some()),
+                    ("metric", b.metric.is_some()),
+                    ("m", b.m.is_some()),
+                    ("ef_construction", b.ef_construction.is_some()),
+                ];
+                if let Some((key, _)) = vector_keys.iter().find(|(_, set)| *set) {
+                    return Err(format!("the full-text sidecar over `{column}` declares `{key}`, which only a vector sidecar takes"));
+                }
+            }
+        }
+        Ok(IndexDecl {
+            kind: b.kind,
+            column: b.column,
+            id_column: b.id_column,
+            model: b.model,
+            dim: b.dim,
+            metric: b.metric,
+            m: b.m,
+            ef_construction: b.ef_construction,
+            tokenizer: b.tokenizer,
+        })
+    }
 }
 
 impl IndexDecl {
+    /// A vector sidecar's model; empty on a full-text one.
+    pub fn model(&self) -> &str {
+        self.model.as_deref().unwrap_or_default()
+    }
+
+    /// A vector sidecar's dimension; 0 on a full-text one.
+    pub fn dim(&self) -> u32 {
+        self.dim.unwrap_or(0)
+    }
+
+    pub fn metric(&self) -> Metric {
+        self.metric.unwrap_or_default()
+    }
+
+    /// A full-text sidecar's tokenizer, `unicode` unless declared.
+    pub fn tokenizer(&self) -> Tokenizer {
+        self.tokenizer.unwrap_or_default()
+    }
+
     /// Neighbours per node above the base layer; the base layer holds twice as many.
     pub fn m(&self) -> u32 {
         self.m.unwrap_or(DEFAULT_M).max(2)
@@ -75,8 +234,34 @@ impl IndexDecl {
     /// The sidecar's directory relative to its snapshot directory, `escape` rendering the
     /// column and model as path segments (`store.index.paths`).
     pub fn path(&self, escape: impl Fn(&str) -> String) -> String {
-        format!("{INDEXES_DIR}/vec-{}-{}/zone={ZONE_ALL}", escape(&self.column), escape(&self.model))
+        match self.kind {
+            IndexKind::Vector => format!("{INDEXES_DIR}/vec-{}-{}/zone={ZONE_ALL}", escape(&self.column), escape(self.model())),
+            IndexKind::Fulltext => format!("{INDEXES_DIR}/fts-{}-{}", escape(&self.column), self.tokenizer().name()),
+        }
     }
+}
+
+/// The entry a built full-text sidecar records in its snapshot manifest's `indexes`, and
+/// byte for byte in its own directory's manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FulltextEntry {
+    pub kind: IndexKind,
+    /// The sidecar directory, relative to the snapshot directory.
+    pub path: String,
+    pub table: String,
+    pub snapshot_id: String,
+    pub column: String,
+    pub id_column: String,
+    pub tokenizer: Tokenizer,
+    pub builder: String,
+    pub builder_version: u32,
+    /// Rows the postings hold.
+    pub row_count: u64,
+    /// Distinct terms the dictionary holds.
+    pub term_count: u64,
+    /// The key version sealing the sidecar's files; 0 for plaintext.
+    pub key_version: u32,
 }
 
 /// The entry a built vector sidecar records in its snapshot manifest's `indexes`, and
@@ -208,21 +393,34 @@ impl TableDecl {
             }
         }
         for idx in self.indexes() {
-            match schema.get(&idx.column).map(|c| c.ty) {
-                None if require => {
+            let kind = match idx.kind {
+                IndexKind::Vector => "vector",
+                IndexKind::Fulltext => "full-text",
+            };
+            match (idx.kind, schema.get(&idx.column).map(|c| c.ty)) {
+                (_, None) if require => {
                     return Err(StoreError::StoreIndexColumnAbsent(format!(
-                        "table `{}`: a vector sidecar indexes `{}`, which is no column of the table",
+                        "table `{}`: a {kind} sidecar indexes `{}`, which is no column of the table",
                         self.name, idx.column
                     )))
                 }
-                None => {}
-                Some(ColumnType::FixedSizeList(_, n)) if n == idx.dim => {}
-                Some(ty) => {
+                (_, None) => {}
+                (IndexKind::Vector, Some(ColumnType::FixedSizeList(_, n))) if n == idx.dim() => {}
+                (IndexKind::Fulltext, Some(ColumnType::Utf8)) => {}
+                (IndexKind::Vector, Some(ty)) => {
                     return Err(StoreError::StoreIndexColumnType(format!(
                         "table `{}`: the vector sidecar over `{}` declares dim {}, and the column is typed {}",
                         self.name,
                         idx.column,
-                        idx.dim,
+                        idx.dim(),
+                        ty.name()
+                    )))
+                }
+                (IndexKind::Fulltext, Some(ty)) => {
+                    return Err(StoreError::StoreIndexColumnType(format!(
+                        "table `{}`: the full-text sidecar over `{}` reads text, and the column is typed {}",
+                        self.name,
+                        idx.column,
                         ty.name()
                     )))
                 }

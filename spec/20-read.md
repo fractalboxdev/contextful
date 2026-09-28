@@ -194,11 +194,15 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `dedup-is-gated` — The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.
 - `snippet` — A snippet concatenates up to three text columns: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.
 - `identifiers-never-snippet` — Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet.
-- `sidecar-generates-candidates` — The vector sidecar arm adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
+- `sidecar-generates-candidates` — Each sidecar arm, vector over a query embedding and full-text over the content tokens, adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
   *P5*
+- `fulltext-probe` — A full-text probe ranks the whole snapshot by BM25 over one should-clause per content token; a token the sidecar's tokenizer splits into several terms matches them at consecutive positions, and an ASCII word token matches its plural as {{read.retrieve.script-split-matching}} does.
+  *because a term outside the recency window is found only by a probe that reads every row's postings*
 - `sidecar-oversampling` — One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.
 - `sidecar-size-cap` — A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.
-- `sidecar-falls-back` — Any sidecar precondition failure — no snapshot, no matching sidecar, a masked or zone-withheld identifier or vector column, a dimension or manifest mismatch, an unreadable dump — falls back to the exact scan.
+- `fulltext-sealed-cap` — A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
+  *A-store*
+- `sidecar-falls-back` — Any sidecar precondition failure — no snapshot, no matching sidecar, a masked or zone-withheld identifier or indexed column, a classed text column, a dimension or manifest mismatch, an unreadable dump — falls back to the exact scan.
   *P4*
 - `gain-never-loss` — For one reader the accelerated arm returns a superset of the exact path's rows. Two readers with one query on one snapshot can recall different rows.
 
@@ -248,7 +252,7 @@ Ordering of a candidate set: the three legs, their fusion, the question's timefr
 - `fallback-counts-tokens` — Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.
 - `caller-embedding` — A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.
   *A-topology*
-- `lexical-index-cache` — The full-text index is keyed on a fingerprint over the candidate documents and cached in a FIFO of 64 entries. A changed snapshot, table set or time bound changes the fingerprint.
+- `lexical-index-cache` — An opened full-text sidecar is cached on a fingerprint of its table, snapshot, path and key version in a FIFO of 64 entries, so a repeated read opens nothing and a new snapshot opens afresh.
 - `widened-window-statistics` — Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.
 
 The ranking legs, their fallback, and the ordering they feed:
