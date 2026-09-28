@@ -33,6 +33,9 @@ pub enum EnforceError {
     /// A read of another tenant's rows on a granted table. (`authority.refuse.scope-denied`)
     #[error("EnforceScopeDenied: {0}")]
     ScopeDenied(String),
+    /// A mask strategy a binary or vector column's type does not admit. (`authority.mask.typed-strategy`)
+    #[error("EnforceStrategyOutsideType: {0}")]
+    StrategyOutsideType(String),
     /// A truncation width at or past the primary's output width. (`authority.mask.cuts-nothing`)
     #[error("EnforceTruncationCutsNothing: {0}")]
     TruncationCutsNothing(String),
@@ -69,6 +72,7 @@ impl EnforceError {
             EnforceError::PredicateOutsideGrammar(_) => "EnforcePredicateOutsideGrammar",
             EnforceError::ProtectedFloorWidened(_) => "EnforceProtectedFloorWidened",
             EnforceError::ScopeDenied(_) => "EnforceScopeDenied",
+            EnforceError::StrategyOutsideType(_) => "EnforceStrategyOutsideType",
             EnforceError::TruncationCutsNothing(_) => "EnforceTruncationCutsNothing",
             EnforceError::TruncationTooWide(_) => "EnforceTruncationTooWide",
             EnforceError::UnknownClass(_) => "EnforceUnknownClass",

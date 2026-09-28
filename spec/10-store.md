@@ -171,12 +171,18 @@ The column and table namespaces the engine holds, the provenance columns it inje
 Schema evolution across a table's file set: the type lattice, additive columns, and what a scan may invent.
 
 - `explicit-file-list` — Every read hands `read_parquet` an explicit sorted file list resolved from the pointer and the manifests, never a glob; a stray file joins nothing.
-- `union-by-name` — Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation adds no per-column cast.
+- `union-by-name` — Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation casts no column but a vector, per {{store.reconcile.half-width}}.
 - `lattice` — The type lattice holds one promotion, `Int64` with `Float64` to `Float64`; a JSON type absorbs `Utf8`.
   *A-store*
 - `incompatible` — Any other pair of types observed for one column raises `StoreSchemaIncompatible` at the write, naming the column, the stored type and the arriving type.
   *A-store*
 - `float-loss` — An `Int64` value above 9007199254740992 loses precision once a `Float64` batch lands on its column.
+- `binary-and-vector` — The lattice holds `Binary`, `FixedSizeBinary(n)` and a `FixedSizeList` of `Float32` or `Float16` at dimension n; none takes a promotion, so a width, item or dimension change meets {{store.reconcile.incompatible}}.
+  *A-store*
+- `typed-landing` — A producer declares these types; a JSON batch carries bytes as padded base64 and a vector as a number array of its dimension, and any other value meets {{store.reconcile.incompatible}}.
+  *A-store*
+- `half-width` — A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.
+  *A-store*
 - `key-widening` — A primary-key column takes no `Float64` promotion: the widening batch raises `StoreKeyWidened` before any Parquet, as does a fold meeting a key already reconciled to `Float64`.
   *A-store*
 - `additive` — An unseen column joins the merged schema, and files written before it read it as null.
@@ -187,8 +193,6 @@ Schema evolution across a table's file set: the type lattice, additive columns, 
 - `reserved-set-versioned` — Adding an injected column advances the semantics version, whose fingerprint recipe names the column.
 
 unsettled: What dimension caps a fixed-size vector column, given the engine bounds an `ARRAY` width? owner: store affects: store.reconcile
-
-unsettled: Does every engine version the read profile accepts widen a Parquet `FLOAT16` to `FLOAT`, or does an older one refuse the column? owner: store affects: store.reconcile
 
 ## fold
 

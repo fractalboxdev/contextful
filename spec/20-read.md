@@ -143,7 +143,9 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
 - `row-ceiling` — A per-table row ceiling published as `limits.max_rows` bounds rows delivered, applied at execution with an over-fetch of 1 rows. It bounds no work performed.
 - `truncation-is-exact` — `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.
   *P4*
-- `cell-encoding` — SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; binary is `\xAA` hex; an enum is its label; a container is its text form.
+- `cell-encoding` — SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; any other container is its text form.
+- `bytes-and-vectors` — Binary is padded base64, and a fixed-size float array, a vector column included, is a JSON array holding each element as a float cell.
+  *A-store*
 - `wide-number-shape` — A column's JSON encoding follows its SQL type alone: integers of 32 bits or fewer, finite floats and decimals of 15 digits or fewer are numbers; wider integers and decimals are exact decimal strings.
   *because a wire type that varies with the values on one page breaks a typed client on the next*
 - `type-is-the-cell` — No separate type list rides the envelope; a cell's JSON type is the declaration.
@@ -300,7 +302,7 @@ The embedding port and its default, the model identifier beside each vector, the
 
 - `default-embedder` — The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.
 - `default-embedder-reach` — The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.
-- `model-identifier` — Every stored vector travels beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.
+- `model-identifier` — Every stored vector lands in a {{store.reconcile.binary-and-vector}} column beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.
 - `build-identity` — The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.
   *P3*
 - `required-face` — A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.

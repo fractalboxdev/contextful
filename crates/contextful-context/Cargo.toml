@@ -25,6 +25,7 @@ arrow-select = "57"
 # interface carries the pepper-holding mask functions. Only the `read` feature links it.
 duckdb = { version = "1.10500", features = ["bundled", "parquet", "json", "vscalar"], optional = true }
 getrandom = "0.3"
+half = "2"
 parquet = { version = "57", default-features = false, features = ["arrow", "zstd"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -34,6 +34,8 @@ pub enum Cell {
     Interval { months: i32, days: i32, nanos: i64 },
     Text(String),
     Blob(Vec<u8>),
+    /// A fixed-size float array, such as a vector column, each element widened to `f64`.
+    Vector(Vec<f64>),
     /// An enum value, by its label.
     Enum(String),
     /// A list, struct, map or union, by its text form.
@@ -67,7 +69,8 @@ impl Cell {
             Cell::Time(micros) => Value::String(time_text(*micros)),
             Cell::Interval { months, days, nanos } => Value::String(duration_text(*months, *days, *nanos)),
             Cell::Text(s) | Cell::Enum(s) | Cell::Container(s) => Value::String(s.clone()),
-            Cell::Blob(b) => Value::String(b.iter().map(|x| format!("\\x{x:02X}")).collect()),
+            Cell::Blob(b) => Value::String(crate::store::reconcile::encode_binary(b)),
+            Cell::Vector(v) => Value::Array(v.iter().map(|f| Cell::Float(*f).to_json()).collect()),
         }
     }
 }

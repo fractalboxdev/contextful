@@ -4,8 +4,8 @@ use super::at;
 use contextful_core::read::respond::{Cell, Response, ROW_CEILING_OVERFETCH};
 use serde_json::{json, Value};
 
-/// SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; binary is `\xAA` hex; an enum is its label; a container is its text form.
-// spec: read.respond.cell-encoding@86301287
+/// SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; any other container is its text form.
+// spec: read.respond.cell-encoding@6cd6f84c
 #[test]
 fn cells_encode_by_their_sql_type() {
     assert_eq!(Cell::Null.to_json(), Value::Null);
@@ -17,12 +17,23 @@ fn cells_encode_by_their_sql_type() {
     assert_eq!(Cell::Time(34_260_500_000).to_json(), json!("09:31:00.500000"));
     assert_eq!(Cell::Interval { months: 14, days: 3, nanos: 90_500_000_000 }.to_json(), json!("P14M3DT90.5S"));
     assert_eq!(Cell::Interval { months: 0, days: 0, nanos: 0 }.to_json(), json!("PT0S"));
-    assert_eq!(Cell::Blob(vec![0xAA, 0x01]).to_json(), json!("\\xAA\\x01"));
     assert_eq!(Cell::Enum("shipped".into()).to_json(), json!("shipped"));
     assert_eq!(Cell::Container("[1, 2]".into()).to_json(), json!("[1, 2]"));
     // Empty text and a false boolean are values, not nulls.
     assert_eq!(Cell::Text(String::new()).to_json(), json!(""));
     assert_eq!(Cell::Boolean(false).to_json(), json!(false));
+}
+
+/// Binary is padded base64, and a fixed-size float array, a vector column included, is a JSON array holding each element as a float cell.
+// spec: read.respond.bytes-and-vectors@59c872e7
+#[test]
+fn bytes_are_base64_and_vectors_are_number_arrays() {
+    assert_eq!(Cell::Blob(vec![0xAA, 0x01]).to_json(), json!("qgE="));
+    assert_eq!(Cell::Blob(vec![0xFF, 0xEE, 0xDD]).to_json(), json!("/+7d"));
+    assert_eq!(Cell::Blob(Vec::new()).to_json(), json!(""));
+    assert_eq!(Cell::Vector(vec![0.5, -1.0, 0.0]).to_json(), json!([0.5, -1.0, 0.0]));
+    // Each element encodes as a float cell does, a non-finite one included.
+    assert_eq!(Cell::Vector(vec![f64::NAN, f64::INFINITY]).to_json(), json!(["NaN", "inf"]));
 }
 
 /// A column's JSON encoding follows its SQL type alone: integers of 32 bits or fewer, finite floats and decimals of 15 digits or fewer are numbers; wider integers and decimals are exact decimal strings.

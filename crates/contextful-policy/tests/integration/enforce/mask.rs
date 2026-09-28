@@ -3,7 +3,7 @@
 
 use contextful_core::enforce::EnforceError;
 use contextful_core::store::declare::TableDecl;
-use contextful_core::store::reconcile::{Column, ColumnType};
+use contextful_core::store::reconcile::{Column, ColumnType, FloatItem};
 use contextful_policy::enforce::mask::{
     class, truncation_ceiling, Pepper, CLASSES, HASH_OUTPUT_WIDTH, MASKS_PER_TABLE, MASK_CROWD_FLOOR, PEPPER_VAR,
     TOKEN_OUTPUT_WIDTH,
@@ -209,4 +209,60 @@ fn a_mask_on_an_absent_column_is_refused() {
     }
     let schema = [Column::new("contact_email", ColumnType::Utf8, true)];
     assert_eq!(p.check_schema("patients", &schema), Ok(()));
+}
+
+/// A binary column masks by `drop` or by `hash` over its bytes, a vector column by `drop` alone; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.
+// spec: authority.mask.typed-strategy@e5c57628
+#[test]
+fn binary_and_vector_columns_admit_their_strategies_alone() {
+    let binary = [ColumnType::Binary, ColumnType::FixedSizeBinary(32)];
+    let vector = [ColumnType::FixedSizeList(FloatItem::Float32, 4), ColumnType::FixedSizeList(FloatItem::Float16, 384)];
+    let strategies = [
+        ("drop", true, true),
+        ("hash", true, false),
+        ("tokenize", false, false),
+        ("truncate:4", false, false),
+        ("bucket:5", false, false),
+        ("range:5", false, false),
+    ];
+    for (strategy, on_binary, on_vector) in strategies {
+        let p = policy(&format!("v = {{ strategy = \"{strategy}\" }}")).unwrap();
+        for (types, admitted) in [(&binary, on_binary), (&vector, on_vector)] {
+            for ty in types {
+                match (p.check_schema("patients", &[Column::new("v", *ty, true)]), admitted) {
+                    (Ok(()), true) => {}
+                    (Err(EnforceError::StrategyOutsideType(why)), false) => {
+                        assert!(why.contains("`v`") && why.contains(&ty.name()), "{why}");
+                        assert_eq!(EnforceError::StrategyOutsideType(why).identifier(), "EnforceStrategyOutsideType");
+                    }
+                    (other, _) => panic!("{strategy} on {ty:?}: {other:?}"),
+                }
+            }
+        }
+        // A scalar column admits every strategy.
+        assert_eq!(p.check_schema("patients", &[Column::new("v", ColumnType::Utf8, true)]), Ok(()));
+    }
+    // A combine behind `hash` truncates the digest of the bytes.
+    let p = policy("v = { strategy = \"hash\", combine = \"truncate:6\" }").unwrap();
+    assert_eq!(p.check_schema("patients", &[Column::new("v", ColumnType::Binary, true)]), Ok(()));
+}
+
+/// `hash` over a binary column digests the bytes the padded base64 carries, so it joins a text digest of the same bytes; `drop` nulls a binary or vector cell.
+#[test]
+fn a_binary_hash_digests_the_bytes() {
+    let key = pepper("key");
+    let p = policy("v = { strategy = \"hash\" }").unwrap();
+    let hash = p.columns["v"].mask.as_ref().unwrap();
+    // "dmFsdWU=" is the base64 of the bytes of "value".
+    assert_eq!(hash.apply(&key, Some("dmFsdWU="), ColumnType::Binary), Some(key.digest("value")));
+    assert_eq!(hash.apply(&key, Some("dmFsdWU="), ColumnType::FixedSizeBinary(5)), Some(key.digest_bytes(b"value")));
+    assert_eq!(key.digest_bytes(&[0xFF, 0x00]).len(), HASH_OUTPUT_WIDTH as usize);
+    assert_eq!(hash.sql("v", ColumnType::Binary), "contextful_mask_hash_bytes(\"v\")");
+    let p = policy("v = { strategy = \"drop\" }").unwrap();
+    let drop = p.columns["v"].mask.as_ref().unwrap();
+    for ty in [ColumnType::Binary, ColumnType::FixedSizeList(FloatItem::Float16, 4)] {
+        assert_eq!(drop.apply(&key, Some("dmFsdWU="), ty), None);
+    }
+    assert_eq!(drop.sql("v", ColumnType::FixedSizeList(FloatItem::Float16, 4)), "CAST(NULL AS FLOAT[4])");
+    assert_eq!(drop.sql("v", ColumnType::FixedSizeBinary(5)), "CAST(NULL AS BLOB)");
 }

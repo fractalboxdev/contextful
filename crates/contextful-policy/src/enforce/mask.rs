@@ -4,7 +4,7 @@
 use super::PolicyError;
 use contextful_core::enforce::EnforceError;
 use contextful_core::store::declare::DeclarationMalformed;
-use contextful_core::store::reconcile::ColumnType;
+use contextful_core::store::reconcile::{decode_binary, ColumnType};
 use contextful_core::store::relation::ident;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -30,6 +30,8 @@ const DEVELOPMENT_PEPPER: &str = "contextful-development-pepper-not-for-producti
 /// The scalar functions the query layer calls, each holding the pepper in process memory
 /// (`authority.mask.native-digest`).
 pub const HASH_FUNCTION: &str = "contextful_mask_hash";
+/// The keyed digest over a binary column's bytes.
+pub const HASH_BYTES_FUNCTION: &str = "contextful_mask_hash_bytes";
 pub const TOKEN_FUNCTION: &str = "contextful_mask_token";
 
 /// Lowercase letters and digits a token is drawn from.
@@ -261,19 +263,24 @@ impl Pepper {
         })
     }
 
-    fn mac(&self, label: &str, value: &str) -> [u8; 32] {
-        hmac_sha256(&self.key, &[label.as_bytes(), &[0], value.as_bytes()].concat())
+    fn mac(&self, label: &str, value: &[u8]) -> [u8; 32] {
+        hmac_sha256(&self.key, &[label.as_bytes(), &[0], value].concat())
     }
 
     /// The keyed digest: HMAC-SHA-256 under the pepper, 32 hex chars. Pseudonymous:
     /// anyone holding the pepper recomputes it (`authority.mask.pseudonymous`).
     pub fn digest(&self, value: &str) -> String {
+        self.digest_bytes(value.as_bytes())
+    }
+
+    /// The keyed digest over bytes; a text value digests as its UTF-8 bytes.
+    pub fn digest_bytes(&self, value: &[u8]) -> String {
         self.mac("hash", value).iter().take(HASH_OUTPUT_WIDTH as usize / 2).map(|b| format!("{b:02x}")).collect()
     }
 
     /// The token: 20 chars of lowercase letters and digits keyed by the pepper.
     pub fn token(&self, value: &str) -> String {
-        self.mac("tokenize", value)
+        self.mac("tokenize", value.as_bytes())
             .iter()
             .take(TOKEN_OUTPUT_WIDTH as usize)
             .map(|b| TOKEN_ALPHABET[usize::from(*b) % TOKEN_ALPHABET.len()] as char)
@@ -295,13 +302,39 @@ fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
 }
 
 impl Mask {
+    /// Whether a column of type `ty` admits this mask: a binary column takes `drop` or
+    /// `hash` over its bytes, a vector column `drop` alone, any other column every
+    /// strategy (`authority.mask.typed-strategy`).
+    pub fn admits(&self, ty: ColumnType) -> bool {
+        match self.primary {
+            Strategy::Drop => true,
+            Strategy::Hash => !ty.is_vector(),
+            _ => !ty.is_binary() && !ty.is_vector(),
+        }
+    }
+
+    /// The mask's primary strategy, as a refusal names it.
+    pub fn strategy_name(&self) -> &'static str {
+        match self.primary {
+            Strategy::Drop => "drop",
+            Strategy::Hash => "hash",
+            Strategy::Tokenize => "tokenize",
+            Strategy::Truncate(_) => "truncate",
+            Strategy::Bucket(_) => "bucket",
+            Strategy::Range(_) => "range",
+        }
+    }
+
     /// The masked value for one input of a column typed `ty`, as the write layer applies
-    /// it; `None` is SQL NULL. Every strategy yields exactly the value [`Mask::sql`] does.
+    /// it; `None` is SQL NULL. A binary input arrives as the padded base64 the row path
+    /// carries, and `hash` digests its bytes. Every strategy yields exactly the value
+    /// [`Mask::sql`] does.
     pub fn apply(&self, pepper: &Pepper, value: Option<&str>, ty: ColumnType) -> Option<String> {
         let lower = |v: &str, n: u64| v.trim().parse::<f64>().ok().map(|v| ((v / n as f64).floor() * n as f64) as i64);
         let primary = match (self.primary, value) {
             (Strategy::Drop, _) => return (ty == ColumnType::Utf8).then(String::new),
             (_, None) => return None,
+            (Strategy::Hash, Some(v)) if ty.is_binary() => pepper.digest_bytes(&decode_binary(v)?),
             (Strategy::Hash, Some(v)) => pepper.digest(v),
             (Strategy::Tokenize, Some(v)) => pepper.token(v),
             (Strategy::Truncate(n), Some(v)) => v.chars().take(n as usize).collect(),
@@ -327,6 +360,7 @@ impl Mask {
         let primary = match self.primary {
             Strategy::Drop if ty == ColumnType::Utf8 => return "CAST('' AS VARCHAR)".to_string(),
             Strategy::Drop => return format!("CAST(NULL AS {})", ty.sql()),
+            Strategy::Hash if ty.is_binary() => format!("{HASH_BYTES_FUNCTION}({c})"),
             Strategy::Hash => format!("{HASH_FUNCTION}({text})"),
             Strategy::Tokenize => format!("{TOKEN_FUNCTION}({text})"),
             Strategy::Truncate(n) => format!("left({text}, {n})"),

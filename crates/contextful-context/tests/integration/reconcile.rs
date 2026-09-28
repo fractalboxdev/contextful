@@ -4,7 +4,7 @@ use crate::support::{at, decl, query, s, Fixture};
 use contextful_context::fold::fold;
 use contextful_context::parquet_io;
 use contextful_core::store::bound_time::Bounds;
-use contextful_core::store::reconcile::ColumnType;
+use contextful_core::store::reconcile::{ColumnType, FloatItem};
 use contextful_core::store::StoreError;
 use serde_json::json;
 use std::fs;
@@ -31,8 +31,8 @@ fn a_read_hands_read_parquet_an_explicit_sorted_list() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("2")]]);
 }
 
-/// Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation adds no per-column cast.
-// spec: store.reconcile.union-by-name@5daa36e1
+/// Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation casts no column but a vector, per {{store.reconcile.half-width}}.
+// spec: store.reconcile.union-by-name@804d751e
 #[test]
 fn a_column_resolves_to_the_supertype_of_its_files_with_no_cast() {
     let f = Fixture::new();
@@ -213,4 +213,118 @@ fn every_value_of_a_json_column_is_a_json_document() {
     for v in folded {
         serde_json::from_str::<serde_json::Value>(&v).unwrap_or_else(|e| panic!("`{v}` is not JSON: {e}"));
     }
+}
+
+fn typed_columns() -> [(&'static str, ColumnType); 4] {
+    [
+        ("blob", ColumnType::Binary),
+        ("digest", ColumnType::FixedSizeBinary(4)),
+        ("embedding", ColumnType::FixedSizeList(FloatItem::Float16, 3)),
+        ("wide", ColumnType::FixedSizeList(FloatItem::Float32, 2)),
+    ]
+}
+
+/// A producer declares these types; a JSON batch carries bytes as padded base64 and a vector as a number array of its dimension, and any other value meets {{store.reconcile.incompatible}}.
+// spec: store.reconcile.typed-landing@de518808
+#[test]
+fn a_typed_batch_lands_bytes_from_base64_and_vectors_from_arrays() {
+    let f = Fixture::new();
+    let d = decl("name = \"embeddings\"\nprimary_key = [\"id\"]");
+    let rows = json!([
+        {"id": "a", "blob": "qgE=", "digest": "3q2+7w==", "embedding": [0.5, -1.0, 0.25], "wide": [1.5, 2]},
+        {"id": "b", "blob": null, "digest": null, "embedding": null, "wide": null},
+    ]);
+    f.land_typed(&d, "run-1", rows, "2030-01-01T00:00:00Z", &typed_columns()).unwrap();
+    let schema = f.store.schema("embeddings").unwrap();
+    for (name, ty) in typed_columns() {
+        assert_eq!(schema.get(name).unwrap().ty, ty, "{name}");
+    }
+    let read = contextful_context::rows::table_rows(&f.store, &d, &["id", "blob", "digest", "embedding", "wide"]).unwrap();
+    let mut read: Vec<_> = read.into_iter().map(serde_json::Value::Object).collect();
+    read.sort_by_key(|r| r["id"].to_string());
+    assert_eq!(
+        read,
+        [
+            json!({"id": "a", "blob": "qgE=", "digest": "3q2+7w==", "embedding": [0.5, -1.0, 0.25], "wide": [1.5, 2.0]}),
+            json!({"id": "b", "blob": null, "digest": null, "embedding": null, "wide": null}),
+        ]
+    );
+
+    // Unpadded or hex bytes, a wrong byte width, a wrong dimension and a non-number element each refuse before any Parquet.
+    let refusals = [
+        json!({"id": "c", "blob": "qgE"}),
+        json!({"id": "c", "blob": "0xaa01"}),
+        json!({"id": "c", "blob": 7}),
+        json!({"id": "c", "digest": "qgE="}),
+        json!({"id": "c", "embedding": [0.5, 1.0]}),
+        json!({"id": "c", "embedding": [0.5, 1.0, "x"]}),
+        json!({"id": "c", "embedding": [0.5, 1.0, null]}),
+        json!({"id": "c", "wide": "1.5,2"}),
+    ];
+    for (i, row) in refusals.into_iter().enumerate() {
+        let run = format!("run-bad-{i}");
+        let err = f.land_typed(&d, &run, json!([row.clone()]), "2030-01-01T00:01:00Z", &typed_columns()).unwrap_err();
+        assert!(matches!(err.store(), Some(StoreError::StoreSchemaIncompatible(_))), "{row}: {err}");
+        assert!(!f.table_dir("embeddings").join("data/runs").join(&run).join("ingest-a/part-00000.parquet").exists(), "{row}");
+    }
+
+    // A later batch changing a width, an element type or a dimension refuses at the write.
+    for (column, ty, value) in [
+        ("digest", ColumnType::FixedSizeBinary(8), json!("3q2+796tvu8=")),
+        ("embedding", ColumnType::FixedSizeList(FloatItem::Float32, 3), json!([0.5, 1.0, 2.0])),
+        ("wide", ColumnType::FixedSizeList(FloatItem::Float32, 3), json!([0.5, 1.0, 2.0])),
+    ] {
+        let err = f.land_typed(&d, "run-2", json!([{"id": "d", column: value}]), "2030-01-01T00:02:00Z", &[(column, ty)]).unwrap_err();
+        assert!(matches!(err.store(), Some(StoreError::StoreSchemaIncompatible(_))), "{column}: {err}");
+    }
+    // Undeclared, a JSON array lands as JSON, which the vector column refuses.
+    let err = f.land(&d, "run-3", json!([{"id": "d", "embedding": [0.5, 1.0, 2.0]}]), "2030-01-01T00:03:00Z").unwrap_err();
+    assert!(matches!(err.store(), Some(StoreError::StoreSchemaIncompatible(_))), "{err}");
+}
+
+/// A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.
+// spec: store.reconcile.half-width@b93ac02d
+#[test]
+fn half_floats_store_at_half_width_and_read_as_float_arrays() {
+    let f = Fixture::new();
+    let d = decl("name = \"embeddings\"");
+    let rows = json!([{"id": "a", "blob": "qgE=", "digest": "3q2+7w==", "embedding": [0.5, -1.0, 0.25], "wide": [1.5, 2]}]);
+    f.land_typed(&d, "run-1", rows.clone(), "2030-01-01T00:00:00Z", &typed_columns()).unwrap();
+    f.land_typed(&d, "run-2", rows, "2030-01-01T00:01:00Z", &typed_columns()).unwrap();
+
+    let part = f.table_dir("embeddings").join("data/runs/run-1/ingest-a/part-00000.parquet");
+    let physical = |name: &str| {
+        query(&format!(
+            "SELECT type, type_length, logical_type FROM parquet_schema('{}') WHERE name = '{name}'",
+            part.display()
+        ))
+    };
+    // The half-float element is a 2-byte fixed-length value carrying the Float16 logical type.
+    let element = query(&format!(
+        "SELECT type, type_length, logical_type FROM parquet_schema('{}') WHERE name = 'item' AND type = 'FIXED_LEN_BYTE_ARRAY'",
+        part.display()
+    ));
+    assert_eq!(element.len(), 1, "{element:?}");
+    assert_eq!(element[0][1], s("2"));
+    assert!(element[0][2].as_deref().unwrap_or_default().contains("Float16"), "{element:?}");
+    assert_eq!(physical("digest")[0][..2], [s("FIXED_LEN_BYTE_ARRAY"), s("4")]);
+    assert_eq!(physical("blob")[0][0], s("BYTE_ARRAY"));
+
+    // The engine reads FLOAT arrays of the declared dimension and BLOBs; the vector cast is the relation's one cast.
+    let rel = f.scan(&d, Bounds::default()).unwrap().relation;
+    assert_eq!(rel.matches("CAST(").count(), 2, "{rel}");
+    assert!(rel.contains("REPLACE (CAST(\"embedding\" AS FLOAT[3]) AS \"embedding\", CAST(\"wide\" AS FLOAT[2]) AS \"wide\")"), "{rel}");
+    let types = f.query(&d, Bounds::default(), "SELECT typeof(embedding), typeof(wide), typeof(blob), typeof(digest) FROM t LIMIT 1");
+    assert_eq!(types, [[s("FLOAT[3]"), s("FLOAT[2]"), s("BLOB"), s("BLOB")]]);
+    let values = f.query(&d, Bounds::default(), "SELECT CAST(embedding AS VARCHAR), array_cosine_similarity(embedding, embedding) FROM t LIMIT 1");
+    assert_eq!(values, [[s("[0.5, -1.0, 0.25]"), s("1.0")]]);
+
+    // A fold keeps both types, and a zero-row branch casts to the same engine types.
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let types = f.query(&d, Bounds::default(), "SELECT typeof(embedding), typeof(digest), count(*) FROM t GROUP BY ALL");
+    assert_eq!(types, [[s("FLOAT[3]"), s("BLOB"), s("2")]]);
+    // Bounded to before any run, the table is a zero-row relation over the same engine types.
+    let bound = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2029-12-31T00:00:00Z").unwrap()), valid_as_of: None };
+    let rel = f.scan(&d, bound).unwrap().relation;
+    assert!(rel.contains("CAST(NULL AS FLOAT[3]) AS \"embedding\"") && rel.contains("CAST(NULL AS BLOB) AS \"digest\""), "{rel}");
 }

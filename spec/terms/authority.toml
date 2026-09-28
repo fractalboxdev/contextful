@@ -62,6 +62,7 @@ EnforcePredicateOutsideGrammar       = { clause = "authority.filter-rows.outside
 EnforceUnknownClass                  = { clause = "authority.mask.unknown-class", gloss = "A column class outside the class registry." }
 EnforceDigestAloneOnExhaustibleClass = { clause = "authority.mask.digest-alone", gloss = "A keyed hash standing alone over an exhaustible class." }
 EnforceCombineWithoutGeneralization  = { clause = "authority.mask.combine-generalizes", gloss = "A combine leaving its primary's digest output unchanged." }
+EnforceStrategyOutsideType           = { clause = "authority.mask.typed-strategy", gloss = "A mask strategy a binary or vector column's type does not admit." }
 EnforceTruncationCutsNothing         = { clause = "authority.mask.cuts-nothing", gloss = "A truncation width at or past the primary's output width." }
 EnforceTruncationTooWide             = { clause = "authority.mask.truncation-ceiling", gloss = "A digest truncation wider than the class domain and crowd admit." }
 EnforceKeyMaterialInRelation         = { clause = "authority.mask.key-material", gloss = "Pepper-derived key state in relation text, a plan or the session catalog." }

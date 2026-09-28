@@ -2162,7 +2162,7 @@
       "operation": "reconcile",
       "subject": "union-by-name",
       "kind": "behavior",
-      "statement": "Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation adds no per-column cast.",
+      "statement": "Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation casts no column but a vector, per {{store.reconcile.half-width}}.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 174
@@ -2201,6 +2201,39 @@
       "line": 179
     },
     {
+      "id": "store.reconcile.binary-and-vector",
+      "contract": "store",
+      "operation": "reconcile",
+      "subject": "binary-and-vector",
+      "kind": "behavior",
+      "statement": "The lattice holds `Binary`, `FixedSizeBinary(n)` and a `FixedSizeList` of `Float32` or `Float16` at dimension n; none takes a promotion, so a width, item or dimension change meets {{store.reconcile.incompatible}}.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 180
+    },
+    {
+      "id": "store.reconcile.typed-landing",
+      "contract": "store",
+      "operation": "reconcile",
+      "subject": "typed-landing",
+      "kind": "behavior",
+      "statement": "A producer declares these types; a JSON batch carries bytes as padded base64 and a vector as a number array of its dimension, and any other value meets {{store.reconcile.incompatible}}.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 182
+    },
+    {
+      "id": "store.reconcile.half-width",
+      "contract": "store",
+      "operation": "reconcile",
+      "subject": "half-width",
+      "kind": "behavior",
+      "statement": "A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.",
+      "why": "A-store",
+      "file": "spec/10-store.md",
+      "line": 184
+    },
+    {
       "id": "store.reconcile.key-widening",
       "contract": "store",
       "operation": "reconcile",
@@ -2209,7 +2242,7 @@
       "statement": "A primary-key column takes no `Float64` promotion: the widening batch raises `StoreKeyWidened` before any Parquet, as does a fold meeting a key already reconciled to `Float64`.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 180
+      "line": 186
     },
     {
       "id": "store.reconcile.additive",
@@ -2220,7 +2253,7 @@
       "statement": "An unseen column joins the merged schema, and files written before it read it as null.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 182
+      "line": 188
     },
     {
       "id": "store.reconcile.no-invented-column",
@@ -2231,7 +2264,7 @@
       "statement": "A scan invents no column: an ordering column absent from every file enters through a zero-row branch, and a column added after a table's first rows projects as a literal null.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 183
+      "line": 189
     },
     {
       "id": "store.reconcile.first-sight",
@@ -2242,7 +2275,7 @@
       "statement": "A destination creates a table on the first schema it sees and merges each later schema into `schema.json`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 184
+      "line": 190
     },
     {
       "id": "store.reconcile.fold-never-narrows",
@@ -2253,7 +2286,7 @@
       "statement": "A fold backfills nulls and widens types; it narrows no type and drops no column.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 185
+      "line": 191
     },
     {
       "id": "store.reconcile.no-history",
@@ -2264,7 +2297,7 @@
       "statement": "Reconciliation keeps the current shape alone; a past widening is attributed from the run files.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 186
+      "line": 192
     },
     {
       "id": "store.reconcile.reserved-set-versioned",
@@ -2275,7 +2308,7 @@
       "statement": "Adding an injected column advances the semantics version, whose fingerprint recipe names the column.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 187
+      "line": 193
     },
     {
       "id": "store.fold.pass",
@@ -2286,7 +2319,7 @@
       "statement": "A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 197
+      "line": 201
     },
     {
       "id": "store.fold.valid-time-line",
@@ -2297,7 +2330,7 @@
       "statement": "A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 198
+      "line": 202
     },
     {
       "id": "store.fold.includes-runs",
@@ -2308,7 +2341,7 @@
       "statement": "A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 199
+      "line": 203
     },
     {
       "id": "store.fold.triggers",
@@ -2319,7 +2352,7 @@
       "statement": "A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 200
+      "line": 204
     },
     {
       "id": "store.fold.retention",
@@ -2330,7 +2363,7 @@
       "statement": "`retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 201
+      "line": 205
     },
     {
       "id": "store.fold.result",
@@ -2341,7 +2374,7 @@
       "statement": "A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 202
+      "line": 206
     },
     {
       "id": "store.fold.collection-failed",
@@ -2352,7 +2385,7 @@
       "statement": "A collection that fails reports its failure: beside `folded` when the pass published, since the snapshot stays published, and as `failed` otherwise; either way the command exits non-zero.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 203
+      "line": 207
     },
     {
       "id": "store.fold.unknown-table",
@@ -2363,7 +2396,7 @@
       "statement": "A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}.",
       "why": "P1",
       "file": "spec/10-store.md",
-      "line": 204
+      "line": 208
     },
     {
       "id": "store.fold.compaction-lease",
@@ -2374,7 +2407,7 @@
       "statement": "A pass holds the table's compaction lease and stamps its fence into the snapshot manifest and the pointer.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 206
+      "line": 210
     },
     {
       "id": "store.fold.pointer-commit",
@@ -2385,7 +2418,7 @@
       "statement": "A pass publishes by replacing `_pointer.json` conditioned on the ETag it read at pass start, with `If-Match` on an object store and a version-checked rename on a filesystem.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 208
+      "line": 212
     },
     {
       "id": "store.fold.partial-snapshot",
@@ -2396,7 +2429,7 @@
       "statement": "A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises `StorePartialSnapshot`.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 210
+      "line": 214
     },
     {
       "id": "store.fold.lost-pointer",
@@ -2407,7 +2440,7 @@
       "statement": "A pass whose pointer replace loses its condition publishes nothing, and its staged snapshot is collected.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 212
+      "line": 216
     },
     {
       "id": "store.fold.staging-collected",
@@ -2418,7 +2451,7 @@
       "statement": "A staging directory, and a snapshot directory no pointer chain reaches, are collected by the next pass and read by nobody.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 213
+      "line": 217
     },
     {
       "id": "store.fold.non-blocking",
@@ -2429,7 +2462,7 @@
       "statement": "A statement running during a pass reads the snapshot the pointer named when it started; statements starting after the commit read the new one.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 214
+      "line": 218
     },
     {
       "id": "store.fold.supersedes",
@@ -2440,7 +2473,7 @@
       "statement": "A new snapshot supersedes the previous one without deleting it, and a bounded read reaches the older one until retention collects it.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 215
+      "line": 219
     },
     {
       "id": "store.index.kinds",
@@ -2451,7 +2484,7 @@
       "statement": "Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW vector graph, a Tantivy full-text index, and opt-in per-column bloom filters.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 251
+      "line": 255
     },
     {
       "id": "store.index.declaration",
@@ -2462,7 +2495,7 @@
       "statement": "A sidecar is declared per table with a kind, a `column` and builder parameters; the vector kind takes model, dimension, metric, `m` and `ef_construction`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 252
+      "line": 256
     },
     {
       "id": "store.index.paths",
@@ -2473,7 +2506,7 @@
       "statement": "A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>/`, inside the snapshot directory it indexes.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 253
+      "line": 257
     },
     {
       "id": "store.index.identity",
@@ -2484,7 +2517,7 @@
       "statement": "A sidecar's identity is `(column, builder, builder-version)`; two builders over one column coexist, the caller picks at query time, and `derived.sqlite` records each builder.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 254
+      "line": 258
     },
     {
       "id": "store.index.rebuild",
@@ -2495,7 +2528,7 @@
       "statement": "Swapping a builder rebuilds the sidecar, leaves the Parquet untouched, and callers on the existing identity read through the cutover.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 255
+      "line": 259
     },
     {
       "id": "store.index.not-in-file-set",
@@ -2506,7 +2539,7 @@
       "statement": "`indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 256
+      "line": 260
     },
     {
       "id": "store.index.dies-with-snapshot",
@@ -2517,7 +2550,7 @@
       "statement": "Collecting a snapshot collects its sidecars in the same step.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 257
+      "line": 261
     },
     {
       "id": "store.index.candidate-ids",
@@ -2528,7 +2561,7 @@
       "statement": "A sidecar yields candidate identifiers, not rows; they re-join through the enforced relation before a top-K is final.",
       "why": "P5",
       "file": "spec/10-store.md",
-      "line": 258
+      "line": 262
     },
     {
       "id": "store.index.vector-by-fold",
@@ -2539,7 +2572,7 @@
       "statement": "The fold builds a vector sidecar for a table carrying an embedding column under a single-column primary key.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 260
+      "line": 264
     },
     {
       "id": "store.index.column-absent",
@@ -2550,7 +2583,7 @@
       "statement": "An index over a column the reconciled schema lacks raises `StoreIndexColumnAbsent` at manifest validation, before the pass that builds it.",
       "why": "because an index over a missing column builds empty and reads as no match",
       "file": "spec/10-store.md",
-      "line": 261
+      "line": 265
     },
     {
       "id": "store.index.clustering",
@@ -2561,7 +2594,7 @@
       "statement": "`cluster_by` sorts rows within a file lexicographically over its columns in declared order; zone maps then skip row groups with no manifest entry and no sidecar.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 263
+      "line": 267
     },
     {
       "id": "store.index.partitioning",
@@ -2572,7 +2605,7 @@
       "statement": "Partitioning is off unless `partition_by` declares it.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 264
+      "line": 268
     },
     {
       "id": "store.index.partition-warnings",
@@ -2583,7 +2616,7 @@
       "statement": "Planning warns, naming the column, where a partition specification projects more than 1000 partitions or a median partition below 16 MiB.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 265
+      "line": 269
     },
     {
       "id": "store.index.tenant-outermost",
@@ -2594,7 +2627,7 @@
       "statement": "A multi-tenant table carries the tenant identifier as its outermost partition column.",
       "why": "because a dropped tenant predicate then reads nothing instead of every tenant",
       "file": "spec/10-store.md",
-      "line": 266
+      "line": 270
     },
     {
       "id": "store.index.tenant-verbatim",
@@ -2605,7 +2638,7 @@
       "statement": "A tenant value is written and compared byte for byte, with no trimming, case folding or Unicode normalization; a percent-escaped directory name is representation alone.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 268
+      "line": 272
     },
     {
       "id": "store.bound-time.two-clocks",
@@ -2616,7 +2649,7 @@
       "statement": "Transaction time is `_ingested_at`; valid time is a declared pair of the table's own columns. The engine infers no pair and stamps no second transaction clock.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 282
+      "line": 286
     },
     {
       "id": "store.bound-time.valid-time-declaration",
@@ -2627,7 +2660,7 @@
       "statement": "`[pipeline.tables.valid_time]` declares `from` and an optional `to`; a table declaring `from` alone treats each row as valid from that instant onward.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 283
+      "line": 287
     },
     {
       "id": "store.bound-time.valid-time-type",
@@ -2638,7 +2671,7 @@
       "statement": "A declared valid-time column whose type is not a timestamp raises `StoreValidTimeNotTimestamp` at declaration.",
       "why": "P1",
       "file": "spec/10-store.md",
-      "line": 284
+      "line": 288
     },
     {
       "id": "store.bound-time.instant-comparison",
@@ -2649,7 +2682,7 @@
       "statement": "Every bound compares instants as timestamps, never as strings; a date-only literal resolves, where it is built, to the start of the next day, exclusive.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 286
+      "line": 290
     },
     {
       "id": "store.bound-time.as-of",
@@ -2660,7 +2693,7 @@
       "statement": "`as_of` resolves each table to the newest reachable snapshot created at or before it, plus the committed runs at or before it that snapshot omits, inside the table's FROM-source.",
       "why": "because filtering the current files by ingest stamp returns different rows before and after a fold",
       "file": "spec/10-store.md",
-      "line": 287
+      "line": 291
     },
     {
       "id": "store.bound-time.as-of-unretained",
@@ -2671,7 +2704,7 @@
       "statement": "An `as_of` earlier than the oldest retained snapshot of a table whose history has been collected raises `StoreAsOfUnretained`, naming the oldest answerable instant.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 289
+      "line": 293
     },
     {
       "id": "store.bound-time.valid-as-of",
@@ -2682,7 +2715,7 @@
       "statement": "`valid_as_of` wraps the same inner source with `from <= valid_as_of AND (to IS NULL OR to > valid_as_of)` over the declared pair.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 291
+      "line": 295
     },
     {
       "id": "store.bound-time.valid-time-undeclared",
@@ -2693,7 +2726,7 @@
       "statement": "A `valid_as_of` read against a table declaring no pair raises `StoreValidTimeUndeclared`, naming the table.",
       "why": "P1",
       "file": "spec/10-store.md",
-      "line": 292
+      "line": 296
     },
     {
       "id": "store.bound-time.pin-bound",
@@ -2704,7 +2737,7 @@
       "statement": "A read carrying `as_of` and a build pin resolves each table named by both by {{read.resolve-pin.earlier-bound-wins}}.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 294
+      "line": 298
     },
     {
       "id": "store.bound-time.unbounded-latest",
@@ -2715,7 +2748,7 @@
       "statement": "A read carrying neither bound resolves each table to its current snapshot plus the committed runs it omits.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 295
+      "line": 299
     },
     {
       "id": "store.bound-time.beneath-enforcement",
@@ -2726,7 +2759,7 @@
       "statement": "Both bounds apply beneath the row predicate, the column mask and the tenant filter, narrowing what enforcement admits and widening nothing.",
       "why": "P5",
       "file": "spec/10-store.md",
-      "line": 296
+      "line": 300
     },
     {
       "id": "store.bound-time.covering-versions",
@@ -2737,7 +2770,7 @@
       "statement": "Over an unkeyed table a valid-time bound returns every version whose interval covers the instant.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 298
+      "line": 302
     },
     {
       "id": "store.bound-time.echo",
@@ -2748,7 +2781,7 @@
       "statement": "A bounded read echoes `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`, each instant in RFC 3339 UTC with nine fractional digits and a `Z` suffix; an unbounded read omits it.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 299
+      "line": 303
     },
     {
       "id": "store.encrypt.key-binding",
@@ -2759,7 +2792,7 @@
       "statement": "At-rest encryption is per project, off unless `[encryption] key_source` names `env:<NAME>` or a key-management service.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 307
+      "line": 311
     },
     {
       "id": "store.encrypt.key-unbound",
@@ -2770,7 +2803,7 @@
       "statement": "A `key_source` naming a binding the process lacks raises `StoreEncryptionKeyUnbound` at startup, with no cleartext fallback.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 308
+      "line": 312
     },
     {
       "id": "store.encrypt.cipher",
@@ -2781,7 +2814,7 @@
       "statement": "Parquet, footers included, encrypts through Parquet modular encryption; every sidecar and ledger file encrypts with AES-256-GCM under a per-file data key wrapped by the project key.",
       "why": "because a cleartext vector graph admits nearest-neighbour search over the embedding space",
       "file": "spec/10-store.md",
-      "line": 310
+      "line": 314
     },
     {
       "id": "store.encrypt.password-kdf",
@@ -2792,7 +2825,7 @@
       "statement": "A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 312
+      "line": 316
     },
     {
       "id": "store.encrypt.transport-separate",
@@ -2803,7 +2836,7 @@
       "statement": "At-rest encryption covers files and TLS covers bucket transport; a cleartext endpoint carries no encrypted-at-rest claim.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 313
+      "line": 317
     },
     {
       "id": "store.encrypt.redacted-index",
@@ -2814,7 +2847,7 @@
       "statement": "An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.",
       "why": "A-authority",
       "file": "spec/10-store.md",
-      "line": 314
+      "line": 318
     },
     {
       "id": "store.encrypt.at-rest-scope",
@@ -2825,7 +2858,7 @@
       "statement": "A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 316
+      "line": 320
     },
     {
       "id": "store.encrypt.rotation",
@@ -2836,7 +2869,7 @@
       "statement": "Rotation writes forward: new files take the new key version, published files keep theirs until collected, and a key version retires once no retained file names it.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 317
+      "line": 321
     },
     {
       "id": "store.push.prefix-escape",
@@ -2847,7 +2880,7 @@
       "statement": "A key resolving outside the prefix raises `SyncPrefixEscape`, naming the key and the prefix.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 325
+      "line": 329
     },
     {
       "id": "store.push.prefix-unbound",
@@ -2858,7 +2891,7 @@
       "statement": "An unset variable named by `prefix_from` raises `SyncPrefixUnbound` at startup, with no bucket-root fallback.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 327
+      "line": 331
     },
     {
       "id": "store.push.prefix-overspecified",
@@ -2869,7 +2902,7 @@
       "statement": "Declaring `prefix` and `prefix_from` together raises `SyncPrefixOverspecified`.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 329
+      "line": 333
     },
     {
       "id": "store.push.in-flight",
@@ -2880,7 +2913,7 @@
       "statement": "A second push of one store on one machine raises `SyncPushInFlight`, naming the holder of the push guard.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 331
+      "line": 335
     },
     {
       "id": "store.push.wire-format",
@@ -2891,7 +2924,7 @@
       "statement": "A push uploads each file it owns, or no node owns, whose digest the bucket lacks under `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks, staging directories and table pointers stay local.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 333
+      "line": 337
     },
     {
       "id": "store.push.schema-cas",
@@ -2902,7 +2935,7 @@
       "statement": "A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and replacing it on the ETag read; no copy overwrites another.",
       "why": "because two nodes landing different columns into one table both keep them",
       "file": "spec/10-store.md",
-      "line": 334
+      "line": 338
     },
     {
       "id": "store.push.manifest-commit",
@@ -2913,7 +2946,7 @@
       "statement": "A push commits when the bucket manifest, `<prefix>/manifest.json` listing each key's sha256, size and owner, replaces the copy it read under `If-Match` on that copy's ETag.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 336
+      "line": 340
     },
     {
       "id": "store.pull.digest-mismatch",
@@ -2924,7 +2957,7 @@
       "statement": "A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 370
+      "line": 374
     },
     {
       "id": "store.pull.convergence",
@@ -2935,7 +2968,7 @@
       "statement": "When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 372
+      "line": 376
     },
     {
       "id": "store.pull.unconverged",
@@ -2946,7 +2979,7 @@
       "statement": "Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 373
+      "line": 377
     },
     {
       "id": "store.pull.pointer-last",
@@ -2957,7 +2990,7 @@
       "statement": "A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 375
+      "line": 379
     },
     {
       "id": "store.pull.tombstone-applied",
@@ -2968,7 +3001,7 @@
       "statement": "A pull deletes the local copy of each key a tombstone names and no entry lists.",
       "why": "because a deletion that never reaches a consumer resurrects once its tombstone ages out",
       "file": "spec/10-store.md",
-      "line": 377
+      "line": 381
     },
     {
       "id": "store.pull.pointer-advance",
@@ -2979,7 +3012,7 @@
       "statement": "A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a later snapshot, and verifies every advancing table before writing any pointer.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 379
+      "line": 383
     },
     {
       "id": "store.pull.schema-merge",
@@ -2990,7 +3023,7 @@
       "statement": "A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.",
       "why": "because rows landed locally carry columns the bucket's copy may lack",
       "file": "spec/10-store.md",
-      "line": 381
+      "line": 385
     },
     {
       "id": "store.probe.inconclusive",
@@ -3001,7 +3034,7 @@
       "statement": "An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 416
+      "line": 420
     },
     {
       "id": "store.probe.unproven",
@@ -3012,7 +3045,7 @@
       "statement": "Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 418
+      "line": 422
     },
     {
       "id": "store.probe.sentinel",
@@ -3023,7 +3056,7 @@
       "statement": "The probe creates a sentinel under `_contextful/cas-probe/` and demonstrates `cas` when a second create and a stale `If-Match` both fail and a current `If-Match` replaces it, deleting the sentinel after.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 420
+      "line": 424
     },
     {
       "id": "store.probe.network-volume",
@@ -3034,7 +3067,7 @@
       "statement": "A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves `single-writer` without the sentinel, naming the mount type, and a declared `cas` there meets {{store.probe.unproven}}.",
       "why": "because the bucket's advisory lock is not a guarantee across the clients of a network share, and a sentinel run from one client cannot observe another",
       "file": "spec/10-store.md",
-      "line": 421
+      "line": 425
     },
     {
       "id": "store.merge.tombstone-owner",
@@ -3045,7 +3078,7 @@
       "statement": "A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 428
+      "line": 432
     },
     {
       "id": "store.merge.tombstone-ttl",
@@ -3056,7 +3089,7 @@
       "statement": "A tombstone leaves the manifest 30 d after its `deleted_at`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 430
+      "line": 434
     },
     {
       "id": "store.merge.retries",
@@ -3067,7 +3100,7 @@
       "statement": "`[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 431
+      "line": 435
     },
     {
       "id": "store.merge.exhausted",
@@ -3078,7 +3111,7 @@
       "statement": "Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 432
+      "line": 436
     },
     {
       "id": "store.merge.cursor-recency",
@@ -3089,7 +3122,7 @@
       "statement": "Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 434
+      "line": 438
     },
     {
       "id": "store.merge.scoped-union",
@@ -3100,7 +3133,7 @@
       "statement": "A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a remote entry it owns and no longer holds leaves with a tombstone.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 436
+      "line": 440
     },
     {
       "id": "store.merge.ownership",
@@ -3111,7 +3144,7 @@
       "statement": "A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, or a commit log's node directory. Every other key is unowned and propagates no deletion.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 438
+      "line": 442
     },
     {
       "id": "store.lease.ttl",
@@ -3122,7 +3155,7 @@
       "statement": "A lease is granted for 10 min.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 447
+      "line": 451
     },
     {
       "id": "store.lease.renewal",
@@ -3133,7 +3166,7 @@
       "statement": "A holder renews every 200 s by `If-Match` replace on the ETag it holds.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 448
+      "line": 452
     },
     {
       "id": "store.lease.clock-skew",
@@ -3144,7 +3177,7 @@
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
       "why": "because correctness rests on the fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
-      "line": 449
+      "line": 453
     },
     {
       "id": "store.lease.held",
@@ -3155,7 +3188,7 @@
       "statement": "A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 451
+      "line": 455
     },
     {
       "id": "store.lease.stale-fence",
@@ -3166,7 +3199,7 @@
       "statement": "A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 453
+      "line": 457
     },
     {
       "id": "store.lease.not-held",
@@ -3177,7 +3210,7 @@
       "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 455
+      "line": 459
     },
     {
       "id": "store.lease.cursor-kind",
@@ -3188,7 +3221,7 @@
       "statement": "A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 457
+      "line": 461
     },
     {
       "id": "store.lease.local-node",
@@ -3199,7 +3232,7 @@
       "statement": "A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 459
+      "line": 463
     },
     {
       "id": "store.lease.acquire",
@@ -3210,7 +3243,7 @@
       "statement": "Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-Match` on its ETag, the fence one past the object's.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 461
+      "line": 465
     },
     {
       "id": "store.lease.pointer-fence",
@@ -3221,7 +3254,7 @@
       "statement": "Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 463
+      "line": 467
     },
     {
       "id": "store.lease.network-volume",
@@ -3232,7 +3265,7 @@
       "statement": "Taking a compaction lease on a bucket {{store.probe.network-volume}} resolves to `single-writer` meets {{store.probe.unproven}} naming the mount type, and writes no lease object and no pointer fence.",
       "why": "because a conditional put holding on one machine only lets two machines each take the lease",
       "file": "spec/10-store.md",
-      "line": 465
+      "line": 469
     },
     {
       "id": "store.lease.commit-log",
@@ -3243,7 +3276,7 @@
       "statement": "Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 467
+      "line": 471
     },
     {
       "id": "store.replicate.write-refused",
@@ -3254,7 +3287,7 @@
       "statement": "A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 485
+      "line": 489
     },
     {
       "id": "store.replicate.partial-parquet",
@@ -3265,7 +3298,7 @@
       "statement": "A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 487
+      "line": 491
     },
     {
       "id": "store.replicate.missing-index",
@@ -3276,7 +3309,7 @@
       "statement": "A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 489
+      "line": 493
     },
     {
       "id": "store.replicate.sensitive-refused",
@@ -3287,7 +3320,7 @@
       "statement": "A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 491
+      "line": 495
     },
     {
       "id": "read.register.connection-views",
@@ -3614,10 +3647,21 @@
       "operation": "respond",
       "subject": "cell-encoding",
       "kind": "behavior",
-      "statement": "SQL NULL is JSON `null` and nothing else is. Non-finite floats are `\"NaN\"`, `\"inf\"`, `\"-inf\"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; binary is `\\xAA` hex; an enum is its label; a container is its text form.",
+      "statement": "SQL NULL is JSON `null` and nothing else is. Non-finite floats are `\"NaN\"`, `\"inf\"`, `\"-inf\"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; any other container is its text form.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 146
+    },
+    {
+      "id": "read.respond.bytes-and-vectors",
+      "contract": "read",
+      "operation": "respond",
+      "subject": "bytes-and-vectors",
+      "kind": "behavior",
+      "statement": "Binary is padded base64, and a fixed-size float array, a vector column included, is a JSON array holding each element as a float cell.",
+      "why": "A-store",
+      "file": "spec/20-read.md",
+      "line": 147
     },
     {
       "id": "read.respond.wide-number-shape",
@@ -3628,7 +3672,7 @@
       "statement": "A column's JSON encoding follows its SQL type alone: integers of 32 bits or fewer, finite floats and decimals of 15 digits or fewer are numbers; wider integers and decimals are exact decimal strings.",
       "why": "because a wire type that varies with the values on one page breaks a typed client on the next",
       "file": "spec/20-read.md",
-      "line": 147
+      "line": 149
     },
     {
       "id": "read.respond.type-is-the-cell",
@@ -3639,7 +3683,7 @@
       "statement": "No separate type list rides the envelope; a cell's JSON type is the declaration.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 149
+      "line": 151
     },
     {
       "id": "read.respond.zero-rows-is-success",
@@ -3650,7 +3694,7 @@
       "statement": "Fewer rows than the requested limit, zero included, is a success.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 150
+      "line": 152
     },
     {
       "id": "read.respond.match-count",
@@ -3661,7 +3705,7 @@
       "statement": "Match counts ride outside the internals opt-in, reporting how many rows the ranker scored as matching in the same call.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 152
+      "line": 154
     },
     {
       "id": "read.respond.coverage-is-a-count",
@@ -3672,7 +3716,7 @@
       "statement": "A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score.",
       "why": "because min-max normalization pins the best row at 1.0 and IDF lifts one incidental rare-term mention",
       "file": "spec/20-read.md",
-      "line": 153
+      "line": 155
     },
     {
       "id": "read.respond.internals-opt-in",
@@ -3683,7 +3727,7 @@
       "statement": "Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 155
+      "line": 157
     },
     {
       "id": "read.respond.operator-metadata",
@@ -3694,7 +3738,7 @@
       "statement": "Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 156
+      "line": 158
     },
     {
       "id": "read.respond.in-band-error",
@@ -3705,7 +3749,7 @@
       "statement": "On the tool protocol a refusal arrives in-band, as a protocol error object or a result flagged as an error under transport success.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 158
+      "line": 160
     },
     {
       "id": "read.respond.paths-stay-inside",
@@ -3716,7 +3760,7 @@
       "statement": "An ordinary read's result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 160
+      "line": 162
     },
     {
       "id": "read.retrieve.ranked-call",
@@ -3727,7 +3771,7 @@
       "statement": "`corpus.retrieve({prefix, query, query_embedding?, kinds, limit, as_of})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall and stores nothing of its own.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 171
+      "line": 173
     },
     {
       "id": "read.retrieve.relevance-floor",
@@ -3738,7 +3782,7 @@
       "statement": "A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 172
+      "line": 174
     },
     {
       "id": "read.retrieve.content-tokens",
@@ -3749,7 +3793,7 @@
       "statement": "The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters stay, and survivors deduplicate in order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 173
+      "line": 175
     },
     {
       "id": "read.retrieve.token-length-floor",
@@ -3760,7 +3804,7 @@
       "statement": "An ASCII run shorter than 2 chars leaves the content-token set.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 174
+      "line": 176
     },
     {
       "id": "read.retrieve.token-cap",
@@ -3771,7 +3815,7 @@
       "statement": "The content-token set holds at most 12 tokens. An empty set omits the relevance predicate.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 175
+      "line": 177
     },
     {
       "id": "read.retrieve.script-split-matching",
@@ -3782,7 +3826,7 @@
       "statement": "An all-lowercase-alphanumeric token matches on an ASCII word boundary with an optional plural suffix; a token with any non-ASCII character matches by containment.",
       "why": "because no ASCII word boundary occurs beside an ideograph",
       "file": "spec/20-read.md",
-      "line": 176
+      "line": 178
     },
     {
       "id": "read.retrieve.plural-suffix-floor",
@@ -3793,7 +3837,7 @@
       "statement": "A token under 4 chars takes no optional plural suffix.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 178
+      "line": 180
     },
     {
       "id": "read.retrieve.text-free-table-scores-null",
@@ -3804,7 +3848,7 @@
       "statement": "A table with no snippet-worthy text column scores lexically null, never zero, and its rows enter by vector score alone.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 179
+      "line": 181
     },
     {
       "id": "read.retrieve.candidate-window",
@@ -3815,7 +3859,7 @@
       "statement": "The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 181
+      "line": 183
     },
     {
       "id": "read.retrieve.reserved-columns-project-null",
@@ -3826,7 +3870,7 @@
       "statement": "Reserved projected columns — modality, language, prompt hash, kind — render null for a table lacking them, and its rows stay in the union.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 183
+      "line": 185
     },
     {
       "id": "read.retrieve.unsatisfiable-arm-drops",
@@ -3837,7 +3881,7 @@
       "statement": "`filter` binds caller-named columns. A table lacking a named column drops its arm, never emitting it unfiltered.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 184
+      "line": 186
     },
     {
       "id": "read.retrieve.engine-resolved-date",
@@ -3848,7 +3892,7 @@
       "statement": "The engine resolves each table's publication column itself, outside the caller's filter.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 186
+      "line": 188
     },
     {
       "id": "read.retrieve.filter-budget",
@@ -3859,7 +3903,7 @@
       "statement": "A filter's membership list holds at most 256 entries, with its condition count and total byte size bounded alongside.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 187
+      "line": 189
     },
     {
       "id": "read.retrieve.filter-budget-refusal",
@@ -3870,7 +3914,7 @@
       "statement": "The budget is checked over the whole filter ahead of building any arm; an oversized or malformed condition raises `FilterBudgetExceeded` for the whole read.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 188
+      "line": 190
     },
     {
       "id": "read.retrieve.row-key-dedup",
@@ -3881,7 +3925,7 @@
       "statement": "A ranked read keeps one row per `(table, row key)`, newest ingestion first. The row key is the declared content-hash column, else null, never a digest over projected values.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 190
+      "line": 192
     },
     {
       "id": "read.retrieve.row-key-stays-internal",
@@ -3892,7 +3936,7 @@
       "statement": "The row key is absent from the outer projection.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 191
+      "line": 193
     },
     {
       "id": "read.retrieve.dedup-is-gated",
@@ -3903,7 +3947,7 @@
       "statement": "The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 192
+      "line": 194
     },
     {
       "id": "read.retrieve.snippet",
@@ -3914,7 +3958,7 @@
       "statement": "A snippet concatenates up to three text columns: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 193
+      "line": 195
     },
     {
       "id": "read.retrieve.identifiers-never-snippet",
@@ -3925,7 +3969,7 @@
       "statement": "Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 194
+      "line": 196
     },
     {
       "id": "read.retrieve.sidecar-generates-candidates",
@@ -3936,7 +3980,7 @@
       "statement": "The vector sidecar arm adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.",
       "why": "P5",
       "file": "spec/20-read.md",
-      "line": 195
+      "line": 197
     },
     {
       "id": "read.retrieve.sidecar-oversampling",
@@ -3947,7 +3991,7 @@
       "statement": "One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 197
+      "line": 199
     },
     {
       "id": "read.retrieve.sidecar-size-cap",
@@ -3958,7 +4002,7 @@
       "statement": "A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 198
+      "line": 200
     },
     {
       "id": "read.retrieve.sidecar-falls-back",
@@ -3969,7 +4013,7 @@
       "statement": "Any sidecar precondition failure — no snapshot, no matching sidecar, a multi-column or masked key, a dimension or manifest mismatch, an unreadable dump, mixed producers — falls back to the exact scan.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 199
+      "line": 201
     },
     {
       "id": "read.retrieve.gain-never-loss",
@@ -3980,7 +4024,7 @@
       "statement": "For one reader the accelerated arm returns a superset of the exact path's rows. Two readers with one query on one snapshot can recall different rows.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 201
+      "line": 203
     },
     {
       "id": "read.rank.three-legs",
@@ -3991,7 +4035,7 @@
       "statement": "Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 230
+      "line": 232
     },
     {
       "id": "read.rank.fusion",
@@ -4002,7 +4046,7 @@
       "statement": "Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 60 percent and 40 percent. A document absent from one leg scores zero there; ties break by identifier.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 231
+      "line": 233
     },
     {
       "id": "read.rank.lexical-leg-matches-only",
@@ -4013,7 +4057,7 @@
       "statement": "The BM25 leg ranks a disjunction of should-clauses; a document matching no term is absent. An empty query, candidate set or result yields an empty ranking that falls back to recency order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 232
+      "line": 234
     },
     {
       "id": "read.rank.flat-window-full-credit",
@@ -4024,7 +4068,7 @@
       "statement": "A lexical window with no score spread awards every present document full credit.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "read.rank.question-window-is-a-tier",
@@ -4035,7 +4079,7 @@
       "statement": "A question's timeframe projects a per-row in-window flag against the resolved publication column, and the flag leads the ordering. An out-of-window row sorts down and stays.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 234
+      "line": 236
     },
     {
       "id": "read.rank.window-anchor-tolerance",
@@ -4046,7 +4090,7 @@
       "statement": "A publication instant more than 24 h past the question's anchor sets the in-window flag false. A null or uncastable value sets it false too, and a basis field names which case applied.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 236
+      "line": 238
     },
     {
       "id": "read.rank.ordering-casts-first",
@@ -4057,7 +4101,7 @@
       "statement": "Ordering compares publication values as `TIMESTAMPTZ` instants, casting a text value before any comparison.",
       "why": "because a text comparison of two date spellings orders strings, not instants",
       "file": "spec/20-read.md",
-      "line": 237
+      "line": 239
     },
     {
       "id": "read.rank.retrieval-block",
@@ -4068,7 +4112,7 @@
       "statement": "The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries an integer score bounded by the content-token count, the in-window flag and the basis label.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "read.rank.internal-score-stays-internal",
@@ -4079,7 +4123,7 @@
       "statement": "The lexical engine's own float score never crosses to a caller.",
       "why": "because a corpus-relative number drifts under a consumer's threshold as the corpus changes",
       "file": "spec/20-read.md",
-      "line": 240
+      "line": 242
     },
     {
       "id": "read.rank.absent-block",
@@ -4090,7 +4134,7 @@
       "statement": "The retrieval block is omitted from every non-ranked statement and from a build with no ranker, and an absent block differs from one reporting zero matches.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 242
+      "line": 244
     },
     {
       "id": "read.rank.degradation-not-error",
@@ -4101,7 +4145,7 @@
       "statement": "Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the snippet, recency breaking ties. The result differs in order and still answers.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 244
+      "line": 246
     },
     {
       "id": "read.rank.fallback-counts-tokens",
@@ -4112,7 +4156,7 @@
       "statement": "Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 246
+      "line": 248
     },
     {
       "id": "read.rank.caller-embedding",
@@ -4123,7 +4167,7 @@
       "statement": "A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 247
+      "line": 249
     },
     {
       "id": "read.rank.lexical-index-cache",
@@ -4134,7 +4178,7 @@
       "statement": "The full-text index is keyed on a fingerprint over the candidate documents and cached in a FIFO of 64 entries. A changed snapshot, table set or time bound changes the fingerprint.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 249
+      "line": 251
     },
     {
       "id": "read.rank.widened-window-statistics",
@@ -4145,7 +4189,7 @@
       "statement": "Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 250
+      "line": 252
     },
     {
       "id": "read.cache.hot-local-parquet",
@@ -4156,7 +4200,7 @@
       "statement": "The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "read.cache.cold-start",
@@ -4167,7 +4211,7 @@
       "statement": "A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 273
+      "line": 275
     },
     {
       "id": "read.cache.result-key",
@@ -4178,7 +4222,7 @@
       "statement": "A cached result keys on the policy subject (token scope, inference zone, incognito state), the token id and revocation epoch, the resolved snapshot ids, the bounds echo, the pin map and the statement hash.",
       "why": "because a hit crossing a restriction, snapshot, bound or revocation serves rows the caller is not owed",
       "file": "spec/20-read.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "read.cache.cache-is-opt-in",
@@ -4189,7 +4233,7 @@
       "statement": "The result cache is opt-in per table at a short time to live and off for a table tagged private.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 276
+      "line": 278
     },
     {
       "id": "read.cache.snapshot-invalidates",
@@ -4200,7 +4244,7 @@
       "statement": "A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}}.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 277
+      "line": 279
     },
     {
       "id": "read.cache.keep-warm-is-per-deployment",
@@ -4211,7 +4255,7 @@
       "statement": "A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 279
+      "line": 281
     },
     {
       "id": "read.resolve-pin.pin-parameter",
@@ -4222,7 +4266,7 @@
       "statement": "`pin` maps a table name to a build identifier and resolves that table to the state the build published. An unnamed table resolves to the latest published state.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 287
+      "line": 289
     },
     {
       "id": "read.resolve-pin.unknown-build",
@@ -4233,7 +4277,7 @@
       "statement": "An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.",
       "why": "because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states",
       "file": "spec/20-read.md",
-      "line": 288
+      "line": 290
     },
     {
       "id": "read.resolve-pin.earlier-bound-wins",
@@ -4244,7 +4288,7 @@
       "statement": "A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 290
+      "line": 292
     },
     {
       "id": "read.resolve-pin.resolved-echo",
@@ -4255,7 +4299,7 @@
       "statement": "A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 291
+      "line": 293
     },
     {
       "id": "read.resolve-pin.absent-watermark",
@@ -4266,7 +4310,7 @@
       "statement": "The watermark is null for a materialization carrying none, distinct from a watermark of zero.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 292
+      "line": 294
     },
     {
       "id": "read.resolve-pin.consumer-comparison",
@@ -4277,7 +4321,7 @@
       "statement": "A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 294
+      "line": 296
     },
     {
       "id": "read.embed.default-embedder",
@@ -4288,7 +4332,7 @@
       "statement": "The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 301
+      "line": 303
     },
     {
       "id": "read.embed.default-embedder-reach",
@@ -4299,7 +4343,7 @@
       "statement": "The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 302
+      "line": 304
     },
     {
       "id": "read.embed.model-identifier",
@@ -4307,10 +4351,10 @@
       "operation": "embed",
       "subject": "model-identifier",
       "kind": "behavior",
-      "statement": "Every stored vector travels beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.",
+      "statement": "Every stored vector lands in a {{store.reconcile.binary-and-vector}} column beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 303
+      "line": 305
     },
     {
       "id": "read.embed.build-identity",
@@ -4321,7 +4365,7 @@
       "statement": "The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 304
+      "line": 306
     },
     {
       "id": "read.embed.required-face",
@@ -4332,7 +4376,7 @@
       "statement": "A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 306
+      "line": 308
     },
     {
       "id": "read.embed.absent-read-backend",
@@ -4343,7 +4387,7 @@
       "statement": "Without the embedded SQL engine linked, both read tools raise `ReadBackendAbsent` rather than answering from a narrower path.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 308
+      "line": 310
     },
     {
       "id": "read.declare.canonical-column",
@@ -12385,6 +12429,17 @@
       "line": 193
     },
     {
+      "id": "authority.mask.typed-strategy",
+      "contract": "authority",
+      "operation": "mask",
+      "subject": "typed-strategy",
+      "kind": "refusal",
+      "statement": "A binary column masks by `drop` or by `hash` over its bytes, a vector column by `drop` alone; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.",
+      "why": "A-store",
+      "file": "spec/51-enforcement.md",
+      "line": 195
+    },
+    {
       "id": "authority.mask.absent-column",
       "contract": "authority",
       "operation": "mask",
@@ -12393,7 +12448,7 @@
       "statement": "A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.",
       "why": "because a skipped declaration serves reads under a policy its author believed covered a column",
       "file": "spec/51-enforcement.md",
-      "line": 195
+      "line": 197
     },
     {
       "id": "authority.mask.masks-per-table",
@@ -12404,7 +12459,7 @@
       "statement": "A table carries at most 128 entries in its column mask set.",
       "why": "because a table beyond it needs a drop, not a mask per column",
       "file": "spec/51-enforcement.md",
-      "line": 197
+      "line": 199
     },
     {
       "id": "authority.refuse.scope-denied",
@@ -12415,7 +12470,7 @@
       "statement": "A tenant-scoped credential reading another tenant's rows on a granted table raises `EnforceScopeDenied`, as wire code `scope_denied`, HTTP `403` or an in-band tool error, naming the table and both scopes.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 204
+      "line": 206
     },
     {
       "id": "authority.refuse.not-empty",
@@ -12426,7 +12481,7 @@
       "statement": "A scope refusal is a typed error, never an empty result.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 206
+      "line": 208
     },
     {
       "id": "authority.refuse.echo",
@@ -12437,7 +12492,7 @@
       "statement": "The requested scope in a refusal echoes the statement's value, never a stored value.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 208
+      "line": 210
     },
     {
       "id": "authority.refuse.ungranted-table",
@@ -12448,7 +12503,7 @@
       "statement": "A relation the caller holds no grant on, whether or not a table of that name exists, raises `EnforceUnknownRelation` and is absent from listings and descriptions.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 210
+      "line": 212
     },
     {
       "id": "authority.refuse.payload",
@@ -12459,7 +12514,7 @@
       "statement": "A refusal payload carries at most 512 B.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 212
+      "line": 214
     },
     {
       "id": "authority.refuse.scope-guard",
@@ -12470,7 +12525,7 @@
       "statement": "The scope guard walks the engine's parse once, deciding literal equalities and membership lists over the tenant column and bound template parameters destined for it.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 214
+      "line": 216
     },
     {
       "id": "authority.refuse.top-level",
@@ -12481,7 +12536,7 @@
       "statement": "The guard reads top-level conjuncts of a statement whose own FROM names a scoped table.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 216
+      "line": 218
     },
     {
       "id": "authority.refuse.guard-walk",
@@ -12492,7 +12547,7 @@
       "statement": "The guard visits at most 4096 entries of one parse tree.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 218
+      "line": 220
     },
     {
       "id": "authority.refuse.undecidable",
@@ -12503,7 +12558,7 @@
       "statement": "A constraint the guard cannot settle composes as an ordinary conjunct; the engine-applied equality isolates.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 220
+      "line": 222
     },
     {
       "id": "authority.refuse.drifted-scope",
@@ -12514,7 +12569,7 @@
       "statement": "A tenant value matching no partition reads empty, like a tenant that wrote nothing; the read path repairs no transformed scope value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 222
+      "line": 224
     },
     {
       "id": "authority.bound-redistribution.withhold",
@@ -12525,7 +12580,7 @@
       "statement": "A cleared redistribution flag withholds every object of the table at push and omits the table's name from the bucket manifest.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 229
+      "line": 231
     },
     {
       "id": "authority.bound-redistribution.before-diff",
@@ -12536,7 +12591,7 @@
       "statement": "The exclusion applies before the object diff is computed.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 231
+      "line": 233
     },
     {
       "id": "authority.bound-redistribution.outranks-grants",
@@ -12547,7 +12602,7 @@
       "statement": "The bound holds against a credential granted everything.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "authority.bound-redistribution.envelopes",
@@ -12558,7 +12613,7 @@
       "statement": "The bound covers the table's columnar files and each pull's verbatim record.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 235
+      "line": 237
     },
     {
       "id": "authority.bound-redistribution.root-allowlist",
@@ -12569,7 +12624,7 @@
       "statement": "While any table is withheld, a root-level object ships only when the allowlist in Shapes names it.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 237
+      "line": 239
     },
     {
       "id": "authority.bound-redistribution.root-not-allowlisted",
@@ -12580,7 +12635,7 @@
       "statement": "A root-level object absent from the allowlist raises `EnforceRootObjectNotAllowlisted` at push.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "authority.bound-redistribution.left-behind",
@@ -12591,7 +12646,7 @@
       "statement": "Clearing the flag over a table an earlier push uploaded raises `EnforceStaleRedistributedObjects`, naming each object and the remedy, deleting none.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "authority.bound-redistribution.manifest-is-an-index",
@@ -12602,7 +12657,7 @@
       "statement": "An object stays fetchable by its key after the manifest stops naming it; a manifest authorizes nothing.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "authority.bound-redistribution.report",
@@ -12613,7 +12668,7 @@
       "statement": "A left-behind report names at most 100 files and states the total found.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "authority.bound-redistribution.two-checks",
@@ -12624,7 +12679,7 @@
       "statement": "The left-behind check runs before and after the upload loop; the guarantee holds for one bucket under one pushing configuration.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 247
+      "line": 249
     },
     {
       "id": "authority.bound-redistribution.edge-filter",
@@ -12635,7 +12690,7 @@
       "statement": "A serving edge in front of the bucket filters a materialized replica by the pulling credential's grants.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 249
+      "line": 251
     },
     {
       "id": "authority.place.zone-string",
@@ -12646,7 +12701,7 @@
       "statement": "A zone string parses, after trimming, as `local:device`, `on-prem:<id>`, `private-cloud:<id>` or `public-cloud:<id>`; any other text is undeclared. The identifier is part of the value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 271
+      "line": 273
     },
     {
       "id": "authority.place.allow-set-entry",
@@ -12657,7 +12712,7 @@
       "statement": "An allow-set entry is `*`, `local:device`, `on-prem:*`, `private-cloud:*`, `public-cloud:*`, or a category carrying a concrete identifier.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 273
+      "line": 275
     },
     {
       "id": "authority.place.unparsed-pattern",
@@ -12668,7 +12723,7 @@
       "statement": "An allow-set entry matching no entry form raises `EnforceZonePatternUnparsed`, naming the entry.",
       "why": "because an unparsed entry matching nothing hides a policy error; a new zone category updates the grammar first",
       "file": "spec/51-enforcement.md",
-      "line": 275
+      "line": 277
     },
     {
       "id": "authority.place.disjunctive",
@@ -12679,7 +12734,7 @@
       "statement": "A zone is admitted when any entry matches. A bare category matches every identifier in it; an entry carrying an identifier matches that identifier alone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 277
+      "line": 279
     },
     {
       "id": "authority.place.undeclared",
@@ -12690,7 +12745,7 @@
       "statement": "Only `*` admits an undeclared zone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 279
+      "line": 281
     },
     {
       "id": "authority.place.caller-zone",
@@ -12701,7 +12756,7 @@
       "statement": "The calling process declares its zone per request; the store carries none.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 281
+      "line": 283
     },
     {
       "id": "authority.place.asserted-zone",
@@ -12712,7 +12767,7 @@
       "statement": "A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.",
       "why": "because an unsigned argument able to widen placement makes the signed zone decorative",
       "file": "spec/51-enforcement.md",
-      "line": 283
+      "line": 285
     },
     {
       "id": "authority.place.picks-no-model",
@@ -12723,7 +12778,7 @@
       "statement": "Placement selects no model and dispatches no inference; the engine's one invocation point is an operator-configured endpoint capability for synthesis.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 285
+      "line": 287
     },
     {
       "id": "authority.place.fail-closed",
@@ -12734,7 +12789,7 @@
       "statement": "A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 287
+      "line": 289
     },
     {
       "id": "authority.place.permissive-default",
@@ -12745,7 +12800,7 @@
       "statement": "A default resolving an unlabeled table to `*` raises `EnforcePermissiveZoneDefault` where more than one principal owns the store.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 289
+      "line": 291
     },
     {
       "id": "authority.place.protected-floor",
@@ -12756,7 +12811,7 @@
       "statement": "A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 291
+      "line": 293
     },
     {
       "id": "authority.place.floor-widened",
@@ -12767,7 +12822,7 @@
       "statement": "A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 293
+      "line": 295
     },
     {
       "id": "authority.place.removal-with-public-cloud",
@@ -12778,7 +12833,7 @@
       "statement": "A surface declaring write-time removal on a column and an allow-set admitting a public cloud raises `EnforceRemovalWithPublicCloud`.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 295
+      "line": 297
     },
     {
       "id": "authority.place.narrowest-grain",
@@ -12789,7 +12844,7 @@
       "statement": "A column's set narrows its table's; a principal's set narrows both.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 297
+      "line": 299
     },
     {
       "id": "authority.place.excluded-row",
@@ -12800,7 +12855,7 @@
       "statement": "Where the table's effective set omits the session's zone, the row leaves the result.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 299
+      "line": 301
     },
     {
       "id": "authority.place.excluded-cell",
@@ -12811,7 +12866,7 @@
       "statement": "A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 301
+      "line": 303
     },
     {
       "id": "authority.place.per-principal",
@@ -12822,7 +12877,7 @@
       "statement": "A principal's allow-set pins every row it authors wherever the row lands. A row with no verified author resolves as an undeclared zone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 303
+      "line": 305
     },
     {
       "id": "authority.place.evidence-floor",
@@ -12833,7 +12888,7 @@
       "statement": "A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 305
+      "line": 307
     },
     {
       "id": "authority.place.incognito",
@@ -12844,7 +12899,7 @@
       "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 307
+      "line": 309
     },
     {
       "id": "authority.place.incognito-widening",
@@ -12855,7 +12910,7 @@
       "statement": "A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 309
+      "line": 311
     },
     {
       "id": "authority.place.team-default",
@@ -12866,7 +12921,7 @@
       "statement": "A project declares a default zone, whether users widen it, and whether incognito is on by default.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "authority.place.serve-outcome",
@@ -12877,7 +12932,7 @@
       "statement": "Serving one row yields a drop flag and the list of zone-masked columns.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 313
+      "line": 315
     },
     {
       "id": "authority.place.envelope",
@@ -12888,7 +12943,7 @@
       "statement": "A response envelope carries row counts removed by predicate and by zone, column names masked by policy and by zone, the asserted zone and the incognito flag, and no removed value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 315
+      "line": 317
     },
     {
       "id": "authority.place.symbolic-inclusion",
@@ -12899,7 +12954,7 @@
       "statement": "Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 317
+      "line": 319
     },
     {
       "id": "authority.place.proxy-boundary",
@@ -12910,7 +12965,7 @@
       "statement": "A proxy replica resolves zones at the proxy boundary.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 319
+      "line": 321
     },
     {
       "id": "authority.place.allow-set-entries",
@@ -12921,7 +12976,7 @@
       "statement": "An allow-set holds at most 32 entries.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "authority.place.identifier-length",
@@ -12932,7 +12987,7 @@
       "statement": "A zone identifier holds at most 128 chars.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 323
+      "line": 325
     },
     {
       "id": "authority.resist.credential-shaped-value",
@@ -12943,7 +12998,7 @@
       "statement": "The write path raises `EnforceCredentialShapedValue` on a value matching a credential shape, before it reaches storage.",
       "why": "A-read",
       "file": "spec/51-enforcement.md",
-      "line": 352
+      "line": 354
     },
     {
       "id": "authority.resist.read-only-face",
@@ -12954,7 +13009,7 @@
       "statement": "An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 354
+      "line": 356
     },
     {
       "id": "authority.resist.write-tool",
@@ -12965,7 +13020,7 @@
       "statement": "Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 356
+      "line": 358
     },
     {
       "id": "disclosure.mirror.unbound-table",
@@ -16963,6 +17018,18 @@
       "store.reserve.table-name"
     ],
     [
+      "store.reconcile.union-by-name",
+      "store.reconcile.half-width"
+    ],
+    [
+      "store.reconcile.binary-and-vector",
+      "store.reconcile.incompatible"
+    ],
+    [
+      "store.reconcile.typed-landing",
+      "store.reconcile.incompatible"
+    ],
+    [
       "store.fold.pass",
       "store.fold.pointer-commit"
     ],
@@ -17013,6 +17080,10 @@
     [
       "read.cache.snapshot-invalidates",
       "store.fold.non-blocking"
+    ],
+    [
+      "read.embed.model-identifier",
+      "store.reconcile.binary-and-vector"
     ],
     [
       "read.synthesize.dead-letter",
@@ -18231,6 +18302,10 @@
           "EnforceStaleRedistributedObjects": {
             "clause": "authority.bound-redistribution.left-behind",
             "gloss": "Objects an earlier push left addressable for a now-withheld table."
+          },
+          "EnforceStrategyOutsideType": {
+            "clause": "authority.mask.typed-strategy",
+            "gloss": "A mask strategy a binary or vector column's type does not admit."
           },
           "EnforceTruncationCutsNothing": {
             "clause": "authority.mask.cuts-nothing",

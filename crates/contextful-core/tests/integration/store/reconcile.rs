@@ -1,6 +1,6 @@
 //! `store.reconcile`: the type lattice and the merged schema.
 
-use contextful_core::store::reconcile::{supertype, Column, ColumnType, Schema};
+use contextful_core::store::reconcile::{decode_binary, encode_binary, supertype, Column, ColumnType, FloatItem, Schema};
 use contextful_core::store::StoreError;
 use ColumnType::*;
 
@@ -90,4 +90,79 @@ fn the_arrow_json_form_round_trips_every_type() {
     assert_eq!(doc["fields"][6]["type"], serde_json::json!({"name": "timestamp", "unit": "NANOSECOND", "timezone": "UTC"}));
     assert_eq!(doc["fields"][5]["metadata"][0]["value"], "arrow.json");
     assert_eq!(Schema::from_arrow_json(&doc).unwrap(), all);
+}
+
+/// The lattice holds `Binary`, `FixedSizeBinary(n)` and a `FixedSizeList` of `Float32` or `Float16` at dimension n; none takes a promotion, so a width, item or dimension change meets {{store.reconcile.incompatible}}.
+// spec: store.reconcile.binary-and-vector@bf9db2d8
+#[test]
+fn binary_and_vector_types_take_no_promotion() {
+    let typed = [Binary, FixedSizeBinary(16), FixedSizeBinary(32), FixedSizeList(FloatItem::Float32, 4), FixedSizeList(FloatItem::Float16, 4), FixedSizeList(FloatItem::Float32, 8)];
+    let scalar = [Boolean, Int32, Int64, Float64, Utf8, Json, Timestamp];
+    for a in typed {
+        assert_eq!(supertype(a, a), Some(a));
+        assert_eq!(supertype(Null, a), Some(a));
+        assert_eq!(supertype(a, Null), Some(a));
+        for b in typed.into_iter().chain(scalar).filter(|b| *b != a) {
+            assert_eq!(supertype(a, b), None, "{a:?} with {b:?}");
+            assert_eq!(supertype(b, a), None, "{b:?} with {a:?}");
+        }
+    }
+    let cases = [
+        (FixedSizeBinary(16), FixedSizeBinary(32), "FixedSizeBinary(16)", "FixedSizeBinary(32)"),
+        (FixedSizeList(FloatItem::Float32, 4), FixedSizeList(FloatItem::Float16, 4), "FixedSizeList<Float32, 4>", "FixedSizeList<Float16, 4>"),
+        (FixedSizeList(FloatItem::Float16, 4), FixedSizeList(FloatItem::Float16, 8), "FixedSizeList<Float16, 4>", "FixedSizeList<Float16, 8>"),
+        (Binary, Utf8, "Binary", "Utf8"),
+        (FixedSizeList(FloatItem::Float32, 4), Json, "FixedSizeList<Float32, 4>", "Json"),
+    ];
+    for (stored, arriving, stored_name, arriving_name) in cases {
+        match s(&[("v", stored)]).merge(&s(&[("v", arriving)]), &[]) {
+            Err(StoreError::StoreSchemaIncompatible(m)) => {
+                assert!(m.contains("`v`") && m.contains(stored_name) && m.contains(arriving_name), "{m}")
+            }
+            other => panic!("{stored:?} with {arriving:?}: expected StoreSchemaIncompatible, got {other:?}"),
+        }
+    }
+}
+
+/// A producer declares these types; a JSON batch carries bytes as padded base64 and a vector as a number array of its dimension, and any other value meets {{store.reconcile.incompatible}}.
+#[test]
+fn a_producer_spells_binary_and_vector_types() {
+    assert_eq!(ColumnType::parse("binary"), Some(Binary));
+    assert_eq!(ColumnType::parse("bytes"), Some(Binary));
+    assert_eq!(ColumnType::parse("binary(32)"), Some(FixedSizeBinary(32)));
+    assert_eq!(ColumnType::parse("float32[768]"), Some(FixedSizeList(FloatItem::Float32, 768)));
+    assert_eq!(ColumnType::parse("Float16[384]"), Some(FixedSizeList(FloatItem::Float16, 384)));
+    for bad in ["binary(0)", "binary()", "float16[0]", "float64[4]", "float32[x]", "binary(4294967295)"] {
+        assert_eq!(ColumnType::parse(bad), None, "{bad}");
+    }
+    assert_eq!(encode_binary(&[0xAA, 0x01]), "qgE=");
+    assert_eq!(decode_binary("qgE="), Some(vec![0xAA, 0x01]));
+    // Unpadded, hex and URL-safe spellings carry no bytes.
+    for bad in ["qgE", "0xaa01", "-_8="] {
+        assert_eq!(decode_binary(bad), None, "{bad}");
+    }
+}
+
+/// The Arrow JSON form carries a binary width, and a vector's dimension and element width, so `schema.json` round-trips them.
+#[test]
+fn the_arrow_json_form_round_trips_binary_and_vector_types() {
+    let typed = Schema {
+        columns: vec![
+            Column::new("blob", Binary, true),
+            Column::new("digest", FixedSizeBinary(32), false),
+            Column::new("embedding", FixedSizeList(FloatItem::Float16, 384), true),
+            Column::new("wide", FixedSizeList(FloatItem::Float32, 3), true),
+        ],
+    };
+    let doc = typed.to_arrow_json();
+    assert_eq!(doc["fields"][0]["type"], serde_json::json!({"name": "binary"}));
+    assert_eq!(doc["fields"][1]["type"], serde_json::json!({"name": "fixedsizebinary", "byteWidth": 32}));
+    assert_eq!(doc["fields"][2]["type"], serde_json::json!({"name": "fixedsizelist", "listSize": 384}));
+    assert_eq!(doc["fields"][2]["children"][0]["type"], serde_json::json!({"name": "floatingpoint", "precision": "HALF"}));
+    assert_eq!(doc["fields"][3]["children"][0]["type"], serde_json::json!({"name": "floatingpoint", "precision": "SINGLE"}));
+    assert_eq!(Schema::from_arrow_json(&doc).unwrap(), typed);
+    // The engine reads either binary width as BLOB and either vector width as FLOAT.
+    assert_eq!(FixedSizeBinary(32).sql(), "BLOB");
+    assert_eq!(Binary.sql(), "BLOB");
+    assert_eq!(FixedSizeList(FloatItem::Float16, 384).sql(), "FLOAT[384]");
 }

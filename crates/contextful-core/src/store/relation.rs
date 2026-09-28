@@ -38,7 +38,15 @@ pub fn relation(
         zero_row(schema_columns)
     } else {
         let list: Vec<String> = files.iter().map(|f| literal(f)).collect();
-        format!("SELECT * FROM read_parquet([{}], union_by_name = true, hive_partitioning = false)", list.join(", "))
+        // Parquet holds no fixed-size list, so the engine reads a vector as a variable list;
+        // the one cast the relation carries restores its dimension (`store.reconcile.half-width`).
+        let vectors: Vec<String> = schema_columns
+            .iter()
+            .filter(|c| c.ty.is_vector() && !absent.iter().any(|a| a.name == c.name))
+            .map(|c| format!("CAST({} AS {}) AS {}", ident(&c.name), c.ty.sql(), ident(&c.name)))
+            .collect();
+        let replace = if vectors.is_empty() { String::new() } else { format!(" REPLACE ({})", vectors.join(", ")) };
+        format!("SELECT *{replace} FROM read_parquet([{}], union_by_name = true, hive_partitioning = false)", list.join(", "))
     };
     if !files.is_empty() && !absent.is_empty() {
         base = format!("{base} UNION ALL BY NAME {}", zero_row(absent));

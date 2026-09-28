@@ -164,11 +164,20 @@ impl TablePolicy {
     }
 
     /// Hold the policy to the table's schema: a mask naming a column the schema omits
-    /// refuses (`authority.mask.absent-column`).
+    /// refuses (`authority.mask.absent-column`), as does a strategy the column's type
+    /// does not admit (`authority.mask.typed-strategy`).
     pub fn check_schema(&self, table: &str, schema: &[Column]) -> Result<(), EnforceError> {
         for (name, c) in &self.columns {
-            if c.mask.is_some() && !schema.iter().any(|s| &s.name == name) {
+            let Some(mask) = &c.mask else { continue };
+            let Some(column) = schema.iter().find(|s| &s.name == name) else {
                 return Err(EnforceError::MaskOnAbsentColumn(format!("table `{table}` masks `{name}`, which its schema omits")));
+            };
+            if !mask.admits(column.ty) {
+                return Err(EnforceError::StrategyOutsideType(format!(
+                    "table `{table}` masks `{name}`, a {} column, by `{}`; a binary column takes drop or hash, a vector column drop alone",
+                    column.ty.name(),
+                    mask.strategy_name()
+                )));
             }
         }
         Ok(())
