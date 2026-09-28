@@ -448,15 +448,15 @@ clause = "read.retrieve.candidate-window"
 metric = "slices.deep_recall.retrieval.lexical.hit_rate_at_k"
 kind   = "eval"
 tier   = "gate"
-method = { issue = 44 }
+method = { test = "contextful_context::read::fulltext::a_term_on_one_row_behind_10000_newer_rows_returns_for_limit_10" }
 target = { op = "==", value = 1 }
 
 [entry.lexical-sidecar-cost]
-clause = "read.retrieve.candidate-window"
+clause = "read.retrieve.fulltext-probe"
 metric = "lexical.postings_scored_per_query"
 kind   = "bench"
 tier   = "scheduled"
-method = { issue = 44 }
+method = { test = "contextful_context::index::one_row_set_lays_out_one_postings_file_a_probe_reads_by_term" }
 
 [entry.word-boundary-precision]
 clause = "read.retrieve.relevance-floor"

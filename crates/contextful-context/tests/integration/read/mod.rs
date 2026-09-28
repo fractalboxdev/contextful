@@ -3,6 +3,7 @@
 #![cfg(feature = "read")]
 
 mod enforce;
+mod fulltext;
 mod guard;
 mod register;
 mod retrieve;

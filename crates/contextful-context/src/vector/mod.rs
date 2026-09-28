@@ -46,7 +46,7 @@ pub enum Sealing<'a> {
 }
 
 impl Sealing<'_> {
-    fn write(&self, path: &Path, plaintext: &[u8]) -> Result<()> {
+    pub(crate) fn write(&self, path: &Path, plaintext: &[u8]) -> Result<()> {
         let bytes = match self {
             Sealing::Plaintext => plaintext.to_vec(),
             Sealing::Sealed(c) => c.seal(plaintext).map_err(|e| ContextError::Invalid(format!("{}: sealing: {e}", path.display())))?,
@@ -54,7 +54,7 @@ impl Sealing<'_> {
         fs::write(path, bytes).at(path)
     }
 
-    fn key_version(&self) -> u32 {
+    pub(crate) fn key_version(&self) -> u32 {
         match self {
             Sealing::Plaintext => 0,
             Sealing::Sealed(c) => c.key_version(),
@@ -63,7 +63,7 @@ impl Sealing<'_> {
 }
 
 /// The identifier column's values as text, `None` for a null.
-fn identifiers(rows: &RecordBatch, table: &str, column: &str) -> Result<Vec<Option<String>>> {
+pub(crate) fn identifiers(rows: &RecordBatch, table: &str, column: &str) -> Result<Vec<Option<String>>> {
     let col = rows
         .column_by_name(column)
         .ok_or_else(|| StoreError::StoreIndexColumnAbsent(format!("table `{table}`: `id_column` `{column}` is no column of the staged rows")))?;
@@ -114,7 +114,7 @@ pub fn build(
         .id_column()?
         .ok_or_else(|| StoreError::StoreIndexIdColumnUnresolved(format!("table `{table}` resolves no `id_column`")))?
         .to_string();
-    let dim = index.dim as usize;
+    let dim = index.dim() as usize;
     let ids = identifiers(rows, table, &id_column)?;
     let vectors = rows
         .column_by_name(&index.column)
@@ -133,7 +133,7 @@ pub fn build(
     let mut kept = Vec::new();
     for (i, id) in ids.into_iter().enumerate() {
         let Some(id) = id else { continue };
-        if list.is_null(i) || models.is_some_and(|m| m.is_null(i) || m.value(i) != index.model) {
+        if list.is_null(i) || models.is_some_and(|m| m.is_null(i) || m.value(i) != index.model()) {
             continue;
         }
         let v = &values[i * dim..(i + 1) * dim];
@@ -156,9 +156,9 @@ pub fn build(
         snapshot_id: snapshot_id.to_string(),
         column: index.column.clone(),
         id_column,
-        model: index.model.clone(),
-        dim: index.dim,
-        metric: index.metric,
+        model: index.model().to_string(),
+        dim: index.dim(),
+        metric: index.metric(),
         m: index.m(),
         ef_construction: index.ef_construction(),
         builder: VECTOR_BUILDER.to_string(),
@@ -183,27 +183,29 @@ pub enum Fallback {
     NoSnapshot,
     /// The snapshot records no sidecar over the column at the query's dimension.
     NoSidecar,
-    /// The reader's policy masks or zone-withholds the identifier or the vector column.
+    /// The reader's policy masks or zone-withholds the identifier or the indexed column, or
+    /// classes an indexed text column.
     Withheld,
     /// The query vector's dimension differs from the sidecar's.
     DimensionMismatch,
     /// The sidecar's own manifest, table or identity disagrees with the snapshot's entry.
     ManifestMismatch,
-    /// The sidecar holds more stored-vector bytes than the read path loads.
+    /// The sidecar holds more stored-vector bytes, or a sealed full-text file more bytes,
+    /// than the read path loads.
     OverCap,
     /// A sidecar file is missing, fails to open or decrypt, or holds no laid-out graph.
     Unreadable,
 }
 
-/// The graph's bytes: mapped read-only from a plaintext file, or decrypted into process
-/// memory from a sealed one.
-enum Backing {
+/// A sidecar file's bytes: mapped read-only from a plaintext file, or decrypted into
+/// process memory from a sealed one.
+pub(crate) enum Backing {
     Mapped(memmap2::Mmap),
     Owned(Vec<u8>),
 }
 
 impl Backing {
-    fn bytes(&self) -> &[u8] {
+    pub(crate) fn bytes(&self) -> &[u8] {
         match self {
             Backing::Mapped(m) => m,
             Backing::Owned(v) => v,

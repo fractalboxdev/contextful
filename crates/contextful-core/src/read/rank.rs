@@ -23,8 +23,33 @@ pub const FUSION_LEXICAL_WEIGHT_PERCENT: u32 = 40;
 pub const WINDOW_ANCHOR_TOLERANCE_HOURS: u64 = 24;
 
 /// BM25 term-frequency saturation and length normalization, at their customary values.
-const BM25_K1: f64 = 1.2;
-const BM25_B: f64 = 0.75;
+pub const BM25_K1: f64 = 1.2;
+pub const BM25_B: f64 = 0.75;
+
+/// A term's inverse document frequency among `docs` documents, `df` of which hold it.
+pub fn bm25_idf(docs: f64, df: f64) -> f64 {
+    (1.0 + (docs - df + 0.5) / (df + 0.5)).ln()
+}
+
+/// One term's BM25 contribution to a document holding it `tf` times, `norm` being the
+/// document's length over the average length.
+pub fn bm25_term(idf: f64, tf: f64, norm: f64) -> f64 {
+    idf * tf * (BM25_K1 + 1.0) / (tf + BM25_K1 * (1.0 - BM25_B + BM25_B * norm))
+}
+
+/// Sealed full-text sidecar bytes past which the file stays unopened: 256 MiB
+/// (`read.retrieve.fulltext-sealed-cap`).
+pub const FULLTEXT_SEALED_CAP_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Whether a sealed full-text sidecar file of `sealed_bytes` stays unopened, its arm adding
+/// no candidates (`read.retrieve.fulltext-sealed-cap`).
+pub fn fulltext_sealed_over_cap(sealed_bytes: u64) -> bool {
+    sealed_bytes > FULLTEXT_SEALED_CAP_BYTES
+}
+
+/// Opened full-text sidecars one read face keeps, oldest evicted first
+/// (`read.rank.lexical-index-cache`).
+pub const LEXICAL_INDEX_CACHE_ENTRIES: usize = 64;
 
 /// The candidate window for a requested limit: the larger of 8 times it and 200 rows.
 pub fn candidate_window(limit: u64) -> u64 {
@@ -115,7 +140,7 @@ impl LexicalIndex {
         let idf: Vec<f64> = (0..tokens.len())
             .map(|i| {
                 let df = tf.iter().filter(|row| row[i] > 0).count() as f64;
-                (1.0 + (n - df + 0.5) / (df + 0.5)).ln()
+                bm25_idf(n, df)
             })
             .collect();
         self.docs
@@ -129,10 +154,7 @@ impl LexicalIndex {
                 let score = row
                     .iter()
                     .zip(&idf)
-                    .map(|(&f, idf)| {
-                        let f = f as f64;
-                        idf * f * (BM25_K1 + 1.0) / (f + BM25_K1 * (1.0 - BM25_B + BM25_B * norm))
-                    })
+                    .map(|(&f, idf)| bm25_term(*idf, f as f64, norm))
                     .sum();
                 Some(score)
             })

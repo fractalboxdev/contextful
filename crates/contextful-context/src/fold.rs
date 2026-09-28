@@ -12,6 +12,7 @@ use arrow_select::filter::filter_record_batch;
 use arrow_select::take::take_record_batch;
 use contextful_core::store::declare::{TableDecl, WriteMode};
 use contextful_core::store::fold::FoldOutcome;
+use contextful_core::store::index::IndexKind;
 use contextful_core::store::lay_out::{
     part_name, PartEntry, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, STAGING_SUFFIX,
 };
@@ -152,8 +153,11 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     // publishes the snapshot publishes its sidecars with it (`store.fold.partial-snapshot`).
     let mut indexes = Vec::new();
     for index in decl.indexes() {
-        let entry = crate::vector::build(&staging, &snapshot_id, &rows, decl, index, &store.sealing())?;
-        indexes.push(serde_json::to_value(entry).expect("an entry serializes"));
+        let entry = match index.kind {
+            IndexKind::Vector => serde_json::to_value(crate::vector::build(&staging, &snapshot_id, &rows, decl, index, &store.sealing())?),
+            IndexKind::Fulltext => serde_json::to_value(crate::fulltext::build(&staging, &snapshot_id, &rows, decl, index, &store.sealing())?),
+        };
+        indexes.push(entry.expect("an entry serializes"));
     }
     let mut parts = Vec::new();
     if rows.num_rows() > 0 {

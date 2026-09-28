@@ -37,7 +37,7 @@ sequenceDiagram
   end
 ```
 
-Ranked reads go through `corpus.retrieve` ({{read.retrieve.ranked-call}}), which works as a funnel. Query text becomes content tokens ({{read.retrieve.content-tokens}}). Each table contributes an arm over a recency-ordered candidate window ({{read.retrieve.candidate-window}}); a vector sidecar widens that window without changing any row's score ({{read.retrieve.sidecar-generates-candidates}}); a relevance floor drops noise ({{read.retrieve.relevance-floor}}). Ranking fuses exact cosine with BM25 ({{read.rank.fusion}}), and a question's timeframe leads the ordering as a tier rather than a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend changes the order, never whether the read answers ({{read.rank.degradation-not-error}}).
+Ranked reads go through `corpus.retrieve` ({{read.retrieve.ranked-call}}), which works as a funnel. Query text becomes content tokens ({{read.retrieve.content-tokens}}). Each table contributes an arm over a recency-ordered candidate window ({{read.retrieve.candidate-window}}); a vector or full-text sidecar widens that window without changing any row's score ({{read.retrieve.sidecar-generates-candidates}}), and a full-text probe finds a term anywhere in the snapshot ({{read.retrieve.fulltext-probe}}); a relevance floor drops noise ({{read.retrieve.relevance-floor}}). Ranking fuses exact cosine with BM25 ({{read.rank.fusion}}), and a question's timeframe leads the ordering as a tier rather than a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend changes the order, never whether the read answers ({{read.rank.degradation-not-error}}).
 
 ```mermaid
 sequenceDiagram

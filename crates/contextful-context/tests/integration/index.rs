@@ -1,12 +1,13 @@
-//! `store.index`: clustering and partitioning of a snapshot's parts, and the vector sidecar
-//! the fold builds beside them.
+//! `store.index`: clustering and partitioning of a snapshot's parts, and the vector and
+//! full-text sidecars the fold builds beside them.
 
 use crate::support::{at, decl, query, s, Fixture};
 use contextful_context::fold::{escape, fold};
 use contextful_core::store::bound_time::Bounds;
 use serde_json::json;
 use contextful_context::vector::{Sealing, VectorSidecar, GRAPH_FILE};
-use contextful_core::store::index::VectorEntry;
+use contextful_context::fulltext::{FulltextSidecar, POSTINGS_FILE};
+use contextful_core::store::index::{FulltextEntry, Tokenizer, VectorEntry};
 use contextful_core::store::lay_out::SnapshotManifest;
 use contextful_core::store::reconcile::{ColumnType, FloatItem};
 use contextful_core::store::StoreError;
@@ -323,4 +324,105 @@ fn vector_recall_at_10_holds_against_exact_search() {
     let recall = hits as f64 / (QUERIES * 10) as f64;
     contextful_eval::record::emit("vector-recall", recall, QUERIES as u64, SEED);
     assert!(recall >= 0.95, "recall@10 {recall}");
+}
+
+pub const FULLTEXT: &str = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";
+
+fn fulltext_entry(m: &SnapshotManifest) -> FulltextEntry {
+    serde_json::from_value(m.indexes.iter().find(|e| e["kind"] == "fulltext").unwrap().clone()).unwrap()
+}
+
+fn probe_ids(sidecar: &FulltextSidecar, query: &[&str], k: usize) -> Vec<String> {
+    let tokens: Vec<String> = query.iter().map(|t| t.to_string()).collect();
+    sidecar.probe(&tokens, k).unwrap().candidates.into_iter().map(|c| c.id).collect()
+}
+
+/// The fold builds each declared full-text sidecar over the staged rows whose identifier is non-null and whose text yields a term, and records its entry in the snapshot manifest.
+// spec: store.index.fulltext-by-fold@3d70d9fa
+#[test]
+fn the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms() {
+    let f = Fixture::new();
+    let d = decl(&format!("name = \"passages\"\n{FULLTEXT}id_column = \"digest\"\ntokenizer = \"cjk\"\n{INDEX}id_column = \"digest\"\n"));
+    f.land_typed(&d, "run-1", json!([
+        {"digest": "d1", "body": "Solar battery storage", "embedding": [1.0, 0.0, 0.0]},
+        {"digest": "d2", "body": "メニューの設定画面を開く", "embedding": [0.0, 1.0, 0.0]},
+        {"digest": null, "body": "battery without an identifier", "embedding": [0.0, 0.0, 1.0]},
+        {"digest": "d4", "body": null, "embedding": [1.0, 1.0, 0.0]},
+        {"digest": "d5", "body": " -- ", "embedding": [0.0, 1.0, 1.0]},
+    ]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, dir) = current(&f, "passages");
+    // Both declared sidecars sit in the one snapshot, each with its own entry.
+    assert_eq!(m.indexes.len(), 2);
+    let e = fulltext_entry(&m);
+    assert_eq!((e.path.as_str(), e.column.as_str(), e.id_column.as_str(), e.tokenizer), ("indexes/fts-body-cjk", "body", "digest", Tokenizer::Cjk));
+    assert_eq!((e.table.as_str(), e.snapshot_id.as_str(), e.row_count, e.key_version), ("passages", m.snapshot_id.to_string().as_str(), 2, 0));
+    assert!(dir.join(&e.path).join(POSTINGS_FILE).is_file());
+    let own: FulltextEntry = serde_json::from_slice(&std::fs::read(dir.join(&e.path).join("_manifest.json")).unwrap()).unwrap();
+    assert_eq!(own, e);
+    let entry = m.indexes.iter().find(|x| x["kind"] == "fulltext").unwrap();
+    let sidecar = FulltextSidecar::open(&dir, "passages", entry, &Sealing::Plaintext).unwrap();
+    assert!(sidecar.is_mapped());
+    assert_eq!(probe_ids(&sidecar, &["battery"], 10), ["d1"]);
+    assert_eq!(probe_ids(&sidecar, &["画面"], 10), ["d2"]);
+    // A table declaring no full-text sidecar records none.
+    let v = Fixture::new();
+    let only_vector = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}"));
+    v.land_typed(&only_vector, "run-1", json!([{"passage_id": "p1", "body": "battery", "embedding": [1.0, 0.0, 0.0]}]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&v.store, &only_vector, at("2030-01-01T01:00:00Z")).unwrap();
+    assert!(current(&v, "passages").0.indexes.iter().all(|x| x["kind"] == "vector"));
+    // A full-text sidecar over text the staged rows type otherwise refuses before landing.
+    let n = Fixture::new();
+    let numeric = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{FULLTEXT}"));
+    let err = n.land(&numeric, "run-1", json!([{"passage_id": "p1", "body": 12}]), "2030-01-01T00:00:00Z").unwrap_err();
+    assert!(matches!(err.store(), Some(StoreError::StoreIndexColumnType(_))), "{err}");
+}
+
+/// A full-text sidecar is one file holding a sorted term dictionary and, per term, the rows and positions it occurs at, which a reader binary-searches in mapped or decrypted bytes.
+// spec: store.index.postings@6a308b4d
+#[test]
+fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
+    const N: usize = 2000;
+    // `alpha` on every 200th row, `beta` on every 400th, both on rows divisible by 400.
+    let rows: Vec<Value> = (0..N)
+        .map(|i| {
+            let mut body = format!("routine entry {i} gamma");
+            if i % 200 == 0 {
+                body.push_str(" alpha");
+            }
+            if i % 400 == 0 {
+                body.push_str(" beta");
+            }
+            json!({"passage_id": format!("p{i:04}"), "body": body})
+        })
+        .collect();
+    let postings = |at_: &str| {
+        let f = Fixture::new();
+        let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{FULLTEXT}"));
+        f.land(&d, "run-1", Value::Array(rows.clone()), "2030-01-01T00:00:00Z").unwrap();
+        fold(&f.store, &d, at(at_)).unwrap();
+        let (m, dir) = current(&f, "passages");
+        let e = fulltext_entry(&m);
+        let sidecar = FulltextSidecar::open(&dir, "passages", &m.indexes[0], &Sealing::Plaintext).unwrap();
+        let tokens = vec!["alpha".to_string(), "beta".to_string()];
+        let probe = sidecar.probe(&tokens, 64).unwrap();
+        (std::fs::read(dir.join(&e.path).join(POSTINGS_FILE)).unwrap(), e, probe)
+    };
+    let (a, e, probe) = postings("2030-01-01T01:00:00Z");
+    let (b, _, _) = postings("2030-01-02T01:00:00Z");
+    assert!(a == b, "one row set laid out two postings files");
+    assert_eq!(&a[..8], b"CFPOST01");
+    // Distinct terms: the row numbers, `routine`, `entry`, `gamma`, `alpha`, `beta`.
+    assert_eq!((e.row_count, e.term_count), (N as u64, N as u64 + 5));
+    // Rows with both terms lead, then rows with `alpha` alone; ties by row order.
+    let ids: Vec<&str> = probe.candidates.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids.len(), 10);
+    assert_eq!(&ids[..5], ["p0000", "p0400", "p0800", "p1200", "p1600"]);
+    assert_eq!(&ids[5..], ["p0200", "p0600", "p1000", "p1400", "p1800"]);
+    // The probe decodes the postings of its own terms alone: 10 and 5, of 2000 rows.
+    assert_eq!(probe.postings_scored, 15);
+    contextful_eval::record::emit("lexical-sidecar-cost", probe.postings_scored as f64, 1, 0);
+    // Truncated or foreign bytes do not parse as a layout.
+    assert!(contextful_context::fulltext::postings::Layout::parse(&a[..a.len() - 1]).is_none());
+    assert!(contextful_context::fulltext::postings::Layout::parse(b"CFHNSW01").is_none());
 }

@@ -65,7 +65,7 @@ Revisit: a key shape whose ownership is not derivable from the key; retries exha
 
 **Status:** accepted
 
-Context: `store.encrypt.cipher` seals every sidecar with AES-256-GCM per file, and a sealed file cannot be memory-mapped, while the HNSW and Tantivy readers scale past memory only by mapping plaintext. Criteria: the at-rest scope holds on local disk and in the bucket; no bespoke cipher format; an unencrypted project reads a sidecar larger than memory.
+Context: `store.encrypt.cipher` seals every sidecar with AES-256-GCM per file, and a sealed file cannot be memory-mapped, while the HNSW and full-text readers scale past memory only by mapping plaintext. Criteria: the at-rest scope holds on local disk and in the bucket; no bespoke cipher format; an unencrypted project reads a sidecar larger than memory.
 
 Decision: in an unencrypted project a sidecar is plaintext and memory-mapped read-only. In an encrypted project the files stay sealed; a reader opens one into anonymous process memory, writes no cleartext to disk, and the resident bound applies to the decrypted bytes.
 

@@ -193,3 +193,93 @@ fn a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone() {
     let plain_entry = serde_json::to_value(build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap()).unwrap();
     assert_eq!(VectorSidecar::open(plain.path(), "passages", &plain_entry, &Sealing::Sealed(&cipher)).err(), Some(Fallback::Unreadable));
 }
+
+/// Staged rows and a declaration for a full-text sidecar whose one `canary` row alone holds
+/// the term `zephyrine`.
+fn fulltext_rows(canary: &str) -> (arrow_array::RecordBatch, contextful_core::store::declare::TableDecl) {
+    use arrow_array::{ArrayRef, RecordBatch, StringArray};
+    use std::sync::Arc;
+    let ids: Vec<String> = (0..40).map(|i| if i == 17 { canary.to_string() } else { format!("passage-{i}") }).collect();
+    let bodies: Vec<String> = (0..40).map(|i| if i == 17 { "the zephyrine ledger".to_string() } else { format!("routine entry {i}") }).collect();
+    let rows = RecordBatch::try_from_iter([
+        ("passage_id", Arc::new(StringArray::from(ids)) as ArrayRef),
+        ("body", Arc::new(StringArray::from(bodies)) as ArrayRef),
+    ])
+    .unwrap();
+    let decl = contextful_core::store::declare::TableDecl::parse_pipeline(
+        "[[pipeline.tables]]\nname = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n",
+    )
+    .unwrap()
+    .remove(0);
+    (rows, decl)
+}
+
+/// A full-text sidecar is mapped from plaintext and, sealed, opens into process memory alone.
+#[test]
+fn a_sealed_full_text_sidecar_opens_into_memory_alone() {
+    use contextful_context::fulltext::{build, FulltextSidecar};
+    use contextful_context::vector::{Fallback, Sealing};
+    use contextful_core::store::lay_out::SnapshotId;
+    use contextful_core::time::Instant;
+
+    let canary = "passage-canary-5f1e";
+    let (rows, decl) = fulltext_rows(canary);
+    let id = SnapshotId::next(Instant::parse("2030-01-01T00:00:00Z").unwrap(), None);
+    let query = vec!["zephyrine".to_string()];
+
+    let plain = tempfile::tempdir().unwrap();
+    let entry = serde_json::to_value(build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap()).unwrap();
+    let mapped = FulltextSidecar::open(plain.path(), "passages", &entry, &Sealing::Plaintext).unwrap();
+    assert!(mapped.is_mapped());
+    assert_eq!(mapped.probe(&query, 1).unwrap().candidates[0].id, canary);
+
+    let cipher = TestCipher { key: 0x5a };
+    let sealed = tempfile::tempdir().unwrap();
+    let built = build(sealed.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(&cipher)).unwrap();
+    assert_eq!(built.key_version, 7);
+    let entry = serde_json::to_value(built).unwrap();
+    let files = tree(sealed.path());
+    assert_eq!(files.len(), 2, "{files:?}");
+    for (path, bytes) in &files {
+        assert!(bytes.starts_with(b"SEALED"), "{} is not sealed", path.display());
+        for cleartext in [canary.as_bytes(), b"CFPOST01".as_slice(), b"zephyrine".as_slice(), b"passage_id".as_slice()] {
+            assert!(!bytes.windows(cleartext.len()).any(|w| w == cleartext), "{} carries cleartext {cleartext:?}", path.display());
+        }
+    }
+    let opened = FulltextSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&cipher)).unwrap();
+    assert!(!opened.is_mapped());
+    assert_eq!(opened.probe(&query, 1).unwrap().candidates[0].id, canary);
+    assert_eq!(tree(sealed.path()), files, "opening wrote to disk");
+    assert_eq!(FulltextSidecar::open(sealed.path(), "passages", &entry, &Sealing::Plaintext).err(), Some(Fallback::Unreadable));
+    assert_eq!(FulltextSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&TestCipher { key: 0x11 })).err(), Some(Fallback::Unreadable));
+}
+
+/// A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
+// spec: read.retrieve.fulltext-sealed-cap@5e433a1f
+#[test]
+fn a_sealed_full_text_sidecar_past_256_mib_stays_unopened() {
+    use contextful_context::fulltext::{build, FulltextSidecar, POSTINGS_FILE};
+    use contextful_context::vector::{Fallback, Sealing};
+    use contextful_core::read::rank::{fulltext_sealed_over_cap, FULLTEXT_SEALED_CAP_BYTES};
+    use contextful_core::store::lay_out::SnapshotId;
+    use contextful_core::time::Instant;
+    assert_eq!(FULLTEXT_SEALED_CAP_BYTES, 256 * 1024 * 1024);
+    assert!(!fulltext_sealed_over_cap(FULLTEXT_SEALED_CAP_BYTES) && fulltext_sealed_over_cap(FULLTEXT_SEALED_CAP_BYTES + 1));
+
+    let (rows, decl) = fulltext_rows("passage-canary");
+    let id = SnapshotId::next(Instant::parse("2030-01-01T00:00:00Z").unwrap(), None);
+    let cipher = TestCipher { key: 0x5a };
+    let sealed = tempfile::tempdir().unwrap();
+    let built = build(sealed.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(&cipher)).unwrap();
+    let file = sealed.path().join(&built.path).join(POSTINGS_FILE);
+    let entry = serde_json::to_value(built).unwrap();
+    assert!(FulltextSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&cipher)).is_ok());
+    // A sparse file one byte past the cap: its size alone decides, and no byte is read.
+    std::fs::OpenOptions::new().write(true).open(&file).unwrap().set_len(FULLTEXT_SEALED_CAP_BYTES + 1).unwrap();
+    assert_eq!(FulltextSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&cipher)).err(), Some(Fallback::OverCap));
+    // A plaintext sidecar is mapped, never decrypted, and takes no such cap.
+    let plain = tempfile::tempdir().unwrap();
+    let built = build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap();
+    let entry = serde_json::to_value(built).unwrap();
+    assert!(FulltextSidecar::open(plain.path(), "passages", &entry, &Sealing::Plaintext).is_ok());
+}
