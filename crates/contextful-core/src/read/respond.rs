@@ -9,6 +9,10 @@ use serde_json::{Map, Value};
 /// (`read.respond.row-ceiling`).
 pub const ROW_CEILING_OVERFETCH: u64 = 1;
 
+/// Most rows one read delivers on any face, ranked reads included, whatever its other
+/// ceilings declare (`read.respond.face-ceiling`).
+pub const FACE_ROW_CEILING: u64 = 10_000;
+
 /// Largest decimal width, in digits, encoded as a JSON number
 /// (`read.respond.wide-number-shape`).
 const NUMBER_DECIMAL_DIGITS: u8 = 15;

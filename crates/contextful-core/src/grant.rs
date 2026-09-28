@@ -283,8 +283,9 @@ pub fn trace_run(grants: &[Grant], resolved_pipeline: &str) -> Result<(), Author
     }
 }
 
-/// A read's row ceiling: the least of the grant's, the request's, the template's and the
-/// serving face's; an undeclared component imposes none (`authority.grant.row-ceiling`).
-pub fn least_row_ceiling(components: [Option<u64>; 4]) -> Option<u64> {
-    components.into_iter().flatten().min()
+/// A read's row ceiling: the least of the grant's, the request's, the template's, the
+/// touched tables' published ceilings and the face ceiling, which is always present; an
+/// undeclared component imposes none (`authority.grant.row-ceiling`).
+pub fn least_row_ceiling(components: [Option<u64>; 4]) -> u64 {
+    components.into_iter().flatten().fold(crate::read::respond::FACE_ROW_CEILING, u64::min)
 }

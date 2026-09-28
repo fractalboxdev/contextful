@@ -220,10 +220,10 @@ impl Face {
         SqlEngine::bare()?.serialize(sql)
     }
 
-    /// The least row ceiling over the grants, the request, a template and every touched
-    /// table's published `limits.max_rows` (`read.respond.row-ceiling`). A request ledger
-    /// answers to its table's ceiling.
-    pub(crate) fn ceiling(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>) -> Option<u64> {
+    /// The least row ceiling over the grants, the request, a template, every touched
+    /// table's published `limits.max_rows` (`read.respond.row-ceiling`) and the face
+    /// ceiling (`read.respond.face-ceiling`). A request ledger answers to its table's ceiling.
+    pub(crate) fn ceiling(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>) -> u64 {
         let grant = session.grants().iter().filter_map(|g| g.max_rows).min();
         let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
         let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
@@ -268,7 +268,7 @@ impl Face {
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
-        let response = respond(&engine, sql, &bindings, ceiling, opts)?;
+        let response = respond(&engine, sql, &bindings, Some(ceiling), opts)?;
         self.restrict(&engine, session, admitted.relations.iter().map(String::as_str), response)
     }
 
@@ -288,7 +288,7 @@ impl Face {
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
-        let response = respond(&engine, &template.sql, &parameters, ceiling, opts)?;
+        let response = respond(&engine, &template.sql, &parameters, Some(ceiling), opts)?;
         self.restrict(&engine, session, admitted.relations.iter().map(String::as_str), response)
     }
 
@@ -415,7 +415,7 @@ impl Face {
         engine.register(PREVIEW_RELATION, preview.sql())?;
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
-        let response = respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), ceiling, opts)?;
+        let response = respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), Some(ceiling), opts)?;
         self.restrict(&engine, session, touched.iter().map(String::as_str), response)
     }
 

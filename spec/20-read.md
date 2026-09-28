@@ -176,6 +176,8 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
 - `one-projection` — The command line's JSON output, the HTTP face and the tool protocol serialize one projection: `columns`, `rows`, `truncated`, and the optional restriction, resolved-build, provenance, retrieval and time-bound blocks.
   *because a guarantee landing on one transport and missing on another is worse than a guarantee on none*
 - `row-ceiling` — A per-table row ceiling published as `limits.max_rows` bounds rows delivered, applied at execution with an over-fetch of 1 rows. It bounds no work performed.
+- `face-ceiling` — Every read on every face, `corpus.retrieve` included, delivers at most 10000 rows: the face ceiling is always a component of {{authority.grant.row-ceiling}}, declared or not, and bounds the candidate window.
+  *because an undeclared ceiling otherwise streams a whole table into one response, and a caller learns of the cut from `truncated` rather than from memory exhaustion*
 - `truncation-is-exact` — `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.
   *P4*
 - `cell-encoding` — SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; any other container is its text form.

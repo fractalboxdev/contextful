@@ -47,6 +47,7 @@ OutcomeCitationMissing        = { clause = "read.settle.settling-citation", glos
 
 [limit]
 read-row-ceiling-overfetch   = { clause = "read.respond.row-ceiling", value = 1, unit = "rows", basis = "chosen", gloss = "Rows fetched past the row ceiling, whose presence sets `truncated`." }
+read-face-row-ceiling        = { clause = "read.respond.face-ceiling", value = 10000, unit = "rows", basis = "chosen", gloss = "Most rows one read delivers on any face, whatever its other ceilings declare." }
 read-relevance-floor-wide    = { clause = "read.retrieve.relevance-floor", value = 2, unit = "tokens", basis = "chosen", gloss = "Lexical-score floor for a query of at least the threshold's content tokens." }
 read-relevance-floor-narrow  = { clause = "read.retrieve.relevance-floor", value = 1, unit = "tokens", basis = "chosen", gloss = "Lexical-score floor for a query below the threshold." }
 read-relevance-floor-split   = { clause = "read.retrieve.relevance-floor", value = 3, unit = "tokens", basis = "chosen", gloss = "Content-token count at which the wider floor applies." }
