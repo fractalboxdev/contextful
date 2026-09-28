@@ -68,16 +68,22 @@ fn an_init_adopts_an_existing_declaration() {
     assert_eq!(discover(dir.path()).unwrap().name, "research");
 }
 
-/// An init against a `contextful.toml` declaring another name, or no string name, raises `StoreProjectConflict` and writes nothing.
-// spec: store.init.name-conflict@b22ba18c
+/// An init against a `contextful.toml` declaring another name, or no string name, raises `StoreProjectConflict`, naming the declared name when one exists and the init's name, and writes nothing.
+// spec: store.init.name-conflict@6f87ee7d
 #[test]
 fn an_init_naming_another_project_refuses() {
-    for existing in ["[project]\nname = \"research\"\n", "[project]\nowner = \"ops\"\n", "project = \"research\"\n"] {
+    let cases = [("[project]\nname = \"research\"\n", Some("`research`")), ("[project]\nowner = \"ops\"\n", None), ("project = \"research\"\n", None)];
+    for (existing, declared) in cases {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(DECLARATION_FILE);
         fs::write(&path, existing).unwrap();
         match store_err(init(dir.path(), "archive").unwrap_err()) {
-            StoreError::StoreProjectConflict(m) => assert!(m.contains("`archive`"), "{m}"),
+            StoreError::StoreProjectConflict(m) => {
+                assert!(m.contains("`archive`"), "{m}");
+                if let Some(name) = declared {
+                    assert!(m.contains(name), "{m}");
+                }
+            }
             other => panic!("{existing:?}: {other}"),
         }
         assert_eq!(fs::read_to_string(&path).unwrap(), existing);

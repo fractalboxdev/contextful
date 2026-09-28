@@ -98,7 +98,7 @@ Where a derive engine's definition lives, the port every engine implements, and 
   *A-run*
 - `media-unreadable` — A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing that unit alone.
   *A-run*
-- `media-root` — A local media value resolves, canonicalized, under the binding's `media_root`, the working directory by default; a path escaping it raises `DeriveMediaOutsideRoot`, failing that unit alone.
+- `media-root` — A local media value resolves, canonicalized, under the binding's `media_root` ({{store.init.declaration-base}}), that base itself by default; a path escaping it raises `DeriveMediaOutsideRoot`, failing that unit alone.
   *because a parent row is third-party data, and an unconfined path reads any file the machine's user can*
 - `confidence-range` — A `confidence` outside `0.0..=1.0` after adapter normalization raises `DeriveConfidenceOutOfRange` and lands null.
   *A-run*

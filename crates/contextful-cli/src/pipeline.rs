@@ -206,7 +206,9 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                 resolver.preflight(config.headers.values())?;
             }
 
-            let cwd = std::env::current_dir()?;
+            // A declaration's relative paths resolve against the project directory
+            // (`store.init.declaration-base`), whichever subdirectory the command runs from.
+            let base = l.project.dir.clone();
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let decls: Vec<TableDecl> = spec
@@ -246,7 +248,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                             output_schema: serde_json::to_value(dest.decls.iter().find(|d| d.name == table).and_then(|d| d.columns.clone()))?,
                             reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
                             resolver: resolver.clone(),
-                            cwd: cwd.clone(),
+                            cwd: base.clone(),
                         }),
                     };
                     let mut source = Guarded { inner, report: log_counts };

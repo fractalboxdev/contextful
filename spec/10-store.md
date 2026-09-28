@@ -128,12 +128,14 @@ A project's declaration file: what `contextful init` writes, what a repeated ini
 - `repeat` — An init against a `contextful.toml` already declaring the same `[project] name` rewrites nothing, leaves the store root as it stands, and succeeds.
   *because a repeated init converges on the state the first one wrote, so scripts and onboarding run it unconditionally*
 - `adopt` — An init against a `contextful.toml` declaring no `project` key appends the `[project]` table and keeps every existing byte of the file.
-- `name-conflict` — An init against a `contextful.toml` whose `project` key declares another name, or no string `name`, raises `StoreProjectConflict`, naming both names, and writes nothing.
+- `name-conflict` — An init against a `contextful.toml` whose `project` key declares another name, or no string `name`, raises `StoreProjectConflict`, naming the declared name when one exists and the init's name, and writes nothing.
   *because renaming a project orphans its store root, which an overwrite hides*
 - `discovery` — A command given no `--project` reads the nearest `contextful.toml` in the working directory or an ancestor, takes its `[project] name` as the project, and bases every project path on that file's directory.
 - `explicit-project` — A command given `--project` bases every project path on the working directory and runs no discovery.
 - `project-paths` — The project paths are the store root, the run state `.contextful/run/<project>/` and the memory pass state `.contextful/memory/<project>/`.
 - `default-declaration` — A command given no `--declaration` reads the discovered `contextful.toml`, or `contextful.toml` in the working directory under `--project`.
+- `declaration-base` — Under a located project, a relative path its declaration names — a derive binding's `media_root`, a path-form `command[0]` — resolves against the directory its project paths are based on, never the working directory.
+  *because one pipeline otherwise reads different media or programs depending on the subdirectory it fires from*
 - `undiscovered` — A command given no `--project` whose working directory and ancestors hold no `contextful.toml`, or whose nearest one declares no `[project] name`, raises `StoreProjectUndiscovered`, naming the starting directory.
   *because a store opened at a guessed root splits one project's rows across two trees*
 
@@ -141,6 +143,7 @@ A project's declaration file: what `contextful init` writes, what a repeated ini
 
 - `store.init.repeat`: WHEN `contextful init research` runs twice in one directory, THEN the second run succeeds and `contextful.toml` holds the bytes the first wrote.
 - `store.init.name-conflict`: WHEN `contextful init archive` runs beside a `contextful.toml` naming `research`, THEN it raises `StoreProjectConflict` and the file is unchanged.
+- `store.init.declaration-base`: WHEN `contextful pipeline run` fires in `notes/` below a `contextful.toml` binding `media_root = "media"`, THEN media resolves under `media/` beside that file, not `notes/media/`.
 - `store.init.discovery`: WHEN `contextful context land` runs in `notes/` below a directory whose `contextful.toml` names `research`, THEN the run commits under that directory's `.contextful/context/research/`.
 
 ## declare

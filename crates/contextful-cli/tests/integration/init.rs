@@ -104,3 +104,44 @@ fn a_command_without_project_or_declaration_refuses() {
     refused(&run(dir.path(), &["run", "history"]), "StoreProjectUndiscovered");
     assert!(!dir.path().join(".contextful").exists());
 }
+
+/// A derive pipeline fired from a subdirectory resolves the discovered declaration's `media_root` against the project directory.
+// spec: store.init.declaration-base@ee048fb7
+#[test]
+fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    stdout(&run(dir.path(), &["init", "research"]));
+    let path = dir.path().join("contextful.toml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let pipeline = concat!(
+        "[[pipeline]]\nid = \"doc-text\"\ntables = [{ name = \"passages\", primary_key = [\"unit_ref\", \"cue_seq\"] }]\n",
+        "[pipeline.source]\nname = \"derive\"\n",
+        "config = { engine = \"reader\", source_table = \"documents\", media_column = \"path\", parent_id_column = \"doc_id\" }\n\n",
+        "[derive.reader]\ndriver = \"exec\"\nmedia_root = \"media\"\n\n",
+        "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\noutput_format = \"srt\"\n",
+    );
+    std::fs::write(&path, format!("{text}\n{pipeline}")).unwrap();
+    std::fs::create_dir_all(dir.path().join("media")).unwrap();
+    std::fs::write(dir.path().join("media/memo.srt"), "1\n00:00:00,000 --> 00:00:01,000\nRevenue rose.\n\n").unwrap();
+    let notes = dir.path().join("notes");
+    std::fs::create_dir_all(&notes).unwrap();
+    std::fs::write(notes.join("documents.jsonl"), "{\"doc_id\":\"d1\",\"path\":\"memo.srt\"}\n").unwrap();
+    stdout(&run(
+        &notes,
+        &["context", "land", "documents", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "s", "--now", "2030-01-01T00:00:00Z"],
+    ));
+
+    let fired = stdout(&run(&notes, &["pipeline", "run", "doc-text", "--run-id", "derive-1", "--site-id", "s", "--now", "2030-01-01T01:00:00Z"]));
+    assert!(fired.contains("success"), "{fired}");
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let decl = contextful_core::store::declare::TableDecl::named("doc_text_passages");
+    let rows = contextful_context::rows::table_rows(&store, &decl, &["kind", "text"]).unwrap();
+    let kinds: Vec<(String, String)> = rows
+        .iter()
+        .map(|r| {
+            let text = |c: &str| r.get(c).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            (text("kind"), text("text"))
+        })
+        .collect();
+    assert_eq!(kinds, [("passage".to_string(), "Revenue rose.".to_string())]);
+}
