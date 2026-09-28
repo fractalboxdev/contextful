@@ -3,8 +3,10 @@ resolver = "2"
 members = ["crates/*", "tools/*"]
 
 # Every member inherits these; cargo-deny and SBOM generators read the licence from the
-# manifest, not from `LICENSE` (`assurance.build.licence-field`).
+# manifest, not from `LICENSE` (`assurance.build.licence-field`). The version equals the
+# release tag `contextful-ci tag` cuts next (`assurance.release.workspace-version`).
 [workspace.package]
+version = "0.9.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/fractalboxdev/contextful"

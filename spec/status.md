@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 14 | 197 | 51 | 22 | 15 | 78 | 0 | 78 |
+| `assurance` | 2 | 15 | 204 | 56 | 22 | 15 | 85 | 0 | 85 |
 | `authority` | 2 | 16 | 229 | 62 | 27 | 8 | 162 | 0 | 162 |
 | `connector` | 2 | 13 | 249 | 74 | 17 | 8 | 118 | 0 | 118 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 173 | 41 | 12 | 12 | 134 | 0 | 134 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 146 | 1560 | 493 | 177 | 112 | 834 | 0 | |
+| **total** | 19 | 147 | 1567 | 498 | 177 | 112 | 841 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ Decision records: 18.
 | 11 — The derive tier | 7 | 71 | 48 | passing |
 | 12 — The console | 11 | 30 | 0 | absent |
 | 13 — Disclosure | 5 | 21 | 4 | open |
-| 14 — Assurance | 6 | 104 | 30 | open |
+| 14 — Assurance | 7 | 111 | 37 | open |
 
 Unscheduled operations: 10.
 
@@ -115,6 +115,13 @@ Unscheduled operations: 10.
 | `assurance.recheck.credential-free` | `crates/contextful-cli/tests/integration/formal.rs::a_credentialed_recheck_is_refused` | performed |
 | `assurance.recheck.report-mismatch` | `crates/contextful-cli/tests/integration/formal.rs::a_recheck_disagreeing_with_the_first_phase_is_refused` | performed |
 | `assurance.recheck.two-phase` | `crates/contextful-cli/tests/integration/formal.rs::a_recheck_rebuilds_the_commit_and_reaches_the_same_report` | performed |
+| `assurance.release.annotated` | `tools/ci/tests/integration/release.rs::the_tag_is_signed_annotated_on_head_and_leaves_earlier_tags_in_place` | performed |
+| `assurance.release.dirty-tree` | `tools/ci/tests/integration/release.rs::a_tree_differing_from_head_is_refused_before_the_gate` | performed |
+| `assurance.release.gate-failed` | `tools/ci/tests/integration/release.rs::a_failing_gate_stage_is_refused_and_creates_no_tag` | performed |
+| `assurance.release.off-branch` | `tools/ci/tests/integration/release.rs::a_head_the_default_branch_does_not_reach_is_refused` | performed |
+| `assurance.release.version` | `tools/ci/tests/integration/release.rs::the_version_counts_passing_milestones_and_earlier_tags_of_that_count` | performed |
+| `assurance.release.version-regressed` | `tools/ci/tests/integration/release.rs::a_milestone_reopening_below_the_last_tag_is_refused` | performed |
+| `assurance.release.workspace-version` | `tools/ci/tests/integration/release.rs::a_workspace_version_other_than_the_computed_one_is_refused` | performed |
 | `assurance.scope-claim.unnamed-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_claim_resting_on_an_unnamed_component_is_refused` | performed |
 | `assurance.structure-tree.mirror-unresolved` | `spec/pins.toml` | performed |
 | `assurance.test.acceptance-surface` | `spec/pins.toml` | performed |

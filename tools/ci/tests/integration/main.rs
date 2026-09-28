@@ -7,6 +7,7 @@ mod features;
 mod lean;
 mod measure;
 mod mirrors;
+mod release;
 mod secrets;
 mod test_first;
 mod topology;

@@ -9,6 +9,7 @@ owns:
   - evaluate
   - baseline
   - measure
+  - release
 ---
 
 # Engineering gates and the quality harness
@@ -340,6 +341,30 @@ unsettled: Which credential pushes `refs/notes/measures` from the scheduled disp
 - `assurance.measure.unresolved-entry`: WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs.
 - `assurance.measure.trend-band`: WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes.
 - `assurance.measure.open-entry`: WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it.
+
+## release
+
+The version a release tag carries, the refusals guarding it, and the signed annotated tag `contextful-ci tag` creates.
+
+- `version` — A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones whose acceptance computes `passing` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.
+  *A-assurance*
+- `annotated` — `contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.
+  *A-assurance*
+- `dirty-tree` — A working tree or index differing from `HEAD` raises `TagTreeDirty`.
+  *because the gate then judges files the tagged commit does not hold*
+- `off-branch` — A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.
+  *A-assurance*
+- `version-regressed` — A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.
+  *A-assurance*
+- `workspace-version` — A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.
+  *A-assurance*
+- `gate-failed` — Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.
+  *A-assurance*
+
+#### Scenarios
+
+- `assurance.release.version`: WHEN milestones 0 to 7 and 11 compute `passing` and `v0.9.0` exists, THEN the computed version is `v0.9.1`.
+- `assurance.release.version-regressed`: WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`.
 
 ## Shapes
 

@@ -95,7 +95,7 @@ only annotate ({{assurance.measure.trend-band}}).
 
 A contributor reorders the engine's layers so masking runs before filtering.
 
-Its test fails against the base commit, or the test-first stage stops it. The gate
+Its test fails at base, or the test-first stage stops it; the gate
 then reaches the formal stage
 ({{assurance.gate.formal-stage}}).
 
@@ -103,7 +103,7 @@ If the contributor also edits the composition theorem's Lean statement to match,
 inventory, edited apart from the declarations ({{assurance.audit-assumptions.inventory}}), no
 longer matches and the check command fails ({{assurance.audit-assumptions.check-command}}). A
 proof finished with a hole fails on its footprint
-({{assurance.audit-assumptions.hole-assumption}}), whatever the syntax spells.
+({{assurance.audit-assumptions.hole-assumption}}).
 
 Otherwise the differential harness feeds generated
 cases to the reference binary and the engine ({{assurance.differential-test.harness}}).
@@ -131,3 +131,4 @@ beside one test ({{corpus.state.theorem-beside-test}}).
 | Which gate stage runs what? | `assurance.gate` |
 | When does quality go red? | `assurance.evaluate`, `assurance.baseline` |
 | Which targets are measured? | `assurance.measure` |
+| What does a release tag promise? | `assurance.release` |

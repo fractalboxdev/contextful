@@ -15,6 +15,7 @@ gate              = {}
 evaluate          = {}
 baseline          = {}
 measure           = {}
+release           = {}
 
 [error]
 FormalPackageDependency          = { clause = "assurance.model.declared-dependency", gloss = "The Lean package manifest declares an external library." }
@@ -68,6 +69,12 @@ TraceExportOutOfPerimeter        = { clause = "assurance.baseline.trace-export",
 MeasureEntryUnresolved           = { clause = "assurance.measure.unresolved-entry", gloss = "A ledger entry naming no clause, method or metric path." }
 MeasureRecordMissing             = { clause = "assurance.measure.record", gloss = "A gate-tier method finishing without writing its record." }
 MeasureSeedMismatch              = { clause = "assurance.measure.seed-mismatch", gloss = "A record carrying another seed than its ledger entry declares." }
+
+TagTreeDirty                     = { clause = "assurance.release.dirty-tree", gloss = "A tag requested over a working tree or index differing from HEAD." }
+TagOffDefaultBranch              = { clause = "assurance.release.off-branch", gloss = "A tag requested on a commit the default branch does not reach." }
+TagVersionRegressed              = { clause = "assurance.release.version-regressed", gloss = "A computed version below the highest existing version tag." }
+TagWorkspaceVersionMismatch      = { clause = "assurance.release.workspace-version", gloss = "A workspace package version absent or differing from the computed tag version." }
+TagGateFailed                    = { clause = "assurance.release.gate-failed", gloss = "A gate stage failing on the commit a tag names." }
 
 [limit]
 assurance-formal-build-time      = { clause = "assurance.model.build-cost", value = 60, unit = "s", basis = "chosen", gloss = "Cold elaboration of the Lean package." }
