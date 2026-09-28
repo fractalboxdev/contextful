@@ -1,6 +1,6 @@
 # A-store — The store and its sync decisions
 
-**Status:** accepted, except a section carrying its own proposed status
+**Status:** accepted
 
 ## The schema lattice has one promotion, and a key never widens
 
@@ -63,7 +63,7 @@ Revisit: a key shape whose ownership is not derivable from the key; retries exha
 
 ## A sidecar is memory-mapped only over plaintext
 
-**Status:** proposed
+**Status:** accepted
 
 Context: `store.encrypt.cipher` seals every sidecar with AES-256-GCM per file, and a sealed file cannot be memory-mapped, while the HNSW and Tantivy readers scale past memory only by mapping plaintext. Criteria: the at-rest scope holds on local disk and in the bucket; no bespoke cipher format; an unencrypted project reads a sidecar larger than memory.
 
@@ -81,7 +81,7 @@ Revisit: a builder that reads through a caller-supplied page source, making per-
 
 ## Every sidecar names one id column
 
-**Status:** proposed
+**Status:** accepted
 
 Context: `store.index.vector-by-fold` builds only under a single-column primary key, so an unkeyed append table (`store.declare.unkeyed-union`) or a composite key gets no sidecar. Criteria: keyed, composite-key and unkeyed tables alike; ids stable across folds; one declaration every kind shares.
 
@@ -98,7 +98,7 @@ Consequences: an unkeyed embedding table gains a sidecar at the cost of one uniq
 
 ## Binary and fixed-size vector columns take no promotion
 
-**Status:** proposed
+**Status:** accepted
 
 Context: the lattice holds scalar types alone, so a digest lands as text and an embedding as a JSON array, at several times the float16 size and a parse per vector read. Criteria: storage width; a type the engine and a vector builder read without per-row validation; no masked output leaking structure.
 
@@ -115,7 +115,7 @@ Consequences: `read.embed.model-identifier` gains a typed vector column, and an 
 
 ## The store's catalogs sit behind a port with SQLite in its own package
 
-**Status:** proposed
+**Status:** accepted
 
 Context: `store.lay-out.components` puts two SQLite catalogs in every store, and Cargo admits one `links = "sqlite3"` package per graph; a store forcing a `libsqlite3-sys` major or `bundled` breaks a host linking its own. Criteria: a host resolves with its own SQLite build; the write path links no SQLite; a cursor compare-and-swap stays one conditional update.
 

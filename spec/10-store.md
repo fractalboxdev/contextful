@@ -115,8 +115,6 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
 
 unsettled: How does a consumer discover the manifest format version a store or bucket carries, and what does it do with a version newer than it parses? owner: store affects: store.lay-out
 
-unsettled: Does `components` name the SQLite files, or only the derived and machine catalog ports a host may back with its own connection? owner: store affects: store.lay-out
-
 ## declare
 
 A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row.
