@@ -6,7 +6,7 @@ use contextful_core::coordinate::{CursorRow, LeaseKey};
 use contextful_core::run::ports::{Cancellation, PullRequest, Source};
 use contextful_core::run::record::RunStatus;
 use contextful_core::run::Failure;
-use contextful_engine::cancel::Cadence;
+use contextful_engine::cancel::{Cadence, Keeper};
 use contextful_engine::project::Hub;
 use contextful_engine::{Engine, Journal, LocalCatalog};
 use serde_json::json;
@@ -36,7 +36,7 @@ impl<F: FnMut(usize)> Source for During<F> {
 }
 
 fn fast_renewing(rig: &Rig) -> Engine {
-    Engine { cadence: Cadence { poll: Duration::from_millis(20), renew: Duration::from_millis(20) }, ..rig.engine.clone() }
+    Engine { keeper: Keeper::new(Cadence { poll: Duration::from_millis(20), renew: Duration::from_millis(20) }), ..rig.engine.clone() }
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn the_runner_projects_each_step_and_its_terminal_status() {
         catalog: Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock.clone()))),
         journal: Journal::open(dir.path()),
         awakeables: None,
-        cadence: Cadence::default(),
+        keeper: Keeper::default(),
         emitter: Some(hub.emitter()),
     };
     rig_run(&engine, "run-seen", &mut Pages::new(three_pages()), &mut Sink::default());

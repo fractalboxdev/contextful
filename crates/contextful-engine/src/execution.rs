@@ -3,7 +3,7 @@
 //! of its clients; a host opens its own through [`Engine::open_execution`].
 
 use crate::awake::Registry;
-use crate::cancel::{CancelToken, Keeper};
+use crate::cancel::{CancelToken, Registration};
 use crate::journal::{Resolved, StepError};
 use crate::runner::{Engine, EngineError};
 use crate::stores::{FileBlobStore, FileJournalStore};
@@ -87,9 +87,9 @@ fn seed(run_id: &str) -> u64 {
     u64::from_str_radix(&hex[..16], 16).unwrap_or_default()
 }
 
-/// One open execution. Its keeper polls the stop mark and renews the owner lease until it
-/// closes; dropped unclosed, it records no status and its owner stays pending until the
-/// lease lapses (`run.own.unclosed-execution`).
+/// One open execution, registered with its engine's keeper, which polls the stop mark and
+/// renews the owner lease until it closes; dropped unclosed, it deregisters, records no
+/// status, and its owner stays pending until the lease lapses (`run.own.unclosed-execution`).
 pub struct Execution<'e, J: JournalStore = FileJournalStore, B: BlobStore = FileBlobStore> {
     engine: &'e Engine<J, B>,
     scope: OwnerScope,
@@ -103,7 +103,7 @@ pub struct Execution<'e, J: JournalStore = FileJournalStore, B: BlobStore = File
     schedule: Schedule,
     token: CancelToken,
     held: Arc<Mutex<Option<Lease>>>,
-    keeper: Option<Keeper>,
+    registration: Option<Registration>,
     owned: bool,
     retired: bool,
 }
@@ -115,7 +115,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         Capabilities { worlds: vec![NATIVE_WORLD.to_string()], awakeables: self.awakeables.is_some() }
     }
 
-    /// Open an execution under `open.scope`: write the run row, start the keeper, then
+    /// Open an execution under `open.scope`: write the run row, register with the keeper, then
     /// resume the scope's pending owner when its pins hold or claim a fresh one. A moved
     /// pin closes the row `failed` and refuses before any replay.
     pub fn open_execution(&self, open: &OpenExecution) -> Result<Execution<'_, J, B>, EngineError> {
@@ -131,7 +131,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         Ok(execution)
     }
 
-    /// Write the attempt's run row and start its keeper; the owner is untouched until
+    /// Write the attempt's run row and register it with the keeper; the owner is untouched until
     /// [`Execution::claim`].
     pub(crate) fn begin(&self, open: &OpenExecution) -> Result<Execution<'_, J, B>, EngineError> {
         if self.catalog.run(&open.run_id)?.is_some() {
@@ -188,12 +188,12 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             schedule: open.schedule.clone(),
             token: token.clone(),
             held: held.clone(),
-            keeper: None,
+            registration: None,
             owned: false,
             retired: false,
         };
         execution.emit(Change::Status { status: RunStatus::Running, at: Some(now), error: None });
-        execution.keeper = Some(Keeper::start_holding(self.catalog.clone(), &open.run_id, token, self.cadence, held));
+        execution.registration = Some(self.keeper.register(self.catalog.clone(), &open.run_id, token, held));
         Ok(execution)
     }
 
@@ -378,11 +378,11 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         Ok(())
     }
 
-    /// Close on `outcome`: stop the keeper, release the held lease, record the status,
+    /// Close on `outcome`: deregister from the keeper, release the held lease, record the status,
     /// then retire the owner where the status releases it (`run.own.pin-release`).
     pub(crate) fn close_with(mut self, outcome: Result<(Landed, u64), Close>) -> Result<RunRow, EngineError> {
         let engine = self.engine;
-        drop(self.keeper.take());
+        drop(self.registration.take());
         let lease = self.held.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(l) = &lease {
             engine.catalog.release(l)?;

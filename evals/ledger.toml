@@ -261,6 +261,14 @@ tier   = "gate"
 method = { test = "contextful_engine::execution::a_dropped_execution_resumes_under_its_scope_and_replays_its_steps" }
 target = { op = "==", value = 0 }
 
+[entry.engine-keeper-threads]
+clause = "run.cancel.engine-keeper"
+metric = "keeper.threads_per_engine"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::execution::one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine" }
+target = { op = "==", value = 1 }
+
 [entry.orphan-reap-spares-live]
 clause = "run.record.orphan-reap"
 metric = "reap.live_rows_reaped"

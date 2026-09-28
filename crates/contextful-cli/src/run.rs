@@ -22,7 +22,7 @@ use contextful_core::store::reserve::Injection;
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
 use contextful_engine::awake::{AwakeError, Registry};
-use contextful_engine::cancel::Cadence;
+use contextful_engine::cancel::Keeper;
 use contextful_engine::command::CommandSource;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_core::store::lay_out::store_root;
@@ -154,7 +154,7 @@ pub(crate) fn wire(args: &ProjectArgs) -> Result<Wired> {
     let catalog = Arc::new(MachineCatalog::open(&store_root.join(MACHINE_CATALOG_FILE), clock.clone())?);
     let registry = Registry::open(&root, journal.clone());
     let awakeables = Some(Arc::new(FileAwakeableStore::open(&root)) as Arc<dyn AwakeableStore>);
-    Ok(Wired { engine: Engine { catalog, journal, awakeables, cadence: Cadence::default(), emitter: None }, registry, clock })
+    Ok(Wired { engine: Engine { catalog, journal, awakeables, keeper: Keeper::default(), emitter: None }, registry, clock })
 }
 
 /// The boot identity of this machine: a process id means nothing across boots.

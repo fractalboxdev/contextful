@@ -1,13 +1,14 @@
-//! The run's one cancellation token and the keeper thread feeding it: one catalog read
+//! The run's one cancellation token and the engine's keeper feeding it: one catalog read
 //! before the run's first await, then one every 500 ms, with the owner lease renewed on
-//! its own cadence.
+//! its own cadence, for every open execution from one thread.
 
 use contextful_core::coordinate::{Catalog, Lease};
 use contextful_core::run::cancel::POLL_INTERVAL_MS;
 use contextful_core::run::ports::Cancellation;
 use contextful_core::run::record::{OWNER_LEASE_RENEWAL_SECS, OWNER_LEASE_TTL_SECS};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
-use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 /// A flag threads block on: `raise` wakes every waiter at once, so a wait costs no
@@ -141,40 +142,165 @@ impl Schedule {
     }
 }
 
-/// The background thread polling the stop mark and renewing the owner lease; it sleeps
-/// until the next poll or renewal and stops at once when dropped.
-pub struct Keeper {
-    stop: Arc<Signal>,
-    handle: Option<JoinHandle<()>>,
+/// One registered execution: where its row lives, the token its polls feed, the
+/// single-writer lease it holds, and its own poll and renewal schedule.
+struct Entry {
+    catalog: Arc<dyn Catalog + Send + Sync>,
+    run_id: String,
+    token: CancelToken,
+    held: Arc<Mutex<Option<Lease>>>,
+    schedule: Schedule,
+}
+
+/// The keeper's registrations and its deadline heap. Each live entry has exactly one heap
+/// item, at its schedule's next instant; an item whose entry is gone or has moved is stale
+/// and is dropped when it reaches the top.
+#[derive(Default)]
+struct State {
+    next_id: u64,
+    entries: HashMap<u64, Entry>,
+    deadlines: BinaryHeap<Reverse<(Instant, u64)>>,
+    /// Keeper threads alive: 0 while nothing is registered, otherwise 1.
+    threads: usize,
+    /// The entry whose jobs run outside the lock; deregistering it waits them out.
+    busy: Option<u64>,
+}
+
+struct Shared {
+    cadence: Cadence,
+    state: Mutex<State>,
+    changed: Condvar,
+}
+
+impl Shared {
+    fn lock(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// One engine's keeper (`run.cancel.engine-keeper`): a single thread holding a deadline
+/// heap of registered executions, polling each one's stop mark and renewing its leases on
+/// the [`Cadence`], asleep until the earliest deadline or a registration change. The
+/// thread starts on the first registration and exits when the last one drops. Clones
+/// share one keeper.
+#[derive(Clone)]
+pub struct Keeper(Arc<Shared>);
+
+impl Default for Keeper {
+    fn default() -> Keeper {
+        Keeper::new(Cadence::default())
+    }
+}
+
+impl std::fmt::Debug for Keeper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Keeper").field("cadence", &self.0.cadence).field("registered", &self.registered()).finish()
+    }
 }
 
 impl Keeper {
-    /// Poll once before returning, so the run's first await already sees a stop written
-    /// before it opened, then keep polling and renewing on `cadence`.
-    pub fn start(catalog: Arc<dyn Catalog + Send + Sync>, run_id: &str, token: CancelToken, cadence: Cadence) -> Keeper {
-        Keeper::start_holding(catalog, run_id, token, cadence, Arc::default())
+    pub fn new(cadence: Cadence) -> Keeper {
+        Keeper(Arc::new(Shared { cadence, state: Mutex::default(), changed: Condvar::new() }))
     }
 
-    /// [`Keeper::start`], renewing the single-writer lease in `held` on the owner lease's
-    /// cadence as well, so a run holding it past one time-to-live keeps it.
-    pub fn start_holding(catalog: Arc<dyn Catalog + Send + Sync>, run_id: &str, token: CancelToken, cadence: Cadence, held: Arc<Mutex<Option<Lease>>>) -> Keeper {
+    pub fn cadence(&self) -> Cadence {
+        self.0.cadence
+    }
+
+    /// Executions registered now.
+    pub fn registered(&self) -> usize {
+        self.0.lock().entries.len()
+    }
+
+    /// Keeper threads alive now: 1 while anything is registered, 0 once the thread exits.
+    pub fn threads(&self) -> usize {
+        self.0.lock().threads
+    }
+
+    /// Register run `run_id`: poll once before returning, so the run's first await already
+    /// sees a stop written before it opened, then poll and renew the run row's owner lease
+    /// and the single-writer lease in `held` on the cadence until the registration drops.
+    pub fn register(&self, catalog: Arc<dyn Catalog + Send + Sync>, run_id: &str, token: CancelToken, held: Arc<Mutex<Option<Lease>>>) -> Registration {
         poll(catalog.as_ref(), run_id, &token);
-        let mut schedule = Schedule::new(cadence, Instant::now());
-        let stop = Arc::new(Signal::default());
-        let (flag, id) = (stop.clone(), run_id.to_string());
-        let handle = std::thread::spawn(move || {
-            while flag.wait_until(Some(schedule.next())) {
-                let due = schedule.take(Instant::now());
-                if due.poll {
-                    poll(catalog.as_ref(), &id, &token);
-                }
-                if due.renew {
-                    renew(catalog.as_ref(), &id);
-                    renew_lease(catalog.as_ref(), &held);
+        let schedule = Schedule::new(self.0.cadence, Instant::now());
+        let mut state = self.0.lock();
+        let id = state.next_id;
+        state.next_id += 1;
+        state.deadlines.push(Reverse((schedule.next(), id)));
+        state.entries.insert(id, Entry { catalog, run_id: run_id.to_string(), token, held, schedule });
+        if state.threads == 0 {
+            state.threads = 1;
+            let shared = self.0.clone();
+            std::thread::Builder::new()
+                .name("contextful-keeper".into())
+                .spawn(move || keep(&shared))
+                .unwrap_or_else(|e| panic!("spawning the engine keeper thread: {e}"));
+        }
+        self.0.changed.notify_all();
+        Registration { keeper: self.0.clone(), id }
+    }
+}
+
+/// An execution's place in its engine's keeper; dropping it deregisters the execution,
+/// waiting out a poll or renewal already running for it, so none runs after the drop.
+pub struct Registration {
+    keeper: Arc<Shared>,
+    id: u64,
+}
+
+impl Drop for Registration {
+    fn drop(&mut self) {
+        let mut state = self.keeper.lock();
+        state.entries.remove(&self.id);
+        while state.busy == Some(self.id) {
+            state = self.keeper.changed.wait(state).unwrap_or_else(|e| e.into_inner());
+        }
+        self.keeper.changed.notify_all();
+    }
+}
+
+/// The keeper thread: run the earliest due entry's jobs outside the lock, sleep until the
+/// next deadline, and exit once no entry is registered.
+fn keep(shared: &Shared) {
+    let mut state = shared.lock();
+    loop {
+        let top = loop {
+            match state.deadlines.peek() {
+                None => break None,
+                Some(&Reverse((at, id))) if state.entries.get(&id).is_some_and(|e| e.schedule.next() == at) => break Some((at, id)),
+                Some(_) => {
+                    state.deadlines.pop();
                 }
             }
-        });
-        Keeper { stop, handle: Some(handle) }
+        };
+        let Some((at, id)) = top else {
+            state.threads = 0;
+            shared.changed.notify_all();
+            return;
+        };
+        let now = Instant::now();
+        if now < at {
+            state = shared.changed.wait_timeout(state, at - now).unwrap_or_else(|e| e.into_inner()).0;
+            continue;
+        }
+        state.deadlines.pop();
+        let Some(entry) = state.entries.get_mut(&id) else { continue };
+        let due = entry.schedule.take(now);
+        let next = entry.schedule.next();
+        let (catalog, run_id, token, held) = (entry.catalog.clone(), entry.run_id.clone(), entry.token.clone(), entry.held.clone());
+        state.deadlines.push(Reverse((next, id)));
+        state.busy = Some(id);
+        drop(state);
+        if due.poll {
+            poll(catalog.as_ref(), &run_id, &token);
+        }
+        if due.renew {
+            renew(catalog.as_ref(), &run_id);
+            renew_lease(catalog.as_ref(), &held);
+        }
+        state = shared.lock();
+        state.busy = None;
+        shared.changed.notify_all();
     }
 }
 
@@ -204,14 +330,5 @@ pub fn renew(catalog: &dyn Catalog, run_id: &str) {
     });
     if let Err(f) = renewed {
         eprintln!("warning: renewing the lease of run `{run_id}`: {f}");
-    }
-}
-
-impl Drop for Keeper {
-    fn drop(&mut self) {
-        self.stop.raise();
-        if let Some(h) = self.handle.take() {
-            let _ = h.join();
-        }
     }
 }

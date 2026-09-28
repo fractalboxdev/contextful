@@ -324,6 +324,10 @@ sequenceDiagram
   R->>C: record canceled, ledger settled, position unchanged
 ```
 
+#### Scenarios
+
+- `run.cancel.engine-keeper`: WHEN 20 executions are open on one engine, THEN one keeper thread renews all 20 owner leases, and it exits once the last one closes or drops.
+
 ## record
 
 The durable run record, its statuses, its owner lease and windowed history over it.

@@ -2,7 +2,7 @@
 
 # Target ledger
 
-59 entries: 30 gated, 0 recorded, 0 scheduled, 29 open.
+60 entries: 30 gated, 0 recorded, 0 scheduled, 30 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -22,6 +22,7 @@
 | `egress-refusal-before-dns` | `connector.meter.hook-refusal` | `egress.refused.lookups` | gate | test `contextful_outbound::egress::a_refused_intent_resolves_no_name_and_is_never_retried` | `== 0` | gated |
 | `encrypt-declared-refuses` | `store.encrypt.key-unbound` | `encrypt.declared.opens_and_files` | gate | test `contextful_context::encrypt::a_declared_encryption_opens_no_store_and_writes_no_file` | `== 0` | gated |
 | `encrypt-no-plaintext` | `store.encrypt.cipher` | `encrypt.canary_hits` | gate | issue 74 | `== 0` | open (issue 74) |
+| `engine-keeper-threads` | `run.cancel.engine-keeper` | `keeper.threads_per_engine` | gate | test `contextful_engine::execution::one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine` | `== 1` | gated |
 | `eval-absolute-floors` | `assurance.baseline.floors-are-absolute` | `floors.red_on_baseline_pass` | gate | test `contextful_eval::baseline::each_floor_reds_a_run_its_baseline_passes` | `== 4` | gated |
 | `eval-through-enforcement` | `assurance.evaluate.policy-labels` | `retrieval.hybrid.forbidden_row_rate` | gate | issue 78 | `== 0` | open (issue 78) |
 | `exclusive-create-no-hardlink` | `store.lease.commit-log` | `lease.race_winners.max` | gate | test `contextful_fs::create::racing_creates_land_exactly_one` | `== 1` | gated |
@@ -43,7 +44,7 @@
 | `memory-evidence-gate` | `read.recall.evidence-unresolved` | `recall.unresolved_admitted` | gate | test `contextful_core::memory::recall::unresolvable_evidence_suppresses_the_claim` | `== 0` | gated |
 | `memory-live-claims` | `read.recall.ranked-arm` | `recall.expired_returned` | gate | test `contextful_memory::synthesize::a_ranked_arm_over_claims_serves_live_claims_alone` | `== 0` | gated |
 | `native-golden-floor` | `assurance.baseline.native-gate` | `retrieval.hybrid.r_precision` | gate | issue 78 | `>= 0.6` | open (issue 78) |
-| `network-free-decoder` | `topology.package.decode-network-free` | `topology.decoder.network_packages` | gate | test `contextful_ci::topology::this_repository_decode_package_links_no_network_stack` | `== 0` | gated |
+| `network-free-decoder` | `topology.package.edge-eligibility` | `topology.decoder.network_packages` | gate | issue 46 | `== 0` | open (issue 46) |
 | `network-free-runtime` | `topology.package.transport-optional` | `topology.runtime.network_packages` | gate | test `contextful_ci::topology::this_repository_outbound_crate_links_no_http_stack_without_its_transport` | `== 0` | gated |
 | `network-volume-refuses-cas` | `store.probe.unproven` | `probe.network_class_cas_pushes` | gate | issue 53 | `== 0` | open (issue 53) |
 | `no-sqlite-link` | `topology.package.store-sqlite-free` | `topology.libsqlite3_sys_links` | gate | test `contextful_ci::topology::this_repository_links_sqlite_only_through_its_adapter` | `== 0` | gated |

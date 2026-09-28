@@ -130,13 +130,14 @@ fn the_token_reads_the_catalog_before_the_first_await_and_every_500_ms() {
     // A stop written before the run's first await is seen before the keeper returns.
     c.put_run(&crate::support_row("run-early", RunStatus::Running)).unwrap();
     rig.engine.cancel("run-early", Scope::Run, None).unwrap();
+    let keeper = Keeper::new(Cadence::default());
     let token = CancelToken::default();
-    let _k = Keeper::start(c.clone(), "run-early", token.clone(), Cadence::default());
+    let _r = keeper.register(c.clone(), "run-early", token.clone(), Arc::default());
     assert!(token.requested());
     // A later stop is seen within one interval.
     c.put_run(&crate::support_row("run-late", RunStatus::Running)).unwrap();
     let token = CancelToken::default();
-    let _k = Keeper::start(c.clone(), "run-late", token.clone(), Cadence::default());
+    let _r = keeper.register(c.clone(), "run-late", token.clone(), Arc::default());
     assert!(!token.requested());
     rig.engine.cancel("run-late", Scope::Run, None).unwrap();
     let marked = std::time::Instant::now();
@@ -214,7 +215,8 @@ fn a_failed_poll_keeps_polling() {
     rig.engine.cancel("run-1", Scope::Run, None).unwrap();
     let flaky: Arc<dyn Catalog + Send + Sync> = Arc::new(Flaky { inner: rig.engine.catalog.clone(), failures: AtomicUsize::new(3) });
     let token = CancelToken::default();
-    let _k = Keeper::start(flaky.clone(), "run-1", token.clone(), Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) });
+    let keeper = Keeper::new(Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) });
+    let _r = keeper.register(flaky.clone(), "run-1", token.clone(), Arc::default());
     assert!(!token.requested(), "the first read failed and fired nothing");
     let started = std::time::Instant::now();
     while !token.requested() {
@@ -286,14 +288,21 @@ fn the_keeper_wakes_only_on_its_deadlines() {
     assert_eq!(schedule.next(), late + Duration::from_millis(500));
 }
 
-/// Dropping a keeper whose next deadline is an hour away stops its thread at once.
+/// Dropping the last registration of a keeper whose next deadline is an hour away returns
+/// at once, and its thread exits without waiting on that deadline.
 #[test]
-fn a_dropped_keeper_stops_at_once() {
+fn a_dropped_registration_ends_the_keeper_thread_at_once() {
     let rig = Rig::new();
     rig.catalog().put_run(&crate::support_row("run-1", RunStatus::Running)).unwrap();
     let hour = Duration::from_secs(3600);
-    let keeper = Keeper::start(rig.engine.catalog.clone(), "run-1", CancelToken::default(), Cadence { poll: hour, renew: hour });
+    let keeper = Keeper::new(Cadence { poll: hour, renew: hour });
+    let registration = keeper.register(rig.engine.catalog.clone(), "run-1", CancelToken::default(), Arc::default());
+    assert_eq!((keeper.threads(), keeper.registered()), (1, 1));
     let started = std::time::Instant::now();
-    drop(keeper);
-    assert!(started.elapsed() < Duration::from_secs(30), "the drop waited on the keeper's deadline");
+    drop(registration);
+    assert_eq!(keeper.registered(), 0);
+    while keeper.threads() > 0 {
+        assert!(started.elapsed() < Duration::from_secs(30), "the keeper thread waited on its deadline");
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
