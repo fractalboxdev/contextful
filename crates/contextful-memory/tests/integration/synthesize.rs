@@ -42,8 +42,8 @@ fn prompt(inference: &Scripted, call: usize) -> String {
     inference.sent.lock().unwrap()[call].iter().map(|m| m.content.clone()).collect::<Vec<_>>().join("\n")
 }
 
-/// A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under a prompt bound, recording each batch once its claims commit.
-// spec: read.synthesize.pass-cursor@081ca4c3
+/// A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under {{read.synthesize.prompt-bound}}, recording each batch once its claims commit.
+// spec: read.synthesize.pass-cursor@2f9ea6e2
 #[test]
 fn a_pass_reads_the_runs_past_its_cursor() {
     let f = Fixture::new();
@@ -260,22 +260,58 @@ fn a_landing_rereads_the_writers_authority() {
     assert!(facts(&f, &writer, r#"SELECT * FROM "memory/facts""#).1.is_empty());
 }
 
-/// A row reaches the model through the connector's data fence: labelled with its source
-/// table, its control characters escaped to JSON text, and cut at the row's character cap.
+/// A row is fenced at 16384 chars under {{connector.infer.fenced-value-hygiene}}; a truncated row still reaches the model, its batch commits and advances the cursor, and the pass report counts it in `truncated`.
+// spec: read.synthesize.row-cap@bec6ed3e
 #[test]
-fn a_row_reaches_the_model_labelled_clean_and_capped() {
+fn a_row_over_the_cap_reaches_the_model_truncated_and_counted() {
     use contextful_core::connector::infer::TRUNCATION_MARK;
     use contextful_memory::synthesize::VALUE_CHARS;
+    assert_eq!(VALUE_CHARS, 16384);
     let f = Fixture::new();
     let (writer, node) = (f.writer(), NodeId::parse("memory-a").unwrap());
-    let text = format!("Dana\u{1b}[2J is Acme's CFO. {}", "x".repeat(VALUE_CHARS));
-    land_rows(&f.face, "research/notes", "run-0001", json!([{ "note_id": "n1", "text": text }]));
+    let text = format!("Dana\u{1b}[2J is Acme's CFO. {}TAIL", "x".repeat(VALUE_CHARS));
+    land_rows(&f.face, "research/notes", "run-0001", json!([{ "note_id": "n1", "text": text }, { "note_id": "n2", "text": "Lee is Acme's CTO." }]));
     let inference = Scripted::new(&[claims("acme", "cfo", "Dana", "run-0001")]);
-    pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
+    let report = pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
     let sent = prompt(&inference, 0);
     assert!(sent.contains("<<<data label=\"research/notes\" ref=\"research/notes#run-0001:0\""), "{sent}");
     assert!(sent.contains("Dana\\u001b[2J is Acme's CFO.") && !sent.contains('\u{1b}'), "{sent}");
     assert!(sent.contains(&format!("{TRUNCATION_MARK}\n<<<end ")), "the row ends in the truncation mark");
+    assert!(!sent.contains("TAIL"), "the tail past the cap is cut");
+    let block = sent.split("<<<end ").next().unwrap().rsplit(">>>\n").next().unwrap().trim_end_matches('\n');
+    assert_eq!(block.chars().count(), VALUE_CHARS, "the fenced row holds the cap in all");
+    assert!(sent.contains("research/notes#run-0001:1") && sent.contains("Lee is Acme's CTO."), "its neighbour still reaches the model");
+    assert_eq!((report.truncated, report.batches, report.landed), (1, 1, 1), "{report:?}");
+    assert_eq!(report.dead_lettered, 0, "a truncated row is no dead letter");
+    let (_, landed) = facts(&f, &writer, r#"SELECT object FROM "memory/facts""#);
+    assert_eq!(landed, [vec![json!("Dana")]]);
+    let idle = Scripted::new(&[]);
+    assert!(pass(&f, &writer, &idle, &node, "2030-01-12T00:00:00Z").run().unwrap().runs.is_empty(), "the cursor records the truncated row");
+}
+
+/// A batch packs fenced rows up to 32 KiB; a fenced row over that bound travels in a batch of its own.
+// spec: read.synthesize.prompt-bound@6ba7bea3
+#[test]
+fn a_row_over_the_prompt_bound_travels_alone() {
+    use contextful_memory::synthesize::{PROMPT_BYTES, VALUE_CHARS};
+    assert_eq!(PROMPT_BYTES, 32 * 1024);
+    let f = Fixture::new();
+    let (writer, node) = (f.writer(), NodeId::parse("memory-a").unwrap());
+    // Two-byte characters: the capped row fences past the byte bound.
+    let wide = "é".repeat(VALUE_CHARS);
+    land_rows(&f.face, "research/notes", "run-0001", json!([
+        { "note_id": "n1", "text": "Dana is Acme's CFO." },
+        { "note_id": "n2", "text": wide },
+        { "note_id": "n3", "text": "Lee is Acme's CTO." },
+    ]));
+    let answers: Vec<String> = ["a", "b", "c"].iter().map(|o| claims("acme", "fact", o, "run-0001")).collect();
+    let inference = Scripted::new(&answers);
+    let report = pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
+    assert_eq!((report.batches, inference.calls()), (3, 3), "{report:?}");
+    assert!(prompt(&inference, 0).contains("Dana is Acme's CFO.") && !prompt(&inference, 0).contains("é"));
+    assert!(prompt(&inference, 1).contains("research/notes#run-0001:1") && !prompt(&inference, 1).contains("Acme"));
+    assert!(prompt(&inference, 2).contains("Lee is Acme's CTO.") && !prompt(&inference, 2).contains("é"));
+    assert_eq!(report.truncated, 1);
 }
 
 /// Regression: a backlog past the prompt bound goes out in batches, each committing and

@@ -4329,10 +4329,32 @@
       "operation": "synthesize",
       "subject": "pass-cursor",
       "kind": "behavior",
-      "statement": "A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under a prompt bound, recording each batch once its claims commit.",
+      "statement": "A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under {{read.synthesize.prompt-bound}}, recording each batch once its claims commit.",
       "why": "",
       "file": "spec/21-memory.md",
       "line": 69
+    },
+    {
+      "id": "read.synthesize.prompt-bound",
+      "contract": "read",
+      "operation": "synthesize",
+      "subject": "prompt-bound",
+      "kind": "limit",
+      "statement": "A batch packs fenced rows up to 32 KiB; a fenced row over that bound travels in a batch of its own.",
+      "why": "because one oversized row neither stalls the pass nor drags its neighbours past the bound",
+      "file": "spec/21-memory.md",
+      "line": 70
+    },
+    {
+      "id": "read.synthesize.row-cap",
+      "contract": "read",
+      "operation": "synthesize",
+      "subject": "row-cap",
+      "kind": "limit",
+      "statement": "A row is fenced at 16384 chars under {{connector.infer.fenced-value-hygiene}}; a truncated row still reaches the model, its batch commits and advances the cursor, and the pass report counts it in `truncated`.",
+      "why": "because a silent cut hides that a conclusion rests on a partial row",
+      "file": "spec/21-memory.md",
+      "line": 72
     },
     {
       "id": "read.synthesize.attribution",
@@ -4343,7 +4365,7 @@
       "statement": "Every landed claim carries `grant_id`, the chain-final revocation identifier of the credential that wrote it, `agent`, that credential's agent member, and `_authored_by`, its on-behalf-of principal.",
       "why": "because a reader weighs a conclusion by which grant could have produced it",
       "file": "spec/21-memory.md",
-      "line": 70
+      "line": 74
     },
     {
       "id": "read.revise.tier",
@@ -4354,7 +4376,7 @@
       "statement": "`tier` is stamped from the write path and grounding, never the payload: a synthesis pass stamps `derived`, a direct write `curated`, a fetched result `researched`, and mixed grounding takes the lowest.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 97
+      "line": 101
     },
     {
       "id": "read.revise.supersede",
@@ -4365,7 +4387,7 @@
       "statement": "A claim of equal or higher tier retires a live prior of its subject, predicate and scope when both are open-ended or share a valid-from instant: the prior's `valid_to` becomes the claim's `valid_from`, and `superseded_by` names it.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 99
+      "line": 103
     },
     {
       "id": "read.revise.direct-write",
@@ -4376,7 +4398,7 @@
       "statement": "The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 101
+      "line": 105
     },
     {
       "id": "read.recall.evidence-unresolved",
@@ -4387,7 +4409,7 @@
       "statement": "An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 112
+      "line": 116
     },
     {
       "id": "read.recall.evidence-references",
@@ -4398,7 +4420,7 @@
       "statement": "A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 114
+      "line": 118
     },
     {
       "id": "read.recall.ranked-arm",
@@ -4409,7 +4431,7 @@
       "statement": "A `corpus.retrieve` arm over a `memory_facts` table serves only live claims — no `superseded_by`, and a `valid_to` null or past the read's anchor — whose evidence passes the gate.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 116
+      "line": 120
     },
     {
       "id": "read.recall.suppression-count",
@@ -4420,7 +4442,7 @@
       "statement": "A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.",
       "why": "because a count discloses that a conclusion was withheld, never what it concluded",
       "file": "spec/21-memory.md",
-      "line": 117
+      "line": 121
     },
     {
       "id": "read.resolve-entity.ambiguous-mention",
@@ -4431,7 +4453,7 @@
       "statement": "A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 136
+      "line": 140
     },
     {
       "id": "read.resolve-entity.edge-endpoint",
@@ -4442,7 +4464,7 @@
       "statement": "A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 138
+      "line": 142
     },
     {
       "id": "read.settle.registration",
@@ -4453,7 +4475,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 149
+      "line": 153
     },
     {
       "id": "read.settle.source-mismatch",
@@ -4464,7 +4486,7 @@
       "statement": "An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 151
+      "line": 155
     },
     {
       "id": "read.settle.settling-citation",
@@ -4475,7 +4497,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 153
+      "line": 157
     },
     {
       "id": "read.settle.grace-window",
@@ -4486,7 +4508,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 155
+      "line": 159
     },
     {
       "id": "run.journal.step-output",
@@ -16837,6 +16859,14 @@
       "read.synthesize.extract-attempts"
     ],
     [
+      "read.synthesize.pass-cursor",
+      "read.synthesize.prompt-bound"
+    ],
+    [
+      "read.synthesize.row-cap",
+      "connector.infer.fenced-value-hygiene"
+    ],
+    [
       "run.journal.claim-takeover",
       "run.record.owner-lease"
     ],
@@ -19812,6 +19842,20 @@
             "unit": "attempts",
             "basis": "chosen",
             "gloss": "Extract attempts per batch, feedback included."
+          },
+          "memory-prompt-bytes": {
+            "clause": "read.synthesize.prompt-bound",
+            "value": 32,
+            "unit": "KiB",
+            "basis": "chosen",
+            "gloss": "Fenced row bytes one extraction batch packs."
+          },
+          "memory-row-chars": {
+            "clause": "read.synthesize.row-cap",
+            "value": 16384,
+            "unit": "chars",
+            "basis": "chosen",
+            "gloss": "Characters of one fenced row before the truncation mark cuts it."
           },
           "outcome-grace-window": {
             "clause": "read.settle.grace-window",
