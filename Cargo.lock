@@ -947,6 +947,9 @@ name = "contextful-sqlite"
 version = "0.1.0"
 dependencies = [
  "contextful-core",
+ "contextful-engine",
+ "contextful-eval",
+ "parking_lot",
  "rusqlite",
  "serde",
  "serde_json",

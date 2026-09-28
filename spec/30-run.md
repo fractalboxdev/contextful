@@ -85,6 +85,8 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *A-run*
 - `storage-ports` — Journal rows, blobs and awakeables persist through a journal store, a blob store and an awakeable store; every `run.journal` and `run.suspend` clause holds for each adapter, the file tree included.
   *A-run*
+- `sqlite-stores` — `contextful-sqlite` serves the journal, blob and awakeable stores from one SQLite file in write-ahead-log mode over one connection, a blob as a row keyed by its sha256; an awakeable update commits with the journal writes inside it.
+  *because a resolution recording its payload through a second connection waits on the write lock its own update holds*
 - `plan-pin` — A run resolves the plan reference it started against for its whole life.
 - `unwired-capability` — Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work.
   *A-topology*

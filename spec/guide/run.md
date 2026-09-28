@@ -47,7 +47,8 @@ Each pull is a journaled step: its value is recorded once while its effect may r
 once ({{run.journal.step-output}}), and each outbound request carries an idempotency key
 derived from the entry key ({{run.journal.idempotency-key}}). The journal, its blobs and the
 awakeable registry persist through three store ports, so a host keeps replay state in its own
-store and the file tree is one adapter among them ({{run.journal.storage-ports}}). A batch then passes one fixed
+store and the file tree is one adapter among them ({{run.journal.storage-ports}}); a SQLite file
+is another ({{run.journal.sqlite-stores}}). A batch then passes one fixed
 stage order ({{run.land.stage-order}}). Rows and the new cursor commit on one marker
 ({{run.advance.commit-with-rows}}), so no crash leaves one moved without the other.
 

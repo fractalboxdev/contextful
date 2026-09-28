@@ -237,6 +237,14 @@ tier   = "gate"
 method = { test = "contextful_engine::stores::the_file_and_memory_adapters_pass_every_store_conformance_suite" }
 target = { op = "==", value = 0 }
 
+[entry.sqlite-journal-conformance]
+clause = "run.journal.sqlite-stores"
+metric = "journal.sqlite_conformance.failed_cases"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sqlite::stores::the_sqlite_adapters_pass_every_store_conformance_suite" }
+target = { op = "==", value = 0 }
+
 [entry.journal-storage-bounded]
 clause = "run.journal.blob-sweep"
 metric = "journal.sweep.stale_blobs"
