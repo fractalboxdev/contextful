@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 14 | 197 | 51 | 22 | 15 | 78 | 0 | 78 |
 | `authority` | 2 | 16 | 225 | 60 | 27 | 8 | 158 | 0 | 158 |
-| `connector` | 2 | 13 | 241 | 74 | 15 | 8 | 99 | 0 | 99 |
+| `connector` | 2 | 13 | 241 | 74 | 15 | 8 | 102 | 0 | 102 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
-| `read` | 2 | 14 | 115 | 21 | 14 | 17 | 75 | 0 | 75 |
+| `read` | 2 | 14 | 117 | 21 | 16 | 17 | 77 | 0 | 77 |
 | `run` | 3 | 24 | 289 | 82 | 34 | 24 | 151 | 0 | 151 |
 | `store` | 1 | 14 | 157 | 37 | 12 | 13 | 113 | 0 | 113 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 60 | 15 | 5 | 5 | 14 | 0 | 14 |
-| **total** | 19 | 146 | 1489 | 475 | 167 | 111 | 735 | 0 | |
+| **total** | 19 | 146 | 1491 | 475 | 169 | 111 | 740 | 0 | |
 
 Decision records: 18.
 
@@ -27,10 +27,10 @@ Decision records: 18.
 | 1 — The authority core | 14 | 192 | 136 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 171 | 92 | passing |
-| 4 — Ingest | 22 | 341 | 128 | passing |
+| 4 — Ingest | 22 | 341 | 131 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
-| 7 — Memory | 6 | 19 | 19 | passing |
+| 7 — Memory | 6 | 21 | 21 | passing |
 | 8 — Accountability | 5 | 24 | 3 | open |
 | 9 — Visibility | 6 | 22 | 3 | open |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
@@ -308,6 +308,9 @@ Unscheduled operations: 10.
 | `connector.import.config-unclaimed` | `crates/contextful-wasm/tests/integration/import.rs::a_guest_table_for_a_guest_without_the_config_interface_is_refused` | performed |
 | `connector.import.empty-context` | `crates/contextful-wasm/tests/integration/import.rs::a_guest_standard_library_sees_no_environment_arguments_or_files` | performed |
 | `connector.import.forwarded-config` | `crates/contextful-wasm/tests/integration/import.rs::the_guest_table_arrives_once_ahead_of_discovery` | performed |
+| `connector.infer.data-fence` | `crates/contextful-core/tests/integration/connector/infer.rs::a_prompt_holds_labelled_blocks_between_a_data_preamble_and_the_callers_rules` | performed |
+| `connector.infer.fenced-value-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::control_characters_go_and_a_long_value_ends_in_the_mark` | performed |
+| `connector.infer.marker-derivation` | `crates/contextful-core/tests/integration/connector/infer.rs::a_value_cannot_close_its_own_fence` | performed |
 | `connector.lease.bootstrap-declared-leased` | `crates/contextful-runtime/tests/integration/lease.rs::the_bootstrap_name_cannot_be_leased` | performed |
 | `connector.lease.bootstrap-non-recursion` | `crates/contextful-runtime/tests/integration/lease.rs::the_mint_credential_comes_from_the_adapters_behind_the_provider` | performed |
 | `connector.lease.bootstrap-unserved` | `crates/contextful-runtime/tests/integration/lease.rs::an_unanswered_bootstrap_refuses_before_any_mint` | performed |
@@ -502,6 +505,8 @@ Unscheduled operations: 10.
 | `read.synthesize.dead-letter` | `crates/contextful-memory/tests/integration/synthesize.rs::an_exhausted_batch_dead_letters_and_holds_the_cursor` | performed |
 | `read.synthesize.extract-attempts` | `crates/contextful-core/tests/integration/memory/synthesize.rs::an_invalid_response_is_retried_with_feedback_three_attempts_in_all` | performed |
 | `read.synthesize.pass-cursor` | `crates/contextful-memory/tests/integration/synthesize.rs::a_pass_reads_the_runs_past_its_cursor` | performed |
+| `read.synthesize.prompt-bound` | `crates/contextful-memory/tests/integration/synthesize.rs::a_row_over_the_prompt_bound_travels_alone` | performed |
+| `read.synthesize.row-cap` | `crates/contextful-memory/tests/integration/synthesize.rs::a_row_over_the_cap_reaches_the_model_truncated_and_counted` | performed |
 | `run.advance.commit-with-rows` | `crates/contextful-engine/tests/integration/runner.rs::the_position_commits_with_the_rows_and_the_catalog_caches_it` | performed |
 | `run.advance.concurrency-by-kind` | `crates/contextful-engine/tests/integration/runner.rs::a_token_cursor_moves_under_one_writer_and_a_watermark_never_rewinds` | performed |
 | `run.advance.cursor-kind` | `crates/contextful-core/tests/integration/run/advance.rs::three_kinds_and_an_undeclared_one_reads_opaque_token` | performed |

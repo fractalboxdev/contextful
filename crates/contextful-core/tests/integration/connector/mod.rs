@@ -2,6 +2,7 @@
 //! and artifact pins.
 
 mod attach;
+mod infer;
 mod lease;
 mod meter;
 mod package;
