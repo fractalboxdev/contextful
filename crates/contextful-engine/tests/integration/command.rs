@@ -91,8 +91,10 @@ fn a_finished_pull_reaps_what_its_command_left_running() {
 #[test]
 fn a_pipe_held_outside_the_group_fails_the_pull_instead_of_blocking_it() {
     let dir = tempfile::tempdir().unwrap();
-    // The leftover leaves the group with `setsid`, so reaping the group never closes its stdout.
-    let script = "perl -MPOSIX -e 'POSIX::setsid(); open(my $f, \">\", \"escaped.pid\"); print $f $$; close $f; exec \"sleep\", 30' & sleep 0.2; printf '{\"rows\":[]}'";
+    // The leftover leaves the group with `setsid`, so reaping the group never closes its stdout. It writes its pid
+    // file only after `setsid`, and the shell answers only once that file exists, polling for up to 10 s in 10 ms steps.
+    let script = "perl -MPOSIX -e 'POSIX::setsid(); open(my $f, \">\", \"escaped.pid\"); print $f $$; close $f; exec \"sleep\", 30' & \
+                  i=0; while [ ! -e escaped.pid ] && [ $i -lt 1000 ]; do sleep 0.01; i=$((i+1)); done; printf '{\"rows\":[]}'";
     let src = CommandSource { argv: vec!["sh".into(), "-c".into(), script.into()], cwd: dir.path().to_path_buf() };
     let started = std::time::Instant::now();
     let f = bounded(src, CancelToken::default()).unwrap_err();
