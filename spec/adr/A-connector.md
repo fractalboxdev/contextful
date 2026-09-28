@@ -75,3 +75,24 @@ Declarations carry names, stores carry opaque bytes, connectors carry provider k
 
 Consequences: local development pastes a token only behind an explicit opt-in flag; a bootstrap backend is a second backend to operate.
 Revisit: workload identity becomes unattestable on a needed runtime; a broker becomes near-free to operate; a runtime identity authenticates to the mint directly.
+
+## Egress passes one transport port and one pre-send hook ahead of resolution
+
+Status: proposed.
+
+Context: the client resolves a name before any gate, a reservation sees no request, the model endpoint bypasses mediation, and `contextful-runtime` links its HTTP stack unconditionally.
+
+Decision: the runtime defines a transport port with a resolve half and a send half; its HTTP adapter sits behind a default-on `transport-ureq` feature. The model call sends through the mediated client. Each hop passes the allowlist, then one hook carrying the request intent, then resolution; the limiter reservation is the hook's innermost implementation, and an operator hook composes in front.
+
+Criteria: one attachment point, no lookup before a refusal, `connector.meter.allowlist-precedence` intact; allowlist precedence decided the hook's position.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Allowlist, one intent hook, port-owned resolution *(chosen)* | — | Each adapter re-implements proxy choice, timeout and body ceiling; a ledger learns allowlist refusals from the run record, not the hook. |
+| Hook ahead of the allowlist | Allowlist precedence | An undeclared host reaches the operator hook and the limiter. |
+| An egress gate beside the meter | One attachment point | Three pre-send hooks, each a call site to miss. |
+| A send-only port, resolution through the system | Lookup containment | A refused hop has already sent its host name to a resolver. |
+| The HTTP stack unconditional | Embeddability | An embedder with its own client links a second TLS stack. |
+
+Consequences: `contextful-decode` then holds the record decoders with no edge to `contextful-runtime`, a split needing no section here. Each transport adapter is audited against the attach clauses.
+Revisit: a transport that must resolve remotely, such as a proxy-only deployment.
