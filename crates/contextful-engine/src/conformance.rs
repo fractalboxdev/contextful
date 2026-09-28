@@ -69,7 +69,7 @@ pub fn blob_store<B: BlobStore + Clone>(adapter: &str, fresh: &mut dyn FnMut() -
     assert_eq!(b.get("bb").unwrap(), None, "{adapter}: an absent blob reads as none");
     assert_eq!(b.clone().get("aa").unwrap().as_deref(), Some(&b"bytes"[..]), "{adapter}: a reopened store holds the blob");
 
-    // run.journal.blob-write: concurrent writers of one hash converge without erroring.
+    // run.journal.blob-write: concurrent writers of one hash converge, none erroring.
     let b = fresh();
     let value = large(b'v');
     let sha = sha256_hex(&value);

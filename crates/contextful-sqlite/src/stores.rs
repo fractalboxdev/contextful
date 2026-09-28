@@ -12,7 +12,9 @@
 //!
 //! The file runs in write-ahead-log mode, so a reader never waits on a writer. Every write
 //! runs in an immediate transaction, which takes SQLite's one write lock up front and so
-//! serializes it against every other connection to the file, in this process or another.
+//! serializes it against every other connection to the file, in this process or another:
+//! a blob put waits behind another connection's write transaction, and fails once that
+//! transaction holds the lock past the busy wait (`run.journal.blob-write`, `A-run`).
 //! The three stores of one [`SqliteRunStores`] share one connection: an awakeable update
 //! records its resume payload through the journal from inside its own transaction, and a
 //! second connection would wait on the write lock that transaction holds.

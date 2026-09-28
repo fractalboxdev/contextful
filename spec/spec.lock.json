@@ -4626,7 +4626,7 @@
       "operation": "journal",
       "subject": "blob-write",
       "kind": "behavior",
-      "statement": "Concurrent writers of one blob hash converge on one stored value without waiting or erroring, and no partial write survives beside it.",
+      "statement": "Concurrent writers of one blob hash converge on one stored value and none errors on another's write; no partial write survives beside it.",
       "why": "A-run",
       "file": "spec/30-run.md",
       "line": 68

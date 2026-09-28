@@ -1,9 +1,12 @@
 //! `run.journal.sqlite-stores`: the journal, blob and awakeable stores over one SQLite
-//! file pass every store conformance suite, and hold their claims across connections.
+//! file pass every store conformance suite, commit an awakeable update with the journal
+//! writes inside it, and hold their claims across connections.
 
 use contextful_core::coordinate::Catalog;
 use contextful_core::run::journal::{sha256_hex, EntryKey, Row, Stored, INLINE_CUTOFF_BYTES};
-use contextful_core::run::ports::{BlobStore, JournalStore};
+use contextful_core::run::ports::{AwakeableStore, BlobStore, JournalStore};
+use contextful_core::run::suspend::{Awakeable, AwakeableState};
+use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_engine::conformance;
 use contextful_sqlite::{MachineCatalog, SqliteRunStores};
@@ -25,7 +28,8 @@ fn key(execution_id: &str) -> EntryKey {
 
 type Suite = (&'static str, Box<dyn Fn()>);
 
-/// The three suites over one SQLite file per fresh store set.
+/// The three conformance suites and the update atomicity cases, over one SQLite file per
+/// fresh store set.
 fn suites() -> Vec<Suite> {
     vec![
         ("sqlite blob", Box::new(|| {
@@ -46,17 +50,21 @@ fn suites() -> Vec<Suite> {
                 (s.awakeables, s.journal, s.blobs)
             });
         })),
+        ("sqlite update commits its journal write", Box::new(an_awakeable_update_commits_its_journal_write_with_the_row)),
+        ("sqlite failed update rolls back", Box::new(a_failed_awakeable_update_rolls_its_journal_write_back)),
+        ("sqlite failed nested update rolls back", Box::new(a_failed_nested_update_rolls_back_alone)),
     ]
 }
 
-/// The SQLite adapter passes the journal, blob and awakeable suites the file tree passes.
+/// The SQLite adapter passes the journal, blob and awakeable suites the file tree passes,
+/// and an awakeable update commits or rolls back with the journal writes inside it.
 // spec: run.journal.sqlite-stores@c28b4db5
 #[test]
-fn the_sqlite_adapters_pass_every_store_conformance_suite() {
+fn the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically() {
     let suites = suites();
     let failed: Vec<&str> = suites.iter().filter(|(_, run)| std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)).is_err()).map(|(name, _)| *name).collect();
     contextful_eval::record::emit("sqlite-journal-conformance", failed.len() as f64, suites.len() as u64, 0);
-    assert!(failed.is_empty(), "failed conformance suites: {failed:?}");
+    assert!(failed.is_empty(), "failed cases: {failed:?}");
 }
 
 #[test]
@@ -129,4 +137,104 @@ fn the_run_stores_share_machine_sqlite_with_the_catalog() {
     s.journal.create_pending(&key("x-1"), "run-1").unwrap();
     assert!(catalog.run("run-1").unwrap().is_some(), "the catalog's rows stand beside the journal's");
     assert!(s.journal.read(&key("x-1")).unwrap().is_some());
+}
+
+/// A pending awakeable row under `token` for execution `x-1`.
+fn awakeable(token: &str) -> Awakeable {
+    Awakeable {
+        token: token.into(),
+        execution_id: "x-1".into(),
+        step_label: "approve".into(),
+        created_at: crate::at(crate::T0),
+        ttl_secs: 60,
+        deadline: crate::at("2030-01-01T00:01:00Z"),
+        state: AwakeableState::Pending,
+        payload_sha256: None,
+        payload: None,
+    }
+}
+
+/// Journal rows under `execution_id` as another connection to the file reads them.
+fn committed(path: &std::path::Path, execution_id: &str) -> i64 {
+    let conn = rusqlite::Connection::open(path).unwrap();
+    conn.query_row("SELECT COUNT(*) FROM journal WHERE execution_id = ?1", [execution_id], |r| r.get(0)).unwrap()
+}
+
+fn an_awakeable_update_commits_its_journal_write_with_the_row() {
+    let mut dirs = Vec::new();
+    let s = fresh(&mut dirs);
+    let path = s.path().to_path_buf();
+    s.awakeables.insert(&awakeable("tok-a")).unwrap();
+
+    let updated = s
+        .awakeables
+        .update("tok-a", &mut |row| {
+            assert_eq!(s.journal.record(&key("x-1"), &Stored::place(b"yes")).unwrap(), None);
+            assert_eq!(committed(&path, "x-1"), 0, "another connection sees no journal write before the update commits");
+            row.state = AwakeableState::Resolved;
+            Ok(true)
+        })
+        .unwrap();
+    assert_eq!(updated.map(|r| r.state), Some(AwakeableState::Resolved));
+    assert_eq!(committed(&path, "x-1"), 1, "the journal write commits with the row");
+}
+
+fn a_failed_awakeable_update_rolls_its_journal_write_back() {
+    let mut dirs = Vec::new();
+    let s = fresh(&mut dirs);
+    let path = s.path().to_path_buf();
+    s.awakeables.insert(&awakeable("tok-a")).unwrap();
+
+    let failed = s.awakeables.update("tok-a", &mut |row| {
+        s.journal.record(&key("x-1"), &Stored::place(b"yes"))?;
+        row.state = AwakeableState::Resolved;
+        Err(Failure::new(FailureTag::Storage, "the edit fails after its journal write"))
+    });
+    assert!(failed.is_err());
+    assert_eq!(s.journal.read(&key("x-1")).unwrap(), None, "the journal write rolls back with the update");
+    assert_eq!(committed(&path, "x-1"), 0);
+    assert_eq!(s.awakeables.get("tok-a").unwrap().map(|r| r.state), Some(AwakeableState::Pending));
+}
+
+fn a_failed_nested_update_rolls_back_alone() {
+    let mut dirs = Vec::new();
+    let s = fresh(&mut dirs);
+    let path = s.path().to_path_buf();
+    s.awakeables.insert(&awakeable("tok-a")).unwrap();
+    s.awakeables.insert(&awakeable("tok-b")).unwrap();
+
+    s.awakeables
+        .update("tok-a", &mut |outer| {
+            let inner = s.awakeables.update("tok-b", &mut |row| {
+                s.journal.record(&key("x-1"), &Stored::place(b"inner"))?;
+                row.state = AwakeableState::Resolved;
+                Err(Failure::new(FailureTag::Storage, "the inner edit fails after its journal write"))
+            });
+            assert!(inner.is_err());
+            outer.state = AwakeableState::Resolved;
+            Ok(true)
+        })
+        .unwrap();
+    assert_eq!(committed(&path, "x-1"), 0, "the inner update's journal write rolls back with it");
+    assert_eq!(s.awakeables.get("tok-b").unwrap().map(|r| r.state), Some(AwakeableState::Pending));
+    assert_eq!(s.awakeables.get("tok-a").unwrap().map(|r| r.state), Some(AwakeableState::Resolved), "the outer update commits");
+}
+
+#[test]
+fn concurrent_puts_of_one_hash_across_connections_converge() {
+    let mut dirs = Vec::new();
+    let first = fresh(&mut dirs);
+    let path = first.path().to_path_buf();
+    let others: Vec<SqliteRunStores> = (0..4).map(|_| SqliteRunStores::open(&path).unwrap()).collect();
+    let value = vec![b'c'; INLINE_CUTOFF_BYTES + 1];
+    let sha = sha256_hex(&value);
+    let (sha, value) = (&sha, &value);
+    std::thread::scope(|s| {
+        for stores in std::iter::once(&first).chain(others.iter()) {
+            s.spawn(move || stores.blobs.put(sha, value).unwrap());
+        }
+    });
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let held: Vec<Vec<u8>> = conn.prepare("SELECT bytes FROM journal_blob").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+    assert_eq!(held, [value.clone()], "every writer converges on one whole row");
 }

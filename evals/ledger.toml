@@ -242,7 +242,7 @@ clause = "run.journal.sqlite-stores"
 metric = "journal.sqlite_conformance.failed_cases"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_sqlite::stores::the_sqlite_adapters_pass_every_store_conformance_suite" }
+method = { test = "contextful_sqlite::stores::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically" }
 target = { op = "==", value = 0 }
 
 [entry.journal-storage-bounded]
