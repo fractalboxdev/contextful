@@ -4,6 +4,7 @@
 mod acceptance_surface;
 mod features;
 mod lean;
+mod measure;
 mod mirrors;
 mod secrets;
 mod test_first;

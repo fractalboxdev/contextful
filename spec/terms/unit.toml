@@ -33,6 +33,7 @@ values   = { gloss = "distinct input values" }
 lanes    = { gloss = "Argon2id parallelism lanes" }
 cases     = { gloss = "evaluation cases" }
 resamples = { gloss = "bootstrap resamples" }
+repeats   = { gloss = "repeated measurement samples" }
 nodes    = { gloss = "graph nodes" }
 runs     = { gloss = "committed runs" }
 times    = { gloss = "multiples of a stated base quantity" }

@@ -758,6 +758,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "contextful-eval",
  "serde_json",
  "tempfile",
  "toml",
@@ -858,6 +859,8 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

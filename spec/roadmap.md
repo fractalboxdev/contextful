@@ -192,8 +192,8 @@ Acceptance: `contextful_acceptance::m13::m13_disclosure`
 
 | Operations | Intent |
 | --- | --- |
-| `assurance.structure-tree`, `assurance.build`, `assurance.gate`, `assurance.evaluate`, `assurance.baseline` | The build gate, the build targets and the retrieval-quality harness. |
+| `assurance.structure-tree`, `assurance.build`, `assurance.gate`, `assurance.evaluate`, `assurance.baseline`, `assurance.measure` | The build gate, the build targets, the retrieval-quality harness and the target ledger. |
 
-Reach: The gate holds its resource budget and the evaluation floors are measured on every change.
+Reach: The gate holds its resource budget, and the evaluation floors and every gate-tier target are measured on every change.
 
 Acceptance: `contextful_acceptance::m14::m14_assurance`

@@ -8,6 +8,7 @@ owns:
   - gate
   - evaluate
   - baseline
+  - measure
 ---
 
 # Engineering gates and the quality harness
@@ -141,7 +142,7 @@ unsettled: Do the store adapter's write suites assert without the SQL engine, so
 
 Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.
 
-- `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
+- `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
 - `remote-check` — The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, each as one status check labelled with the stage's name.
   *A-assurance*
 - `fork-dispatch` — The pull-request workflow dispatches only a head commit pushed to the repository itself; a pull request from a fork dispatches no stage and so carries none of the required checks.
@@ -149,6 +150,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*
 - `pins-stage` — The pins stage resolves every pinned artifact identity a run depends on before any compilation.
+- `evaluate-stage` — The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, and reports the floor and baseline verdicts.
 - `schema-stage` — The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`.
 - `secret-ciphertext` — In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file other than `.env.example` holding a value without the `encrypted:` prefix, or a tracked `.env.keys`, raises `SecretPlaintext`, naming file and key.
   *because a tracked file reaches every clone, and only dotenvx ciphertext is safe there while its private key stays untracked*
@@ -202,17 +204,19 @@ flowchart LR
     S4["4 test-first"]
     S5["5 workspace"]
     S6["6 acceptance"]
-    S7["7 features"]
-    S8["8 crate graph"]
-    S9["9 connectors"]
-    S10["10 TypeScript surfaces"]
-    S11["11 formal"]
-    S12["12 budget"]
+    S7["7 evaluate"]
+    S8["8 features"]
+    S9["9 crate graph"]
+    S10["10 connectors"]
+    S11["11 TypeScript surfaces"]
+    S12["12 formal"]
+    S13["13 budget"]
   end
   S3 -.->|"runs"| LINT["contextful-spec lint"]
-  S8 -.->|"runs"| DENY["cargo-deny per profile"]
-  S11 -.->|"runs"| FORM["formal check"]
-  S12 -.->|"measures, 12 GiB cap"| SIZE["build size"]
+  S7 -.->|"runs gate-tier entries"| LEDGER[("evals/ledger.toml")]
+  S9 -.->|"runs"| DENY["cargo-deny per profile"]
+  S12 -.->|"runs"| FORM["formal check"]
+  S13 -.->|"measures, 12 GiB cap"| SIZE["build size"]
 ```
 
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate
@@ -288,6 +292,53 @@ Holding a run against committed baselines and absolute floors, intervals, golden
 
 unsettled: Which public benchmark corpora are admissible gate inputs under research and non-commercial licences: fetched under the dataset's terms, transformed into a synthetic subset, or pinned by a content-hashed fetch manifest? owner: build affects: assurance.baseline
 
+## measure
+
+The target ledger: each tracked target, the clause it serves, how it is measured and its record per commit.
+
+- `ledger` — `evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.
+- `unresolved-entry` — An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.
+  *P7*
+- `open-entry` — An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.
+- `tier` — A gate-tier entry decides the evaluate stage, a trend-tier entry records on every run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.
+- `count-first` — A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.
+  *because a shared container moves wall-clock figures past any band narrow enough to catch a regression*
+- `record` — A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.
+  *P7*
+- `seeded` — Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.
+  *because a failure that cannot replay cannot be fixed*
+- `timing-iterations` — A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.
+- `timing-batches` — A timed figure is the median of 5 repeats of its timed batch.
+- `trend-band` — A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.
+- `runner-stamp` — The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.
+- `absolute-threshold` — A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.
+- `history` — A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.
+  *A-assurance*
+- `scheduled` — A nightly job runs every tier against the default-branch head and reports one check per run.
+- `measured-basis` — A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.
+
+A ledger entry's path from the tree to a verdict:
+
+```mermaid
+flowchart LR
+  LEDGER[("evals/ledger.toml")] -->|"entries"| MEASURE["contextful-ci measure"]
+  LOCK[("spec/spec.lock.json")] -->|"clause ids"| MEASURE
+  MEASURE -->|"issue entries"| VIEW[("evals/ledger.md")]
+  MEASURE -->|"gate-tier tests"| TESTS["integration tests"]
+  TESTS -->|"one record each"| RECORDS[("record JSON")]
+  RECORDS -->|"values"| HOLDS{"threshold holds?"}
+  HOLDS -->|"yes"| GREEN["green evaluate stage"]
+  HOLDS -->|"no"| RED["red evaluate stage"]
+```
+
+unsettled: Which credential pushes `refs/notes/measures` from the scheduled dispatch? owner: build affects: assurance.measure
+
+#### Scenarios
+
+- `assurance.measure.unresolved-entry`: WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs.
+- `assurance.measure.trend-band`: WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes.
+- `assurance.measure.open-entry`: WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it.
+
 ## Shapes
 
 Where the build-time material sits:
@@ -296,12 +347,14 @@ Where the build-time material sits:
 tools/
   ci/                     typed subcommands the gate invokes
   spec/                   the corpus checker
-  eval/                   the quality harness's metrics, floors and baseline gate
+  eval/                   the quality harness's metrics, floors, baseline gate, ledger, records and trends
 crates/acceptance/
   tests/integration/mNN.rs  one milestone's acceptance test, driving a built binary
 evals/
   cases/                  version-controlled JSONL, one case per line
   baselines/              one file per gated configuration
+  ledger.toml             one entry per tracked target, keyed to its clause
+  ledger.md               every entry's computed status, generated
   generators/             graph walk, edge chain, absent entity
   converters/             one per external ground-truth source
 crates/<name>/tests/
