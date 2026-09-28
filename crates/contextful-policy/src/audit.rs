@@ -15,7 +15,8 @@
 //! Two formats verify (`disclosure.record.v0-chain`). A v1 chain carries `header.json`,
 //! which fixes the digest (SHA-256 or BLAKE3) and the segment size; each entry carries
 //! `format: 1` and digests the RFC 8785 canonical JSON of its `format`, `seq`, `prev_hash`
-//! and `attributes`; the first entry links to the header's digest; and a segment root is
+//! and `attributes`, each attribute integer within ±(2^53 − 1)
+//! (`disclosure.record.inexact-integer`); the first entry links to the header's digest; and a segment root is
 //! the RFC 6962 Merkle tree hash of the segment's entry digests, so one entry proves its
 //! membership with an audit path ([`prove`]). A v0 chain has no header: its entry digest is
 //! SHA-256 over seq (8 bytes, little-endian), `prev_hash` and the sorted-key compact JSON of
@@ -63,6 +64,10 @@ pub const AUDIT_SEGMENT_ENTRIES: u64 = 4096;
 /// The largest segment size a chain header names (`disclosure.record.chain-header`).
 pub const AUDIT_SEGMENT_MAX: u64 = 65_536;
 
+/// The largest integer magnitude a v1 attribute holds: 2^53 − 1, beyond which RFC 8785's
+/// IEEE 754 number form maps two integers to one (`disclosure.record.inexact-integer`).
+pub const AUDIT_EXACT_INTEGER: u64 = (1 << 53) - 1;
+
 /// Quiet time after the last append at which the log signs its tip
 /// (`disclosure.record.tip-signing`).
 pub const AUDIT_TIP_IDLE: Duration = Duration::from_secs(1);
@@ -86,6 +91,10 @@ pub enum AuditError {
     /// (`disclosure.record.header-unsupported`)
     #[error("AuditHeaderUnsupported: {0}")]
     AuditHeaderUnsupported(String),
+    /// A v1 entry's attribute holding an integer beyond ±[`AUDIT_EXACT_INTEGER`], which the
+    /// canonical form cannot write exactly. (`disclosure.record.inexact-integer`)
+    #[error("AuditAttributeInexact: {0}")]
+    AuditAttributeInexact(String),
     /// An inclusion proof that does not verify. (`disclosure.attest.proof-invalid`)
     #[error("AuditProofInvalid: {0}")]
     AuditProofInvalid(String),
@@ -206,6 +215,19 @@ impl ChainHeader {
     }
 }
 
+/// The first integer in `value` beyond ±[`AUDIT_EXACT_INTEGER`], depth first.
+fn inexact_integer(value: &Value) -> Option<&serde_json::Number> {
+    match value {
+        Value::Number(n) => {
+            let beyond = n.as_u64().map(|u| u > AUDIT_EXACT_INTEGER).or_else(|| n.as_i64().map(|i| i.unsigned_abs() > AUDIT_EXACT_INTEGER));
+            beyond.unwrap_or(false).then_some(n)
+        }
+        Value::Array(items) => items.iter().find_map(inexact_integer),
+        Value::Object(map) => map.values().find_map(inexact_integer),
+        _ => None,
+    }
+}
+
 /// RFC 8785 canonical JSON of `value`.
 fn canonical(value: &Value) -> Vec<u8> {
     serde_json_canonicalizer::to_vec(value).expect("a JSON value canonicalizes")
@@ -277,9 +299,18 @@ impl ChainFormat {
     }
 
     /// Whether `entry` carries this format and its `entry_hash` is the digest of its other
-    /// fields.
+    /// fields; a v1 entry also holds every attribute exactly.
     pub fn digest_agrees(&self, entry: &AuditEntry) -> bool {
-        entry.format == self.version() && self.entry_digest(entry) == entry.entry_hash
+        entry.format == self.version() && self.inexact(&entry.attributes).is_none() && self.entry_digest(entry) == entry.entry_hash
+    }
+
+    /// Under v1, the first attribute integer the canonical form writes inexactly
+    /// (`disclosure.record.inexact-integer`); v0 digests every integer's exact decimal form.
+    fn inexact<'a>(&self, attributes: &'a Value) -> Option<&'a serde_json::Number> {
+        match self {
+            ChainFormat::V0 => None,
+            ChainFormat::V1(_) => inexact_integer(attributes),
+        }
     }
 
     /// The root a full segment of `entries` closes under.
@@ -771,6 +802,9 @@ fn walk(dir: &Path, key: Option<&SignerKey>) -> Result<ChainTip, AuditError> {
             if entry.prev_hash != end.entry_hash {
                 return Err(broken(index, "prev_hash does not link to the entry before"));
             }
+            if let Some(n) = chain.inexact(&entry.attributes) {
+                return Err(broken(index, format!("an attribute holds {n}, an integer beyond ±{AUDIT_EXACT_INTEGER}")));
+            }
             if !chain.digest_agrees(&entry) {
                 return Err(broken(index, "entry_hash disagrees with the entry"));
             }
@@ -1111,8 +1145,16 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
     /// sync of the segment covers every member's lines, or raises `AuditEntryUnpersisted`
     /// with every other member when that sync or any write before it fails; the files then
     /// return to their prior length and the tip stays where it was.
+    ///
+    /// A v1 batch holding an attribute integer beyond ±[`AUDIT_EXACT_INTEGER`] raises
+    /// `AuditAttributeInexact` before it joins a group, and nothing of it appends.
     pub fn append_all(&self, batch: Vec<Value>) -> Result<Vec<AuditEntry>, AuditError> {
         let inner = &*self.inner;
+        if let Some(n) = batch.iter().find_map(|v| inner.chain.inexact(v)) {
+            return Err(AuditError::AuditAttributeInexact(format!(
+                "an attribute holds {n}, an integer beyond ±{AUDIT_EXACT_INTEGER} that RFC 8785 writes inexactly"
+            )));
+        }
         let mut st = inner.lock();
         let ticket = st.next_ticket;
         st.next_ticket += 1;

@@ -2,7 +2,7 @@
 
 # Target ledger
 
-61 entries: 33 gated, 2 recorded, 0 scheduled, 26 open.
+61 entries: 34 gated, 2 recorded, 0 scheduled, 25 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |

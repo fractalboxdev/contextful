@@ -806,6 +806,62 @@ fn a_v1_entry_digests_the_rfc_8785_form_of_its_whole_entry() {
     }
 }
 
+/// Appending a v1 entry whose attributes hold an integer beyond ±(2^53 − 1) raises `AuditAttributeInexact` and
+/// appends nothing; verifying a chain holding such an entry raises {{disclosure.attest.broken-chain}}.
+// spec: disclosure.record.inexact-integer@e172e4f3
+#[test]
+fn a_v1_attribute_integer_beyond_2_53_raises_audit_attribute_inexact() {
+    const EXACT: u64 = (1 << 53) - 1;
+    let inexact = |r: Result<_, AuditError>| matches!(r, Err(AuditError::AuditAttributeInexact(_)));
+    let rows = |n: Value| json!({ "contextful.subject.agent": "agent://a", "contextful.result.rows": n });
+
+    // RFC 8785 writes 2^53 + 1 and 2^53 as one number, so their digests agree.
+    let chain = ChainFormat::V1(ChainHeader::default());
+    let genesis = chain.genesis().entry_hash;
+    assert_eq!(
+        chain.link(1, &genesis, rows(json!(EXACT + 2))).entry_hash,
+        chain.link(1, &genesis, rows(json!(EXACT + 1))).entry_hash
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let log = AuditLog::open(dir.path(), key()).unwrap();
+    log.append(rows(json!(EXACT))).unwrap();
+    log.append(rows(json!(-(EXACT as i64)))).unwrap();
+    log.append(rows(json!(1e300))).unwrap();
+    for value in [
+        rows(json!(EXACT + 1)),
+        rows(json!(u64::MAX)),
+        rows(json!(-(EXACT as i64) - 1)),
+        json!({ "nested": [{ "id": EXACT + 2 }] }),
+    ] {
+        assert!(inexact(log.append(value.clone()).map(|_| ())), "{value}");
+        assert!(inexact(log.append_all(vec![rows(json!(1)), value.clone()]).map(|_| ())), "a batch holding {value}");
+    }
+    assert_eq!(log.tip().seq, 3, "a refused append leaves the chain as it was");
+    assert_eq!(log.append(rows(json!(4))).unwrap().seq, 4);
+    drop(log);
+    assert_eq!(lines(&segment(dir.path(), 1)).len(), 4);
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 4);
+
+    // An entry written with such an integer, and its edit to a neighbour, both break the chain.
+    let mut entries = lines(&segment(dir.path(), 1));
+    let rewritten = chain.link(5, &entries[3].entry_hash, rows(json!(EXACT + 2)));
+    entries.push(rewritten.clone());
+    write_lines(&segment(dir.path(), 1), &entries);
+    fs::remove_file(dir.path().join("chain.tip")).unwrap();
+    assert_eq!(broken_at(verify(dir.path())), 5);
+    entries[4].attributes = rows(json!(EXACT + 1));
+    write_lines(&segment(dir.path(), 1), &entries);
+    assert_eq!(broken_at(verify(dir.path())), 5);
+    assert!(!chain.digest_agrees(&rewritten));
+
+    // A v0 chain digests the integer's exact decimal form and admits it.
+    let dir = tempfile::tempdir().unwrap();
+    v0_chain(dir.path(), 1);
+    let log = AuditLog::open(dir.path(), key()).unwrap();
+    assert_eq!(log.append(rows(json!(EXACT + 2))).unwrap().seq, 2);
+}
+
 /// `header.json`, written before a new chain's first entry, fixes the chain's format, its digest, `sha256` or
 /// `blake3`, and a segment size of at most 65536 entries; the first v1 entry's `prev_hash` is the canonical header's
 /// digest.
@@ -899,7 +955,37 @@ fn a_v0_chain_verifies_and_appends_under_v0_rules() {
     entries[4].attributes = attrs("agent://attacker", 0);
     write_lines(&segment(dir.path(), 1), &entries);
     assert_eq!(broken_at(verify(dir.path())), 5);
+
+    // A chain the v0 writer left on disk, byte for byte: four entries, its signed tip, and
+    // the signed root it gives the last entry digest over a 4096-entry segment.
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("segments")).unwrap();
+    fs::write(segment(dir.path(), 1), V0_SEGMENT).unwrap();
+    fs::write(dir.path().join("chain.tip"), V0_TIP).unwrap();
+    let written = lines(&segment(dir.path(), 1));
+    let mut prev = GENESIS.to_string();
+    for e in &written {
+        assert_eq!(e, &ChainFormat::V0.link(e.seq, &prev, e.attributes.clone()), "entry {} under the v0 digest", e.seq);
+        prev = e.entry_hash.clone();
+    }
+    assert_eq!(written[2].attributes["contextful.result.rows"], json!(9_007_199_254_740_993u64), "v0 keeps every integer");
+    assert_eq!(prev, "sha256:447b5841d4f80e512e4c850fdc94f57c8a03fc3d0781e0224da67f6ceec1c2cf");
+    let end = verify_signed(dir.path(), &SignerKey::of(&key())).unwrap();
+    assert_eq!((end.seq, end.entry_hash.as_str()), (4, prev.as_str()));
+    let root: SignedRoot = serde_json::from_str(V0_ROOT).unwrap();
+    assert_eq!(root, SignedRoot::sign(&prev, AUDIT_SEGMENT_ENTRIES, &key()).unwrap());
+    assert!(root.verify(&SignerKey::of(&key())));
+    let log = AuditLog::open(dir.path(), key()).unwrap();
+    let next = log.append(attrs("agent://v0", 5)).unwrap();
+    drop(log);
+    assert_eq!(next, ChainFormat::V0.link(5, &prev, attrs("agent://v0", 5)));
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 5);
 }
+
+/// The v0 writer's segment, tip and root, under [`key`].
+const V0_SEGMENT: &str = include_str!("../fixtures/audit-v0/chain/segments/000001.jsonl");
+const V0_TIP: &str = include_str!("../fixtures/audit-v0/chain/chain.tip");
+const V0_ROOT: &str = include_str!("../fixtures/audit-v0/root.json");
 
 /// A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry
 /// digests in `seq` order.

@@ -101,7 +101,7 @@ Decision: each v1 entry carries its format version, and its digest covers the wh
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Versioned whole-entry digest, per-chain header, Merkle root *(chosen)* | — | Two verifier paths kept forever; canonical encoding per append; proofs grow with segment size. |
+| Versioned whole-entry digest, per-chain header, Merkle root *(chosen)* | — | Two verifier paths kept forever; canonical encoding per append; attribute integers within ±(2^53 − 1); proofs grow with segment size. |
 | Keep v0 | Per-entry evidence | Membership needs the whole segment; header fields sit outside the digest. |
 | One digest for every chain | Embedder fit | A verifier pinned to the other digest cannot read the chain. |
 | Sign every entry | Syncs per read | One signature per read, which group commit amortizes away. |

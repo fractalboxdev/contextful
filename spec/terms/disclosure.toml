@@ -66,6 +66,7 @@ VisibilityNoObservations       = { clause = "disclosure.explain.empty-window", g
 VisibilityUnqualifiedAssurance = { clause = "disclosure.explain.unqualified-assurance", gloss = "A negative assurance answer lacks its coverage block." }
 VisibilityIndividualNamed      = { clause = "disclosure.explain.groups-not-members", gloss = "An explanation rendered the members of a group on the path." }
 AuditHeaderUnsupported   = { clause = "disclosure.record.header-unsupported", gloss = "A chain header names a format, digest or segment size this build does not verify." }
+AuditAttributeInexact    = { clause = "disclosure.record.inexact-integer", gloss = "A v1 entry's attribute holds an integer the canonical form cannot write exactly." }
 AuditChainBroken         = { clause = "disclosure.attest.broken-chain", gloss = "A digest, format or Merkle root mismatch, sequence gap or vanished chain, with the earliest failing index." }
 AuditProofInvalid        = { clause = "disclosure.attest.proof-invalid", gloss = "An inclusion proof's entry, path, header, root or signature disagrees." }
 AuditProofUnavailable    = { clause = "disclosure.attest.proof-unavailable", gloss = "No signed Merkle root covers the entry to prove." }
