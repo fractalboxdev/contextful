@@ -4,7 +4,7 @@
 //! A failed pull forgets the open read, so its retry reopens at the position the runner
 //! asks for rather than trusting whatever state the failure left the guest's handle in.
 
-use crate::batch::rows;
+use crate::batch::read;
 use crate::host::{Cursor, CursorKind, Session};
 use contextful_core::run::ports::{Cancellation, Pull, PullRequest, Source};
 use contextful_core::run::{Failure, FailureTag};
@@ -77,7 +77,8 @@ impl GuestSource {
         }
         let batch = self.session.next()?;
         let position = cursor_value(&self.session.position()?);
-        let pull = Pull { rows: batch.as_deref().map(rows).transpose()?.unwrap_or_default(), cursor: Some(position.clone()), more: batch.is_some() };
+        let got = batch.as_deref().map(read).transpose()?.unwrap_or_default();
+        let pull = Pull { rows: got.rows, types: got.types, cursor: Some(position.clone()), more: batch.is_some() };
         self.at = Some(Some(position));
         serde_json::to_vec(&pull).map_err(|e| Failure::new(FailureTag::Permanent, format!("encoding a pull: {e}")))
     }

@@ -48,6 +48,32 @@ fn partitioning_is_off_unless_declared() {
     assert_eq!(g.query(&parted, Bounds::default(), "SELECT tenant, e FROM t ORDER BY e"), [[s("acme"), s("1")], [s("globex"), s("2")], [None, s("3")]]);
 }
 
+/// A `partition_by` column typed binary or vector raises `StorePartitionColumnType` at validation, before any Parquet.
+// spec: store.index.partition-type@1e6a72e5
+#[test]
+fn a_binary_or_vector_partition_column_is_refused() {
+    use contextful_core::store::reconcile::{ColumnType, FloatItem};
+    use contextful_core::store::StoreError;
+    for (column, ty, value) in [
+        ("digest", ColumnType::FixedSizeBinary(2), json!("/wA=")),
+        ("blob", ColumnType::Binary, json!("/gE=")),
+        ("embedding", ColumnType::FixedSizeList(FloatItem::Float32, 2), json!([0.5, 1.0])),
+    ] {
+        let f = Fixture::new();
+        let d = decl(&format!("name = \"events\"\npartition_by = [\"{column}\"]"));
+        let err = f.land_typed(&d, "run-1", json!([{column: value, "e": 1}]), "2030-01-01T00:00:00Z", &[(column, ty)]).unwrap_err();
+        assert!(matches!(err.store(), Some(StoreError::StorePartitionColumnType(_))), "{column}: {err}");
+        assert!(!f.table_dir("events").join("data/runs/run-1").exists(), "{column}");
+
+        // A partition declared after the rows landed refuses the fold instead of collapsing values.
+        let g = Fixture::new();
+        let plain = decl("name = \"events\"");
+        g.land_typed(&plain, "run-1", json!([{column: value, "e": 1}]), "2030-01-01T00:00:00Z", &[(column, ty)]).unwrap();
+        let err = fold(&g.store, &d, at("2030-01-01T01:00:00Z")).unwrap_err();
+        assert!(matches!(err.store(), Some(StoreError::StorePartitionColumnType(_))), "{column}: {err}");
+    }
+}
+
 /// A tenant value is written and compared byte for byte, with no trimming, case folding or Unicode normalization; a percent-escaped directory name is representation alone.
 // spec: store.index.tenant-verbatim@4f788f5f
 #[test]

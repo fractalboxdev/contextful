@@ -2,7 +2,7 @@
 
 use super::{run, snapshot};
 use contextful_core::store::declare::{TableDecl, WriteMode, DEFAULT_RETAIN_RUNS_SECS};
-use contextful_core::store::reconcile::{Column, ColumnType, Schema};
+use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema};
 use contextful_core::store::resolve::TableState;
 use contextful_core::store::StoreError;
 
@@ -15,14 +15,15 @@ write_mode   = "replace"
 cluster_by   = ["issuer", "revised_at"]
 partition_by = ["tenant"]
 retain_runs  = "7d"
+columns      = { digest = "binary(32)", embedding = "float16[768]" }
 
 [pipeline.tables.valid_time]
 from = "effective_from"
 to   = "effective_to"
 "#;
 
-/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
-// spec: store.declare.table-block@f2837e91
+/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
+// spec: store.declare.table-block@261e4b49
 #[test]
 fn a_table_block_parses_its_keys_and_omits_unset_ones() {
     let t = &TableDecl::parse_pipeline(SPEC_EXAMPLE).unwrap()[0];
@@ -32,6 +33,12 @@ fn a_table_block_parses_its_keys_and_omits_unset_ones() {
     assert_eq!(t.partition_by(), ["tenant"]);
     assert_eq!(t.valid_time.as_ref().unwrap().to.as_deref(), Some("effective_to"));
     assert_eq!(t.retain_runs_secs().unwrap(), 7 * 86_400);
+    assert_eq!(
+        t.column_types(),
+        [("digest".to_string(), ColumnType::FixedSizeBinary(32)), ("embedding".to_string(), ColumnType::FixedSizeList(FloatItem::Float16, 768))]
+            .into_iter()
+            .collect()
+    );
 
     let canonical: serde_json::Value = serde_json::from_str(&t.canonical()).unwrap();
     let keys: Vec<&str> = canonical.as_object().unwrap().keys().map(String::as_str).collect();
@@ -56,6 +63,10 @@ example_queries = ["SELECT count(*) FROM notes"]
     let n = &TableDecl::parse_pipeline(every).unwrap()[0];
     assert_eq!(n.example_queries.as_ref().unwrap().len(), 1);
     assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nprimary_keys = [\"id\"]\n").is_err());
+    assert!(!TableDecl::named("bare").canonical().contains("columns"));
+    // A column type outside the spellings a landing reads refuses the declaration.
+    assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\ncolumns = { digest = \"binary(0)\" }\n").is_err());
+    assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\ncolumns = { v = \"float64[3]\" }\n").is_err());
 }
 
 /// `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.

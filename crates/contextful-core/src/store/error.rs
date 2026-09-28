@@ -38,6 +38,9 @@ pub enum StoreError {
     /// An `order_by` names a column neither declared nor injected. (`store.declare.order-by-unknown`)
     #[error("StoreOrderByUnknownColumn: {0}")]
     StoreOrderByUnknownColumn(String),
+    /// A `partition_by` column is typed binary or vector. (`store.index.partition-type`)
+    #[error("StorePartitionColumnType: {0}")]
+    StorePartitionColumnType(String),
     /// A commit would expose snapshot data without its declared sidecars, or the reverse. (`store.fold.partial-snapshot`)
     #[error("StorePartialSnapshot: {0}")]
     StorePartialSnapshot(String),

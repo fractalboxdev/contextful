@@ -260,15 +260,22 @@ pub fn land_batches(
 ) -> Result<RunManifest> {
     store.check_writable("land")?;
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
-    let mut types: HashMap<String, ColumnType> = HashMap::new();
-    for b in batches {
-        types.extend(b.types.iter().map(|(k, v)| (k.clone(), *v)));
-    }
     let all_rows = || batches.iter().flat_map(|b| b.rows.iter());
     let table = decl.name.as_str();
     let run_id = ctx.injection.run_id.as_str();
     check_run_id(run_id)?;
     contextful_core::store::reserve::check_table_name(table)?;
+    // A column's type comes from the producer, then the declaration
+    // (`store.declare.column-types`), then a binary or vector type `schema.json` already
+    // holds (`store.reconcile.stored-type`); a JSON value alone carries none of these.
+    let mut types: HashMap<String, ColumnType> = HashMap::new();
+    if let Some(stored) = store.try_schema(table)? {
+        types.extend(stored.columns.iter().filter(|c| c.ty.is_binary() || c.ty.is_vector()).map(|c| (c.name.clone(), c.ty)));
+    }
+    types.extend(decl.column_types());
+    for b in batches {
+        types.extend(b.types.iter().map(|(k, v)| (k.clone(), *v)));
+    }
     let node_dir = store.table_dir(table)?.join("data").join("runs").join(run_id).join(ctx.node.as_str());
     let manifest_path = node_dir.join(MANIFEST_FILE);
     if manifest_path.exists() {

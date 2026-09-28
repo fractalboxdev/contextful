@@ -46,12 +46,70 @@ fn a_batch_is_arrow_ipc_and_a_position_is_bytes_beside_a_kind() {
     assert_eq!(got.len(), 2);
     assert_eq!(
         serde_json::Value::Object(got[0].clone()),
-        json!({ "id": 1, "flag": false, "small": 10, "ratio": 0.5, "name": "item-1", "blob": "01", "at": 1_700_000_000_001i64, "doc": "{\"n\":1}" })
+        json!({ "id": 1, "flag": false, "small": 10, "ratio": 0.5, "name": "item-1", "blob": "AQ==", "at": 1_700_000_000_001i64, "doc": "{\"n\":1}" })
     );
     let at = s.position().unwrap();
     assert_eq!(at.kind, CursorKind::Monotonic);
     assert_eq!(at.bytes, b"2".to_vec(), "the guest owns the byte format");
     assert!(rows(b"not arrow").is_err_and(|f| f.tag == FailureTag::SchemaIncompatible));
+}
+
+/// The host reads an Arrow `Binary` or `FixedSizeBinary` column as bytes of that width and a `FixedSizeList` of
+/// `Float32` or `Float16` as that vector, each landing in its {{store.reconcile.binary-and-vector}} type, never as text.
+// spec: connector.export.arrow-types@eab47828
+#[test]
+fn arrow_bytes_and_float_vectors_cross_in_their_own_types() {
+    use arrow_array::builder::{FixedSizeListBuilder, Float16Builder, Float32Builder};
+    use arrow_array::{ArrayRef, BinaryArray, FixedSizeBinaryArray, RecordBatch};
+    use std::sync::Arc;
+    let mut half = FixedSizeListBuilder::new(Float16Builder::new(), 3);
+    for x in [0.5, -1.0, 0.25] {
+        half.values().append_value(half::f16::from_f64(x));
+    }
+    half.append(true);
+    (0..3).for_each(|_| half.values().append_value(half::f16::ZERO));
+    half.append(false);
+    let mut single = FixedSizeListBuilder::new(Float32Builder::new(), 2);
+    single.values().append_slice(&[1.5, 2.0]);
+    single.append(true);
+    single.values().append_slice(&[3.0, 4.0]);
+    single.append(true);
+    let columns: Vec<(&str, ArrayRef)> = vec![
+        ("blob", Arc::new(BinaryArray::from(vec![Some(&[0xaa_u8, 0x01][..]), None]))),
+        ("digest", Arc::new(FixedSizeBinaryArray::try_from_sparse_iter_with_size([Some([0xde_u8, 0xad, 0xbe, 0xef]), Some([0, 1, 2, 3])].into_iter(), 4).unwrap())),
+        ("embedding", Arc::new(half.finish())),
+        ("wide", Arc::new(single.finish())),
+    ];
+    let batch = RecordBatch::try_from_iter(columns).unwrap();
+    let mut ipc = Vec::new();
+    {
+        let mut w = arrow_ipc::writer::StreamWriter::try_new(&mut ipc, &batch.schema()).unwrap();
+        w.write(&batch).unwrap();
+        w.finish().unwrap();
+    }
+    let read = contextful_wasm::batch::read(&ipc).unwrap();
+    assert_eq!(
+        read.rows.into_iter().map(serde_json::Value::Object).collect::<Vec<_>>(),
+        [
+            json!({"blob": "qgE=", "digest": "3q2+7w==", "embedding": [0.5, -1.0, 0.25], "wide": [1.5, 2.0]}),
+            json!({"blob": null, "digest": "AAECAw==", "embedding": null, "wide": [3.0, 4.0]}),
+        ]
+    );
+    let types: Vec<(&str, &str)> = read.types.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    assert_eq!(types, [("blob", "binary"), ("digest", "binary(4)"), ("embedding", "float16[3]"), ("wide", "float32[2]")]);
+
+    // The guest source hands the types over beside the rows: the fixture's `bytes` field as `binary`.
+    struct Never;
+    impl Cancellation for Never {
+        fn requested(&self) -> bool {
+            false
+        }
+    }
+    let mut source = GuestSource::new(open(), "items");
+    let req = PullRequest { step_label: "pull".into(), position: None, idempotency_key: "k".into() };
+    let pull = Pull::decode(&source.pull(&req, &Never).unwrap()).unwrap();
+    assert_eq!(pull.rows[0]["blob"], "AQ==");
+    assert_eq!(pull.types.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<Vec<_>>(), [("blob", "binary")]);
 }
 
 /// A source exports its cursor kind, a discovery call, and an open call taking a table and an optional position. The

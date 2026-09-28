@@ -74,6 +74,24 @@ impl ColumnType {
         }
     }
 
+    /// The type as a declaration spells it, the inverse of [`ColumnType::parse`].
+    pub fn spell(self) -> String {
+        match self {
+            ColumnType::Null => "null".into(),
+            ColumnType::Boolean => "boolean".into(),
+            ColumnType::Int32 => "int32".into(),
+            ColumnType::Int64 => "int64".into(),
+            ColumnType::Float64 => "float64".into(),
+            ColumnType::Utf8 => "utf8".into(),
+            ColumnType::Json => "json".into(),
+            ColumnType::Timestamp => "timestamp".into(),
+            ColumnType::Binary => "binary".into(),
+            ColumnType::FixedSizeBinary(n) => format!("binary({n})"),
+            ColumnType::FixedSizeList(FloatItem::Float32, n) => format!("float32[{n}]"),
+            ColumnType::FixedSizeList(FloatItem::Float16, n) => format!("float16[{n}]"),
+        }
+    }
+
     /// Whether the column carries bytes.
     pub fn is_binary(self) -> bool {
         matches!(self, ColumnType::Binary | ColumnType::FixedSizeBinary(_))

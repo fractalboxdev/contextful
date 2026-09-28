@@ -14,9 +14,10 @@ use contextful_core::run::cancel::{mark, same_grain, Scope};
 use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{ConnectorPin, OwnerScope, Pins};
 use contextful_core::run::plan::Plan;
-use contextful_core::run::ports::{AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Pull, PullRequest, Row, Shape, Source, Unshaped};
+use contextful_core::run::ports::{AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Pull, PullRequest, Row, Shape, Source, Types, Unshaped};
 use contextful_core::run::record::{select_history, HistoryPage, RunRow, Window, OWNER_LEASE_TTL_SECS};
 use contextful_core::run::{Failure, FailureTag, RunError};
+use contextful_core::store::reconcile::ColumnType;
 use contextful_core::topology::TopologyError;
 use serde_json::Value;
 use std::sync::Arc;
@@ -188,6 +189,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             _ => None,
         };
         let mut batches: Vec<Vec<Row>> = Vec::new();
+        let mut types = Types::new();
         for ordinal in 0.. {
             if execution.token().requested() {
                 return Err(Close::Failed(Failure::canceled("stopped between pulls")));
@@ -197,6 +199,20 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             let request = PullRequest { step_label: label.clone(), position: position.clone(), idempotency_key: key.idempotency_key() };
             let resolved = self.step(spec, execution, &key, &request, source)?;
             let pull = Pull::decode(resolved.bytes())?;
+            for (column, ty) in shape.shape_types(pulled_types(&pull)?) {
+                match types.get(&column) {
+                    Some(held) if *held != ty => {
+                        return Err(Failure::deterministic(
+                            FailureTag::SchemaIncompatible,
+                            format!("StoreSchemaIncompatible: column `{column}` is declared {} and {} by two pulls of one run", held.name(), ty.name()),
+                        )
+                        .into())
+                    }
+                    _ => {
+                        types.insert(column, ty);
+                    }
+                }
+            }
             let (rows, last) = match plan.cursor_kind {
                 CursorKind::Monotonic => {
                     // The frontier counts every fetched row; the load admits those at or after the stored position.
@@ -256,6 +272,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     run_id: spec.run_id.clone(),
                     site_id: spec.site_id.clone(),
                     batches,
+                    types,
                     cursor: position.clone(),
                     committed_at,
                     fence: lease.as_ref().map(|l| l.fence),
@@ -330,4 +347,20 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     pub fn history(&self, pipeline_id: Option<&str>, window: &Window) -> Result<HistoryPage, Failure> {
         Ok(select_history(self.catalog.runs(pipeline_id)?, window))
     }
+}
+
+/// The column types a pull declares (`run.land.typed-pull`); a spelling no landing reads
+/// fails the pull.
+fn pulled_types(pull: &Pull) -> Result<Types, Failure> {
+    pull.types
+        .iter()
+        .map(|(column, spelled)| {
+            ColumnType::parse(spelled).map(|t| (column.clone(), t)).ok_or_else(|| {
+                Failure::deterministic(
+                    FailureTag::SchemaIncompatible,
+                    format!("StoreSchemaIncompatible: the pull declares column `{column}` as `{spelled}`, which no landing reads"),
+                )
+            })
+        })
+        .collect()
 }

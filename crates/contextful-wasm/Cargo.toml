@@ -33,6 +33,7 @@ transport-ureq = ["contextful-outbound/transport-ureq"]
 # The suite drives loopback servers over the ureq adapter, with or without the feature.
 [dev-dependencies]
 contextful-outbound = { path = "../contextful-outbound", features = ["transport-ureq"] }
+half = "2"
 
 [[test]]
 name = "integration"

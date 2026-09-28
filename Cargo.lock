@@ -994,6 +994,7 @@ dependencies = [
  "bytes",
  "contextful-core",
  "contextful-outbound",
+ "half",
  "http",
  "http-body-util",
  "serde_json",

@@ -57,6 +57,7 @@ The calls a connector offers across the boundary: the shared types, the source a
   *A-connector*
 - `type-taxonomy` — The shared types interface carries a schema (name, fields, primary key) and a field (name, data type, nullability) over `boolean`, `int32`, `int64`, `float64`, `string`, `bytes`, `timestamp-millis` and `json`.
 - `batch-encoding` — A batch crosses the boundary as Arrow IPC bytes, and a position as opaque bytes beside a declared cursor kind.
+- `arrow-types` — The host reads an Arrow `Binary` or `FixedSizeBinary` column as bytes of that width and a `FixedSizeList` of `Float32` or `Float16` as that vector, each landing in its {{store.reconcile.binary-and-vector}} type, never as text.
 - `nested-value` — A nested value rides as `json` and takes its type at the normalize stage. The interface carries no recursive type definition.
 - `guaranteed-type` — A guest declares the type it guarantees after its own parsing — `int64` for a count, `float64` for money and a rate — and lands null, never zero, for a spelling it cannot read.
   *because a text column pushes a cast into every downstream read*

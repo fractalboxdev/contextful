@@ -277,8 +277,52 @@ fn a_typed_batch_lands_bytes_from_base64_and_vectors_from_arrays() {
         let err = f.land_typed(&d, "run-2", json!([{"id": "d", column: value}]), "2030-01-01T00:02:00Z", &[(column, ty)]).unwrap_err();
         assert!(matches!(err.store(), Some(StoreError::StoreSchemaIncompatible(_))), "{column}: {err}");
     }
-    // Undeclared, a JSON array lands as JSON, which the vector column refuses.
-    let err = f.land(&d, "run-3", json!([{"id": "d", "embedding": [0.5, 1.0, 2.0]}]), "2030-01-01T00:03:00Z").unwrap_err();
+}
+
+/// A column `schema.json` holds as a binary or vector type lands a later undeclared JSON value in that type, so a run after the first needs no declaration.
+// spec: store.reconcile.stored-type@baad8450
+#[test]
+fn a_stored_binary_or_vector_column_types_a_later_undeclared_batch() {
+    let f = Fixture::new();
+    let d = decl("name = \"embeddings\"");
+    let rows = json!([{"id": "a", "blob": "qgE=", "digest": "3q2+7w==", "embedding": [0.5, -1.0, 0.25], "wide": [1.5, 2]}]);
+    f.land_typed(&d, "run-1", rows, "2030-01-01T00:00:00Z", &typed_columns()).unwrap();
+    // The later batch declares nothing: base64 text and number arrays land in the stored types.
+    let later = json!([{"id": "b", "blob": "/w==", "digest": "AAECAw==", "embedding": [1, 0, 0], "wide": [0.5, 0.5]}]);
+    f.land(&d, "run-2", later, "2030-01-01T00:01:00Z").unwrap();
+    let schema = f.store.schema("embeddings").unwrap();
+    for (name, ty) in typed_columns() {
+        assert_eq!(schema.get(name).unwrap().ty, ty, "{name}");
+    }
+    assert_eq!(
+        f.query(&d, Bounds::default(), "SELECT id, typeof(embedding), CAST(embedding AS VARCHAR), octet_length(digest) FROM t ORDER BY id"),
+        [[s("a"), s("FLOAT[3]"), s("[0.5, -1.0, 0.25]"), s("4")], [s("b"), s("FLOAT[3]"), s("[1.0, 0.0, 0.0]"), s("4")]]
+    );
+    // A value the stored type does not read still refuses before any Parquet.
+    for (i, row) in [json!({"id": "c", "digest": "3q2+796tvu8="}), json!({"id": "c", "embedding": [1, 2]}), json!({"id": "c", "blob": "not base64"})].into_iter().enumerate() {
+        let run = format!("run-bad-{i}");
+        let err = f.land(&d, &run, json!([row.clone()]), "2030-01-01T00:02:00Z").unwrap_err();
+        assert!(matches!(err.store(), Some(StoreError::StoreSchemaIncompatible(_))), "{row}: {err}");
+        assert!(!f.table_dir("embeddings").join("data/runs").join(&run).join("ingest-a/part-00000.parquet").exists(), "{row}");
+    }
+}
+
+/// `columns` maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it; every landing into the table, a pipeline run included, lands that column in the declared type.
+// spec: store.declare.column-types@bf4b3417
+#[test]
+fn a_declared_column_type_types_a_landing_that_declares_none() {
+    let f = Fixture::new();
+    let d = decl("name = \"embeddings\"\ncolumns = { digest = \"binary(4)\", embedding = \"float16[3]\", blob = \"binary\" }");
+    let rows = json!([{"id": "a", "blob": "qgE=", "digest": "3q2+7w==", "embedding": [0.5, -1.0, 0.25]}]);
+    f.land(&d, "run-1", rows, "2030-01-01T00:00:00Z").unwrap();
+    let schema = f.store.schema("embeddings").unwrap();
+    assert_eq!(schema.get("digest").unwrap().ty, ColumnType::FixedSizeBinary(4));
+    assert_eq!(schema.get("embedding").unwrap().ty, ColumnType::FixedSizeList(FloatItem::Float16, 3));
+    assert_eq!(schema.get("blob").unwrap().ty, ColumnType::Binary);
+    // A producer type overrides nothing it agrees with, and a disagreeing one meets the stored type.
+    let err = f
+        .land_typed(&d, "run-2", json!([{"id": "b", "digest": "3q2+796tvu8="}]), "2030-01-01T00:01:00Z", &[("digest", ColumnType::FixedSizeBinary(8))])
+        .unwrap_err();
     assert!(matches!(err.store(), Some(StoreError::StoreSchemaIncompatible(_))), "{err}");
 }
 
