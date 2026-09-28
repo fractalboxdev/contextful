@@ -307,6 +307,8 @@ The target ledger: each tracked target, the clause it serves, how it is measured
   *P7*
 - `seeded` — Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.
   *because a failure that cannot replay cannot be fixed*
+- `seed-mismatch` — A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.
+  *because a figure measured under another seed replays nothing the ledger names*
 - `timing-iterations` — A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.
 - `timing-batches` — A timed figure is the median of 5 repeats of its timed batch.
 - `trend-band` — A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.

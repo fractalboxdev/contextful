@@ -2,6 +2,7 @@
 //! scratch git repositories holding a small cargo workspace.
 
 mod acceptance_surface;
+mod disk;
 mod features;
 mod lean;
 mod measure;

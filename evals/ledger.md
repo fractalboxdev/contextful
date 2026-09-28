@@ -2,7 +2,7 @@
 
 # Target ledger
 
-57 entries: 20 gated, 0 recorded, 0 scheduled, 37 open.
+58 entries: 21 gated, 0 recorded, 0 scheduled, 37 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -27,8 +27,9 @@
 | `exclusive-create-no-hardlink` | `store.lease.commit-log` | `lease.race_winners.max` | gate | issue 41 | `== 1` | open (issue 41) |
 | `execution-resume` | `run.journal.plan-pin` | `execution.replayed_effects` | gate | issue 38 | `== 0` | open (issue 38) |
 | `fold-single-publisher` | `store.fold.pointer-commit` | `fold.publishes_per_start_etag` | gate | test `contextful_context::fold::a_pass_losing_the_pointer_publishes_nothing` | `== 1` | gated |
-| `guard-catalogue` | `run.guard-secrets.matchers` | `guard.kinds` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `>= 10` | gated |
+| `guard-catalogue` | `run.guard-secrets.matchers` | `guard.recall_per_kind.min` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 1` | gated |
 | `guard-compound-keys` | `run.guard-secrets.matchers` | `guard.compound_keys.masked_rate` | gate | issue 73 | `== 1` | open (issue 73) |
+| `guard-false-positives` | `run.guard-secrets.matchers` | `guard.false_positives` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 0` | gated |
 | `guard-short-assignment` | `run.guard-secrets.mask-span` | `guard.short_assignment.masked_rate` | gate | test `contextful_core::pipeline::guard::a_keyword_assignment_is_masked_from_8_chars_keeping_its_key` | `== 1` | gated |
 | `guest-pulley-throughput` | `connector.package.native-verification` | `wasm.pulley_throughput_ratio` | trend | issue 52 | — | open (issue 52) |
 | `guest-without-jit` | `connector.package.native-verification` | `wasm.warm_compiles` | gate | issue 52 | `== 0` | open (issue 52) |
@@ -50,9 +51,9 @@
 | `orphan-reap-spares-live` | `run.record.orphan-reap` | `reap.live_rows_reaped` | gate | test `contextful_core::run::record::only_an_in_flight_row_with_a_lapsed_lease_is_reaped` | `== 0` | gated |
 | `output-taint` | `connector.infer.output-taint` | `infer.over_trusted_rows` | gate | issue 48 | `== 0` | open (issue 48) |
 | `policy-no-jwt` | `topology.package.exchange-optional` | `topology.exchange_stack_leaks` | gate | test `contextful_ci::topology::only_the_binary_of_this_workspace_reaches_the_exchange_stack` | `== 0` | gated |
-| `possession-replay` | `authority.verify.replayed-nonce` | `possession.replayed.admitted` | gate | test `contextful_policy::possession::a_nonce_repeating_inside_the_window_raises_possession_proof_replayed` | `== 0` | gated |
+| `possession-replay` | `authority.verify.replayed-nonce` | `possession.adversarial.admitted` | gate | test `contextful_policy::possession::replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop` | `== 0` | gated |
 | `profile-footprint` | `assurance.gate.footprint` | `footprint.profiles_over_budget` | gate | issue 77 | `== 0` | open (issue 77) |
-| `pull-no-torn-snapshot` | `store.pull.pointer-last` | `pull.torn_orders` | gate | test `contextful_sync::pull::a_pointer_is_written_only_once_its_snapshot_is_home` | `== 0` | gated |
+| `pull-no-torn-snapshot` | `store.pull.pointer-last` | `pull.torn_reads` | gate | test `contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot` | `== 0` | gated |
 | `read-session-latency` | `read.retrieve.ranked-call` | `session.warm_p95_ms` | trend | issue 40 | — | open (issue 40) |
 | `read-session-one-engine` | `read.retrieve.ranked-call` | `session.engine_opens` | gate | issue 40 | `== 1` | open (issue 40) |
 | `row-key-dedup` | `read.retrieve.row-key-dedup` | `retrieval.hybrid.duplicate_row_rate` | gate | issue 79 | `== 0` | open (issue 79) |

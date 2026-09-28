@@ -16276,6 +16276,17 @@
       "line": 308
     },
     {
+      "id": "assurance.measure.seed-mismatch",
+      "contract": "assurance",
+      "operation": "measure",
+      "subject": "seed-mismatch",
+      "kind": "refusal",
+      "statement": "A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.",
+      "why": "because a figure measured under another seed replays nothing the ledger names",
+      "file": "spec/81-engineering.md",
+      "line": 310
+    },
+    {
       "id": "assurance.measure.timing-iterations",
       "contract": "assurance",
       "operation": "measure",
@@ -16284,7 +16295,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 310
+      "line": 312
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -16295,7 +16306,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "assurance.measure.trend-band",
@@ -16306,7 +16317,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 312,
+      "line": 314,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -16320,7 +16331,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 313
+      "line": 315
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -16331,7 +16342,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 314
+      "line": 316
     },
     {
       "id": "assurance.measure.history",
@@ -16342,7 +16353,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 315
+      "line": 317
     },
     {
       "id": "assurance.measure.scheduled",
@@ -16353,7 +16364,7 @@
       "statement": "A nightly job runs every tier against the default-branch head and reports one check per run.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 317
+      "line": 319
     },
     {
       "id": "assurance.measure.measured-basis",
@@ -16364,7 +16375,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 318
+      "line": 320
     }
   ],
   "owns": {
@@ -17502,6 +17513,10 @@
           "MeasureRecordMissing": {
             "clause": "assurance.measure.record",
             "gloss": "A gate-tier method finishing without writing its record."
+          },
+          "MeasureSeedMismatch": {
+            "clause": "assurance.measure.seed-mismatch",
+            "gloss": "A record carrying another seed than its ledger entry declares."
           },
           "MediationClaimedFromComposition": {
             "clause": "assurance.prove.mediation-from-composition",

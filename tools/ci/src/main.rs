@@ -19,6 +19,11 @@ const ACCEPTANCE_DIR: &str = "crates/acceptance";
 /// The features stage's own target directory, under the workspace root.
 const FEATURES_TARGET: &str = "target/features";
 const REFACTOR_TRAILER: &str = "refactor";
+/// Free disk a stage needs under the workspace before it begins work: 2 GiB
+/// (`assurance.gate.free-disk`).
+const STAGE_FREE_DISK_KIB: u64 = 2 * 1024 * 1024;
+/// The exit code of a stage refused for disk (`assurance.gate.free-disk`), `ENOSPC`'s number.
+const DISK_EXIT: i32 = 28;
 /// Wall clock one test-first execution against the base runs for, its build excluded: 300 s
 /// (`assurance.test.base-run-bound`). A run still going is killed with its process group
 /// and counts red, because a test that does not finish at base does not pass there.
@@ -138,7 +143,8 @@ fn main() {
     };
     if let Err(e) = result {
         eprintln!("{e:#}");
-        std::process::exit(1);
+        let disk = e.downcast_ref::<Refusal>().is_some_and(|r| r.code == "BuildDiskPrecondition");
+        std::process::exit(if disk { DISK_EXIT } else { 1 });
     }
 }
 
@@ -150,6 +156,7 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
     let root = repo_root()?;
     for stage in STAGES.iter().filter(|s| selected.is_empty() || selected.iter().any(|x| x == *s)) {
         eprintln!("--- stage {stage}");
+        free_disk(&root, stage)?;
         match *stage {
             "schema" => {
                 secrets(&root)?;
@@ -171,6 +178,30 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             "features" => features(&root)?,
             _ => unreachable!(),
         }
+    }
+    Ok(())
+}
+
+/// Refuse a stage starting with less than [`STAGE_FREE_DISK_KIB`] free on the filesystem
+/// holding the workspace, read through POSIX `df -Pk`.
+fn free_disk(root: &Path, stage: &str) -> Result<()> {
+    let out = Command::new("df").arg("-Pk").arg(root).output().context("running df")?;
+    if !out.status.success() {
+        bail!("df -Pk {}: {}", root.display(), String::from_utf8_lossy(&out.stderr).trim());
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    // The fourth field of the data line is the available space in KiB.
+    let available: u64 = text
+        .lines()
+        .nth(1)
+        .and_then(|l| l.split_whitespace().nth(3))
+        .and_then(|f| f.parse().ok())
+        .with_context(|| format!("df -Pk printed no available figure: {text}"))?;
+    if available < STAGE_FREE_DISK_KIB {
+        return Err(refuse(
+            "BuildDiskPrecondition",
+            format!("stage `{stage}` starts with {} MiB free under {}, below the 2048 MiB floor", available / 1024, root.display()),
+        ));
     }
     Ok(())
 }

@@ -171,16 +171,12 @@ fn a_nonce_repeating_inside_the_window_raises_possession_proof_replayed() {
 
     // The captured request re-sent, and a fresh proof reusing the nonce, both refuse.
     let later = FixedClock(issued.plus_secs(120));
-    let replayed = verify_proof(&jkt, &proof, &request(), &later, &mut nonces);
-    let reused = sign_proof(&key, &request(), issued.plus_secs(120), "r-1");
-    let reused = verify_proof(&jkt, &reused, &request(), &later, &mut nonces);
-    let admitted = [&replayed, &reused].iter().filter(|r| r.is_ok()).count();
-    contextful_eval::record::emit("possession-replay", admitted as f64, 2, 0);
-    match replayed {
+    match verify_proof(&jkt, &proof, &request(), &later, &mut nonces) {
         Err(ProofRefusal::Refused(AuthorityError::PossessionProofReplayed(m))) => assert!(m.contains("r-1"), "{m}"),
         other => panic!("expected PossessionProofReplayed, got {other:?}"),
     }
-    let err = reused.unwrap_err();
+    let reused = sign_proof(&key, &request(), issued.plus_secs(120), "r-1");
+    let err = verify_proof(&jkt, &reused, &request(), &later, &mut nonces).unwrap_err();
     assert!(err.to_string().starts_with("PossessionProofReplayed"), "{err}");
 
     // A distinct nonce admits.
@@ -220,4 +216,113 @@ fn a_full_nonce_cache_answers_503_and_admits_nothing() {
     let proof = sign_proof(&key, &request(), issued.plus_secs(PROOF_REPLAY_WINDOW_SECS + 1), "c-3");
     assert_eq!(verify_proof(&jkt, &proof, &request(), &later, &mut nonces), Ok(()));
     assert_eq!(nonces.len(), 1);
+}
+
+/// Seed of the adversarial proof loop.
+const ADVERSARY_SEED: u64 = 0x5eed_0004;
+/// Genuine proofs the adversarial loop derives its attacks from.
+const ADVERSARY_ROUNDS: u64 = 64;
+
+/// A linear congruential sequence: every request, key, instant and mutation derives from its seed.
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 >> 33
+    }
+
+    fn below(&mut self, n: u64) -> u64 {
+        self.next() % n
+    }
+
+    fn word(&mut self, len: usize) -> String {
+        (0..len).map(|_| (b'a' + self.below(26) as u8) as char).collect()
+    }
+}
+
+/// Splice `donor`'s payload under `proof`'s header and signature: the payload a holder of
+/// no key forges by editing one claim.
+fn forged_payload(proof: &str, donor: &str) -> String {
+    let parts: Vec<&str> = proof.split('.').collect();
+    format!("{}.{}.{}", parts[0], donor.split('.').nth(1).unwrap(), parts[2])
+}
+
+/// Over seeded genuine proofs, every replay, every proof presented with one bound field
+/// mutated, every proof from a foreign key and every proof meeting a full cache admits
+/// nothing, while each genuine proof admits once.
+#[test]
+fn replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop() {
+    let mut r = Lcg(ADVERSARY_SEED);
+    let issued = at(NOW);
+    let (mut admitted, mut attempts) = (0u64, 0u64);
+    let mut refuse = |outcome: Result<(), ProofRefusal>, what: &str| {
+        attempts += 1;
+        match outcome {
+            Err(ProofRefusal::Refused(AuthorityError::PossessionProofInvalid(_) | AuthorityError::PossessionProofReplayed(_)))
+            | Err(ProofRefusal::NonceCacheFull) => {}
+            other => {
+                admitted += 1;
+                eprintln!("{what}: {other:?}");
+            }
+        }
+    };
+    let methods = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+    for round in 0..ADVERSARY_ROUNDS {
+        let key = SigningKey::from_bytes(&std::array::from_fn(|_| r.below(256) as u8));
+        let jkt = cnf(&key).jkt;
+        let method = methods[r.below(methods.len() as u64) as usize];
+        let target = format!("https://store.example/v1/{}", r.word(8));
+        let body = r.word(24).into_bytes();
+        let req = ProofRequest { method, target: &target, body: &body };
+        // Inside the skew and the window, so only the mutation can refuse.
+        let iat = issued.plus_secs(r.below(20));
+        let clock = FixedClock(issued.plus_secs(20));
+        let nonce = format!("a-{round}-{}", r.word(6));
+        let proof = sign_proof(&key, &req, iat, &nonce);
+        let mut nonces = NonceCache::new();
+
+        // One mutation per bound field, each presented before the genuine proof records its nonce.
+        let other_method = methods[(methods.iter().position(|m| *m == method).unwrap() + 1 + r.below(4) as usize) % methods.len()];
+        let other_target = format!("{target}/{}", r.word(3));
+        let mut other_body = body.clone();
+        let flip = r.below(other_body.len() as u64) as usize;
+        other_body[flip] = if other_body[flip] == b'z' { b'a' } else { other_body[flip] + 1 };
+        let mutated_requests = [
+            ("method", ProofRequest { method: other_method, ..req }),
+            ("target", ProofRequest { target: &other_target, ..req }),
+            ("body", ProofRequest { body: &other_body, ..req }),
+        ];
+        for (field, mutated) in &mutated_requests {
+            // The genuine proof against a request differing in one field.
+            refuse(verify_proof(&jkt, &proof, mutated, &clock, &mut nonces), &format!("round {round}: request {field} mutated"));
+            // The request's field edited into the signed payload, the signature kept.
+            let donor = sign_proof(&key, mutated, iat, &nonce);
+            refuse(verify_proof(&jkt, &forged_payload(&proof, &donor), mutated, &clock, &mut nonces), &format!("round {round}: payload {field} forged"));
+        }
+        let later = sign_proof(&key, &req, iat.plus_secs(1 + r.below(5)), &nonce);
+        refuse(verify_proof(&jkt, &forged_payload(&proof, &later), &req, &clock, &mut nonces), &format!("round {round}: payload iat forged"));
+        let renamed = sign_proof(&key, &req, iat, &format!("{nonce}-{}", r.word(2)));
+        refuse(verify_proof(&jkt, &forged_payload(&proof, &renamed), &req, &clock, &mut nonces), &format!("round {round}: payload nonce forged"));
+
+        // A foreign key: its own valid proof, and its signature under the holder's header.
+        let thief = SigningKey::from_bytes(&std::array::from_fn(|_| r.below(256) as u8));
+        let stolen = sign_proof(&thief, &req, iat, &nonce);
+        refuse(verify_proof(&jkt, &stolen, &req, &clock, &mut nonces), &format!("round {round}: foreign key"));
+        let spliced = format!("{}.{}", proof.rsplit_once('.').unwrap().0, stolen.rsplit_once('.').unwrap().1);
+        refuse(verify_proof(&jkt, &spliced, &req, &clock, &mut nonces), &format!("round {round}: foreign signature"));
+
+        // The genuine proof admits once, then its replay refuses.
+        assert_eq!(verify_proof(&jkt, &proof, &req, &clock, &mut nonces), Ok(()), "round {round}: the genuine proof");
+        refuse(verify_proof(&jkt, &proof, &req, &clock, &mut nonces), &format!("round {round}: replay"));
+
+        // A cache holding its bound admits a fresh genuine proof nowhere.
+        let mut full = NonceCache::with_capacity(1);
+        let first = sign_proof(&key, &req, iat, &format!("{nonce}-first"));
+        assert_eq!(verify_proof(&jkt, &first, &req, &clock, &mut full), Ok(()));
+        let fresh = sign_proof(&key, &req, iat, &format!("{nonce}-fresh"));
+        refuse(verify_proof(&jkt, &fresh, &req, &clock, &mut full), &format!("round {round}: full cache"));
+    }
+    contextful_eval::record::emit("possession-replay", admitted as f64, attempts, ADVERSARY_SEED);
+    assert_eq!(admitted, 0, "{admitted} of {attempts} adversarial proofs admitted");
 }

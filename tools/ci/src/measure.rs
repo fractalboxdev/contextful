@@ -146,7 +146,7 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
     let records = root.join(EVALUATE_TARGET).join("records");
     let _ = std::fs::remove_dir_all(&records);
     std::fs::create_dir_all(&records)?;
-    let (mut held, mut red, mut missing) = (0usize, Vec::new(), Vec::new());
+    let (mut held, mut red, mut missing, mut reseeded) = (0usize, Vec::new(), Vec::new(), Vec::new());
     let started = Instant::now();
     for tier in tiers {
         for (id, e) in l.runnable(*tier) {
@@ -164,6 +164,13 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
                     missing.push(id.clone());
                 }
                 Err(err) => eprintln!("measure: {id} ({tier}) recorded nothing: {err} [{secs:.1} s]"),
+                // A figure measured under another seed than the ledger declares replays nothing the
+                // ledger names (`assurance.measure.seed-mismatch`).
+                Ok(r) if e.seed.is_some_and(|s| s != r.seed) => {
+                    let declared = e.seed.unwrap_or_default();
+                    eprintln!("MeasureSeedMismatch: `{id}` recorded seed {}, the ledger declares {declared} [{secs:.1} s]", r.seed);
+                    reseeded.push(id.clone());
+                }
                 Ok(r) => match e.target {
                     Some(t) if t.holds(r.value) => {
                         held += 1;
@@ -190,6 +197,9 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
     );
     if !missing.is_empty() {
         return Err(refuse("MeasureRecordMissing", format!("{} gate-tier method(s) wrote no record: {}", missing.len(), missing.join(", "))));
+    }
+    if !reseeded.is_empty() {
+        return Err(refuse("MeasureSeedMismatch", format!("{} record(s) carry another seed than the ledger declares: {}", reseeded.len(), reseeded.join(", "))));
     }
     if !red.is_empty() {
         bail!("{} gate-tier target(s) missed: {}", red.len(), red.join("; "));

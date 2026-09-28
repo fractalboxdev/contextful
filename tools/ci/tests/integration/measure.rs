@@ -91,6 +91,24 @@ fn a_held_target_passes_and_a_missed_one_reds_the_stage() {
     assert!(stderr(&o).contains("demo-doubles = 4 against >= 5"), "{}", stderr(&o));
 }
 
+/// A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.
+// spec: assurance.measure.seed-mismatch@4f090e30
+#[test]
+fn a_record_under_another_seed_than_its_entry_declares_is_refused() {
+    let held = entry("demo-doubles", "run.journal.entry-key", "{ test = \"demo::measured::doubles_measured\" }", "target = { op = \"==\", value = 4 }\nseed = 7");
+    let r = repo(&held);
+    let o = r.gate(&["--stage", "evaluate"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+
+    r.write("evals/ledger.toml", &held.replace("seed = 7", "seed = 8"));
+    r.commit("another seed");
+    let o = r.gate(&["--stage", "evaluate"]);
+    assert!(!o.status.success());
+    let err = stderr(&o);
+    assert!(err.contains("MeasureSeedMismatch: `demo-doubles` recorded seed 7, the ledger declares 8"), "{err}");
+    assert!(!err.contains("target == 4: holds"), "a figure under another seed holds nothing: {err}");
+}
+
 /// An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.
 // spec: assurance.measure.open-entry@87391660
 #[test]

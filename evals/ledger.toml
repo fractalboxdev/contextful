@@ -16,11 +16,21 @@
 
 [entry.guard-catalogue]
 clause = "run.guard-secrets.matchers"
-metric = "guard.kinds"
+metric = "guard.recall_per_kind.min"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture" }
-target = { op = ">=", value = 10 }
+target = { op = "==", value = 1 }
+seed   = 0x5eed_0003
+
+[entry.guard-false-positives]
+clause = "run.guard-secrets.matchers"
+metric = "guard.false_positives"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture" }
+target = { op = "==", value = 0 }
+seed   = 0x5eed_0003
 
 [entry.guard-short-assignment]
 clause = "run.guard-secrets.mask-span"
@@ -152,11 +162,12 @@ target = { op = "<", value = 64 }
 
 [entry.possession-replay]
 clause = "authority.verify.replayed-nonce"
-metric = "possession.replayed.admitted"
+metric = "possession.adversarial.admitted"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_policy::possession::a_nonce_repeating_inside_the_window_raises_possession_proof_replayed" }
+method = { test = "contextful_policy::possession::replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop" }
 target = { op = "==", value = 0 }
+seed   = 0x5eed_0004
 
 [entry.bearer-transport-bound]
 clause = "authority.issue.one-credential"
@@ -286,11 +297,12 @@ target = { op = "==", value = 1 }
 
 [entry.pull-no-torn-snapshot]
 clause = "store.pull.pointer-last"
-metric = "pull.torn_orders"
+metric = "pull.torn_reads"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_sync::pull::a_pointer_is_written_only_once_its_snapshot_is_home" }
+method = { test = "contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot" }
 target = { op = "==", value = 0 }
+seed   = 0x5eed_0005
 
 [entry.network-volume-refuses-cas]
 clause = "store.probe.unproven"

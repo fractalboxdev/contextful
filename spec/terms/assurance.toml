@@ -67,6 +67,7 @@ GoldenRedactionFailed            = { clause = "assurance.baseline.generated-reda
 TraceExportOutOfPerimeter        = { clause = "assurance.baseline.trace-export", gloss = "A hosted trace endpoint configured for a run touching a deployed store." }
 MeasureEntryUnresolved           = { clause = "assurance.measure.unresolved-entry", gloss = "A ledger entry naming no clause, method or metric path." }
 MeasureRecordMissing             = { clause = "assurance.measure.record", gloss = "A gate-tier method finishing without writing its record." }
+MeasureSeedMismatch              = { clause = "assurance.measure.seed-mismatch", gloss = "A record carrying another seed than its ledger entry declares." }
 
 [limit]
 assurance-formal-build-time      = { clause = "assurance.model.build-cost", value = 60, unit = "s", basis = "chosen", gloss = "Cold elaboration of the Lean package." }
