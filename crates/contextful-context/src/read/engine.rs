@@ -4,7 +4,7 @@
 
 use super::fault::ReadFault;
 use contextful_core::read::respond::Cell;
-use contextful_core::read::template::Bound;
+use contextful_core::read::template::{Bindings, Bound};
 use contextful_core::time::Instant;
 use contextful_policy::enforce::mask::{Pepper, HASH_BYTES_FUNCTION, HASH_FUNCTION, TOKEN_FUNCTION};
 use contextful_policy::enforce::session::{Session, TENANT_RELATION};
@@ -189,16 +189,22 @@ impl SqlEngine {
         serde_json::from_str(&text).map_err(|e| ReadFault::Engine(format!("the engine's serialization does not parse: {e}")))
     }
 
-    /// Run `sql` with positional parameters, reading at most `fetch` rows as typed cells.
-    pub fn run(&self, sql: &str, parameters: &[Bound], fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Cell>>), ReadFault> {
+    /// Run `sql` with its placeholders bound, reading at most `fetch` rows as typed cells.
+    pub fn run(&self, sql: &str, parameters: &Bindings, fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Cell>>), ReadFault> {
         let (columns, rows) = self.run_values(sql, parameters, fetch)?;
         Ok((columns, rows.into_iter().map(|r| r.into_iter().map(cell).collect()).collect()))
     }
 
-    /// Run `sql`, reading at most `fetch` rows as the engine's own values.
-    pub(crate) fn run_values(&self, sql: &str, parameters: &[Bound], fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Engine>>), ReadFault> {
-        let values: Vec<Engine> = parameters.iter().map(bound).collect();
+    /// Run `sql`, reading at most `fetch` rows as the engine's own values. Each
+    /// placeholder takes the value bound under the identifier the engine names it by.
+    pub(crate) fn run_values(&self, sql: &str, parameters: &Bindings, fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Engine>>), ReadFault> {
         let mut stmt = self.conn.prepare(sql).map_err(fault)?;
+        let values: Vec<Engine> = (1..=stmt.parameter_count())
+            .map(|i| {
+                let name = stmt.parameter_name(i).map_err(fault)?;
+                parameters.get(&name).map(bound).ok_or_else(|| ReadFault::Engine(format!("placeholder `{name}` carries no bound value")))
+            })
+            .collect::<Result<_, _>>()?;
         let mut rows = stmt.query(params_from_iter(values)).map_err(fault)?;
         let mut out = Vec::new();
         let mut columns = Vec::new();

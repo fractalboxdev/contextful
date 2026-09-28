@@ -23,6 +23,7 @@ StatementNotReadOnly          = { clause = "read.guard.single-read-only-statemen
 TableFunctionRefused          = { clause = "read.guard.table-function", gloss = "A table function or a schema-qualified catalog reach appeared in caller text." }
 TemplateNamesForeignRelation  = { clause = "read.guard.template-relation-shape", gloss = "A template named a non-store relation or collided with a built-in tool prefix." }
 TemplateArgumentRejected      = { clause = "read.guard.template-binding", gloss = "A template argument was missing, unknown or mistyped." }
+QueryParameterRejected        = { clause = "read.guard.query-binding", gloss = "A query parameter was missing, unused, untyped or mistyped." }
 FilterBudgetExceeded          = { clause = "read.retrieve.filter-budget-refusal", gloss = "A ranked read's filter exceeded its value, condition or byte budget." }
 PinnedBuildUnavailable        = { clause = "read.resolve-pin.unknown-build", gloss = "A pinned build identifier is unknown or collected." }
 RequiredFaceAbsent            = { clause = "read.embed.required-face", gloss = "A client required a face this binary did not link." }

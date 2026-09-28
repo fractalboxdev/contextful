@@ -137,6 +137,27 @@ fn a_refusal_arrives_in_band() {
     assert_eq!(malformed["error"]["code"], json!(-32602));
 }
 
+/// `context.query` carries typed parameters over the tool protocol: a bound value answers
+/// the read, a mismatched one arrives in-band as `QueryParameterRejected`, and a
+/// `parameters` field that is no object is a protocol error.
+#[test]
+fn context_query_binds_typed_parameters() {
+    let f = fixture();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let tools = ask(&server, 1, "tools/list", json!({}));
+    let query = tools["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == json!("context.query")).unwrap().clone();
+    assert_eq!(query["inputSchema"]["properties"]["parameters"]["type"], json!("object"), "{query}");
+    let sql = "SELECT note_id FROM \"research/notes\" WHERE note_id = $id";
+    let answered = call(&server, "context.query", json!({ "sql": sql, "parameters": { "id": { "type": "string", "value": "n2" } } }));
+    assert_eq!(answered["result"]["structuredContent"]["rows"], json!([["n2"]]), "{answered}");
+    let mistyped = call(&server, "context.query", json!({ "sql": sql, "parameters": { "id": { "type": "integer", "value": "n2" } } }));
+    assert_eq!(mistyped["result"]["isError"], json!(true), "{mistyped}");
+    assert_eq!(mistyped["result"]["structuredContent"]["error"]["identifier"], json!("QueryParameterRejected"));
+    let malformed = call(&server, "context.query", json!({ "sql": sql, "parameters": ["n2"] }));
+    assert_eq!(malformed["error"]["code"], json!(-32602), "{malformed}");
+}
+
 #[test]
 fn the_handshake_reports_the_build_and_refuses_an_absent_face() {
     let f = fixture();
