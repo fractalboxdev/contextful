@@ -3,7 +3,7 @@
 //! backend (`topology.coordinate.catalog-port`).
 
 use crate::run::failure::Failure;
-use crate::run::own::ExecutionOwner;
+use crate::run::own::{ExecutionOwner, OwnerScope};
 use crate::run::record::RunRow;
 use crate::run::RunError;
 use crate::store::StoreError;
@@ -142,20 +142,39 @@ pub trait Catalog {
     fn lease_holds(&self, lease: &Lease) -> Result<bool, Failure>;
     fn lease_row(&self, key: &LeaseKey) -> Result<LeaseRow, Failure>;
 
-    /// The cursor row of a pipeline's table.
-    fn cursor(&self, pipeline_id: &str, table: &str) -> Result<CursorRow, Failure>;
+    /// The cursor row of a scope.
+    fn cursor_at(&self, scope: &OwnerScope) -> Result<CursorRow, Failure>;
     /// One conditional update predicated on the stored version and, under a lease, on
     /// the holder's fence (`topology.coordinate.cursor-cas`).
-    fn cursor_cas(&self, pipeline_id: &str, table: &str, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
+    fn cursor_cas_at(&self, scope: &OwnerScope, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
 
-    /// The pending execution owner of a pipeline's table.
-    fn owner(&self, pipeline_id: &str, table: &str) -> Result<Option<ExecutionOwner>, Failure>;
+    /// The pending execution owner of a scope; every owner is keyed on its scope
+    /// (`run.own.host-scope`).
+    fn owner_at(&self, scope: &OwnerScope) -> Result<Option<ExecutionOwner>, Failure>;
+    /// Persist `owner` under its own scope.
     fn put_owner(&self, owner: &ExecutionOwner) -> Result<(), Failure>;
-    /// Retire the owner holding `execution_id` and, given a cursor row and the version it
-    /// was read at, cache the position its commit reached, in one transaction
+    /// Retire the owner of `scope` holding `execution_id` and, given a cursor row and the
+    /// version it was read at, cache the position its commit reached, in one transaction
     /// (`run.own.retirement`). The update is conditional on that version and, under a
     /// lease, on the holder's fence; the owner's journal is unreachable once it applies.
-    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+    fn retire_at(&self, scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+
+    /// The cursor row of a pipeline's table.
+    fn cursor(&self, pipeline_id: &str, table: &str) -> Result<CursorRow, Failure> {
+        self.cursor_at(&OwnerScope::table(pipeline_id, table))
+    }
+    /// [`Catalog::cursor_cas_at`] on a pipeline's table.
+    fn cursor_cas(&self, pipeline_id: &str, table: &str, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> {
+        self.cursor_cas_at(&OwnerScope::table(pipeline_id, table), expected_version, next, fence)
+    }
+    /// The pending execution owner of a pipeline's table.
+    fn owner(&self, pipeline_id: &str, table: &str) -> Result<Option<ExecutionOwner>, Failure> {
+        self.owner_at(&OwnerScope::table(pipeline_id, table))
+    }
+    /// [`Catalog::retire_at`] on a pipeline's table.
+    fn retire(&self, pipeline_id: &str, table: &str, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> {
+        self.retire_at(&OwnerScope::table(pipeline_id, table), execution_id, cursor, fence)
+    }
 
     fn put_run(&self, row: &RunRow) -> Result<(), Failure>;
     fn run(&self, run_id: &str) -> Result<Option<RunRow>, Failure>;

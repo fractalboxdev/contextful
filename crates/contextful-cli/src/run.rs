@@ -14,7 +14,7 @@ use contextful_core::ports::{Clock, FixedClock};
 use contextful_core::run::cancel::Scope;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::plan::Plan;
-use contextful_core::run::ports::{Commit, Destination, Landed, Marker};
+use contextful_core::run::ports::{AwakeableStore, Commit, Destination, Landed, Marker};
 use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, resolve_site_id, select_history, RunStatus, SiteIdSources, Window};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::declare::TableDecl;
@@ -28,6 +28,7 @@ use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_core::store::lay_out::store_root;
 use contextful_engine::{Engine, Journal, RunSpec};
 use contextful_sqlite::MachineCatalog;
+use contextful_engine::stores::FileAwakeableStore;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -152,7 +153,8 @@ pub(crate) fn wire(args: &ProjectArgs) -> Result<Wired> {
     let store_root = std::env::current_dir()?.join(store_root(&args.project));
     let catalog = Arc::new(MachineCatalog::open(&store_root.join(MACHINE_CATALOG_FILE), clock.clone())?);
     let registry = Registry::open(&root, journal.clone());
-    Ok(Wired { engine: Engine { catalog, journal, cadence: Cadence::default(), emitter: None }, registry, clock })
+    let awakeables = Some(Arc::new(FileAwakeableStore::open(&root)) as Arc<dyn AwakeableStore>);
+    Ok(Wired { engine: Engine { catalog, journal, awakeables, cadence: Cadence::default(), emitter: None }, registry, clock })
 }
 
 /// The boot identity of this machine: a process id means nothing across boots.

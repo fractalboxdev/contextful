@@ -3,7 +3,7 @@
 use crate::support::{plan, three_pages, Pages, Rig, Sink};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
 use contextful_core::run::cancel::Scope;
-use contextful_core::run::own::ExecutionOwner;
+use contextful_core::run::own::{ExecutionOwner, OwnerScope};
 use contextful_core::run::ports::{Cancellation, PullRequest, Source};
 use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::run::{Failure, FailureTag, RunError};
@@ -192,11 +192,11 @@ impl Catalog for Flaky {
         acquire(key: &LeaseKey, holder: &str, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
         release(lease: &Lease) -> Result<(), Failure>;
         lease_row(key: &LeaseKey) -> Result<LeaseRow, Failure>;
-        cursor(pipeline_id: &str, table: &str) -> Result<CursorRow, Failure>;
-        cursor_cas(pipeline_id: &str, table: &str, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
-        owner(pipeline_id: &str, table: &str) -> Result<Option<ExecutionOwner>, Failure>;
+        cursor_at(scope: &OwnerScope) -> Result<CursorRow, Failure>;
+        cursor_cas_at(scope: &OwnerScope, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        owner_at(scope: &OwnerScope) -> Result<Option<ExecutionOwner>, Failure>;
         put_owner(owner: &ExecutionOwner) -> Result<(), Failure>;
-        retire(pipeline_id: &str, table: &str, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        retire_at(scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
         renew(lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
         lease_holds(lease: &Lease) -> Result<bool, Failure>;
         put_run(row: &RunRow) -> Result<(), Failure>;

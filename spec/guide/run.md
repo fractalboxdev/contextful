@@ -42,13 +42,14 @@ At run open the engine writes a record row before the first pull ({{run.record.r
 and binds the work to an execution owner that pins the connector build and plan hash while
 work is pending ({{run.own.pinned-plan-changed}}): output replayed into a different build
 describes code that never produced it.
+Host jobs open it under their own scope ({{run.own.host-scope}}).
 
 Each pull is a journaled step: its value is recorded once while its effect may run more than
 once ({{run.journal.step-output}}), and each outbound request carries an idempotency key
 derived from the entry key ({{run.journal.idempotency-key}}). The journal, its blobs and the
-awakeable registry persist through three store ports, so a host keeps replay state in its own
-store and the file tree is one adapter among them ({{run.journal.storage-ports}}); a SQLite file
-is another ({{run.journal.sqlite-stores}}). A batch then passes one fixed
+awakeable registry persist through three store ports, so a host brings its own
+store; the file tree ({{run.journal.storage-ports}}) and a SQLite file
+({{run.journal.sqlite-stores}}) are adapters. A batch then passes one fixed
 stage order ({{run.land.stage-order}}). Rows and the new cursor commit on one marker
 ({{run.advance.commit-with-rows}}), so no crash leaves one moved without the other.
 

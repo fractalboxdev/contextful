@@ -2,7 +2,7 @@
 
 # Target ledger
 
-59 entries: 28 gated, 0 recorded, 0 scheduled, 31 open.
+59 entries: 29 gated, 0 recorded, 0 scheduled, 30 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -25,7 +25,7 @@
 | `eval-absolute-floors` | `assurance.baseline.floors-are-absolute` | `floors.red_on_baseline_pass` | gate | test `contextful_eval::baseline::each_floor_reds_a_run_its_baseline_passes` | `== 4` | gated |
 | `eval-through-enforcement` | `assurance.evaluate.policy-labels` | `retrieval.hybrid.forbidden_row_rate` | gate | issue 78 | `== 0` | open (issue 78) |
 | `exclusive-create-no-hardlink` | `store.lease.commit-log` | `lease.race_winners.max` | gate | test `contextful_fs::create::racing_creates_land_exactly_one` | `== 1` | gated |
-| `execution-resume` | `run.journal.plan-pin` | `execution.replayed_effects` | gate | issue 38 | `== 0` | open (issue 38) |
+| `execution-resume` | `run.journal.plan-pin` | `execution.replayed_effects` | gate | test `contextful_engine::execution::a_dropped_execution_resumes_under_its_scope_and_replays_its_steps` | `== 0` | gated |
 | `fold-single-publisher` | `store.fold.pointer-commit` | `fold.publishes_per_start_etag` | gate | test `contextful_context::fold::a_pass_losing_the_pointer_publishes_nothing` | `== 1` | gated |
 | `guard-catalogue` | `run.guard-secrets.matchers` | `guard.recall_per_kind.min` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 1` | gated |
 | `guard-compound-keys` | `run.guard-secrets.matchers` | `guard.compound_keys.masked_rate` | gate | issue 73 | `== 1` | open (issue 73) |

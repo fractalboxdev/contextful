@@ -161,6 +161,7 @@ fn the_runner_projects_each_step_and_its_terminal_status() {
     let engine = Engine {
         catalog: Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock.clone()))),
         journal: Journal::open(dir.path()),
+        awakeables: None,
         cadence: Cadence::default(),
         emitter: Some(hub.emitter()),
     };

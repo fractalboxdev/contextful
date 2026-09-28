@@ -41,5 +41,6 @@ pub fn row(run_id: &str, started: &str) -> RunRow {
         phase: Phase::Plan,
         execution_id: "x-1".into(),
         stop: None,
+        host_scope: None,
     }
 }

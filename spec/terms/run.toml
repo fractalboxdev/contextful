@@ -37,7 +37,7 @@ AwakeableTimedOut              = { clause = "run.suspend.expired-token", gloss =
 AwakeableUnknown               = { clause = "run.suspend.unknown-token", gloss = "A resume token with no registry row." }
 RunRetryTagUnretryable         = { clause = "run.retry.unretryable-tag", gloss = "A `retry_on` naming a tag outside the two retryable ones." }
 StepFailed                     = { clause = "run.retry.step-failed", gloss = "A step closed on a terminal failure, carrying its label and tag." }
-ExecutionPinMismatch           = { clause = "run.own.pinned-plan-changed", gloss = "A connector identity, component world or plan hash moved under a pending owner." }
+ExecutionPinMismatch           = { clause = "run.own.pinned-plan-changed", gloss = "A connector identity, component world, plan hash, plan reference or host identity moved under a pending owner." }
 CancelTargetNotInFlight        = { clause = "run.cancel.not-in-flight", gloss = "A stop matching no pending, running or waiting run." }
 SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", gloss = "A site id with no bound source, or two." }
 HistoryBoundSpelling           = { clause = "run.record.bound-spelling", gloss = "A history window bound outside the two accepted spellings." }

@@ -3,6 +3,7 @@
 
 use crate::{at, owner, run_row, SetClock, T0};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
+use contextful_core::run::own::OwnerScope;
 use contextful_core::run::record::RunStatus;
 use contextful_core::run::RunError;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
@@ -176,4 +177,53 @@ fn connections_racing_on_one_file_lose_no_update() {
     fences.sort_unstable();
     fences.dedup();
     assert_eq!(fences.len(), n, "no fence repeats: {fences:?}");
+}
+
+/// A `machine.sqlite` keyed on pipeline and table alone migrates to scope keys at open: each
+/// table owner keeps its pipeline, table and stored owner text byte for byte, and chunk and
+/// host scopes each hold their own owner and cursor beside it.
+#[test]
+fn a_table_keyed_file_migrates_to_scope_keys_keeping_each_table_owner() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let stored = serde_json::to_string(&owner("x-stored")).unwrap();
+    let text = r#"{"execution_id":"x-stored","pipeline_id":"feed","table":"filings","pins":{"connector":{"id":"vendor","version":"1","world":"native","hash":"h"},"content_hash":"plan-1","input_hash":"input-1"},"attempts":["run-1"],"opened_at":"2030-01-01T00:00:00Z"}"#;
+    assert_eq!(stored, text, "a table owner serializes as a table-keyed catalog stored it");
+    {
+        let old = rusqlite::Connection::open(&path).unwrap();
+        old.execute_batch(
+            "CREATE TABLE scope (pipeline_id TEXT NOT NULL, tbl TEXT NOT NULL, version INTEGER NOT NULL, cursor TEXT NOT NULL, owner TEXT, PRIMARY KEY (pipeline_id, tbl));",
+        )
+        .unwrap();
+        let cursor = serde_json::to_string(&cursor("p1")).unwrap();
+        old.execute("INSERT INTO scope VALUES ('feed', 'filings', 3, ?1, ?2)", rusqlite::params![cursor, text]).unwrap();
+    }
+
+    let c = catalog(&dir, &clock);
+    assert_eq!(c.owner("feed", "filings").unwrap(), Some(owner("x-stored")), "the pending table owner resumes");
+    assert_eq!(c.cursor("feed", "filings").unwrap().version, 3);
+    c.put_owner(&owner("x-stored")).unwrap();
+
+    let chunk = OwnerScope::chunk("feed", "filings", "2030-01");
+    let host = OwnerScope::host("index-42");
+    for (scope, id) in [(&chunk, "x-chunk"), (&host, "x-host")] {
+        let mut o = owner(id);
+        o.scope = scope.clone();
+        c.put_owner(&o).unwrap();
+        assert_eq!(c.cursor_cas_at(scope, 0, cursor(id), None).unwrap(), Cas::Applied);
+    }
+    assert_eq!(c.owner_at(&chunk).unwrap().unwrap().execution_id, "x-chunk");
+    assert_eq!(c.owner_at(&host).unwrap().unwrap().execution_id, "x-host");
+    assert_eq!(c.retire_at(&host, "x-host", None, None).unwrap(), Cas::Applied);
+    assert!(c.owner_at(&host).unwrap().is_none());
+    assert_eq!(c.owner_at(&chunk).unwrap().unwrap().execution_id, "x-chunk", "retiring one scope leaves the others");
+    drop(c);
+
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    let (pipeline, table, owner_text): (String, String, String) = raw
+        .query_row("SELECT pipeline_id, tbl, owner FROM scope WHERE kind = 'table'", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap();
+    assert_eq!((pipeline.as_str(), table.as_str(), owner_text.as_str()), ("feed", "filings", text), "the table row keeps its key and text");
+    assert_eq!(catalog(&dir, &clock).cursor("feed", "filings").unwrap().version, 3, "a second open migrates nothing");
 }
