@@ -11,9 +11,12 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 /// Gate stages in run order. The pull-request workflow dispatches each as its own check.
-const STAGES: [&str; 4] = ["schema", "test-first", "workspace", "acceptance"];
+const STAGES: [&str; 5] = ["schema", "test-first", "workspace", "acceptance", "features"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
+const STORE_MANIFEST: &str = "crates/contextful-context/Cargo.toml";
+/// The features stage's own target directory, under the workspace root.
+const FEATURES_TARGET: &str = "target/features";
 const REFACTOR_TRAILER: &str = "refactor";
 /// Wall clock one test-first execution against the base runs for, its build excluded: 300 s
 /// (`assurance.test.base-run-bound`). A run still going is killed with its process group
@@ -129,6 +132,7 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
                 workspace(&root)?
             }
             "acceptance" => acceptance(&root)?,
+            "features" => features(&root)?,
             _ => unreachable!(),
         }
     }
@@ -141,6 +145,29 @@ fn workspace(root: &Path) -> Result<()> {
         args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
     }
     run(root, "cargo", &args)
+}
+
+/// The feature combinations the workspace stage's unified build does not reach
+/// (`assurance.build.staged-feature-runs`): the store adapter with the read face off, whose
+/// write suites build and pass without it (`topology.package.store-write-engine-free`).
+/// The stage builds into `target/features`, reclaimed once it passes, because a
+/// different feature unification shares no artifacts with the workspace build
+/// (`assurance.build.target-dir-per-stage`).
+fn features(root: &Path) -> Result<()> {
+    if !root.join(STORE_MANIFEST).exists() {
+        return Ok(());
+    }
+    let target = root.join(FEATURES_TARGET);
+    let status = Command::new("cargo")
+        .args(["test", "-p", "contextful-context", "--no-default-features"])
+        .env("CARGO_TARGET_DIR", &target)
+        .current_dir(root)
+        .status()?;
+    if !status.success() {
+        bail!("`cargo test -p contextful-context --no-default-features` exited {}", status.code().unwrap_or(-1));
+    }
+    let _ = std::fs::remove_dir_all(&target);
+    Ok(())
 }
 
 // ---------------------------------------------------------------- lean

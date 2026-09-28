@@ -5,7 +5,8 @@ edition = "2021"
 publish = false
 
 # The store adapter and the read face: Parquet table parts, run and snapshot manifests, the table
-# pointer, the fold, the relation a scan resolves, and the SQL engine reads execute on.
+# pointer, the fold, the relation a scan resolves, and, under `read`, the SQL engine reads
+# execute on.
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }
@@ -18,8 +19,8 @@ arrow-schema = "57"
 arrow-select = "57"
 # The read face's embedded SQL engine: Parquet reading and statement serialization link
 # statically, so the read path loads no extension while serving; the scalar-function
-# interface carries the pepper-holding mask functions.
-duckdb = { version = "1.10500", features = ["bundled", "parquet", "json", "vscalar"] }
+# interface carries the pepper-holding mask functions. Only the `read` feature links it.
+duckdb = { version = "1.10500", features = ["bundled", "parquet", "json", "vscalar"], optional = true }
 getrandom = "0.3"
 parquet = { version = "57", default-features = false, features = ["arrow", "zstd"] }
 serde = { version = "1", features = ["derive"] }
@@ -28,7 +29,17 @@ sha2 = "0.10"
 thiserror = "2"
 toml = "0.8"
 
+[features]
+default = ["read"]
+# The read face: the embedded SQL engine and the query face over it. A host that lands,
+# folds or scans a store without serving reads builds with `default-features = false`.
+read = ["dep:duckdb"]
+
 [dev-dependencies]
+# The integration suites assert over landed tables through SQL, so every test build of this
+# package links the engine, the read face off included: the features stage's no-read run
+# compiles a second copy (about 282 MB of rlib) in its own container and target directory.
+duckdb = { version = "1.10500", features = ["bundled", "parquet", "json", "vscalar"] }
 tempfile = "3"
 
 [[test]]

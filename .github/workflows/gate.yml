@@ -3,12 +3,13 @@
 # Each matrix entry dispatches `contextful-ci gate --stage <stage>` to the org's
 # Dispatcher, which clones the PR head into a Rust-equipped sandbox and reports the
 # verdict as the check-run `flare-dispatch/check:<stage>`. This job goes green once
-# the dispatch is accepted; branch protection requires the four check-runs:
+# the dispatch is accepted; branch protection requires the five check-runs:
 #
 #   flare-dispatch/check:schema      secrets of record, mirrors: annotations, contextful-spec lint
 #   flare-dispatch/check:test-first  a test under tests/ fails against the base source
 #   flare-dispatch/check:workspace   cargo test --workspace, acceptance excluded
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
+#   flare-dispatch/check:features    the store adapter's suites with the read face off
 #
 # Lean is provisioned by the dispatched command, not by a step in this file:
 # `contextful-ci gate` runs `provision_lean` (tools/ci/src/main.rs) before the
@@ -38,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stage: [schema, test-first, workspace, acceptance]
+        stage: [schema, test-first, workspace, acceptance, features]
     steps:
       - uses: fractalboxdev/flare-dispatch/actions/flare-dispatch-action@a5118d6594c8f3e4040bb90afcb02898a6e7b7bd
         with:

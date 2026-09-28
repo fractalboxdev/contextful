@@ -8,7 +8,7 @@ publish = false
 # bucket leases and pointer publication, the conditional-write probe and replica refresh.
 
 [dependencies]
-contextful-context = { path = "../contextful-context" }
+contextful-context = { path = "../contextful-context", default-features = false }
 contextful-core = { path = "../contextful-core" }
 getrandom = "0.3"
 serde = { version = "1", features = ["derive"] }

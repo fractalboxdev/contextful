@@ -108,6 +108,8 @@ The domain crate, dependency direction, and the three build profiles with what e
   *A-topology*
 - `crdt-leak` — The CRDT library in the resolved dependency graph of the edge or full profile raises `ProfileDependencyLeak`, naming the profile and the path that pulled it. A daemon or replica reads materialized text.
   *A-topology*
+- `store-write-engine-free` — `contextful-context` resolved without its `read` feature and reaching `duckdb` or `libduckdb-sys` through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.
+  *because a host that lands, folds or scans a store and serves no read otherwise links a bundled SQL engine it never calls*
 
 Profiles, the domain crate they share, and the dependency edges the gates raise on.
 

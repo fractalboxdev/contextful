@@ -9,7 +9,7 @@ publish = false
 # lands them; the direct write lands a principal's claim.
 
 [dependencies]
-contextful-context = { path = "../contextful-context" }
+contextful-context = { path = "../contextful-context", features = ["read"] }
 contextful-core = { path = "../contextful-core" }
 contextful-policy = { path = "../contextful-policy" }
 serde = { version = "1", features = ["derive"] }
