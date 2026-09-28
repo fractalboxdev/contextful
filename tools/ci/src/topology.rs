@@ -1,8 +1,9 @@
 //! `contextful-ci topology` — the dependency rules of the `topology` contract, read off
 //! `cargo metadata`: the domain crate's purity and dependency direction, the model-vendor
 //! and script-runtime bans, and the run-path-to-read-path crate graph; and, per package
-//! off `cargo tree`, the store adapter's engine-free write half and the external-assertion
-//! stack outside the binary. The same walk holds every workspace package to
+//! off `cargo tree`, the store adapter's engine-free write half, its SQLite-free graph and
+//! the external-assertion stack outside the binary; and off the manifests, the SQLite
+//! binding held to its one adapter package. The same walk holds every workspace package to
 //! `assurance.build.licence-field`, and every `crates/` package to the crate tree of
 //! `topology.package.crate-map-drift`.
 
@@ -48,6 +49,21 @@ const IMPURE: [(&str, &str); 19] = [
 const STORE: &str = "contextful-context";
 const STORE_READ_FEATURE: &str = "read";
 const SQL_ENGINE: [&str; 2] = ["duckdb", "libduckdb-sys"];
+
+/// The SQLite link-carrying package the store adapter resolves through no normal
+/// dependency (`topology.package.store-sqlite-free`).
+const SQLITE_SYS: &str = "libsqlite3-sys";
+
+/// The one package declaring the SQLite binding, and the binding's packages
+/// (`topology.package.sqlite-adapter`).
+const SQLITE_ADAPTER: &str = "contextful-sqlite";
+const SQLITE_BINDINGS: [&str; 2] = ["rusqlite", SQLITE_SYS];
+
+/// The adapter's feature compiling SQLite into the build, which only the binary enables.
+const SQLITE_BUNDLED: &str = "bundled";
+
+/// Binding features choosing which SQLite build links. An entry ending `*` is a name prefix.
+const SQLITE_LINK_FEATURES: [&str; 4] = ["bundled*", "sqlcipher", "in_gecko", "loadable_extension"];
 
 /// Model-vendor SDKs no workspace crate declares (`topology.compose.vendor-sdk`).
 const VENDOR_SDKS: [&str; 12] = [
@@ -118,6 +134,8 @@ struct Package {
     declared: Vec<(String, Option<String>, bool)>,
     /// `features` table: feature name to its enabled entries.
     features: HashMap<String, Vec<String>>,
+    /// Features each declared dependency turns on: `(package name, kind, features)`.
+    enables: Vec<(String, Option<String>, Vec<String>)>,
 }
 
 struct Edge {
@@ -175,9 +193,21 @@ impl Graph {
                         .collect()
                 })
                 .unwrap_or_default();
+            let enables = p["dependencies"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|d| {
+                    (
+                        d["name"].as_str().unwrap_or_default().to_string(),
+                        d["kind"].as_str().map(str::to_string),
+                        d["features"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect(),
+                    )
+                })
+                .collect();
             let name = p["name"].as_str().unwrap_or_default().to_string();
             let license = p["license"].as_str().map(str::to_string);
-            packages.insert(id, Package { name, manifest, workspace, license, declared, features });
+            packages.insert(id, Package { name, manifest, workspace, license, declared, features, enables });
         }
         let mut edges = HashMap::new();
         let mut enabled = HashMap::new();
@@ -370,8 +400,51 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
             let name = path.rsplit(" -> ").next().unwrap_or_default();
             out.push(("StoreWriteLinksEngine", format!("`{STORE}` without `{STORE_READ_FEATURE}` links `{name}` through {path}")));
         }
+        for path in tree_paths(root, STORE, false, &[SQLITE_SYS])? {
+            out.push(("StoreLinksSqlite", format!("`{STORE}` links `{SQLITE_SYS}` through {path}")));
+        }
     }
+    out.extend(sqlite_link_forced(root, &workspace));
     Ok(out)
+}
+
+/// `SqliteLinkForced` per normal declaration of the SQLite binding outside the adapter, per
+/// link feature the adapter turns on by itself, and per package other than the binary
+/// enabling the adapter's `bundled` feature (`topology.package.sqlite-adapter`).
+fn sqlite_link_forced(root: &Path, workspace: &[(&String, &Package)]) -> Vec<(&'static str, String)> {
+    let link = |f: &str| SQLITE_LINK_FEATURES.iter().any(|p| matches(p, f));
+    let mut out = Vec::new();
+    for (_, p) in workspace {
+        let adapter = p.name == SQLITE_ADAPTER;
+        for (dep, kind, features) in &p.enables {
+            if kind.is_some() {
+                continue;
+            }
+            let at = || manifest_line(root, &p.manifest, dep);
+            if SQLITE_BINDINGS.contains(&dep.as_str()) && !adapter {
+                out.push(("SqliteLinkForced", format!("`{}` declares `{dep}` at {}; only `{SQLITE_ADAPTER}` declares the SQLite binding", p.name, at())));
+            }
+            if SQLITE_BINDINGS.contains(&dep.as_str()) && adapter {
+                for f in features.iter().filter(|f| link(f)) {
+                    out.push(("SqliteLinkForced", format!("`{SQLITE_ADAPTER}` turns on `{dep}/{f}` at {}; the host chooses the SQLite build", at())));
+                }
+            }
+            if dep == SQLITE_ADAPTER && p.name != BINARY && features.iter().any(|f| f == SQLITE_BUNDLED) {
+                out.push(("SqliteLinkForced", format!("`{}` enables `{SQLITE_ADAPTER}/{SQLITE_BUNDLED}` at {}; only `{BINARY}` compiles SQLite in", p.name, at())));
+            }
+        }
+        if adapter {
+            let default = p.features.get("default").cloned().unwrap_or_default();
+            let forced = default.iter().filter(|e| {
+                e.as_str() == SQLITE_BUNDLED
+                    || e.split_once('/').is_some_and(|(dep, f)| SQLITE_BINDINGS.contains(&dep.trim_end_matches('?')) && link(f))
+            });
+            for e in forced {
+                out.push(("SqliteLinkForced", format!("`{SQLITE_ADAPTER}` turns on `{e}` by default ({}); the host chooses the SQLite build", p.manifest)));
+            }
+        }
+    }
+    out
 }
 
 /// `ExchangeDependencyLeak` per `crates/` package whose own resolved normal graph reaches

@@ -252,6 +252,95 @@ fn the_binary_enabling_the_exchange_without_wiring_it_is_refused() {
     passes(&r);
 }
 
+/// A stub SQLite binding: `rusqlite` over `libsqlite3-sys`, each with a `bundled` feature;
+/// the adapter `contextful-sqlite` over it, forwarding `bundled`; and the binary enabling it.
+fn sqlite(r: &Repo, adapter_rusqlite: &str, adapter_default: &str) {
+    stub(r, "libsqlite3-sys", "", "bundled = []\n");
+    stub(r, "rusqlite", "libsqlite3-sys = { path = \"../libsqlite3-sys\" }\n", "bundled = [\"libsqlite3-sys/bundled\"]\n");
+    r.write(
+        "crates/contextful-sqlite/Cargo.toml",
+        &format!(
+            "{}\n[features]\n{adapter_default}bundled = [\"rusqlite/bundled\"]\n\n[dev-dependencies]\nrusqlite = {{ path = \"../../stubs/rusqlite\", features = [\"bundled\"] }}\n",
+            manifest("contextful-sqlite", &format!("rusqlite = {{ path = \"../../stubs/rusqlite\"{adapter_rusqlite} }}\n"))
+        ),
+    );
+    r.write("crates/contextful-sqlite/src/lib.rs", "");
+    r.write("crates/contextful-sqlite/tests/integration/main.rs", "");
+    package(r, "contextful-cli", "contextful-sqlite = { path = \"../contextful-sqlite\", features = [\"bundled\"] }\n");
+}
+
+/// `contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, raises `StoreLinksSqlite`, naming the path that pulled it.
+// spec: topology.package.store-sqlite-free@56b044c9
+#[test]
+fn a_store_adapter_reaching_the_sqlite_link_package_is_refused() {
+    let r = Repo::init();
+    sqlite(&r, "", "");
+    // A host linking its own bundled SQLite beside the store's write half resolves one copy.
+    package(&r, "contextful-context", "");
+    package(&r, "contextful-memory", "contextful-context = { path = \"../contextful-context\" }\ncontextful-sqlite = { path = \"../contextful-sqlite\" }\n");
+    passes(&r);
+
+    stub(&r, "catalogkit", "rusqlite = { path = \"../rusqlite\" }\n", "");
+    package(&r, "contextful-context", "catalogkit = { path = \"../../stubs/catalogkit\" }\n");
+    let err = refused(&topology(&r.root), "StoreLinksSqlite");
+    assert!(err.contains("`contextful-context` links `libsqlite3-sys` through contextful-context -> catalogkit -> rusqlite -> libsqlite3-sys"), "{err}");
+    assert!(!err.contains("SqliteLinkForced"), "a stub outside the workspace declares nothing the adapter rule reads: {err}");
+}
+
+/// `contextful-sqlite` alone declares the SQLite binding and enables no link feature itself; only `contextful-cli` turns
+/// on its `bundled` feature. Any other declaration or enablement raises `SqliteLinkForced`, naming the manifest line.
+// spec: topology.package.sqlite-adapter@c4f8e1cd
+#[test]
+fn a_sqlite_link_forced_outside_the_binary_is_refused() {
+    let r = Repo::init();
+    sqlite(&r, "", "");
+    passes(&r);
+
+    // A second package declaring the binding.
+    package(&r, "contextful-memory", "rusqlite = { path = \"../../stubs/rusqlite\" }\n");
+    let err = refused(&topology(&r.root), "SqliteLinkForced");
+    assert!(err.contains("`contextful-memory` declares `rusqlite` at crates/contextful-memory/Cargo.toml:8"), "{err}");
+
+    // A library enabling the adapter's `bundled`.
+    package(&r, "contextful-memory", "contextful-sqlite = { path = \"../contextful-sqlite\", features = [\"bundled\"] }\n");
+    let err = refused(&topology(&r.root), "SqliteLinkForced");
+    assert!(err.contains("`contextful-memory` enables `contextful-sqlite/bundled`"), "{err}");
+    assert!(!err.contains("`contextful-cli` enables"), "the binary compiles SQLite in: {err}");
+    package(&r, "contextful-memory", "");
+
+    // The adapter choosing the build itself, on its declaration or by default.
+    sqlite(&r, ", features = [\"bundled\"]", "");
+    let err = refused(&topology(&r.root), "SqliteLinkForced");
+    assert!(err.contains("`contextful-sqlite` turns on `rusqlite/bundled` at crates/contextful-sqlite/Cargo.toml:8"), "{err}");
+    sqlite(&r, "", "default = [\"bundled\"]\n");
+    let err = refused(&topology(&r.root), "SqliteLinkForced");
+    assert!(err.contains("`contextful-sqlite` turns on `bundled` by default"), "{err}");
+}
+
+/// This repository's store adapter resolves no SQLite, and its binary alone compiles one in.
+#[test]
+fn this_repository_links_sqlite_only_through_its_adapter() {
+    let tree = |package: &str, all: bool| {
+        let mut args = vec!["tree", "-q", "-p", package, "-e", "normal", "--prefix", "none"];
+        if all {
+            args.push("--all-features");
+        }
+        let o = Command::new("cargo").args(&args).current_dir(repo_root()).output().unwrap();
+        assert!(o.status.success(), "{}", stderr(&o));
+        stdout(&o).lines().filter_map(|l| l.split_whitespace().next().map(str::to_string)).collect::<Vec<_>>()
+    };
+    let links = tree("contextful-context", true).iter().filter(|n| *n == "libsqlite3-sys" || *n == "rusqlite").count();
+    contextful_eval::record::emit("no-sqlite-link", links as f64, 1, 0);
+    assert_eq!(links, 0, "the store adapter resolves the SQLite binding");
+    assert!(tree("contextful-sqlite", false).iter().any(|n| n == "libsqlite3-sys"));
+    let features = Command::new("cargo")
+        .args(["tree", "-q", "-p", "contextful-cli", "-e", "features", "-i", "libsqlite3-sys", "--prefix", "none"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(stdout(&features).contains("libsqlite3-sys feature \"bundled\""), "{}", stdout(&features));
+}
+
 /// Every workspace package under `crates/` or `tools/` declares `license = "Apache-2.0"`, inherited from `[workspace.package]`; a package declaring another value or none raises `PackageLicenceMissing`, naming its manifest.
 // spec: assurance.build.licence-field@8babd985
 #[test]

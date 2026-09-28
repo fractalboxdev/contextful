@@ -3,6 +3,7 @@
 //! registers as. The Parquet and filesystem adapter is `contextful-context`.
 
 pub mod bound_time;
+pub mod catalog;
 pub mod commit_log;
 pub mod declare;
 pub mod error;

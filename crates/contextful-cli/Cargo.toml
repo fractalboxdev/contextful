@@ -19,6 +19,8 @@ contextful-engine = { path = "../contextful-engine" }
 contextful-memory = { path = "../contextful-memory" }
 contextful-policy = { path = "../contextful-policy" }
 contextful-outbound = { path = "../contextful-outbound" }
+# The binary is the one package compiling SQLite into the build (`topology.package.sqlite-adapter`).
+contextful-sqlite = { path = "../contextful-sqlite", features = ["bundled"] }
 contextful-sync = { path = "../contextful-sync" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

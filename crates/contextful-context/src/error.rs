@@ -18,6 +18,9 @@ pub enum ContextError {
     /// A batch, request or configuration that fails validation before anything lands.
     #[error("{0}")]
     Invalid(String),
+    /// A catalog port reporting a storage fault.
+    #[error("{0}")]
+    Catalog(contextful_core::run::Failure),
 }
 
 impl ContextError {

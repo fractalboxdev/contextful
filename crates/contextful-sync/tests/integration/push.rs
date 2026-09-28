@@ -38,6 +38,26 @@ fn a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local() {
     assert!(a.syncer.push(at(NOW)).unwrap().uploaded.is_empty());
 }
 
+/// SQLite writes a rollback journal or a write-ahead log beside each catalog while a
+/// transaction runs; those files are the catalog's own state and stay on the machine too.
+#[test]
+fn a_push_keeps_the_catalogs_transaction_files_local() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    let sidecars = ["machine.sqlite-journal", "machine.sqlite-wal", "machine.sqlite-shm", "derived.sqlite-journal", "derived.sqlite-wal"];
+    for f in ["derived.sqlite"].iter().chain(sidecars.iter()) {
+        std::fs::write(a.root().join(f), "local").unwrap();
+    }
+    a.syncer.push(at(NOW)).unwrap();
+    let keys = b.list("team/").unwrap();
+    for local in ["derived.sqlite"].iter().chain(sidecars.iter()) {
+        assert!(!keys.iter().any(|k| k.ends_with(local)), "{local} left the machine: {keys:?}");
+    }
+    assert!(keys.iter().any(|k| k.ends_with("part-00000.parquet")), "{keys:?}");
+}
+
 /// A push commits when the bucket manifest, `<prefix>/manifest.json` listing each key's sha256, size and owner,
 /// replaces the copy it read under `If-Match` on that copy's ETag.
 // spec: store.push.manifest-commit@77fc6a34
