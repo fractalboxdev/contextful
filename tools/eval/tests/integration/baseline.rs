@@ -315,6 +315,24 @@ fn a_floor_reds_a_run_its_baseline_passes() {
 }
 
 #[test]
+fn each_floor_reds_a_run_its_baseline_passes() {
+    // One breach per floor on the hybrid leg, against a file gating nothing but a count.
+    let breaches = [("r_precision", 0.50), ("forbidden_row_rate", 0.01), ("duplicate_row_rate", 0.01), ("in_window_rate", 0.90)];
+    let b = file(json!({ "n_cases": 60 }));
+    let mut red = 0u64;
+    for (metric, value) in breaches {
+        let mut r = json!({ "run": run(10), "n_cases": 60, "retrieval": clean_retrieval(60) });
+        assert!(gate(&r, &b).unwrap().passed(), "the clean report holds every floor");
+        r["retrieval"]["hybrid"][metric] = node(60, value);
+        let v = gate(&r, &b).unwrap();
+        assert!(v.baseline_passed(), "{metric}: the baseline passes");
+        red += u64::from(!v.floors.passed && !v.passed());
+    }
+    contextful_eval::record::emit("eval-absolute-floors", red as f64, breaches.len() as u64, 0);
+    assert_eq!(red, breaches.len() as u64, "{red} of {} floors reddened a baseline-passing run", breaches.len());
+}
+
+#[test]
 fn a_malformed_report_run_block_names_its_fault() {
     let b = Baselines::parse(FILE).unwrap();
     let mut r = report();

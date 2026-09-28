@@ -220,6 +220,23 @@ fn a_library_reaching_the_exchange_stack_is_refused() {
 }
 
 #[test]
+fn only_the_binary_of_this_workspace_reaches_the_exchange_stack() {
+    // The stack resolves under the exchange feature, so a count of zero measures the rule, not an absent crate.
+    let o = Command::new("cargo")
+        .args(["tree", "-q", "-p", "contextful-policy", "--features", "exchange", "-e", "normal", "-i", "jsonwebtoken"])
+        .current_dir(repo_root())
+        .env_remove("CARGO_TARGET_DIR")
+        .output()
+        .unwrap();
+    assert!(o.status.success() && stdout(&o).contains("jsonwebtoken"), "{}", stderr(&o));
+    let o = topology(repo_root());
+    let leaks = stderr(&o).lines().filter(|l| l.contains("ExchangeDependencyLeak")).count();
+    contextful_eval::record::emit("policy-no-jwt", leaks as f64, 1, 0);
+    assert_eq!(leaks, 0, "{}", stderr(&o));
+    assert!(o.status.success(), "{}", stderr(&o));
+}
+
+#[test]
 fn the_binary_enabling_the_exchange_without_wiring_it_is_refused() {
     let r = Repo::init();
     policy(&r, false);

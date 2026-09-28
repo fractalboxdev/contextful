@@ -20,6 +20,8 @@ sha2 = "0.10"
 toml = "0.8"
 
 [dev-dependencies]
+# Ledger measures record their figures (`assurance.measure.record`).
+contextful-eval = { path = "../../tools/eval" }
 tempfile = "3"
 
 [[test]]

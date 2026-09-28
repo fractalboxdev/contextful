@@ -1,7 +1,7 @@
 //! Milestone 14 — assurance.
 //!
-//! Reach: the gate holds its resource budget and the evaluation floors are measured on
-//! every change.
+//! Reach: the gate holds its resource budget, and the evaluation floors and every gate-tier
+//! target are measured on every change.
 
 use contextful_acceptance::{bin, GitRepo};
 
@@ -18,7 +18,7 @@ fn m14_assurance() {
 
     let stages = r.run(&ci, &["stages"]);
     let stages = String::from_utf8_lossy(&stages.stdout);
-    for stage in ["pins", "toolchain", "schema", "test-first", "workspace", "acceptance", "crate-graph", "formal", "budget"] {
+    for stage in ["pins", "toolchain", "schema", "test-first", "workspace", "acceptance", "evaluate", "crate-graph", "formal", "budget"] {
         assert!(stages.lines().any(|s| s == stage), "the gate defines no `{stage}` stage");
     }
 }

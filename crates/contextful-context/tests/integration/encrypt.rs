@@ -40,3 +40,42 @@ fn a_bound_key_source_refuses_rather_than_write_cleartext() {
     let err = opened.unwrap_err();
     assert!(err.store().is_none() && err.to_string().contains("no at-rest cipher"), "{err}");
 }
+
+/// Files under `dir` other than the store's `config.toml`, at any depth.
+fn written(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(dir).unwrap().map(Result::unwrap) {
+        let p = e.path();
+        if p.is_dir() {
+            out.extend(written(&p));
+        } else if p.file_name().is_some_and(|n| n != "config.toml") {
+            out.push(p);
+        }
+    }
+    out
+}
+
+#[test]
+fn a_declared_encryption_opens_no_store_and_writes_no_file() {
+    // The walk sees what a store writes: an undeclared store opens and leaves files.
+    let (d, opened) = store_with("[node]\nid = \"ingest-a\"\n");
+    drop(opened.unwrap());
+    std::fs::write(d.path().join(".contextful/context/research/probe.parquet"), b"PAR1").unwrap();
+    assert!(!written(d.path()).is_empty());
+
+    let configs = [
+        "[encryption]\nkey_source = \"env:CONTEXTFUL_TEST_KEY_NEVER_SET_7F3A\"\n",
+        "[encryption]\nkey_source = \"kms:projects/p/keys/k\"\n",
+        "[encryption]\nkey_source = \"env:PATH\"\n",
+        "[encryption]\nkey = \"literal\"\n",
+    ];
+    let (mut opens, mut files) = (0u64, 0u64);
+    for config in configs {
+        let (d, opened) = store_with(config);
+        opens += u64::from(opened.is_ok());
+        drop(opened);
+        files += written(d.path()).len() as u64;
+    }
+    contextful_eval::record::emit("encrypt-declared-refuses", (opens + files) as f64, configs.len() as u64, 0);
+    assert_eq!((opens, files), (0, 0));
+}

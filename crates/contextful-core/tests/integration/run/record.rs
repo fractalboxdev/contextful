@@ -73,15 +73,21 @@ fn only_an_in_flight_row_with_a_lapsed_lease_is_reaped() {
     let t0 = at("2030-01-01T00:00:00Z");
     let mut r = row("run-1", "2030-01-01T00:00:00Z");
     r.owner = Some(Owner::leased(1, "boot", t0));
+    let (mut live_reaped, mut rows) = (0u64, 0u64);
     for s in [RunStatus::Running, RunStatus::Waiting, RunStatus::Pending] {
         r.status = s;
+        rows += 1;
+        live_reaped += u64::from(r.reaped(t0.plus_secs(29)).is_some());
         assert_eq!(r.reaped(t0.plus_secs(29)), None, "{s}: a live lease is left alone");
         assert_eq!(r.reaped(t0.plus_secs(30)), Some(RunStatus::PartialFailure), "{s}");
     }
     for s in [RunStatus::Success, RunStatus::Failed, RunStatus::Canceled, RunStatus::PartialFailure] {
         r.status = s;
+        rows += 1;
+        live_reaped += u64::from(r.reaped(t0.plus_secs(300)).is_some());
         assert_eq!(r.reaped(t0.plus_secs(300)), None, "{s} is terminal");
     }
+    crate::emit("orphan-reap-spares-live", live_reaped as f64, rows, 0);
 }
 
 /// A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.

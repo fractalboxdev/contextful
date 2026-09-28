@@ -38,6 +38,8 @@ default = ["read"]
 read = ["dep:duckdb"]
 
 [dev-dependencies]
+# Ledger measures record their figures (`assurance.measure.record`).
+contextful-eval = { path = "../../tools/eval" }
 # The integration suites assert over landed tables through SQL, so every test build of this
 # package links the engine, the read face off included: the features stage's no-read run
 # compiles a second copy (about 282 MB of rlib) in its own container and target directory.

@@ -86,6 +86,8 @@ fn a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable() {
         Err(contextful_context::ContextError::Store(contextful_core::store::StoreError::LeaseFenced(m))) => assert!(m.contains("fence 2"), "{m}"),
         other => panic!("{other:?}"),
     }
+    let landed = readable(&f).iter().filter(|r| *r == "run-old").count();
+    contextful_eval::record::emit("stale-fence-never-lands", landed as f64, 1, 0);
     assert!(readable(&f).is_empty(), "the fenced run stays unreadable");
     fenced_landing(&f, "run-new", 2);
     commit(&f, "run-new", 2).unwrap();

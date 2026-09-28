@@ -1,0 +1,502 @@
+# The target ledger (`assurance.measure.ledger`): one entry per tracked target, keyed to
+# the clause that owns it. An entry names its clause and never copies the clause's text.
+#
+#   clause  a clause id of spec/spec.lock.json
+#   metric  the run-report field path the value fills
+#   kind    test | eval | size | bench
+#   tier    gate (decides the evaluate stage) | trend (records) | scheduled (nightly job)
+#   method  { test = "<crate>::<module>::<function>" } | { cases = "evals/cases/<set>.jsonl" }
+#           | { probe = "<tools/probe binary>" } | { issue = <n> }, which reports open and gates nothing
+#   target  { op = "==" | "<=" | ">=" | "<" | ">", value = <absolute figure> }
+#   seed    the seed every generated fixture derives from
+#
+# `contextful-ci measure --status` renders evals/ledger.md from this file.
+
+# ---------------------------------------------------------------- run.guard-secrets
+
+[entry.guard-catalogue]
+clause = "run.guard-secrets.matchers"
+metric = "guard.recall_per_kind.min"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture" }
+target = { op = "==", value = 1 }
+seed   = 0x5eed_0003
+
+[entry.guard-false-positives]
+clause = "run.guard-secrets.matchers"
+metric = "guard.false_positives"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture" }
+target = { op = "==", value = 0 }
+seed   = 0x5eed_0003
+
+[entry.guard-short-assignment]
+clause = "run.guard-secrets.mask-span"
+metric = "guard.short_assignment.masked_rate"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_core::pipeline::guard::a_keyword_assignment_is_masked_from_8_chars_keeping_its_key" }
+target = { op = "==", value = 1 }
+seed   = 0x5eed_0002
+
+[entry.guard-compound-keys]
+clause = "run.guard-secrets.matchers"
+metric = "guard.compound_keys.masked_rate"
+kind   = "test"
+tier   = "gate"
+method = { issue = 73 }
+target = { op = "==", value = 1 }
+
+# ---------------------------------------------------------------- store.encrypt
+
+[entry.encrypt-declared-refuses]
+clause = "store.encrypt.key-unbound"
+metric = "encrypt.declared.opens_and_files"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::encrypt::a_declared_encryption_opens_no_store_and_writes_no_file" }
+target = { op = "==", value = 0 }
+
+[entry.encrypt-no-plaintext]
+clause = "store.encrypt.cipher"
+metric = "encrypt.canary_hits"
+kind   = "test"
+tier   = "gate"
+method = { issue = 74 }
+target = { op = "==", value = 0 }
+
+# ---------------------------------------------------------------- connector egress
+
+[entry.egress-internal-address]
+clause = "connector.attach.private-address"
+metric = "egress.internal.admitted"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_core::connector::attach::a_permitted_name_resolving_inward_is_refused" }
+target = { op = "==", value = 0 }
+
+[entry.egress-internal-address-resolved]
+clause = "connector.attach.private-address"
+metric = "egress.resolved_internal.admitted"
+kind   = "test"
+tier   = "gate"
+method = { issue = 50 }
+target = { op = "==", value = 0 }
+
+[entry.egress-refusal-before-dns]
+clause = "connector.attach.mediation-covers-every-egress"
+metric = "egress.refused.lookups"
+kind   = "test"
+tier   = "gate"
+method = { issue = 50 }
+target = { op = "==", value = 0 }
+
+# ---------------------------------------------------------------- disclosure
+
+[entry.audit-truncation-detected]
+clause = "disclosure.attest.broken-chain"
+metric = "audit.truncation.undetected"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_policy::audit::every_trailing_truncation_under_a_rewritten_tip_is_detected" }
+target = { op = "==", value = 0 }
+
+[entry.audit-append-durable]
+clause = "disclosure.record.unpersisted-entry"
+metric = "audit.append.lost_acknowledged"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_policy::audit::an_append_that_fails_to_persist_leaves_disk_and_tip_at_the_prior_entry" }
+target = { op = "==", value = 0 }
+
+[entry.audit-sync-per-group]
+clause = "disclosure.record.unpersisted-entry"
+metric = "audit.syncs_per_group.max"
+kind   = "test"
+tier   = "gate"
+method = { issue = 42 }
+target = { op = "<=", value = 1 }
+
+[entry.audit-append-latency]
+clause = "disclosure.record.unpersisted-entry"
+metric = "audit.append.p95_us"
+kind   = "bench"
+tier   = "trend"
+method = { issue = 42 }
+
+[entry.audit-read-waits-on-entry]
+clause = "disclosure.record.unpersisted-entry"
+metric = "audit.read.rows_before_sync"
+kind   = "test"
+tier   = "gate"
+method = { issue = 75 }
+target = { op = "==", value = 0 }
+
+[entry.audit-inclusion-proof]
+clause = "disclosure.record.segment"
+metric = "audit.proof.hashes"
+kind   = "size"
+tier   = "gate"
+method = { issue = 42 }
+target = { op = "<=", value = 12 }
+
+[entry.audit-query-digest-keyed]
+clause = "disclosure.record.segment"
+metric = "audit.digest.dictionary_matches"
+kind   = "test"
+tier   = "gate"
+method = { issue = 81 }
+target = { op = "==", value = 0 }
+
+[entry.audit-open-bounded-heap]
+clause = "disclosure.record.single-writer"
+metric = "audit.open.retained_heap_delta_kib"
+kind   = "size"
+tier   = "gate"
+method = { issue = 81 }
+target = { op = "<", value = 64 }
+
+# ---------------------------------------------------------------- authority
+
+[entry.possession-replay]
+clause = "authority.verify.replayed-nonce"
+metric = "possession.adversarial.admitted"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_policy::possession::replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop" }
+target = { op = "==", value = 0 }
+seed   = 0x5eed_0004
+
+[entry.bearer-transport-bound]
+clause = "authority.issue.one-credential"
+metric = "authority.off_transport_admissions"
+kind   = "test"
+tier   = "gate"
+method = { issue = 57 }
+target = { op = "==", value = 0 }
+
+# ---------------------------------------------------------------- connector runtime
+
+[entry.hydrated-secret-wiped]
+clause = "connector.resolve.hydration-is-just-in-time"
+metric = "resolve.hydrations_per_request"
+kind   = "test"
+tier   = "gate"
+method = { issue = 51 }
+target = { op = "==", value = 1 }
+
+[entry.output-taint]
+clause = "connector.infer.output-taint"
+metric = "infer.over_trusted_rows"
+kind   = "test"
+tier   = "gate"
+method = { issue = 48 }
+target = { op = "==", value = 0 }
+
+[entry.guest-without-jit]
+clause = "connector.package.native-verification"
+metric = "wasm.warm_compiles"
+kind   = "test"
+tier   = "gate"
+method = { issue = 52 }
+target = { op = "==", value = 0 }
+
+[entry.guest-pulley-throughput]
+clause = "connector.package.native-verification"
+metric = "wasm.pulley_throughput_ratio"
+kind   = "bench"
+tier   = "trend"
+method = { issue = 52 }
+
+# ---------------------------------------------------------------- run.journal
+
+[entry.journal-effect-once]
+clause = "run.journal.entry-key"
+metric = "journal.effects_per_key.max"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::journal::racers_on_one_key_run_the_effect_once_and_read_equal_bytes" }
+target = { op = "==", value = 1 }
+seed   = 0x5eed_0001
+
+[entry.journal-holder-liveness]
+clause = "run.journal.claim-takeover"
+metric = "journal.takeover.effects"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::journal::a_claim_whose_holder_lapsed_is_taken_over" }
+target = { op = "==", value = 1 }
+
+[entry.journal-conformance]
+clause = "run.journal.substrate-port"
+metric = "journal.conformance.failed_cases"
+kind   = "test"
+tier   = "gate"
+method = { issue = 37 }
+target = { op = "==", value = 0 }
+
+[entry.journal-storage-bounded]
+clause = "run.journal.blob-sweep"
+metric = "journal.sweep.stale_blobs"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::journal::the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day" }
+target = { op = "==", value = 0 }
+
+[entry.execution-resume]
+clause = "run.journal.plan-pin"
+metric = "execution.replayed_effects"
+kind   = "test"
+tier   = "gate"
+method = { issue = 38 }
+target = { op = "==", value = 0 }
+
+[entry.orphan-reap-spares-live]
+clause = "run.record.orphan-reap"
+metric = "reap.live_rows_reaped"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_core::run::record::only_an_in_flight_row_with_a_lapsed_lease_is_reaped" }
+target = { op = "==", value = 0 }
+
+[entry.derivation-freshness]
+clause = "run.select.anti-join"
+metric = "derive.empty_reads"
+kind   = "test"
+tier   = "gate"
+method = { issue = 45 }
+target = { op = "==", value = 0 }
+
+# ---------------------------------------------------------------- store
+
+[entry.stale-fence-never-lands]
+clause = "store.lease.stale-fence"
+metric = "lease.stale_commits_landed"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::run_commit::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable" }
+target = { op = "==", value = 0 }
+
+[entry.stale-fence-differential]
+clause = "assurance.differential-test.protocol-harness"
+metric = "protocol.drift_cases"
+kind   = "test"
+tier   = "gate"
+method = { issue = 76 }
+target = { op = "==", value = 0 }
+
+[entry.fold-single-publisher]
+clause = "store.fold.pointer-commit"
+metric = "fold.publishes_per_start_etag"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::fold::a_pass_losing_the_pointer_publishes_nothing" }
+target = { op = "==", value = 1 }
+
+[entry.pull-no-torn-snapshot]
+clause = "store.pull.pointer-last"
+metric = "pull.torn_reads"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot" }
+target = { op = "==", value = 0 }
+seed   = 0x5eed_0005
+
+[entry.network-volume-refuses-cas]
+clause = "store.probe.unproven"
+metric = "probe.network_class_cas_pushes"
+kind   = "test"
+tier   = "gate"
+method = { issue = 53 }
+target = { op = "==", value = 0 }
+
+[entry.exclusive-create-no-hardlink]
+clause = "store.lease.commit-log"
+metric = "lease.race_winners.max"
+kind   = "test"
+tier   = "gate"
+method = { issue = 41 }
+target = { op = "==", value = 1 }
+
+# ---------------------------------------------------------------- topology
+
+[entry.policy-no-jwt]
+clause = "topology.package.exchange-optional"
+metric = "topology.exchange_stack_leaks"
+kind   = "size"
+tier   = "gate"
+method = { test = "contextful_ci::topology::only_the_binary_of_this_workspace_reaches_the_exchange_stack" }
+target = { op = "==", value = 0 }
+
+[entry.store-write-deny-set]
+clause = "topology.package.store-write-engine-free"
+metric = "topology.store_write.forbidden_packages"
+kind   = "size"
+tier   = "gate"
+method = { issue = 80 }
+target = { op = "==", value = 0 }
+
+[entry.no-sqlite-link]
+clause = "store.lay-out.components"
+metric = "topology.libsqlite3_sys_links"
+kind   = "size"
+tier   = "gate"
+method = { issue = 55 }
+target = { op = "==", value = 0 }
+
+[entry.one-arrow-tree]
+clause = "topology.package.crate-map"
+metric = "topology.arrow_versions.max"
+kind   = "size"
+tier   = "gate"
+method = { issue = 32 }
+target = { op = "==", value = 1 }
+
+[entry.network-free-runtime]
+clause = "topology.package.edge-eligibility"
+metric = "topology.runtime.network_packages"
+kind   = "size"
+tier   = "gate"
+method = { issue = 49 }
+target = { op = "==", value = 0 }
+
+[entry.network-free-decoder]
+clause = "topology.package.edge-eligibility"
+metric = "topology.decoder.network_packages"
+kind   = "size"
+tier   = "gate"
+method = { issue = 46 }
+target = { op = "==", value = 0 }
+
+[entry.profile-footprint]
+clause = "assurance.gate.footprint"
+metric = "footprint.profiles_over_budget"
+kind   = "size"
+tier   = "gate"
+method = { issue = 77 }
+target = { op = "==", value = 0 }
+
+# ---------------------------------------------------------------- read
+
+[entry.read-session-one-engine]
+clause = "read.retrieve.ranked-call"
+metric = "session.engine_opens"
+kind   = "test"
+tier   = "gate"
+method = { issue = 40 }
+target = { op = "==", value = 1 }
+
+[entry.read-session-latency]
+clause = "read.retrieve.ranked-call"
+metric = "session.warm_p95_ms"
+kind   = "bench"
+tier   = "trend"
+method = { issue = 40 }
+
+[entry.vector-recall]
+clause = "read.retrieve.sidecar-generates-candidates"
+metric = "retrieval.vector.recall_at_k"
+kind   = "eval"
+tier   = "gate"
+method = { issue = 43 }
+target = { op = ">=", value = 0.95 }
+
+[entry.vector-filtered-recall]
+clause = "read.retrieve.sidecar-oversampling"
+metric = "slices.filtered.retrieval.vector.recall_at_k"
+kind   = "eval"
+tier   = "scheduled"
+method = { issue = 43 }
+target = { op = ">=", value = 0.95 }
+
+[entry.vector-resident]
+clause = "read.retrieve.sidecar-size-cap"
+metric = "vector.probe.rss_anon_delta_mib"
+kind   = "size"
+tier   = "scheduled"
+method = { issue = 43 }
+target = { op = "<", value = 64 }
+
+[entry.lexical-deep-recall]
+clause = "read.retrieve.candidate-window"
+metric = "slices.deep_recall.retrieval.lexical.hit_rate_at_k"
+kind   = "eval"
+tier   = "gate"
+method = { issue = 44 }
+target = { op = "==", value = 1 }
+
+[entry.lexical-sidecar-cost]
+clause = "read.retrieve.candidate-window"
+metric = "lexical.postings_scored_per_query"
+kind   = "bench"
+tier   = "scheduled"
+method = { issue = 44 }
+
+[entry.word-boundary-precision]
+clause = "read.retrieve.relevance-floor"
+metric = "retrieve.substring_trap.returned"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_core::read::retrieve::a_substring_trap_row_scores_zero_and_never_returns" }
+target = { op = "==", value = 0 }
+
+[entry.cjk-subrun]
+clause = "read.retrieve.script-split-matching"
+metric = "retrieve.cjk.reciprocal_rank"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_core::read::retrieve::a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg" }
+target = { op = "==", value = 1 }
+
+[entry.row-key-dedup]
+clause = "read.retrieve.row-key-dedup"
+metric = "retrieval.hybrid.duplicate_row_rate"
+kind   = "eval"
+tier   = "gate"
+method = { issue = 79 }
+target = { op = "==", value = 0 }
+
+[entry.memory-evidence-gate]
+clause = "read.recall.evidence-unresolved"
+metric = "recall.unresolved_admitted"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_core::memory::recall::unresolvable_evidence_suppresses_the_claim" }
+target = { op = "==", value = 0 }
+
+[entry.memory-live-claims]
+clause = "read.recall.ranked-arm"
+metric = "recall.expired_returned"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_memory::synthesize::a_ranked_arm_over_claims_serves_live_claims_alone" }
+target = { op = "==", value = 0 }
+
+# ---------------------------------------------------------------- assurance
+
+[entry.eval-absolute-floors]
+clause = "assurance.baseline.floors-are-absolute"
+metric = "floors.red_on_baseline_pass"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_eval::baseline::each_floor_reds_a_run_its_baseline_passes" }
+target = { op = "==", value = 4 }
+
+[entry.eval-through-enforcement]
+clause = "assurance.evaluate.policy-labels"
+metric = "retrieval.hybrid.forbidden_row_rate"
+kind   = "eval"
+tier   = "gate"
+method = { issue = 78 }
+target = { op = "==", value = 0 }
+
+[entry.native-golden-floor]
+clause = "assurance.baseline.native-gate"
+metric = "retrieval.hybrid.r_precision"
+kind   = "eval"
+tier   = "gate"
+method = { issue = 78 }
+target = { op = ">=", value = 0.60 }
+mirrors = "assurance.evaluate.precision-floor"

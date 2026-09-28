@@ -218,3 +218,163 @@ fn a_refresh_requesting_a_replicate_off_table_refuses() {
     r.syncer.pull(&PullScope { tables: vec![], replicate_off: vec!["filings".into()] }).unwrap();
     assert!(!r.root().join("tables/filings").exists());
 }
+
+/// Seed of the interrupted-pull sampler.
+const PULL_SAMPLER_SEED: u64 = 0x5eed_0005;
+/// Sampled (kill point, fault) pairs, after one clean pull.
+const PULL_SAMPLES: u64 = 32;
+
+/// What a sampled pull meets at its `at`-th object get.
+#[derive(Clone, Copy, Debug)]
+enum Fault {
+    /// The get fails, once.
+    Transport,
+    /// The object is absent, once.
+    MissingOnce,
+    /// The object is absent on every later get of its key.
+    MissingAlways,
+    /// The object arrives with other bytes.
+    Tampered,
+}
+
+#[derive(Default)]
+struct Sampler {
+    /// The node root a reader inspects at every get; `None` while the sampler is idle.
+    root: Option<std::path::PathBuf>,
+    /// The kill point and its fault; `None` runs a clean pull.
+    plan: Option<(usize, Fault)>,
+    gets: usize,
+    lost_key: Option<String>,
+    /// Snapshot ids a reader met, `Err` holding a pointer ahead of its parts.
+    seen: Vec<Result<Option<String>, String>>,
+}
+
+/// The snapshot a reader of `root` meets: the local pointer's, once every part its
+/// manifest names is home; `Err` for a pointer ahead of its parts.
+fn reader(root: &std::path::Path) -> Result<Option<String>, String> {
+    let table = root.join("tables/filings");
+    let Ok(bytes) = std::fs::read(table.join("_pointer.json")) else { return Ok(None) };
+    let pointer: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| format!("pointer: {e}"))?;
+    let id = pointer["snapshot_id"].as_str().ok_or("a pointer names no snapshot")?.to_string();
+    let dir = table.join("data/snapshots").join(&id);
+    let manifest: serde_json::Value = std::fs::read(dir.join("_manifest.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .ok_or_else(|| format!("{id}: no manifest"))?;
+    let parts = manifest["parts"].as_array().ok_or_else(|| format!("{id}: no parts"))?;
+    match parts.iter().filter_map(|p| p["name"].as_str()).find(|n| !dir.join(n).exists()) {
+        Some(missing) => Err(format!("{id}: `{missing}` absent")),
+        None => Ok(Some(id)),
+    }
+}
+
+/// Fold and publish the landed runs as the next snapshot, returning its id.
+fn publish_next(a: &crate::support::Node, now: &str) -> String {
+    let held = a.syncer.acquire("filings", at(now)).unwrap();
+    let FoldOutcome::Folded { snapshot_id, .. } = fold(&a.syncer.store, &TableDecl::named("filings"), at(now)).unwrap() else { panic!() };
+    a.syncer.push(at(now)).unwrap();
+    a.syncer.publish("filings", &snapshot_id, &held).unwrap();
+    snapshot_id.to_string()
+}
+
+/// One sampled pull: a node holding a first snapshot pulls the next under `plan`, a reader
+/// looking at its store before every object get and once after. Returns the prior and next
+/// snapshot ids, the pull's outcome and the sampler.
+fn sampled_pull(plan: Option<(usize, Fault)>) -> (String, String, Result<(), String>, Sampler) {
+    let (_dir, b, a) = pushed();
+    let first = publish_next(&a, NOW);
+    let sampler = Arc::new(std::sync::Mutex::new(Sampler::default()));
+    let s = sampler.clone();
+    let scripted: Arc<dyn ObjectStore> = Arc::new(Scripted {
+        inner: b.clone(),
+        script: Script {
+            on_get: Some(Box::new(move |key| {
+                let mut s = s.lock().unwrap();
+                let Some(root) = s.root.clone() else { return None };
+                let seen = reader(&root);
+                s.seen.push(seen);
+                let at = s.gets;
+                s.gets += 1;
+                if s.lost_key.as_deref() == Some(key) {
+                    return Some(Ok(None));
+                }
+                match s.plan {
+                    Some((k, fault)) if k == at => match fault {
+                        Fault::Transport => Some(Err(contextful_core::store::object::ObjectError::Transport("sampled".into()))),
+                        Fault::MissingOnce => Some(Ok(None)),
+                        Fault::MissingAlways => {
+                            s.lost_key = Some(key.to_string());
+                            Some(Ok(None))
+                        }
+                        Fault::Tampered => Some(Ok(Some((b"sampled".to_vec(), "\"sampled\"".into())))),
+                    },
+                    _ => None,
+                }
+            })),
+            ..Script::default()
+        },
+    });
+    let c = node("ingest-b", scripted, "");
+    c.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(reader(&c.root()), Ok(Some(first.clone())), "the first pull brings the first snapshot home");
+
+    a.land("run-2", json!([{"id": 2, "title": "b"}]), "2030-01-01T01:30:00Z");
+    a.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
+    let next = publish_next(&a, "2030-01-01T02:00:00Z");
+    assert_ne!(first, next);
+    {
+        let mut s = sampler.lock().unwrap();
+        s.root = Some(c.root());
+        s.plan = plan;
+    }
+    let outcome = c.syncer.pull(&PullScope::default()).map(|_| ()).map_err(|e| e.to_string());
+    let mut s = std::mem::take(&mut *sampler.lock().unwrap());
+    s.seen.push(reader(&c.root()));
+    (first, next, outcome, s)
+}
+
+/// Over a seeded sample of kill points and faults across every object get of a pull, a
+/// reader never meets a pointer ahead of its parts, and an interrupted or refused pull
+/// leaves the prior snapshot in place.
+#[test]
+fn a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot() {
+    let (_, next, outcome, clean) = sampled_pull(None);
+    assert_eq!(outcome, Ok(()));
+    assert_eq!(clean.seen.last(), Some(&Ok(Some(next))), "a clean pull advances to the next snapshot");
+    let gets = clean.gets;
+    assert!(gets >= 3, "a pull reads the manifest, the parts and the pointer: {gets}");
+
+    let faults = [Fault::Transport, Fault::MissingOnce, Fault::MissingAlways, Fault::Tampered];
+    let mut state = PULL_SAMPLER_SEED;
+    let mut draw = |n: usize| {
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((state >> 33) % n as u64) as usize
+    };
+    let (mut torn, mut observations, mut failed) = (0u64, clean.seen.len() as u64, 0u64);
+    for _ in 0..PULL_SAMPLES {
+        let plan = (draw(gets), faults[draw(faults.len())]);
+        let (first, next, outcome, s) = sampled_pull(Some(plan));
+        observations += s.seen.len() as u64;
+        for seen in &s.seen {
+            match seen {
+                Ok(Some(id)) if *id == first || *id == next => {}
+                other => {
+                    torn += 1;
+                    eprintln!("{plan:?}: a reader met {other:?}");
+                }
+            }
+        }
+        // An interrupted or refused pull leaves the prior snapshot.
+        if let Err(e) = &outcome {
+            failed += 1;
+            if s.seen.last() != Some(&Ok(Some(first.clone()))) {
+                torn += 1;
+                eprintln!("{plan:?}: the pull refused ({e}) and left {:?}", s.seen.last());
+            }
+        }
+    }
+    eprintln!("pull sampler: {PULL_SAMPLES} samples over {gets} gets, {failed} pulls refused, {torn} torn of {observations} reads");
+    contextful_eval::record::emit("pull-no-torn-snapshot", torn as f64, observations, PULL_SAMPLER_SEED);
+    assert!(failed > 0, "the sample interrupts at least one pull");
+    assert_eq!(torn, 0, "{torn} torn reads over {observations} observations");
+}

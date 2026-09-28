@@ -14,6 +14,7 @@ build             = {}
 gate              = {}
 evaluate          = {}
 baseline          = {}
+measure           = {}
 
 [error]
 FormalPackageDependency          = { clause = "assurance.model.declared-dependency", gloss = "The Lean package manifest declares an external library." }
@@ -64,6 +65,9 @@ BaselineRunStampMismatch         = { clause = "assurance.baseline.run-stamp-drif
 GoldenSetIngested                = { clause = "assurance.baseline.answer-key-in-the-store", gloss = "A golden set reaching the store it measures." }
 GoldenRedactionFailed            = { clause = "assurance.baseline.generated-redaction", gloss = "A generated golden the write-time redaction pass cannot clear." }
 TraceExportOutOfPerimeter        = { clause = "assurance.baseline.trace-export", gloss = "A hosted trace endpoint configured for a run touching a deployed store." }
+MeasureEntryUnresolved           = { clause = "assurance.measure.unresolved-entry", gloss = "A ledger entry naming no clause, method or metric path." }
+MeasureRecordMissing             = { clause = "assurance.measure.record", gloss = "A gate-tier method finishing without writing its record." }
+MeasureSeedMismatch              = { clause = "assurance.measure.seed-mismatch", gloss = "A record carrying another seed than its ledger entry declares." }
 
 [limit]
 assurance-formal-build-time      = { clause = "assurance.model.build-cost", value = 60, unit = "s", basis = "chosen", gloss = "Cold elaboration of the Lean package." }
@@ -94,3 +98,6 @@ assurance-gated-mean-cases       = { clause = "assurance.baseline.unresolvable-p
 assurance-interval-level         = { clause = "assurance.baseline.interval", value = 95, unit = "percent", basis = "chosen", gloss = "Confidence level of a judged figure's interval." }
 assurance-bootstrap-resamples    = { clause = "assurance.baseline.interval", value = 1000, unit = "resamples", basis = "chosen", gloss = "Bootstrap resamples behind a judged figure's interval." }
 assurance-test-first-base-run    = { clause = "assurance.test.base-run-bound", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock one test-first execution against the base runs for, its build excluded." }
+assurance-timing-iterations      = { clause = "assurance.measure.timing-iterations", value = 200, unit = "repeats", basis = "chosen", gloss = "Warm repeats per timed batch." }
+assurance-timing-batches         = { clause = "assurance.measure.timing-batches", value = 5, unit = "repeats", basis = "chosen", gloss = "Batches behind a timed figure." }
+assurance-trend-band             = { clause = "assurance.measure.trend-band", value = 25, unit = "percent", basis = "chosen", gloss = "Worsening past which a trend figure is annotated." }

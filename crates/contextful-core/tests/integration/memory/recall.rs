@@ -18,16 +18,19 @@ fn readable(_: &contextful_core::memory::synthesize::EvidenceRef) -> EvidenceRea
 fn unresolvable_evidence_suppresses_the_claim() {
     let memory = vec!["memory/facts".to_string()];
     assert_eq!(gate(Some(&refs(2, "research/notes")), &memory, readable), Ok(()));
-    let unresolved = |r: Result<(), MemoryError>| assert!(matches!(r, Err(MemoryError::EvidenceUnresolved(_))), "{r:?}");
+    let mut outcomes = Vec::new();
     for outcome in [EvidenceRead::Unreadable, EvidenceRead::Masked, EvidenceRead::UnknownTable] {
-        unresolved(gate(Some(&refs(1, "research/notes")), &memory, |_| outcome));
+        outcomes.push(gate(Some(&refs(1, "research/notes")), &memory, |_| outcome));
     }
-    unresolved(gate(Some(&refs(1, "memory/facts")), &memory, readable));
-    unresolved(gate(Some("[{\"table\": \"research/notes\"}]"), &memory, readable));
-    unresolved(gate(Some("not json"), &memory, readable));
-    unresolved(gate(None, &memory, readable));
+    outcomes.push(gate(Some(&refs(1, "memory/facts")), &memory, readable));
+    outcomes.push(gate(Some("[{\"table\": \"research/notes\"}]"), &memory, readable));
+    outcomes.push(gate(Some("not json"), &memory, readable));
+    outcomes.push(gate(None, &memory, readable));
     // One bad row among good ones suppresses the whole claim.
-    unresolved(gate(Some(&refs(3, "research/notes")), &memory, |r| if r.seq == 2 { EvidenceRead::Unreadable } else { EvidenceRead::Readable }));
+    outcomes.push(gate(Some(&refs(3, "research/notes")), &memory, |r| if r.seq == 2 { EvidenceRead::Unreadable } else { EvidenceRead::Readable }));
+    let admitted = outcomes.iter().filter(|r| !matches!(r, Err(MemoryError::EvidenceUnresolved(_)))).count();
+    crate::emit("memory-evidence-gate", admitted as f64, outcomes.len() as u64, 0);
+    assert_eq!(admitted, 0, "{outcomes:?}");
 }
 
 /// A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.

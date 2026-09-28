@@ -183,8 +183,12 @@ fn a_pass_losing_the_pointer_publishes_nothing() {
     let a = staged(&f, &d, "2030-01-01T01:00:00Z");
     let b = staged(&f, &d, "2030-01-01T01:00:00.5Z");
     let b_id = b.manifest.snapshot_id.clone();
-    let Committed::Published(won) = commit(&f.store, a).unwrap() else { panic!() };
-    assert_eq!(commit(&f.store, b).unwrap(), Committed::Lost);
+    let first = commit(&f.store, a).unwrap();
+    let second = commit(&f.store, b).unwrap();
+    let publishes = [&first, &second].iter().filter(|c| matches!(c, Committed::Published(_))).count();
+    contextful_eval::record::emit("fold-single-publisher", publishes as f64, 2, 0);
+    let Committed::Published(won) = first else { panic!() };
+    assert_eq!(second, Committed::Lost);
     assert_eq!(f.store.pointer("events").unwrap().unwrap().0.snapshot_id, won.snapshot_id);
     let loser = f.store.snapshot_dir("events", &b_id).unwrap();
     assert!(loser.is_dir());

@@ -104,3 +104,20 @@ Revisit: the engine resolves extensions against the host binary's type tables; a
 
 Consequences: inline unit tests satisfy the workspace stage but not the red check.
 Revisit: the base-commit build exceeds the stage wall clock; the refactor trailer appears on changes that alter a public surface.
+
+## Tracked targets gate on counts and record per commit in notes
+
+**Status:** proposed
+
+`assurance.measure` keeps one ledger of tracked targets, each owned by a clause. A gate-tier target measures a count, a within-run ratio or a locked-resolve size and decides the evaluate stage. Wall-clock and resident-memory figures are trend-tier: p50 and p95 over repeated batches on a stamped runner, annotated past a band, gating nothing. Each default-branch run attaches its report to the measured commit under `refs/notes/measures`; verdicts read in-tree baselines and floors alone.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Count-first gate, trend tier, notes history *(chosen)* | — | Notes need a fetch refspec and one push credential; a timing regression surfaces as an annotation, not a red check. |
+| Gate on wall-clock p95 against a committed baseline | Determinism | Shared containers move p95 past any useful band; the check flakes until ignored. |
+| History as a committed JSONL file | Branch policy | A bot commit on the default branch per run and a conflict with every open change. |
+| History in an external artifact store | Offline verdicts and queries | A second store to operate, reachable only with network credentials. |
+| A benchmark framework's saved baselines | One home | Baselines live under `target/`, reclaimed after each stage, with statistics apart from the run report. |
+
+Consequences: a red evaluate stage is a correctness fact; timing movement is visible per commit and argued in review.
+Revisit: a dedicated runner class holds p95 within 5 percent across runs.

@@ -21,6 +21,8 @@ thiserror = "2"
 libc = "0.2"
 
 [dev-dependencies]
+# Ledger measures record their figures (`assurance.measure.record`).
+contextful-eval = { path = "../../tools/eval" }
 tempfile = "3"
 
 [[test]]

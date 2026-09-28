@@ -15,8 +15,8 @@ discipline and retrieval quality into a red or green verdict.
 ## In plain words
 
 Think of **Contextful** as a librarian who makes two promises: you only get the books
-your card allows, and two librarians never stamp the same book at once. Assurance is how
-anyone checks those promises without taking the librarian's word for it.
+your card allows, and two librarians never stamp the same book at once. Assurance checks
+those promises without taking the librarian's word.
 
 - **The math check.** A proof assistant reads the rulebook, not the code, and proves the
   promises follow from it. An auditor confirms no proof hides a skipped step
@@ -30,7 +30,7 @@ anyone checks those promises without taking the librarian's word for it.
   ({{assurance.gate.stage-sequence}}), and search results are scored against rows that
   must never appear ({{assurance.evaluate.forbidden-row-rate}}).
 
-The promise printed on the box is never bigger than what these checks show.
+The promise on the box never exceeds what these checks show.
 
 ## How it works
 
@@ -87,13 +87,16 @@ store ({{assurance.evaluate.through-the-store}}) under policy labels
 ({{assurance.evaluate.policy-labels}}), and baselines only ever rise
 ({{assurance.baseline.raise-only}}).
 
+One ledger keys each tracked target to its clause ({{assurance.measure.ledger}}): a
+gate-tier count reds the evaluate stage ({{assurance.measure.count-first}}), and timings
+only annotate ({{assurance.measure.trend-band}}).
+
 ## Worked example
 
-A contributor changes the engine's layer composition so that masking runs before
-filtering.
+A contributor reorders the engine's layers so masking runs before filtering.
 
-It carries a test failing against the base commit, or the test-first stage stops it. The
-gate then reaches the formal stage
+Its test fails against the base commit, or the test-first stage stops it. The gate
+then reaches the formal stage
 ({{assurance.gate.formal-stage}}).
 
 If the contributor also edits the composition theorem's Lean statement to match, the
@@ -110,10 +113,10 @@ form ({{assurance.differential-test.minimized}}), enters the counterexample corp
 on every later run ({{assurance.differential-test.corpus-replay}}), reproducible from the
 recorded seed ({{assurance.differential-test.seed}}).
 
-If the reorder survives both, evaluation still fails if a
+Past both, evaluation fails if a
 must-not-retrieve row appears ({{assurance.evaluate.forbidden-row-rate}}).
 
-The published claim never outruns this evidence. The composition theorem is not a
+The composition theorem is not a
 mediation theorem ({{assurance.prove.mediation-from-composition}}), stages are not claimed
 to commute ({{assurance.prove.commutation-claim}}), and a clause pins at most one theorem
 beside one test ({{corpus.state.theorem-beside-test}}).
@@ -127,3 +130,4 @@ beside one test ({{corpus.state.theorem-beside-test}}).
 | What may the claim say? | `assurance.scope-claim` |
 | Which gate stage runs what? | `assurance.gate` |
 | When does quality go red? | `assurance.evaluate`, `assurance.baseline` |
+| Which targets are measured? | `assurance.measure` |

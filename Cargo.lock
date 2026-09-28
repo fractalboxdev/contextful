@@ -758,6 +758,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "contextful-eval",
  "serde_json",
  "tempfile",
  "toml",
@@ -813,6 +814,7 @@ dependencies = [
  "arrow-schema 57.3.1",
  "arrow-select 57.3.1",
  "contextful-core",
+ "contextful-eval",
  "contextful-policy",
  "duckdb",
  "getrandom 0.3.4",
@@ -844,6 +846,7 @@ name = "contextful-engine"
 version = "0.1.0"
 dependencies = [
  "contextful-core",
+ "contextful-eval",
  "getrandom 0.3.4",
  "libc",
  "serde",
@@ -858,6 +861,8 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]
@@ -866,6 +871,7 @@ version = "0.1.0"
 dependencies = [
  "contextful-context",
  "contextful-core",
+ "contextful-eval",
  "contextful-policy",
  "serde",
  "serde_json",
@@ -881,6 +887,7 @@ dependencies = [
  "base64 0.22.1",
  "biscuit-auth",
  "contextful-core",
+ "contextful-eval",
  "ed25519-dalek",
  "hex",
  "hmac",
@@ -926,6 +933,7 @@ version = "0.1.0"
 dependencies = [
  "contextful-context",
  "contextful-core",
+ "contextful-eval",
  "getrandom 0.3.4",
  "rustix 1.1.5",
  "serde",

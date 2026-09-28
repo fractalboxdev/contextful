@@ -1,22 +1,29 @@
 //! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
 //! pull-request workflow invoke the identical command.
 
+mod measure;
 mod topology;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
+use contextful_eval::ledger::Tier;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 /// Gate stages in run order. The pull-request workflow dispatches each as its own check.
-const STAGES: [&str; 5] = ["schema", "test-first", "workspace", "acceptance", "features"];
+const STAGES: [&str; 6] = ["schema", "test-first", "workspace", "acceptance", "evaluate", "features"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
 /// The features stage's own target directory, under the workspace root.
 const FEATURES_TARGET: &str = "target/features";
 const REFACTOR_TRAILER: &str = "refactor";
+/// Free disk a stage needs under the workspace before it begins work: 2 GiB
+/// (`assurance.gate.free-disk`).
+const STAGE_FREE_DISK_KIB: u64 = 2 * 1024 * 1024;
+/// The exit code of a stage refused for disk (`assurance.gate.free-disk`), `ENOSPC`'s number.
+const DISK_EXIT: i32 = 28;
 /// Wall clock one test-first execution against the base runs for, its build excluded: 300 s
 /// (`assurance.test.base-run-bound`). A run still going is killed with its process group
 /// and counts red, because a test that does not finish at base does not pass there.
@@ -68,6 +75,18 @@ enum Cmd {
     Mirrors,
     /// Hold the workspace's dependency graph to the topology contract's rules.
     Topology,
+    /// Resolve the target ledger and run its entries, or render their status.
+    Measure {
+        /// The tier to run; repeatable. Defaults to the gate tier.
+        #[arg(long = "tier", value_parser = ["gate", "trend", "scheduled", "all"])]
+        tiers: Vec<String>,
+        /// Write `evals/ledger.md` from the ledger instead of running any entry.
+        #[arg(long)]
+        status: bool,
+        /// With `--status`, refuse when the committed `evals/ledger.md` differs.
+        #[arg(long, requires = "status")]
+        check: bool,
+    },
 }
 
 /// A refusal the gate reports by its registered error name.
@@ -100,10 +119,32 @@ fn main() {
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
+        Cmd::Measure { tiers, status, check } => repo_root().and_then(|root| {
+            if status {
+                return measure::status(&root, check);
+            }
+            let all = [Tier::Gate, Tier::Trend, Tier::Scheduled];
+            let mut selected: Vec<Tier> = Vec::new();
+            for t in &tiers {
+                match t.as_str() {
+                    "gate" => selected.push(Tier::Gate),
+                    "trend" => selected.push(Tier::Trend),
+                    "scheduled" => selected.push(Tier::Scheduled),
+                    _ => selected.extend(all),
+                }
+            }
+            if selected.is_empty() {
+                selected.push(Tier::Gate);
+            }
+            selected.sort();
+            selected.dedup();
+            measure::run(&root, &selected)
+        }),
     };
     if let Err(e) = result {
         eprintln!("{e:#}");
-        std::process::exit(1);
+        let disk = e.downcast_ref::<Refusal>().is_some_and(|r| r.code == "BuildDiskPrecondition");
+        std::process::exit(if disk { DISK_EXIT } else { 1 });
     }
 }
 
@@ -115,11 +156,13 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
     let root = repo_root()?;
     for stage in STAGES.iter().filter(|s| selected.is_empty() || selected.iter().any(|x| x == *s)) {
         eprintln!("--- stage {stage}");
+        free_disk(&root, stage)?;
         match *stage {
             "schema" => {
                 secrets(&root)?;
                 mirrors(&root)?;
                 topology::check(&root)?;
+                measure::status(&root, true)?;
                 run(&root, "cargo", &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
             }
             "test-first" => {
@@ -131,9 +174,34 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
                 workspace(&root)?
             }
             "acceptance" => acceptance(&root)?,
+            "evaluate" => measure::evaluate(&root)?,
             "features" => features(&root)?,
             _ => unreachable!(),
         }
+    }
+    Ok(())
+}
+
+/// Refuse a stage starting with less than [`STAGE_FREE_DISK_KIB`] free on the filesystem
+/// holding the workspace, read through POSIX `df -Pk`.
+fn free_disk(root: &Path, stage: &str) -> Result<()> {
+    let out = Command::new("df").arg("-Pk").arg(root).output().context("running df")?;
+    if !out.status.success() {
+        bail!("df -Pk {}: {}", root.display(), String::from_utf8_lossy(&out.stderr).trim());
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    // The fourth field of the data line is the available space in KiB.
+    let available: u64 = text
+        .lines()
+        .nth(1)
+        .and_then(|l| l.split_whitespace().nth(3))
+        .and_then(|f| f.parse().ok())
+        .with_context(|| format!("df -Pk printed no available figure: {text}"))?;
+    if available < STAGE_FREE_DISK_KIB {
+        return Err(refuse(
+            "BuildDiskPrecondition",
+            format!("stage `{stage}` starts with {} MiB free under {}, below the 2048 MiB floor", available / 1024, root.display()),
+        ));
     }
     Ok(())
 }
