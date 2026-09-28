@@ -78,7 +78,7 @@ Revisit: workload identity becomes unattestable on a needed runtime; a broker be
 
 ## Egress passes one transport port and one pre-send hook ahead of resolution
 
-Status: proposed.
+Status: accepted.
 
 Context: the client resolves a name before any gate, a reservation sees no request, the model endpoint bypasses mediation, and `contextful-runtime` links its HTTP stack unconditionally.
 
