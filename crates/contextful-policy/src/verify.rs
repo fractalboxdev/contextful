@@ -31,7 +31,7 @@ pub const BISCUIT_FORMAT: &str = "biscuit";
 const ADMISSION_SURFACE: &str = "the checkpoint";
 
 /// The library's encoding: URL-safe base64, padded on output, either way on input.
-const TOKEN_BASE64: GeneralPurpose = GeneralPurpose::new(
+pub(crate) const TOKEN_BASE64: GeneralPurpose = GeneralPurpose::new(
     &base64::alphabet::URL_SAFE,
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );

@@ -1,14 +1,24 @@
 //! `disclosure.record` and `disclosure.attest`: the hash-linked chain, its numbered
 //! segments, the chain tip, the signed root closing each segment, and verification.
 
+use contextful_core::issue::SignatureAlgorithm;
 use contextful_policy::audit::{query_digest, verify, verify_signed, AuditEntry, AuditError, AuditLog, SignedRoot, SignedTip, AUDIT_SEGMENT_ENTRIES, GENESIS};
-use ed25519_dalek::SigningKey;
+use contextful_policy::issue::{SeedSigner, SignerKey};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn key() -> SigningKey {
-    SigningKey::from_bytes(&[7; 32])
+/// A deterministic key under `algorithm`, its private scalar every byte `byte`.
+fn seeded(byte: u8, algorithm: SignatureAlgorithm) -> SeedSigner {
+    let scheme = match algorithm {
+        SignatureAlgorithm::Ed25519 => "ed25519",
+        SignatureAlgorithm::Es256 => "secp256r1",
+    };
+    SeedSigner::from_seed(&format!("{scheme}-private/{}", hex::encode([byte; 32]))).unwrap()
+}
+
+fn key() -> SeedSigner {
+    seeded(7, SignatureAlgorithm::Ed25519)
 }
 
 fn attrs(agent: &str, rows: u64) -> Value {
@@ -63,7 +73,7 @@ fn entries_link_from_genesis_with_seq_starting_at_one() {
     assert_eq!(end.entry_hash, entries[2].entry_hash);
     let tip: SignedTip = serde_json::from_str(&fs::read_to_string(dir.path().join("chain.tip")).unwrap()).unwrap();
     assert_eq!((tip.seq, tip.entry_hash.as_str()), (3, entries[2].entry_hash.as_str()));
-    assert!(tip.verify(&key().verifying_key()));
+    assert!(tip.verify(&SignerKey::of(&key())));
 }
 
 #[test]
@@ -89,13 +99,13 @@ fn a_segment_closes_at_4096_entries_under_one_signed_root() {
     let root: SignedRoot = serde_json::from_str(&fs::read_to_string(root_file(dir.path(), 1)).unwrap()).unwrap();
     assert_eq!(root.count, AUDIT_SEGMENT_ENTRIES);
     assert_eq!(root.root, first.last().unwrap().entry_hash);
-    assert!(root.verify(&key().verifying_key()));
+    assert!(root.verify(&SignerKey::of(&key())));
 
     let second = lines(&segment(dir.path(), 2));
     assert_eq!(second.iter().map(|e| e.seq).collect::<Vec<_>>(), [AUDIT_SEGMENT_ENTRIES + 1]);
     assert_eq!(second[0].prev_hash, root.root);
     assert!(!root_file(dir.path(), 2).exists(), "an open segment carries no root");
-    assert_eq!(verify_signed(dir.path(), &key().verifying_key()).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 1);
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 1);
 }
 
 /// A disagreeing digest, a sequence gap, an absent chain beside `chain.tip` or a signed root, or, under the
@@ -141,17 +151,17 @@ fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     write_lines(&segment(dir.path(), 1), &entries);
     fs::write(dir.path().join("chain.tip"), json!({ "seq": 7, "entry_hash": entries[6].entry_hash }).to_string()).unwrap();
     assert_eq!(verify(dir.path()).unwrap().seq, 7, "the unsigned walk cannot see a truncation");
-    assert_eq!(broken_at(verify_signed(dir.path(), &key().verifying_key())), 7);
+    assert_eq!(broken_at(verify_signed(dir.path(), &SignerKey::of(&key()))), 7);
     assert_eq!(broken_at(AuditLog::open(dir.path(), key())), 7);
 
     // A tip signed under another key, and a chain with no tip at all.
     let dir = log_of(3);
     let entries = lines(&segment(dir.path(), 1));
-    let forged = SignedTip::sign(3, &entries[2].entry_hash, &SigningKey::from_bytes(&[9; 32])).unwrap();
+    let forged = SignedTip::sign(3, &entries[2].entry_hash, &seeded(9, SignatureAlgorithm::Ed25519)).unwrap();
     fs::write(dir.path().join("chain.tip"), serde_json::to_string(&forged).unwrap()).unwrap();
     assert_eq!(broken_at(AuditLog::open(dir.path(), key())), 3);
     fs::remove_file(dir.path().join("chain.tip")).unwrap();
-    assert_eq!(broken_at(verify_signed(dir.path(), &key().verifying_key())), 1);
+    assert_eq!(broken_at(verify_signed(dir.path(), &SignerKey::of(&key()))), 1);
 
     // A closed segment rewritten wholesale, re-linked, under a root with a garbage signature.
     let dir = tempfile::tempdir().unwrap();
@@ -190,7 +200,7 @@ fn a_second_writer_on_one_directory_is_refused() {
     drop(first);
     let mut second = AuditLog::open(dir.path(), key()).unwrap();
     assert_eq!(second.append(attrs("agent://b", 4)).unwrap().seq, 4);
-    assert_eq!(verify_signed(dir.path(), &key().verifying_key()).unwrap().seq, 4);
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 4);
 }
 
 #[test]
@@ -249,15 +259,35 @@ fn a_tip_beyond_the_chain_end_or_disagreeing_with_its_entry_breaks_the_chain() {
 fn a_root_under_a_foreign_key_or_over_another_digest_fails_signed_verification() {
     let dir = tempfile::tempdir().unwrap();
     AuditLog::open(dir.path(), key()).unwrap().append_all((0..AUDIT_SEGMENT_ENTRIES).map(|i| attrs("agent://a", i)).collect()).unwrap();
-    let foreign = SigningKey::from_bytes(&[9; 32]).verifying_key();
+    let foreign = SignerKey::of(&seeded(9, SignatureAlgorithm::Ed25519));
     assert_eq!(broken_at(verify_signed(dir.path(), &foreign)), AUDIT_SEGMENT_ENTRIES);
 
     let path = root_file(dir.path(), 1);
     let mut root: SignedRoot = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
     root.root = GENESIS.to_string();
-    assert!(!root.verify(&key().verifying_key()));
+    assert!(!root.verify(&SignerKey::of(&key())));
     fs::write(&path, serde_json::to_string(&root).unwrap()).unwrap();
     assert_eq!(broken_at(verify(dir.path())), AUDIT_SEGMENT_ENTRIES);
+}
+
+#[test]
+fn roots_and_tips_sign_through_the_signing_port_under_either_scheme() {
+    for algorithm in [SignatureAlgorithm::Ed25519, SignatureAlgorithm::Es256] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut log = AuditLog::open(dir.path(), seeded(7, algorithm)).unwrap();
+        log.append_all((0..AUDIT_SEGMENT_ENTRIES + 1).map(|i| attrs("agent://a", i)).collect()).unwrap();
+        drop(log);
+        let key = SignerKey::of(&seeded(7, algorithm));
+        let root: SignedRoot = serde_json::from_str(&fs::read_to_string(root_file(dir.path(), 1)).unwrap()).unwrap();
+        assert!(root.verify(&key), "{algorithm} root");
+        assert_eq!(verify_signed(dir.path(), &key).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 1);
+        // A reopen verifies under the port's key and continues.
+        assert_eq!(AuditLog::open(dir.path(), seeded(7, algorithm)).unwrap().append(attrs("agent://b", 0)).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 2);
+        // Another key, under either scheme, verifies nothing.
+        for other in [SignatureAlgorithm::Ed25519, SignatureAlgorithm::Es256] {
+            assert_eq!(broken_at(verify_signed(dir.path(), &SignerKey::of(&seeded(9, other)))), AUDIT_SEGMENT_ENTRIES);
+        }
+    }
 }
 
 #[test]
@@ -333,7 +363,7 @@ fn a_torn_unterminated_tail_past_the_tip_is_dropped_on_open() {
     let mut log = AuditLog::open(dir.path(), key()).unwrap();
     assert_eq!(log.tip(), &before);
     assert_eq!(log.append(attrs("agent://c", 3)).unwrap().seq, 3);
-    assert_eq!(verify_signed(dir.path(), &key().verifying_key()).unwrap().seq, 3);
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 3);
 
     // A malformed line that ends in a newline is no torn write, and still breaks the chain.
     let dir = log_of(2);

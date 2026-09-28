@@ -6,7 +6,7 @@ use contextful_core::claims::AuthorityBlock;
 use contextful_core::grant::{Action, Grant, TablePattern};
 use contextful_core::identify::Subject;
 use contextful_core::issue::{IssuancePolicy, Lifetime, MintContext, MintPlan, MintRequest, NodeRole, SignatureAlgorithm};
-use contextful_core::ports::FixedClock;
+use contextful_core::ports::{FixedClock, SigningPort};
 use contextful_core::revoke::Denylist;
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
@@ -53,7 +53,7 @@ pub fn dana() -> Subject {
     }
 }
 
-pub fn plan_for(signer: &SeedSigner, subject: Subject, grants: Vec<Grant>) -> MintPlan {
+pub fn plan_for(signer: &dyn SigningPort, subject: Subject, grants: Vec<Grant>) -> MintPlan {
     let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
     let mut req = MintRequest::custody(subject, grants);
     req.lifetime = Lifetime::Requested(TTL);

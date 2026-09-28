@@ -242,10 +242,12 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *P3*
 - `unresolvable-key` — A set issuer key reference that resolves to no material raises `IssuerKeyUnresolvable`; no local key is fabricated.
   *P3*
-- `signing-port` — Minting runs through one signing port. A seed file, a secret reference resolved at mint time, and a remote signing oracle are adapters behind it.
+- `signing-port` — One signing port signs every credential's authority block and every audit root and tip; no mint path reads a private key. Seed files, secret references resolved at mint time and remote signing oracles are its adapters.
   *A-authority*
 - `oracle-custody` — Under the oracle adapter the seed stays inside the custodian, which records each mint as a signing call.
   *A-authority*
+- `signature-encoding` — Through the port, an Ed25519 key is 32 raw bytes signing 64; an ES256 key is a SEC1 P-256 point signing ECDSA over SHA-256 of the message, encoded as ASN.1 DER.
+  *because a hardware or cloud custodian adapter is written against the port alone, and the credential format verifies ES256 only in DER*
 - `algorithm` — A credential names Ed25519, the default, or ECDSA over P-256; the pinned key's scheme is authoritative.
   *A-authority*
 - `algorithm-mismatch` — A credential naming a scheme other than its pinned key's raises `SignatureAlgorithmMismatch`.
