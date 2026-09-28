@@ -815,6 +815,7 @@ dependencies = [
  "arrow-select 57.3.1",
  "contextful-core",
  "contextful-eval",
+ "contextful-fs",
  "contextful-policy",
  "duckdb",
  "getrandom 0.3.4",
@@ -847,6 +848,7 @@ version = "0.1.0"
 dependencies = [
  "contextful-core",
  "contextful-eval",
+ "contextful-fs",
  "getrandom 0.3.4",
  "libc",
  "serde",
@@ -863,6 +865,15 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "contextful-fs"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "libc",
+ "tempfile",
 ]
 
 [[package]]

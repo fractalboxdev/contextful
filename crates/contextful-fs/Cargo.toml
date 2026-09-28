@@ -1,0 +1,24 @@
+[package]
+name = "contextful-fs"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# Filesystem primitives the store and the engine share: a private staging sibling and an
+# exclusive create that publishes a staged file without hard links. It depends on no other
+# workspace package, so both halves link it without crossing between them.
+
+[dependencies]
+getrandom = "0.3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"

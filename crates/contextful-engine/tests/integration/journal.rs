@@ -265,3 +265,20 @@ fn a_released_claim_keeps_its_lock_file() {
     let lock = dir.path().join("journal/x-1").join(format!("{}.lock", key().digest()));
     assert!(lock.exists(), "a lock file unlinked under its lock lets two holders each lock their own inode");
 }
+
+/// A journal on an exFAT volume, which holds no hard links, claims a step, records its value
+/// once, and replays it.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_journal_on_exfat_records_a_step_and_replays_it() {
+    let volume = contextful_fs::test_volume::ExfatVolume::mount();
+    let j = Journal::open(&volume.path().join("journal"));
+    let effects = AtomicUsize::new(0);
+    let mut effect = || {
+        effects.fetch_add(1, Ordering::SeqCst);
+        Ok(b"recorded on exFAT".to_vec())
+    };
+    assert_eq!(j.step(&key(), "run-a", &live, &Never, &always, &mut effect).unwrap(), Resolved::Recorded(b"recorded on exFAT".to_vec()));
+    assert_eq!(j.step(&key(), "run-b", &live, &Never, &always, &mut effect).unwrap(), Resolved::Replayed(b"recorded on exFAT".to_vec()));
+    assert_eq!(effects.load(Ordering::SeqCst), 1);
+}
