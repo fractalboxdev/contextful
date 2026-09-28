@@ -75,6 +75,40 @@ Revisit: private set intersection replaces the pepper; an attested enclave join 
 Consequences: a chain gap has one cause; a compromised node cannot truncate history replicated roots cover.
 Revisit: audit writes replicate to a second store; group commit sustains less throughput than the reference read rate.
 
+## An append group pays one sync, and the tip signs at segment close
+
+**Status:** proposed
+
+Context: an append that syncs its segment, a temporary tip file and the tip's directory, then signs the tip, pays three full syncs (`F_FULLFSYNC` on macOS) and one signature per read.
+Decision: `disclosure.record.group-commit` holds the budget. Concurrent appends form a group; one data sync of the segment covers every member, which then releases its rows, or every member raises `AuditEntryUnpersisted`. Opening a segment adds one directory sync. The tip signs at segment close, on idle and at export.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One sync per group, tip at close, idle and export *(chosen)* | — | One failed sync refuses the whole group; the open segment's unsigned tail truncates undetected. |
+| Three syncs and a signature per append | Syncs per read | Append latency grows with every durable write the tip needs. |
+| Sync and sign the tip per group | Syncs per read | Three syncs per group protect a tail no replicated root covers yet. |
+| Delay appends to fill larger groups | Lone-read latency | A single reader waits out the window. |
+
+Criteria: rows never leave before their entry is durable, fixed; syncs per read decided it; truncation detectability.
+Consequences: throughput scales with concurrency, not sync latency; the unsigned tail is bounded by segment close and idle. The section is accepted once a test counts one sync per group and a p99 append benchmark on the reference target states its method and number.
+
+## Audit format v1 is versioned, whole-entry canonical and Merkle-rooted
+
+**Status:** proposed
+
+Context: a v0 entry digests `seq`, `prev_hash` and its attributes, and a segment root is the last entry hash, so one entry proves membership only with its whole segment. Every released format verifies forever.
+Decision: each v1 entry carries its format version, and its digest covers the whole entry under RFC 8785 canonical JSON. A chain header fixes the digest, SHA-256 or BLAKE3, and the segment size. A segment root is an RFC 6962 Merkle tree hash, so each entry has an inclusion proof. Roots sign through `SigningPort`, tagged by algorithm. A v0 chain verifies under v0 rules.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Versioned whole-entry digest, per-chain header, Merkle root *(chosen)* | — | Two verifier paths kept forever; canonical encoding per append; proofs grow with segment size. |
+| Keep v0 | Per-entry evidence | Membership needs the whole segment; header fields sit outside the digest. |
+| One digest for every chain | Embedder fit | A verifier pinned to the other digest cannot read the chain. |
+| Sign every entry | Syncs per read | One signature per read, which group commit amortizes away. |
+
+Criteria: offline per-entry evidence decided it; every released version verifies; append cost; hardware-held keys.
+Consequences: `disclosure.record.segment` and `disclosure.attest.broken-chain` restate over v1 on acceptance.
+
 ## Erasure is a forced rewrite, a bounded cascade and a measured receipt
 
 `disclosure.erase` rewrites columnar files under the complement of the tenant grant filter; an undeclared subject column raises `ErasureSubjectUndeclared`. The cascade walks provenance to 16 hops, else `ErasureCascadeUnbounded` commits nothing; fact reads refuse with `ErasureRestagingRequired` until re-synthesis. Files holding erased rows are rewritten or collected within 24 h. A token-presented purge raises `PurgeRequiresOwner`. `disclosure.receipt` attests rewrite-and-exclude over the canonical store, names exclusions in `coverage`, and widens only with `receipt_version`.

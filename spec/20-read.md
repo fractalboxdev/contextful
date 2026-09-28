@@ -278,6 +278,8 @@ Locality of the bytes a read touches, and reuse of a result across requests.
   *P4*
 - `keep-warm-is-per-deployment` — A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.
 
+unsettled: Does session and engine setup exceed a quarter of warm `Face::query` p95 at 50 unfolded runs, admitting a pooled engine? owner: read-path affects: read.cache
+
 ## resolve-pin
 
 Resolution of a named published-model build at read time, and the state each response echoes.
