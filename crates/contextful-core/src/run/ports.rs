@@ -73,6 +73,12 @@ impl<S: Source + ?Sized> Source for Box<S> {
     }
 }
 
+impl<S: Source + ?Sized> Source for &mut S {
+    fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        (**self).pull(request, cancel)
+    }
+}
+
 /// One run's commit to one table: every batch in pull order, and the position the rows
 /// behind it reach.
 #[derive(Debug, Clone, PartialEq)]
