@@ -261,7 +261,7 @@ fn a_landing_rereads_the_writers_authority() {
 }
 
 /// A row reaches the model through the connector's data fence: labelled with its source
-/// table, free of control characters, and cut at the row's character cap.
+/// table, its control characters escaped to JSON text, and cut at the row's character cap.
 #[test]
 fn a_row_reaches_the_model_labelled_clean_and_capped() {
     use contextful_core::connector::infer::TRUNCATION_MARK;
@@ -274,7 +274,7 @@ fn a_row_reaches_the_model_labelled_clean_and_capped() {
     pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
     let sent = prompt(&inference, 0);
     assert!(sent.contains("<<<data label=\"research/notes\" ref=\"research/notes#run-0001:0\""), "{sent}");
-    assert!(sent.contains("is Acme's CFO.") && !sent.contains('\u{1b}'));
+    assert!(sent.contains("Dana\\u001b[2J is Acme's CFO.") && !sent.contains('\u{1b}'), "{sent}");
     assert!(sent.contains(&format!("{TRUNCATION_MARK}\n<<<end ")), "the row ends in the truncation mark");
 }
 
