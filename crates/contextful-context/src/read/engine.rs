@@ -127,6 +127,13 @@ impl SqlEngine {
         Ok(engine)
     }
 
+    /// An unlocked connection for operator text, which runs raw
+    /// (`read.guard.statement-provenance`): local files and table functions stay
+    /// reachable, and no extension installs or autoloads.
+    pub fn raw() -> Result<SqlEngine, ReadFault> {
+        SqlEngine::connect()
+    }
+
     /// A connection for one session: the mask functions holding the pepper, the subject
     /// and tenant relations filled through parameters, and one create-or-replace view per
     /// registered relation. No view directory exists on disk

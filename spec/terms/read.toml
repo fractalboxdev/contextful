@@ -4,6 +4,7 @@
 register       = {}
 guard          = {}
 respond        = {}
+query          = {}
 retrieve       = {}
 rank           = {}
 cache          = {}

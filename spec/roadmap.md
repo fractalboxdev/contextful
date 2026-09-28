@@ -90,7 +90,7 @@ Acceptance: `contextful_acceptance::m04::m04_ingest`
 
 | Operations | Intent |
 | --- | --- |
-| `read.register`, `read.guard`, `read.respond`, `read.retrieve`, `read.rank`, `read.cache`, `read.resolve-pin`, `read.embed` | Registration, the statement guard, retrieval and ranking, the tool surface; the enforcement layers as one reference monitor. |
+| `read.register`, `read.guard`, `read.respond`, `read.query`, `read.retrieve`, `read.rank`, `read.cache`, `read.resolve-pin`, `read.embed` | Registration, the statement guard, retrieval and ranking, the tool surface; the enforcement layers as one reference monitor. |
 | `authority.redact`, `authority.compose`, `authority.filter-rows`, `authority.mask`, `authority.refuse`, `authority.bound-redistribution`, `authority.place`, `authority.resist` | — |
 
 Reach: An agent asks over MCP and receives ranked rows the caller's authority admits.

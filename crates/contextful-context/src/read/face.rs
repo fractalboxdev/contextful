@@ -136,7 +136,7 @@ impl Face {
             }
             None => (format!("SELECT * FROM {}", ident(r.name())), Bindings::default()),
         };
-        self.respond(&engine, &sql, &parameters, None, ReadOptions::default())
+        respond(&engine, &sql, &parameters, None, ReadOptions::default())
     }
 
     /// A table's declaration, or an undeclared table's defaults.
@@ -229,33 +229,15 @@ impl Face {
         least_row_ceiling([grant, request, template, table])
     }
 
-    fn respond(
-        &self,
-        engine: &SqlEngine,
-        sql: &str,
-        parameters: &Bindings,
-        ceiling: Option<u64>,
-        opts: ReadOptions,
-    ) -> Result<Response, ReadFault> {
-        let started = std::time::Instant::now();
-        let (columns, rows) = engine.run(sql, parameters, Response::fetch_count(ceiling))?;
-        let rows: Vec<Vec<Value>> = rows.iter().map(|r| r.iter().map(Cell::to_json).collect()).collect();
-        let mut response = Response::cut(columns, rows, ceiling);
-        if let Some(b) = opts.bounds.echo() {
-            response = response.with_block("bounds", b);
+    /// Run operator text raw over every table the store holds or the manifest declares,
+    /// each registered under its bare name as its unrestricted base relation at the
+    /// latest committed state (`read.query.project-relations`).
+    pub fn operator_query(&self, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let engine = SqlEngine::raw()?;
+        for t in self.tables()? {
+            engine.register(&t, &self.source(&t, Bounds::default())?.base)?;
         }
-        Ok(if opts.internals {
-            let internals = Internals {
-                sql: sql.to_string(),
-                engine: ENGINE,
-                limit: ceiling,
-                row_count: response.rows.len() as u64,
-                elapsed_ms: started.elapsed().as_millis() as u64,
-            };
-            response.with_block("internals", serde_json::to_value(internals).expect("internals serialize"))
-        } else {
-            response
-        })
+        respond(&engine, sql, &Bindings::default(), opts.limit, opts)
     }
 
     /// Admit and run caller-written SQL carrying no parameter.
@@ -276,7 +258,7 @@ impl Face {
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
-        self.respond(&engine, sql, &bindings, ceiling, opts)
+        respond(&engine, sql, &bindings, ceiling, opts)
     }
 
     /// Run a declared template the credential's allowlist covers. Its body is operator
@@ -295,7 +277,7 @@ impl Face {
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
-        self.respond(&engine, &template.sql, &parameters, ceiling, opts)
+        respond(&engine, &template.sql, &parameters, ceiling, opts)
     }
 
     /// The tools this session sees: the closed built-in set and each declared template
@@ -413,7 +395,7 @@ impl Face {
         engine.register(PREVIEW_RELATION, preview.sql())?;
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
-        self.respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), ceiling, opts)
+        respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), ceiling, opts)
     }
 }
 
@@ -437,6 +419,36 @@ fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, ReadFault> {
         .into()),
         (admitted, _) => Ok(admitted?),
     }
+}
+
+/// Run operator text raw over no store: no relation registers, and local files and table
+/// functions stay reachable (`read.guard.statement-provenance`).
+pub fn operator_query(sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
+    respond(&SqlEngine::raw()?, sql, &Bindings::default(), opts.limit, opts)
+}
+
+/// Execute `sql` under `ceiling` and serialize the one response projection
+/// (`read.respond.one-projection`), with the internals block under `opts.internals`.
+fn respond(engine: &SqlEngine, sql: &str, parameters: &Bindings, ceiling: Option<u64>, opts: ReadOptions) -> Result<Response, ReadFault> {
+    let started = std::time::Instant::now();
+    let (columns, rows) = engine.run(sql, parameters, Response::fetch_count(ceiling))?;
+    let rows: Vec<Vec<Value>> = rows.iter().map(|r| r.iter().map(Cell::to_json).collect()).collect();
+    let mut response = Response::cut(columns, rows, ceiling);
+    if let Some(b) = opts.bounds.echo() {
+        response = response.with_block("bounds", b);
+    }
+    Ok(if opts.internals {
+        let internals = Internals {
+            sql: sql.to_string(),
+            engine: ENGINE,
+            limit: ceiling,
+            row_count: response.rows.len() as u64,
+            elapsed_ms: started.elapsed().as_millis() as u64,
+        };
+        response.with_block("internals", serde_json::to_value(internals).expect("internals serialize"))
+    } else {
+        response
+    })
 }
 
 /// The relation one preview reads: the named file under its table's every step.

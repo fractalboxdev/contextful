@@ -8,7 +8,7 @@ pub mod pool;
 pub mod retrieve;
 
 pub use engine::ENGINE;
-pub use face::{Face, ReadOptions};
+pub use face::{operator_query, Face, ReadOptions};
 pub use fault::ReadFault;
 pub use pool::{PoolCounts, SessionPool};
 pub use retrieve::RetrieveRequest;
