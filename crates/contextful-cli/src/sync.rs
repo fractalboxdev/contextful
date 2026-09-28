@@ -3,6 +3,7 @@
 //! Each subcommand opens the store and its `[sync]` bucket and calls `contextful-sync`.
 //! This build links the filesystem bucket adapter: `endpoint = "file://<directory>"`.
 
+use crate::project::locate;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_context::fold::fold;
@@ -18,12 +19,14 @@ use std::sync::Arc;
 
 #[derive(clap::Args)]
 pub struct SyncArgs {
-    /// The project whose store root is `.contextful/context/<project>/`.
+    /// The project whose store root is `.contextful/context/<project>/` under the working
+    /// directory; absent, the nearest `contextful.toml` upward names it.
     #[arg(long)]
-    project: String,
-    /// The pipeline manifest holding the table declarations.
-    #[arg(long, default_value = "contextful.toml")]
-    declaration: PathBuf,
+    project: Option<String>,
+    /// The pipeline manifest holding the table declarations; absent, the project's
+    /// `contextful.toml`.
+    #[arg(long)]
+    declaration: Option<PathBuf>,
     /// The judging instant (RFC 3339); absent reads the system clock.
     #[arg(long)]
     now: Option<String>,
@@ -94,8 +97,8 @@ struct ConfigFile {
 }
 
 fn open(args: &SyncArgs) -> Result<(Syncer, Vec<TableDecl>)> {
-    let cwd = std::env::current_dir()?;
-    let store = Store::open(&cwd, &args.project)?;
+    let l = locate(args.project.as_deref(), args.declaration.clone())?;
+    let store = Store::open(&l.project.dir, &l.project.name)?;
     let config_path = store.root().join("config.toml");
     let text = std::fs::read_to_string(&config_path).with_context(|| format!("reading `{}`", config_path.display()))?;
     let file: ConfigFile = toml::from_str(&text).with_context(|| format!("`{}`", config_path.display()))?;
@@ -106,11 +109,11 @@ fn open(args: &SyncArgs) -> Result<(Syncer, Vec<TableDecl>)> {
     let bucket = FsBucket::open(std::path::Path::new(dir), &config.bucket).map_err(|e| anyhow::anyhow!("bucket: {e}"))?;
     let prefix = config.resolve_prefix(|k| std::env::var(k).ok())?;
     let (node_id, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
-    let decls = match std::fs::read_to_string(&args.declaration) {
+    let decls = match std::fs::read_to_string(&l.declaration) {
         Ok(t) => TableDecl::parse_pipeline(&t)?,
         Err(_) => Vec::new(),
     };
-    let syncer = Syncer { store, bucket: Arc::new(bucket), config, prefix, project: args.project.clone(), node: node_id.to_string() };
+    let syncer = Syncer { store, bucket: Arc::new(bucket), config, prefix, project: l.project.name, node: node_id.to_string() };
     Ok((syncer, decls))
 }
 

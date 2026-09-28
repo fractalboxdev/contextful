@@ -11,6 +11,7 @@ pub mod land;
 pub mod ledger;
 pub mod node;
 pub mod parquet_io;
+pub mod project;
 #[cfg(feature = "read")]
 pub mod read;
 pub mod rows;

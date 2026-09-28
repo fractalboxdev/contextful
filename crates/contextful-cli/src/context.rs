@@ -3,6 +3,7 @@
 //! Each subcommand is a thin adapter: it reads the declaration and flags, calls the
 //! store adapter, and prints. No store rule lives here.
 
+use crate::project::locate;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_context::catalog::rebuild;
@@ -23,12 +24,14 @@ use std::path::{Path, PathBuf};
 
 #[derive(clap::Args)]
 pub struct StoreArgs {
-    /// The project whose store root is `.contextful/context/<project>/`.
+    /// The project whose store root is `.contextful/context/<project>/` under the working
+    /// directory; absent, the nearest `contextful.toml` upward names it.
     #[arg(long)]
-    project: String,
-    /// The pipeline manifest holding the `[[pipeline.tables]]` declarations.
-    #[arg(long, default_value = "contextful.toml")]
-    declaration: PathBuf,
+    project: Option<String>,
+    /// The pipeline manifest holding the `[[pipeline.tables]]` declarations; absent, the
+    /// project's `contextful.toml`.
+    #[arg(long)]
+    declaration: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -82,9 +85,10 @@ pub enum ContextCmd {
     },
     /// Reconstruct `derived.sqlite` from the tree and print the rows it now holds as JSON.
     RebuildCatalog {
-        /// The project whose store root is `.contextful/context/<project>/`.
+        /// The project whose store root is `.contextful/context/<project>/` under the working
+        /// directory; absent, the nearest `contextful.toml` upward names it.
         #[arg(long)]
-        project: String,
+        project: Option<String>,
     },
 }
 
@@ -105,11 +109,11 @@ struct Opened {
 
 impl Opened {
     fn open(args: &StoreArgs) -> Result<Opened> {
-        let cwd = std::env::current_dir()?;
-        let store = Store::open(&cwd, &args.project)?;
-        let text = std::fs::read_to_string(&args.declaration)
-            .with_context(|| format!("reading the declaration `{}`", args.declaration.display()))?;
-        let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", args.declaration.display()))?;
+        let l = locate(args.project.as_deref(), args.declaration.clone())?;
+        let store = Store::open(&l.project.dir, &l.project.name)?;
+        let text = std::fs::read_to_string(&l.declaration)
+            .with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
+        let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", l.declaration.display()))?;
         Ok(Opened { store, decls })
     }
 
@@ -208,7 +212,8 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             Ok(())
         }
         ContextCmd::RebuildCatalog { project } => {
-            let store = Store::open(&std::env::current_dir()?, &project)?;
+            let l = locate(project.as_deref(), None)?;
+            let store = Store::open(&l.project.dir, &l.project.name)?;
             let catalog = DerivedSqlite::open(&store.root().join(DERIVED_CATALOG_FILE))?;
             let rows = rebuild(&store, &catalog)?;
             println!("{}", serde_json::to_string_pretty(&rows)?);

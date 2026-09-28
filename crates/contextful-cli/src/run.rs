@@ -5,7 +5,9 @@
 //! `.contextful/run/<project>/`, a command source, and the store as the destination. No
 //! run rule lives here.
 
+use crate::project::{locate, Located};
 use anyhow::{bail, Context, Result};
+use contextful_context::project::Project;
 use clap::Subcommand;
 use contextful_context::land::{land_batches, Batch, Position, RunContext};
 use contextful_context::{commit_log, node, ContextError, Store};
@@ -25,7 +27,6 @@ use contextful_engine::awake::{AwakeError, Registry};
 use contextful_engine::cancel::Keeper;
 use contextful_engine::command::CommandSource;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
-use contextful_core::store::lay_out::store_root;
 use contextful_engine::{Engine, Journal, RunSpec};
 use contextful_sqlite::MachineCatalog;
 use contextful_engine::stores::FileAwakeableStore;
@@ -35,9 +36,10 @@ use std::sync::Arc;
 #[derive(clap::Args)]
 pub struct ProjectArgs {
     /// The project whose store root is `.contextful/context/<project>/` and whose run
-    /// state is `.contextful/run/<project>/`.
+    /// state is `.contextful/run/<project>/`, under the working directory; absent, the
+    /// nearest `contextful.toml` upward names it.
     #[arg(long)]
-    pub(crate) project: String,
+    pub(crate) project: Option<String>,
     /// The evaluation instant (RFC 3339); absent reads the system clock.
     #[arg(long)]
     pub(crate) now: Option<String>,
@@ -52,9 +54,10 @@ pub enum RunCmd {
         /// The plan file; its sha256 is the reference the run pins.
         #[arg(long)]
         plan: PathBuf,
-        /// The pipeline manifest holding the `[[pipeline.tables]]` declarations.
-        #[arg(long, default_value = "contextful.toml")]
-        declaration: PathBuf,
+        /// The pipeline manifest holding the `[[pipeline.tables]]` declarations; absent, the
+        /// project's `contextful.toml`.
+        #[arg(long)]
+        declaration: Option<PathBuf>,
         /// The catalog run id of this attempt; absent mints one.
         #[arg(long)]
         run_id: Option<String>,
@@ -146,12 +149,24 @@ pub(crate) struct Wired {
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
 }
 
+impl ProjectArgs {
+    /// The project and the declaration a command reads (`store.init.discovery`).
+    pub(crate) fn locate(&self, declaration: Option<PathBuf>) -> Result<Located> {
+        locate(self.project.as_deref(), declaration)
+    }
+}
+
+/// Wire the engine to the project `--project` names or discovery finds.
 pub(crate) fn wire(args: &ProjectArgs) -> Result<Wired> {
-    let root = std::env::current_dir()?.join(".contextful").join("run").join(&args.project);
-    let clock = clock(&args.now)?;
+    wire_at(&args.locate(None)?.project, &args.now)
+}
+
+/// Wire the engine to a located project's run state and machine catalog.
+pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> {
+    let root = project.run_dir();
+    let clock = clock(now)?;
     let journal = Journal::open(&root);
-    let store_root = std::env::current_dir()?.join(store_root(&args.project));
-    let catalog = Arc::new(MachineCatalog::open(&store_root.join(MACHINE_CATALOG_FILE), clock.clone())?);
+    let catalog = Arc::new(MachineCatalog::open(&project.store_root().join(MACHINE_CATALOG_FILE), clock.clone())?);
     let registry = Registry::open(&root, journal.clone());
     let awakeables = Some(Arc::new(FileAwakeableStore::open(&root)) as Arc<dyn AwakeableStore>);
     Ok(Wired { engine: Engine { catalog, journal, awakeables, keeper: Keeper::default(), emitter: None }, registry, clock })
@@ -261,11 +276,13 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let bytes = std::fs::read(&plan).with_context(|| format!("reading the plan `{}`", plan.display()))?;
             let plan = Plan::compile(&bytes).with_context(|| format!("`{}`", plan.display()))?;
             let cwd = std::env::current_dir()?;
-            let text = std::fs::read_to_string(&declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
+            let l = project.locate(declaration)?;
+            let declaration = &l.declaration;
+            let text = std::fs::read_to_string(declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
             let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", declaration.display()))?;
-            let store = Store::open(&cwd, &project.project)?;
+            let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
-            let w = wire(&project)?;
+            let w = wire_at(&l.project, &project.now)?;
             for reaped in w.engine.reap_orphans()? {
                 eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");
             }
@@ -305,7 +322,8 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             Ok(())
         }
         RunCmd::History { project, pipelines, since, limit, export } => {
-            let w = wire(&project)?;
+            let located = project.locate(None)?.project;
+            let w = wire_at(&located, &project.now)?;
             let since = since.map(|s| parse_bound(&s)).transpose()?;
             let ceiling = if export { export_ceiling(limit) } else { describe_ceiling(limit) };
             let window = Window { since, ceiling };
@@ -321,7 +339,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let page = select_history(merged, &window);
             let truncated = truncated || page.truncated;
             if export {
-                let header = serde_json::json!({ "store": project.project, "window": window, "count": page.runs.len(), "truncated": truncated });
+                let header = serde_json::json!({ "store": located.name, "window": window, "count": page.runs.len(), "truncated": truncated });
                 println!("{header}");
                 for r in &page.runs {
                     println!("{}", serde_json::to_string(r)?);

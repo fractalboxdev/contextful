@@ -6,7 +6,7 @@
 use contextful_acceptance::{bin, GitRepo};
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::record::Field;
-use std::process::Output;
+use std::process::{Command, Output};
 
 const STORE: &str = ".contextful/context/research";
 
@@ -112,4 +112,33 @@ fn m02_store() {
             ("d2".to_string(), "memo".to_string(), "run-0001".to_string()),
         ],
     );
+}
+
+/// `contextful init` declares the project once, and every store command below it finds the
+/// project without `--project`.
+#[test]
+fn m02_init_and_discovery() {
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    let at = |dir: &std::path::Path, args: &[&str]| {
+        Command::new(&cf).args(args).current_dir(dir).env_remove("CARGO_TARGET_DIR").env("CONTEXTFUL_NODE_ID", "ingest-a").output().unwrap()
+    };
+
+    ok(&at(&p.root, &["init", "research"]));
+    assert!(p.root.join(STORE).is_dir());
+    let declared = std::fs::read_to_string(p.root.join("contextful.toml")).unwrap();
+    ok(&at(&p.root, &["init", "research"]));
+    assert_eq!(std::fs::read_to_string(p.root.join("contextful.toml")).unwrap(), declared);
+    refused(&at(&p.root, &["init", "archive"]), "StoreProjectConflict");
+
+    p.write("contextful.toml", &format!("{declared}\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\n"));
+    p.write("inbox/batch.jsonl", "{\"document_id\":\"d1\",\"title\":\"draft\"}\n");
+    let inbox = p.root.join("inbox");
+    let land = ["context", "land", "filings", "--rows", "batch.jsonl", "--run-id", "run-0001", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"];
+    ok(&at(&inbox, &land));
+    assert_eq!(ok(&at(&inbox, &["context", "files", "filings"])), "tables/filings/data/runs/run-0001/ingest-a/part-00000.parquet");
+    assert!(ok(&at(&inbox, &["context", "compact", "filings", "--now", "2030-01-01T01:00:00Z"])).contains("filings: folded"));
+
+    let outside = tempfile::tempdir().unwrap();
+    refused(&at(outside.path(), &["context", "files", "filings"]), "StoreProjectUndiscovered");
 }

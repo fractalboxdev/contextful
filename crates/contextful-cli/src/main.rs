@@ -8,6 +8,7 @@ mod formal;
 mod mcp;
 mod memory;
 mod pipeline;
+mod project;
 mod run;
 mod sync;
 mod token;
@@ -23,6 +24,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Declare a project in `contextful.toml` here and create its store root.
+    Init(project::InitArgs),
     /// Mint, attenuate, verify, introspect and exchange capability credentials.
     #[command(subcommand)]
     Token(token::TokenCmd),
@@ -54,6 +57,7 @@ enum Cmd {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.cmd {
+        Cmd::Init(c) => project::run(c),
         Cmd::Token(c) => token::run(c),
         Cmd::Context(c) => context::run(c),
         Cmd::Run(c) => run::run(c),

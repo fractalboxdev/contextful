@@ -58,7 +58,7 @@ Acceptance: `contextful_acceptance::m01::m01_authority_core`
 
 | Operations | Intent |
 | --- | --- |
-| `store.lay-out`, `store.declare`, `store.reserve`, `store.reconcile`, `store.fold`, `store.index`, `store.bound-time`, `store.encrypt` | Layout, declaration, reserved columns, reconciliation, commit and compaction, indexes, the two clocks, at-rest encryption. |
+| `store.lay-out`, `store.init`, `store.declare`, `store.reserve`, `store.reconcile`, `store.fold`, `store.index`, `store.bound-time`, `store.encrypt` | Layout, declaration, reserved columns, reconciliation, commit and compaction, indexes, the two clocks, at-rest encryption. |
 
 Reach: A table lands, a scan resolves its file list, and a reader opens the Parquet without the engine.
 

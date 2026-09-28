@@ -6,6 +6,7 @@
 //! process that cannot serve exits with nothing on standard output.
 
 use crate::admit::{face, AdmitArgs};
+use crate::project::locate;
 use crate::run::SystemClock;
 use anyhow::Result;
 use contextful_agent::mcp::Server;
@@ -16,19 +17,21 @@ use std::path::PathBuf;
 
 #[derive(clap::Args)]
 pub struct McpArgs {
-    /// The project whose store root is `.contextful/context/<project>/`.
+    /// The project whose store root is `.contextful/context/<project>/` under the working
+    /// directory; absent, the nearest `contextful.toml` upward names it.
     #[arg(long)]
-    project: String,
-    /// The pipeline manifest holding the table declarations and query templates.
-    #[arg(long, default_value = "contextful.toml")]
-    declaration: PathBuf,
+    project: Option<String>,
+    /// The pipeline manifest holding the table declarations and query templates; absent,
+    /// the project's `contextful.toml`.
+    #[arg(long)]
+    declaration: Option<PathBuf>,
     #[command(flatten)]
     admit: AdmitArgs,
 }
 
 pub fn run(args: McpArgs) -> Result<()> {
     let (authority, revocation) = args.admit.admit("the tool server")?;
-    let face = face(&args.project, &args.declaration)?;
+    let face = face(&locate(args.project.as_deref(), args.declaration)?)?;
     let clock = SystemClock;
     let boundary = |a: &AdmittedAuthority| -> Result<(), AuthorityError> { effect_boundary(a, &Admission::new(clock.now(), &revocation)) };
     let server = Server::new(&face, authority, &boundary, &clock).map_err(anyhow::Error::msg)?;
