@@ -1,6 +1,7 @@
 //! `run.own` and `run.journal`: the execution handle a host opens under a declared scope.
 
 use crate::support::{plan, three_pages, Pages, Rig, Sink, T0};
+use contextful_core::run::cancel::Scope;
 use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{OwnerPins, OwnerScope, PlanPins};
 use contextful_core::run::ports::{ExecutionPort, OpenExecution, Outcome, Substrate, Wake};
@@ -24,8 +25,13 @@ fn pins(plan_ref: &str, model: &str) -> OwnerPins {
 
 /// An open of host scope `index-42` as attempt `run_id`.
 fn host(plan_ref: &str, model: &str, run_id: &str) -> OpenExecution {
+    host_in(SCOPE, plan_ref, model, run_id)
+}
+
+/// An open of host scope `scope` as attempt `run_id`.
+fn host_in(scope: &str, plan_ref: &str, model: &str, run_id: &str) -> OpenExecution {
     OpenExecution {
-        scope: OwnerScope::host(SCOPE),
+        scope: OwnerScope::host(scope),
         pins: pins(plan_ref, model),
         run_id: run_id.into(),
         site_id: "site-a".into(),
@@ -275,4 +281,55 @@ fn suspending_on_an_engine_without_an_awakeable_store_is_refused_at_the_first_re
     assert!(rig.engine.journal.row(&key).unwrap().is_none(), "the refusal claims no journal entry");
     assert_eq!(rig.row("job-1").status, RunStatus::Running);
     assert!(matches!(x.awaited("0000"), Err(EngineError::Refused(RunError::CapabilityUnwired(_)))));
+}
+
+/// An open under a host scope whose pending owner has an attempt on an unexpired {{run.record.owner-lease}} fails
+/// `Transient` naming that attempt, and its run row closes `failed` without joining the owner.
+// spec: run.own.live-owner@bba71945
+#[test]
+fn a_host_open_under_a_live_attempt_fails_transient_and_joins_nothing() {
+    let rig = Rig::new();
+    let runs = AtomicUsize::new(0);
+    let mut held = rig.engine.open_execution(&host("plan-a", "m-1", "job-a")).unwrap();
+    held.step("fetch", b"doc-1", &mut counted(&runs, b"fetched")).unwrap();
+
+    match rig.engine.open_execution(&host("plan-a", "m-1", "job-b")) {
+        Err(EngineError::Failure(f)) => {
+            assert_eq!(f.tag, FailureTag::Transient);
+            assert!(f.to_string().contains("job-a") && f.to_string().contains("host scope `index-42`"), "{f}");
+        }
+        Err(e) => panic!("{e}"),
+        Ok(_) => panic!("a second live handle shares the owner"),
+    }
+    let refused = rig.row("job-b");
+    assert_eq!((refused.status, refused.error_kind), (RunStatus::Failed, Some(FailureTag::Transient)));
+    let owner = rig.catalog().owner_at(&OwnerScope::host(SCOPE)).unwrap().unwrap();
+    assert_eq!(owner.attempts, vec!["job-a".to_string()], "the refused attempt joins no owner");
+    assert_eq!(owner.execution_id, held.execution_id());
+
+    // The held attempt keeps its owner and journal, and retires them on its own close.
+    assert_eq!(held.step("fetch", b"doc-1", &mut counted(&runs, b"other")).unwrap(), b"fetched");
+    assert_eq!(runs.load(Ordering::SeqCst), 1);
+    held.commit(Some(json!({"page": 1}))).unwrap();
+    assert_eq!(held.close(Outcome::Success { rows: 0, bytes: 0, batches: 0 }).unwrap().status, RunStatus::Success);
+    assert!(rig.catalog().owner_at(&OwnerScope::host(SCOPE)).unwrap().is_none());
+}
+
+/// A `pipeline`-scoped stop on a host execution's run halts every in-flight run under the same host-declared
+/// scope and no run of another scope.
+// spec: run.cancel.host-grain@0479ff0d
+#[test]
+fn a_pipeline_stop_on_a_host_run_halts_only_its_own_scope() {
+    let rig = Rig::new();
+    // `job-0` dies holding `index-42`; its row stays in flight after its lease lapses.
+    drop(rig.engine.open_execution(&host("plan-a", "m-1", "job-0")).unwrap());
+    rig.clock.advance(60);
+    let a = rig.engine.open_execution(&host("plan-a", "m-1", "job-a")).unwrap();
+    let b = rig.engine.open_execution(&host_in("unrelated-scope", "plan-a", "m-1", "job-b")).unwrap();
+
+    let mut marked = rig.engine.cancel("job-a", Scope::Pipeline, None).unwrap();
+    marked.sort();
+    assert_eq!(marked, vec!["job-0".to_string(), "job-a".to_string()]);
+    assert!(rig.row("job-b").stop.is_none(), "another host scope's run carries no mark");
+    drop((a, b));
 }

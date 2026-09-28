@@ -264,6 +264,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         }
         let mut owner = match self.pending.clone() {
             Some(owner) => {
+                self.refuse_a_live_attempt(&owner)?;
                 owner.check_pins(&self.pins)?;
                 owner
             }
@@ -279,6 +280,24 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         self.engine.catalog.put_owner(&owner)?;
         self.pins = owner.pins;
         self.owned = true;
+        Ok(())
+    }
+
+    /// Under a host scope, fail `Transient` while another attempt of the pending owner holds
+    /// an unexpired owner lease (`run.own.live-owner`). Table scopes share an owner across
+    /// concurrent writers, which their cursor kind and single-writer lease govern.
+    fn refuse_a_live_attempt(&self, owner: &ExecutionOwner) -> Result<(), Failure> {
+        if self.scope.host_id().is_none() {
+            return Ok(());
+        }
+        for attempt in owner.attempts.iter().filter(|a| a.as_str() != self.run_id) {
+            if self.engine.holder_live(attempt)? {
+                return Err(Failure::new(
+                    FailureTag::Transient,
+                    format!("attempt `{attempt}` holds execution `{}` of {} on an unexpired owner lease", self.execution_id, self.scope),
+                ));
+            }
+        }
         Ok(())
     }
 

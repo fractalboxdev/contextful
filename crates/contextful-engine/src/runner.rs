@@ -10,7 +10,7 @@ use crate::project::Emitter;
 use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
 use contextful_core::run::advance::{admits, advance, frontier, open_watermark, resolve_concurrent, watermark, CursorKind};
-use contextful_core::run::cancel::{mark, Scope};
+use contextful_core::run::cancel::{mark, same_grain, Scope};
 use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{ConnectorPin, OwnerScope, Pins};
 use contextful_core::run::plan::Plan;
@@ -305,7 +305,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     }
 
     /// Write a stop onto a run row, and under `pipeline` scope onto every in-flight run of
-    /// its pipeline. Returns the marked run ids.
+    /// its pipeline, or of its host scope for a host execution's run. Returns the marked run ids.
     pub fn cancel(&self, run_id: &str, scope: Scope, reason: Option<String>) -> Result<Vec<String>, EngineError> {
         let now = self.catalog.now()?;
         let not_found = || RunError::CancelTargetNotInFlight(format!("no run `{run_id}` is pending, running or waiting"));
@@ -316,7 +316,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let mut marked = vec![target.run_id.clone()];
         if scope == Scope::Pipeline {
             for other in self.catalog.runs(Some(&target.pipeline_id))? {
-                if other.run_id != target.run_id && other.status.is_in_flight() {
+                if other.run_id != target.run_id && other.status.is_in_flight() && same_grain(&target, &other) {
                     if let Some(Ok(_)) = self.catalog.update_run(&other.run_id, &mut |r| mark(r, scope, reason.clone(), now))? {
                         marked.push(other.run_id);
                     }

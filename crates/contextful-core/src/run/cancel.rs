@@ -48,8 +48,18 @@ pub fn mark(row: &mut RunRow, scope: Scope, reason: Option<String>, requested_at
     Ok(())
 }
 
+/// Whether `row` shares `target`'s `pipeline` grain: the same pipeline for a table run,
+/// the same host-declared scope for a host execution's run (`run.cancel.host-grain`).
+pub fn same_grain(target: &RunRow, row: &RunRow) -> bool {
+    match (&target.host_scope, &row.host_scope) {
+        (Some(ours), Some(theirs)) => ours == theirs,
+        (None, None) => row.pipeline_id == target.pipeline_id,
+        _ => false,
+    }
+}
+
 /// Whether `row` is stopped by `mark` on `target`: a run-scoped mark stops its own row;
-/// a pipeline-scoped mark stops every in-flight run of the target's pipeline.
+/// a pipeline-scoped mark stops every in-flight run sharing the target's grain.
 pub fn stops(target: &RunRow, row: &RunRow) -> bool {
     let Some(stop) = &target.stop else { return false };
     if !row.status.is_in_flight() {
@@ -57,6 +67,6 @@ pub fn stops(target: &RunRow, row: &RunRow) -> bool {
     }
     match Scope::read(&stop.scope) {
         Scope::Run => row.run_id == target.run_id,
-        Scope::Pipeline => row.pipeline_id == target.pipeline_id,
+        Scope::Pipeline => same_grain(target, row),
     }
 }
