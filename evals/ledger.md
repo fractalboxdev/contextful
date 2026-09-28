@@ -2,7 +2,7 @@
 
 # Target ledger
 
-60 entries: 30 gated, 0 recorded, 0 scheduled, 30 open.
+60 entries: 31 gated, 0 recorded, 0 scheduled, 29 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -44,7 +44,7 @@
 | `memory-evidence-gate` | `read.recall.evidence-unresolved` | `recall.unresolved_admitted` | gate | test `contextful_core::memory::recall::unresolvable_evidence_suppresses_the_claim` | `== 0` | gated |
 | `memory-live-claims` | `read.recall.ranked-arm` | `recall.expired_returned` | gate | test `contextful_memory::synthesize::a_ranked_arm_over_claims_serves_live_claims_alone` | `== 0` | gated |
 | `native-golden-floor` | `assurance.baseline.native-gate` | `retrieval.hybrid.r_precision` | gate | issue 78 | `>= 0.6` | open (issue 78) |
-| `network-free-decoder` | `topology.package.edge-eligibility` | `topology.decoder.network_packages` | gate | issue 46 | `== 0` | open (issue 46) |
+| `network-free-decoder` | `topology.package.decode-network-free` | `topology.decoder.network_packages` | gate | test `contextful_ci::topology::this_repository_decode_package_links_no_network_stack` | `== 0` | gated |
 | `network-free-runtime` | `topology.package.transport-optional` | `topology.runtime.network_packages` | gate | test `contextful_ci::topology::this_repository_outbound_crate_links_no_http_stack_without_its_transport` | `== 0` | gated |
 | `network-volume-refuses-cas` | `store.probe.unproven` | `probe.network_class_cas_pushes` | gate | issue 53 | `== 0` | open (issue 53) |
 | `no-sqlite-link` | `topology.package.store-sqlite-free` | `topology.libsqlite3_sys_links` | gate | test `contextful_ci::topology::this_repository_links_sqlite_only_through_its_adapter` | `== 0` | gated |

@@ -225,6 +225,87 @@ fn a_failed_poll_keeps_polling() {
     }
 }
 
+/// A catalog whose run reads panic after the first `serves` of them.
+struct Panics {
+    inner: Arc<dyn Catalog + Send + Sync>,
+    serves: AtomicUsize,
+    panicked: Arc<AtomicUsize>,
+}
+
+impl Catalog for Panics {
+    fn run(&self, run_id: &str) -> Result<Option<RunRow>, Failure> {
+        if self.serves.load(Ordering::SeqCst) == 0 {
+            self.panicked.fetch_add(1, Ordering::SeqCst);
+            panic!("the catalog adapter panicked reading `{run_id}`");
+        }
+        self.serves.fetch_sub(1, Ordering::SeqCst);
+        self.inner.run(run_id)
+    }
+    delegate! {
+        now() -> Result<Instant, Failure>;
+        acquire(key: &LeaseKey, holder: &str, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
+        release(lease: &Lease) -> Result<(), Failure>;
+        lease_row(key: &LeaseKey) -> Result<LeaseRow, Failure>;
+        cursor_at(scope: &OwnerScope) -> Result<CursorRow, Failure>;
+        cursor_cas_at(scope: &OwnerScope, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        owner_at(scope: &OwnerScope) -> Result<Option<ExecutionOwner>, Failure>;
+        put_owner(owner: &ExecutionOwner) -> Result<(), Failure>;
+        retire_at(scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        renew(lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
+        lease_holds(lease: &Lease) -> Result<bool, Failure>;
+        put_run(row: &RunRow) -> Result<(), Failure>;
+        runs(pipeline_id: Option<&str>) -> Result<Vec<RunRow>, Failure>;
+        update_run(run_id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure>;
+    }
+}
+
+/// A keeper job that panics warns and leaves the keeper running: every other registration keeps its cadence, the
+/// panicking one retries at its next deadline, and dropping it returns.
+// spec: run.cancel.keeper-panic@32089033
+#[test]
+fn a_panicking_keeper_job_leaves_the_keeper_running() {
+    let rig = Rig::new();
+    for id in ["run-a", "run-b"] {
+        rig.catalog().put_run(&crate::support_row(id, RunStatus::Running)).unwrap();
+    }
+    let panicked = Arc::new(AtomicUsize::new(0));
+    let panics: Arc<dyn Catalog + Send + Sync> = Arc::new(Panics { inner: rig.engine.catalog.clone(), serves: AtomicUsize::new(1), panicked: panicked.clone() });
+    let keeper = Keeper::new(Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) });
+    // Held undropped until the drop under test, so a failed assertion unwinds without blocking on it.
+    let a = std::mem::ManuallyDrop::new(keeper.register(panics, "run-a", CancelToken::default(), Arc::default()));
+    let token_b = CancelToken::default();
+    let b = keeper.register(rig.engine.catalog.clone(), "run-b", token_b.clone(), Arc::default());
+
+    let started = std::time::Instant::now();
+    while panicked.load(Ordering::SeqCst) < 2 {
+        assert!(started.elapsed() < Duration::from_secs(5), "the panicking registration was not retried at its next deadline");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(keeper.threads(), 1);
+
+    // The other registration still polls: a stop on run-b fires its token.
+    rig.engine.cancel("run-b", Scope::Run, None).unwrap();
+    let marked = std::time::Instant::now();
+    while !token_b.requested() {
+        assert!(marked.elapsed() < Duration::from_secs(5), "a panic in another registration's job stopped polling");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    // Dropping the panicking registration returns rather than waiting on a job that never finishes.
+    let (dropped_tx, dropped_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        drop(std::mem::ManuallyDrop::into_inner(a));
+        dropped_tx.send(()).unwrap();
+    });
+    dropped_rx.recv_timeout(Duration::from_secs(5)).expect("dropping the panicking registration deadlocked");
+    drop(b);
+    let started = std::time::Instant::now();
+    while keeper.threads() > 0 {
+        assert!(started.elapsed() < Duration::from_secs(5), "the keeper thread did not exit");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 /// A wait on the token returns at the fire, not at its deadline: a token fired before the
 /// wait or during it ends a 60 s wait, and an unfired one waits its whole duration. Bounds
 /// sit far from the deadlines, so a loaded host cannot flip them.

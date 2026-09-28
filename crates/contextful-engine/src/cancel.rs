@@ -8,6 +8,7 @@ use contextful_core::run::ports::Cancellation;
 use contextful_core::run::record::{OWNER_LEASE_RENEWAL_SECS, OWNER_LEASE_TTL_SECS};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
+use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -291,12 +292,19 @@ fn keep(shared: &Shared) {
         state.deadlines.push(Reverse((next, id)));
         state.busy = Some(id);
         drop(state);
-        if due.poll {
-            poll(catalog.as_ref(), &run_id, &token);
-        }
-        if due.renew {
-            renew(catalog.as_ref(), &run_id);
-            renew_lease(catalog.as_ref(), &held);
+        // A panicking job unwinds to here (`run.cancel.keeper-panic`), so `busy` clears and
+        // the thread keeps serving every other registration.
+        let jobs = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            if due.poll {
+                poll(catalog.as_ref(), &run_id, &token);
+            }
+            if due.renew {
+                renew(catalog.as_ref(), &run_id);
+                renew_lease(catalog.as_ref(), &held);
+            }
+        }));
+        if jobs.is_err() {
+            eprintln!("warning: a keeper job of run `{run_id}` panicked; it retries at its next deadline");
         }
         state = shared.lock();
         state.busy = None;
