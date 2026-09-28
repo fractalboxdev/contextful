@@ -104,6 +104,21 @@ Criteria: one home for replay state per host, which decided it; an I/O-free doma
 
 Consequences: a journal store apart from the catalog shares no transaction with owner retirement, which `run.journal` leaves unsettled.
 
+## A blob put may wait on its adapter's write lock
+
+Status: accepted. `blob-write` asks concurrent writers of one hash to converge without waiting, which the file adapter meets with a staged rename. SQLite holds one write lock per file, so the SQLite adapter's put waits behind any other connection's write transaction, and a lock held past the busy wait fails it. `blob-write` therefore requires convergence and no error between writers of one hash, and leaves waiting to the adapter.
+
+Criteria: one transactional home for journal rows and blobs, which decided it; no failure between converging writers.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Narrow `blob-write` to convergence without error *(chosen)* | — | A put stalls behind a foreign write transaction on the file. |
+| Blobs as staged files beside the SQLite file | One transactional home | A blob and its referencing row commit apart, and the store is two things to back up. |
+| A put that skips an existing hash without a write | Sweep grace | A re-put renews no age, so the sweep takes a blob a new row is about to name. |
+
+Consequences: a foreign connection holding the file's write lock past the busy wait fails every put behind it with a storage failure.
+Revisit: a host runs a long write transaction on the machine file beside the run stores.
+
 ## A host opens an execution through one handle keyed on a declared scope
 
 Status: accepted. `run_with` is the only way to open an execution and binds it to a native plan, a source pulled to exhaustion, one destination commit and an owner keyed on pipeline and table, so a derive step or a host job restates owner claim, pin check and retirement. The engine opens an `Execution` for a scope, a content-hashed plan reference and pins; the handle records steps, commits a cursor, suspends and closes, and `run_with` is its client with unchanged behavior. The catalog keys owners on a scope: live table, backfill chunk or host-declared id. Each catalog adapter migrates its owner rows, a table owner keeping its key byte for byte.

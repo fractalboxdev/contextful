@@ -347,7 +347,7 @@ crates/
   contextful-connectors/   native sources
   contextful-context/      table parts, query face, snapshot commit, retrieval
   contextful-memory/       deterministic memory synthesis
-  contextful-sqlite/       the SQLite adapter behind the catalog ports
+  contextful-sqlite/       the SQLite adapter behind the catalog and run store ports
   contextful-policy/       predicates, masks, redaction, zones, audit chain, token trait
   contextful-sync/         bucket push and pull
   contextful-agent/        tool server and connector scaffolder

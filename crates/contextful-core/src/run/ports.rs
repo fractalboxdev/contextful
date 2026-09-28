@@ -159,8 +159,8 @@ pub trait JournalStore: Send + Sync {
 /// (`run.journal.storage-ports`).
 pub trait BlobStore: Send + Sync {
     /// Store `bytes` under `sha256`. Concurrent puts of one hash converge on one stored
-    /// value without waiting or erroring, and no partial value is ever readable
-    /// (`run.journal.blob-write`).
+    /// value, none erroring on another's write, and no partial value is ever readable
+    /// (`run.journal.blob-write`). An adapter may serialize puts behind its own writes.
     fn put(&self, sha256: &str, bytes: &[u8]) -> Result<(), Failure>;
     /// The bytes under `sha256`; `None` when no blob holds it.
     fn get(&self, sha256: &str) -> Result<Option<Vec<u8>>, Failure>;

@@ -2,7 +2,7 @@
 
 # Target ledger
 
-58 entries: 27 gated, 0 recorded, 0 scheduled, 31 open.
+59 entries: 28 gated, 0 recorded, 0 scheduled, 31 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -57,6 +57,7 @@
 | `read-session-latency` | `read.retrieve.ranked-call` | `session.warm_p95_ms` | trend | issue 40 | — | open (issue 40) |
 | `read-session-one-engine` | `read.retrieve.ranked-call` | `session.engine_opens` | gate | issue 40 | `== 1` | open (issue 40) |
 | `row-key-dedup` | `read.retrieve.row-key-dedup` | `retrieval.hybrid.duplicate_row_rate` | gate | issue 79 | `== 0` | open (issue 79) |
+| `sqlite-journal-conformance` | `run.journal.sqlite-stores` | `journal.sqlite_conformance.failed_cases` | gate | test `contextful_sqlite::stores::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically` | `== 0` | gated |
 | `stale-fence-differential` | `assurance.differential-test.protocol-harness` | `protocol.drift_cases` | gate | issue 76 | `== 0` | open (issue 76) |
 | `stale-fence-never-lands` | `store.lease.stale-fence` | `lease.stale_commits_landed` | gate | test `contextful_context::run_commit::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable` | `== 0` | gated |
 | `store-write-deny-set` | `topology.package.store-write-engine-free` | `topology.store_write.forbidden_packages` | gate | issue 80 | `== 0` | open (issue 80) |

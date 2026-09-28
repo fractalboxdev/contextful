@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 117 | 21 | 16 | 17 | 77 | 0 | 77 |
-| `run` | 3 | 24 | 293 | 82 | 34 | 25 | 152 | 0 | 152 |
+| `run` | 3 | 24 | 294 | 82 | 34 | 25 | 153 | 0 | 153 |
 | `store` | 1 | 14 | 158 | 37 | 12 | 13 | 115 | 0 | 115 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 64 | 19 | 5 | 5 | 19 | 0 | 19 |
-| **total** | 19 | 146 | 1500 | 479 | 169 | 111 | 756 | 0 | |
+| **total** | 19 | 146 | 1501 | 479 | 169 | 111 | 757 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 192 | 136 | passing |
 | 2 — The store | 8 | 117 | 79 | passing |
-| 3 — The run path | 11 | 179 | 98 | passing |
+| 3 — The run path | 11 | 180 | 99 | passing |
 | 4 — Ingest | 22 | 341 | 139 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
@@ -586,6 +586,7 @@ Unscheduled operations: 10.
 | `run.journal.missing-blob` | `crates/contextful-engine/tests/integration/journal.rs::a_missing_blob_refuses_rather_than_reading_empty` | performed |
 | `run.journal.redacting-source` | `crates/contextful-core/tests/integration/run/plan.rs::redaction_over_a_journaling_source_is_refused_at_validation` | performed |
 | `run.journal.replay-lands` | `crates/contextful-engine/tests/integration/runner.rs::a_resumed_run_lands_what_an_uninterrupted_one_lands` | performed |
+| `run.journal.sqlite-stores` | `crates/contextful-sqlite/tests/integration/stores.rs::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically` | performed |
 | `run.journal.step-output` | `crates/contextful-engine/tests/integration/journal.rs::a_crash_before_the_write_re_enters_and_the_record_then_stands` | performed |
 | `run.journal.storage-ports` | `crates/contextful-engine/tests/integration/stores.rs::the_file_and_memory_adapters_pass_every_store_conformance_suite` | performed |
 | `run.land.table-failed` | `crates/contextful-cli/tests/integration/pipeline.rs::a_failing_table_is_named_with_its_kind_and_run` | performed |

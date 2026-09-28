@@ -177,9 +177,9 @@ fn a_claim_whose_holder_lapsed_is_taken_over() {
     assert_eq!(effects.load(Ordering::SeqCst), 1, "the taker runs the effect once");
 }
 
-/// Concurrent writers of one blob hash converge on one stored value without waiting or erroring, and no partial
+/// Concurrent writers of one blob hash converge on one stored value and none errors on another's write; no partial
 /// write survives beside it. The file adapter stages a private temporary file and renames it over the destination.
-// spec: run.journal.blob-write@f931628e
+// spec: run.journal.blob-write@d624a3b6
 #[test]
 fn concurrent_blob_writers_converge_on_one_file() {
     let dir = tempfile::tempdir().unwrap();

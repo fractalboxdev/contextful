@@ -89,8 +89,8 @@ impl<J: JournalStore, B: BlobStore> Journal<J, B> {
         &self.blobs
     }
 
-    /// Write a blob. Concurrent writers of one hash converge on one stored value without
-    /// waiting or erroring (`run.journal.blob-write`).
+    /// Write a blob. Concurrent writers of one hash converge on one stored value, none
+    /// erroring on another's write (`run.journal.blob-write`).
     pub fn write_blob(&self, sha256: &str, bytes: &[u8]) -> Result<(), Failure> {
         self.blobs.put(sha256, bytes)
     }

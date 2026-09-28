@@ -65,7 +65,7 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
 - `idempotency-key` — Every outbound request a step makes carries an idempotency key derived from its entry key, identical on every re-entry of that effect.
   *because a vendor honoring the key turns an at-least-once effect into one billed call*
 - `inline-cutoff` — A value of 1 MiB or smaller is stored inline in its row as bytes; a larger value lands in a content-addressed blob named by its sha256, and the row holds the reference.
-- `blob-write` — Concurrent writers of one blob hash converge on one stored value without waiting or erroring, and no partial write survives beside it.
+- `blob-write` — Concurrent writers of one blob hash converge on one stored value and none errors on another's write; no partial write survives beside it.
   *A-run*
 - `missing-blob` — A row whose blob reference resolves to no stored blob raises `BlobMissing` carrying the reference, never an empty value in place of the recorded one.
   *P6*
@@ -85,6 +85,8 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *A-run*
 - `storage-ports` — Journal rows, blobs and awakeables persist through a journal store, a blob store and an awakeable store; every `run.journal` and `run.suspend` clause holds for each adapter, the file tree included.
   *A-run*
+- `sqlite-stores` — `contextful-sqlite` serves the journal, blob and awakeable stores from one SQLite file in write-ahead-log mode over one connection, a blob as a row keyed by its sha256; an awakeable update commits with the journal writes inside it.
+  *because a resolution recording its payload through a second connection waits on the write lock its own update holds*
 - `plan-pin` — A run resolves the plan reference it started against for its whole life.
 - `unwired-capability` — Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work.
   *A-topology*

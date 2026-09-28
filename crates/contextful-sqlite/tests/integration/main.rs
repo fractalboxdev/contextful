@@ -1,8 +1,9 @@
 //! The SQLite adapter's one integration binary: `machine.sqlite` behind the `Catalog`
-//! port, `derived.sqlite` behind the `DerivedCatalog` port.
+//! port and the run storage ports, `derived.sqlite` behind the `DerivedCatalog` port.
 
 mod derived;
 mod machine;
+mod stores;
 
 use contextful_core::ports::Clock;
 use contextful_core::run::own::{ConnectorPin, ExecutionOwner, Pins};
