@@ -22,8 +22,8 @@ from = "effective_from"
 to   = "effective_to"
 "#;
 
-/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
-// spec: store.declare.table-block@261e4b49
+/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
+// spec: store.declare.table-block@598aa993
 #[test]
 fn a_table_block_parses_its_keys_and_omits_unset_ones() {
     let t = &TableDecl::parse_pipeline(SPEC_EXAMPLE).unwrap()[0];
@@ -64,6 +64,9 @@ example_queries = ["SELECT count(*) FROM notes"]
     assert_eq!(n.example_queries.as_ref().unwrap().len(), 1);
     assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nprimary_keys = [\"id\"]\n").is_err());
     assert!(!TableDecl::named("bare").canonical().contains("columns"));
+    assert!(!TableDecl::named("bare").canonical().contains("indexes"));
+    let indexed = "[[pipeline.tables]]\nname = \"x\"\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"e\"\nid_column = \"id\"\nmodel = \"m\"\ndim = 2\n";
+    assert_eq!(TableDecl::parse_pipeline(indexed).unwrap()[0].indexes().len(), 1);
     // A column type outside the spellings a landing reads refuses the declaration.
     assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\ncolumns = { digest = \"binary(0)\" }\n").is_err());
     assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\ncolumns = { v = \"float64[3]\" }\n").is_err());

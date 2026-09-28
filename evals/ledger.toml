@@ -423,8 +423,9 @@ clause = "read.retrieve.sidecar-generates-candidates"
 metric = "retrieval.vector.recall_at_k"
 kind   = "eval"
 tier   = "gate"
-method = { issue = 43 }
+method = { test = "contextful_context::index::vector_recall_at_10_holds_against_exact_search" }
 target = { op = ">=", value = 0.95 }
+seed   = 0x5eed_0043
 
 [entry.vector-filtered-recall]
 clause = "read.retrieve.sidecar-oversampling"

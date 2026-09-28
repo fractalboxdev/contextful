@@ -10,8 +10,9 @@ use contextful_core::memory::recall::{gate, EvidenceRead};
 use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::read::embed::cosine;
 use contextful_core::read::template::Bound;
+use crate::vector::{self, Fallback, VectorSidecar};
 use contextful_core::read::rank::{
-    candidate_window, fuse, min_max, order, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
+    candidate_window, sidecar_probe_size, fuse, min_max, order, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
     Timeframe,
 };
 use contextful_core::read::respond::{Cell, Response};
@@ -47,6 +48,9 @@ const RESERVED_PROJECTED: [(&str, &str); 4] =
 
 /// The column carrying a row's stored vector.
 const EMBEDDING_COLUMN: &str = "embedding";
+
+/// Identifiers one re-join statement binds.
+const REJOIN_CHUNK: usize = 256;
 
 /// What a ranked read asks for.
 #[derive(Debug, Clone)]
@@ -221,6 +225,37 @@ impl Face {
                     break;
                 }
             }
+            // The vector sidecar adds its candidates to the window, each read through the
+            // relation, so a row it recalls scores exactly as the exact path scores it
+            // (`read.retrieve.sidecar-generates-candidates`).
+            if let (false, Some(query)) = (claims, request.query_embedding.as_deref()) {
+                if let Ok((id_column, ids)) = self.sidecar_candidates(session, table, query, limit) {
+                    let cx = ArmContext {
+                        engine: &engine,
+                        session,
+                        table,
+                        claims,
+                        anchor,
+                        window: u64::MAX,
+                        snippet: &snippet,
+                        basis: &basis,
+                        tokens: &tokens,
+                        request,
+                        memory_tables: &memory_tables,
+                    };
+                    let present: std::collections::HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
+                    let mut recalled_rows = Vec::new();
+                    let mut added = 0u64;
+                    for chunk in ids.chunks(REJOIN_CHUNK) {
+                        let marks = vec!["?"; chunk.len()].join(", ");
+                        let sql = format!("SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks})", ident(table), ident(&id_column));
+                        let parameters: Vec<Bound> = chunk.iter().map(|id| Bound::Text(id.clone())).collect();
+                        let (columns, values) = engine.run_values(&sql, &parameters, None)?;
+                        self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut suppressed);
+                    }
+                    rows.extend(recalled_rows.into_iter().filter(|r| !present.contains(&r.id)));
+                }
+            }
         }
         let prefloor = rows.len() as u64;
         rows.retain(|r| passes_floor(floor, r.lexical, r.vector));
@@ -318,6 +353,28 @@ impl Face {
             response = response.with_block("recall", json!({ "suppressed": counts }));
         }
         Ok(response)
+    }
+
+    /// The `id_column` and the candidate identifiers the table's current vector sidecar
+    /// yields for `query`, or why the arm takes the exact scan
+    /// (`read.retrieve.sidecar-falls-back`). The probe widens where the session restricts
+    /// the table, since it sees none of the restriction (`read.retrieve.sidecar-oversampling`).
+    pub fn sidecar_candidates(&self, session: &Session, table: &str, query: &[f32], limit: u64) -> Result<(String, Vec<String>), Fallback> {
+        let (dir, entry) = vector::current_entry(&self.store, table, EMBEDDING_COLUMN, query.len())?;
+        let id_column = entry.get("id_column").and_then(|c| c.as_str()).ok_or(Fallback::ManifestMismatch)?.to_string();
+        let policy = session.policy(table);
+        if let Some(p) = policy {
+            let withheld = |c: &str| p.columns.get(c).is_some_and(|c| c.mask.is_some()) || !p.column_set(c).admits(session.zone());
+            if withheld(&id_column) || withheld(EMBEDDING_COLUMN) {
+                return Err(Fallback::Withheld);
+            }
+        }
+        let sidecar = VectorSidecar::open(&dir, table, &entry, &self.store.sealing())?;
+        let restricted =
+            session.tenant_scoped() || policy.is_some_and(|p| p.rows.is_some() || p.columns.values().any(|c| c.mask.is_some()));
+        let k = usize::try_from(sidecar_probe_size(limit, restricted)).unwrap_or(usize::MAX);
+        let ids = sidecar.probe(query, k)?.into_iter().map(|c| c.id).collect();
+        Ok((id_column, ids))
     }
 
     /// How one evidence row reads through the caller's session: its table registered, the

@@ -76,6 +76,9 @@ pub struct TableDecl {
     /// [`ColumnType::parse`] reads them; an unreadable spelling refuses the block.
     #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "spelled_types")]
     pub columns: Option<BTreeMap<String, String>>,
+    /// Sidecar declarations (`store.index.declaration`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub indexes: Option<Vec<super::index::IndexDecl>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

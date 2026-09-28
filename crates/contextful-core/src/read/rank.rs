@@ -31,6 +31,38 @@ pub fn candidate_window(limit: u64) -> u64 {
     limit.saturating_mul(CANDIDATE_WINDOW_FACTOR).max(CANDIDATE_WINDOW_FLOOR)
 }
 
+/// Multiple of the limit one sidecar probe requests (`read.retrieve.sidecar-oversampling`).
+pub const SIDECAR_PROBE_FACTOR: u64 = 4;
+
+/// Smallest candidate count one sidecar probe requests, in rows (`read.retrieve.sidecar-oversampling`).
+pub const SIDECAR_PROBE_FLOOR: u64 = 64;
+
+/// Further multiple a probe takes where the request carries restriction context
+/// (`read.retrieve.sidecar-oversampling`).
+pub const SIDECAR_RESTRICTED_FACTOR: u64 = 4;
+
+/// Stored-vector bytes past which a sidecar stays unloaded: 64 MiB
+/// (`read.retrieve.sidecar-size-cap`).
+pub const SIDECAR_SIZE_CAP_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Candidates one sidecar probe requests: the larger of 4 times the limit and 64 rows,
+/// times 4 again where the request carries restriction context, since the probe sees none
+/// of the restriction that later discards part of its result.
+pub fn sidecar_probe_size(limit: u64, restricted: bool) -> u64 {
+    let base = limit.saturating_mul(SIDECAR_PROBE_FACTOR).max(SIDECAR_PROBE_FLOOR);
+    if restricted {
+        base.saturating_mul(SIDECAR_RESTRICTED_FACTOR)
+    } else {
+        base
+    }
+}
+
+/// Whether a sidecar holding `stored_vector_bytes` stays unloaded, the arm taking the
+/// exact scan (`read.retrieve.sidecar-size-cap`).
+pub fn sidecar_over_cap(stored_vector_bytes: u64) -> bool {
+    stored_vector_bytes > SIDECAR_SIZE_CAP_BYTES
+}
+
 /// Whether the ranking saw a recency-ordered slice: the candidates fill the window.
 pub fn saw_recency_slice(candidates: u64, window: u64) -> bool {
     candidates == window

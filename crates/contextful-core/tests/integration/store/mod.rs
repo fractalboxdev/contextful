@@ -3,6 +3,7 @@
 mod bound_time;
 mod declare;
 mod fold;
+mod index;
 mod lay_out;
 mod reconcile;
 mod reserve;

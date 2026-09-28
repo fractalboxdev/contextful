@@ -1,7 +1,10 @@
 //! `read.retrieve`: content tokens, matching, the relevance floor and the candidate window.
 
 use super::strings;
-use contextful_core::read::rank::{candidate_window, saw_recency_slice, LexicalIndex, CANDIDATE_WINDOW_FACTOR, CANDIDATE_WINDOW_FLOOR};
+use contextful_core::read::rank::{
+    candidate_window, saw_recency_slice, sidecar_probe_size, LexicalIndex, CANDIDATE_WINDOW_FACTOR, CANDIDATE_WINDOW_FLOOR,
+    SIDECAR_PROBE_FACTOR, SIDECAR_PROBE_FLOOR, SIDECAR_RESTRICTED_FACTOR,
+};
 use contextful_core::read::tokens::{
     content_tokens, lexical_score, matches, passes_floor, relevance_floor, CONTENT_TOKEN_CAP, PLURAL_SUFFIX_FLOOR,
     RELEVANCE_FLOOR_NARROW, RELEVANCE_FLOOR_SPLIT, RELEVANCE_FLOOR_WIDE, TOKEN_LENGTH_FLOOR,
@@ -136,4 +139,18 @@ fn a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg() {
     let reciprocal_rank = ranked.iter().position(|i| *i == 1).map_or(0.0, |p| 1.0 / (p + 1) as f64);
     crate::emit("cjk-subrun", reciprocal_rank, 1, 0);
     assert_eq!(reciprocal_rank, 1.0);
+}
+
+/// One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.
+// spec: read.retrieve.sidecar-oversampling@ad98fed4
+#[test]
+fn a_probe_oversamples_the_limit_and_widens_under_restriction() {
+    assert_eq!((SIDECAR_PROBE_FACTOR, SIDECAR_PROBE_FLOOR, SIDECAR_RESTRICTED_FACTOR), (4, 64, 4));
+    assert_eq!(sidecar_probe_size(3, false), 64, "the floor, not 4 times the limit");
+    assert_eq!(sidecar_probe_size(16, false), 64);
+    assert_eq!(sidecar_probe_size(17, false), 68);
+    assert_eq!(sidecar_probe_size(100, false), 400);
+    assert_eq!(sidecar_probe_size(3, true), 256);
+    assert_eq!(sidecar_probe_size(100, true), 1600);
+    assert_eq!(sidecar_probe_size(u64::MAX, true), u64::MAX, "saturates");
 }

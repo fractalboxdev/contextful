@@ -121,7 +121,7 @@ unsettled: How does a consumer discover the manifest format version a store or b
 
 A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row.
 
-- `table-block` — A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
+- `table-block` — A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.
 - `column-types` — `columns` maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it; every landing into the table, a pipeline run included, lands that column in the declared type.
   *because a JSON value alone cannot say it carries bytes or a vector*
 - `two-genres` — A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the engine does not enumerate. Both append, dedupe on content and carry a timestamp.
@@ -257,17 +257,28 @@ sequenceDiagram
 Sidecar index kinds and identity, clustering, partitioning and the tenant partition.
 
 - `kinds` — Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW vector graph, a Tantivy full-text index, and opt-in per-column bloom filters.
-- `declaration` — A sidecar is declared per table with a kind, a `column` and builder parameters; the vector kind takes model, dimension, metric, `m` and `ef_construction`.
+- `declaration` — A sidecar is declared per table under `indexes` with a kind, a `column`, an `id_column` and builder parameters; the vector kind takes `model`, `dim`, the `cosine` metric, `m` and `ef_construction`.
+- `id-column` — A sidecar's `id_column` defaults to a single-column primary key, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.
+  *A-store*
+- `id-column-unresolved` — A declaration naming no `id_column` on a table without a single-column primary key, or two sidecars of one table naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.
+  *A-store*
+- `id-unique` — A fold meeting one `id_column` value on two rows of the snapshot it stages raises `StoreIndexIdNotUnique`, naming the table, the column and the value, and publishes nothing.
+  *A-store*
 - `paths` — A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>/`, inside the snapshot directory it indexes.
 - `identity` — A sidecar's identity is `(column, builder, builder-version)`; two builders over one column coexist, the caller picks at query time, and `derived.sqlite` records each builder.
 - `rebuild` — Swapping a builder rebuilds the sidecar, leaves the Parquet untouched, and callers on the existing identity read through the cutover.
 - `not-in-file-set` — `indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names.
 - `dies-with-snapshot` — Collecting a snapshot collects its sidecars in the same step.
-- `candidate-ids` — A sidecar yields candidate identifiers, not rows; they re-join through the enforced relation before a top-K is final.
+- `candidate-ids` — A sidecar yields candidate `id_column` values, not rows; they re-join through the enforced relation on that column before a top-K is final.
   *P5*
-- `vector-by-fold` — The fold builds a vector sidecar for a table carrying an embedding column under a single-column primary key.
-- `column-absent` — An index over a column the reconciled schema lacks raises `StoreIndexColumnAbsent` at manifest validation, before the pass that builds it.
+- `vector-by-fold` — The fold builds each declared vector sidecar over the staged rows holding a non-null identifier and a non-zero vector, from the declared model where the table carries `embedding_model`, and records its entry in the snapshot manifest.
+  *A-store*
+- `graph` — A vector sidecar is an HNSW graph over unit-length `Float32` vectors whose layers draw from a seed of the snapshot id and column, so one staged row set builds one byte-identical graph.
+  *because a rebuilt sidecar then differs from its predecessor only where the rows do, and a recall figure replays from its snapshot*
+- `column-absent` — An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at manifest validation, before the pass that builds it.
   *because an index over a missing column builds empty and reads as no match*
+- `column-type` — A vector sidecar over a column not typed as a vector of its declared `dim`, or an `id_column` typed other than text or integer, raises `StoreIndexColumnType` at manifest validation.
+  *because a builder reading another width, or an identifier the re-join casts differently, indexes rows no reader finds*
 - `clustering` — `cluster_by` sorts rows within a file lexicographically over its columns in declared order; zone maps then skip row groups with no manifest entry and no sidecar.
 - `partitioning` — Partitioning is off unless `partition_by` declares it.
 - `partition-type` — A `partition_by` column typed binary or vector raises `StorePartitionColumnType` at validation, before any Parquet.
@@ -324,6 +335,8 @@ At-rest encryption of Parquet, sidecars and ledgers, the key derivation, and for
 - `redacted-index` — An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.
   *A-authority*
 - `at-rest-scope` — A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.
+- `sidecar-reader` — In an unencrypted project a reader memory-maps a sidecar read-only; in an encrypted one it decrypts each sealed sidecar file into anonymous process memory and writes no cleartext to disk.
+  *A-store*
 - `rotation` — Rotation writes forward: new files take the new key version, published files keep theirs until collected, and a key version retires once no retained file names it.
 
 unsettled: How long does a sidecar decrypted into process memory stay resident across reads, and what evicts it? owner: store affects: store.encrypt
@@ -546,6 +559,16 @@ retain_runs  = "7d"
 [pipeline.tables.valid_time]
 from = "effective_from"
 to   = "effective_to"
+
+[[pipeline.tables.indexes]]
+kind            = "vector"
+column          = "embedding"
+id_column       = "passage_id"
+model           = "e5-small"
+dim             = 384
+metric          = "cosine"
+m               = 16
+ef_construction = 200
 ```
 
 A run manifest, a snapshot manifest and a table pointer:
@@ -562,8 +585,10 @@ A run manifest, a snapshot manifest and a table pointer:
   "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
   "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,
   "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
-  "indexes": [{ "kind": "vector", "column": "embedding", "model": "e5-small", "dim": 384,
-                "metric": "cosine", "m": 16, "ef_construction": 200, "key_version": 3 }] }
+  "indexes": [{ "kind": "vector", "path": "indexes/vec-embedding-e5-small/zone=all",
+                "column": "embedding", "id_column": "passage_id", "model": "e5-small", "dim": 384,
+                "metric": "cosine", "m": 16, "ef_construction": 200, "row_count": 128400,
+                "key_version": 3 }] }
 
 { "snapshot_id": "snapshot-01742054400000000000", "fence": 12 }
 ```

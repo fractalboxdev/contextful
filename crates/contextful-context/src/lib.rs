@@ -15,6 +15,7 @@ pub mod read;
 pub mod rows;
 pub mod scan;
 pub mod store;
+pub mod vector;
 
 pub use error::{ContextError, Result};
 pub use store::Store;

@@ -31,6 +31,9 @@ StoreKeyWidened              = { clause = "store.reconcile.key-widening", gloss 
 StorePartitionColumnType     = { clause = "store.index.partition-type", gloss = "A `partition_by` column is typed binary or vector." }
 StorePartialSnapshot         = { clause = "store.fold.partial-snapshot", gloss = "A commit would expose snapshot data without its declared sidecars, or the reverse." }
 StoreIndexColumnAbsent       = { clause = "store.index.column-absent", gloss = "An index is declared over a column the reconciled schema lacks." }
+StoreIndexColumnType         = { clause = "store.index.column-type", gloss = "An indexed column or `id_column` carries a type the sidecar does not read." }
+StoreIndexIdColumnUnresolved = { clause = "store.index.id-column-unresolved", gloss = "A table's sidecars resolve no single `id_column`." }
+StoreIndexIdNotUnique        = { clause = "store.index.id-unique", gloss = "One `id_column` value names two rows of a staged snapshot." }
 StoreValidTimeNotTimestamp   = { clause = "store.bound-time.valid-time-type", gloss = "A declared valid-time column is not timestamp-typed." }
 StoreAsOfUnretained          = { clause = "store.bound-time.as-of-unretained", gloss = "An `as_of` precedes the oldest retained snapshot of a table whose history was collected." }
 StoreValidTimeUndeclared     = { clause = "store.bound-time.valid-time-undeclared", gloss = "A valid-time-bounded read names a table declaring no pair." }
