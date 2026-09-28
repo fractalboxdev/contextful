@@ -37,6 +37,9 @@ fn slot(k: Kind) -> usize {
     }
 }
 
+/// Stripe secret and restricted key prefixes, live and test mode.
+const STRIPE: [&str; 4] = ["sk_live_", "rk_live_", "sk_test_", "rk_test_"];
+
 /// Seed of the labelled catalogue corpus.
 const CATALOGUE_SEED: u64 = 0x5eed_0003;
 /// Generated positives, and generated near-misses, per kind.
@@ -104,7 +107,7 @@ fn positive(r: &mut Lcg, kind: Kind) -> (String, std::ops::Range<usize>) {
             _ => whole(format!("sk-ant-api03-{}-AA", r.text(BASE64URL, 80, 95))),
         },
         Kind::GoogleApiKey => whole(format!("AIza{}", r.chars(BASE64URL, 35))),
-        Kind::StripeKey => whole(format!("{}{}", r.pick(&["sk_live_", "rk_live_"]), r.text(ALNUM, 24, 99))),
+        Kind::StripeKey => whole(format!("{}{}", r.pick(&STRIPE), r.text(ALNUM, 24, 99))),
         Kind::Jwt => whole(format!(
             "eyJ{}.eyJ{}.{}",
             r.text(BASE64URL, 10, 40),
@@ -163,7 +166,7 @@ fn near_miss(r: &mut Lcg, kind: Kind) -> String {
             }
             _ => format!("x{}AIza{}", r.chars(ALNUM, 3), r.chars(BASE64URL, 35)),
         },
-        Kind::StripeKey => format!("{}{}", r.pick(&["sk_live_", "rk_live_"]), r.text(ALNUM, 1, 23)),
+        Kind::StripeKey => format!("{}{}", r.pick(&STRIPE), r.text(ALNUM, 1, 23)),
         Kind::Jwt => match r.below(2) {
             0 => format!("eyJ{}.eyJ{}", r.chars(ALNUM, 12), r.chars(ALNUM, 20)),
             _ => format!("eyJ{}.{}.{}", r.chars(ALNUM, 12), r.chars(ALNUM, 20), r.chars(ALNUM, 20)),
@@ -238,6 +241,8 @@ fn the_catalogue_holds_its_precision_and_recall_fixture() {
             "import sk-learn as the baseline",
             "my-sk-learn-pipeline-config-v2-with-a-long-tail",
             "release 1.2.3",
+            "task_test_4eC39HqLyjWDarjtT1zdp7dc",
+            "disk_test_suite_runs_nightly_on_the_ci_box",
             "xeyJabc.def.ghi",
             "Authorization: Basic",
         ]
@@ -256,7 +261,7 @@ fn the_catalogue_holds_its_precision_and_recall_fixture() {
     assert!(false_positives.is_empty(), "{} of {} negatives matched", false_positives.len(), negatives.len());
 
     // One forward scan per pattern: a long adversarial input stays linear.
-    let long = "AKIA".repeat(250_000) + &"password=".repeat(100_000) + &"sk-".repeat(250_000) + &"eyJ.".repeat(250_000) + &"bearer ".repeat(100_000);
+    let long = "AKIA".repeat(250_000) + &"password=".repeat(100_000) + &"sk-".repeat(250_000) + &"sk_test_".repeat(250_000) + &"eyJ.".repeat(250_000) + &"bearer ".repeat(100_000);
     let started = std::time::Instant::now();
     let _ = spans(&long);
     assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());

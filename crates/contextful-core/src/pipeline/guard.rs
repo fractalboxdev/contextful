@@ -16,7 +16,7 @@ pub enum Kind {
     /// OpenAI and Anthropic keys: `sk-`, `sk-proj-`, `sk-ant-`.
     LlmProviderKey,
     GoogleApiKey,
-    /// Stripe secret and restricted keys: `sk_live_`, `rk_live_`.
+    /// Stripe secret and restricted keys, live and test mode: `sk_live_`, `rk_live_`, `sk_test_`, `rk_test_`.
     StripeKey,
     Jwt,
     AwsAccessKeyId,
@@ -83,7 +83,7 @@ fn google(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
 
 fn stripe(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
     let b = s.as_bytes();
-    for prefix in ["sk_live_", "rk_live_"] {
+    for prefix in ["sk_live_", "rk_live_", "sk_test_", "rk_test_"] {
         let mut floor = 0;
         for i in find_all(s, prefix) {
             if i < floor || !word_start(b, i) {
