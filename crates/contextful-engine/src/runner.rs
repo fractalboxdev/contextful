@@ -4,7 +4,6 @@
 
 use crate::cancel::{Cadence, CancelToken, Keeper};
 use crate::project::Emitter;
-use crate::fsutil::sleep_unless;
 use crate::journal::{Journal, Resolved, StepError};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey};
 use contextful_core::run::advance::{admits, advance, frontier, open_watermark, resolve_concurrent, watermark, CursorKind};
@@ -488,7 +487,7 @@ impl Engine {
             match decide(&spec.plan.schedule, label, attempt, &failure, seed(&spec.run_id)) {
                 Decision::Retry { delay_ms } => {
                     self.emit(spec, Change::Step(StepPatch { failure: Some(failure.clone()), ..StepPatch::new(label).status(StepStatus::Retrying) }));
-                    if !sleep_unless(Duration::from_millis(delay_ms), &|| token.requested()) {
+                    if !token.wait_timeout(Duration::from_millis(delay_ms)) {
                         return Err(Close::Failed(Failure::canceled(format!("stopped during the retry sleep of `{label}`"))));
                     }
                     attempt += 1;

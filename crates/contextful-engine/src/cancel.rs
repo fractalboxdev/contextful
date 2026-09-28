@@ -6,24 +6,74 @@ use contextful_core::coordinate::{Catalog, Lease};
 use contextful_core::run::cancel::POLL_INTERVAL_MS;
 use contextful_core::run::ports::Cancellation;
 use contextful_core::run::record::{OWNER_LEASE_RENEWAL_SECS, OWNER_LEASE_TTL_SECS};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// A flag threads block on: `raise` wakes every waiter at once, so a wait costs no
+/// wakeup until its deadline or the raise.
+#[derive(Debug, Default)]
+struct Signal {
+    raised: Mutex<bool>,
+    changed: Condvar,
+}
+
+impl Signal {
+    fn lock(&self) -> MutexGuard<'_, bool> {
+        self.raised.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn raise(&self) {
+        *self.lock() = true;
+        self.changed.notify_all();
+    }
+
+    fn raised(&self) -> bool {
+        *self.lock()
+    }
+
+    /// Block until `deadline` or the raise; `true` when the deadline passed unraised. No
+    /// deadline blocks until the raise.
+    fn wait_until(&self, deadline: Option<Instant>) -> bool {
+        let mut raised = self.lock();
+        loop {
+            if *raised {
+                return false;
+            }
+            raised = match deadline {
+                None => self.changed.wait(raised).unwrap_or_else(|e| e.into_inner()),
+                Some(deadline) => {
+                    let now = Instant::now();
+                    if now >= deadline {
+                        return true;
+                    }
+                    self.changed.wait_timeout(raised, deadline - now).unwrap_or_else(|e| e.into_inner()).0
+                }
+            };
+        }
+    }
+}
 
 /// The token every await of one run selects on.
 #[derive(Debug, Clone, Default)]
-pub struct CancelToken(Arc<AtomicBool>);
+pub struct CancelToken(Arc<Signal>);
 
 impl CancelToken {
+    /// Fire the token, waking every [`CancelToken::wait_timeout`] blocked on it.
     pub fn fire(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        self.0.raise();
+    }
+
+    /// Block for `total` unless the token fires first: `true` when `total` passed
+    /// unfired, `false` at once on a fire, including one before the call.
+    pub fn wait_timeout(&self, total: Duration) -> bool {
+        self.0.wait_until(Instant::now().checked_add(total))
     }
 }
 
 impl Cancellation for CancelToken {
     fn requested(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.0.raised()
     }
 }
 
@@ -50,10 +100,51 @@ impl Default for Cadence {
     }
 }
 
-/// The background thread polling the stop mark and renewing the owner lease; it stops
-/// when dropped.
+/// The instants the keeper wakes at: the earlier of the next poll and the next renewal.
+/// Each cadence runs from the instant it last ran, so a late wakeup runs a job once and
+/// never in a catch-up burst.
+#[derive(Debug, Clone, Copy)]
+pub struct Schedule {
+    cadence: Cadence,
+    next_poll: Instant,
+    next_renew: Instant,
+}
+
+/// The jobs one wakeup runs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Due {
+    pub poll: bool,
+    pub renew: bool,
+}
+
+impl Schedule {
+    /// The schedule of a keeper whose first poll ran at `start`.
+    pub fn new(cadence: Cadence, start: Instant) -> Schedule {
+        Schedule { cadence, next_poll: start + cadence.poll, next_renew: start + cadence.renew }
+    }
+
+    /// The instant the keeper next wakes at.
+    pub fn next(&self) -> Instant {
+        self.next_poll.min(self.next_renew)
+    }
+
+    /// The jobs due at `now`, each rescheduled one cadence after `now`.
+    pub fn take(&mut self, now: Instant) -> Due {
+        let due = Due { poll: now >= self.next_poll, renew: now >= self.next_renew };
+        if due.poll {
+            self.next_poll = now + self.cadence.poll;
+        }
+        if due.renew {
+            self.next_renew = now + self.cadence.renew;
+        }
+        due
+    }
+}
+
+/// The background thread polling the stop mark and renewing the owner lease; it sleeps
+/// until the next poll or renewal and stops at once when dropped.
 pub struct Keeper {
-    stop: Arc<AtomicBool>,
+    stop: Arc<Signal>,
     handle: Option<JoinHandle<()>>,
 }
 
@@ -68,21 +159,16 @@ impl Keeper {
     /// cadence as well, so a run holding it past one time-to-live keeps it.
     pub fn start_holding(catalog: Arc<dyn Catalog + Send + Sync>, run_id: &str, token: CancelToken, cadence: Cadence, held: Arc<Mutex<Option<Lease>>>) -> Keeper {
         poll(catalog.as_ref(), run_id, &token);
-        let stop = Arc::new(AtomicBool::new(false));
+        let mut schedule = Schedule::new(cadence, Instant::now());
+        let stop = Arc::new(Signal::default());
         let (flag, id) = (stop.clone(), run_id.to_string());
         let handle = std::thread::spawn(move || {
-            let tick = Duration::from_millis(10);
-            let (mut since_poll, mut since_renew) = (Duration::ZERO, Duration::ZERO);
-            while !flag.load(Ordering::SeqCst) {
-                std::thread::sleep(tick);
-                since_poll += tick;
-                since_renew += tick;
-                if since_poll >= cadence.poll {
-                    since_poll = Duration::ZERO;
+            while flag.wait_until(Some(schedule.next())) {
+                let due = schedule.take(Instant::now());
+                if due.poll {
                     poll(catalog.as_ref(), &id, &token);
                 }
-                if since_renew >= cadence.renew {
-                    since_renew = Duration::ZERO;
+                if due.renew {
                     renew(catalog.as_ref(), &id);
                     renew_lease(catalog.as_ref(), &held);
                 }
@@ -123,7 +209,7 @@ pub fn renew(catalog: &dyn Catalog, run_id: &str) {
 
 impl Drop for Keeper {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::SeqCst);
+        self.stop.raise();
         if let Some(h) = self.handle.take() {
             let _ = h.join();
         }
