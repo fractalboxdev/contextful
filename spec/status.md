@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 13 | 180 | 48 | 19 | 14 | 70 | 0 | 70 |
 | `authority` | 2 | 16 | 224 | 60 | 27 | 7 | 155 | 0 | 155 |
-| `connector` | 2 | 13 | 234 | 73 | 15 | 7 | 98 | 0 | 98 |
+| `connector` | 2 | 13 | 241 | 74 | 15 | 8 | 98 | 0 | 98 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 66 | 57 | 9 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 115 | 21 | 14 | 16 | 75 | 0 | 75 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 157 | 37 | 12 | 13 | 113 | 0 | 113 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 60 | 15 | 5 | 5 | 14 | 0 | 14 |
-| **total** | 19 | 145 | 1463 | 471 | 163 | 107 | 723 | 0 | |
+| **total** | 19 | 145 | 1470 | 472 | 163 | 108 | 723 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 191 | 133 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
 | 3 — The run path | 11 | 171 | 92 | passing |
-| 4 — Ingest | 22 | 334 | 127 | passing |
+| 4 — Ingest | 22 | 341 | 127 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 19 | 19 | passing |
