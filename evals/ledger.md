@@ -2,17 +2,18 @@
 
 # Target ledger
 
-60 entries: 31 gated, 0 recorded, 0 scheduled, 29 open.
+61 entries: 32 gated, 2 recorded, 0 scheduled, 27 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `audit-append-durable` | `disclosure.record.unpersisted-entry` | `audit.append.lost_acknowledged` | gate | test `contextful_policy::audit::an_append_that_fails_to_persist_leaves_disk_and_tip_at_the_prior_entry` | `== 0` | gated |
-| `audit-append-latency` | `disclosure.record.unpersisted-entry` | `audit.append.p95_us` | trend | issue 42 | — | open (issue 42) |
+| `audit-append-latency` | `disclosure.record.group-commit` | `audit.append.p99_us` | trend | test `contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers` | — | recorded |
+| `audit-append-latency-lone` | `disclosure.record.group-commit` | `audit.append.lone_p99_us` | trend | test `contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers` | — | recorded |
 | `audit-inclusion-proof` | `disclosure.record.segment` | `audit.proof.hashes` | gate | issue 42 | `<= 12` | open (issue 42) |
 | `audit-open-bounded-heap` | `disclosure.record.single-writer` | `audit.open.retained_heap_delta_kib` | gate | issue 81 | `< 64` | open (issue 81) |
 | `audit-query-digest-keyed` | `disclosure.record.segment` | `audit.digest.dictionary_matches` | gate | issue 81 | `== 0` | open (issue 81) |
 | `audit-read-waits-on-entry` | `disclosure.record.unpersisted-entry` | `audit.read.rows_before_sync` | gate | issue 75 | `== 0` | open (issue 75) |
-| `audit-sync-per-group` | `disclosure.record.unpersisted-entry` | `audit.syncs_per_group.max` | gate | issue 42 | `<= 1` | open (issue 42) |
+| `audit-sync-per-group` | `disclosure.record.group-commit` | `audit.syncs_per_group.max` | gate | test `contextful_policy::audit::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together` | `<= 1` | gated |
 | `audit-truncation-detected` | `disclosure.attest.broken-chain` | `audit.truncation.undetected` | gate | test `contextful_policy::audit::every_trailing_truncation_under_a_rewritten_tip_is_detected` | `== 0` | gated |
 | `bearer-transport-bound` | `authority.issue.one-credential` | `authority.off_transport_admissions` | gate | issue 57 | `== 0` | open (issue 57) |
 | `cjk-subrun` | `read.retrieve.script-split-matching` | `retrieve.cjk.reciprocal_rank` | gate | test `contextful_core::read::retrieve::a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg` | `== 1` | gated |

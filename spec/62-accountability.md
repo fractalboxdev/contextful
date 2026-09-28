@@ -55,7 +55,11 @@ flowchart LR
 What a read leaves behind: the span, the hash-linked audit entry, and where telemetry lands.
 
 - `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes at 4096 entries under one signed root.
-- `group-commit` — Between segment opens, an append group, the appends one sync covers, issues 1 sync, of its segment file; the signed tip writes at segment close, on idle and at export.
+- `group-commit` — Concurrent appends form one append group, which issues 1 sync of its segment file between segment opens; every member returns after that sync, or every member raises {{disclosure.record.unpersisted-entry}}.
+  *A-disclosure*
+- `segment-open` — An append group that creates a segment file adds 1 sync of the segments directory.
+  *A-disclosure*
+- `tip-signing` — The signed tip writes at segment close, once the log sees no append for 1 s, and at export; an append group closing no segment writes no tip.
   *A-disclosure*
 - `unpersisted-entry` — A read whose entry fails to reach local durable storage raises `AuditEntryUnpersisted` and returns no rows.
   *A-disclosure*
@@ -82,7 +86,7 @@ sequenceDiagram
     end
 ```
 
-unsettled: What append throughput does group commit sustain on the reference target, and at what read rate does the chain become the read path's bottleneck? owner: disclosure affects: disclosure.record
+unsettled: At what read rate does the audit chain become the read path's bottleneck? owner: disclosure affects: disclosure.record
 
 unsettled: Does a read refused by enforcement append an entry, and what does that entry carry about the relations the caller named? owner: disclosure affects: disclosure.record
 

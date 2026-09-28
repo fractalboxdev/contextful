@@ -6,9 +6,17 @@
 //! ```text
 //! segments/000001.jsonl       one entry per line, seq ascending from 1
 //! segments/000001.root.json   {root, count, signature} closing the segment
-//! chain.tip                   last accepted {seq, entry_hash, signature}
+//! chain.tip                   a signed {seq, entry_hash} at or behind the chain end
 //! audit.lock                  held by the one process writing the log
 //! ```
+//!
+//! Appends commit in groups (`disclosure.record.group-commit`): concurrent appends queue
+//! behind the group in flight, and the next group writes every queued entry and issues one
+//! data sync of its segment file. A group creating a segment file adds one sync of the
+//! segments directory (`disclosure.record.segment-open`). The tip signs at segment close,
+//! after [`AUDIT_TIP_IDLE`] without an append, at export and when the log closes
+//! (`disclosure.record.tip-signing`), so entries past the tip are an unsigned tail whose
+//! truncation only a replicated root catches.
 //!
 //! Roots and the tip sign through the signing port a mint signs through
 //! (`authority.issue.signing-port`), under either scheme, so a chain truncated under a
@@ -27,17 +35,24 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Display;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 /// The `prev_hash` of the first entry.
 pub const GENESIS: &str = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 
 /// Entries a segment holds before its signed root closes it.
 pub const AUDIT_SEGMENT_ENTRIES: u64 = 4096;
+
+/// Quiet time after the last append at which the log signs its tip
+/// (`disclosure.record.tip-signing`).
+pub const AUDIT_TIP_IDLE: Duration = Duration::from_secs(1);
 
 /// A refusal of the audit chain.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -361,11 +376,67 @@ fn walk(dir: &Path, key: Option<&SignerKey>) -> Result<ChainTip, AuditError> {
     Ok(end)
 }
 
+/// What one audit sync makes durable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fsync {
+    /// The lines an append group wrote to segment `n`.
+    Segment(u64),
+    /// The segments directory, after the file of segment `n` is created.
+    SegmentOpen(u64),
+    /// Segment `n`, cut back to its last whole line on open or to its length before a
+    /// failed group.
+    Truncate(u64),
+    /// The signed root of segment `n`, or its directory after the root is renamed in.
+    Root(u64),
+    /// `chain.tip`, or its directory after the tip is renamed in.
+    Tip,
+}
+
+/// The port every audit sync runs through.
+pub trait FsyncPort: Send + Sync {
+    /// Make `file`, opened on what `what` names, durable.
+    fn sync(&self, what: Fsync, file: &File) -> std::io::Result<()>;
+}
+
+/// Syncs on the local filesystem: file data alone for segment lines, the whole file
+/// otherwise. On macOS each is an `F_FULLFSYNC`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FileFsync;
+
+impl FsyncPort for FileFsync {
+    fn sync(&self, what: Fsync, file: &File) -> std::io::Result<()> {
+        match what {
+            Fsync::Segment(_) | Fsync::Truncate(_) => file.sync_data(),
+            _ => file.sync_all(),
+        }
+    }
+}
+
+/// How a log commits and when it signs its tip.
+#[derive(Clone)]
+pub struct AuditOptions {
+    /// Quiet time after the last append at which the tip signs.
+    pub idle: Duration,
+    pub fsync: Arc<dyn FsyncPort>,
+}
+
+impl Default for AuditOptions {
+    fn default() -> AuditOptions {
+        AuditOptions { idle: AUDIT_TIP_IDLE, fsync: Arc::new(FileFsync) }
+    }
+}
+
+impl std::fmt::Debug for AuditOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuditOptions").field("idle", &self.idle).finish_non_exhaustive()
+    }
+}
+
 /// Truncate the last segment to its last newline when it ends mid-line. An entry line is
-/// written whole and newline-terminated, and the tip moves only after the segment syncs,
-/// so unterminated bytes are a write a crash cut short, past the tip and never
-/// acknowledged. A newline-terminated line that does not parse is left for [`verify`].
-fn drop_torn_tail(dir: &Path) -> Result<(), AuditError> {
+/// written whole and newline-terminated, and an append returns only after its segment
+/// syncs, so unterminated bytes are a write a crash cut short and never acknowledged. A
+/// newline-terminated line that does not parse is left for [`verify`].
+fn drop_torn_tail(dir: &Path, fsync: &dyn FsyncPort) -> Result<(), AuditError> {
     let (segments, _) = listing(dir)?;
     let Some(&last) = segments.last() else { return Ok(()) };
     let path = segment_path(dir, last);
@@ -375,19 +446,19 @@ fn drop_torn_tail(dir: &Path) -> Result<(), AuditError> {
     }
     let keep = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1) as u64;
     let f = OpenOptions::new().write(true).open(&path).map_err(unreadable(&path))?;
-    f.set_len(keep).and_then(|_| f.sync_all()).map_err(unreadable(&path))
+    f.set_len(keep).and_then(|_| fsync.sync(Fsync::Truncate(last), &f)).map_err(unreadable(&path))
 }
 
 /// Write `bytes` to `path` durably: a sibling temporary file, synced, renamed into
-/// place, and the directory synced.
-fn write_durable(path: &Path, bytes: &[u8]) -> Result<(), String> {
+/// place, and the directory synced, each sync as `what`.
+fn write_durable(path: &Path, bytes: &[u8], fsync: &dyn FsyncPort, what: Fsync) -> Result<(), String> {
     let tmp = path.with_extension("tmp");
     let attempt = (|| -> std::io::Result<()> {
         let mut f = File::create(&tmp)?;
         f.write_all(bytes)?;
-        f.sync_all()?;
+        fsync.sync(what, &f)?;
         fs::rename(&tmp, path)?;
-        sync_dir(path.parent().unwrap_or(Path::new(".")))
+        fsync.sync(what, &File::open(path.parent().unwrap_or(Path::new(".")))?)
     })();
     if attempt.is_err() {
         let _ = fs::remove_file(&tmp);
@@ -395,27 +466,23 @@ fn write_durable(path: &Path, bytes: &[u8]) -> Result<(), String> {
     attempt.map_err(fail(path))
 }
 
-fn sync_dir(dir: &Path) -> std::io::Result<()> {
-    File::open(dir)?.sync_all()
-}
-
 fn fail<E: Display>(path: &Path) -> impl Fn(E) -> String + '_ {
     move |e| format!("{}: {e}", path.display())
 }
 
-/// What an append touched on disk, reversed when it fails to persist.
+/// What an append group touched on disk, reversed when it fails to persist.
 #[derive(Default)]
 struct Undo {
-    truncate: Option<(PathBuf, u64)>,
+    truncate: Option<(u64, PathBuf, u64)>,
     created: Vec<PathBuf>,
 }
 
 impl Undo {
-    /// Reverse the append, reporting the first step that could not be reversed.
-    fn apply(self) -> Result<(), String> {
+    /// Reverse the group, reporting the first step that could not be reversed.
+    fn apply(self, fsync: &dyn FsyncPort) -> Result<(), String> {
         let mut first = None;
-        if let Some((path, len)) = self.truncate {
-            let r = OpenOptions::new().write(true).open(&path).and_then(|f| f.set_len(len).and_then(|_| f.sync_all()));
+        if let Some((n, path, len)) = self.truncate {
+            let r = OpenOptions::new().write(true).open(&path).and_then(|f| f.set_len(len).and_then(|_| fsync.sync(Fsync::Truncate(n), &f)));
             if let Err(e) = r {
                 first = Some(format!("{}: {e}", path.display()));
             }
@@ -430,33 +497,72 @@ impl Undo {
     }
 }
 
-/// The node's audit log: appends link to the tip, reach local durable storage before
-/// they return, and close each full segment under a signed root.
-pub struct AuditLog<S: SigningPort> {
-    dir: PathBuf,
-    signer: S,
+/// An append waiting for its group.
+struct Member {
+    ticket: u64,
+    batch: Vec<Value>,
+}
+
+/// What an append group left behind: its entries, the new chain end, and the tip it signed
+/// when it closed a segment.
+type Committed = (Vec<AuditEntry>, ChainTip, Option<ChainTip>);
+
+struct State {
+    /// The last durable entry.
     tip: ChainTip,
-    /// The exclusive lock on `audit.lock`, held for the log's lifetime.
-    _lock: File,
-    /// Set when a failed append could not be reversed: the files may hold lines past the
+    /// The entry `chain.tip` names.
+    signed: ChainTip,
+    queue: Vec<Member>,
+    next_ticket: u64,
+    done: HashMap<u64, Result<Vec<AuditEntry>, AuditError>>,
+    /// Set while one thread writes: a group's leader, an export, or the idle signer.
+    busy: bool,
+    /// Set when a failed group could not be reversed: the files may hold lines past the
     /// tip, so every later append refuses until the log is reopened and verified.
     poisoned: Option<String>,
+    last_append: Instant,
+    closing: bool,
+}
+
+struct Inner<S> {
+    dir: PathBuf,
+    signer: S,
+    fsync: Arc<dyn FsyncPort>,
+    idle: Duration,
+    /// The exclusive lock on `audit.lock`, held for the log's lifetime.
+    _lock: File,
+    state: Mutex<State>,
+    turn: Condvar,
+}
+
+/// The node's audit log: appends link to the tip, commit in groups sharing one segment
+/// sync, return only once durable, and close each full segment under a signed root.
+pub struct AuditLog<S: SigningPort + Send + Sync + 'static> {
+    inner: Arc<Inner<S>>,
+    idler: Option<JoinHandle<()>>,
 }
 
 /// The signer stays out of the debug form.
-impl<S: SigningPort> std::fmt::Debug for AuditLog<S> {
+impl<S: SigningPort + Send + Sync + 'static> std::fmt::Debug for AuditLog<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AuditLog").field("dir", &self.dir).field("tip", &self.tip).finish_non_exhaustive()
+        f.debug_struct("AuditLog").field("dir", &self.inner.dir).field("tip", &self.tip()).finish_non_exhaustive()
     }
 }
 
-impl<S: SigningPort> AuditLog<S> {
+impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
+    /// [`AuditLog::open_with`] under the default options.
+    pub fn open(dir: impl Into<PathBuf>, signer: S) -> Result<AuditLog<S>, AuditError> {
+        AuditLog::open_with(dir, signer, AuditOptions::default())
+    }
+
     /// Open the log under `dir`: take the directory's writer lock, then verify the chain
     /// and every root and tip signature under the signer's key. A full last segment left
-    /// without its root closes now, and a tip behind the chain end advances to it.
-    pub fn open(dir: impl Into<PathBuf>, signer: S) -> Result<AuditLog<S>, AuditError> {
+    /// without its root closes now, and a tip absent or behind the chain end advances to
+    /// it.
+    pub fn open_with(dir: impl Into<PathBuf>, signer: S, options: AuditOptions) -> Result<AuditLog<S>, AuditError> {
         let dir = dir.into();
-        fs::create_dir_all(&dir).map_err(unreadable(&dir))?;
+        let seg_dir = segments_dir(&dir);
+        fs::create_dir_all(&seg_dir).map_err(unreadable(&seg_dir))?;
         let lock_path = dir.join("audit.lock");
         let lock = OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(unreadable(&lock_path))?;
         match lock.try_lock() {
@@ -466,61 +572,179 @@ impl<S: SigningPort> AuditLog<S> {
             }
             Err(fs::TryLockError::Error(e)) => return Err(unreadable(&lock_path)(e)),
         }
-        drop_torn_tail(&dir)?;
+        drop_torn_tail(&dir, &*options.fsync)?;
         let end = verify_signed(&dir, &SignerKey::of(&signer))?;
-        let log = AuditLog { dir, signer, tip: end, _lock: lock, poisoned: None };
-        if log.tip.seq > 0 && log.tip.seq % AUDIT_SEGMENT_ENTRIES == 0 {
-            let n = segment_of(log.tip.seq);
-            if !root_path(&log.dir, n).exists() {
-                log.close(n).map_err(AuditError::AuditEntryUnpersisted)?;
+        let recorded = read_tip(&dir)?.map(|t| ChainTip { seq: t.seq, entry_hash: t.entry_hash });
+        let state = State {
+            tip: end.clone(),
+            signed: recorded.clone().unwrap_or_else(ChainTip::genesis),
+            queue: Vec::new(),
+            next_ticket: 0,
+            done: HashMap::new(),
+            busy: false,
+            poisoned: None,
+            last_append: Instant::now(),
+            closing: false,
+        };
+        let inner = Arc::new(Inner {
+            dir,
+            signer,
+            fsync: options.fsync,
+            idle: options.idle,
+            _lock: lock,
+            state: Mutex::new(state),
+            turn: Condvar::new(),
+        });
+        if end.seq > 0 && end.seq % AUDIT_SEGMENT_ENTRIES == 0 {
+            let n = segment_of(end.seq);
+            if !root_path(&inner.dir, n).exists() {
+                inner.close(n, &end).map_err(AuditError::AuditEntryUnpersisted)?;
             }
         }
-        let recorded = read_tip(&log.dir)?.map(|t| ChainTip { seq: t.seq, entry_hash: t.entry_hash });
-        if recorded.as_ref() != Some(&log.tip) && log.tip.seq > 0 {
-            log.write_tip(&log.tip).map_err(AuditError::AuditEntryUnpersisted)?;
+        if recorded.as_ref() != Some(&end) {
+            inner.write_tip(&end).map_err(AuditError::AuditEntryUnpersisted)?;
+            inner.lock().signed = end;
         }
-        Ok(log)
+        let idler = {
+            let inner = Arc::clone(&inner);
+            std::thread::Builder::new()
+                .name("audit-tip".into())
+                .spawn(move || inner.sign_when_idle())
+                .map_err(|e| AuditError::Io(format!("starting the idle tip signer: {e}")))?
+        };
+        Ok(AuditLog { inner, idler: Some(idler) })
     }
 
-    /// The last accepted entry.
-    pub fn tip(&self) -> &ChainTip {
-        &self.tip
+    /// The last durable entry.
+    pub fn tip(&self) -> ChainTip {
+        self.inner.lock().tip.clone()
+    }
+
+    /// Appends waiting for the group in flight.
+    pub fn queued(&self) -> usize {
+        self.inner.lock().queue.len()
     }
 
     /// Append one entry. See [`AuditLog::append_all`].
-    pub fn append(&mut self, attributes: Value) -> Result<AuditEntry, AuditError> {
+    pub fn append(&self, attributes: Value) -> Result<AuditEntry, AuditError> {
         let mut entries = self.append_all(vec![attributes])?;
         Ok(entries.pop().expect("one entry appended"))
     }
 
-    /// Append a batch under one commit: one sync per segment file the batch reaches,
-    /// then the tip. On any failure nothing in the batch persists, the files return to
-    /// their prior length, and the in-memory tip stays where it was.
-    pub fn append_all(&mut self, batch: Vec<Value>) -> Result<Vec<AuditEntry>, AuditError> {
-        if let Some(reason) = &self.poisoned {
-            return Err(AuditError::AuditEntryUnpersisted(format!("an earlier append could not be reversed ({reason}); reopen the log")));
-        }
-        let mut undo = Undo::default();
-        match self.persist(batch, &mut undo) {
-            Ok((entries, tip)) => {
-                self.tip = tip;
-                Ok(entries)
+    /// Append a batch as one member of an append group. The call returns once one data
+    /// sync of the segment covers every member's lines, or raises `AuditEntryUnpersisted`
+    /// with every other member when that sync or any write before it fails; the files then
+    /// return to their prior length and the tip stays where it was.
+    pub fn append_all(&self, batch: Vec<Value>) -> Result<Vec<AuditEntry>, AuditError> {
+        let inner = &*self.inner;
+        let mut st = inner.lock();
+        let ticket = st.next_ticket;
+        st.next_ticket += 1;
+        st.queue.push(Member { ticket, batch });
+        loop {
+            if let Some(result) = st.done.remove(&ticket) {
+                return result;
             }
-            Err(e) => {
-                if let Err(reason) = undo.apply() {
-                    self.poisoned = Some(reason);
+            if !st.busy {
+                break;
+            }
+            st = inner.turn.wait(st).unwrap_or_else(PoisonError::into_inner);
+        }
+        // This append leads the next group: every append queued so far, its own included.
+        st.busy = true;
+        let group = std::mem::take(&mut st.queue);
+        let (tip, poisoned) = (st.tip.clone(), st.poisoned.clone());
+        drop(st);
+        let sizes: Vec<(u64, usize)> = group.iter().map(|m| (m.ticket, m.batch.len())).collect();
+        let values: Vec<Value> = group.into_iter().flat_map(|m| m.batch).collect();
+        let outcome = match poisoned {
+            Some(reason) => Err((format!("an earlier append could not be reversed ({reason}); reopen the log"), None)),
+            None => inner.commit(&tip, values),
+        };
+        let mut st = inner.lock();
+        match outcome {
+            Ok((entries, end, signed)) => {
+                st.tip = end;
+                if let Some(signed) = signed {
+                    st.signed = signed;
                 }
-                Err(AuditError::AuditEntryUnpersisted(e))
+                let mut entries = entries.into_iter();
+                for (t, len) in sizes {
+                    st.done.insert(t, Ok(entries.by_ref().take(len).collect()));
+                }
+            }
+            Err((reason, poison)) => {
+                if let Some(poison) = poison {
+                    st.poisoned = Some(poison);
+                }
+                for (t, _) in sizes {
+                    st.done.insert(t, Err(AuditError::AuditEntryUnpersisted(reason.clone())));
+                }
             }
         }
+        st.last_append = Instant::now();
+        st.busy = false;
+        inner.turn.notify_all();
+        st.done.remove(&ticket).expect("the leader records its own result")
     }
 
-    fn persist(&self, batch: Vec<Value>, undo: &mut Undo) -> Result<(Vec<AuditEntry>, ChainTip), String> {
+    /// Sign the tip at the chain end and write it as `chain.tip`, for a verifier reading
+    /// the log now.
+    pub fn export(&self) -> Result<SignedTip, AuditError> {
+        let inner = &*self.inner;
+        let mut st = inner.lock();
+        while st.busy {
+            st = inner.turn.wait(st).unwrap_or_else(PoisonError::into_inner);
+        }
+        st.busy = true;
+        let tip = st.tip.clone();
+        drop(st);
+        let written = inner.write_tip(&tip);
+        let mut st = inner.lock();
+        if written.is_ok() {
+            st.signed = tip;
+        }
+        st.busy = false;
+        inner.turn.notify_all();
+        written.map_err(AuditError::Io)
+    }
+}
+
+/// Closing the log stops the idle signer and signs the tip at the chain end.
+impl<S: SigningPort + Send + Sync + 'static> Drop for AuditLog<S> {
+    fn drop(&mut self) {
+        self.inner.lock().closing = true;
+        self.inner.turn.notify_all();
+        if let Some(idler) = self.idler.take() {
+            let _ = idler.join();
+        }
+        let st = self.inner.lock();
+        if st.signed != st.tip && st.poisoned.is_none() {
+            let tip = st.tip.clone();
+            drop(st);
+            let _ = self.inner.write_tip(&tip);
+        }
+    }
+}
+
+impl<S: SigningPort> Inner<S> {
+    fn lock(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Write one group after `tip`, reversing it on failure. The error carries the reason
+    /// and, when the reversal itself failed, the reason the log is poisoned.
+    fn commit(&self, tip: &ChainTip, values: Vec<Value>) -> Result<Committed, (String, Option<String>)> {
+        let mut undo = Undo::default();
+        self.persist(tip, values, &mut undo).map_err(|e| (e, undo.apply(&*self.fsync).err()))
+    }
+
+    fn persist(&self, start: &ChainTip, values: Vec<Value>, undo: &mut Undo) -> Result<Committed, String> {
         let seg_dir = segments_dir(&self.dir);
-        fs::create_dir_all(&seg_dir).map_err(fail(&seg_dir))?;
-        let mut tip = self.tip.clone();
-        let mut entries = Vec::with_capacity(batch.len());
-        let mut pending = batch.into_iter().peekable();
+        let mut tip = start.clone();
+        let mut entries = Vec::with_capacity(values.len());
+        let mut closed = false;
+        let mut pending = values.into_iter().peekable();
         while pending.peek().is_some() {
             let n = segment_of(tip.seq + 1);
             let path = segment_path(&self.dir, n);
@@ -528,7 +752,7 @@ impl<S: SigningPort> AuditLog<S> {
             let mut file = OpenOptions::new().create(true).append(true).open(&path).map_err(fail(&path))?;
             if existed {
                 if undo.truncate.is_none() {
-                    undo.truncate = Some((path.clone(), file.metadata().map_err(fail(&path))?.len()));
+                    undo.truncate = Some((n, path.clone(), file.metadata().map_err(fail(&path))?.len()));
                 }
             } else {
                 undo.created.push(path.clone());
@@ -542,34 +766,66 @@ impl<S: SigningPort> AuditLog<S> {
                 tip = entry.tip();
                 entries.push(entry);
             }
-            file.write_all(&buf).and_then(|_| file.sync_data()).map_err(fail(&path))?;
+            file.write_all(&buf).and_then(|_| self.fsync.sync(Fsync::Segment(n), &file)).map_err(fail(&path))?;
             if !existed {
-                sync_dir(&seg_dir).map_err(fail(&seg_dir))?;
+                File::open(&seg_dir).and_then(|d| self.fsync.sync(Fsync::SegmentOpen(n), &d)).map_err(fail(&seg_dir))?;
             }
             if tip.seq == n * AUDIT_SEGMENT_ENTRIES {
                 undo.created.push(root_path(&self.dir, n));
-                self.close_at(n, &tip)?;
+                self.close(n, &tip)?;
+                closed = true;
             }
         }
-        self.write_tip(&tip)?;
-        Ok((entries, tip))
+        if closed {
+            self.write_tip(&tip)?;
+        }
+        let signed = closed.then(|| tip.clone());
+        Ok((entries, tip, signed))
     }
 
     /// Sign `tip` and write it durably as `chain.tip`.
-    fn write_tip(&self, tip: &ChainTip) -> Result<(), String> {
+    fn write_tip(&self, tip: &ChainTip) -> Result<SignedTip, String> {
         let signed = SignedTip::sign(tip.seq, &tip.entry_hash, &self.signer)?;
         let tpath = tip_path(&self.dir);
-        write_durable(&tpath, &serde_json::to_vec(&signed).map_err(fail(&tpath))?)
+        write_durable(&tpath, &serde_json::to_vec(&signed).map_err(fail(&tpath))?, &*self.fsync, Fsync::Tip)?;
+        Ok(signed)
     }
 
-    /// Close segment `n`, whose last entry is the current tip.
-    fn close(&self, n: u64) -> Result<(), String> {
-        self.close_at(n, &self.tip)
-    }
-
-    fn close_at(&self, n: u64, last: &ChainTip) -> Result<(), String> {
+    /// Close segment `n`, whose last entry is `last`, under a signed root.
+    fn close(&self, n: u64, last: &ChainTip) -> Result<(), String> {
         let root = SignedRoot::sign(&last.entry_hash, AUDIT_SEGMENT_ENTRIES, &self.signer)?;
         let path = root_path(&self.dir, n);
-        write_durable(&path, &serde_json::to_vec(&root).map_err(fail(&path))?)
+        write_durable(&path, &serde_json::to_vec(&root).map_err(fail(&path))?, &*self.fsync, Fsync::Root(n))
+    }
+
+    /// The idle signer: once no append has arrived for `idle` and the tip lags the chain
+    /// end, sign the tip at the end. A failed write retries after another idle interval.
+    fn sign_when_idle(&self) {
+        let mut st = self.lock();
+        loop {
+            if st.closing {
+                return;
+            }
+            if st.busy || st.signed == st.tip || st.poisoned.is_some() {
+                st = self.turn.wait(st).unwrap_or_else(PoisonError::into_inner);
+                continue;
+            }
+            let quiet = st.last_append.elapsed();
+            if quiet < self.idle {
+                st = self.turn.wait_timeout(st, self.idle - quiet).unwrap_or_else(PoisonError::into_inner).0;
+                continue;
+            }
+            st.busy = true;
+            let tip = st.tip.clone();
+            drop(st);
+            let written = self.write_tip(&tip);
+            st = self.lock();
+            match written {
+                Ok(_) => st.signed = tip,
+                Err(_) => st.last_append = Instant::now(),
+            }
+            st.busy = false;
+            self.turn.notify_all();
+        }
     }
 }
