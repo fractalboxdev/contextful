@@ -34,6 +34,20 @@ Gate: a `contextful-context` benchmark reports cold and warm `Face::query` p50 a
 Criteria: no reuse crosses a snapshot, schema, table set or revocation, fixed; warm latency decides.
 Consequences: `read.register.connection-views` rewords from per statement to per pool entry once the gate admits the pool.
 
+## A zone-withheld relation is named, with one whole-relation count
+
+`read.respond` names each touched relation the session's zone excludes or column-masks in a restriction block that every transport serializes; `context.describe` states the session zone and whether each table admits it. `authority.place` counts the rows the zone step removes over the whole relation, after the tenant and row-policy steps, never over the caller's statement. `authority.compose.before-the-cut` holds: the count is a property of the relation, so no ranked position, filter or requested size moves it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Name plus a whole-relation count *(chosen)* | — | The count discloses how many in-scope rows a placement withholds; each withheld relation costs one count query per read. |
+| Empty result, nothing named | Distinguishability | A zone-emptied relation reads as a table holding no data. |
+| Refuse the read | Composition | One excluded arm fails a prefix-wide ranked read or a join. |
+| Count over the caller's statement | Oracle resistance | Varying a predicate turns the count into a probe of withheld values, and a count per cut traces withheld positions. |
+| Name without a count | Diagnosis | A caller cannot tell an empty excluded table from a populated one. |
+
+Consequences: an empty result carrying no block means no touched relation was withheld by zone.
+
 ## Memory writes validate or dead-letter, and outcomes settle under their source
 
 `read.synthesize` validates every candidate against the declared output schema, retries with the error up to 3 attempts per batch, then dead-letters the response, template hash and drop reason with the cursor held. The relation vocabulary is a reserved core plus declared types; an undeclared edge dead-letters while the batch lands. `read.resolve-entity` dead-letters ambiguous mentions and dangling endpoints. `read.settle` requires one resolution form and one source — `metric`, `adjudicator` or `manual`; metric comparators evaluate outside the engine, verdicts carry an `http`/`https` citation, self-rated outcomes carry a null verdict, and the scored and unresolved views partition the join.

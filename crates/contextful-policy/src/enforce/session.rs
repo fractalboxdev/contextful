@@ -71,6 +71,20 @@ impl RegisteredRelation {
     }
 }
 
+/// What the zone step withholds from one registered relation: the whole relation where
+/// its table's effective set omits the session zone, else the columns it nulls
+/// (`authority.place.excluded-row`, `authority.place.excluded-cell`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZoneWithheld {
+    pub relation: String,
+    pub excluded: bool,
+    pub columns_masked: Vec<String>,
+    /// For an excluded relation, the count of the rows the zone step removes: every earlier
+    /// step applied, over the whole relation, reading no caller text
+    /// (`authority.place.excluded-disclosed`).
+    pub dropped_sql: Option<String>,
+}
+
 /// What a request asserts beside its credential.
 #[derive(Debug, Clone, Default)]
 pub struct Request<'a> {
@@ -192,22 +206,8 @@ impl Session {
     /// is this rewrite (`authority.compose.protection-is-a-rewrite`).
     fn compile(&self, t: &TableSource, base: &str, files: Vec<String>) -> RegisteredRelation {
         let name = &t.decl.name;
-        let mut conjuncts = Vec::new();
-        if let Some((column, _)) = self.tenants.get(name) {
-            // The values reach the engine as parameters into the tenant relation; the text
-            // names only the column and the table (`authority.filter-rows.tenant-equality`).
-            conjuncts.push(format!(
-                "CAST({} AS VARCHAR) IN (SELECT \"value\" FROM {} WHERE \"table\" = {})",
-                ident(column),
-                ident(TENANT_RELATION),
-                literal(name)
-            ));
-        }
-        if let Some(rows) = &t.policy.rows {
-            conjuncts.push(rows.sql());
-        }
-        let table_set = t.policy.placement.effective();
-        if !table_set.admits(&self.zone) {
+        let mut conjuncts = self.steps_before_zone(t);
+        if !self.zone_admits(t) {
             conjuncts.push("false".to_string());
         }
         let projection: Vec<String> = t
@@ -224,12 +224,64 @@ impl Session {
             })
             .collect();
         let projection = if projection.is_empty() { "*".to_string() } else { projection.join(", ") };
-        let filter = if conjuncts.is_empty() { "true".to_string() } else { conjuncts.join(" AND ") };
-        RegisteredRelation {
-            name: name.clone(),
-            sql: format!("SELECT {projection} FROM ({base}) AS \"__contextful_base\" WHERE {filter}"),
-            files,
+        RegisteredRelation { name: name.clone(), sql: format!("SELECT {projection} FROM ({base}) AS \"__contextful_base\" WHERE {}", filter(&conjuncts)), files }
+    }
+
+    /// Whether the table's effective set admits the session zone
+    /// (`authority.place.excluded-row`).
+    fn zone_admits(&self, t: &TableSource) -> bool {
+        t.policy.placement.effective().admits(&self.zone)
+    }
+
+    /// The relation's steps ahead of the zone step: tenant equality, then the table policy.
+    fn steps_before_zone(&self, t: &TableSource) -> Vec<String> {
+        let name = &t.decl.name;
+        let mut conjuncts = Vec::new();
+        if let Some((column, _)) = self.tenants.get(name) {
+            // The values reach the engine as parameters into the tenant relation; the text
+            // names only the column and the table (`authority.filter-rows.tenant-equality`).
+            conjuncts.push(format!(
+                "CAST({} AS VARCHAR) IN (SELECT \"value\" FROM {} WHERE \"table\" = {})",
+                ident(column),
+                ident(TENANT_RELATION),
+                literal(name)
+            ));
         }
+        if let Some(rows) = &t.policy.rows {
+            conjuncts.push(rows.sql());
+        }
+        conjuncts
+    }
+
+    /// What the zone step withholds from the registered relation `name` — a granted table
+    /// or a request ledger — or `None` where it withholds nothing. An excluded relation
+    /// names no column: none of its rows arrive.
+    pub fn zone_withheld(&self, name: &str) -> Option<ZoneWithheld> {
+        let (t, ledger) = match self.sources.get(name) {
+            Some(t) => (t, false),
+            None => (self.sources.get(ledger_table(name).filter(|_| self.ledgers.contains_key(name))?)?, true),
+        };
+        if !self.zone_admits(t) {
+            let (base, steps) = if ledger {
+                (ledger_sql(&t.ledger), Vec::new())
+            } else {
+                (t.base.clone(), self.steps_before_zone(t))
+            };
+            let sql = format!("SELECT count(*) FROM ({base}) AS \"__contextful_base\" WHERE {}", filter(&steps));
+            return Some(ZoneWithheld { relation: name.to_string(), excluded: true, columns_masked: Vec::new(), dropped_sql: Some(sql) });
+        }
+        if ledger {
+            return None;
+        }
+        let columns_masked: Vec<String> =
+            t.columns.iter().filter(|c| !t.policy.column_set(&c.name).admits(&self.zone)).map(|c| c.name.clone()).collect();
+        (!columns_masked.is_empty()).then(|| ZoneWithheld { relation: name.to_string(), excluded: false, columns_masked, dropped_sql: None })
+    }
+
+    /// Whether the session zone admits the table `name`, which the session reads
+    /// (`read.register.describe-zone`).
+    pub fn zone_admitted(&self, name: &str) -> Option<bool> {
+        self.sources.get(name).map(|t| self.zone_admits(t))
     }
 
     /// Whether any grant this session holds carries a tenant scope. Such a session is not
@@ -244,7 +296,7 @@ impl Session {
     /// alone (`read.register.scoped-ledger`). The table's zone gate applies to it as to the
     /// table.
     fn ledger(&self, t: &TableSource) -> RegisteredRelation {
-        let filter = if t.policy.placement.effective().admits(&self.zone) { "true" } else { "false" };
+        let filter = if self.zone_admits(t) { "true" } else { "false" };
         RegisteredRelation {
             name: ledger_relation(&t.decl.name),
             sql: format!("SELECT * FROM ({}) AS \"__contextful_base\" WHERE {filter}", ledger_sql(&t.ledger)),
@@ -347,6 +399,15 @@ impl Session {
     /// The pepper the query layer's mask functions hold.
     pub fn pepper(&self) -> &Pepper {
         &self.pepper
+    }
+}
+
+/// The `WHERE` text over conjuncts: each narrows, and none leaves `true`.
+fn filter(conjuncts: &[String]) -> String {
+    if conjuncts.is_empty() {
+        "true".to_string()
+    } else {
+        conjuncts.join(" AND ")
     }
 }
 

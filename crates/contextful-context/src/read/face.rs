@@ -136,7 +136,8 @@ impl Face {
             }
             None => (format!("SELECT * FROM {}", ident(r.name())), Bindings::default()),
         };
-        respond(&engine, &sql, &parameters, None, ReadOptions::default())
+        let response = respond(&engine, &sql, &parameters, None, ReadOptions::default())?;
+        self.restrict(&engine, session, [table], response)
     }
 
     /// A table's declaration, or an undeclared table's defaults.
@@ -267,7 +268,8 @@ impl Face {
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
-        respond(&engine, sql, &bindings, ceiling, opts)
+        let response = respond(&engine, sql, &bindings, ceiling, opts)?;
+        self.restrict(&engine, session, admitted.relations.iter().map(String::as_str), response)
     }
 
     /// Run a declared template the credential's allowlist covers. Its body is operator
@@ -286,7 +288,8 @@ impl Face {
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
-        respond(&engine, &template.sql, &parameters, ceiling, opts)
+        let response = respond(&engine, &template.sql, &parameters, ceiling, opts)?;
+        self.restrict(&engine, session, admitted.relations.iter().map(String::as_str), response)
     }
 
     /// The tools this session sees: the closed built-in set and each declared template
@@ -325,9 +328,15 @@ impl Face {
         let Some(table) = table else {
             let tables: Vec<Value> = session
                 .relations()
-                .map(|r| json!({ "table": r.name(), "description": self.decl(r.name()).agent_description }))
+                .map(|r| {
+                    json!({
+                        "table": r.name(),
+                        "description": self.decl(r.name()).agent_description,
+                        "zone_admitted": session.zone_admitted(r.name()),
+                    })
+                })
                 .collect();
-            return Ok(echo(json!({ "tables": tables }), Bounds { valid_as_of: None, ..bounds }));
+            return Ok(echo(json!({ "session_zone": session.zone().label(), "tables": tables }), Bounds { valid_as_of: None, ..bounds }));
         };
         let r = self.registered(session, table)?;
         self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
@@ -352,6 +361,8 @@ impl Face {
             "indexes": [],
             "partition_by": decl.partition_by(),
             "zone": policy.placement.effective().labels(),
+            "session_zone": session.zone().label(),
+            "zone_admitted": session.zone_admitted(table),
             "lexicon": {},
             "example_queries": decl.example_queries.clone().unwrap_or_default(),
         });
@@ -404,7 +415,47 @@ impl Face {
         engine.register(PREVIEW_RELATION, preview.sql())?;
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
-        respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), ceiling, opts)
+        let response = respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), ceiling, opts)?;
+        self.restrict(&engine, session, touched.iter().map(String::as_str), response)
+    }
+
+    /// Attach the restriction block naming each touched relation the session's zone
+    /// excludes or column-masks, or leave the response as it is where none is
+    /// (`read.respond.restriction-block`). Each count reads the whole relation under its
+    /// earlier steps, never the caller's statement (`authority.place.excluded-disclosed`).
+    pub(crate) fn restrict<'t>(
+        &self,
+        engine: &SqlEngine,
+        session: &Session,
+        touched: impl IntoIterator<Item = &'t str>,
+        response: Response,
+    ) -> Result<Response, ReadFault> {
+        let mut tables = Vec::new();
+        for withheld in touched.into_iter().collect::<BTreeSet<_>>().into_iter().filter_map(|t| session.zone_withheld(t)) {
+            let rows_dropped = match &withheld.dropped_sql {
+                Some(sql) => {
+                    let (_, count) = engine.run(sql, &Bindings::default(), None)?;
+                    match count.first().and_then(|r| r.first()) {
+                        Some(Cell::Integer { value, .. }) => u64::try_from(*value).unwrap_or(0),
+                        _ => 0,
+                    }
+                }
+                None => 0,
+            };
+            tables.push(json!({
+                "table": withheld.relation,
+                "excluded": withheld.excluded,
+                "rows_dropped": rows_dropped,
+                "columns_masked": withheld.columns_masked,
+            }));
+        }
+        if tables.is_empty() {
+            return Ok(response);
+        }
+        Ok(response.with_block(
+            "restriction",
+            json!({ "zone": session.zone().label(), "incognito": session.incognito(), "tables": tables }),
+        ))
     }
 }
 

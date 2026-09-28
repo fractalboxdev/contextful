@@ -356,6 +356,8 @@ impl Face {
         if let Some(b) = bounds.echo() {
             response = response.with_block("bounds", b);
         }
+        // An excluded arm read no candidate; the block names it (`read.retrieve.excluded-arm`).
+        response = self.restrict(&engine, session, arms.iter().map(String::as_str), response)?;
         if recalled {
             // Counts per identifier; no suppressed claim is named (`read.recall.suppression-count`).
             let counts: Map<String, Value> = ["MemoryEvidenceUnresolved", "MemoryEvidenceOverflow"]

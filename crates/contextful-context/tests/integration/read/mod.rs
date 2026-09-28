@@ -8,6 +8,7 @@ mod guard;
 mod latency;
 mod pool;
 mod register;
+mod respond;
 mod retrieve;
 mod typed;
 

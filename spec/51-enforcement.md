@@ -316,6 +316,8 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
   *A-authority*
 - `envelope` — A response envelope carries row counts removed by predicate and by zone, column names masked by policy and by zone, the asserted zone and the incognito flag, and no removed value.
   *A-authority*
+- `excluded-disclosed` — `rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.
+  *A-read*
 - `symbolic-inclusion` — Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.
   *A-authority*
 - `proxy-boundary` — A proxy replica resolves zones at the proxy boundary.
@@ -344,6 +346,8 @@ flowchart LR
   DROP -- "removed count" --> ENV["response envelope"]
   NUL -- "masked column" --> ENV
 ```
+
+unsettled: Does the restriction block also carry the rows a row predicate removes, given that count discloses how much of a table the caller's scope withholds? owner: authority affects: authority.place
 
 unsettled: What fixes the completeness of the evidence list a synthesized row's floor intersects over, given that an empty list intersects to everything? owner: authority affects: authority.place
 
