@@ -77,7 +77,7 @@ Revisit: audit writes replicate to a second store; group commit sustains less th
 
 ## An append group pays one sync, and the tip signs at segment close
 
-**Status:** proposed
+**Status:** accepted
 
 Context: an append that syncs its segment, a temporary tip file and the tip's directory, then signs the tip, pays three full syncs (`F_FULLFSYNC` on macOS) and one signature per read.
 Decision: `disclosure.record.group-commit` holds the budget. Concurrent appends form a group; one data sync of the segment covers every member, which then releases its rows, or every member raises `AuditEntryUnpersisted`. Opening a segment adds one directory sync. The tip signs at segment close, on idle and at export.
@@ -90,11 +90,11 @@ Decision: `disclosure.record.group-commit` holds the budget. Concurrent appends 
 | Delay appends to fill larger groups | Lone-read latency | A single reader waits out the window. |
 
 Criteria: rows never leave before their entry is durable, fixed; syncs per read decided it; truncation detectability.
-Consequences: throughput scales with concurrency, not sync latency; the unsigned tail is bounded by segment close and idle. The section is accepted once a test counts one sync per group and a p99 append benchmark on the reference target states its method and number.
+Consequences: throughput scales with concurrency, not sync latency; the unsigned tail is bounded by segment close and idle. An implementation meets this decision once a test counts one sync per group and a p99 append benchmark on the reference target states its method and number.
 
 ## Audit format v1 is versioned, whole-entry canonical and Merkle-rooted
 
-**Status:** proposed
+**Status:** accepted
 
 Context: a v0 entry digests `seq`, `prev_hash` and its attributes, and a segment root is the last entry hash, so one entry proves membership only with its whole segment. Every released format verifies forever.
 Decision: each v1 entry carries its format version, and its digest covers the whole entry under RFC 8785 canonical JSON. A chain header fixes the digest, SHA-256 or BLAKE3, and the segment size. A segment root is an RFC 6962 Merkle tree hash, so each entry has an inclusion proof. Roots sign through `SigningPort`, tagged by algorithm. A v0 chain verifies under v0 rules.
@@ -107,7 +107,7 @@ Decision: each v1 entry carries its format version, and its digest covers the wh
 | Sign every entry | Syncs per read | One signature per read, which group commit amortizes away. |
 
 Criteria: offline per-entry evidence decided it; every released version verifies; append cost; hardware-held keys.
-Consequences: `disclosure.record.segment` and `disclosure.attest.broken-chain` restate over v1 on acceptance.
+Consequences: `disclosure.record.segment` and `disclosure.attest.broken-chain` restate over v1.
 
 ## Erasure is a forced rewrite, a bounded cascade and a measured receipt
 

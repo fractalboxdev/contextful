@@ -17,7 +17,7 @@ Consequences: a preview and a query apply identical row restriction, masks and z
 
 ## A pooled engine reuses a resolved session only while its whole key holds
 
-**Status:** proposed
+**Status:** accepted
 
 Context: each `Face` call walks `tables/`, reads every granted `schema.json` and run manifest, then opens a connection, registers the mask functions, fills subject and tenant tables and creates one view per relation; every Parquet footer re-reads.
 Decision: `Face` pools resolved sessions with their connections, keyed on the admitted authority with token id and revocation epoch, the request zone, the bounds, the table set under `tables/`, and per granted table its `schema.json` digest, pointer and ledger file set. Any change misses. The pool sits behind the guard, masks and zone gate.
@@ -32,7 +32,7 @@ Gate: a `contextful-context` benchmark reports cold and warm `Face::query` p50 a
 | Rebuild per call | Warm latency | Setup scales with unfolded runs on every read. |
 
 Criteria: no reuse crosses a snapshot, schema, table set or revocation, fixed; warm latency decides.
-Consequences: `read.register.connection-views` rewords from per statement to per pool entry on acceptance.
+Consequences: `read.register.connection-views` rewords from per statement to per pool entry once the gate admits the pool.
 
 ## Memory writes validate or dead-letter, and outcomes settle under their source
 
