@@ -30,6 +30,7 @@ ConnectorLimiterBindingRejected = { clause = "connector.meter.binding-transport"
 ConnectorForwardRejected        = { clause = "connector.meter.forward-credential", gloss = "A limiter declaration forwarding a credential-bearing response header." }
 ConnectorLimiterUnreadable      = { clause = "connector.meter.unreadable-answer", gloss = "A limiter response the engine cannot parse." }
 ConnectorUnmetered              = { clause = "connector.meter.unmetered-request", gloss = "A vendor request without a granted reservation under a declared limiter." }
+ConnectorEgressRefused          = { clause = "connector.meter.hook-refusal", gloss = "An outbound hop the pre-send hook refused before name resolution." }
 ConnectorGrantMissing           = { clause = "connector.meter.built-in-grant-absent", gloss = "A compiled-in vendor-reaching source built without a limiter grant." }
 ConnectorGrantUnhonorable       = { clause = "connector.meter.grant-unhonorable", gloss = "A limiter grant on a source bypassing the mediated client." }
 ConnectorRemoteUnpinned         = { clause = "connector.package.remote-unpinned", gloss = "A remote artifact reference with no 64-hex content pin." }

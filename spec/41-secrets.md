@@ -191,13 +191,17 @@ unsettled: Does one mint call answer several scopes at once for a run that binds
 
 ## attach
 
-Host mediation of an outbound request: the bound host, address vetting, header templates, origin pinning and URL scrubbing.
+Host mediation of an outbound request: the transport port, the bound host, address vetting, header templates, origin pinning and URL scrubbing.
 
 - `host-mediation` — The host implements outbound HTTP itself: it judges every request against the declaration ahead of socket I/O, stamps a host-assigned request id, and writes the bound credential onto a permitted request.
   *A-connector*
 - `no-material-to-a-guest` — No host import hands credential bytes to guest code; a guest names a request and receives a response.
   *A-connector*
 - `unpermitted-request` — A request whose host the declaration does not cover raises `SecretUnpermittedRequest` and fails the guest call even where guest code discards the error.
+  *A-connector*
+- `transport-port` — The mediated client reaches the network only through a transport port. Its send half connects to an address the client vetted, follows no redirect, and applies the client's proxy choice, timeout and body ceiling.
+  *A-connector*
+- `resolve-half` — Name resolution runs through the port's resolve half, after {{connector.meter.pre-send-hook}} admits the hop; the client vets each address it answers under {{connector.attach.private-address}}.
   *A-connector*
 - `resolve-once` — The host resolves a permitted host name once per request and connects to the address it vetted, with no second lookup between check and connect.
   *A-connector*
@@ -225,7 +229,7 @@ Host mediation of an outbound request: the bound host, address vetting, header t
 - `typed-url-edit` — Metered vendor traffic and control-plane traffic each dispatch through one client whose error mapping clears the URL as a typed edit; a URL arriving otherwise is scrubbed as text.
 - `credential-in-a-url` — A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.
   *A-authority*
-- `mediation-covers-every-egress` — A built-in source, a guest connector, a limiter call and an exec step all attach through the mediated path. No second attachment point exists.
+- `mediation-covers-every-egress` — A built-in source, a guest connector, a model call, a limiter call and an exec step all attach through the mediated path. No second attachment point exists.
   *A-connector*
 
 ## rotate

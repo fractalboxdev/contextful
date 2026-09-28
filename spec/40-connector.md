@@ -148,7 +148,7 @@ unsettled: Does a community-distributed connector need a signing and transparenc
 
 ## meter
 
-Reservation against a shared vendor quota: declaration, binding, permits, denial and the usage report.
+Reservation against a shared vendor quota and the one pre-send hook it implements: declaration, binding, the hook's position and intent, permits, denial and the usage report.
 
 - `limiter-declaration` — A connector declares a limiter capability naming the shared vendor quota, the traffic class of its requests, and the vendor quota-state response headers to forward.
 - `forward-credential` — A limiter declaration forwarding `authorization`, `proxy-authorization`, `cookie` or `set-cookie` raises `ConnectorForwardRejected` at load.
@@ -173,6 +173,14 @@ Reservation against a shared vendor quota: declaration, binding, permits, denial
 - `unmetered-request` — Under a declared limiter, a vendor request with no granted reservation raises `ConnectorUnmetered`, including when the limiter is unreachable, unbound or answers a failing status, which never reads as an expired vendor credential.
   *A-connector*
 - `allowlist-precedence` — A request the allowlist refuses never reaches the limiter and spends no permit.
+- `pre-send-hook` — Each outbound hop passes one pre-send hook after the allowlist and before name resolution, carrying the hop's intent: method, scrubbed URL, host, port, traffic class, run id and request body bytes.
+  *A-connector*
+- `hook-composition` — The limiter reservation is the hook's innermost implementation. An operator hook composes in front of it, so a request the operator hook refuses makes no limiter call and spends no permit.
+  *A-connector*
+- `hook-refusal` — A hook refusing an intent raises `ConnectorEgressRefused` naming the host and the hook's reason. No name is resolved, and the retry schedule never retries it.
+  *P6*
+- `hook-settle` — The hook receives each admitted hop's outcome after the body read or the failure: the status or transport failure, bytes sent and bytes received. A followed redirect is two intents.
+  *A-connector*
 - `held-back-request` — A guest swallowing a held-back request still fails its call, and a fault inside the reservation machinery fails the request rather than passing it unmetered.
   *P2*
 - `synthesized-throttle` — A denied reservation returns to the guest as a synthesized `429` carrying the retry-after. An unreachable limiter fails the request as a transport failure.
@@ -214,12 +222,16 @@ sequenceDiagram
   H->>L: POST report: granted, spent, responses, run id
 ```
 
+unsettled: Does a hop's received byte count include a response body a guest abandons mid-stream, or only the bytes the host read? owner: connector affects: connector.meter
+
 ## infer
 
 Model egress: the single endpoint, the data fence and the trust label of model output.
 
 - `model-endpoint` — Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, rate limit and span; the component owns the prompt template and response schema.
   *A-topology*
+- `mediated-call` — A model call sends through the mediated client under {{connector.attach.mediation-covers-every-egress}}, its allowlist the configured endpoint host alone, and passes {{connector.meter.pre-send-hook}} like a vendor hop.
+  *A-connector*
 - `vendor-sdk` — A model-vendor SDK in any workspace crate is refused as {{topology.compose.vendor-sdk}}, so a provider swap is a URL edit.
   *A-topology*
 - `data-fence` — No ingested value reaches a model outside a data boundary: marker pairs whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.
@@ -484,9 +496,8 @@ flowchart LR
     N["compiled-in source"]
     M["host mediation point"]
     A{"host on allowlist?"}
+    HK{"pre-send hook admits?"}
     D{"address public?"}
-    L{"limiter declared?"}
-    Q{"permit granted?"}
     S{"TLS or loopback?"}
   end
   V(["vendor"])
@@ -496,14 +507,13 @@ flowchart LR
   N -->|"outgoing request"| M
   M -->|"request"| A
   A -->|"no: SecretUnpermittedRequest"| BLOCK
-  A -->|"yes"| D
+  A -->|"yes, intent"| HK
+  HK -->|"refused: ConnectorEgressRefused"| BLOCK
+  HK -->|"denied: synthesized 429"| THROTTLE
+  HK -->|"unreachable: ConnectorUnmetered"| THROTTLE
+  HK -->|"admitted, resolve"| D
   D -->|"no: ConnectorPrivateAddress"| BLOCK
-  D -->|"yes"| L
-  L -->|"no, headers attached"| S
-  L -->|"yes, acquire"| Q
-  Q -->|"denied: synthesized 429"| THROTTLE
-  Q -->|"unreachable: ConnectorUnmetered"| THROTTLE
-  Q -->|"granted, headers attached"| S
+  D -->|"yes, headers attached"| S
   S -->|"no: SecretCleartextEndpoint"| BLOCK
   S -->|"yes, vetted address"| V
   V -.->|"off origin: SecretRedirectOffOrigin"| BLOCK
