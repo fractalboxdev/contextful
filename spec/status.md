@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 249 | 74 | 17 | 8 | 118 | 0 | 118 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
-| `read` | 2 | 14 | 127 | 21 | 19 | 16 | 93 | 0 | 93 |
+| `read` | 2 | 14 | 128 | 22 | 19 | 16 | 94 | 0 | 94 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
 | `store` | 1 | 15 | 184 | 44 | 12 | 12 | 145 | 0 | 145 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 148 | 1583 | 501 | 177 | 113 | 858 | 0 | |
+| **total** | 19 | 148 | 1584 | 502 | 177 | 113 | 859 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ Decision records: 18.
 | 2 — The store | 9 | 143 | 109 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 353 | 151 | passing |
-| 5 — The read face under enforcement | 16 | 215 | 137 | passing |
+| 5 — The read face under enforcement | 16 | 216 | 138 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
 | 8 — Accountability | 5 | 39 | 19 | open |
@@ -484,6 +484,7 @@ Unscheduled operations: 10.
 | `read.embed.default-embedder-reach` | `crates/contextful-core/tests/integration/read/embed.rs::a_paraphrase_is_orthogonal_under_the_default` | performed |
 | `read.embed.required-face` | `crates/contextful-core/tests/integration/read/face.rs::a_requirement_outside_the_reported_set_is_refused` | performed |
 | `read.guard.engine-own-parse` | `crates/contextful-context/tests/integration/read/guard.rs::read_only_ness_is_a_property_of_the_engines_tree` | performed |
+| `read.guard.query-binding` | `crates/contextful-context/tests/integration/read/guard.rs::query_parameters_bind_by_declared_type` | performed |
 | `read.guard.quoted-identifiers` | `crates/contextful-context/tests/integration/read/guard.rs::vendor_field_names_render_as_identifiers` | performed |
 | `read.guard.relation-allowlist` | `crates/contextful-context/tests/integration/read/guard.rs::base_relations_are_registered_views_or_declared_ctes` | performed |
 | `read.guard.single-read-only-statement` | `crates/contextful-context/tests/integration/read/guard.rs::only_one_read_only_select_is_admitted` | performed |
