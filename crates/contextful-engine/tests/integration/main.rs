@@ -8,6 +8,7 @@ mod journal;
 mod project;
 mod writers;
 mod runner;
+mod stores;
 mod support;
 mod suspend;
 

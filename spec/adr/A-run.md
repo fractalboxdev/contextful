@@ -88,3 +88,49 @@ Revisit: operators routinely wrap steps in pinned scripts to recover shell featu
 
 Consequences: `native` keeps nesting up to the sink's declared capability and emits a downgrade schema-diff event past it.
 Revisit: orphaned children from root-level filtering become a reported data-quality problem; a deployment is relational at every sink.
+
+## The run substrate is three storage ports, and the file tree is one adapter
+
+Status: accepted. The journal, its blobs and the awakeable registry write the file tree directly, so a host keeping its own transactional store holds replay state twice, the second copy outside its retention and export. Three ports in the domain package carry the substrate: a journal store (create pending, read, replace if pending, record, release, rows and retire per execution), a blob store (put by sha256, get, sweep over a reference set and a grace) and an awakeable store. The file tree is the default adapter. Every `run.journal` and `run.suspend` clause holds per adapter, so `blob-write` states converging writers, and a staged rename is the file adapter's means.
+
+Criteria: one home for replay state per host, which decided it; an I/O-free domain package; one conformance suite per port.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Three storage ports, file tree as default adapter *(chosen)* | — | Every adapter runs one conformance suite; the sweep takes the union of journal and awakeable references. |
+| The file backend with a movable root | One home for replay state | Recorded values land again as plaintext beyond the host's deletion and export. |
+| One combined port for journal, blobs and awakeables | Adapter reuse | An object store backs blobs only by faking a journal. |
+| Ports over lock, rename and exclusive create | I/O-free domain | Claim logic stays bound to filesystem semantics. |
+
+Consequences: a journal store apart from the catalog shares no transaction with owner retirement, which `run.journal` leaves unsettled.
+
+## A host opens an execution through one handle keyed on a declared scope
+
+Status: accepted. `run_with` is the only way to open an execution and binds it to a native plan, a source pulled to exhaustion, one destination commit and an owner keyed on pipeline and table, so a derive step or a host job restates owner claim, pin check and retirement. The engine opens an `Execution` for a scope, a content-hashed plan reference and pins; the handle records steps, commits a cursor, suspends and closes, and `run_with` is its client with unchanged behavior. The catalog keys owners on a scope: live table, backfill chunk or host-declared id. Each catalog adapter migrates its owner rows, a table owner keeping its key byte for byte.
+
+Criteria: one implementation of owner claim, pin mismatch and retirement, which decided it; pending owners resume across the migration.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One handle over a scope-keyed owner *(chosen)* | — | One owner-table migration per catalog adapter; pins generalize to a plan reference plus host-supplied identities. |
+| Hosts compose journal and keeper directly | One implementation of owner rules | Every host restates claim, pin and retirement, and each copy drifts. |
+| A host job as a synthetic pipeline and table | Honesty of the record | Run history lists tables that hold no rows. |
+| A second, host-only owner table | One owner rule | Retirement and marker reconciliation run twice. |
+
+Consequences: `ExecutionPinMismatch` under a host scope names the plan reference in place of the pipeline hash.
+
+## An unclosed execution recovers by lease takeover, and one keeper per engine renews leases
+
+Status: accepted. A crashed process runs no destructor, so a status written when a handle drops covers only the clean exit, and one event reads two ways. Dropping an `Execution` unclosed records nothing: its keeper registration ends, the owner lease lapses and the next open under the scope resumes the pending owner, taking over pending claims. One keeper thread per engine holds a deadline heap of registered executions, renews each lease, feeds each token its poll and sleeps until the earliest deadline; open registers, close or drop deregisters.
+
+Criteria: one outcome per event, which decided it; wakeups scale with deadlines, not with open executions.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Drop records nothing; lease takeover; one keeper per engine *(chosen)* | — | A dropped handle holds its scope until the lease lapses; a stalled renewal delays the rest. |
+| Drop records `failed` | One outcome per event | A crash and a drop close differently, and a batchless failure releases an owner the replay needs. |
+| A keeper thread per execution on a 10 ms tick | Wakeup cost | 20 open executions spend 20 threads and 2,000 wakeups a second. |
+| Renewal only at step boundaries | Liveness | A long step reads as an orphan and its claim passes mid-effect. |
+
+Consequences: the stop channel and its cadence stay as `run.cancel` states them.
+Revisit: a renewal lags measurably under a large deadline heap.

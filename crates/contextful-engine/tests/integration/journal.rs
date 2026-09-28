@@ -177,9 +177,9 @@ fn a_claim_whose_holder_lapsed_is_taken_over() {
     assert_eq!(effects.load(Ordering::SeqCst), 1, "the taker runs the effect once");
 }
 
-/// A blob writer stages a private temporary file and renames it over the destination; concurrent writers of one
-/// hash converge on one file without waiting or erroring.
-// spec: run.journal.blob-write@d13bb556
+/// Concurrent writers of one blob hash converge on one stored value without waiting or erroring, and no partial
+/// write survives beside it. The file adapter stages a private temporary file and renames it over the destination.
+// spec: run.journal.blob-write@f931628e
 #[test]
 fn concurrent_blob_writers_converge_on_one_file() {
     let dir = tempfile::tempdir().unwrap();
@@ -196,9 +196,9 @@ fn concurrent_blob_writers_converge_on_one_file() {
     assert_eq!(std::fs::read(j.blob_path(&sha)).unwrap(), value);
 }
 
-/// A row whose blob reference resolves to no file raises `BlobMissing` carrying the reference, never an empty
+/// A row whose blob reference resolves to no stored blob raises `BlobMissing` carrying the reference, never an empty
 /// value in place of the recorded one.
-// spec: run.journal.missing-blob@4d0749cf
+// spec: run.journal.missing-blob@e0644c95
 #[test]
 fn a_missing_blob_refuses_rather_than_reading_empty() {
     let dir = tempfile::tempdir().unwrap();

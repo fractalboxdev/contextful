@@ -230,11 +230,11 @@ method = { test = "contextful_engine::journal::a_claim_whose_holder_lapsed_is_ta
 target = { op = "==", value = 1 }
 
 [entry.journal-conformance]
-clause = "run.journal.substrate-port"
+clause = "run.journal.storage-ports"
 metric = "journal.conformance.failed_cases"
 kind   = "test"
 tier   = "gate"
-method = { issue = 37 }
+method = { test = "contextful_engine::stores::the_file_and_memory_adapters_pass_every_store_conformance_suite" }
 target = { op = "==", value = 0 }
 
 [entry.journal-storage-bounded]

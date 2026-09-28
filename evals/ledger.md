@@ -2,7 +2,7 @@
 
 # Target ledger
 
-58 entries: 22 gated, 0 recorded, 0 scheduled, 36 open.
+58 entries: 23 gated, 0 recorded, 0 scheduled, 35 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@
 | `guest-pulley-throughput` | `connector.package.native-verification` | `wasm.pulley_throughput_ratio` | trend | issue 52 | — | open (issue 52) |
 | `guest-without-jit` | `connector.package.native-verification` | `wasm.warm_compiles` | gate | issue 52 | `== 0` | open (issue 52) |
 | `hydrated-secret-wiped` | `connector.resolve.hydration-is-just-in-time` | `resolve.hydrations_per_request` | gate | issue 51 | `== 1` | open (issue 51) |
-| `journal-conformance` | `run.journal.substrate-port` | `journal.conformance.failed_cases` | gate | issue 37 | `== 0` | open (issue 37) |
+| `journal-conformance` | `run.journal.storage-ports` | `journal.conformance.failed_cases` | gate | test `contextful_engine::stores::the_file_and_memory_adapters_pass_every_store_conformance_suite` | `== 0` | gated |
 | `journal-effect-once` | `run.journal.entry-key` | `journal.effects_per_key.max` | gate | test `contextful_engine::journal::racers_on_one_key_run_the_effect_once_and_read_equal_bytes` | `== 1` | gated |
 | `journal-holder-liveness` | `run.journal.claim-takeover` | `journal.takeover.effects` | gate | test `contextful_engine::journal::a_claim_whose_holder_lapsed_is_taken_over` | `== 1` | gated |
 | `journal-storage-bounded` | `run.journal.blob-sweep` | `journal.sweep.stale_blobs` | gate | test `contextful_engine::journal::the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day` | `== 0` | gated |

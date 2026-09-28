@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 117 | 21 | 16 | 17 | 77 | 0 | 77 |
-| `run` | 3 | 24 | 289 | 82 | 34 | 24 | 151 | 0 | 151 |
+| `run` | 3 | 24 | 293 | 82 | 34 | 25 | 152 | 0 | 152 |
 | `store` | 1 | 14 | 157 | 37 | 12 | 13 | 113 | 0 | 113 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 61 | 16 | 5 | 5 | 16 | 0 | 16 |
-| **total** | 19 | 146 | 1492 | 476 | 169 | 111 | 742 | 0 | |
+| **total** | 19 | 146 | 1496 | 476 | 169 | 112 | 743 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 192 | 136 | passing |
 | 2 — The store | 8 | 116 | 77 | passing |
-| 3 — The run path | 11 | 172 | 94 | passing |
+| 3 — The run path | 11 | 176 | 95 | passing |
 | 4 — Ingest | 22 | 341 | 131 | passing |
 | 5 — The read face under enforcement | 16 | 204 | 120 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
@@ -579,6 +579,7 @@ Unscheduled operations: 10.
 | `run.journal.redacting-source` | `crates/contextful-core/tests/integration/run/plan.rs::redaction_over_a_journaling_source_is_refused_at_validation` | performed |
 | `run.journal.replay-lands` | `crates/contextful-engine/tests/integration/runner.rs::a_resumed_run_lands_what_an_uninterrupted_one_lands` | performed |
 | `run.journal.step-output` | `crates/contextful-engine/tests/integration/journal.rs::a_crash_before_the_write_re_enters_and_the_record_then_stands` | performed |
+| `run.journal.storage-ports` | `crates/contextful-engine/tests/integration/stores.rs::the_file_and_memory_adapters_pass_every_store_conformance_suite` | performed |
 | `run.land.table-failed` | `crates/contextful-cli/tests/integration/pipeline.rs::a_failing_table_is_named_with_its_kind_and_run` | performed |
 | `run.land.unknown-destination` | `crates/contextful-cli/tests/integration/pipeline.rs::another_destination_is_refused_before_any_request` | performed |
 | `run.land.unreadable-input` | `crates/contextful-connectors/tests/integration/http.rs::an_unreadable_body_refuses_naming_path_and_position` | performed |

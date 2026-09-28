@@ -6,9 +6,10 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-# The run path's execution core: the runner, the journal and its blob store, the local
-# catalog, awakeables, cancellation and the live run projection. It reaches the store
-# only through the `Destination` port `contextful-cli` wires.
+# The run path's execution core: the runner, the journal and awakeables over their store
+# ports with the file-tree and memory adapters, the local catalog, cancellation and the
+# live run projection. It reaches the store only through the `Destination` port
+# `contextful-cli` wires.
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }

@@ -65,8 +65,9 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
 - `idempotency-key` — Every outbound request a step makes carries an idempotency key derived from its entry key, identical on every re-entry of that effect.
   *because a vendor honoring the key turns an at-least-once effect into one billed call*
 - `inline-cutoff` — A value of 1 MiB or smaller is stored inline in its row as bytes; a larger value lands in a content-addressed blob named by its sha256, and the row holds the reference.
-- `blob-write` — A blob writer stages a private temporary file and renames it over the destination; concurrent writers of one hash converge on one file without waiting or erroring.
-- `missing-blob` — A row whose blob reference resolves to no file raises `BlobMissing` carrying the reference, never an empty value in place of the recorded one.
+- `blob-write` — Concurrent writers of one blob hash converge on one stored value without waiting or erroring, and no partial write survives beside it.
+  *A-run*
+- `missing-blob` — A row whose blob reference resolves to no stored blob raises `BlobMissing` carrying the reference, never an empty value in place of the recorded one.
   *P6*
 - `collection` — Retiring an execution owner deletes its journal rows in the retiring transaction.
   *because recorded work is needed only while a replay can reach it, and an uncollected journal grows with total ingest*
@@ -80,7 +81,9 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *A-authority*
 - `opt-out` — Pull journaling defaults on. A source whose pre-pull cursor cannot name the content it reads opts out through one constant, pinned against each source's declaration by a test. An empty pull is never journaled.
 - `escape-hatch` — Two escape hatches exist and no third: `journal.unsafe(label, effect)` for an idempotent read, and a source declaring that it journals no pull. Each carries its idempotency argument at a greppable call site.
-- `substrate-port` — The run-path substrate is one interface: start or resume a run for a content-hashed plan reference, record a step output, commit a cursor, suspend on an awakeable with a timeout, attach a retry schedule, describe capabilities.
+- `substrate-port` — The run-path substrate is one interface: open or resume an execution under a scope for a content-hashed plan reference, record a step output, commit a cursor, suspend on an awakeable with a timeout, attach a retry schedule, describe capabilities.
+  *A-run*
+- `storage-ports` — Journal rows, blobs and awakeables persist through a journal store, a blob store and an awakeable store; every `run.journal` and `run.suspend` clause holds for each adapter, the file tree included.
   *A-run*
 - `plan-pin` — A run resolves the plan reference it started against for its whole life.
 - `unwired-capability` — Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work.
@@ -109,6 +112,8 @@ sequenceDiagram
 ```
 
 unsettled: Does the inline-versus-blob cutoff stay one number across every step kind? owner: run-path affects: run.journal
+
+unsettled: Does a journal store apart from the catalog retire an owner's rows after the catalog commits, repeating the retire at the next open? owner: run-path affects: run.journal
 
 unsettled: How do fan-out bodies express an explicit join, and what does a partially-failed fan-out record? owner: run-path affects: run.journal
 
@@ -222,6 +227,8 @@ unsettled: Where does an in-flight schedule's attempt counter persist, so a cras
 The execution owner a scope holds and the connector build it pins while pending.
 
 - `execution-owner` — One durable execution owner exists per live table and per backfill chunk, holding the connector identity with its component world, the pipeline `content_hash` and the input hash.
+- `host-scope` — A host-declared scope id owns an execution beside live tables and backfill chunks; the catalog keys every owner on its scope, and a host owner pins the plan reference and identities the host supplies.
+  *A-run*
 - `execution-id-keys-the-journal` — Recorded work keys on the execution id; a catalog run id is the provenance of one attempt, so attempts under one owner resolve the same recorded values.
 - `retirement` — Retiring an owner and caching its committed position share one catalog transaction; a later fire receives a fresh execution id even at a byte-identical position. A completed backfill chunk retires the same way.
 - `marker-reconciles` — At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced it before any replay.
@@ -230,6 +237,8 @@ The execution owner a scope holds and the connector build it pins while pending.
   *A-connector*
 - `pin-recovery` — Restoring the recorded build and resuming to completion clears a pending owner; an explicit chunk rewind retires the owners its window covers.
 - `scope-independence` — A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.
+- `unclosed-execution` — An execution handle dropped without close records no status; its owner stays pending, and the next open under its scope resumes it once {{run.record.owner-lease}} lapses.
+  *A-run*
 - `pin-release` — `success`, and a failure that wrote no batch, release the owner; every other status holds it.
 - `admission-pin` — A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.
   *A-connector*
@@ -261,6 +270,8 @@ Stopping work in flight at either grain, the one token every await observes, and
 - `one-token` — Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait, a meter acquire and a subprocess wait.
   *because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled*
 - `poll-interval` — The token is fed by one catalog read before the run's first await and then one every 500 ms, the cancellation arm evaluated ahead of the work arm.
+- `engine-keeper` — One keeper per engine renews every registered execution's owner lease and feeds its token, sleeping until the earliest deadline; opening an execution registers it, and close or drop deregisters it.
+  *A-run*
 - `land-path-uncut` — The land path carries no stop check; a run whose bytes are home finishes landing and records the stop it did not fulfill.
 - `abandoned-work` — Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone.
   *A-run*

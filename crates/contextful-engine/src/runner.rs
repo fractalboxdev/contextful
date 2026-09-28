@@ -5,13 +5,14 @@
 use crate::cancel::{Cadence, CancelToken, Keeper};
 use crate::project::Emitter;
 use crate::journal::{Journal, Resolved, StepError};
+use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey};
 use contextful_core::run::advance::{admits, advance, frontier, open_watermark, resolve_concurrent, watermark, CursorKind};
 use contextful_core::run::cancel::{mark, Scope};
 use contextful_core::run::journal::{sha256_hex, EntryKey};
 use contextful_core::run::own::{releases, ConnectorPin, ExecutionOwner, Pins};
 use contextful_core::run::plan::{Plan, NATIVE_WORLD};
-use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Pull, PullRequest, Row, Shape, Source, Unshaped};
+use contextful_core::run::ports::{BlobStore, Cancellation, JournalStore, Commit, Destination, Landed, Pull, PullRequest, Row, Shape, Source, Unshaped};
 use contextful_core::run::project::{Change, StepPatch, StepStatus};
 use contextful_core::run::record::{cap_error, select_history, HistoryPage, Owner, Phase, RunRow, RunStatus, Window, OWNER_LEASE_TTL_SECS};
 use contextful_core::run::retry::{decide, Decision};
@@ -45,11 +46,12 @@ pub struct RunSpec {
     pub trace_id: Option<String>,
 }
 
-/// The engine: the catalog behind its port, the journal, and the keeper's cadences.
+/// The engine: the catalog behind its port, the journal over its row and blob stores,
+/// and the keeper's cadences.
 #[derive(Clone)]
-pub struct Engine {
+pub struct Engine<J = FileJournalStore, B = FileBlobStore> {
     pub catalog: Arc<dyn Catalog + Send + Sync>,
-    pub journal: Journal,
+    pub journal: Journal<J, B>,
     pub cadence: Cadence,
     /// The live projection's emitter; every event follows the durable change it reports.
     pub emitter: Option<Emitter>,
@@ -117,7 +119,7 @@ fn seed(run_id: &str) -> u64 {
     u64::from_str_radix(&hex[..16], 16).unwrap_or_default()
 }
 
-impl Engine {
+impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     /// Mark `partial_failure` every non-terminal run whose owner lease has expired; a run
     /// a live process holds is left alone. Returns the reaped run ids.
     pub fn reap_orphans(&self) -> Result<Vec<String>, Failure> {
