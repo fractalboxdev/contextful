@@ -79,3 +79,117 @@ fn a_declared_encryption_opens_no_store_and_writes_no_file() {
     contextful_eval::record::emit("encrypt-declared-refuses", (opens + files) as f64, configs.len() as u64, 0);
     assert_eq!((opens, files), (0, 0));
 }
+
+/// A cipher for the sealed-sidecar path: a tagged, key-dependent byte transform that
+/// refuses a file another key sealed.
+struct TestCipher {
+    key: u8,
+}
+
+impl contextful_core::store::encrypt::FileCipher for TestCipher {
+    fn key_version(&self) -> u32 {
+        7
+    }
+
+    fn seal(&self, plaintext: &[u8]) -> Result<Vec<u8>, contextful_core::store::encrypt::SealError> {
+        let mut out = b"SEALED".to_vec();
+        out.push(self.key);
+        out.extend(plaintext.iter().enumerate().map(|(i, b)| b ^ self.key ^ (i as u8).wrapping_mul(31)));
+        Ok(out)
+    }
+
+    fn open(&self, sealed: &[u8]) -> Result<Vec<u8>, contextful_core::store::encrypt::SealError> {
+        match sealed.strip_prefix(b"SEALED".as_slice()) {
+            Some([key, body @ ..]) if *key == self.key => Ok(body.iter().enumerate().map(|(i, b)| b ^ self.key ^ (i as u8).wrapping_mul(31)).collect()),
+            _ => Err(contextful_core::store::encrypt::SealError("sealed under another key".into())),
+        }
+    }
+}
+
+/// Every file under `dir`, with its bytes.
+fn tree(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let p = entry.unwrap().path();
+        if p.is_dir() {
+            out.extend(tree(&p));
+        } else {
+            let bytes = std::fs::read(&p).unwrap();
+            out.push((p, bytes));
+        }
+    }
+    out.sort();
+    out
+}
+
+/// In an unencrypted project a reader memory-maps a sidecar read-only; in an encrypted one it decrypts each sealed sidecar file into anonymous process memory and writes no cleartext to disk.
+// spec: store.encrypt.sidecar-reader@70509f80
+#[test]
+fn a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone() {
+    use arrow_array::builder::{FixedSizeListBuilder, Float32Builder};
+    use arrow_array::{ArrayRef, RecordBatch, StringArray};
+    use contextful_context::vector::{build, Fallback, Sealing, VectorSidecar, GRAPH_FILE};
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::lay_out::SnapshotId;
+    use contextful_core::time::Instant;
+    use std::sync::Arc;
+
+    let canary = "passage-canary-5f1e";
+    let ids: Vec<String> = (0..40).map(|i| if i == 17 { canary.to_string() } else { format!("passage-{i}") }).collect();
+    let mut vectors = FixedSizeListBuilder::new(Float32Builder::new(), 4);
+    for i in 0..40 {
+        let v = if i == 17 { [0.0, 0.0, 0.0, 1.0] } else { [1.0, i as f32 / 40.0, 0.5, 0.0] };
+        vectors.values().append_slice(&v);
+        vectors.append(true);
+    }
+    let rows = RecordBatch::try_from_iter([
+        ("passage_id", Arc::new(StringArray::from(ids.clone())) as ArrayRef),
+        ("embedding", Arc::new(vectors.finish()) as ArrayRef),
+    ])
+    .unwrap();
+    let decl = TableDecl::parse_pipeline(
+        "[[pipeline.tables]]\nname = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5\"\ndim = 4\n",
+    )
+    .unwrap()
+    .remove(0);
+    let id = SnapshotId::next(Instant::parse("2030-01-01T00:00:00Z").unwrap(), None);
+    let query = [0.0, 0.1, 0.0, 1.0];
+
+    // Unencrypted: plaintext files, mapped read-only.
+    let plain = tempfile::tempdir().unwrap();
+    let entry = build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap();
+    assert_eq!(entry.key_version, 0);
+    let entry = serde_json::to_value(entry).unwrap();
+    let mapped = VectorSidecar::open(plain.path(), "passages", &entry, &Sealing::Plaintext).unwrap();
+    assert!(mapped.is_mapped());
+    assert_eq!(mapped.probe(&query, 1).unwrap()[0].id, canary);
+    let graph = tree(plain.path()).into_iter().find(|(p, _)| p.ends_with(GRAPH_FILE)).unwrap().1;
+    assert!(graph.windows(canary.len()).any(|w| w == canary.as_bytes()), "the plaintext graph carries its identifiers");
+
+    // Encrypted: every sidecar file sealed, opened into memory, nothing written.
+    let cipher = TestCipher { key: 0x5a };
+    let sealed = tempfile::tempdir().unwrap();
+    let entry = build(sealed.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(&cipher)).unwrap();
+    assert_eq!(entry.key_version, 7);
+    let entry = serde_json::to_value(entry).unwrap();
+    let files = tree(sealed.path());
+    assert_eq!(files.len(), 2, "{files:?}");
+    for (path, bytes) in &files {
+        assert!(bytes.starts_with(b"SEALED"), "{} is not sealed", path.display());
+        for cleartext in [canary.as_bytes(), b"CFHNSW".as_slice(), b"passage_id".as_slice(), &1.0f32.to_le_bytes()] {
+            assert!(!bytes.windows(cleartext.len()).any(|w| w == cleartext), "{} carries cleartext {cleartext:?}", path.display());
+        }
+    }
+    let opened = VectorSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&cipher)).unwrap();
+    assert!(!opened.is_mapped());
+    assert_eq!(opened.probe(&query, 1).unwrap()[0].id, canary);
+    assert_eq!(tree(sealed.path()), files, "opening wrote to disk");
+
+    // A sealed sidecar never opens as plaintext, nor under another key, nor a plaintext one
+    // under the cipher.
+    assert_eq!(VectorSidecar::open(sealed.path(), "passages", &entry, &Sealing::Plaintext).err(), Some(Fallback::Unreadable));
+    let other = TestCipher { key: 0x11 };
+    assert_eq!(VectorSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&other)).err(), Some(Fallback::Unreadable));
+    let plain_entry = serde_json::to_value(build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap()).unwrap();
+    assert_eq!(VectorSidecar::open(plain.path(), "passages", &plain_entry, &Sealing::Sealed(&cipher)).err(), Some(Fallback::Unreadable));
+}

@@ -85,6 +85,12 @@ impl Store {
         &self.root
     }
 
+    /// How this store's sidecar files sit on disk. A store declaring `[encryption]` refuses
+    /// at [`Store::open`], so every store this build opens holds plaintext sidecars.
+    pub fn sealing(&self) -> crate::vector::Sealing<'static> {
+        crate::vector::Sealing::Plaintext
+    }
+
     /// The canonical store this store replicates, if it is a replica.
     pub fn replica_of(&self) -> Option<&str> {
         self.replica_of.as_deref()

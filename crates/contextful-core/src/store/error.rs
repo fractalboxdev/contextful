@@ -14,6 +14,15 @@ pub enum StoreError {
     /// An index is declared over a column the reconciled schema lacks. (`store.index.column-absent`)
     #[error("StoreIndexColumnAbsent: {0}")]
     StoreIndexColumnAbsent(String),
+    /// An indexed column or `id_column` carries a type the sidecar does not read. (`store.index.column-type`)
+    #[error("StoreIndexColumnType: {0}")]
+    StoreIndexColumnType(String),
+    /// A table's sidecars resolve no single `id_column`. (`store.index.id-column-unresolved`)
+    #[error("StoreIndexIdColumnUnresolved: {0}")]
+    StoreIndexIdColumnUnresolved(String),
+    /// One `id_column` value names two rows of a staged snapshot. (`store.index.id-unique`)
+    #[error("StoreIndexIdNotUnique: {0}")]
+    StoreIndexIdNotUnique(String),
     /// An index is declared over a column redacted at write time. (`store.encrypt.redacted-index`)
     #[error("StoreIndexOverRedactedColumn: {0}")]
     StoreIndexOverRedactedColumn(String),

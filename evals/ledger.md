@@ -2,7 +2,7 @@
 
 # Target ledger
 
-61 entries: 32 gated, 2 recorded, 0 scheduled, 27 open.
+61 entries: 33 gated, 2 recorded, 0 scheduled, 26 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -64,6 +64,6 @@
 | `stale-fence-never-lands` | `store.lease.stale-fence` | `lease.stale_commits_landed` | gate | test `contextful_context::run_commit::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable` | `== 0` | gated |
 | `store-write-deny-set` | `topology.package.store-write-engine-free` | `topology.store_write.forbidden_packages` | gate | issue 80 | `== 0` | open (issue 80) |
 | `vector-filtered-recall` | `read.retrieve.sidecar-oversampling` | `slices.filtered.retrieval.vector.recall_at_k` | scheduled | issue 43 | `>= 0.95` | open (issue 43) |
-| `vector-recall` | `read.retrieve.sidecar-generates-candidates` | `retrieval.vector.recall_at_k` | gate | issue 43 | `>= 0.95` | open (issue 43) |
+| `vector-recall` | `read.retrieve.sidecar-generates-candidates` | `retrieval.vector.recall_at_k` | gate | test `contextful_context::index::vector_recall_at_10_holds_against_exact_search` | `>= 0.95` | gated |
 | `vector-resident` | `read.retrieve.sidecar-size-cap` | `vector.probe.rss_anon_delta_mib` | scheduled | issue 43 | `< 64` | open (issue 43) |
 | `word-boundary-precision` | `read.retrieve.relevance-floor` | `retrieve.substring_trap.returned` | gate | test `contextful_core::read::retrieve::a_substring_trap_row_scores_zero_and_never_returns` | `== 0` | gated |

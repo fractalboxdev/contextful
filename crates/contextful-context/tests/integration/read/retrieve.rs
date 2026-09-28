@@ -180,3 +180,195 @@ fn a_ranked_read_meets_the_row_ceiling() {
     let exact = r.face.retrieve(&s, &RetrieveRequest { limit: Some(2), ..ask("research/notes", "solar battery storage") }, Bounds::default()).unwrap();
     assert_eq!(exact.rows.len(), 2);
 }
+
+/// Two tables of one row set, `lab/plain` and `lab/indexed`, the second declaring a vector
+/// sidecar; `extra` extends the indexed table's block.
+const SIDECAR: &str = r#"
+[[pipeline.tables]]
+name = "lab/plain"
+primary_key = ["passage_id"]
+
+[[pipeline.tables]]
+name = "lab/indexed"
+primary_key = ["passage_id"]
+
+[[pipeline.tables.indexes]]
+kind = "vector"
+column = "embedding"
+model = "e5"
+dim = 3
+"#;
+
+/// 300 passages folded into each table. `p000`, the oldest, points where the question
+/// points and sits outside a limit-10 recency window; the five newest mention "battery".
+fn sidecar_reads(extra: &str) -> Reads {
+    use contextful_context::fold::fold;
+    use contextful_core::store::reconcile::{ColumnType, FloatItem};
+    let manifest = format!("{MANIFEST}{SIDECAR}{extra}");
+    let mut r = Reads::with_manifest(&format!("{MANIFEST}{SIDECAR}"));
+    let rows: Vec<serde_json::Map<String, Value>> = (0..300)
+        .map(|i| {
+            let (title, owner, embedding) = match i {
+                0 => ("passage zero".to_string(), "agent://other", json!([0.0, 0.0, 1.0])),
+                295.. => (format!("battery cell {i}"), "agent://research-loop", json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
+                _ => (format!("passage {i}"), "agent://research-loop", json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
+            };
+            json!({"passage_id": format!("p{i:03}"), "title": title, "owner": owner, "embedding": embedding}).as_object().unwrap().clone()
+        })
+        .collect();
+    let types: HashMap<String, ColumnType> = [("embedding".to_string(), ColumnType::FixedSizeList(FloatItem::Float32, 3))].into_iter().collect();
+    for table in ["lab/plain", "lab/indexed"] {
+        let decl = TableDecl::parse_pipeline(&manifest).unwrap().into_iter().find(|d| d.name == table).unwrap();
+        let ctx = RunContext {
+            node: NodeId::parse("ingest-a").unwrap(),
+            injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+            committed_at: at("2030-01-10T00:00:00Z"),
+        };
+        land(&r.store, &decl, &Batch { rows: rows.clone(), types: types.clone() }, &ctx).unwrap();
+        fold(&r.store, &decl, at("2030-01-11T00:00:00Z")).unwrap();
+    }
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    r
+}
+
+fn battery(table: &str) -> RetrieveRequest {
+    RetrieveRequest { query_embedding: Some(vec![0.0, 0.0, 1.0]), ..ask(table, "battery") }
+}
+
+/// The current snapshot directory of `table` and the directory of its one sidecar.
+fn sidecar_dirs(r: &Reads, table: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let (chain, _) = r.store.chain(table).unwrap();
+    let dir = r.store.snapshot_dir(table, &chain[0].snapshot_id).unwrap();
+    let path = chain[0].indexes[0]["path"].as_str().unwrap().to_string();
+    (dir.clone(), dir.join(path))
+}
+
+/// The vector sidecar arm adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
+// spec: read.retrieve.sidecar-generates-candidates@40da3a56
+#[test]
+fn the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores() {
+    let r = sidecar_reads("");
+    let s = r.session(&["lab/*"], None, None);
+    let exact = r.face.retrieve(&s, &battery("lab/plain"), Bounds::default()).unwrap();
+    let accelerated = r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()).unwrap();
+    assert!(!ids(&exact, "passage_id").contains(&"p000".to_string()), "{:?}", exact.rows);
+    assert_eq!(ids(&accelerated, "passage_id")[0], "p000");
+    assert_eq!(column(&accelerated, "_vscore")[0], json!(1.0));
+    // Every row both paths return carries the same scores.
+    let scored = |resp: &Response| -> Vec<(String, Value, Value)> {
+        let mut v: Vec<(String, Value, Value)> = ids(resp, "passage_id")
+            .into_iter()
+            .zip(column(resp, "_score"))
+            .zip(column(resp, "_vscore"))
+            .map(|((id, s), v)| (id, s, v))
+            .collect();
+        v.sort_by(|a, b| a.0.cmp(&b.0));
+        v
+    };
+    let shared: Vec<_> = scored(&accelerated).into_iter().filter(|(id, _, _)| id != "p000").collect();
+    assert_eq!(shared, scored(&exact));
+    assert!(accelerated.blocks["contextful.retrieval"]["candidates_prefloor"].as_u64().unwrap() > 200);
+}
+
+/// For one reader the accelerated arm returns a superset of the exact path's rows. Two readers with one query on one snapshot can recall different rows.
+// spec: read.retrieve.gain-never-loss@5f8f34b1
+#[test]
+fn the_accelerated_arm_returns_every_exact_row_and_readers_can_differ() {
+    let r = sidecar_reads("[pipeline.tables.policy.rows]\npredicate = \"owner = subject.agent\"\n");
+    let s = r.session(&["lab/*"], None, None);
+    let exact: std::collections::BTreeSet<String> = ids(&r.face.retrieve(&s, &battery("lab/plain"), Bounds::default()).unwrap(), "passage_id").into_iter().collect();
+    assert_eq!(exact.len(), 5);
+    let own = ids(&r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()).unwrap(), "passage_id");
+    assert!(exact.iter().all(|id| own.contains(id)), "{exact:?} {own:?}");
+    // `p000` belongs to another agent: the probe yields it and this reader never sees it,
+    // while its owner recalls it from the same snapshot.
+    assert!(!own.contains(&"p000".to_string()));
+    let owner = r.session_for(loop_subject("agent://other"), vec![read(&["lab/*"], None)], None);
+    let theirs = ids(&r.face.retrieve(&owner, &battery("lab/indexed"), Bounds::default()).unwrap(), "passage_id");
+    assert_eq!(theirs, ["p000"]);
+}
+
+/// A sidecar yields candidate `id_column` values, not rows; they re-join through the enforced relation on that column before a top-K is final.
+// spec: store.index.candidate-ids@0d53be8f
+#[test]
+fn sidecar_candidates_are_identifier_values_rejoined_through_the_relation() {
+    let r = sidecar_reads("[pipeline.tables.policy.rows]\npredicate = \"owner = subject.agent\"\n");
+    let s = r.session(&["lab/*"], None, None);
+    let (column_name, candidates) = r.face.sidecar_candidates(&s, "lab/indexed", &[0.0, 0.0, 1.0], 10).unwrap();
+    assert_eq!(column_name, "passage_id");
+    assert_eq!(candidates[0], "p000");
+    // A row policy is restriction context: the probe widens to 4 times 64 rows.
+    assert_eq!(candidates.len(), 256);
+    let ranked = r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()).unwrap();
+    assert!(!ids(&ranked, "passage_id").contains(&"p000".to_string()));
+}
+
+/// Any sidecar precondition failure — no snapshot, no matching sidecar, a masked or zone-withheld identifier or vector column, a dimension or manifest mismatch, an unreadable dump — falls back to the exact scan.
+// spec: read.retrieve.sidecar-falls-back@9e31e8be
+#[test]
+fn every_failed_precondition_falls_back_to_the_exact_scan() {
+    use contextful_context::vector::Fallback;
+    let r = sidecar_reads("");
+    let s = r.session(&["lab/*", "research/*"], None, None);
+    let q = [0.0, 0.0, 1.0];
+    assert_eq!(r.face.sidecar_candidates(&s, "research/notes", &q, 10).err(), Some(Fallback::NoSnapshot));
+    assert_eq!(r.face.sidecar_candidates(&s, "lab/plain", &q, 10).err(), Some(Fallback::NoSidecar));
+    assert_eq!(r.face.sidecar_candidates(&s, "lab/indexed", &[0.0, 1.0], 10).err(), Some(Fallback::DimensionMismatch));
+    let exact = ids(&r.face.retrieve(&s, &battery("lab/plain"), Bounds::default()).unwrap(), "passage_id");
+    let falls_back = |r: &Reads, s: &Session| assert_eq!(ids(&r.face.retrieve(s, &battery("lab/indexed"), Bounds::default()).unwrap(), "passage_id"), exact);
+
+    // A masked identifier or vector column.
+    for mask in ["passage_id = { strategy = \"hash\" }", "embedding = { strategy = \"drop\" }"] {
+        let m = sidecar_reads(&format!("[pipeline.tables.policy.columns]\n{mask}\n"));
+        let ms = m.session(&["lab/*"], None, None);
+        assert_eq!(m.face.sidecar_candidates(&ms, "lab/indexed", &q, 10).err(), Some(Fallback::Withheld), "{mask}");
+    }
+    // A zone the vector column is withheld from.
+    let z = sidecar_reads("[pipeline.tables.policy.zone]\nallow = [\"on-prem:*\", \"public-cloud:*\"]\n[pipeline.tables.policy.columns]\nembedding = { class = \"phi\" }\n");
+    let zs = z.session(&["lab/*"], None, Some("public-cloud:us-east-1"));
+    assert_eq!(z.face.sidecar_candidates(&zs, "lab/indexed", &q, 10).err(), Some(Fallback::Withheld));
+
+    // A sidecar manifest disagreeing with the snapshot's entry, then an unreadable graph.
+    let (_, dir) = sidecar_dirs(&r, "lab/indexed");
+    let own = dir.join("_manifest.json");
+    let original = std::fs::read_to_string(&own).unwrap();
+    std::fs::write(&own, original.replace("\"model\": \"e5\"", "\"model\": \"other\"")).unwrap();
+    assert_eq!(r.face.sidecar_candidates(&s, "lab/indexed", &q, 10).err(), Some(Fallback::ManifestMismatch));
+    falls_back(&r, &s);
+    std::fs::write(&own, &original).unwrap();
+    let graph = dir.join("graph.bin");
+    let bytes = std::fs::read(&graph).unwrap();
+    std::fs::write(&graph, &bytes[..bytes.len() / 2]).unwrap();
+    assert_eq!(r.face.sidecar_candidates(&s, "lab/indexed", &q, 10).err(), Some(Fallback::Unreadable));
+    falls_back(&r, &s);
+    std::fs::remove_file(&graph).unwrap();
+    assert_eq!(r.face.sidecar_candidates(&s, "lab/indexed", &q, 10).err(), Some(Fallback::Unreadable));
+    falls_back(&r, &s);
+    std::fs::write(&graph, &bytes).unwrap();
+    assert!(r.face.sidecar_candidates(&s, "lab/indexed", &q, 10).is_ok());
+}
+
+/// A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.
+// spec: read.retrieve.sidecar-size-cap@8e042b8e
+#[test]
+fn a_sidecar_past_64_mib_of_vectors_stays_unloaded() {
+    use contextful_context::vector::Fallback;
+    use contextful_core::read::rank::{sidecar_over_cap, SIDECAR_SIZE_CAP_BYTES};
+    assert_eq!(SIDECAR_SIZE_CAP_BYTES, 64 * 1024 * 1024);
+    assert!(!sidecar_over_cap(SIDECAR_SIZE_CAP_BYTES) && sidecar_over_cap(SIDECAR_SIZE_CAP_BYTES + 1));
+
+    let r = sidecar_reads("");
+    let s = r.session(&["lab/*"], None, None);
+    let exact = ids(&r.face.retrieve(&s, &battery("lab/plain"), Bounds::default()).unwrap(), "passage_id");
+    // Both manifests claim a graph one row past the cap at dim 3; the graph file is never read.
+    let (snapshot, dir) = sidecar_dirs(&r, "lab/indexed");
+    let over = SIDECAR_SIZE_CAP_BYTES / 12 + 1;
+    for (path, entry) in [(snapshot.join("_manifest.json"), "/indexes/0"), (dir.join("_manifest.json"), "")] {
+        let mut v: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        *v.pointer_mut(&format!("{entry}/row_count")).unwrap() = json!(over);
+        std::fs::write(&path, serde_json::to_vec_pretty(&v).unwrap()).unwrap();
+    }
+    std::fs::remove_file(dir.join("graph.bin")).unwrap();
+    assert_eq!(r.face.sidecar_candidates(&s, "lab/indexed", &[0.0, 0.0, 1.0], 10).err(), Some(Fallback::OverCap));
+    assert_eq!(ids(&r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()).unwrap(), "passage_id"), exact);
+}

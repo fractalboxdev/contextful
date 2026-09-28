@@ -150,6 +150,7 @@ impl PipelineSpec {
                     RunError::PipelineSpecInvalid(format!("pipeline `{}`: {}", self.id, m.0))
                 }
             })?;
+            destination.validate_index_declaration()?;
             if d.write_mode() == WriteMode::Replace {
                 let reason = if self.incremental.is_some() {
                     Some("a `monotonic` cursor")

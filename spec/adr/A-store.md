@@ -85,7 +85,7 @@ Revisit: a builder that reads through a caller-supplied page source, making per-
 
 Context: `store.index.vector-by-fold` builds only under a single-column primary key, so an unkeyed append table (`store.declare.unkeyed-union`) or a composite key gets no sidecar. Criteria: keyed, composite-key and unkeyed tables alike; ids stable across folds; one declaration every kind shares.
 
-Decision: a sidecar declaration names one `id_column`, unique within each snapshot, defaulting to a single-column primary key and required otherwise. Vector and full-text sidecars share it, their candidate ids are its values, and `store.index.candidate-ids` re-joins on it. A fold meeting a repeated value refuses the pass.
+Decision: a sidecar declaration names one `id_column`, unique within each snapshot, defaulting to a single-column primary key on a table without valid time, and required otherwise, since a valid-time table repeats its key across lines. Vector and full-text sidecars share it, their candidate ids are its values, and `store.index.candidate-ids` re-joins on it. A fold meeting a repeated value refuses the pass.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

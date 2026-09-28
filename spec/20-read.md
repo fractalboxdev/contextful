@@ -198,7 +198,7 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
   *P5*
 - `sidecar-oversampling` — One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.
 - `sidecar-size-cap` — A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.
-- `sidecar-falls-back` — Any sidecar precondition failure — no snapshot, no matching sidecar, a multi-column or masked key, a dimension or manifest mismatch, an unreadable dump, mixed producers — falls back to the exact scan.
+- `sidecar-falls-back` — Any sidecar precondition failure — no snapshot, no matching sidecar, a masked or zone-withheld identifier or vector column, a dimension or manifest mismatch, an unreadable dump — falls back to the exact scan.
   *P4*
 - `gain-never-loss` — For one reader the accelerated arm returns a superset of the exact path's rows. Two readers with one query on one snapshot can recall different rows.
 

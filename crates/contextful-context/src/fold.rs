@@ -103,6 +103,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     let state = store.state(decl)?;
     let schema = store.schema(table)?;
     decl.validate(&schema)?;
+    decl.validate_indexes(&schema)?;
 
     let unfolded_runs = state.unfolded_runs();
     let unfolded: Vec<String> = unfolded_runs.iter().map(|r| r.key()).collect();
@@ -143,9 +144,17 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     if !decl.cluster_by().is_empty() {
         rows = sort(&rows, decl.cluster_by()).map_err(invalid)?;
     }
+    crate::vector::check_identifiers(&rows, decl)?;
 
     let parent = state.chain.first().map(|s| s.snapshot_id.clone());
     let (snapshot_id, staging, in_flight) = claim(store, table, SnapshotId::next(now, parent.as_ref()), now)?;
+    // Every declared sidecar lands inside staging beside the Parquet, so the rename that
+    // publishes the snapshot publishes its sidecars with it (`store.fold.partial-snapshot`).
+    let mut indexes = Vec::new();
+    for index in decl.indexes() {
+        let entry = crate::vector::build(&staging, &snapshot_id, &rows, decl, index, &store.sealing())?;
+        indexes.push(serde_json::to_value(entry).expect("an entry serializes"));
+    }
     let mut parts = Vec::new();
     if rows.num_rows() > 0 {
         for (dir, batch) in partition(&rows, decl.partition_by()).map_err(invalid)? {
@@ -165,7 +174,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         row_count: rows.num_rows() as u64,
         valid_time: decl.valid_time.clone(),
         parts,
-        indexes: Vec::new(),
+        indexes,
         fence: None,
     };
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
