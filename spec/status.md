@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 67 | 57 | 10 | 13 | 10 | 0 | 10 |
 | `read` | 2 | 14 | 118 | 21 | 16 | 17 | 78 | 0 | 78 |
-| `run` | 3 | 24 | 299 | 82 | 34 | 25 | 163 | 0 | 163 |
+| `run` | 3 | 24 | 300 | 82 | 34 | 25 | 165 | 0 | 165 |
 | `store` | 1 | 14 | 164 | 38 | 12 | 12 | 121 | 0 | 121 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 146 | 1516 | 482 | 169 | 110 | 777 | 0 | |
+| **total** | 19 | 146 | 1517 | 482 | 169 | 110 | 779 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 192 | 136 | passing |
 | 2 — The store | 8 | 123 | 85 | passing |
-| 3 — The run path | 11 | 183 | 107 | passing |
+| 3 — The run path | 11 | 184 | 109 | passing |
 | 4 — Ingest | 22 | 345 | 143 | passing |
 | 5 — The read face under enforcement | 16 | 206 | 122 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
@@ -536,7 +536,9 @@ Unscheduled operations: 10.
 | `run.cancel.catalog-channel` | `crates/contextful-engine/tests/integration/cancel.rs::a_stop_is_a_mark_on_the_run_row` | performed |
 | `run.cancel.child-reaped` | `crates/contextful-engine/tests/integration/command.rs::a_stop_signals_and_reaps_the_whole_process_group` | performed |
 | `run.cancel.distinct-terminal-status` | `crates/contextful-core/tests/integration/run/record.rs::canceled_is_terminal_distinct_and_unobserved_by_health` | performed |
+| `run.cancel.engine-keeper` | `crates/contextful-engine/tests/integration/execution.rs::one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine` | performed |
 | `run.cancel.host-grain` | `crates/contextful-engine/tests/integration/execution.rs::a_pipeline_stop_on_a_host_run_halts_only_its_own_scope` | performed |
+| `run.cancel.keeper-panic` | `crates/contextful-engine/tests/integration/cancel.rs::a_panicking_keeper_job_leaves_the_keeper_running` | performed |
 | `run.cancel.poll-interval` | `crates/contextful-engine/tests/integration/cancel.rs::the_token_reads_the_catalog_before_the_first_await_and_every_500_ms` | performed |
 | `run.cancel.re-mark` | `crates/contextful-core/tests/integration/run/cancel.rs::a_second_mark_overwrites_the_first` | performed |
 | `run.cancel.storage-blip` | `crates/contextful-engine/tests/integration/cancel.rs::a_failed_poll_keeps_polling` | performed |

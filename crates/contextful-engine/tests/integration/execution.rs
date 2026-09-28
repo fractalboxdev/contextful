@@ -1,14 +1,16 @@
 //! `run.own` and `run.journal`: the execution handle a host opens under a declared scope.
 
-use crate::support::{plan, three_pages, Pages, Rig, Sink, T0};
+use crate::support::{at, plan, three_pages, Pages, Rig, Sink, T0};
 use contextful_core::run::cancel::Scope;
 use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{OwnerPins, OwnerScope, PlanPins};
 use contextful_core::run::ports::{ExecutionPort, OpenExecution, Outcome, Substrate, Wake};
-use contextful_core::run::record::RunStatus;
+use contextful_core::run::ports::Cancellation;
+use contextful_core::run::record::{RunStatus, OWNER_LEASE_TTL_SECS};
 use contextful_core::run::retry::{Backoff, Schedule};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_engine::awake::Registry;
+use contextful_engine::cancel::{Cadence, Keeper};
 use contextful_engine::stores::FileAwakeableStore;
 use contextful_engine::{Engine, EngineError};
 use serde_json::json;
@@ -16,6 +18,7 @@ use std::collections::BTreeMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 const SCOPE: &str = "index-42";
 
@@ -332,4 +335,59 @@ fn a_pipeline_stop_on_a_host_run_halts_only_its_own_scope() {
     assert_eq!(marked, vec!["job-0".to_string(), "job-a".to_string()]);
     assert!(rig.row("job-b").stop.is_none(), "another host scope's run carries no mark");
     drop((a, b));
+}
+
+/// Poll `holds` every 5 ms until it answers true, failing with `what` after 10 s.
+fn eventually(what: &str, holds: impl Fn() -> bool) {
+    let started = std::time::Instant::now();
+    while !holds() {
+        assert!(started.elapsed() < Duration::from_secs(10), "{what}");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// One keeper per engine renews every registered execution's owner lease and feeds its token, sleeping until the
+/// earliest deadline; opening an execution registers it, and close or drop deregisters it.
+// spec: run.cancel.engine-keeper@06bef068
+#[test]
+fn one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine() {
+    let rig = Rig::new();
+    let quick = Duration::from_millis(20);
+    let engine = Engine { keeper: Keeper::new(Cadence { poll: quick, renew: quick }), ..rig.engine.clone() };
+    assert_eq!(engine.keeper.threads(), 0, "an engine with nothing open runs no keeper thread");
+
+    let mut open: Vec<_> = (0..20).map(|i| engine.open_execution(&host_in(&format!("index-{i}"), "plan-a", "m-1", &format!("job-{i}"))).unwrap()).collect();
+    assert_eq!((engine.keeper.threads(), engine.keeper.registered()), (1, 20), "20 open executions share one keeper thread");
+    contextful_eval::record::emit("engine-keeper-threads", engine.keeper.threads() as f64, 20, 0);
+
+    // Every registered lease renews against the catalog clock.
+    rig.clock.advance(25);
+    let renewed = at(T0).plus_secs(25 + OWNER_LEASE_TTL_SECS);
+    eventually("every open execution's lease renews", || {
+        (0..20).all(|i| rig.row(&format!("job-{i}")).owner.is_some_and(|o| o.lease_expires_at >= renewed))
+    });
+
+    // A stop on one run fires that run's token and no other.
+    engine.cancel("job-7", Scope::Run, None).unwrap();
+    eventually("the stop reaches job-7's token", || open[7].token().requested());
+    assert!(open.iter().enumerate().all(|(i, x)| i == 7 || !x.token().requested()), "a stop fired another run's token");
+
+    // Close deregisters; so does a drop, which records nothing.
+    for x in open.split_off(10) {
+        assert_eq!(x.close(Outcome::Success { rows: 0, bytes: 0, batches: 0 }).unwrap().status, RunStatus::Success);
+    }
+    assert_eq!(engine.keeper.registered(), 10);
+    drop(open);
+    assert_eq!(engine.keeper.registered(), 0);
+    eventually("the keeper thread exits once nothing is registered", || engine.keeper.threads() == 0);
+    let dropped = rig.row("job-3");
+    assert_eq!((dropped.status, dropped.ended_at), (RunStatus::Running, None), "a drop records no status");
+
+    // A dropped execution's lease is no longer renewed, so it lapses and the next open resumes its owner.
+    rig.clock.advance(OWNER_LEASE_TTL_SECS as i64 + 1);
+    std::thread::sleep(Duration::from_millis(60));
+    assert!(rig.row("job-3").owner.is_some_and(|o| o.expired(rig.catalog().now().unwrap())), "a dropped execution's lease still renews");
+    let x = engine.open_execution(&host_in("index-3", "plan-a", "m-1", "job-3b")).unwrap();
+    assert!(x.resumed(), "the next open under the scope takes over after the lease lapses");
+    assert_eq!(engine.keeper.threads(), 1);
 }

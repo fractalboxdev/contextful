@@ -9,7 +9,7 @@ use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Mar
 use contextful_core::run::record::RunRow;
 use contextful_core::run::Failure;
 use contextful_core::time::Instant;
-use contextful_engine::cancel::Cadence;
+use contextful_engine::cancel::{Cadence, Keeper};
 use contextful_engine::{Engine, EngineError, Journal, LocalCatalog, RunSpec};
 use serde_json::{json, Value};
 use std::panic::AssertUnwindSafe;
@@ -55,7 +55,7 @@ impl Rig {
         let clock = SetClock::new(T0);
         let journal = Journal::open(dir.path());
         let catalog = Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock.clone())));
-        let engine = Engine { catalog, journal, awakeables: None, cadence: Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }, emitter: None };
+        let engine = Engine { catalog, journal, awakeables: None, keeper: Keeper::new(Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }), emitter: None };
         Rig { dir, clock, engine }
     }
 

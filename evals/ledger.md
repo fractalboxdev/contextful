@@ -2,7 +2,7 @@
 
 # Target ledger
 
-59 entries: 30 gated, 0 recorded, 0 scheduled, 29 open.
+60 entries: 31 gated, 0 recorded, 0 scheduled, 29 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -22,6 +22,7 @@
 | `egress-refusal-before-dns` | `connector.meter.hook-refusal` | `egress.refused.lookups` | gate | test `contextful_outbound::egress::a_refused_intent_resolves_no_name_and_is_never_retried` | `== 0` | gated |
 | `encrypt-declared-refuses` | `store.encrypt.key-unbound` | `encrypt.declared.opens_and_files` | gate | test `contextful_context::encrypt::a_declared_encryption_opens_no_store_and_writes_no_file` | `== 0` | gated |
 | `encrypt-no-plaintext` | `store.encrypt.cipher` | `encrypt.canary_hits` | gate | issue 74 | `== 0` | open (issue 74) |
+| `engine-keeper-threads` | `run.cancel.engine-keeper` | `keeper.threads_per_engine` | gate | test `contextful_engine::execution::one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine` | `== 1` | gated |
 | `eval-absolute-floors` | `assurance.baseline.floors-are-absolute` | `floors.red_on_baseline_pass` | gate | test `contextful_eval::baseline::each_floor_reds_a_run_its_baseline_passes` | `== 4` | gated |
 | `eval-through-enforcement` | `assurance.evaluate.policy-labels` | `retrieval.hybrid.forbidden_row_rate` | gate | issue 78 | `== 0` | open (issue 78) |
 | `exclusive-create-no-hardlink` | `store.lease.commit-log` | `lease.race_winners.max` | gate | test `contextful_fs::create::racing_creates_land_exactly_one` | `== 1` | gated |

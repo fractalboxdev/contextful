@@ -3,7 +3,7 @@
 //! schedule, lands every batch in one commit carrying the position, retires the owner, and
 //! closes the run row.
 
-use crate::cancel::Cadence;
+use crate::cancel::Keeper;
 use crate::execution::{Close, Execution};
 use crate::journal::{Journal, Resolved};
 use crate::project::Emitter;
@@ -47,14 +47,16 @@ pub struct RunSpec {
 }
 
 /// The engine: the catalog behind its port, the journal over its row and blob stores,
-/// the awakeable store when one is wired, and the keeper's cadences.
+/// the awakeable store when one is wired, and the one keeper every open execution
+/// registers with.
 #[derive(Clone)]
 pub struct Engine<J = FileJournalStore, B = FileBlobStore> {
     pub catalog: Arc<dyn Catalog + Send + Sync>,
     pub journal: Journal<J, B>,
     /// Where awakeables persist; `None` leaves suspension unwired.
     pub awakeables: Option<Arc<dyn AwakeableStore>>,
-    pub cadence: Cadence,
+    /// Renews every open execution's leases and feeds its token; clones share it.
+    pub keeper: Keeper,
     /// The live projection's emitter; every event follows the durable change it reports.
     pub emitter: Option<Emitter>,
 }
