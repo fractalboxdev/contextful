@@ -25,7 +25,7 @@ use contextful_policy::enforce::session::{Request, Session};
 use contextful_policy::issue::{mint, MintClaims, SeedSigner};
 use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::RevocationState;
-use contextful_policy::verify::{verify, Admission, AdmittedAuthority};
+use contextful_policy::verify::{verify_local_bearer, Admission, AdmittedAuthority};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -204,7 +204,7 @@ impl Reads {
         let token = mint(&plan, &MintClaims::default(), &self.signer).unwrap();
         let keys = StaticPins::parse(&self.signer.public_key_text()).unwrap().keys().unwrap();
         let revocation = RevocationState::default();
-        verify(&token, &keys, &Admission::new(at("2030-01-01T00:05:00Z"), &revocation).expecting(AUD)).unwrap()
+        verify_local_bearer(&token, &keys, &Admission::new(at("2030-01-01T00:05:00Z"), &revocation).expecting(AUD)).unwrap()
     }
 
     /// A session for `subject` holding `grants`, its credential signing `zone` where given.

@@ -7,7 +7,7 @@ use contextful_core::ports::SigningPort;
 use contextful_core::AuthorityError;
 use contextful_policy::issue::{mint, MintClaims, SeedSigner, KEYGEN_COMMAND};
 use contextful_policy::keyset::{KeySet, KeySource, StaticPins};
-use contextful_policy::verify::{introspect, verify, Admission, AdmittedAuthority, BiscuitFormat, CredentialFormat};
+use contextful_policy::verify::{introspect, verify_local_bearer, Admission, AdmittedAuthority, BiscuitFormat, CredentialFormat};
 use std::cell::RefCell;
 
 fn scratch(name: &str) -> std::path::PathBuf {
@@ -138,7 +138,7 @@ fn read_research(port: &dyn SigningPort) -> contextful_core::issue::MintPlan {
 
 fn admit_under(credential: &str, custodian: &Custodian) -> Result<AdmittedAuthority, AuthorityError> {
     let revocation = no_revocation();
-    verify(credential, &custodian.pin(), &Admission::new(at(DURING), &revocation).expecting(AUD))
+    verify_local_bearer(credential, &custodian.pin(), &Admission::new(at(DURING), &revocation).expecting(AUD))
 }
 
 /// One signing port signs every credential's authority block and every audit root and tip; no mint path reads a private key. Seed files, secret references resolved at mint time and remote signing oracles are its adapters.

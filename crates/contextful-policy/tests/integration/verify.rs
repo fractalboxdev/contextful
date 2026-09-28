@@ -7,7 +7,7 @@ use contextful_core::revoke::Denylist;
 use contextful_policy::attenuate::Derivation;
 use contextful_policy::issue::MintClaims;
 use contextful_policy::revoke::{parse_denylist, RevocationState};
-use contextful_policy::verify::{effect_boundary, verify, Admission, BiscuitFormat, CredentialFormat};
+use contextful_policy::verify::{effect_boundary, verify_local_bearer, Admission, BiscuitFormat, CredentialFormat};
 
 /// Verification yields an admitted-authority value carrying the normalized subject tuple and its grants. Every read surface and row-landing effect takes that value as an argument; nothing downstream re-parses a credential or reads ambient state.
 // spec: authority.verify.admitted-authority@6a9d4f19
@@ -118,12 +118,12 @@ fn a_declared_audience_refuses_another_or_none_and_an_undeclared_one_checks_noth
     let credential = minted(&signer);
     let revocation = no_revocation();
     let other = Admission::new(at(DURING), &revocation).expecting("contextful://other");
-    refused(verify(&credential, &keys(&signer), &other), "AudienceMismatch");
+    refused(verify_local_bearer(&credential, &keys(&signer), &other), "AudienceMismatch");
     let none = craft(&signer, &block(&signer), &["aud"], "");
     refused(admit(&none, &signer, DURING), "AudienceMismatch");
     let undeclared = Admission::new(at(DURING), &revocation);
-    assert!(verify(&credential, &keys(&signer), &undeclared).is_ok());
-    assert!(verify(&none, &keys(&signer), &undeclared).is_ok());
+    assert!(verify_local_bearer(&credential, &keys(&signer), &undeclared).is_ok());
+    assert!(verify_local_bearer(&none, &keys(&signer), &undeclared).is_ok());
 }
 
 /// A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.
@@ -185,6 +185,6 @@ fn the_authority_core_flow_admits_narrows_and_re_reads() {
     let rev = contextful_policy::verify::introspect(&child).unwrap().rev_id;
     let revocation = RevocationState { denylist: parse_denylist(&format!("{rev}\n"), "k1"), ..RevocationState::default() };
     let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
-    refused(verify(&child, &keys(&signer), &admission), "AuthorityRevoked");
-    assert!(verify(&parent, &keys(&signer), &admission).is_ok());
+    refused(verify_local_bearer(&child, &keys(&signer), &admission), "AuthorityRevoked");
+    assert!(verify_local_bearer(&parent, &keys(&signer), &admission).is_ok());
 }

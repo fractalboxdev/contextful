@@ -9,7 +9,7 @@ use contextful_core::ports::Clock;
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::{parse_denylist, RevocationState};
-use contextful_policy::verify::{verify, Admission, AdmittedAuthority};
+use contextful_policy::verify::{verify_local_bearer, Admission, AdmittedAuthority};
 use std::path::{Path, PathBuf};
 
 /// The environment variable carrying the credential, kept out of the process arguments.
@@ -50,7 +50,7 @@ impl AdmitArgs {
             if let Some(aud) = self.audience.as_deref() {
                 admission = admission.expecting(aud);
             }
-            verify(&token, &keys, &admission)?
+            verify_local_bearer(&token, &keys, &admission)?
         };
         Ok((authority, revocation))
     }

@@ -308,6 +308,8 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
 
 unsettled: Does a proof replayed against a sibling checkpoint need a shared nonce store or a checkpoint-issued nonce? owner: authority affects: authority.verify
 
+unsettled: Stdio and socket callers admit a bearer credential with no per-request proof; does A-authority bind their possession to the OS-authenticated transport peer instead? owner: authority affects: authority.verify
+
 ## revoke
 
 Ending a credential's usefulness ahead of expiry: short lifetimes, the denylist, the scoped epoch, key rotation, format withdrawal.

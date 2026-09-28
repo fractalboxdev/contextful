@@ -14,7 +14,7 @@ use contextful_policy::issue::{authority_block, mint, sign_root, MintClaims, See
 use contextful_policy::keyset::{KeySet, KeySource, StaticPins};
 use contextful_policy::profile::authority_facts;
 use contextful_policy::revoke::RevocationState;
-use contextful_policy::verify::{verify, Admission, AdmittedAuthority};
+use contextful_policy::verify::{verify_local_bearer, Admission, AdmittedAuthority};
 
 pub const AUD: &str = "contextful://acme-research";
 pub const MINTED: &str = "2030-01-01T00:00:00Z";
@@ -76,7 +76,7 @@ pub fn no_revocation() -> RevocationState {
 
 pub fn admit(credential: &str, signer: &SeedSigner, at_: &str) -> Result<AdmittedAuthority, AuthorityError> {
     let revocation = no_revocation();
-    verify(credential, &keys(signer), &Admission::new(at(at_), &revocation).expecting(AUD))
+    verify_local_bearer(credential, &keys(signer), &Admission::new(at(at_), &revocation).expecting(AUD))
 }
 
 pub fn admit_denying(credential: &str, signer: &SeedSigner, ids: &[&str]) -> Result<AdmittedAuthority, AuthorityError> {
@@ -85,7 +85,7 @@ pub fn admit_denying(credential: &str, signer: &SeedSigner, ids: &[&str]) -> Res
         denylist.deny(id, "k1");
     }
     let revocation = RevocationState { denylist, ..RevocationState::default() };
-    verify(credential, &keys(signer), &Admission::new(at(DURING), &revocation).expecting(AUD))
+    verify_local_bearer(credential, &keys(signer), &Admission::new(at(DURING), &revocation).expecting(AUD))
 }
 
 /// The authority block [`minted`] carries, for crafting variants of it.
