@@ -137,3 +137,19 @@ Context: a consumer pinning a git dependency reads a bare commit that promises n
 
 Consequences: a consumer reads a tag's closed milestones from `spec/status.md` at that commit; publishing to a package registry stays a separate decision.
 Revisit: an external consumer needs a compatibility promise on a public surface, which opens `v1`.
+
+## The gate stays under its stage wall clock through a shared build cache
+
+**Status:** accepted; answers the test-first decision's revisit trigger, a base-commit build exceeding the stage wall clock.
+
+Context: `test-first` and `workspace` exceed the 1800 s sandbox cap on changes whose base build compiles several packages and the binary with bundled DuckDB and two arrow trees; the same commands finish in 2 to 5 min on 24 cores. Criteria: the dispatched command stays identical to the local gate; one recorded number bounds each stage.
+
+Decision: the workspace first resolves a single arrow tree, then the gate container reads a build cache keyed on `Cargo.lock`, sccache over an object bucket. `assurance.gate.container` records the per-stage wall clock as 30 min.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One arrow tree, then a lock-keyed shared cache *(chosen)* | — | A cache bucket and its credential to operate; a lock change pays one cold build. |
+| One test-first dispatch per changed package | Identical command | The remote stage runs something a local gate does not. |
+| A higher stage timeout | Recorded bound | A growing cold build stays unseen until the next cap. |
+
+Consequences: a stage exceeding 30 min is a gate fact, not a flake to rerun. The accepted cost: stage time depends on cache warmth, so a dependency bump runs cold once.

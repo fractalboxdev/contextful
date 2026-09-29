@@ -146,6 +146,8 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
 - `cycle-control-source` — A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.
   *P3*
 
+unsettled: What name does the store-driven kind take in the union, and which refusal meets its job block when `max_in_flight` is absent (issue 96)? owner: control affects: surface.fire
+
 ## dispatch
 
 The bounded fire pool and its exclusion keys, the reconciler's hold on the cadence lease, step results, and the worker adapter with its attempt-fenced callback.

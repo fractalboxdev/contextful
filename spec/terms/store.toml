@@ -27,6 +27,7 @@ StoreProjectConflict         = { clause = "store.init.name-conflict", gloss = "A
 StoreProjectUndiscovered     = { clause = "store.init.undiscovered", gloss = "A command given no `--project` finds no `contextful.toml` naming a project from its working directory up." }
 StoreNodeIdShared            = { clause = "store.lay-out.node-id-shared", gloss = "A node id is declared in a control-plane configuration applied to many machines." }
 StoreOrderByUnknownColumn    = { clause = "store.declare.order-by-unknown", gloss = "An `order_by` names a column neither declared nor injected." }
+ViewPolicyUndeclared         = { clause = "store.declare.view-policy", gloss = "A view reads a table carrying a row policy or column masks and declares no policy of its own." }
 StoreKeyUnknownColumn        = { clause = "store.declare.key-unknown", gloss = "A `primary_key` names a column neither declared nor injected." }
 StoreReservedColumnName      = { clause = "store.reserve.column-name", gloss = "A producer column is spelled inside the reserved namespace and outside the optional set." }
 StoreReservedTableName       = { clause = "store.reserve.table-name", gloss = "A declared table collides with a reserved table namespace." }

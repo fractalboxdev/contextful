@@ -207,6 +207,8 @@ unsettled: Which process carries the parse boundary, a child per input or one lo
 
 unsettled: Does the engine read a source's declared schema at planning time, or only the observed batch at write time? owner: pipeline affects: run.land
 
+unsettled: Where does the OTLP export arm commit its cursor over `_commit_seq`, and what bounds one delivery batch (issue 101)? owner: pipeline affects: run.land
+
 ## backfill
 
 Phases, chunk plans, fenced chunk leases and the rewind window.
@@ -280,7 +282,7 @@ A published table's contract identity, build, freshness and holds, committed wit
 - `build-entry` — A build entry carries build id, start and completion instants, a status of published, refused or partial, the contract identity, and the partition values it left unfilled.
 - `freshness` — Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness is derived from watermark against `max_lag` and never stored.
 - `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
-- `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, last_built_at, watermark, max_lag, last_build_status, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build, an absent optional key omitted.
+- `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, last_built_at, watermark, max_lag, last_build_status, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build, `watermark` mapping each input table to its snapshot id and the committed runs it omits, an absent optional key omitted.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
 - `disclosure-digest` — A build records a digest over its declared disclosure policy, set-valued fields sorted, in the manifest and in the build log.
 
@@ -299,6 +301,8 @@ flowchart LR
   MC -->|"derives"| LOGS[("history logs")]
   HOLD -.->|"collection skips"| MC
 ```
+
+unsettled: How does staleness compare a per-input frontier watermark against `max_lag`: by the oldest omitted run's commit instant, or per input table (issue 94)? owner: pipeline affects: run.publish
 
 ## Shapes
 

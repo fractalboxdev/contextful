@@ -85,6 +85,7 @@ assurance-counterexample-corpus  = { clause = "assurance.differential-test.corpu
 assurance-differential-budget    = { clause = "assurance.differential-test.run-budget", value = 300, unit = "s", basis = "chosen", gloss = "One differential invocation, corpus replay included." }
 assurance-shell-lines            = { clause = "assurance.automate.typed-subcommand", value = 5, unit = "lines", basis = "chosen", gloss = "Longest straight-line shell step before it becomes a subcommand." }
 assurance-container-memory       = { clause = "assurance.gate.container", value = 12, unit = "GiB", basis = "chosen", gloss = "Memory available to the gate container." }
+assurance-container-wall-clock   = { clause = "assurance.gate.container", value = 30, unit = "min", basis = "chosen", gloss = "Wall clock available to one gate stage, the sandbox execution cap." }
 assurance-container-disk         = { clause = "assurance.gate.container", value = 18, unit = "GiB", basis = "chosen", gloss = "Usable disk available to the gate container." }
 assurance-job-memory             = { clause = "assurance.gate.parallel-jobs", value = 3, unit = "GiB", basis = "chosen", gloss = "Memory budgeted per parallel build job." }
 assurance-stage-free-disk        = { clause = "assurance.gate.free-disk", value = 2, unit = "GiB", basis = "chosen", gloss = "Free disk a stage needs before it begins work." }

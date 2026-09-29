@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 205 | 56 | 22 | 15 | 87 | 0 | 87 |
+| `assurance` | 2 | 15 | 205 | 56 | 22 | 16 | 87 | 0 | 87 |
 | `authority` | 2 | 16 | 238 | 64 | 27 | 8 | 172 | 0 | 172 |
 | `connector` | 2 | 13 | 250 | 74 | 17 | 8 | 120 | 0 | 120 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 151 | 26 | 22 | 18 | 119 | 0 | 119 |
-| `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
-| `store` | 1 | 15 | 186 | 45 | 12 | 12 | 147 | 0 | 147 |
-| `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
+| `run` | 3 | 24 | 304 | 82 | 34 | 32 | 171 | 0 | 171 |
+| `store` | 1 | 15 | 189 | 46 | 12 | 14 | 147 | 0 | 147 |
+| `surface` | 2 | 19 | 62 | 41 | 21 | 10 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1620 | 509 | 180 | 115 | 900 | 0 | |
+| **total** | 19 | 149 | 1623 | 510 | 180 | 124 | 900 | 0 | |
 
 Decision records: 18.
 
@@ -25,7 +25,7 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 203 | 148 | passing |
-| 2 — The store | 9 | 145 | 111 | passing |
+| 2 — The store | 9 | 148 | 111 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 354 | 153 | passing |
 | 5 — The read face under enforcement | 17 | 239 | 163 | passing |
