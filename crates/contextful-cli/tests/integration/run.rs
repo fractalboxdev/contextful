@@ -8,7 +8,7 @@ fn project() -> tempfile::TempDir {
     let store = dir.path().join(".contextful/context/research");
     std::fs::create_dir_all(&store).unwrap();
     std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
-    std::fs::write(dir.path().join("contextful.toml"), "[[pipeline.tables]]\nname = \"filings\"\n").unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\n").unwrap();
     std::fs::write(dir.path().join("empty.sh"), "printf '{\"rows\":[],\"more\":false}'\n").unwrap();
     for p in ["feed-a", "feed-b"] {
         std::fs::write(

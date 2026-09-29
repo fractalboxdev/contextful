@@ -82,7 +82,7 @@ fn m04_ingest() {
     p.write(&format!("{STORE}/config.toml"), "[node]\nid = \"ingest-a\"\n");
     let declaration = |headers: &str| {
         format!(
-            "[[pipeline]]\nid = \"filings\"\nincremental = \"updated_at\"\n\n[pipeline.source]\nname = \"http\"\n\n\
+            "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"filings\"\nincremental = \"updated_at\"\n\n[pipeline.source]\nname = \"http\"\n\n\
              [pipeline.source.config]\nendpoint = \"{}\"\nformat = \"json\"\nrecords = \"/data\"\npage_param = \"page\"\nsince_param = \"since\"\n\n\
              [pipeline.source.config.headers]\n{headers}\n\n[[pipeline.tables]]\nname = \"records\"\nprimary_key = [\"id\"]\n",
             vendor.url("/v1/filings")

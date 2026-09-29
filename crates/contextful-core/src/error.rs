@@ -17,6 +17,12 @@ pub enum AuthorityError {
     /// A credential audience differing from, or absent against, the declared one. (`authority.verify.audience-mismatch`)
     #[error("AudienceMismatch: {0}")]
     AudienceMismatch(String),
+    /// A table write verb under the session posture with no credential. (`authority.issue.session-credential`)
+    #[error("AuthoringCredentialMissing: {0}")]
+    AuthoringCredentialMissing(String),
+    /// A table write verb reading a manifest with no valid authoring posture. (`authority.issue.posture-key`)
+    #[error("AuthoringPostureUndeclared: {0}")]
+    AuthoringPostureUndeclared(String),
     /// A credential past its expiry at admission or an effect boundary. (`authority.verify.expired`)
     #[error("AuthorityExpired: {0}")]
     AuthorityExpired(String),
@@ -62,6 +68,9 @@ pub enum AuthorityError {
     /// A tenant scope on a table with no bare outermost partition column. (`authority.grant.tenant-unbindable`)
     #[error("GrantTenantUnbindable: {0}")]
     GrantTenantUnbindable(String),
+    /// A credentialed table write with no write grant over its destination. (`authority.grant.write-not-covered`)
+    #[error("GrantWriteNotCovered: {0}")]
+    GrantWriteNotCovered(String),
     /// A requested lifetime above the persisted ceiling. (`authority.issue.above-ceiling`)
     #[error("IssuanceLifetimeAboveCeiling: {0}")]
     IssuanceLifetimeAboveCeiling(String),

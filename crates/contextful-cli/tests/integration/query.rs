@@ -29,7 +29,7 @@ fn project() -> tempfile::TempDir {
     let p = dir.path();
     std::fs::create_dir_all(p.join(".contextful")).unwrap();
     std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
-    std::fs::write(p.join("contextful.toml"), "[[pipeline.tables]]\nname = \"research/notes\"\n\n[[pipeline.tables]]\nname = \"research/quiet\"\n").unwrap();
+    std::fs::write(p.join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"research/notes\"\n\n[[pipeline.tables]]\nname = \"research/quiet\"\n").unwrap();
     std::fs::write(p.join("notes.jsonl"), "{\"note_id\":\"n1\",\"title\":\"Solar battery storage\"}\n{\"note_id\":\"n2\",\"title\":\"Grid inertia\"}\n")
         .unwrap();
     stdout(&run(p, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));

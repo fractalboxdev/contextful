@@ -10,7 +10,7 @@ fn project() -> tempfile::TempDir {
     std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
     std::fs::write(
         dir.path().join("contextful.toml"),
-        "[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"doc\"]\n\n[[pipeline.tables]]\nname = \"events\"\n",
+        "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"doc\"]\n\n[[pipeline.tables]]\nname = \"events\"\n",
     )
     .unwrap();
     std::fs::write(dir.path().join("rows.jsonl"), "{\"doc\":\"a\",\"e\":1}\n").unwrap();

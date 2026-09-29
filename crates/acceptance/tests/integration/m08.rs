@@ -21,7 +21,7 @@ fn m08_accountability() {
     let cf = bin("contextful");
     let p = GitRepo::init();
     p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
-    p.write("contextful.toml", "[[pipeline.tables]]\nname = \"research/notes\"\n\n[[pipeline.tables]]\nname = \"hr/salaries\"\n");
+    p.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"research/notes\"\n\n[[pipeline.tables]]\nname = \"hr/salaries\"\n");
     p.write("notes.jsonl", &json!({ "note_id": "n1", "title": "Solar battery storage" }).to_string());
     p.write("salaries.jsonl", &json!({ "employee": "e1", "salary": 1 }).to_string());
     for (table, rows) in [("research/notes", "notes.jsonl"), ("hr/salaries", "salaries.jsonl")] {

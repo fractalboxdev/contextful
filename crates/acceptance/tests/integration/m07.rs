@@ -67,6 +67,7 @@ fn m07_memory() {
     p.write(
         "contextful.toml",
         r#"
+authoring_posture = "per_request"
 [[pipeline.tables]]
 name = "research/notes"
 

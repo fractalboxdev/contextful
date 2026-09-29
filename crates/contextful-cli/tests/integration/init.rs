@@ -51,7 +51,7 @@ fn a_command_without_project_discovers_it_from_a_subdirectory() {
     stdout(&run(dir.path(), &["init", "research"]));
     let path = dir.path().join("contextful.toml");
     let text = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(&path, format!("{text}\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"doc\"]\n")).unwrap();
+    std::fs::write(&path, format!("authoring_posture = \"per_request\"\n{text}\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"doc\"]\n")).unwrap();
     let notes = dir.path().join("notes/inbox");
     std::fs::create_dir_all(&notes).unwrap();
     std::fs::write(notes.join("rows.jsonl"), "{\"doc\":\"a\",\"v\":1}\n{\"doc\":\"a\",\"v\":2}\n").unwrap();
@@ -84,7 +84,7 @@ fn an_explicit_project_uses_the_working_directory() {
     stdout(&run(dir.path(), &["init", "research"]));
     let sub = dir.path().join("elsewhere");
     std::fs::create_dir_all(&sub).unwrap();
-    std::fs::write(sub.join("contextful.toml"), "[[pipeline.tables]]\nname = \"events\"\n").unwrap();
+    std::fs::write(sub.join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"events\"\n").unwrap();
     std::fs::write(sub.join("rows.jsonl"), "{\"e\":1}\n").unwrap();
     stdout(&run(
         &sub,
@@ -120,7 +120,7 @@ fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
         "[derive.reader]\ndriver = \"exec\"\nmedia_root = \"media\"\n\n",
         "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\noutput_format = \"srt\"\n",
     );
-    std::fs::write(&path, format!("{text}\n{pipeline}")).unwrap();
+    std::fs::write(&path, format!("authoring_posture = \"per_request\"\n{text}\n{pipeline}")).unwrap();
     std::fs::create_dir_all(dir.path().join("media")).unwrap();
     std::fs::write(dir.path().join("media/memo.srt"), "1\n00:00:00,000 --> 00:00:01,000\nRevenue rose.\n\n").unwrap();
     let notes = dir.path().join("notes");

@@ -54,7 +54,7 @@ fn m11_derive() {
     p.write("engine.sh", ENGINE);
     let manifest = |args: &str| {
         format!(
-            "[[pipeline]]\nid = \"doc-text\"\ntables = [{{ name = \"passages\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }}]\n\
+            "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"doc-text\"\ntables = [{{ name = \"passages\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }}]\n\
              [pipeline.source]\nname = \"derive\"\n\
              config = {{ engine = \"text-reader\", source_table = \"documents\", media_column = \"path\", parent_id_column = \"doc_id\" }}\n\n\
              [derive.text-reader]\ndriver = \"exec\"\n\n[derive.text-reader.engine]\ncommand = [\"sh\", \"engine.sh\", \"{{input}}\"{args}]\noutput_format = \"srt\"\n"

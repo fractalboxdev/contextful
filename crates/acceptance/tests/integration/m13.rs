@@ -6,7 +6,7 @@ use contextful_acceptance::{bin, GitRepo};
 use serde_json::json;
 use std::process::Output;
 
-const POLICY: &str = "[pipeline.models.revenue_by_industry]\n\
+const POLICY: &str = "authoring_posture = \"per_request\"\n[pipeline.models.revenue_by_industry]\n\
 statement = \"SELECT industry, tenant_id, SUM(revenue) AS revenue FROM revenue GROUP BY industry, tenant_id\"\n\
 \n\
 [pipeline.models.revenue_by_industry.disclosure]\n\

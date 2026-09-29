@@ -357,3 +357,47 @@ fn action_name(action: Action) -> &'static str {
         Action::Admin => "admin",
     }
 }
+
+/// Who authors a table write when no credential accompanies it
+/// (`authority.issue.authoring-posture`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthoringPosture {
+    /// One verified ambient credential authors every write; a write without it refuses.
+    Session,
+    /// No ambient principal: a write without a credential lands unauthored.
+    PerRequest,
+}
+
+impl AuthoringPosture {
+    /// The manifest's top-level key (`authority.issue.posture-key`).
+    pub const KEY: &'static str = "authoring_posture";
+
+    /// The posture a manifest declares. The key has no default: absent, or naming any
+    /// value but `session` or `per_request`, it raises `AuthoringPostureUndeclared`.
+    pub fn from_manifest(text: &str) -> Result<AuthoringPosture, AuthorityError> {
+        let undeclared = |why: String| {
+            AuthorityError::AuthoringPostureUndeclared(format!(
+                "{why}; declare `{key} = \"session\"` or `{key} = \"per_request\"` at the top of the manifest",
+                key = Self::KEY
+            ))
+        };
+        let value: toml::Value = toml::from_str(text).map_err(|e| undeclared(format!("the manifest does not parse: {}", e.message())))?;
+        match value.get(Self::KEY) {
+            None => Err(undeclared(format!("the manifest declares no `{}`", Self::KEY))),
+            Some(toml::Value::String(s)) if s == "session" => Ok(AuthoringPosture::Session),
+            Some(toml::Value::String(s)) if s == "per_request" => Ok(AuthoringPosture::PerRequest),
+            Some(other) => Err(undeclared(format!("`{}` is `{other}`", Self::KEY))),
+        }
+    }
+
+    /// Refuse a write `what` names that arrives with no credential under `session`
+    /// (`authority.issue.session-credential`); under `per_request` it lands unauthored.
+    pub fn unaccompanied(self, what: &str) -> Result<(), AuthorityError> {
+        match self {
+            AuthoringPosture::Session => Err(AuthorityError::AuthoringCredentialMissing(format!(
+                "{what} runs under the `session` authoring posture and carries no credential"
+            ))),
+            AuthoringPosture::PerRequest => Ok(()),
+        }
+    }
+}

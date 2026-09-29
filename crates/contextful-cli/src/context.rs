@@ -3,14 +3,15 @@
 //! Each subcommand is a thin adapter: it reads the declaration and flags, calls the
 //! store adapter, and prints. No store rule lives here.
 
+use crate::admit::{AdmitArgs, Author};
 use crate::project::locate;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_context::catalog::rebuild;
 use contextful_context::fold::fold;
-use contextful_context::land::{land, Batch, RunContext};
+use contextful_context::land::{land_batches, Batch, Position, RunContext};
 use contextful_context::scan::scan;
-use contextful_context::{node, Store};
+use contextful_context::{node, ContextError, Store};
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::store::catalog::DERIVED_CATALOG_FILE;
 use contextful_core::store::declare::TableDecl;
@@ -54,6 +55,8 @@ pub enum ContextCmd {
         /// Commit instant (RFC 3339); absent reads the system clock.
         #[arg(long)]
         now: Option<String>,
+        #[command(flatten)]
+        admit: AdmitArgs,
     },
     /// Print a table's data files, relative to the store root, one per line.
     Files {
@@ -105,6 +108,8 @@ fn now(flag: Option<String>) -> Result<Instant> {
 struct Opened {
     store: Store,
     decls: Vec<TableDecl>,
+    /// The declaration's text.
+    manifest: String,
 }
 
 impl Opened {
@@ -114,7 +119,7 @@ impl Opened {
         let text = std::fs::read_to_string(&l.declaration)
             .with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
         let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", l.declaration.display()))?;
-        Ok(Opened { store, decls })
+        Ok(Opened { store, decls, manifest: text })
     }
 
     /// The table's declaration block; a table with none declares no key.
@@ -142,8 +147,9 @@ fn bound(flag: Option<String>) -> Result<Option<Bound>> {
 
 pub fn run(cmd: ContextCmd) -> Result<()> {
     match cmd {
-        ContextCmd::Land { table, store, rows, run_id, site_id, types, now: at } => {
+        ContextCmd::Land { table, store, rows, run_id, site_id, types, now: at, admit } => {
             let o = Opened::open(&store)?;
+            let author = admit.author(&o.manifest, &[&table], "`context land`")?;
             let (node, _) = node::resolve(&o.store, |k| std::env::var(k).ok())?;
             let mut fixed = HashMap::new();
             for t in types {
@@ -154,10 +160,14 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             let batch = Batch { rows: read_rows(&rows)?, types: fixed };
             let ctx = RunContext {
                 node,
-                injection: Injection { run_id, site_id, batch_seq: Some(0), authored_by: None, taint: None },
+                injection: Injection { run_id, site_id, batch_seq: Some(0), authored_by: author.as_ref().and_then(Author::on_behalf_of), taint: None },
                 committed_at: now(at)?,
             };
-            let m = land(&o.store, &o.decl(&table), &batch, &ctx)?;
+            let precommit = || match &author {
+                Some(a) => a.boundary().map_err(|e| ContextError::Invalid(format!("{e:#}"))),
+                None => Ok(()),
+            };
+            let m = land_batches(&o.store, &o.decl(&table), std::slice::from_ref(&batch), &ctx, &Position::default(), &precommit)?;
             println!("{table}: committed {} on {} ({} parts, {} rows)", m.run_id, m.node_id, m.parts.len(), batch.rows.len());
             Ok(())
         }

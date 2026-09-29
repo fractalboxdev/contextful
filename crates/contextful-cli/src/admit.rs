@@ -10,9 +10,10 @@ use contextful_core::AuthorityError;
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::{parse_denylist, RevocationState};
-use contextful_policy::verify::{verify_inherited_pipe, Admission, AdmittedAuthority};
+use contextful_core::issue::AuthoringPosture;
+use contextful_policy::verify::{effect_boundary, verify_inherited_pipe, Admission, AdmittedAuthority};
 use crate::project::Located;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// The environment variable carrying the credential, kept out of the process arguments.
 pub const TOKEN_VAR: &str = "CONTEXTFUL_TOKEN";
@@ -65,18 +66,14 @@ impl AdmitArgs {
     /// process inherited (`authority.verify.local-peer-fallback`), returning it with the
     /// revocation state later effect boundaries re-read.
     pub fn admit(&self, what: &str) -> Result<(AdmittedAuthority, RevocationState)> {
-        let Some(token) = std::env::var(TOKEN_VAR).ok().filter(|t| !t.trim().is_empty()) else {
+        let Some(token) = token() else {
             return Err(AdmitError::StdioCredentialMissing(format!(
                 "{TOKEN_VAR} is unset: {what} admits one capability credential and acts on nothing without it"
             ))
             .into());
         };
         let keys = static_pins(self.public_key.as_deref())?.keys()?;
-        let mut revocation = RevocationState::default();
-        if let Some(path) = &self.denylist {
-            let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-            revocation.denylist = parse_denylist(&text, STATIC_KEY_VERSION);
-        }
+        let revocation = revocation(self.denylist.as_deref())?;
         let authority = {
             let mut admission = Admission::new(SystemClock.now(), &revocation);
             if let Some(aud) = self.audience.as_deref() {
@@ -85,6 +82,58 @@ impl AdmitArgs {
             verify_inherited_pipe(&token, &keys, &admission)?
         };
         Ok((authority, revocation))
+    }
+
+    /// Who authors a table write verb's rows (`authority.verify.write-verbs`): under the
+    /// manifest's posture, the credential in [`TOKEN_VAR`] when one accompanies the write,
+    /// admitted and holding `write` over every table in `tables`; `None` lands unauthored.
+    pub fn author(&self, manifest: &str, tables: &[&str], what: &str) -> Result<Option<Author>> {
+        let posture = AuthoringPosture::from_manifest(manifest)?;
+        if token().is_none() {
+            posture.unaccompanied(what)?;
+            return Ok(None);
+        }
+        let (authority, _) = self.admit(what)?;
+        for table in tables {
+            authority.require_write(table)?;
+        }
+        Ok(Some(Author { authority, denylist: self.denylist.clone() }))
+    }
+}
+
+/// The credential in [`TOKEN_VAR`], when one is set.
+fn token() -> Option<String> {
+    std::env::var(TOKEN_VAR).ok().filter(|t| !t.trim().is_empty())
+}
+
+/// The revocation state the denylist file holds now.
+fn revocation(denylist: Option<&Path>) -> Result<RevocationState> {
+    let mut revocation = RevocationState::default();
+    if let Some(path) = denylist {
+        let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        revocation.denylist = parse_denylist(&text, STATIC_KEY_VERSION);
+    }
+    Ok(revocation)
+}
+
+/// The admitted credential a table write lands under.
+pub struct Author {
+    authority: AdmittedAuthority,
+    denylist: Option<PathBuf>,
+}
+
+impl Author {
+    /// The principal every row the write lands carries as `_authored_by`.
+    pub fn on_behalf_of(&self) -> Option<String> {
+        self.authority.subject().on_behalf_of().map(str::to_string)
+    }
+
+    /// The commit boundary (`authority.verify.write-commit`): the denylist read afresh,
+    /// and expiry, against the system clock.
+    pub fn boundary(&self) -> Result<()> {
+        let revocation = revocation(self.denylist.as_deref())?;
+        effect_boundary(&self.authority, &Admission::new(SystemClock.now(), &revocation))?;
+        Ok(())
     }
 }
 

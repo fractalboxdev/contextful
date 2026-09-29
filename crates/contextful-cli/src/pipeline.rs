@@ -4,6 +4,7 @@
 //! any I/O, assembles the credential resolver from the process environment, and runs
 //! each table through the engine with a built-in source or a component guest.
 
+use crate::admit::AdmitArgs;
 use crate::component::{self, ComponentTarget};
 use crate::run::{boot_id, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
@@ -57,6 +58,8 @@ pub enum PipelineCmd {
         /// The instruction set a component source compiles for.
         #[arg(long, value_enum, env = "CONTEXTFUL_COMPONENT_TARGET", default_value_t = ComponentTarget::Native)]
         component_target: ComponentTarget,
+        #[command(flatten)]
+        admit: Box<AdmitArgs>,
     },
     /// Check every declared pipeline without network I/O; a local component artifact loads and runs discovery.
     Validate {
@@ -365,7 +368,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             }
             Ok(())
         }
-        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target } => {
+        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit } => {
             let l = project.locate(declaration)?;
             crate::sync::pull_before_run(&l)?;
             let declaration = l.declaration.clone();
@@ -375,6 +378,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| format!("no pipeline `{id}` is declared"))?;
             let spec = d.spec;
             let checked = check(&spec, &declaration, tasks)?;
+            let destinations: Vec<String> = spec.tables.iter().map(|t| spec.table_name(t.name())).collect();
+            let author = admit.author(&text, &destinations.iter().map(String::as_str).collect::<Vec<_>>(), "`pipeline run`")?;
             let w = wire_at(&l.project, &project.now)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
             let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
@@ -417,7 +422,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     decl
                 })
                 .collect();
-            let mut dest = StoreDestination { store, decls, node };
+            let mut dest = StoreDestination { store, decls, node, author };
             for reaped in w.engine.reap_orphans()? {
                 eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");
             }
