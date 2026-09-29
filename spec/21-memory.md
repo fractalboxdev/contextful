@@ -94,6 +94,8 @@ unsettled: What sets the synthesis cadence per shape, and does a shape default g
 
 unsettled: How is a model-emitted confidence rescaled into a comparable number, and what held-out set validates the rescaling? owner: memory affects: read.synthesize
 
+unsettled: Which provenance label does a source table's rows carry, and which column records the taint a claim lands under per {{connector.infer.output-taint}}? owner: memory affects: read.synthesize
+
 ## revise
 
 Supersession within one validity line, confidence decay, the direct write and its anchor, expiry, retention, promotion.

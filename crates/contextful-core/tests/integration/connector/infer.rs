@@ -2,7 +2,7 @@
 //! the open marker, value and label hygiene, and the preamble and closing line around the
 //! blocks.
 
-use contextful_core::connector::infer::{closing_line, fence, fence_token, hygiene, truncates, DataItem, LABEL_CHARS, NO_DATA, TOKEN_HEX, TRUNCATION_MARK};
+use contextful_core::connector::infer::{closing_line, fence, fence_token, hygiene, provenance_label, taint, truncates, DataItem, Provenance, LABEL_CHARS, NO_DATA, TOKEN_HEX, TRUNCATION_MARK};
 
 const CAP: usize = 16_000;
 const RULES: &str = "Answer with JSON alone.";
@@ -140,8 +140,15 @@ fn a_label_cannot_smuggle_a_marker() {
     let long = fence(&[DataItem::new("x".repeat(LABEL_CHARS * 2), "body")], CAP, RULES);
     let open = long.lines().find(|l| l.starts_with("[DATA BLOCK ")).unwrap();
     let label = open.rsplit(" — ").next().unwrap().trim_end_matches(']');
-    assert!(label.starts_with(&"x".repeat(LABEL_CHARS)) && label.chars().count() < LABEL_CHARS + TRUNCATION_MARK.chars().count() + 1, "{label}");
+    assert_eq!(label, "x".repeat(LABEL_CHARS), "a label is cut at its bound and carries no value mark");
     assert!(!label.contains('[') && !label.contains(']'));
+
+    // The cut counts characters of the flattened label: whitespace a flattening collapses
+    // spends none of the bound, and the cut never leaves a trailing space.
+    let spread = format!("{}]\n\t[{}", "é".repeat(150), "y".repeat(100));
+    assert_eq!(provenance_label(&spread), format!("{} {}", "é".repeat(150), "y".repeat(49)));
+    assert_eq!(provenance_label(&format!("a{}b", " ".repeat(LABEL_CHARS * 2))), "a b");
+    assert_eq!(provenance_label(&format!("{} tail", "z".repeat(LABEL_CHARS - 1))), "z".repeat(LABEL_CHARS - 1));
 }
 
 /// A call fencing no value renders an explicit no-data line, never an empty section.
@@ -150,4 +157,31 @@ fn a_label_cannot_smuggle_a_marker() {
 fn an_empty_batch_says_so() {
     assert_eq!(fence(&[], CAP, RULES), NO_DATA);
     assert!(!NO_DATA.is_empty());
+}
+
+/// Provenance labels order by trust, `operator` above `ingested:first-party` above
+/// `ingested:third-party`; a call fencing no value carries `operator`.
+// spec: connector.infer.provenance-order@3fd66f5a
+#[test]
+fn provenance_labels_order_by_trust() {
+    assert!(Provenance::Operator > Provenance::FirstParty && Provenance::FirstParty > Provenance::ThirdParty);
+    assert_eq!(Provenance::Operator.as_str(), "operator");
+    assert_eq!(Provenance::FirstParty.as_str(), "ingested:first-party");
+    assert_eq!(Provenance::ThirdParty.as_str(), "ingested:third-party");
+    for p in [Provenance::Operator, Provenance::FirstParty, Provenance::ThirdParty] {
+        assert_eq!(p.as_str().parse::<Provenance>(), Ok(p));
+    }
+    assert!("ingested".parse::<Provenance>().is_err());
+    assert_eq!(taint([]), Provenance::Operator);
+}
+
+/// Model output carries the least-trusted provenance label among its fenced inputs.
+// spec: connector.infer.output-taint@ad6fddaf
+#[test]
+fn output_carries_the_least_trusted_input_label() {
+    assert_eq!(taint([Provenance::Operator, Provenance::ThirdParty]), Provenance::ThirdParty);
+    assert_eq!(taint([Provenance::ThirdParty, Provenance::Operator]), Provenance::ThirdParty, "order of inputs is irrelevant");
+    assert_eq!(taint([Provenance::Operator, Provenance::FirstParty]), Provenance::FirstParty);
+    assert_eq!(taint([Provenance::FirstParty, Provenance::ThirdParty, Provenance::Operator]), Provenance::ThirdParty);
+    assert_eq!(taint([Provenance::Operator]), Provenance::Operator);
 }

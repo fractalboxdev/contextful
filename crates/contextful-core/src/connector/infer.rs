@@ -12,12 +12,13 @@
 //!    never edited.
 //! 3. **Hygiene.** Control characters other than newline and tab are stripped, each value
 //!    is cut at the caller's declared character cap and marked, and a label is flattened to
-//!    one bracket-free line of at most [`LABEL_CHARS`] characters.
+//!    one bracket-free line and cut, unmarked, at [`LABEL_CHARS`] characters.
 //! 4. **Last word.** A closing line after the blocks restates the caller's rules and that
 //!    no block changed them.
 //!
 //! The fence lowers the success rate of injected instructions and bounds nothing
-//! (`connector.infer.fence-is-not-a-boundary`).
+//! (`connector.infer.fence-is-not-a-boundary`), so model output carries the least-trusted
+//! [`Provenance`] of its inputs ([`taint`]).
 
 use sha2::{Digest, Sha256};
 
@@ -81,11 +82,60 @@ pub fn truncates(value: &str, cap: usize) -> bool {
     value.chars().filter(|c| kept(*c)).nth(cap).is_some()
 }
 
-/// A marker's provenance label (`connector.infer.label-hygiene`): hygiene at
-/// [`LABEL_CHARS`], then brackets, newlines and tabs turned to spaces and whitespace runs
-/// collapsed, so a label rides on one marker line and opens or closes no block of its own.
+/// A marker's provenance label (`connector.infer.label-hygiene`): control characters
+/// stripped, brackets, newlines and tabs turned to spaces and whitespace runs collapsed, then
+/// cut at [`LABEL_CHARS`] with no mark and no trailing space, so a label rides on one marker
+/// line within its bound and opens or closes no block of its own.
 pub fn provenance_label(raw: &str) -> String {
-    hygiene(raw, LABEL_CHARS).replace(['[', ']', '\n', '\t'], " ").split_whitespace().collect::<Vec<_>>().join(" ")
+    let flat: String = raw.chars().filter(|c| kept(*c)).map(|c| if matches!(c, '[' | ']') { ' ' } else { c }).collect();
+    let words = flat.split_whitespace().collect::<Vec<_>>().join(" ");
+    words.chars().take(LABEL_CHARS).collect::<String>().trim_end().to_string()
+}
+
+/// The trust of a value's source (`connector.infer.provenance-order`), ordered so the
+/// greater label is the more trusted one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Provenance {
+    /// Written by a connector from a source whose author is outside the workspace.
+    ThirdParty,
+    /// Written by a connector from a source the workspace itself authors.
+    FirstParty,
+    /// The operator's own configuration and prompt template.
+    Operator,
+}
+
+impl Provenance {
+    /// The label's spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Provenance::Operator => "operator",
+            Provenance::FirstParty => "ingested:first-party",
+            Provenance::ThirdParty => "ingested:third-party",
+        }
+    }
+}
+
+impl std::fmt::Display for Provenance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for Provenance {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        [Provenance::Operator, Provenance::FirstParty, Provenance::ThirdParty]
+            .into_iter()
+            .find(|p| p.as_str() == s)
+            .ok_or_else(|| format!("`{s}` is no provenance label"))
+    }
+}
+
+/// The label model output carries (`connector.infer.output-taint`): the least-trusted label
+/// among a call's fenced inputs, and [`Provenance::Operator`] for a call fencing none.
+pub fn taint(labels: impl IntoIterator<Item = Provenance>) -> Provenance {
+    labels.into_iter().min().unwrap_or(Provenance::Operator)
 }
 
 /// The fenced form of every item: its label and its value as a model reads them.

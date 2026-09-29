@@ -238,6 +238,8 @@ Model egress: the single endpoint, the data fence and the trust label of model o
   *because spotlighting reduces injection and guarantees nothing*
 - `output-taint` — Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.
   *because output re-landing as fresh data launders injected text*
+- `provenance-order` — Provenance labels order by trust: `operator` above `ingested:first-party` above `ingested:third-party`. A call fencing no value carries `operator`.
+  *because the least-trusted input is defined only over a total order, and a call fencing nothing sends the operator's template alone*
 - `marker-derivation` — Every marker of one call carries one token of 16 B, derived from every label and value the call fences, as fenced.
   *because closing one's own block then requires content containing the digest of a batch that contains it*
 - `replay` — The same values, labels, cap and rules fence to the same bytes, and a change to any value or label moves the token.
