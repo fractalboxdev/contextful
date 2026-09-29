@@ -67,6 +67,8 @@ The credential plane, the `secret://` scheme and the template grammar.
   *A-connector*
 - `environment-opt-in` — `CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES=1` re-admits the environment adapter to template hydration and logs one warning per process naming the variable.
 - `whole-value-binding` — `env://NAME` binds a whole credential outside the template grammar.
+- `whole-value-reference` — A `secret://<name>` bound whole outside any template, such as a `[sync]` credential key, hydrates through every assembled adapter, the process environment included, under {{connector.resolve.first-hit-wins}} and {{connector.resolve.shadowed-name}}.
+  *because a whole-value key sits in the node's own configuration, where `env://NAME` already reads the environment directly*
 - `material-in-a-declaration` — A credential-shaped literal standing where a reference belongs raises `SecretMaterialInDeclaration` at validation, naming the key.
   *A-connector*
 - `lease-has-no-scheme` — A leased credential binds as `secret://<name>`. No lease spelling exists in the manifest grammar.

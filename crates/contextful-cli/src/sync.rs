@@ -141,7 +141,7 @@ fn bucket(config: &SyncConfig) -> Result<Arc<dyn ObjectStore>> {
 }
 
 /// An S3 or R2 bucket, signing with the material its credential keys hydrate
-/// (`store.endpoint.credentials`).
+/// (`store.endpoint.credentials`, `connector.reference.whole-value-reference`).
 #[cfg(feature = "s3-sync")]
 fn s3_bucket(config: &SyncConfig, url: &str, region: &str) -> Result<Arc<dyn ObjectStore>> {
     use contextful_core::connector::reference::Hydrated;
@@ -159,7 +159,8 @@ fn s3_bucket(config: &SyncConfig, url: &str, region: &str) -> Result<Arc<dyn Obj
                 if resolver.is_none() {
                     resolver = Some(contextful_outbound::assemble(&vars, Arc::new(crate::run::SystemClock))?);
                 }
-                Ok(resolver.as_ref().expect("assembled above").hydrate(name)?)
+                // A credential key is a whole value, never a template: the chain's environment adapter serves it.
+                Ok(resolver.as_ref().expect("assembled above").resolve(name)?)
             }
         }
     };

@@ -34,6 +34,8 @@ toml_edit = "0.22"
 
 [dev-dependencies]
 ed25519-dalek = "2"
+# The loopback S3 server the S3 sync suite pushes and pulls against.
+contextful-acceptance = { path = "../acceptance" }
 
 [features]
 default = ["transport-ureq", "s3-sync"]

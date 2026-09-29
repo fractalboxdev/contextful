@@ -54,6 +54,13 @@ fn error_code(body: &str) -> &str {
     body.split_once("<Code>").and_then(|(_, rest)| rest.split_once("</Code>")).map_or("", |(code, _)| code)
 }
 
+/// Whether a `404` answers an absent key: its error code is `NoSuchKey`, or the answer carries
+/// no error document. A `404` naming any other code, `NoSuchBucket` among them, is a failure
+/// (`store.endpoint.missing-bucket`).
+fn absent_key(body: &str) -> bool {
+    matches!(error_code(body), "NoSuchKey" | "")
+}
+
 impl S3Bucket {
     /// Open `bucket` on the endpoint `url`, signing for `region` (`store.endpoint.addressing`).
     pub fn open(url: &str, region: &str, bucket: &str, credentials: S3Credentials) -> Result<S3Bucket, ObjectError> {
@@ -113,8 +120,13 @@ impl ObjectStore for S3Bucket {
                 let bytes = response.body_mut().with_config().limit(u64::MAX).read_to_vec().map_err(|e| S3Bucket::transport(&what, e))?;
                 Ok(Some((bytes, tag)))
             }
-            404 => Ok(None),
-            status => Err(S3Bucket::failure(&what, status, &read_text(&mut response))),
+            status => {
+                let body = read_text(&mut response);
+                if status == 404 && absent_key(&body) {
+                    return Ok(None);
+                }
+                Err(S3Bucket::failure(&what, status, &body))
+            }
         }
     }
 
@@ -135,11 +147,16 @@ impl ObjectStore for S3Bucket {
             request = request.header(*name, value);
         }
         let mut response = request.send(bytes).map_err(|e| S3Bucket::transport(&what, e))?;
-        match (response.status().as_u16(), &condition) {
-            (200, _) => etag(&response).map(Put::Applied).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag"))),
+        let status = response.status().as_u16();
+        if status == 200 {
+            return etag(&response).map(Put::Applied).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag")));
+        }
+        let body = read_text(&mut response);
+        match (status, &condition) {
             // A lost condition, a concurrent conditional write, or `If-Match` on a missing object.
-            (412 | 409, _) | (404, Condition::IfMatch(_)) => Ok(Put::ConditionFailed),
-            (status, _) => Err(S3Bucket::failure(&what, status, &read_text(&mut response))),
+            (412 | 409, _) => Ok(Put::ConditionFailed),
+            (404, Condition::IfMatch(_)) if absent_key(&body) => Ok(Put::ConditionFailed),
+            (status, _) => Err(S3Bucket::failure(&what, status, &body)),
         }
     }
 
@@ -148,8 +165,14 @@ impl ObjectStore for S3Bucket {
         let url = self.bucket.delete_object(Some(&self.credentials), key).sign(SIGNATURE_TTL);
         let mut response = self.agent.delete(url.as_str()).call().map_err(|e| S3Bucket::transport(&what, e))?;
         match response.status().as_u16() {
-            200 | 204 | 404 => Ok(()),
-            status => Err(S3Bucket::failure(&what, status, &read_text(&mut response))),
+            200 | 204 => Ok(()),
+            status => {
+                let body = read_text(&mut response);
+                if status == 404 && absent_key(&body) {
+                    return Ok(());
+                }
+                Err(S3Bucket::failure(&what, status, &body))
+            }
         }
     }
 
