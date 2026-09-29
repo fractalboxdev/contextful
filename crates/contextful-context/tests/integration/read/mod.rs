@@ -5,6 +5,7 @@
 mod enforce;
 mod fulltext;
 mod guard;
+mod latency;
 mod register;
 mod retrieve;
 mod typed;
