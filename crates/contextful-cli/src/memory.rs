@@ -4,6 +4,7 @@
 //! inference endpoint, and prints what the memory crate did. No memory rule lives here.
 
 use crate::admit::{face, AdmitArgs};
+use crate::project::locate;
 use crate::run::SystemClock;
 use anyhow::{Context, Result};
 use clap::Subcommand;
@@ -21,12 +22,14 @@ const INFERENCE_KEY_VAR: &str = "CONTEXTFUL_INFERENCE_KEY";
 
 #[derive(clap::Args)]
 pub struct Project {
-    /// The project whose store root is `.contextful/context/<project>/`.
+    /// The project whose store root is `.contextful/context/<project>/` under the working
+    /// directory; absent, the nearest `contextful.toml` upward names it.
     #[arg(long)]
-    project: String,
-    /// The manifest declaring the tables and memory shapes.
-    #[arg(long, default_value = "contextful.toml")]
-    declaration: PathBuf,
+    project: Option<String>,
+    /// The manifest declaring the tables and memory shapes; absent, the project's
+    /// `contextful.toml`.
+    #[arg(long)]
+    declaration: Option<PathBuf>,
     #[command(flatten)]
     admit: AdmitArgs,
 }
@@ -58,20 +61,17 @@ pub enum MemoryCmd {
     },
 }
 
-/// Machine-local state: pass cursors live beside the run state, outside the store root.
-fn state_dir(project: &str) -> Result<PathBuf> {
-    Ok(std::env::current_dir()?.join(".contextful/memory").join(project))
-}
-
 pub fn run(cmd: MemoryCmd) -> Result<()> {
     match cmd {
         MemoryCmd::Synthesize { project, source, into, endpoint, model } => {
             let (authority, revocation) = project.admit.admit("a synthesis pass")?;
             let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
-            let face = face(&project.project, &project.declaration)?;
+            let located = locate(project.project.as_deref(), project.declaration.clone())?;
+            let face = face(&located)?;
             let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
             let inference = Endpoint::new(&endpoint, &model, std::env::var(INFERENCE_KEY_VAR).ok()).map_err(anyhow::Error::msg)?;
-            let state = state_dir(&project.project)?;
+            // Machine-local state: pass cursors live beside the run state, outside the store root.
+            let state = located.project.memory_dir();
             let report = Pass {
                 face: &face,
                 authority: &authority,
@@ -102,7 +102,7 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
             let candidate: CandidateClaim = serde_json::from_str(&claim).context("`--claim` is one claim as JSON")?;
             let (authority, revocation) = project.admit.admit("the direct write")?;
             let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
-            let face = face(&project.project, &project.declaration)?;
+            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
             let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
             let written = write_claim(&face, &authority, &into, candidate, &node, SystemClock.now(), &boundary)?;
             match written.claim {

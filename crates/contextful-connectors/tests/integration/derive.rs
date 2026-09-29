@@ -281,7 +281,7 @@ fn a_preprocess_step_runs_only_while_its_condition_holds() {
 
 /// A local media value resolves, canonicalized, under the binding's `media_root`, the working directory by
 /// default; a path escaping it raises `DeriveMediaOutsideRoot`, failing that unit alone.
-// spec: run.bind.media-root@7395cd15
+// spec: run.bind.media-root@8ff61916
 #[test]
 fn media_outside_the_root_fails_that_unit_alone() {
     let top = tempfile::tempdir().unwrap();

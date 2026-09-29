@@ -66,7 +66,7 @@ impl Store {
     /// cleartext fallback (`store.encrypt.key-unbound`); a bound one refuses too, since
     /// this build links no at-rest cipher and writes no cleartext in its place.
     pub fn open(project_dir: &Path, project: &str) -> Result<Store> {
-        check_segment_path(project, "project")?;
+        crate::project::check_name(project)?;
         let root = project_dir.join(store_root(project));
         let config_path = root.join("config.toml");
         let config: StoreConfig = match fs::read_to_string(&config_path) {

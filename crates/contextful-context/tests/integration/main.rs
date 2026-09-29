@@ -6,6 +6,7 @@ mod declare;
 mod encrypt;
 mod fold;
 mod index;
+mod init;
 mod lay_out;
 mod read;
 mod reconcile;

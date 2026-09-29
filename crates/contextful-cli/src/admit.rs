@@ -11,7 +11,8 @@ use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::{parse_denylist, RevocationState};
 use contextful_policy::verify::{verify_local_bearer, Admission, AdmittedAuthority};
-use std::path::{Path, PathBuf};
+use crate::project::Located;
+use std::path::PathBuf;
 
 /// The environment variable carrying the credential, kept out of the process arguments.
 pub const TOKEN_VAR: &str = "CONTEXTFUL_TOKEN";
@@ -88,11 +89,12 @@ impl AdmitArgs {
 
 /// Open the read face over the project's store and manifest, signalling a development
 /// pepper once.
-pub fn face(project: &str, declaration: &Path) -> Result<Face> {
+pub fn face(located: &Located) -> Result<Face> {
     let pepper = Pepper::resolve(|k| std::env::var(k).ok());
+    let declaration = &located.declaration;
     let manifest =
         std::fs::read_to_string(declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
-    let store = Store::open(&std::env::current_dir()?, project)?;
+    let store = Store::open(&located.project.dir, &located.project.name)?;
     let face = Face::open(store, &manifest, pepper.clone())?;
     if let Some(signal) = pepper.signal() {
         eprintln!("{signal}");

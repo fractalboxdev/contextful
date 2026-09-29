@@ -44,6 +44,15 @@ pub enum StoreError {
     /// A node id is declared in a control-plane configuration applied to many machines. (`store.lay-out.node-id-shared`)
     #[error("StoreNodeIdShared: {0}")]
     StoreNodeIdShared(String),
+    /// An init meets a `contextful.toml` declaring another project, or a project with no name. (`store.init.name-conflict`)
+    #[error("StoreProjectConflict: {0}")]
+    StoreProjectConflict(String),
+    /// A project name is not path-safe `/`-separated segments. (`store.init.name-shape`)
+    #[error("StoreProjectNameInvalid: {0}")]
+    StoreProjectNameInvalid(String),
+    /// A command given no `--project` finds no `contextful.toml` naming a project from its working directory up. (`store.init.undiscovered`)
+    #[error("StoreProjectUndiscovered: {0}")]
+    StoreProjectUndiscovered(String),
     /// An `order_by` names a column neither declared nor injected. (`store.declare.order-by-unknown`)
     #[error("StoreOrderByUnknownColumn: {0}")]
     StoreOrderByUnknownColumn(String),

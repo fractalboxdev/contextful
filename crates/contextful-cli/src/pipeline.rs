@@ -4,7 +4,7 @@
 //! any I/O, assembles the credential resolver from the process environment, and runs
 //! each table through the engine with the built-in source behind the secret guard.
 
-use crate::run::{boot_id, wire, ProjectArgs, StoreDestination};
+use crate::run::{boot_id, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_connectors::derive::DeriveSource;
@@ -36,9 +36,10 @@ pub enum PipelineCmd {
         id: String,
         #[command(flatten)]
         project: ProjectArgs,
-        /// The project manifest; `pipelines/*.toml` and `pipelines/*.json` beside it are read too.
-        #[arg(long, default_value = "contextful.toml")]
-        declaration: PathBuf,
+        /// The project manifest; `pipelines/*.toml` and `pipelines/*.json` beside it are read
+        /// too. Absent, the project's `contextful.toml`.
+        #[arg(long)]
+        declaration: Option<PathBuf>,
         /// The run id of the fire; a pipeline with several tables suffixes it with each destination table name.
         #[arg(long)]
         run_id: Option<String>,
@@ -192,19 +193,23 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
         }
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env } => {
             let site_id = resolve_site_id(&SiteIdSources { manifest: site_id, env: site_id_env.map(|v| { let value = std::env::var(&v).ok(); (v, value) }) })?;
+            let l = project.locate(declaration)?;
+            let declaration = l.declaration.clone();
             let declared: Vec<Declared> = collect(&manifests(&declaration)?)?;
             let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| format!("no pipeline `{id}` is declared"))?;
             let spec = d.spec;
             let checked = check(&spec, &declaration)?;
-            let w = wire(&project)?;
+            let w = wire_at(&l.project, &project.now)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
             let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
             if let Checked::Http(config) = &checked {
                 resolver.preflight(config.headers.values())?;
             }
 
-            let cwd = std::env::current_dir()?;
-            let store = Store::open(&cwd, &project.project)?;
+            // A declaration's relative paths resolve against the project directory
+            // (`store.init.declaration-base`), whichever subdirectory the command runs from.
+            let base = l.project.dir.clone();
+            let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let decls: Vec<TableDecl> = spec
                 .tables
@@ -241,9 +246,9 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                             binding: pair.1.clone(),
                             output_table: table.clone(),
                             output_schema: serde_json::to_value(dest.decls.iter().find(|d| d.name == table).and_then(|d| d.columns.clone()))?,
-                            reader: Box::new(StoreReader { store: Store::open(&cwd, &project.project)?, decls: dest.decls.clone() }),
+                            reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
                             resolver: resolver.clone(),
-                            cwd: cwd.clone(),
+                            cwd: base.clone(),
                         }),
                     };
                     let mut source = Guarded { inner, report: log_counts };

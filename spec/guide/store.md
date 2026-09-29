@@ -6,9 +6,11 @@ contract: store
 
 ## What it is for
 
-The store is the canonical corpus of **Contextful**: Parquet files any SQL tool opens, JSON manifests saying which files count, and one pointer per table naming the current snapshot ({{store.lay-out.components}}). Every other contract reaches rows through these shapes. No reader sees a torn state and no crash loses or duplicates a committed batch, with nothing stronger than a conditional write underneath.
+The store is the canonical corpus of **Contextful**: Parquet files any SQL tool opens, JSON manifests saying which files count, and one pointer per table naming the current snapshot ({{store.lay-out.components}}). No reader sees a torn state and no crash loses or duplicates a committed batch, with nothing stronger than a conditional write underneath.
 
 ## How it works
+
+`contextful init` names the project ({{store.init.declaration-file}}); commands below it find it ({{store.init.discovery}}).
 
 Files never change once written ({{store.lay-out.immutable-files}}). A write adds a run directory and commits by conditionally creating that run's manifest ({{store.lay-out.run-manifest}}); until the manifest exists, the run's parts join no read ({{store.lay-out.uncommitted-run}}). The pipeline's cursor rides inside the same commit, so rows and position land together ({{store.lay-out.cursor-in-commit}}).
 
@@ -24,7 +26,7 @@ A bucket mirrors the tree key for key. A push uploads changed files, then commit
 
 Take the keyed table `filings`, with `primary_key = ["document_id", "page"]` and `order_by = "revised_at"`.
 
-- Node `ingest-a` resolves its node id once at start ({{store.lay-out.node-id-order}}), takes the pipeline's lease, and renews it on schedule ({{store.lease.renewal}}).
+- Node `ingest-a` resolves its node id once at start ({{store.lay-out.node-id-order}}), takes the pipeline's lease, and renews it ({{store.lease.renewal}}).
 - A run lands parts under `data/runs/<run-id>/ingest-a/`, and the engine injects `_ingested_at` and `_run_id` ({{store.reserve.injected}}). One batch sends `page` as a float; it refuses before any Parquet, because a key never widens ({{store.reconcile.key-widening}}).
 - The run commits under the lease fence. A second machine that paused, lost its lease and then woke up tries to commit; the higher fence beats it, and its run stays unreadable ({{store.lease.stale-fence}}).
 - A query now gets the current snapshot plus the committed runs it omits, deduped per key ({{store.bound-time.unbounded-latest}}).

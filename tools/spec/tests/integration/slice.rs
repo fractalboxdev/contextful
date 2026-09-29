@@ -46,7 +46,7 @@ fn an_operation_slice_carries_the_records_its_rows_cite_and_the_errors_they_own(
 fn a_milestone_slice_carries_exactly_its_operations_plus_their_closure() {
     let s = Scratch::copy();
     let v = slice(&s, "2");
-    let listed: BTreeSet<String> = ["lay-out", "declare", "reserve", "reconcile", "fold", "index", "bound-time", "encrypt"]
+    let listed: BTreeSet<String> = ["lay-out", "init", "declare", "reserve", "reconcile", "fold", "index", "bound-time", "encrypt"]
         .iter()
         .map(|o| format!("store.{o}"))
         .collect();
