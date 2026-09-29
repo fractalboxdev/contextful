@@ -67,6 +67,18 @@ impl Repo {
         self.git(&["rev-parse", "HEAD"])
     }
 
+    /// Write the `Cargo.lock` the manifests resolve to, as a workspace commits it: the
+    /// crate-graph stage resolves `--locked`.
+    pub fn lock(&self) {
+        let o = Command::new("cargo")
+            .args(["metadata", "--format-version", "1", "-q"])
+            .current_dir(&self.root)
+            .env_remove("CARGO_TARGET_DIR")
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    }
+
     pub fn head(&self) -> String {
         self.git(&["rev-parse", "HEAD"])
     }

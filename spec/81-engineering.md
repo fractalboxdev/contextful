@@ -157,8 +157,10 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because a tracked file reaches every clone, and only dotenvx ciphertext is safe there while its private key stays untracked*
 - `secret-scope` — In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file whose block — the assignments above it, up to the first blank line — opens with no comment carrying text raises `SecretScopeMissing`, naming file and key.
   *because a provider token cannot report its own grants, so the comment above it is the one record of what it reaches*
-- `crate-graph` — A test over `cargo metadata` holds run-path crates to reaching read-path crates through the three crossing crates alone; another edge raises `CrateGraphViolation`, naming both crates.
+- `crate-graph` — The crate-graph stage holds run-path crates to reaching read-path crates through the three crossing crates alone; another edge raises `CrateGraphViolation`, naming both crates.
   *P5*
+- `locked-resolve` — The crate-graph stage resolves every graph `--locked`, so a `Cargo.lock` behind its manifests fails the stage before any rule runs and the stage never rewrites it.
+  *because a rule held over a graph the lock file does not record passes a build that resolves another*
 - `row-token` — Every row-returning function of the store crate takes the enforcement token type, whose constructor is private to the enforcement module; a row path outside a registered relation raises `EnforceUnmediatedPath`, naming the function.
   *P5*
 - `dependency-deny` — The crate-graph stage runs cargo-deny over each profile's resolved graph, with a deny list holding every crate a dependency refusal of another contract names; a hit raises that clause's error.

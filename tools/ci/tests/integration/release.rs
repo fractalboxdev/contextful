@@ -55,6 +55,7 @@ impl Release {
         repo.write("crates/acceptance/src/lib.rs", "");
         repo.write("crates/acceptance/tests/integration/main.rs", "");
         repo.write("spec/status.md", &status(rows));
+        repo.lock();
         repo.commit("release fixture");
         let bin = tempfile::tempdir().unwrap();
         let gpg = bin.path().join("fake-gpg");

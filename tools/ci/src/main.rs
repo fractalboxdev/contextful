@@ -14,7 +14,7 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 /// Gate stages in run order. The pull-request workflow dispatches each as its own check.
-const STAGES: [&str; 6] = ["schema", "test-first", "workspace", "acceptance", "evaluate", "features"];
+const STAGES: [&str; 7] = ["schema", "test-first", "workspace", "acceptance", "evaluate", "features", "crate-graph"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
 /// The features stage's own target directory, under the workspace root.
@@ -174,7 +174,6 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             "schema" => {
                 secrets(&root)?;
                 mirrors(&root)?;
-                topology::check(&root)?;
                 measure::status(&root, true)?;
                 run(&root, "cargo", &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
             }
@@ -189,6 +188,7 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             "acceptance" => acceptance(&root)?,
             "evaluate" => measure::evaluate(&root)?,
             "features" => features(&root)?,
+            "crate-graph" => topology::check(&root)?,
             _ => unreachable!(),
         }
     }

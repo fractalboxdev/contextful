@@ -110,8 +110,8 @@ The domain crate, dependency direction, and the three build profiles with what e
   *A-topology*
 - `crdt-leak` — The CRDT library in the resolved dependency graph of the edge or full profile raises `ProfileDependencyLeak`, naming the profile and the path that pulled it. A daemon or replica reads materialized text.
   *A-topology*
-- `store-write-engine-free` — `contextful-context` resolved without its `read` feature and reaching `duckdb` or `libduckdb-sys` through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.
-  *because a host that lands, folds or scans a store and serves no read otherwise links a bundled SQL engine it never calls*
+- `store-write-engine-free` — `contextful-context` resolved without its `read` feature, on any target, and reaching `duckdb`, `libduckdb-sys`, an async runtime or an HTTP or TLS stack through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.
+  *because a host that lands, folds or scans a store serves no read and opens no connection, so an engine, runtime or network stack is code it never calls*
 - `transport-optional` — `contextful-outbound` resolved without its `transport-ureq` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `TransportStackLinked`, naming the path that pulled it.
   *A-connector*
 - `decode-network-free` — `contextful-decode` reaching `contextful-outbound`, `ureq`, `hyper`, `reqwest`, `rustls`, `curl` or `tokio` through a normal dependency raises `DecodeLinksNetwork`, naming the path that pulled it.

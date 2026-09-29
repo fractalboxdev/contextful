@@ -5,7 +5,28 @@
 use crate::{manifest, repo_root, stderr, Repo};
 use std::process::{Command, Output};
 
+/// `contextful-ci topology` over `root`. A scratch workspace first has its `Cargo.lock`
+/// brought in line with its manifests, since the rules resolve every graph `--locked`.
 fn topology(root: &std::path::Path) -> Output {
+    if root != repo_root() {
+        lock(root);
+    }
+    topology_as_is(root)
+}
+
+/// Write the `Cargo.lock` the manifests under `root` resolve to.
+fn lock(root: &std::path::Path) {
+    let o = Command::new("cargo")
+        .args(["metadata", "--format-version", "1", "-q"])
+        .current_dir(root)
+        .env_remove("CARGO_TARGET_DIR")
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+}
+
+/// `contextful-ci topology` over `root` with its `Cargo.lock` left as it stands.
+fn topology_as_is(root: &std::path::Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
         .arg("topology")
         .current_dir(root)
@@ -93,7 +114,7 @@ fn a_domain_crate_depending_on_an_adapter_is_refused() {
 }
 
 /// `contextful-context` resolved without its `read` feature and reaching `duckdb` or `libduckdb-sys` through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.
-// spec: topology.package.store-write-engine-free@b7105e8e
+// spec: topology.package.store-write-engine-free@a5e7aef1
 #[test]
 fn a_store_adapter_linking_the_sql_engine_without_read_is_refused() {
     let r = Repo::init();
@@ -121,6 +142,15 @@ fn a_store_adapter_linking_the_sql_engine_without_read_is_refused() {
     package(&r, "contextful-context", "sqlkit = { path = \"../../stubs/sqlkit\" }\n");
     let err = refused(&topology(&r.root), "StoreWriteLinksEngine");
     assert!(err.contains("through contextful-context -> sqlkit -> duckdb"), "{err}");
+
+    // An async runtime or an HTTP or TLS stack in the write half is refused alike.
+    stub(&r, "tokio", "", "");
+    stub(&r, "rustls", "", "");
+    stub(&r, "hyper", "rustls = { path = \"../rustls\" }\n", "");
+    package(&r, "contextful-context", "tokio = { path = \"../../stubs/tokio\" }\nhyper = { path = \"../../stubs/hyper\" }\n");
+    let err = refused(&topology(&r.root), "StoreWriteLinksEngine");
+    assert!(err.contains("`contextful-context` without `read` links `tokio` through contextful-context -> tokio"), "{err}");
+    assert!(err.contains("links `rustls` through contextful-context -> hyper -> rustls"), "{err}");
 }
 
 /// `contextful-outbound` resolved without its `transport-ureq` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `TransportStackLinked`, naming the path that pulled it.
@@ -646,4 +676,60 @@ fn this_repository_crate_map_names_every_crate() {
     let o = topology(repo_root());
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stdout(&o).contains("crate map: 17 crates"), "{}", stdout(&o));
+}
+
+/// The crate-graph stage runs the dependency rules and refuses a run-path crate reaching a
+/// read-path crate outside the crossings.
+// spec: assurance.gate.crate-graph@98b70ec8
+#[test]
+fn the_crate_graph_stage_refuses_an_undeclared_crossing() {
+    let stages = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
+    assert_eq!(stdout(&stages).lines().last(), Some("crate-graph"), "{}", stdout(&stages));
+
+    let r = Repo::init();
+    package(&r, "contextful-core", "");
+    package(&r, "contextful-context", "contextful-core = { path = \"../contextful-core\" }\n");
+    package(&r, "contextful-engine", "contextful-context = { path = \"../contextful-context\" }\n");
+    lock(&r.root);
+    r.commit("crossing");
+    let o = r.gate(&["--stage", "crate-graph"]);
+    let err = refused(&o, "CrateGraphViolation");
+    assert!(err.contains("run-path crate `contextful-engine` reaches read-path crate `contextful-context`"), "{err}");
+}
+
+/// A `Cargo.lock` the manifests disagree with stops the rules before any runs.
+// spec: assurance.gate.locked-resolve@3966f7ce
+#[test]
+fn a_lock_file_behind_its_manifests_stops_the_crate_graph() {
+    let r = Repo::init();
+    package(&r, "contextful-core", "");
+    lock(&r.root);
+    assert!(stdout(&topology_as_is(&r.root)).contains("contextful-core"));
+
+    stub(&r, "leftpad", "", "");
+    package(&r, "contextful-core", "leftpad = { path = \"../../stubs/leftpad\" }\n");
+    let o = topology_as_is(&r.root);
+    assert!(!o.status.success(), "a stale lock file resolved: {}", stdout(&o));
+    assert!(stderr(&o).contains("--locked"), "{}", stderr(&o));
+    // The rules left the lock file as it stood.
+    let lock_file = std::fs::read_to_string(r.root.join("Cargo.lock")).unwrap();
+    assert!(!lock_file.contains("leftpad"), "{lock_file}");
+}
+
+/// This repository's store write half resolves no forbidden package, and its unique
+/// package count across every target records against the ledger's ceiling.
+#[test]
+fn this_repository_store_write_half_links_no_forbidden_package() {
+    let o = topology(repo_root());
+    let out = stdout(&o);
+    let line = out
+        .lines()
+        .find_map(|l| l.strip_prefix("store write half: "))
+        .unwrap_or_else(|| panic!("no store write half line: {out}{}", stderr(&o)));
+    let figures: Vec<u64> = line.split_whitespace().filter_map(|w| w.parse().ok()).collect();
+    let [unique, forbidden] = figures[..] else { panic!("{line}") };
+    contextful_eval::record::emit("store-write-deny-set", forbidden as f64, unique, 0);
+    contextful_eval::record::emit("store-write-package-count", unique as f64, 1, 0);
+    assert_eq!(forbidden, 0, "{line}\n{}", stderr(&o));
+    assert!(unique > 0, "{line}");
 }
