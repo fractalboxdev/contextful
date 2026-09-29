@@ -263,9 +263,18 @@ impl HolderKey {
 /// One MCP Streamable HTTP message over a new connection, presenting `token` with a proof
 /// from its holder key when one is given; the status, head and body of the answer.
 fn post_mcp(addr: &str, message: &Value, token: Option<(&str, &HolderKey)>) -> (u16, String, Vec<u8>) {
+    let auth = token.map(|(t, key)| format!("Authorization: DPoP {t}\r\nDPoP: {}\r\n", key.proof(&message.to_string()))).unwrap_or_default();
+    post_with(addr, message, &auth)
+}
+
+/// One MCP Streamable HTTP message presenting `token` as a bare bearer, with no proof.
+fn post_bearer(addr: &str, message: &Value, token: &str) -> (u16, String, Vec<u8>) {
+    post_with(addr, message, &format!("Authorization: Bearer {token}\r\n"))
+}
+
+fn post_with(addr: &str, message: &Value, auth: &str) -> (u16, String, Vec<u8>) {
     use std::io::{Read, Write};
     let body = message.to_string();
-    let auth = token.map(|(t, key)| format!("Authorization: DPoP {t}\r\nDPoP: {}\r\n", key.proof(&body))).unwrap_or_default();
     let mut s = std::net::TcpStream::connect(addr).unwrap();
     write!(s, "POST /mcp HTTP/1.1\r\nHost: {addr}\r\n{auth}Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
     let mut raw = Vec::new();
@@ -276,8 +285,8 @@ fn post_mcp(addr: &str, message: &Value, token: Option<(&str, &HolderKey)>) -> (
 }
 
 /// The networked read face: one MCP Streamable HTTP listener serves concurrent
-/// statements for many holder-bound credentials, each admitted per request under its own
-/// proof, answering what the stdio transport answers for the same grants.
+/// statements for many credentials — short-lived bearers, and holder-bound credentials
+/// each under its own proof — answering what the stdio transport answers for the same grants.
 #[test]
 fn m05_http_face() {
     use std::io::{BufRead, BufReader};
@@ -293,14 +302,15 @@ fn m05_http_face() {
         ok(&p.run(&cf, &["context", "land", table, "--project", "research", "--rows", rows, "--run-id", "run-0001", "--site-id", "site-a"]));
     }
     let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
-    let mint = |table: &str, holder: Option<&HolderKey>| {
+    let mint_for = |table: &str, holder: Option<&HolderKey>, ttl: &str| {
         let jkt = holder.map(HolderKey::thumbprint);
-        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", table, "--ttl", "3600"];
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", table, "--ttl", ttl];
         if let Some(jkt) = jkt.as_deref() {
             args.extend(["--holder", jkt]);
         }
         ok(&p.run(&cf, &args))
     };
+    let mint = |table: &str, holder: Option<&HolderKey>| mint_for(table, holder, "3600");
     let (dana, lee) = (HolderKey(ed25519_dalek::SigningKey::from_bytes(&[5; 32])), HolderKey(ed25519_dalek::SigningKey::from_bytes(&[6; 32])));
     let research_token = mint("research/*", Some(&dana));
     let hr_token = mint("hr/*", Some(&lee));
@@ -355,16 +365,23 @@ fn m05_http_face() {
     let session = Session::spawn(&cf, &["mcp", "--project", "research", "--public-key", &public, "--audience", AUD], &p.root, &[("CONTEXTFUL_TOKEN", &piped)]);
     let mut client = Client { session, next: 0 };
     let answer = client.request("tools/call", fast["params"].clone());
-    assert_eq!(String::from_utf8(notes).unwrap(), answer.to_string());
+    assert_eq!(String::from_utf8(notes.clone()).unwrap(), answer.to_string());
     assert!(client.session.close().success());
 
-    // No credential: 401. A credential binding no key, or a proof from another key: 401.
+    // The same credential binding no key, living 3600 s, reads over the network as a bare
+    // bearer, byte-identically; one living 3601 s admits nothing.
+    let (status, _, bearer_notes) = post_bearer(&addr, &fast, &piped);
+    assert_eq!((status, bearer_notes), (200, notes));
+    let (status, _, longer) = post_bearer(&addr, &fast, &mint_for("research/*", None, "3601"));
+    assert_eq!((status, parse(&longer)["error"]["identifier"].clone()), (401, json!("BearerLifetimeExceeded")));
+
+    // No credential: 401. A holder-bound credential with no proof, or a proof from another key: 401.
     let (status, _, missing) = post_mcp(&addr, &fast, None);
     assert_eq!((status, parse(&missing)["error"]["identifier"].clone()), (401, json!("HttpCredentialMissing")));
-    for presented in [(piped.as_str(), &dana), (research_token.as_str(), &lee)] {
-        let (status, _, refused) = post_mcp(&addr, &fast, Some(presented));
-        assert_eq!((status, parse(&refused)["error"]["identifier"].clone()), (401, json!("PossessionProofInvalid")));
-    }
+    let (status, _, unproven) = post_bearer(&addr, &fast, &research_token);
+    assert_eq!((status, parse(&unproven)["error"]["identifier"].clone()), (401, json!("PossessionProofInvalid")));
+    let (status, _, stolen) = post_mcp(&addr, &fast, Some((research_token.as_str(), &lee)));
+    assert_eq!((status, parse(&stolen)["error"]["identifier"].clone()), (401, json!("PossessionProofInvalid")));
 
     // A fast statement answers while a slow one runs; past the ceiling of 2, a third answers 503.
     let slow_open = std::sync::atomic::AtomicBool::new(true);

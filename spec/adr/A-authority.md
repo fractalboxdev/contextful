@@ -136,6 +136,25 @@ Over a network, holding a credential admits nothing without proof of its key, an
 Consequences: a credential is minted against one client's key; each checkpoint holds nonce state sized by window and request rate.
 Revisit: cross-checkpoint replay observed within a credential's lifetime; a client class cannot hold a private key.
 
+## A network face admits a short-lived audience-bound bearer, and a key-bound credential only under proof
+
+**Status:** accepted; narrows the network requirement of the sender-constrained decision above.
+
+Context: MCP clients speaking Streamable HTTP send `Authorization: Bearer` and sign nothing per request, so a network face admitting only key-bound credentials serves none of them.
+
+Decision: `authority.verify` admits a credential with no confirmation claim over a network as a bearer when it names the checkpoint's declared audience and lives at most an hour from issue to expiry; a longer-lived bearer refuses, and its holder refreshes through token exchange. A credential carrying a confirmation thumbprint, minted with `--holder`, admits only under a proof on every request. Local transports keep holder proof first, then the peer uid.
+
+Criteria: MCP-client compatibility, then theft yield; compatibility decided it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Short-lived audience-bound bearer; proof exactly when a confirmation claim is present *(chosen)* | — | A captured bearer replays against its audience until expiry; inside that window only the denylist withdraws it. |
+| A proof on every network request | MCP-client compatibility | A client holding no signing key reaches no network face. |
+| A bearer at any lifetime under the issuance ceiling | Theft yield | A captured bearer replays for up to the 24 h ceiling. |
+
+Consequences: an operator wanting replay resistance mints with `--holder`; a bearer client re-exchanges at least hourly.
+Revisit: mainstream MCP clients sign per-request proofs; bearer replay is observed within a lifetime.
+
 ## A digest over an exhaustible class needs generalizing truncation
 
 A digest over an enumerable value space — national identifier, phone, email, medical record number — ships only behind truncation, so exhaustive search returns a crowd. `authority.mask` refuses a class outside the registry with `EnforceUnknownClass` at manifest check. A bare keyed hash over an exhaustible class refuses; `combine = "truncate:<n>"` satisfies it, and random identifiers keep a bare hash. Truncation is the one secondary admitted behind a hash or tokenization. A width at or past the primary's output refuses; narrower widths are operator judgment. Primary and secondary compile to one inseparable value.

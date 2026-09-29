@@ -1,9 +1,11 @@
 //! The network transport: MCP Streamable HTTP at `POST /mcp`, each request admitted on
 //! its own credential (`read.register`).
 //!
-//! A request carries one JSON-RPC message, `Authorization: DPoP <credential>` and a
-//! `DPoP` proof header signed by the holder key the credential binds. A credential binding
-//! no key admits nothing here (`authority.verify.network-needs-key`). Admission, the
+//! A request carries one JSON-RPC message and its credential. A credential binding a
+//! holder key arrives as `Authorization: DPoP <credential>` with a `DPoP` proof header that
+//! key signs (`authority.verify.possession-binding`); one binding no key arrives as
+//! `Authorization: Bearer <credential>` and admits when it names the face's audience and
+//! lives at most an hour (`authority.verify.network-bearer`). Admission, the
 //! revocation read and the proof check run per request, so one listener
 //! serves many credentials; the message is answered by the same [`Tools`] the stdio
 //! transport runs, as `application/json` (`read.respond.one-projection`). The face holds
@@ -19,7 +21,7 @@ use contextful_policy::enforce::refuse::payload;
 use contextful_policy::keyset::KeyCheckpoint;
 use contextful_policy::possession::{ProofRefusal, ProofRequest};
 use contextful_policy::revoke::RevocationState;
-use contextful_policy::verify::{effect_boundary, verify_with_proof, Admission, AdmittedAuthority};
+use contextful_policy::verify::{effect_boundary, verify_network, Admission, AdmittedAuthority};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -48,8 +50,8 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// Headers one request head may carry.
 const REQUEST_HEADERS: usize = 64;
 
-/// The challenge a `401` carries: the one presentation the face admits.
-const CHALLENGE: &str = "DPoP realm=\"contextful\", algs=\"EdDSA\"";
+/// The challenges a `401` carries: the two presentations the face admits.
+const CHALLENGE: &str = "DPoP realm=\"contextful\", algs=\"EdDSA\", Bearer realm=\"contextful\"";
 
 /// JSON-RPC error codes the transport answers before a message reaches the tools.
 const PARSE_ERROR: i64 = -32700;
@@ -80,8 +82,8 @@ impl HttpRequest {
     }
 
     /// The credential of an `Authorization: DPoP` or `Authorization: Bearer` header, the
-    /// scheme compared case-insensitively. Either scheme reaches admission, which refuses
-    /// a credential binding no holder key whatever the scheme.
+    /// scheme compared case-insensitively. Either scheme reaches admission, where the
+    /// credential's confirmation claim, not the scheme, decides whether a proof is required.
     fn credential(&self) -> Option<&str> {
         let (scheme, credential) = self.header("Authorization")?.trim().split_once(' ')?;
         let admitted = scheme.eq_ignore_ascii_case("Bearer") || scheme.eq_ignore_ascii_case("DPoP");
@@ -289,7 +291,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     fn message(&self, request: &HttpRequest) -> HttpResponse {
         let Some(credential) = request.credential() else {
             let missing = ReadError::HttpCredentialMissing(
-                "a request carries `Authorization: DPoP <credential>` and a `DPoP` proof from the credential's holder key".into(),
+                "a request carries `Authorization: Bearer <credential>`, or `Authorization: DPoP <credential>` with a `DPoP` proof from the credential's holder key".into(),
             );
             return HttpResponse::json(401, &payload(&Refusal::Read(missing))).with("WWW-Authenticate", CHALLENGE);
         };
@@ -304,7 +306,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             Ok(k) => k,
             Err(e) => return HttpResponse::unavailable(e.to_string()),
         };
-        let authority = verify_with_proof(credential, &keys, &admission, |jkt| match request.header("DPoP") {
+        let authority = verify_network(credential, &keys, &admission, |jkt| match request.header("DPoP") {
             Some(proof) => checkpoint.verify_request(jkt, proof, &covered),
             None => Err(ProofRefusal::Refused(AuthorityError::PossessionProofInvalid(
                 "the credential binds a holder key, and the request carries no `DPoP` proof".into(),

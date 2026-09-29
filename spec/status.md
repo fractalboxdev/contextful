@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 205 | 56 | 22 | 15 | 87 | 0 | 87 |
-| `authority` | 2 | 16 | 237 | 63 | 27 | 8 | 171 | 0 | 171 |
+| `authority` | 2 | 16 | 238 | 64 | 27 | 8 | 172 | 0 | 172 |
 | `connector` | 2 | 13 | 250 | 74 | 17 | 8 | 120 | 0 | 120 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 15 | 186 | 45 | 12 | 12 | 147 | 0 | 147 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1619 | 508 | 180 | 115 | 899 | 0 | |
+| **total** | 19 | 149 | 1620 | 509 | 180 | 115 | 900 | 0 | |
 
 Decision records: 18.
 
@@ -24,7 +24,7 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
-| 1 — The authority core | 14 | 202 | 147 | passing |
+| 1 — The authority core | 14 | 203 | 148 | passing |
 | 2 — The store | 9 | 145 | 111 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 354 | 153 | passing |
@@ -280,6 +280,7 @@ Unscheduled operations: 10.
 | `authority.verify.admitted-authority` | `crates/contextful-policy/tests/integration/verify.rs::verification_yields_an_admitted_value_with_the_normalized_subject_and_grants` | performed |
 | `authority.verify.audience-mismatch` | `crates/contextful-policy/tests/integration/verify.rs::a_declared_audience_refuses_another_or_none_and_an_undeclared_one_checks_nothing` | performed |
 | `authority.verify.bad-signature` | `crates/contextful-policy/tests/integration/verify.rs::any_failing_block_signature_admits_nothing_not_even_a_verified_prefix` | performed |
+| `authority.verify.bearer-lifetime` | `crates/contextful-policy/tests/integration/verify.rs::a_bearer_living_past_3600_s_admits_nothing_over_a_network` | performed |
 | `authority.verify.clock-skew` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_issued_more_than_thirty_seconds_ahead_refuses` | performed |
 | `authority.verify.connection-scoped` | `crates/contextful-policy/tests/integration/verify.rs::a_local_admission_answers_only_on_the_connection_that_presented_the_credential` | performed |
 | `authority.verify.effect-boundary` | `crates/contextful-policy/tests/integration/verify.rs::each_effect_boundary_re_reads_expiry_revocation_and_profile_version` | performed |
@@ -293,11 +294,11 @@ Unscheduled operations: 10.
 | `authority.verify.local-peer-fallback` | `crates/contextful-policy/tests/integration/verify.rs::a_credential_binding_no_key_admits_through_the_inherited_pipe_or_a_same_uid_socket_peer` | performed |
 | `authority.verify.local-transport` | `crates/contextful-policy/tests/integration/verify.rs::a_local_transport_is_the_inherited_pipe_or_a_unix_socket_reporting_its_peer_uid` | performed |
 | `authority.verify.malformed-timestamp` | `crates/contextful-core/tests/integration/time.rs::a_timestamp_outside_the_grammar_is_malformed` | performed |
-| `authority.verify.network-needs-key` | `crates/contextful-policy/tests/integration/verify.rs::a_network_checkpoint_refuses_the_credential_the_peer_fallback_admits` | performed |
+| `authority.verify.network-bearer` | `crates/contextful-policy/tests/integration/verify.rs::a_network_checkpoint_admits_an_audience_bound_bearer_with_no_proof` | performed |
 | `authority.verify.nonce-cache` | `crates/contextful-policy/tests/integration/possession.rs::a_full_nonce_cache_answers_503_and_admits_nothing` | performed |
 | `authority.verify.peer-mismatch` | `crates/contextful-policy/tests/integration/verify.rs::a_socket_peer_of_another_or_an_unreported_uid_admits_nothing` | performed |
 | `authority.verify.pin-source` | `crates/contextful-cli/tests/integration/token.rs::verify_reads_pins_and_audience_from_the_environment_and_accepts_a_bare_ed25519_key` | performed |
-| `authority.verify.possession-binding` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_binds_method_target_body_instant_and_nonce_to_the_confirmation_thumbprint` | performed |
+| `authority.verify.possession-binding` | `crates/contextful-policy/tests/integration/verify.rs::a_network_checkpoint_requires_a_proof_exactly_when_the_credential_binds_a_key` | performed |
 | `authority.verify.possession-invalid` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_from_another_key_or_malformed_raises_possession_proof_invalid` | performed |
 | `authority.verify.public-key-only` | `crates/contextful-policy/tests/integration/keyset.rs::a_checkpoint_admits_from_public_keys_alone_with_no_call_out` | performed |
 | `authority.verify.replay-window` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_older_than_the_replay_window_refuses_and_nonces_live_for_that_window` | performed |
@@ -549,7 +550,7 @@ Unscheduled operations: 10.
 | `read.register.ledger-relation` | `crates/contextful-context/tests/integration/read/register.rs::a_tables_request_ledger_reads_as_its_child_relation` | performed |
 | `read.register.network-transport` | `crates/contextful-agent/tests/integration/http.rs::post_mcp_answers_each_message_as_the_stdio_tool_server_does` | performed |
 | `read.register.past-ceiling` | `crates/contextful-agent/tests/integration/http.rs::past_the_ceiling_a_request_answers_503_with_retry_after` | performed |
-| `read.register.per-request-admission` | `crates/contextful-agent/tests/integration/http.rs::one_listener_admits_holder_bound_credentials_each_on_its_own_grants_and_proof` | performed |
+| `read.register.per-request-admission` | `crates/contextful-agent/tests/integration/http.rs::one_listener_admits_bearers_and_holder_bound_credentials_each_on_its_own_grants` | performed |
 | `read.register.per-request-revocation` | `crates/contextful-agent/tests/integration/http.rs::a_credential_revoked_between_requests_is_refused_on_the_next` | performed |
 | `read.register.quiet-table` | `crates/contextful-context/tests/integration/read/register.rs::a_quiet_table_reads_empty` | performed |
 | `read.register.request-body` | `crates/contextful-agent/tests/integration/http.rs::a_body_over_one_mebibyte_answers_413` | performed |

@@ -1,6 +1,6 @@
 //! `contextful serve --http` through the built binary: startup refusals, then MCP
-//! Streamable HTTP admitting a holder-bound credential minted by `token mint --holder`
-//! under a proof on every request.
+//! Streamable HTTP admitting a short-lived bearer, and a holder-bound credential minted by
+//! `token mint --holder` under a proof on every request.
 
 use contextful_core::time::Instant;
 use contextful_policy::possession::{jwk_thumbprint, sign_proof, ProofRequest};
@@ -126,19 +126,20 @@ fn serve_refuses_to_start_without_its_declarations_or_an_issuer_key() {
 }
 
 /// `token mint --holder` binds a credential to a holder key: the network face admits it
-/// under a proof on every request and refuses a credential binding no key, and the stdio
-/// server, whose pipe carries no proof, refuses the bound one.
+/// only under a proof on every request, admits a bearer living at most 3600 s, refuses a
+/// longer-lived one, and the stdio server, whose pipe carries no proof, refuses the bound one.
 #[test]
-fn serve_admits_a_holder_bound_credential_per_request_and_refuses_one_binding_no_key() {
+fn serve_admits_a_holder_bound_credential_under_proof_and_a_short_lived_bearer() {
     let (dir, public) = project();
     let p = dir.path();
-    let mint = |holder: Option<&str>| {
-        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "900"];
+    let mint_for = |holder: Option<&str>, ttl: &str| {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", ttl];
         if let Some(h) = holder {
             args.extend(["--holder", h]);
         }
         stdout(&run(p, &args))
     };
+    let mint = |holder: Option<&str>| mint_for(holder, "900");
     let key = SigningKey::from_bytes(&[11; 32]);
     let jkt = jwk_thumbprint(key.verifying_key().as_bytes());
     let bound = mint(Some(&jkt));
@@ -153,10 +154,19 @@ fn serve_admits_a_holder_bound_credential_per_request_and_refuses_one_binding_no
         assert_eq!(status, 200, "{answer}");
         assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]));
     }
-    for (token, key) in [(&bound, None), (&unbound, None), (&unbound, Some(&key))] {
-        let (status, answer) = post(&addr, &query(), token, key);
+    // The bound credential without its proof, or under another key's, admits nothing.
+    let other = SigningKey::from_bytes(&[12; 32]);
+    for key in [None, Some(&other)] {
+        let (status, answer) = post(&addr, &query(), &bound, key);
         assert_eq!((status, answer["error"]["identifier"].clone()), (401, json!("PossessionProofInvalid")), "{answer}");
     }
+    // A bearer living 3600 s admits with no proof; one living 3601 s refuses.
+    for bearer in [&unbound, &mint_for(None, "3600")] {
+        let (status, answer) = post(&addr, &query(), bearer, None);
+        assert_eq!((status, answer["result"]["structuredContent"]["rows"].clone()), (200, json!([["n1"]])), "{answer}");
+    }
+    let (status, answer) = post(&addr, &query(), &mint_for(None, "3601"), None);
+    assert_eq!((status, answer["error"]["identifier"].clone()), (401, json!("BearerLifetimeExceeded")), "{answer}");
 
     // Over the inherited stdio pipe the bound credential carries no proof, and refuses.
     let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))

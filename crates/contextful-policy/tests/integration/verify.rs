@@ -9,9 +9,11 @@ use contextful_policy::issue::MintClaims;
 use contextful_policy::revoke::{parse_denylist, RevocationState};
 use contextful_core::ports::FixedClock;
 use contextful_core::AuthorityError;
+use contextful_core::issue::{IssuancePolicy, Lifetime, MintContext, MintRequest, NodeRole};
+use contextful_policy::verify::BEARER_LIFETIME_SECS;
 use contextful_policy::possession::{sign_proof, verify_proof, NonceCache, ProofRefusal, ProofRequest};
 use contextful_policy::verify::{
-    checkpoint_uid, effect_boundary, no_holder_proof, verify_inherited_pipe, verify_local, verify_with_proof, Admission, BiscuitFormat,
+    checkpoint_uid, effect_boundary, no_holder_proof, verify_inherited_pipe, verify_local, verify_network, Admission, BiscuitFormat,
     CredentialFormat, LocalTransport,
 };
 use std::os::unix::net::UnixStream;
@@ -296,17 +298,82 @@ fn a_socket_peer_of_another_or_an_unreported_uid_admits_nothing() {
     }
 }
 
-/// A network checkpoint refuses a credential with no confirmation claim as {{authority.verify.possession-invalid}}, so a credential admitted by peer fallback admits nothing over a network.
-// spec: authority.verify.network-needs-key@1aaaea8b
+/// A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce; a credential carrying none requires no proof.
+// spec: authority.verify.possession-binding@56c181db
 #[test]
-fn a_network_checkpoint_refuses_the_credential_the_peer_fallback_admits() {
+fn a_network_checkpoint_requires_a_proof_exactly_when_the_credential_binds_a_key() {
     let signer = issuer();
-    let credential = minted(&signer);
+    let holder = ed25519_dalek::SigningKey::from_bytes(&[7; 32]);
+    let bound = key_bound(&signer, &holder);
     let revocation = no_revocation();
     let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
-    assert!(verify_inherited_pipe(&credential, &keys(&signer), &admission).is_ok());
-    // Whatever proof the network client presents, the credential binds no key to check it against.
-    refused(verify_with_proof(&credential, &keys(&signer), &admission, |_| Ok::<(), AuthorityError>(())), "PossessionProofInvalid");
+    // A key-bound credential presenting no proof admits nothing.
+    refused(verify_network(&bound, &keys(&signer), &admission, no_holder_proof::<AuthorityError>), "PossessionProofInvalid");
+    // A key-bound credential under its holder's proof admits.
+    let mut nonces = NonceCache::new();
+    let proof = sign_proof(&holder, &local_request(), at(DURING), "n-network");
+    let admitted = verify_network(&bound, &keys(&signer), &admission, holder_proof(&proof, &mut nonces)).unwrap();
+    assert!(admitted.confirmation().is_some());
+    // A credential binding no key never reaches the proof check.
+    let unbound = minted(&signer);
+    let admitted = verify_network(&unbound, &keys(&signer), &admission, |_| -> Result<(), AuthorityError> { panic!("a bearer is asked for no proof") }).unwrap();
+    assert_eq!(admitted.confirmation(), None);
+}
+
+/// A bearer credential for `AUD`, minted at [`MINTED`] to live `ttl` seconds.
+fn bearer(signer: &contextful_policy::issue::SeedSigner, ttl: u64) -> String {
+    let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
+    let mut req = MintRequest::custody(dana(), vec![grant(&[Action::Read], &["research/*"])]);
+    req.lifetime = Lifetime::Requested(ttl);
+    let clock = FixedClock(at(MINTED));
+    let plan = policy.check(&req, &MintContext { node: NodeRole::Primary, signer, clock: &clock }).unwrap();
+    contextful_policy::issue::mint(&plan, &MintClaims::default(), signer).unwrap()
+}
+
+/// A network checkpoint admits a credential with no confirmation claim as a bearer when it names the checkpoint's declared audience and meets {{authority.verify.bearer-lifetime}}; the peer fallback never applies over a network.
+// spec: authority.verify.network-bearer@131e1f37
+#[test]
+fn a_network_checkpoint_admits_an_audience_bound_bearer_with_no_proof() {
+    let signer = issuer();
+    let credential = bearer(&signer, 3600);
+    let revocation = no_revocation();
+    let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
+    let admitted = verify_network(&credential, &keys(&signer), &admission, no_holder_proof::<AuthorityError>).unwrap();
+    assert_eq!((admitted.confirmation(), admitted.audience()), (None, AUD));
+    // Another audience, or a checkpoint declaring none, admits no bearer.
+    let elsewhere = Admission::new(at(DURING), &revocation).expecting("contextful://globex");
+    refused(verify_network(&credential, &keys(&signer), &elsewhere, no_holder_proof::<AuthorityError>), "AudienceMismatch");
+    let undeclared = Admission::new(at(DURING), &revocation);
+    refused(verify_network(&credential, &keys(&signer), &undeclared, no_holder_proof::<AuthorityError>), "AudienceMismatch");
+    // Every other admission check still applies: an expired bearer refuses.
+    let late = Admission::new(at("2030-01-01T01:00:01Z"), &revocation).expecting(AUD);
+    refused(verify_network(&credential, &keys(&signer), &late, no_holder_proof::<AuthorityError>), "AuthorityExpired");
+}
+
+/// A bearer whose expiry falls more than 3600 s after its issue instant raises `BearerLifetimeExceeded` at a network checkpoint and admits nothing; its holder refreshes through {{authority.exchange.surface}}.
+// spec: authority.verify.bearer-lifetime@c0a6f9b6
+#[test]
+fn a_bearer_living_past_3600_s_admits_nothing_over_a_network() {
+    let signer = issuer();
+    let revocation = no_revocation();
+    let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
+    assert!(verify_network(&bearer(&signer, BEARER_LIFETIME_SECS), &keys(&signer), &admission, no_holder_proof::<AuthorityError>).is_ok());
+    let long = bearer(&signer, BEARER_LIFETIME_SECS + 1);
+    refused(verify_network(&long, &keys(&signer), &admission, no_holder_proof::<AuthorityError>), "BearerLifetimeExceeded");
+    // The same credential still admits locally, where the ceiling does not apply.
+    assert!(verify_inherited_pipe(&long, &keys(&signer), &admission).is_ok());
+    // A key-bound credential is held to the issuance ceiling alone.
+    let holder = ed25519_dalek::SigningKey::from_bytes(&[9; 32]);
+    let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
+    let mut req = MintRequest::custody(dana(), vec![grant(&[Action::Read], &["research/*"])]);
+    req.lifetime = Lifetime::Requested(86400);
+    let clock = FixedClock(at(MINTED));
+    let plan = policy.check(&req, &MintContext { node: NodeRole::Primary, signer: &signer, clock: &clock }).unwrap();
+    let jkt = contextful_policy::possession::jwk_thumbprint(holder.verifying_key().as_bytes());
+    let day = contextful_policy::issue::mint(&plan, &MintClaims { confirmation: Some(jkt), epoch: 0 }, &signer).unwrap();
+    let mut nonces = NonceCache::new();
+    let proof = sign_proof(&holder, &local_request(), at(DURING), "n-day");
+    assert!(verify_network(&day, &keys(&signer), &admission, holder_proof(&proof, &mut nonces)).is_ok());
 }
 
 /// A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.
@@ -334,9 +401,9 @@ fn a_local_admission_answers_only_on_the_connection_that_presented_the_credentia
 const OFF_TRANSPORT_SEED: u64 = 0x5eed_0057;
 const OFF_TRANSPORT_ROUNDS: u64 = 32;
 
-/// A credential binding no key, presented off the transport that admits it — over a
-/// network, from a socket peer of another or an unreported uid, or on a connection other
-/// than the admitted one — admits nothing, over a seeded loop.
+/// A credential binding no key, presented off the local transport that admits it — from a
+/// socket peer of another or an unreported uid, or on a connection other than the admitted
+/// one — admits nothing, over a seeded loop.
 #[test]
 fn a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_seeded_loop() {
     let signer = issuer();
@@ -356,7 +423,6 @@ fn a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_see
     for round in 0..OFF_TRANSPORT_ROUNDS {
         let credential = minted(&signer);
         let connection = next(1 << 20);
-        count(verify_with_proof(&credential, &keys(&signer), &admission, |_| Ok::<(), AuthorityError>(())).is_ok());
         let stranger = own.wrapping_add(1 + next(u32::MAX as u64 - 1) as u32);
         for peer_uid in [Some(stranger), None] {
             let transport = LocalTransport::Socket { connection, peer_uid };
