@@ -223,8 +223,6 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
 
 unsettled: What validated domain does `_modality` carry, and which value does a passage derived from a video row take? owner: derive affects: run.emit
 
-unsettled: What signal re-derives a unit whose parent row changed after it settled? owner: derive affects: run.emit
-
 unsettled: What reaps derived rows whose parent row is deleted upstream? owner: derive affects: run.emit
 
 ## parse-cues
