@@ -3,12 +3,15 @@
 
 use crate::decode::{decode, workbook, Format};
 use contextful_core::connector::attach::{endpoint, scrub, Allowlist};
+use contextful_core::connector::meter::LimiterDeclaration;
+use contextful_core::connector::probe::ScopeProbe;
 use contextful_core::connector::reference::{check_material, Template};
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_outbound::client::{classify, Client, HeaderValue};
-use contextful_outbound::Resolver;
+use contextful_outbound::probe::probe_through;
+use contextful_outbound::{Limiter, Meter, PreSendHook, Resolver, Transport};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -20,7 +23,7 @@ pub const NAME: &str = "http";
 pub const PAGE_CAP: usize = 1000;
 
 /// The configuration keys the HTTP source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 14] = [
+pub const KEYS: [&str; 16] = [
     "endpoint",
     "table_pattern",
     "format",
@@ -35,6 +38,8 @@ pub const KEYS: [&str; 14] = [
     "since_param",
     "sheet",
     "skip_rows",
+    "limiter",
+    "scope_probe",
 ];
 
 /// One `/`-separated segment of a table pattern.
@@ -177,6 +182,10 @@ pub struct HttpConfig {
     pub sheet: Option<String>,
     /// Sheet rows 1 through `skip_rows`, by row number, ahead of a workbook's header row.
     pub skip_rows: usize,
+    /// The shared vendor quota every request reserves against (`connector.meter.limiter-declaration`).
+    pub limiter: Option<LimiterDeclaration>,
+    /// The identity endpoint called with the bound credential ahead of the first page.
+    pub scope_probe: Option<ScopeProbe>,
 }
 
 fn key_error(k: &str) -> RunError {
@@ -323,10 +332,32 @@ impl HttpConfig {
             )
             .into());
         }
-        let c = HttpConfig { endpoint: endpoint_raw, table_pattern, format, records, headers, pagination, since_param, sheet, skip_rows: skip_rows.unwrap_or(0) };
+        let limiter = cfg.get("limiter").map(limiter_declaration).transpose()?;
+        let scope_probe = cfg.get("scope_probe").map(scope_probe).transpose()?;
+        let c = HttpConfig {
+            endpoint: endpoint_raw,
+            table_pattern,
+            format,
+            records,
+            headers,
+            pagination,
+            since_param,
+            sheet,
+            skip_rows: skip_rows.unwrap_or(0),
+            limiter,
+            scope_probe,
+        };
+        if c.scope_probe.is_some() && c.probe_credential().is_none() {
+            return Err(RunError::Invalid(format!("the `{NAME}` source's `scope_probe` carries a bound credential, and no `headers` template binds one")).into());
+        }
         let exemplar = c.table_pattern.as_ref().map_or_else(|| "table".to_string(), TablePattern::exemplar);
         c.table_url(&exemplar)?;
         Ok(c)
+    }
+
+    /// The header whose bound credential the scope probe carries: the first holding a reference.
+    pub fn probe_credential(&self) -> Option<&str> {
+        self.headers.iter().find(|(_, t)| t.has_reference()).map(|(n, _)| n.as_str())
     }
 
     /// Whether a pipeline may declare an incremental cursor over this source: a workbook
@@ -377,19 +408,87 @@ impl HttpConfig {
     }
 }
 
+/// What a source's outbound requests pass besides the allowlist: the limiter bound to its
+/// declared quota, the operator's pre-send hook, the transport, and the run id each intent
+/// carries (`connector.meter.pre-send-hook`).
+#[derive(Clone, Default)]
+pub struct Mediation {
+    /// The limiter bound to the source's declared quota. A declaration with none bound
+    /// refuses every request as `ConnectorUnmetered` (`connector.meter.unmetered-request`).
+    pub limiter: Option<Arc<Limiter>>,
+    /// The operator's hook, composed in front of the reservation (`connector.meter.hook-composition`).
+    pub hook: Option<Arc<dyn PreSendHook>>,
+    /// The network port; the system transport when unset.
+    pub transport: Option<Arc<dyn Transport>>,
+    pub run_id: Option<String>,
+}
+
+impl Mediation {
+    /// A client reaching `origin` under `allow`, metered against `declared` when the source
+    /// declares a quota (`connector.meter.reservation-point`).
+    fn client(&self, allow: Allowlist, origin: Url, declared: Option<&LimiterDeclaration>) -> Client {
+        let mut client = Client::new(allow, origin);
+        if let Some(t) = &self.transport {
+            client = client.with_transport(t.clone());
+        }
+        if let Some(h) = &self.hook {
+            client = client.with_hook(h.clone());
+        }
+        if let Some(run_id) = &self.run_id {
+            client = client.for_run(run_id);
+        }
+        if let Some(d) = declared {
+            client = client.metered(Meter::new(d.clone(), self.limiter.clone()));
+        }
+        client
+    }
+}
+
 /// One HTTP source bound to a table, its resolver and its mediated client.
 pub struct HttpSource {
     pub config: HttpConfig,
     pub table: String,
     pub resolver: Arc<Resolver>,
     pub client: Arc<Client>,
+    allow: Allowlist,
+    /// The client the scope probe takes: the page client's mediation, the probe endpoint's
+    /// origin, and no body read.
+    probe_client: Option<Client>,
+    probed: bool,
+    /// Whether a pull walks every page: under a monotonic cursor the position is a
+    /// watermark, which carries no page token.
+    watermarked: bool,
+    /// Tokens this walk served, for `ConnectorPageLoop`, and the requests it issued.
+    seen: Vec<String>,
+    requests: usize,
 }
 
 impl HttpSource {
+    /// A source whose requests pass no hook and no limiter. A declared quota then refuses
+    /// every request as `ConnectorUnmetered`.
     pub fn new(config: HttpConfig, table: &str, resolver: Arc<Resolver>) -> Result<HttpSource, ConnectorError> {
+        HttpSource::mediated(config, table, resolver, Mediation::default())
+    }
+
+    /// A source whose every request, the scope probe's included, passes `mediation`.
+    pub fn mediated(config: HttpConfig, table: &str, resolver: Arc<Resolver>, mediation: Mediation) -> Result<HttpSource, ConnectorError> {
         let origin = config.table_url(table)?;
-        let client = Arc::new(Client::new(config.allowlist(table)?, origin));
-        Ok(HttpSource { config, table: table.to_string(), resolver, client })
+        let allow = config.allowlist(table)?;
+        let probe_client = match &config.scope_probe {
+            Some(p) => {
+                p.check_transport(&allow, config.probe_credential().unwrap_or_default())?;
+                Some(mediation.client(allow.clone(), p.endpoint.clone(), config.limiter.as_ref()).without_body())
+            }
+            None => None,
+        };
+        let client = Arc::new(mediation.client(allow.clone(), origin, config.limiter.as_ref()));
+        Ok(HttpSource { config, table: table.to_string(), resolver, client, allow, probe_client, probed: false, watermarked: false, seen: Vec::new(), requests: 0 })
+    }
+
+    /// The source serving a monotonic cursor: one pull walks every page from the watermark.
+    pub fn watermarked(mut self) -> HttpSource {
+        self.watermarked = true;
+        self
     }
 
     /// Hydrate every header just in time, a template holding a reference as sensitive material.
@@ -402,78 +501,201 @@ impl HttpSource {
         Ok(out)
     }
 
-    /// Walk every page from `position`, returning every record fetched.
-    pub fn walk(&self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
+    /// Run the declared scope probe once, ahead of the source's first request
+    /// (`connector.declare-capability.scope-probe`).
+    fn open(&mut self) -> Result<(), Failure> {
+        let (Some(probe), Some(client), false) = (&self.config.scope_probe, &self.probe_client, self.probed) else { return Ok(()) };
+        let name = self.config.probe_credential().unwrap_or_default();
+        let value = self.resolver.render(&self.config.headers[name])?;
+        probe_through(client, &self.allow, probe, (name, &value))?;
+        self.probed = true;
+        Ok(())
+    }
+
+    /// The table's URL, carrying the watermark under `since_param`. A watermark against a
+    /// workbook refuses (`connector.source.workbook-incremental`).
+    fn base_url(&self, request: &PullRequest) -> Result<Url, Failure> {
         let mut url = self.config.table_url(&self.table).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
-        if self.config.format == Format::Workbook && request.position.is_some() {
+        let watermark = request.position.as_ref().filter(|p| is_watermark(p));
+        if self.config.format == Format::Workbook && watermark.is_some() {
             return Err(Failure::deterministic(FailureTag::Config, incremental("the read carries a stored position").to_string()));
         }
-        if let (Some(param), Some(at)) = (&self.config.since_param, request.position.as_ref().and_then(|p| p.get("at"))) {
+        if let (Some(param), Some(at)) = (&self.config.since_param, watermark.and_then(|p| p.get("at"))) {
             let v = match at {
                 Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
             url.query_pairs_mut().append_pair(param, &v);
         }
+        Ok(url)
+    }
+
+    /// The URL of the page `token` names; `None` names the walk's first page.
+    fn page_url(&self, base: &Url, token: Option<&str>) -> Result<Url, Failure> {
+        let unreadable = |why: &str| Failure::deterministic(FailureTag::Config, format!("the page position `{}` {why}", token.unwrap_or_default()));
+        Ok(match (&self.config.pagination, token) {
+            (Pagination::Page { param, start }, _) => {
+                let page = match token {
+                    Some(t) => t.parse::<i64>().map_err(|_| unreadable("is no page number"))?,
+                    None => *start,
+                };
+                let mut u = base.clone();
+                u.query_pairs_mut().append_pair(param, &page.to_string());
+                u
+            }
+            (Pagination::NextCursor { param, .. }, Some(t)) => {
+                let mut u = base.clone();
+                u.query_pairs_mut().append_pair(param, t);
+                u
+            }
+            (Pagination::NextUrl { .. } | Pagination::LinkHeader, Some(t)) => Url::parse(t).map_err(|_| unreadable("names no URL"))?,
+            (Pagination::None, Some(_)) => return Err(unreadable("names a page of a source declaring no pagination")),
+            (_, None) => base.clone(),
+        })
+    }
+
+    /// Fetch the page `token` names: its rows and the token of the page after it. A next
+    /// URL is joined against the page's own, so the token alone names the page.
+    fn page(&self, base: &Url, token: Option<&str>, request: &PullRequest) -> Result<(Vec<Row>, Option<String>), Failure> {
+        let current = self.page_url(base, token)?;
+        // Hydrated per request: the resolver's cache retires a lease ahead of its expiry,
+        // so a long walk re-hydrates rather than sending an expired credential.
+        let headers = self.headers(&request.idempotency_key)?;
+        let resp = self.client.send("GET", &current, &headers, None)?;
+        if !(200..300).contains(&resp.status) {
+            let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
+            return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
+        }
+        let (batch, body) = match self.config.format {
+            Format::Workbook => (workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?, None),
+            format => decode(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?,
+        };
+        let next = match &self.config.pagination {
+            Pagination::None => None,
+            Pagination::Page { start, .. } => {
+                let page = token.and_then(|t| t.parse::<i64>().ok()).unwrap_or(*start);
+                (!batch.is_empty()).then(|| (page + 1).to_string())
+            }
+            Pagination::NextCursor { path, .. } => body.as_ref().and_then(|b| b.pointer(path)).and_then(scalar),
+            Pagination::NextUrl { path } => body.as_ref().and_then(|b| b.pointer(path)).and_then(scalar).map(|t| join(&resp.url, &t)).transpose()?,
+            Pagination::LinkHeader => resp.header("link").and_then(next_link).map(|t| join(&resp.url, &t)).transpose()?,
+        };
+        Ok((batch, next))
+    }
+
+    /// Hold the walk to one visit per token and to [`PAGE_CAP`] requests.
+    fn advance(seen: &mut Vec<String>, next: &str, base: &Url) -> Result<(), Failure> {
+        if seen.iter().any(|s| s == next) {
+            return Err(Failure::deterministic(
+                FailureTag::Permanent,
+                ConnectorError::ConnectorPageLoop(format!("`{}` served a page token it served before", scrub(base))).to_string(),
+            ));
+        }
+        seen.push(next.to_string());
+        Ok(())
+    }
+
+    fn capped(base: &Url) -> Failure {
+        Failure::new(FailureTag::Permanent, format!("the walk over `{}` reached {PAGE_CAP} requests", scrub(base)))
+    }
+
+    /// Walk every page from `position`, returning every record fetched.
+    pub fn walk(&self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
+        let base = self.base_url(request)?;
         let mut rows = Vec::new();
         let mut seen: Vec<String> = Vec::new();
-        let mut page = match &self.config.pagination {
-            Pagination::Page { start, .. } => *start,
-            _ => 0,
-        };
-        let mut next = Some(url.clone());
+        let mut token: Option<String> = None;
         for _ in 0..PAGE_CAP {
-            let Some(mut current) = next.take() else { return Ok(rows) };
             if cancel.requested() {
                 return Err(Failure::canceled("stopped during the page walk"));
             }
-            if let Pagination::Page { param, .. } = &self.config.pagination {
-                current.query_pairs_mut().append_pair(param, &page.to_string());
-            }
-            // Hydrated per request: the resolver's cache retires a lease ahead of its expiry,
-            // so a long walk re-hydrates rather than sending an expired credential.
-            let headers = self.headers(&request.idempotency_key)?;
-            let resp = self.client.send("GET", &current, &headers, None)?;
-            if !(200..300).contains(&resp.status) {
-                let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
-                return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
-            }
-            let (batch, body) = match self.config.format {
-                Format::Workbook => (workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?, None),
-                format => decode(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?,
-            };
-            let empty = batch.is_empty();
+            let (batch, next) = self.page(&base, token.as_deref(), request)?;
             rows.extend(batch);
-            let token = match &self.config.pagination {
-                Pagination::None => None,
-                Pagination::Page { .. } => {
-                    page += 1;
-                    (!empty).then(|| page.to_string())
-                }
-                Pagination::NextCursor { path, .. } => body.as_ref().and_then(|b| b.pointer(path)).and_then(scalar),
-                Pagination::NextUrl { path } => body.as_ref().and_then(|b| b.pointer(path)).and_then(scalar),
-                Pagination::LinkHeader => resp.header("link").and_then(next_link),
-            };
-            let Some(token) = token else { return Ok(rows) };
-            if seen.contains(&token) {
-                return Err(Failure::deterministic(
-                    FailureTag::Permanent,
-                    ConnectorError::ConnectorPageLoop(format!("`{}` served a page token it served before", scrub(&resp.url))).to_string(),
-                ));
-            }
-            seen.push(token.clone());
-            next = Some(match &self.config.pagination {
-                Pagination::NextCursor { param, .. } => {
-                    let mut u = url.clone();
-                    u.query_pairs_mut().append_pair(param, &token);
-                    u
-                }
-                Pagination::NextUrl { .. } | Pagination::LinkHeader => resp.url.join(&token).map_err(|e| Failure::new(FailureTag::Permanent, format!("a next link names no URL: {e}")))?,
-                _ => url.clone(),
-            });
+            let Some(next) = next else { return Ok(rows) };
+            HttpSource::advance(&mut seen, &next, &base)?;
+            token = Some(next);
         }
-        Err(Failure::new(FailureTag::Permanent, format!("the walk over `{}` reached {PAGE_CAP} requests", scrub(&url))))
+        Err(HttpSource::capped(&base))
     }
+
+    /// Read the one page `request`'s position names, answering its rows and the page
+    /// after it; `None` once the walk ends (`connector.export.native-read`).
+    fn read_page(&mut self, request: &PullRequest) -> Result<(Vec<Row>, Option<String>), Failure> {
+        let base = self.base_url(request)?;
+        let token = match &request.position {
+            None => None,
+            Some(p) => match p.get("next") {
+                Some(Value::Null) => None,
+                Some(Value::String(t)) => Some(t.clone()),
+                _ => return Err(Failure::deterministic(FailureTag::Config, format!("position {p} is no page position `{{\"next\": <token or null>}}`"))),
+            },
+        };
+        if token.is_none() {
+            self.seen.clear();
+            self.requests = 0;
+        }
+        if self.requests >= PAGE_CAP {
+            return Err(HttpSource::capped(&base));
+        }
+        self.requests += 1;
+        let (rows, next) = self.page(&base, token.as_deref(), request)?;
+        if let Some(n) = &next {
+            HttpSource::advance(&mut self.seen, n, &base)?;
+        }
+        Ok((rows, next))
+    }
+}
+
+/// Whether a position is a monotonic watermark `{"field", "at"}`.
+fn is_watermark(position: &Value) -> bool {
+    position.get("at").is_some() || position.get("field").is_some()
+}
+
+/// `token` joined against the page URL it came from.
+fn join(page: &Url, token: &str) -> Result<String, Failure> {
+    page.join(token).map(String::from).map_err(|e| Failure::new(FailureTag::Permanent, format!("a next link names no URL: {e}")))
+}
+
+/// The keys of a `limiter` table and of a `scope_probe` table.
+const LIMITER_KEYS: [&str; 3] = ["quota", "class", "usage_headers"];
+const PROBE_KEYS: [&str; 3] = ["endpoint", "scopes_header", "expect"];
+
+/// A table's string key `k`, and its string-array key `k` (empty when absent).
+fn table_text(block: &Map<String, Value>, table: &str, k: &str) -> Result<String, RunError> {
+    block.get(k).and_then(Value::as_str).map(str::to_string).ok_or_else(|| RunError::Invalid(format!("`{NAME}` source `{table}` names no string `{k}`")))
+}
+
+fn table_list(block: &Map<String, Value>, table: &str, k: &str) -> Result<Vec<String>, RunError> {
+    match block.get(k) {
+        None => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|i| i.as_str().map(str::to_string).ok_or_else(|| RunError::Invalid(format!("`{NAME}` source `{table}.{k}` is a list of strings, found {i}"))))
+            .collect(),
+        Some(other) => Err(RunError::Invalid(format!("`{NAME}` source `{table}.{k}` is a list of strings, found {other}"))),
+    }
+}
+
+fn table_of<'a>(v: &'a Value, table: &str, keys: &[&str]) -> Result<&'a Map<String, Value>, RunError> {
+    let block = v.as_object().ok_or_else(|| RunError::Invalid(format!("`{NAME}` source `{table}` is a table of {}", keys.join(", "))))?;
+    if let Some(k) = block.keys().find(|k| !keys.contains(&k.as_str())) {
+        return Err(RunError::PipelineUnknownConfigKey(format!("the `{NAME}` source's `{table}` reads no key `{k}`; it reads {}", keys.join(", "))));
+    }
+    Ok(block)
+}
+
+/// The `limiter` table: the shared quota, the traffic class and the forwarded quota-state headers.
+fn limiter_declaration(v: &Value) -> Result<LimiterDeclaration, ConfigError> {
+    let block = table_of(v, "limiter", &LIMITER_KEYS)?;
+    let forward = table_list(block, "limiter", "usage_headers")?;
+    Ok(LimiterDeclaration::new(&table_text(block, "limiter", "quota")?, &table_text(block, "limiter", "class")?, &forward)?)
+}
+
+/// The `scope_probe` table: the identity endpoint, the granted-scopes header and the expected grant.
+fn scope_probe(v: &Value) -> Result<ScopeProbe, ConfigError> {
+    let block = table_of(v, "scope_probe", &PROBE_KEYS)?;
+    let expect = table_list(block, "scope_probe", "expect")?;
+    Ok(ScopeProbe::new(&table_text(block, "scope_probe", "endpoint")?, &table_text(block, "scope_probe", "scopes_header")?, &expect)?)
 }
 
 /// A workbook holds no incremental position (`connector.source.workbook-incremental`).
@@ -501,9 +723,20 @@ fn next_link(header: &str) -> Option<String> {
 }
 
 impl Source for HttpSource {
-    /// One pull is one whole walk; the engine derives the position from the rows.
+    /// One pull reads one page and carries the next page's token as its position, so a
+    /// walk resumes at the page it stopped on; the last page's position names the start.
+    /// A watermarked source walks every page in one pull.
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
-        let rows = self.walk(request, cancel)?;
-        serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+        if cancel.requested() {
+            return Err(Failure::canceled("stopped ahead of the page request"));
+        }
+        self.open()?;
+        let pulled = if self.watermarked {
+            serde_json::json!({ "rows": self.walk(request, cancel)?, "more": false })
+        } else {
+            let (rows, next) = self.read_page(request)?;
+            serde_json::json!({ "rows": rows, "cursor": { "next": next }, "more": next.is_some() })
+        };
+        serde_json::to_vec(&pulled).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }

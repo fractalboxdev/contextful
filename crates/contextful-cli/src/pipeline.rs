@@ -10,8 +10,9 @@ use crate::run::{boot_id, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_connectors::derive::{DeriveSource, HostDerive, Staged};
-use contextful_connectors::http::{HttpConfig, HttpSource};
+use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
 use contextful_core::connector::component::ComponentSource;
+use contextful_core::connector::meter::{manifest_bindings, require_binding, LimiterBinding};
 use contextful_core::connector::ConnectorError;
 #[cfg(feature = "s3-sync")]
 use contextful_connectors::object::ObjectConfig;
@@ -108,7 +109,8 @@ fn fold_coverage(files: &[ManifestFile]) -> Result<FoldCoverage> {
 
 /// A pipeline's source, checked and ready to build.
 enum Checked {
-    Http(HttpConfig),
+    /// The source and the operator's binding of the quota it declares.
+    Http(HttpConfig, Option<LimiterBinding>),
     #[cfg(feature = "drive")]
     Drive(contextful_connectors::drive::DriveConfig),
     #[cfg(feature = "s3-sync")]
@@ -141,7 +143,15 @@ fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> Result<Check
             if spec.incremental.is_some() {
                 config.accepts_incremental()?;
             }
-            Ok(Checked::Http(config))
+            // A declared quota binds at load, ahead of any request (`connector.meter.quota-unbound`).
+            let binding = match &config.limiter {
+                Some(d) => {
+                    let text = std::fs::read_to_string(declaration).unwrap_or_default();
+                    Some(require_binding(d, &manifest_bindings(&text)?)?.clone())
+                }
+                None => None,
+            };
+            Ok(Checked::Http(config, binding))
         }
         contextful_connectors::DRIVE => {
             contextful_connectors::compiled_in(contextful_connectors::DRIVE).map_err(|why| anyhow::anyhow!("pipeline `{}`: {why}", spec.id))?;
@@ -429,7 +439,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             let vars: BTreeMap<String, String> = std::env::vars().collect();
             let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
             match &checked {
-                Checked::Http(config) => resolver.preflight(config.headers.values())?,
+                Checked::Http(config, _) => resolver.preflight(config.headers.values())?,
                 Checked::Component(decl) => resolver.preflight(decl.attach.iter().map(|(_, t)| t))?,
                 #[cfg(feature = "drive")]
                 Checked::Drive(config) => resolver.preflight(config.templates())?,
@@ -500,6 +510,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 let run_id = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{table}") };
                 // A table that cannot open is a failed table like one whose run fails, so
                 // `continue` lands the others.
+                let mut limiters: Vec<Arc<contextful_outbound::Limiter>> = Vec::new();
                 let outcome = (|| -> Result<contextful_core::run::record::RunRow> {
                     let connector = loaded.as_ref().map_or_else(|| built_in(&spec), component::Loaded::connector_spec);
                     let plan = plan(&spec, t.name(), connector)?;
@@ -507,7 +518,13 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
                     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
                     let mut source: Box<dyn Source> = match &checked {
-                        Checked::Http(config) => Box::new(HttpSource::new(config.clone(), t.name(), resolver.clone())?),
+                        Checked::Http(config, binding) => {
+                            let limiter = binding.clone().map(|b| contextful_outbound::Limiter::new(b, resolver.clone(), &run_id, w.clock.clone()).map(Arc::new)).transpose()?;
+                            limiters.extend(limiter.clone());
+                            let mediation = Mediation { limiter, run_id: Some(run_id.clone()), ..Mediation::default() };
+                            let source = HttpSource::mediated(config.clone(), t.name(), resolver.clone(), mediation)?;
+                            Box::new(if spec.incremental.is_some() { source.watermarked() } else { source })
+                        }
                         #[cfg(feature = "drive")]
                         Checked::Drive(_) => match &drive {
                             Some(d) => Box::new(d.source(t.name())?),
@@ -533,6 +550,13 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     };
                     Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
                 })();
+                // The run's reports surrender every unspent permit (`connector.meter.report-delivery`).
+                for limiter in &limiters {
+                    limiter.finish();
+                    for entry in limiter.audit() {
+                        eprintln!("{table}: {entry}");
+                    }
+                }
                 let row = match outcome {
                     Ok(row) => row,
                     Err(e) => {

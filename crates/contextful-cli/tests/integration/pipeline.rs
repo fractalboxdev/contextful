@@ -24,12 +24,20 @@ impl Vendor {
                 let mut line = String::new();
                 reader.read_line(&mut line).unwrap();
                 let target = line.split_whitespace().nth(1).unwrap_or_default().to_string();
+                let mut length = 0;
                 loop {
                     let mut h = String::new();
                     if reader.read_line(&mut h).unwrap() == 0 || h.trim().is_empty() {
                         break;
                     }
+                    if let Some((k, v)) = h.split_once(':') {
+                        if k.trim().eq_ignore_ascii_case("content-length") {
+                            length = v.trim().parse().unwrap_or(0);
+                        }
+                    }
                 }
+                let mut body = vec![0; length];
+                let _ = std::io::Read::read_exact(&mut reader, &mut body);
                 let (status, body) = handler(&target);
                 seen.lock().unwrap().push(target);
                 let _ = write!(stream, "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
@@ -376,4 +384,57 @@ fn validate_over_no_manifest_is_refused() {
     )
     .unwrap();
     ok(&cf(dir.path(), &["pipeline", "validate"]));
+}
+
+fn metered_project(vendor: &Vendor, limiters: &str) -> tempfile::TempDir {
+    project(&format!(
+        "{limiters}\n[[pipeline]]\nid = \"shop\"\ntables = [\"orders\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", page_param = \"p\", limiter = {{ quota = \"vendor-app\", class = \"batch-read\" }} }}\n",
+        vendor.url("/v1/{table}")
+    ))
+}
+
+fn fire_with(dir: &Path, run: &str, env: &[(&str, &str)]) -> Output {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
+    cmd.args(["pipeline", "run", "shop", "--project", "research", "--run-id", run, "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"])
+        .current_dir(dir)
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env_remove("CONTEXTFUL_SECRETS_BACKEND");
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    cmd.output().unwrap()
+}
+
+/// The generic HTTP source declares its quota as a `limiter` table of quota, class and usage headers. The project
+/// manifest binds each quota under `[limiters.<quota>]` with endpoint, token and permits.
+// spec: connector.source.http-limiter@f213c855
+#[test]
+fn a_bound_quota_meters_every_page_of_a_run() {
+    let vendor = Vendor::start(|t| match t {
+        "/v1/orders?p=1" => (200, "[{\"id\":\"a\"}]".into()),
+        "/v1/orders?p=2" => (200, "[{\"id\":\"b\"}]".into()),
+        _ => (200, "[]".into()),
+    });
+    let limiter = Vendor::start(|t| match t {
+        "/lim/acquire" => (200, "{\"decision\":\"granted\",\"permits\":1,\"ttl_secs\":60}".into()),
+        _ => (204, String::new()),
+    });
+    let binding = format!("[limiters.vendor-app]\nendpoint = \"{}\"\ntoken = \"secret://limiter-token\"\npermits = 1\n", limiter.url("/lim"));
+    let dir = metered_project(&vendor, &binding);
+    let out = fire_with(dir.path(), "m1", &[("LIMITER_TOKEN", "lim-1"), ("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")]);
+    assert!(ok(&out).contains("2 rows in 2 batches"), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(vendor.targets(), ["/v1/orders?p=1", "/v1/orders?p=2", "/v1/orders?p=3"]);
+    let calls = limiter.targets();
+    assert_eq!(calls.iter().filter(|t| *t == "/lim/acquire").count(), 3, "{calls:?}");
+    assert_eq!(calls.last().map(String::as_str), Some("/lim/report"), "{calls:?}");
+
+    // A declared quota the manifest leaves unbound refuses at validation and before any vendor request.
+    let vendor = Vendor::start(|_| (200, "[]".into()));
+    let dir = metered_project(&vendor, "");
+    let err = stderr(&cf(dir.path(), &["pipeline", "validate"]));
+    assert!(err.contains("ConnectorQuotaUnbound") && err.contains("vendor-app"), "{err}");
+    let out = fire_with(dir.path(), "m2", &[]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("ConnectorQuotaUnbound"), "{}", stderr(&out));
+    assert!(vendor.targets().is_empty());
 }

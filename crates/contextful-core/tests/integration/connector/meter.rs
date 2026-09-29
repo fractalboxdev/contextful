@@ -65,6 +65,31 @@ fn a_declared_quota_with_no_binding_refuses() {
     assert_eq!(require_binding(&declaration(), &bindings).unwrap().quota, "graph-app");
 }
 
+/// The project manifest binds each quota under its own `[limiters.<quota>]` table; a key other than `endpoint`,
+/// `token` and `permits`, and a binding that does not read, raise `ConnectorLimiterBindingRejected`.
+#[test]
+fn the_manifest_binds_each_quota_under_its_own_limiters_table() {
+    use contextful_core::connector::meter::manifest_bindings;
+    let text = "[pipeline]\nid = \"x\"\n\n[limiters.graph-app]\nendpoint = \"https://limiter.example/v1\"\ntoken = \"secret://limiter-token\"\npermits = 4\n\n[limiters.search]\nendpoint = \"http://127.0.0.1:9000\"\ntoken = \"secret://search-limiter\"\n";
+    let bound = manifest_bindings(text).unwrap();
+    assert_eq!(bound.keys().collect::<Vec<_>>(), ["graph-app", "search"]);
+    assert_eq!(bound["graph-app"], LimiterBinding::parse("graph-app", "https://limiter.example/v1", "secret://limiter-token", Some(4)).unwrap());
+    assert_eq!(bound["search"].permits, DEFAULT_PERMITS);
+    assert!(manifest_bindings("[pipeline]\nid = \"x\"\n").unwrap().is_empty());
+    for bad in [
+        "[limiters.q]\nendpoint = \"https://limiter.example\"\ntoken = \"secret://t\"\nburst = 3\n",
+        "[limiters.q]\nendpoint = \"https://limiter.example\"\n",
+        "[limiters.q]\nendpoint = \"https://limiter.example\"\ntoken = \"sk-literal-limiter\"\n",
+        "[limiters.q]\nendpoint = \"https://limiter.example\"\ntoken = \"secret://t\"\npermits = -2\n",
+        "limiters = 3\n",
+    ] {
+        match manifest_bindings(bad) {
+            Err(ConnectorError::ConnectorLimiterBindingRejected(m)) => assert!(!m.contains("sk-literal-limiter"), "{m}"),
+            other => panic!("{bad}: {other:?}"),
+        }
+    }
+}
+
 /// An answer that is not JSON, names no decision, or grants without a count raises
 /// {{connector.meter.unreadable-answer}}.
 #[test]

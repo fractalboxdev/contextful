@@ -97,6 +97,33 @@ impl LimiterBinding {
     }
 }
 
+/// The keys one `[limiters.<quota>]` table reads.
+pub const BINDING_KEYS: [&str; 3] = ["endpoint", "token", "permits"];
+
+/// Every binding a project manifest declares, one `[limiters.<quota>]` table per quota
+/// (`connector.meter.limiter-binding`). A key outside [`BINDING_KEYS`], a missing endpoint
+/// or token, and a batch size that is not a non-negative integer raise
+/// `ConnectorLimiterBindingRejected`, as does each rule of [`LimiterBinding::parse`].
+pub fn manifest_bindings(toml_text: &str) -> Result<BTreeMap<String, LimiterBinding>, ConnectorError> {
+    let doc: toml::Table = toml_text.parse().map_err(|e: toml::de::Error| rejected("*", format!("sits in a manifest that does not parse: {}", e.message())))?;
+    let Some(limiters) = doc.get("limiters") else { return Ok(BTreeMap::new()) };
+    let limiters = limiters.as_table().ok_or_else(|| rejected("*", "is declared as `limiters` that is not a table of `[limiters.<quota>]`".to_string()))?;
+    let mut out = BTreeMap::new();
+    for (quota, block) in limiters {
+        let block = block.as_table().ok_or_else(|| rejected(quota, "is not a table".to_string()))?;
+        if let Some(k) = block.keys().find(|k| !BINDING_KEYS.contains(&k.as_str())) {
+            return Err(rejected(quota, format!("names key `{k}`; it reads {}", BINDING_KEYS.join(", "))));
+        }
+        let text = |k: &str| block.get(k).and_then(toml::Value::as_str).ok_or_else(|| rejected(quota, format!("names no string `{k}`")));
+        let permits = match block.get("permits") {
+            None => None,
+            Some(v) => Some(v.as_integer().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| rejected(quota, "names a `permits` that is not a non-negative integer".to_string()))?),
+        };
+        out.insert(quota.clone(), LimiterBinding::parse(quota, text("endpoint")?, text("token")?, permits)?);
+    }
+    Ok(out)
+}
+
 /// The binding answering `declaration`'s quota, or `ConnectorQuotaUnbound`
 /// (`connector.meter.quota-unbound`).
 pub fn require_binding<'a>(declaration: &LimiterDeclaration, bindings: &'a BTreeMap<String, LimiterBinding>) -> Result<&'a LimiterBinding, ConnectorError> {
