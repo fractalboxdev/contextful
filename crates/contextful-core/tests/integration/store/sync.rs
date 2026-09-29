@@ -3,7 +3,10 @@
 use super::at;
 use contextful_core::store::lease::{BucketLease, TTL_SECS};
 use contextful_core::store::object::Condition;
-use contextful_core::store::sync::{confine, merge, owner_of, BucketManifest, Entry, SyncConfig, Tombstone, TOMBSTONE_TTL_SECS};
+use contextful_core::connector::reference::SecretName;
+use contextful_core::store::sync::{
+    confine, merge, owner_of, BucketManifest, CredentialRef, Endpoint, Entry, SyncConfig, Tombstone, DEFAULT_REGION, TOMBSTONE_TTL_SECS,
+};
 use contextful_core::store::StoreError;
 use std::collections::BTreeMap;
 
@@ -180,5 +183,103 @@ fn a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable() {
     match BucketLease::acquire(None, "local", at("2030-01-01T00:00:00Z")) {
         Err(StoreError::LeaseNodeIdLocal(m)) => assert!(m.contains("CONTEXTFUL_NODE_ID"), "{m}"),
         other => panic!("{other:?}"),
+    }
+}
+
+fn endpoint(e: &str) -> SyncConfig {
+    SyncConfig { endpoint: e.into(), bucket: "context-team".into(), ..SyncConfig::default() }
+}
+
+/// `[sync] endpoint` opens `file://<directory>` as a filesystem bucket, `s3://<region>` as that region's AWS S3
+/// endpoint, `r2://<account-id>` as that account's R2 endpoint at region `auto`, and `https://<host>` at `[sync]
+/// region`, default `us-east-1`.
+// spec: store.endpoint.schemes@a64c45a3
+#[test]
+fn each_endpoint_scheme_resolves_its_adapter_address() {
+    assert_eq!(endpoint("file:///srv/buckets").resolve_endpoint().unwrap(), Endpoint::File("/srv/buckets".into()));
+    assert_eq!(
+        endpoint("s3://eu-west-1").resolve_endpoint().unwrap(),
+        Endpoint::S3 { url: "https://s3.eu-west-1.amazonaws.com".into(), region: "eu-west-1".into() }
+    );
+    assert_eq!(
+        endpoint("r2://0123456789abcdef0123456789abcdef").resolve_endpoint().unwrap(),
+        Endpoint::S3 { url: "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com".into(), region: "auto".into() }
+    );
+    assert_eq!(
+        endpoint("https://objects.example.org/").resolve_endpoint().unwrap(),
+        Endpoint::S3 { url: "https://objects.example.org".into(), region: DEFAULT_REGION.into() }
+    );
+    let regional = SyncConfig { region: Some("ap-east-1".into()), ..endpoint("https://objects.example.org:9443") };
+    assert_eq!(regional.resolve_endpoint().unwrap(), Endpoint::S3 { url: "https://objects.example.org:9443".into(), region: "ap-east-1".into() });
+    assert_eq!(DEFAULT_REGION, "us-east-1");
+}
+
+/// Any other scheme, or an S3 or R2 endpoint in a build without the `s3-sync` feature, raises
+/// `SyncEndpointUnsupported`, naming the endpoint.
+// spec: store.endpoint.unsupported-scheme@ea974bcd
+#[test]
+fn an_endpoint_no_adapter_answers_is_refused_by_name() {
+    for e in ["ftp://objects.example.org", "objects.example.org", "s3://", "s3://EU_WEST", "r2://", "file://", "https://", "https://key:secret@objects.example.org"] {
+        match endpoint(e).resolve_endpoint() {
+            Err(StoreError::SyncEndpointUnsupported(m)) => assert!(m.contains(&format!("`{e}`")), "{e}: {m}"),
+            other => panic!("{e}: {other:?}"),
+        }
+    }
+}
+
+/// An `http://` endpoint opens on a loopback host alone; any other host raises `SyncEndpointInsecure`, naming it.
+// spec: store.endpoint.plaintext@2ce87d3b
+#[test]
+fn plaintext_http_opens_on_loopback_alone() {
+    for e in ["http://127.0.0.1:9000", "http://localhost:9000/", "http://[::1]:9000"] {
+        assert!(matches!(endpoint(e).resolve_endpoint(), Ok(Endpoint::S3 { .. })), "{e}");
+    }
+    for (e, host) in [("http://objects.example.org", "objects.example.org"), ("http://10.0.0.8:9000", "10.0.0.8")] {
+        match endpoint(e).resolve_endpoint() {
+            Err(StoreError::SyncEndpointInsecure(m)) => assert!(m.contains(&format!("`{host}`")), "{m}"),
+            other => panic!("{e}: {other:?}"),
+        }
+    }
+}
+
+/// `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each bind `secret://<name>`,
+/// hydrated through the provider chain, or `env://NAME`, read whole from the process environment, as the bucket opens.
+// spec: store.endpoint.credentials@97944cb2
+#[test]
+fn credential_keys_bind_secret_or_environment_references() {
+    let c = SyncConfig {
+        access_key_id: Some("env://SYNC_ACCESS_KEY_ID".into()),
+        secret_access_key: Some("secret://sync-secret-access-key".into()),
+        ..endpoint("r2://account")
+    };
+    let refs = c.credential_refs().unwrap();
+    assert_eq!(refs.access_key_id, CredentialRef::Env("SYNC_ACCESS_KEY_ID".into()));
+    assert_eq!(refs.secret_access_key, CredentialRef::Secret(SecretName::parse("sync-secret-access-key").unwrap()));
+    assert_eq!(refs.session_token, None);
+    let temporary = SyncConfig { session_token: Some("secret://sync-session".into()), ..c };
+    assert_eq!(temporary.credential_refs().unwrap().session_token, Some(CredentialRef::Secret(SecretName::parse("sync-session").unwrap())));
+}
+
+/// An S3 or R2 endpoint whose `[sync]` omits `access_key_id` or `secret_access_key`, binds a credential key to
+/// anything but a reference, or names an unset variable raises `SyncCredentialUnbound`, naming the key.
+// spec: store.endpoint.credential-unbound@7b840e6a
+#[test]
+fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
+    let bound = SyncConfig { access_key_id: Some("env://A".into()), secret_access_key: Some("env://B".into()), ..endpoint("s3://eu-west-1") };
+    let cases = [
+        (SyncConfig { access_key_id: None, ..bound.clone() }, "access_key_id"),
+        (SyncConfig { secret_access_key: None, ..bound.clone() }, "secret_access_key"),
+        (SyncConfig { secret_access_key: Some("wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY".into()), ..bound.clone() }, "secret_access_key"),
+        (SyncConfig { access_key_id: Some("secret://Not_A_Name".into()), ..bound.clone() }, "access_key_id"),
+        (SyncConfig { session_token: Some("env://9LIVES".into()), ..bound.clone() }, "session_token"),
+    ];
+    for (c, key) in cases {
+        match c.credential_refs() {
+            Err(StoreError::SyncCredentialUnbound(m)) => {
+                assert!(m.contains(key), "{key}: {m}");
+                assert!(!m.contains("wJalrXUtnFEMI"), "the refusal never repeats material: {m}");
+            }
+            other => panic!("{key}: {other:?}"),
+        }
     }
 }

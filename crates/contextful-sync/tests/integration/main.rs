@@ -3,4 +3,6 @@
 mod converge;
 mod pull;
 mod push;
+#[cfg(feature = "s3-sync")]
+mod s3;
 mod support;

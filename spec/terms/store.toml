@@ -10,6 +10,7 @@ fold       = {}
 index      = {}
 bound-time = {}
 encrypt    = {}
+endpoint   = {}
 push       = {}
 pull       = {}
 probe      = {}
@@ -45,6 +46,9 @@ StoreValidTimeUndeclared     = { clause = "store.bound-time.valid-time-undeclare
 StoreEncryptionKeyUnbound    = { clause = "store.encrypt.key-unbound", gloss = "A declared key source names a binding the process lacks." }
 StoreIndexOverRedactedColumn = { clause = "store.encrypt.redacted-index", gloss = "An index is declared over a column redacted at write time." }
 StoreIndexPathCollision      = { clause = "store.index.path-collision", gloss = "Two sidecar declarations of one table resolve to one path." }
+SyncEndpointUnsupported      = { clause = "store.endpoint.unsupported-scheme", gloss = "An endpoint's scheme names no bucket adapter this build links." }
+SyncEndpointInsecure         = { clause = "store.endpoint.plaintext", gloss = "A plain `http://` endpoint names a host off loopback." }
+SyncCredentialUnbound        = { clause = "store.endpoint.credential-unbound", gloss = "An S3 or R2 endpoint's `[sync]` binds a credential key to no reference, or to an unset variable." }
 SyncPrefixEscape             = { clause = "store.push.prefix-escape", gloss = "A key resolved outside the configured prefix." }
 SyncPrefixUnbound            = { clause = "store.push.prefix-unbound", gloss = "The variable named by `prefix_from` is unset at startup." }
 SyncPrefixOverspecified      = { clause = "store.push.prefix-overspecified", gloss = "`prefix` and `prefix_from` are declared together." }

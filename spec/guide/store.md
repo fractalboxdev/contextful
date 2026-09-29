@@ -6,7 +6,7 @@ contract: store
 
 ## What it is for
 
-The store is the canonical corpus of **Contextful**: Parquet files any SQL tool opens, JSON manifests saying which files count, and one pointer per table naming the current snapshot ({{store.lay-out.components}}). No reader sees a torn state and no crash loses or duplicates a committed batch, with nothing stronger than a conditional write underneath.
+The store is the canonical corpus of **Contextful**: Parquet any SQL tool opens, JSON manifests naming which files count, and one pointer per table naming the current snapshot ({{store.lay-out.components}}). No reader sees a torn state and no crash loses or duplicates a committed batch, with nothing stronger than a conditional write underneath.
 
 ## How it works
 
@@ -41,4 +41,4 @@ Take the keyed table `filings`, with `primary_key = ["document_id", "page"]` and
 - How schemas merge: `store.reconcile`.
 - When a snapshot publishes: `store.fold`.
 - Time-bounded reads: `store.bound-time`.
-- Bucket sync and single-writer exclusion: `store.push`, `store.pull`, `store.merge`, `store.lease`.
+- Bucket sync and single-writer exclusion: `store.endpoint`, `store.push`, `store.pull`, `store.merge`, `store.lease`.

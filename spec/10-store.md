@@ -10,6 +10,7 @@ owns:
   - index
   - bound-time
   - encrypt
+  - endpoint
   - push
   - pull
   - probe
@@ -390,6 +391,24 @@ At-rest encryption of Parquet, sidecars and ledgers, the key derivation, and for
 
 unsettled: How long does a sidecar decrypted into process memory stay resident across reads, and what evicts it? owner: store affects: store.encrypt
 
+## endpoint
+
+Opening a store's bucket: the endpoint schemes, the transport, request addressing and signing, credentials, and what a backend's answers mean.
+
+- `schemes` — `[sync] endpoint` opens `file://<directory>` as a filesystem bucket, `s3://<region>` as that region's AWS S3 endpoint, `r2://<account-id>` as that account's R2 endpoint at region `auto`, and `https://<host>` at `[sync] region`, default `us-east-1`.
+- `unsupported-scheme` — Any other scheme, or an S3 or R2 endpoint in a build without the `s3-sync` feature, raises `SyncEndpointUnsupported`, naming the endpoint.
+  *because a bucket the binary cannot reach refuses when it opens, before a push uploads anything*
+- `plaintext` — An `http://` endpoint opens on a loopback host alone; any other host raises `SyncEndpointInsecure`, naming it.
+  *because objects and signed requests crossing a network in plaintext are readable and replayable by anyone on the path*
+- `addressing` — An S3 or R2 bucket addresses each object path-style, `<endpoint>/<bucket>/<key>` with every key segment percent-encoded, and signs every request with AWS Signature Version 4 for service `s3` at the endpoint's region.
+- `credentials` — `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each bind `secret://<name>`, hydrated through {{connector.resolve.provider-chain}}, or `env://NAME`, read whole from the process environment, as the bucket opens.
+- `credential-unbound` — An S3 or R2 endpoint whose `[sync]` omits `access_key_id` or `secret_access_key`, binds a credential key to anything but a reference, or names an unset variable raises `SyncCredentialUnbound`, naming the key.
+  *because a literal key in `config.toml` sits in plaintext on every disk and backup holding the store root*
+- `conditional-answers` — A `412` or `409`, or a `404` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported method and a `403` a forbidden credential, both read by {{store.probe.inconclusive}}.
+- `list-pages` — A list follows each continuation token until the backend reports the listing complete, and returns every key under the prefix sorted.
+
+unsettled: Does an S3 bucket whose `[sync]` binds no key sign with the instance or container role's credentials? owner: store affects: store.endpoint
+
 ## push
 
 Uploading the store to a bucket: the wire format, the bucket manifest, prefix confinement and the manifest write that commits it.
@@ -452,6 +471,8 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *A-store*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
   *because rows landed locally carry columns the bucket's copy may lack*
+- `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run` and `mcp` pull every table of the bucket into the store before their first read, and a failed pull stops the command.
+  *because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs*
 
 A pull converges on the bucket manifest and writes each table pointer last.
 
@@ -667,12 +688,14 @@ Sync configuration:
 
 ```toml
 [sync]
-bucket          = "context-prod"
-endpoint        = "https://s3.example-region.internal"
-prefix_from     = "env:CONTEXTFUL_SYNC_PREFIX"
-coordination    = "cas"
-push_retries    = 5
-pull_before_run = true
+bucket            = "context-prod"
+endpoint          = "r2://<account-id>"
+access_key_id     = "secret://sync-access-key-id"
+secret_access_key = "secret://sync-secret-access-key"
+prefix_from       = "env:CONTEXTFUL_SYNC_PREFIX"
+coordination      = "cas"
+push_retries      = 5
+pull_before_run   = true
 
 [node]
 id = "ingest-a"

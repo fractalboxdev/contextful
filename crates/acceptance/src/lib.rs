@@ -2,6 +2,7 @@
 //! does, against scratch state it owns.
 
 pub mod http;
+pub mod s3;
 pub mod stdio;
 
 use std::path::{Path, PathBuf};
