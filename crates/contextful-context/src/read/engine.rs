@@ -227,6 +227,12 @@ impl SqlEngine {
         self.conn.execute_batch(&format!("CREATE OR REPLACE TEMP VIEW {} AS {sql}", ident(name))).map_err(fault)
     }
 
+    /// Execute operator text that returns no rows, such as the `COPY` a model build
+    /// materializes through.
+    pub(crate) fn execute(&self, sql: &str) -> Result<(), ReadFault> {
+        self.conn.execute_batch(sql).map_err(fault)
+    }
+
     /// The engine's own serialization of `sql`, which the guard walks
     /// (`read.guard.engine-own-parse`).
     pub fn serialize(&self, sql: &str) -> Result<Value, ReadFault> {

@@ -9,9 +9,8 @@ contract: run
 A run is how data enters **Contextful** and survives interruption. A pipeline declares what
 to pull and which tables it lands; a run executes it once against a pinned plan, and either
 commits rows with the position behind them or leaves a resume point. The derive tier reuses
-the machinery for per-row work over landed rows, such as turning a recording into passages.
-Every effect a run makes is recorded, so a replay reads the record instead of repeating the
-outside world.
+the machinery for per-row work, such as turning a recording into passages.
+Every effect a run makes is recorded, so a replay reads the record, not the outside world.
 
 ## How it works
 
@@ -68,6 +67,7 @@ a best-effort projection the runner never reads back ({{run.project.best-effort}
 
 A backfill splits history into leased chunks whose commits are fenced against a stale holder ({{run.backfill.fenced-commit}}); a seed bulk-loads
 consumer-held history below a ceiling through the same land path ({{run.seed.one-land-path}}).
+A model builds in staging ({{run.publish.staging}}).
 The derive tier anti-joins its own output each tick ({{run.select.rows-per-run}}), runs
 a machine-defined engine ({{run.bind.command-in-manifest}}), and records every unit's fate in its own table
 ({{run.emit.unit-status}}) under its derivation ({{run.emit.derivation-key}}); stale

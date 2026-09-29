@@ -1,7 +1,7 @@
 //! Milestone 4 — ingest.
 //!
 //! Reach: a declared pipeline pulls from a real source, lands rows under a cursor, and
-//! never holds a credential in plaintext.
+//! never holds a credential in plaintext; a model over the landed rows builds and publishes.
 
 use contextful_acceptance::http::{Response, Server};
 use contextful_acceptance::{bin, GitRepo};
@@ -121,6 +121,22 @@ fn m04_ingest() {
     for secret in [LEASED, MINT, AWS_KEY] {
         assert!(p.files_containing(secret.as_bytes()).is_empty(), "{secret} in {:?}", p.files_containing(secret.as_bytes()));
     }
+
+    // A model over the landed table builds, publishes its build, and holds it.
+    let model = "\n[[model]]\nid = \"filing_notes\"\nsql = \"SELECT id, note FROM filings_records\"\nunique_key = [\"id\"]\n\n\
+                 [model.contract]\nversion = \"1.0.0\"\ncolumns = [{ name = \"id\", type = \"utf8\", nullable = false }, { name = \"note\", type = \"utf8\" }]\n\n\
+                 [[model.test]]\nname = \"no-plaintext-key\"\nsql = \"SELECT * FROM filing_notes WHERE note LIKE '%AKIA%'\"\n";
+    p.write("contextful.toml", &format!("{}{model}", declaration("Authorization = \"Bearer ${secret://vendor-token}\"")));
+    let built: serde_json::Value = serde_json::from_str(&ok(&p.run(
+        &cf,
+        &["build", "filing_notes", "--project", "research", "--site-id", "site-a", "--now", "2030-01-01T03:00:00Z", "--json"],
+    )))
+    .unwrap();
+    assert_eq!(built["rows"], 4);
+    let build_id = built["build_id"].as_str().unwrap();
+    assert!(built["watermark"]["inputs"]["filings_records"]["runs"].as_array().unwrap().len() == 2, "{built}");
+    let held = ok(&p.run(&cf, &["build", "hold", "--for", "7d", "filing_notes", build_id, "--project", "research", "--by", "ops", "--now", "2030-01-01T03:00:00Z"]));
+    assert_eq!(held, format!("Held filing_notes build {build_id} until 2030-01-08T03:00:00Z by ops"));
 
     // A credential written into the declaration refuses before any request leaves.
     let before = vendor.requests.lock().unwrap().len();

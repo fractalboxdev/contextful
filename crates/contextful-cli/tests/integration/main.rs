@@ -3,6 +3,7 @@
 mod author;
 mod component;
 mod component_absent;
+mod build;
 mod context;
 mod derive;
 mod differential;

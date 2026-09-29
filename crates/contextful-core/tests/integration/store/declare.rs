@@ -22,8 +22,8 @@ from = "effective_from"
 to   = "effective_to"
 "#;
 
-/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries` and `content_hash_column`; an unset key is absent from the canonical serialization.
-// spec: store.declare.table-block@407c08d4
+/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries` and `content_hash_column`; an unset key is absent from the canonical serialization.
+// spec: store.declare.table-block@a7c3750f
 #[test]
 fn a_table_block_parses_its_keys_and_omits_unset_ones() {
     let t = &TableDecl::parse_pipeline(SPEC_EXAMPLE).unwrap()[0];
@@ -42,7 +42,7 @@ fn a_table_block_parses_its_keys_and_omits_unset_ones() {
 
     let canonical: serde_json::Value = serde_json::from_str(&t.canonical()).unwrap();
     let keys: Vec<&str> = canonical.as_object().unwrap().keys().map(String::as_str).collect();
-    for unset in ["replicate", "subject_id", "class", "policy", "visibility", "view", "agent_description", "agent_hint", "example_queries", "content_hash_column"] {
+    for unset in ["replicate", "subject_id", "class", "policy", "visibility", "agent_description", "agent_hint", "example_queries", "content_hash_column"] {
         assert!(!keys.contains(&unset), "an unset `{unset}` appears in {keys:?}");
     }
     assert_eq!(TableDecl::named("bare").canonical(), r#"{"name":"bare"}"#);
@@ -55,7 +55,6 @@ subject_id = "owner"
 class = { owner = "email" }
 policy = "owner_only"
 visibility = { source = "notes", resource_key = "note_id", fidelity = "mirrored", family = "item-exception" }
-view = "SELECT 1"
 agent_description = "Meeting notes"
 agent_hint = "Filter by owner"
 example_queries = ["SELECT count(*) FROM notes"]
@@ -66,6 +65,8 @@ content_hash_column = "body_sha256"
     assert_eq!(n.content_hash_column(), Some("body_sha256"));
     assert_eq!(TableDecl::named("bare").content_hash_column(), None);
     assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nprimary_keys = [\"id\"]\n").is_err());
+    // A table defined by SQL is a `[[model]]` block, not a table-block key.
+    assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nview = \"SELECT 1\"\n").is_err());
     assert!(!TableDecl::named("bare").canonical().contains("columns"));
     assert!(!TableDecl::named("bare").canonical().contains("indexes"));
     let indexed = "[[pipeline.tables]]\nname = \"x\"\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"e\"\nid_column = \"id\"\nmodel = \"m\"\ndim = 2\n";

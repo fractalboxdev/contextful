@@ -184,3 +184,18 @@ Decision: an embedding binary registers compiled derive tasks by name before bui
 | One atomic commit across output tables | Commit model | `run.own.one-commit-per-run` commits each table alone. |
 
 Consequences: a unit spanning several tables is whole once its marker lands. The accepted cost: retained versions occupy the table, and every reader filters by version.
+
+## A model is a declared SQL table whose build publishes through its snapshot manifest
+
+Status: accepted. A reader comparing two figures needs to know which build each came from and which landings that build saw. A `[[model]]` block declares a table by one read-only `SELECT`, a semver contract and tests. `build` materializes into a staging snapshot, refuses on contract, grain or test failure, and publishes by the table pointer, the build id being the snapshot id and the contract identity, watermark and freshness riding the snapshot manifest. Holds are hold manifests collection reads; the three history logs derive from committed manifests and regenerate on every build and hold.
+
+Criteria: no representable torn publication, which decided it; one write path for data and metadata.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Snapshot of a store table, section in its manifest *(chosen)* | — | A refused build leaves no committed trace; the logs record published builds alone. |
+| A `view` key on the table block, expanded into every statement | Read cost | Every read pays the rollup, and no build id or watermark exists to echo. |
+| Build metadata in a side file beside the snapshot | Torn publication | A crash between the two writes publishes data with another build's identity. |
+| A build log as the source of truth | One home per fact | Log and pointer disagree after a crash, and no rule says which wins. |
+
+Consequences: a model's rows carry the injected columns, so every relation a store table compiles to reads a model unchanged.

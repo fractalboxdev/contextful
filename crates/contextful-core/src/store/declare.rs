@@ -65,8 +65,6 @@ pub struct TableDecl {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub valid_time: Option<ValidTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub view: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cluster_by: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub partition_by: Option<Vec<String>>,

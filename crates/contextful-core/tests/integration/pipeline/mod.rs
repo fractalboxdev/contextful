@@ -3,5 +3,6 @@
 mod declare;
 mod export;
 mod guard;
+mod model;
 mod seed;
 mod transform;

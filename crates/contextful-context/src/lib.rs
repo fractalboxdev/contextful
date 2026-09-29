@@ -2,6 +2,7 @@
 //! and snapshot manifests, the table pointer, the fold, the scan that resolves a table's
 //! file list and relation, and, under the `read` feature, the read face executing over it.
 
+pub mod build;
 pub mod catalog;
 pub mod commit_log;
 pub mod error;

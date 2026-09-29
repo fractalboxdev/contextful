@@ -61,7 +61,7 @@ pub enum PipelineCmd {
         #[command(flatten)]
         admit: Box<AdmitArgs>,
     },
-    /// Check every declared pipeline without network I/O; a local component artifact loads and runs discovery.
+    /// Check every declared pipeline and model without network I/O; a local component artifact loads and runs discovery.
     Validate {
         #[arg(long, default_value = "contextful.toml")]
         declaration: PathBuf,
@@ -77,7 +77,7 @@ pub enum PipelineCmd {
 }
 
 /// The manifest files, in reading order: the project manifest, then `pipelines/` sorted.
-fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
+pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
     let mut files = Vec::new();
     if declaration.exists() {
         files.push(ManifestFile { path: declaration.display().to_string(), text: std::fs::read_to_string(declaration)? });
@@ -353,7 +353,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
                 TableDecl::parse_pipeline(&f.text).with_context(|| f.path.clone())?;
             }
-            for d in collect(&files)? {
+            let declared = collect(&files)?;
+            for d in &declared {
                 let checked = check(&d.spec, &declaration, tasks).with_context(|| format!("{}:{}", d.file, d.line))?;
                 let mut discovered = String::new();
                 if let Checked::Component(decl) = &checked {
@@ -365,6 +366,10 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     }
                 }
                 println!("{}: valid ({} tables, content hash {}){discovered}", d.spec.id, d.spec.tables.len(), &d.spec.content_hash()[..16]);
+            }
+            for m in contextful_core::pipeline::model::collect_models(&files, &declared)? {
+                m.spec.validate().with_context(|| format!("{}:{}", m.file, m.line))?;
+                println!("{}: valid model ({} tests)", m.spec.id, m.spec.tests.len());
             }
             Ok(())
         }
