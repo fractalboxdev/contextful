@@ -14,6 +14,7 @@
 use super::declare::{PipelineSpec, SourceBlock};
 use crate::run::ports::Row;
 use crate::run::RunError;
+use crate::store::declare::FoldCoverage;
 use crate::store::reserve::INGESTED_AT;
 use crate::time::Instant;
 use serde_json::{Number, Value};
@@ -110,6 +111,25 @@ pub fn check_declaration(spec: &PipelineSpec) -> Result<(), RunError> {
             return Err(RunError::PipelineSeedDeclarationMissing(format!(
                 "pipeline `{}` seeds table `{}` with {missing}; a seeded table declares a key and an event-time ordering",
                 spec.id, d.name
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Hold every table of a seeded pipeline to a scheduled, enabled fold covering it
+/// (`run.seed.compaction-cadence`). Until a fold writes a snapshot, a key's seeded and live
+/// rows both survive the union read.
+pub fn check_compaction(spec: &PipelineSpec, coverage: &FoldCoverage) -> Result<(), RunError> {
+    if spec.seed_block()?.is_none() {
+        return Ok(());
+    }
+    for t in &spec.tables {
+        let table = spec.table_name(t.name());
+        if !coverage.covers(&table) {
+            return Err(RunError::PipelineSeedCompactionMissing(format!(
+                "pipeline `{}` seeds table `{table}` and no enabled `[[job]]` of kind `fold` with a `schedule` targets it",
+                spec.id
             )));
         }
     }

@@ -178,3 +178,20 @@ Decision: the rule reads normal dependencies. Under Cargo's resolver 2 a dev-dep
 | Every dependency kind, exempting the adapter's own dev-dependency | Profile relevance | A test fixture linking SQLite reds a gate guarding the profile graphs. |
 
 Consequences: the check and its clause agree, and a build script's SQLite answers to Cargo's own `links` check alone.
+
+## A keyed table is covered by a scheduled fold job
+
+**Status:** accepted
+
+Context: `store.fold.triggers` fires a pass only when something invokes `context compact`, so a keyed table no schedule compacts accumulates runs without bound. Criteria: coverage computable at validation from the declaration alone; one home for fold schedules; a check that names the table.
+
+Decision: a `[[job]]` block of kind `fold` carrying a `schedule`, with `enabled` absent or true, covers the table its `target` names, or every table when it names none. `pipeline validate` warns for each keyed table no such job covers; a seeded table refuses, because its union read carries two rows per key until a fold writes the snapshot.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A scheduled, enabled `fold` job, targeted or targetless *(chosen)* | — | A targetless fold job covers every table, one a machine does not compact included. |
+| The pass triggers alone count as coverage | Computable at validation | Nothing fires the triggers without an invocation, so every table reads covered. |
+| A per-table `compact` schedule on the table block | One home for fold schedules | Two keys schedule one pass, and the job union loses its single cadence. |
+| Refuse every uncovered keyed table | Adoption cost | A project with a hand-run `context compact` stops validating. |
+
+Consequences: a seeded pipeline carries its fold job in the same declaration, and disabling that job refuses the pipeline.

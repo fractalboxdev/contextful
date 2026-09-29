@@ -174,6 +174,12 @@ pub enum RunError {
     /// A seeded table lacking a key or an event-time ordering. (`run.seed.declaration-missing`)
     #[error("PipelineSeedDeclarationMissing: {0}")]
     PipelineSeedDeclarationMissing(String),
+    /// A seeded table no scheduled, enabled fold covers. (`run.seed.compaction-cadence`)
+    #[error("PipelineSeedCompactionMissing: {0}")]
+    PipelineSeedCompactionMissing(String),
+    /// A validation that read no manifest file. (`run.declare.manifest-missing`)
+    #[error("PipelineManifestMissing: {0}")]
+    PipelineManifestMissing(String),
     /// A manifest file the canonical type cannot deserialize. (`run.declare.spec-invalid`)
     #[error("PipelineSpecInvalid: {0}")]
     PipelineSpecInvalid(String),

@@ -59,6 +59,8 @@ The pipeline specification, its serializations, manifest discovery, the content 
 - `serialization` — TOML and JSON deserialize into one `PipelineSpec`; the JSON Schema derived from it is the contract, and `contextful schema export` writes it to `.contextful/schema/pipeline.json`.
 - `source-block` — A `source` is a connector name beside a free-form JSON config object; a `destination` carries the same two fields and defaults to the store.
 - `manifest-file` — Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml` and `pipelines/*.json`; specifications are collected by `id`.
+- `manifest-missing` — `pipeline validate` reading no manifest file raises `PipelineManifestMissing`, naming the declaration path.
+  *because a validation over a mistyped path otherwise checks nothing and exits zero*
 - `duplicate-id` — One `id` declared twice raises `PipelineDuplicateId`, naming each file and the line its declaration starts on.
   *because a silent pick between two declarations hides which one runs*
 - `spec-invalid` — A manifest file the canonical type cannot deserialize raises `PipelineSpecInvalid`, naming the file, the key path and the value found.
@@ -295,8 +297,8 @@ The bulk-load source mode, its ceiling, its scope and the parity it guarantees.
 - `commands` — `seed status` prints each seeded table's ceiling, commit state and fingerprint match; `seed reset <pipeline> [--table T]` clears the seed's chunk plan.
 - `parity` — Over keys the vendor still returns, seeding then running live across an overlapping window yields a pure live backfill's row count and per-key winners; a key the vendor stopped returning keeps its seeded value.
 - `parity-audit` — `validate` audits the seed ordering over every landed row, not over the deduped view.
-- `compaction-cadence` — A seeded pipeline declares a scheduled fold covering each seeded table.
-  *because without a snapshot the seeded and live rows for one key both survive the union read*
+- `compaction-cadence` — A seeded table that no job meeting {{store.declare.fold-job}} covers raises `PipelineSeedCompactionMissing` at validate and before a fire, naming the table.
+  *A-store*
 
 ## model
 

@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 164 | 28 | 22 | 20 | 139 | 0 | 139 |
-| `run` | 3 | 26 | 358 | 94 | 35 | 35 | 238 | 0 | 238 |
-| `store` | 1 | 17 | 214 | 53 | 12 | 17 | 173 | 0 | 173 |
+| `run` | 3 | 26 | 359 | 96 | 35 | 35 | 240 | 0 | 240 |
+| `store` | 1 | 17 | 215 | 53 | 12 | 17 | 175 | 0 | 175 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 153 | 1763 | 539 | 183 | 134 | 1075 | 0 | |
+| **total** | 19 | 153 | 1765 | 541 | 183 | 134 | 1079 | 0 | |
 
 Decision records: 18.
 
@@ -27,9 +27,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 208 | 154 | passing | closed |
-| 2 — The store | 9 | 151 | 115 | passing | closed |
+| 2 — The store | 9 | 152 | 117 | passing | closed |
 | 3 — The run path | 11 | 197 | 125 | passing | closed |
-| 4 — Ingest | 24 | 421 | 237 | passing | open |
+| 4 — Ingest | 24 | 422 | 239 | passing | open |
 | 5 — The read face under enforcement | 17 | 242 | 173 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
@@ -714,6 +714,7 @@ Unscheduled operations: 10.
 | `run.declare.content-hash` | `crates/contextful-core/tests/integration/pipeline/declare.rs::an_explicit_default_hashes_as_its_absence` | performed |
 | `run.declare.duplicate-id` | `crates/contextful-cli/tests/integration/pipeline.rs::one_id_declared_twice_names_both_declarations` | performed |
 | `run.declare.manifest-file` | `crates/contextful-cli/tests/integration/pipeline.rs::specifications_come_from_the_project_manifest_then_the_pipelines_directory` | performed |
+| `run.declare.manifest-missing` | `crates/contextful-cli/tests/integration/pipeline.rs::validate_over_no_manifest_is_refused` | performed |
 | `run.declare.pipeline-spec` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_specification_carries_three_required_and_eleven_optional_keys` | performed |
 | `run.declare.replace-unsupported` | `crates/contextful-core/tests/integration/pipeline/declare.rs::replace_beside_a_windowed_load_is_refused` | performed |
 | `run.declare.source-block` | `crates/contextful-core/tests/integration/pipeline/declare.rs::source_and_destination_are_a_name_and_a_config_object` | performed |
@@ -893,6 +894,7 @@ Unscheduled operations: 10.
 | `run.retry.unretryable-tag` | `crates/contextful-core/tests/integration/run/retry.rs::retry_on_naming_an_unretryable_tag_is_refused_at_compile` | performed |
 | `run.seed.block` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seed_block_names_a_source_and_a_ceiling_on_the_ordering_scale` | performed |
 | `run.seed.ceiling-unevaluable` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_missing_column_or_an_off_scale_stamp_is_unevaluable` | performed |
+| `run.seed.compaction-cadence` | `crates/contextful-cli/tests/integration/pipeline.rs::a_seeded_table_no_fold_job_covers_is_refused` | performed |
 | `run.seed.declaration-missing` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seeded_table_needs_a_key_and_an_event_time_ordering` | performed |
 | `run.select.anti-join` | `crates/contextful-core/tests/integration/run/derive.rs::the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker` | performed |
 | `run.select.attempts-per-unit` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_receives_3_attempts_by_default` | performed |
@@ -936,6 +938,8 @@ Unscheduled operations: 10.
 | `store.declare.column-types` | `crates/contextful-context/tests/integration/reconcile.rs::a_declared_column_type_types_a_landing_that_declares_none` | performed |
 | `store.declare.dedup-view` | `crates/contextful-context/tests/integration/declare.rs::a_keyed_table_reads_one_row_per_key_before_and_after_a_fold` | performed |
 | `store.declare.empty-run` | `crates/contextful-context/tests/integration/declare.rs::a_zero_row_run_commits_no_parts_and_an_empty_table_registers` | performed |
+| `store.declare.fold-coverage` | `crates/contextful-cli/tests/integration/pipeline.rs::a_keyed_table_no_fold_job_covers_warns_and_validates` | performed |
+| `store.declare.fold-job` | `crates/contextful-core/tests/integration/store/declare.rs::a_scheduled_enabled_fold_job_covers_its_target_or_every_table` | performed |
 | `store.declare.key-unknown` | `crates/contextful-context/tests/integration/declare.rs::an_unknown_primary_key_refuses_the_first_batch_before_any_parquet` | performed |
 | `store.declare.order-by-default` | `crates/contextful-core/tests/integration/store/declare.rs::order_by_defaults_to_ingested_at` | performed |
 | `store.declare.order-by-unknown` | `crates/contextful-core/tests/integration/store/declare.rs::an_order_by_naming_no_column_is_refused` | performed |

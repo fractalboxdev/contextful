@@ -159,3 +159,40 @@ fn replace_covers_the_newest_complete_run_and_what_follows() {
         TableState { runs: vec![run("run-1", "2030-01-01T00:00:00Z", 1), run("run-5", "2030-01-01T04:00:00Z", 0)], ..state };
     assert!(empty_only.resolve(None).unwrap().snapshot.is_some());
 }
+
+/// An enabled compaction job covering a table is a `[[job]]` block of kind `fold` carrying a `schedule`, whose
+/// `enabled` is absent or true and whose `target` is absent or names the table's destination name.
+// spec: store.declare.fold-job@0d2cc21d
+#[test]
+fn a_scheduled_enabled_fold_job_covers_its_target_or_every_table() {
+    use contextful_core::store::declare::FoldCoverage;
+    let job = |body: &str| FoldCoverage::parse(&format!("[[job]]\nname = \"nightly\"\n{body}\n")).unwrap();
+
+    let targeted = job("kind = \"fold\"\nschedule = \"0 3 * * *\"\ntarget = \"orders_items\"");
+    assert!(targeted.covers("orders_items"));
+    assert!(!targeted.covers("orders_refunds"));
+
+    let every = job("kind = \"fold\"\nschedule = \"every 6h\"");
+    assert!(every.covers("orders_items") && every.covers("notes"));
+
+    assert!(job("kind = \"fold\"\nschedule = \"every 6h\"\nenabled = true\ntarget = \"t\"").covers("t"));
+    for uncovering in [
+        "kind = \"fold\"\nschedule = \"every 6h\"\nenabled = false\ntarget = \"t\"",
+        "kind = \"fold\"\ntarget = \"t\"",
+        "kind = \"sync-push\"\nschedule = \"every 1h\"",
+    ] {
+        assert!(!job(uncovering).covers("t"), "{uncovering}");
+    }
+    assert!(!FoldCoverage::parse("[[pipeline.tables]]\nname = \"t\"\n").unwrap().covers("t"), "no job covers nothing");
+
+    // Coverage accumulates across manifest files.
+    let mut both = job("kind = \"fold\"\nschedule = \"every 6h\"\ntarget = \"a\"");
+    both.extend(job("kind = \"fold\"\nschedule = \"every 6h\"\ntarget = \"b\""));
+    assert!(both.covers("a") && both.covers("b"));
+
+    for malformed in ["enabled = \"no\"", "target = 3", "schedule = 5"] {
+        let text = format!("[[job]]\nkind = \"fold\"\nschedule = \"every 6h\"\n{malformed}\n");
+        let text = if malformed.starts_with("schedule") { text.replacen("schedule = \"every 6h\"\n", "", 1) } else { text };
+        assert!(FoldCoverage::parse(&text).is_err(), "{malformed}");
+    }
+}
