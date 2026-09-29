@@ -14,6 +14,10 @@ use serde_json::Value;
 /// Granted life of a cadence lease: 90 s (`topology.coordinate.cadence-lease-ttl`).
 pub const CADENCE_LEASE_TTL_SECS: u64 = 90;
 
+/// Interval at which the reconciler renews a held cadence lease: 30 s
+/// (`topology.coordinate.cadence-lease-renewal`).
+pub const CADENCE_LEASE_RENEWAL_SECS: u64 = 30;
+
 /// What a lease row is keyed by (`topology.coordinate.lease-row`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LeaseKey {

@@ -2,7 +2,11 @@
 //!
 //! `run` fires one pipeline once: it reads the manifests, checks the declaration before
 //! any I/O, assembles the credential resolver from the process environment, and runs
-//! each table through the engine with a built-in source or a component guest.
+//! each table through the engine with a built-in source or a component guest. `plan`,
+//! `apply` and `serve` are the lifecycle verbs over the local snapshot directory
+//! (`run.declare.lifecycle-verbs`): `plan` diffs, `apply` claims a version and fires
+//! nothing, and `serve` arms the applied version and dispatches each due pipeline as a
+//! `run --applied` child process.
 
 use crate::admit::AdmitArgs;
 use crate::component::{self, ComponentTarget};
@@ -63,6 +67,9 @@ pub enum PipelineCmd {
         component_target: ComponentTarget,
         #[command(flatten)]
         admit: Box<AdmitArgs>,
+        /// Fire the specification applied snapshot version N holds rather than the declared one.
+        #[arg(long)]
+        applied: Option<u64>,
     },
     /// Check every declared pipeline and model without network I/O; a local component artifact loads and runs discovery.
     Validate {
@@ -76,6 +83,35 @@ pub enum PipelineCmd {
         /// The instruction set a component source compiles for.
         #[arg(long, value_enum, env = "CONTEXTFUL_COMPONENT_TARGET", default_value_t = ComponentTarget::Native)]
         component_target: ComponentTarget,
+    },
+    /// Diff the declared pipelines against the applied snapshot, writing nothing.
+    Plan {
+        #[command(flatten)]
+        project: ProjectArgs,
+        #[arg(long)]
+        declaration: Option<PathBuf>,
+        /// Emit the diff as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate and claim the next snapshot version holding every declared pipeline, or one.
+    Apply {
+        /// Converge this pipeline alone; absent, every declared pipeline.
+        id: Option<String>,
+        #[command(flatten)]
+        project: ProjectArgs,
+        #[arg(long)]
+        declaration: Option<PathBuf>,
+    },
+    /// Arm the applied snapshot's schedules and dispatch each due pipeline under the cadence lease.
+    Serve {
+        #[command(flatten)]
+        project: ProjectArgs,
+        #[arg(long)]
+        declaration: Option<PathBuf>,
+        /// Evaluate due-ness once, wait for the dispatched units, print the answer and exit.
+        #[arg(long)]
+        cycle: bool,
     },
 }
 
@@ -108,7 +144,7 @@ fn fold_coverage(files: &[ManifestFile]) -> Result<FoldCoverage> {
 }
 
 /// A pipeline's source, checked and ready to build.
-enum Checked {
+pub(crate) enum Checked {
     /// The source and the operator's binding of the quota it declares.
     Http(HttpConfig, Option<LimiterBinding>),
     #[cfg(feature = "drive")]
@@ -129,7 +165,7 @@ struct HostChecked {
 
 /// Hold a specification to every rule checked before I/O, returning its source configuration.
 /// A declared seed source is built as a compiled-in HTTP source, so it refuses before a seeding run reaches it.
-fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> Result<Checked> {
+pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> Result<Checked> {
     spec.validate()?;
     for op in &spec.transforms {
         op.validate()?;
@@ -422,14 +458,24 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             }
             Ok(())
         }
-        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit } => {
+        PipelineCmd::Plan { project, declaration, json } => crate::cadence::plan(&project, declaration, json),
+        PipelineCmd::Apply { id, project, declaration } => crate::cadence::apply(&project, declaration, id.as_deref(), tasks),
+        PipelineCmd::Serve { project, declaration, cycle } => crate::cadence::serve(&project, declaration, cycle),
+        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied } => {
             let l = project.locate(declaration)?;
             crate::sync::pull_before_run(&l)?;
             let declaration = l.declaration.clone();
             let text = if declaration.exists() { std::fs::read_to_string(&declaration)? } else { String::new() };
             let site_id = crate::run::site_id_for(&text, &declaration, site_id, site_id_env)?;
-            let declared: Vec<Declared> = collect(&manifests(&declaration)?)?;
-            let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| format!("no pipeline `{id}` is declared"))?;
+            let files = match applied {
+                Some(version) => vec![crate::cadence::snapshot_manifest(&l.project, &text, version)?],
+                None => manifests(&declaration)?,
+            };
+            let declared: Vec<Declared> = collect(&files)?;
+            let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| match applied {
+                Some(v) => format!("applied version v{v} holds no pipeline `{id}`"),
+                None => format!("no pipeline `{id}` is declared"),
+            })?;
             let spec = d.spec;
             let checked = check(&spec, &declaration, tasks)?;
             let destinations: Vec<String> = spec.tables.iter().map(|t| spec.table_name(t.name())).collect();

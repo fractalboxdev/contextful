@@ -2,6 +2,7 @@
 
 mod cancel;
 mod command;
+mod control;
 mod coordinate;
 mod drive;
 mod execution;
@@ -10,6 +11,7 @@ mod journal;
 mod project;
 mod writers;
 mod runner;
+mod scheduler;
 mod stores;
 mod support;
 mod suspend;

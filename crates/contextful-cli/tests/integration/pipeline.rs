@@ -438,3 +438,201 @@ fn a_bound_quota_meters_every_page_of_a_run() {
     assert!(stderr(&out).contains("ConnectorQuotaUnbound"), "{}", stderr(&out));
     assert!(vendor.targets().is_empty());
 }
+
+const CONTROL: &str = ".contextful/control/research";
+
+fn scheduled(id: &str, endpoint: &str, schedule: &str) -> String {
+    pipeline(id, endpoint, &format!("schedule = \"{schedule}\""), "tables = [\"items\"]")
+}
+
+fn json(out: &Output) -> serde_json::Value {
+    let text = ok(out);
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{e}: {text}"))
+}
+
+fn serve_cycle(dir: &Path, now: &str) -> serde_json::Value {
+    json(&cf(dir, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now]))
+}
+
+fn history(dir: &Path) -> Vec<serde_json::Value> {
+    let out = ok(&cf(dir, &["run", "history", "--project", "research", "--export"]));
+    out.lines().skip(1).map(|l| serde_json::from_str(l).unwrap()).collect()
+}
+
+/// `plan` diffs desired state against the store with no side effect, `--json` emitting a structured diff; `apply`
+/// converges every pipeline or one; `run` fires one pipeline once; `serve` reconciles continuously.
+// spec: run.declare.lifecycle-verbs@c2262175
+#[test]
+fn plan_diffs_apply_converges_and_serve_fires() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", &vendor.url("/v1/orders"), "every 1h")));
+    let plan = json(&cf(dir.path(), &["pipeline", "plan", "--json", "--project", "research"]));
+    assert_eq!(plan["applied"], serde_json::Value::Null);
+    assert_eq!(plan["pipelines"][0]["id"], "orders");
+    assert_eq!(plan["pipelines"][0]["action"], "add");
+    assert_eq!(plan["pipelines"][0]["schedule"], "every 1h");
+    assert!(!dir.path().join(".contextful/control").exists(), "plan writes nothing");
+    assert!(ok(&cf(dir.path(), &["pipeline", "plan", "--project", "research"])).contains("+ orders"));
+
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    let plan = json(&cf(dir.path(), &["pipeline", "plan", "--json", "--project", "research"]));
+    assert_eq!((plan["applied"].clone(), plan["pipelines"][0]["action"].clone()), (serde_json::json!(1), serde_json::json!("unchanged")));
+
+    // `apply <id>` converges that pipeline alone.
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        format!("site_id = \"site-a\"\n\n{}\n{}", scheduled("orders", &vendor.url("/v2/orders"), "every 1h"), scheduled("filings", &vendor.url("/v1/filings"), "every 1d")),
+    )
+    .unwrap();
+    ok(&cf(dir.path(), &["pipeline", "apply", "filings", "--project", "research"]));
+    let plan = json(&cf(dir.path(), &["pipeline", "plan", "--json", "--project", "research"]));
+    let actions: Vec<(String, String)> =
+        plan["pipelines"].as_array().unwrap().iter().map(|p| (p["id"].as_str().unwrap().into(), p["action"].as_str().unwrap().into())).collect();
+    assert_eq!(actions, [("filings".to_string(), "unchanged".to_string()), ("orders".to_string(), "change".to_string())]);
+
+    // `serve --cycle` fires the applied specification of each due pipeline once.
+    let answer = serve_cycle(dir.path(), "2030-01-01T00:00:00Z");
+    assert_eq!(answer["fired"], serde_json::json!(["filings", "orders"]));
+    assert_eq!(answer["armed"], 2);
+    let mut targets = vendor.targets();
+    targets.sort();
+    assert_eq!(targets, ["/v1/filings", "/v1/orders"], "orders fires as applied, not as the unapplied edit declares");
+}
+
+/// Applying a manifest fires nothing of itself; a second `apply` over unchanged sources is a no-op modulo
+/// elapsed schedules.
+// spec: run.declare.apply-fires-nothing@89dd7f54
+#[test]
+fn apply_fires_nothing_and_a_second_apply_is_a_no_op() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", &vendor.url("/v1/orders"), "every 1h")));
+    let first = ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    assert!(first.contains("applied v1"), "{first}");
+    assert!(dir.path().join(CONTROL).join("manifest@v1.toml").exists());
+    assert!(vendor.targets().is_empty(), "apply reached no source");
+    assert!(history(dir.path()).is_empty(), "apply journaled no run");
+    let second = ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    assert!(second.contains("unchanged at v1"), "{second}");
+    assert!(!dir.path().join(CONTROL).join("manifest@v2.toml").exists());
+    assert_eq!(std::fs::read_to_string(dir.path().join(CONTROL).join("manifest@current")).unwrap(), "1\n");
+    // The first fire happens when serve arms it, not before.
+    serve_cycle(dir.path(), "2030-01-01T00:00:00Z");
+    assert_eq!(vendor.targets(), ["/v1/orders"]);
+    assert_eq!(history(dir.path()).len(), 1);
+}
+
+/// A document failing engine validation raises `ApplyValidationRefused` and claims no version.
+// spec: surface.apply.validation@17970d8f
+#[test]
+fn an_invalid_document_claims_no_version() {
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n{}\n{}",
+        scheduled("orders", "https://api.vendor.example/v1", "every 1h"),
+        pipeline("broken", "https://api.vendor.example/v1", "destination = { name = \"warehouse\" }", "tables = [\"a\"]")
+    ));
+    let out = cf(dir.path(), &["pipeline", "apply", "--project", "research"]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(err.contains("ApplyValidationRefused") && err.contains("broken") && err.contains("PipelineUnknownDestination"), "{err}");
+    assert!(!dir.path().join(CONTROL).exists(), "no version claimed");
+    // Applying the valid pipeline alone validates only the one it converges.
+    ok(&cf(dir.path(), &["pipeline", "apply", "orders", "--project", "research"]));
+    assert!(dir.path().join(CONTROL).join("manifest@v1.toml").exists());
+}
+
+/// A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory,
+/// `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline
+/// apply` is that apply, and no hosted plane sits on its path.
+// spec: surface.apply.local-claim@f283cd8c
+#[test]
+fn apply_claims_a_version_in_the_local_snapshot_directory() {
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "0 3 * * *")));
+    assert!(ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"])).contains("applied v1"));
+    let claimed = std::fs::read_to_string(dir.path().join(CONTROL).join("manifest@v1.toml")).unwrap();
+    assert!(claimed.contains("[[pipeline]]") && claimed.contains("id = \"orders\"") && claimed.contains("0 3 * * *"), "{claimed}");
+    // `[control] snapshot_dir` moves the directory.
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n[control]\nsnapshot_dir = \"ops/control\"\n\n{}",
+        scheduled("orders", "https://api.vendor.example/v1", "0 3 * * *")
+    ));
+    assert!(ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"])).contains("applied v1"));
+    assert_eq!(std::fs::read_to_string(dir.path().join("ops/control/manifest@current")).unwrap(), "1\n");
+    assert!(!dir.path().join(CONTROL).exists());
+}
+
+/// `serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and
+/// prints what fired, what failed, what stays pending, the armed count and the next due instant.
+// spec: surface.fire.cycle@fbba08b7
+#[test]
+fn a_cycle_fires_what_is_due_once_and_reports_the_next_instant() {
+    let vendor = Vendor::start(|t| if t.starts_with("/v1/bad") { (404, "{}".into()) } else { (200, "[{\"id\":\"a\"}]".into()) });
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n[control]\npool = 1\n\n{}\n{}\n{}",
+        scheduled("orders", &vendor.url("/v1/orders"), "every 1h"),
+        scheduled("bad", &vendor.url("/v1/bad"), "every 1h"),
+        scheduled("nightly", &vendor.url("/v1/nightly"), "0 3 * * *"),
+    ));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    // A pool of one: the first due unit by id fires, the others stay pending.
+    let a = serve_cycle(dir.path(), "2030-01-01T00:00:00Z");
+    assert_eq!(a["fired"], serde_json::json!([]));
+    assert_eq!(a["failed"], serde_json::json!(["bad"]));
+    assert_eq!(a["pending"], serde_json::json!(["nightly", "orders"]));
+    assert_eq!(a["armed"], 3);
+    let b = serve_cycle(dir.path(), "2030-01-01T00:00:00Z");
+    assert_eq!((b["fired"].clone(), b["pending"].clone()), (serde_json::json!(["nightly"]), serde_json::json!(["orders"])));
+    let c = serve_cycle(dir.path(), "2030-01-01T00:00:00Z");
+    assert_eq!(c["fired"], serde_json::json!(["orders"]));
+    assert_eq!(c["next_due"], "2030-01-01T01:00:00Z");
+    // Nothing further is due in the same instant.
+    let d = serve_cycle(dir.path(), "2030-01-01T00:00:00Z");
+    assert_eq!((d["fired"].clone(), d["failed"].clone(), d["pending"].clone()), (serde_json::json!([]), serde_json::json!([]), serde_json::json!([])));
+    // Five hours on, each pipeline fires once, not once per missed interval.
+    let mut fired: Vec<String> = Vec::new();
+    for _ in 0..4 {
+        let x = serve_cycle(dir.path(), "2030-01-01T05:00:00Z");
+        fired.extend(x["fired"].as_array().unwrap().iter().chain(x["failed"].as_array().unwrap()).map(|v| v.as_str().unwrap().to_string()));
+    }
+    assert_eq!(fired, ["bad", "orders", "nightly"], "due order, one per cycle, then nothing");
+    assert_eq!(vendor.targets().iter().filter(|t| t.starts_with("/v1/orders")).count(), 2);
+}
+
+/// A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.
+// spec: surface.fire.cycle-control-source@e888c4f1
+#[test]
+fn a_cycle_with_no_applied_snapshot_is_refused() {
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "every 1h")));
+    assert!(dir.path().join("contextful.toml").exists(), "a pipeline is declared, only never applied");
+    let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("CycleControlSourceUnresolved"), "{}", stderr(&out));
+}
+
+/// An entry whose schedule the grammar cannot read is held back by name; every other entry arms.
+#[test]
+fn an_unreadable_schedule_holds_back_its_entry_alone() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n{}\n{}",
+        scheduled("orders", &vendor.url("/v1/orders"), "every 1h"),
+        scheduled("odd", &vendor.url("/v1/odd"), "0 0 L * *"),
+    ));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
+    let answer: serde_json::Value = serde_json::from_str(&ok(&out)).unwrap();
+    assert_eq!(answer["fired"], serde_json::json!(["orders"]));
+    assert_eq!(answer["armed"], 1);
+    let err = stderr(&out);
+    assert!(err.contains("ScheduleUnreadable") && err.contains("odd"), "{err}");
+}
+
+/// A malformed pointer refuses the cycle rather than arming a version nobody applied.
+#[test]
+fn a_malformed_pointer_refuses_the_cycle() {
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "every 1h")));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    std::fs::write(dir.path().join(CONTROL).join("manifest@current"), "1; drop").unwrap();
+    let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("ControlPointerMalformed"), "{}", stderr(&out));
+}

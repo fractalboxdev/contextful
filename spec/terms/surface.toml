@@ -74,6 +74,7 @@ surface-step-result        = { clause = "surface.dispatch.step-result", value = 
 surface-callback-skew      = { clause = "surface.dispatch.callback-skew", value = 300, unit = "s", basis = "chosen", gloss = "Largest callback timestamp skew the relay accepts." }
 surface-heartbeat-beat     = { clause = "surface.dispatch.heartbeat-beat", value = 15, unit = "s", basis = "chosen", gloss = "Interval between worker heartbeats." }
 surface-heartbeat-lapse    = { clause = "surface.dispatch.heartbeat-lapse", value = 60, unit = "s", basis = "chosen", gloss = "Heartbeat lapse that reschedules in-flight work." }
+surface-fire-pool          = { clause = "surface.dispatch.pool-bound", value = 4, unit = "units", basis = "chosen", gloss = "Default count of units one deployment runs at once." }
 surface-region-entries     = { clause = "surface.reside.region-entries", value = 16, unit = "entries", basis = "chosen", gloss = "Largest residency allow-set." }
 surface-listing-page       = { clause = "surface.visualize.listing-page", value = 1000, unit = "entries", basis = "chosen", gloss = "Entries one pack listing call answers." }
 surface-redactor-lookahead = { clause = "surface.speak.redactor-lookahead", value = 128, unit = "chars", basis = "chosen", gloss = "Characters the streaming redactor holds across a chunk boundary." }

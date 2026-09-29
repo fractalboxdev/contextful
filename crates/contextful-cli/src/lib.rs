@@ -4,6 +4,7 @@
 
 mod admit;
 mod build;
+mod cadence;
 mod component;
 mod context;
 mod derive;
