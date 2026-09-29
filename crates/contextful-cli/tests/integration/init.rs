@@ -48,10 +48,10 @@ fn init_writes_the_declaration_and_a_repeat_is_a_no_op() {
 #[test]
 fn a_command_without_project_discovers_it_from_a_subdirectory() {
     let dir = tempfile::tempdir().unwrap();
-    stdout(&run(dir.path(), &["init", "research"]));
+    stdout(&run(dir.path(), &["init", "research", "--authoring-posture", "per_request"]));
     let path = dir.path().join("contextful.toml");
     let text = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(&path, format!("authoring_posture = \"per_request\"\n{text}\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"doc\"]\n")).unwrap();
+    std::fs::write(&path, format!("{text}\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"doc\"]\n")).unwrap();
     let notes = dir.path().join("notes/inbox");
     std::fs::create_dir_all(&notes).unwrap();
     std::fs::write(notes.join("rows.jsonl"), "{\"doc\":\"a\",\"v\":1}\n{\"doc\":\"a\",\"v\":2}\n").unwrap();
@@ -110,7 +110,7 @@ fn a_command_without_project_or_declaration_refuses() {
 #[test]
 fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
     let dir = tempfile::tempdir().unwrap();
-    stdout(&run(dir.path(), &["init", "research"]));
+    stdout(&run(dir.path(), &["init", "research", "--authoring-posture", "per_request"]));
     let path = dir.path().join("contextful.toml");
     let text = std::fs::read_to_string(&path).unwrap();
     let pipeline = concat!(
@@ -120,7 +120,7 @@ fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
         "[derive.reader]\ndriver = \"exec\"\nmedia_root = \"media\"\n\n",
         "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\noutput_format = \"srt\"\n",
     );
-    std::fs::write(&path, format!("authoring_posture = \"per_request\"\n{text}\n{pipeline}")).unwrap();
+    std::fs::write(&path, format!("{text}\n{pipeline}")).unwrap();
     std::fs::create_dir_all(dir.path().join("media")).unwrap();
     std::fs::write(dir.path().join("media/memo.srt"), "1\n00:00:00,000 --> 00:00:01,000\nRevenue rose.\n\n").unwrap();
     let notes = dir.path().join("notes");
@@ -144,4 +144,32 @@ fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
         })
         .collect();
     assert_eq!(kinds, [("passage".to_string(), "Revenue rose.".to_string())]);
+}
+
+/// An init declaring its authoring posture yields a project whose first write lands with no manifest edit; an init
+/// declaring none leaves every table write refused until one is declared.
+// spec: store.init.posture@d0fdd2d8
+#[test]
+fn an_init_with_a_posture_lands_its_first_write_unedited() {
+    let land = ["context", "land", "filings", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "s", "--now", "2030-01-01T00:00:00Z"];
+
+    let dir = tempfile::tempdir().unwrap();
+    let init = stdout(&run(dir.path(), &["init", "research", "--authoring-posture", "per_request"]));
+    assert!(init.contains("per_request"), "{init}");
+    std::fs::write(dir.path().join("rows.jsonl"), "{\"doc\":\"a\"}\n").unwrap();
+    let landed = stdout(&run(dir.path(), &land));
+    assert!(landed.starts_with("filings: committed run-1"), "{landed}");
+
+    let dir = tempfile::tempdir().unwrap();
+    let init = stdout(&run(dir.path(), &["init", "research"]));
+    assert!(init.contains("no authoring posture"), "{init}");
+    std::fs::write(dir.path().join("rows.jsonl"), "{\"doc\":\"a\"}\n").unwrap();
+    let err = refused(&run(dir.path(), &land), "AuthoringPostureUndeclared");
+    assert!(err.contains("--authoring-posture"), "{err}");
+    assert!(!dir.path().join(".contextful/context/research/tables").exists());
+
+    // A later init adds the posture to the declaration the first one wrote.
+    let init = stdout(&run(dir.path(), &["init", "research", "--authoring-posture", "session"]));
+    assert!(init.contains("session"), "{init}");
+    refused(&run(dir.path(), &land), "AuthoringCredentialMissing");
 }

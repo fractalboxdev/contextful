@@ -1,14 +1,24 @@
 //! `contextful init`, and the project a command acts on: `--project` under the working
 //! directory, or the nearest `contextful.toml` upward (`store.init.discovery`).
 
-use anyhow::Result;
-use contextful_context::project::{check_name, discover, init, Initialized, Project};
+use anyhow::{anyhow, Result};
+use contextful_context::project::{check_name, declare_posture, declared_posture, discover, init, Initialized, Project, DECLARATION_FILE};
+use contextful_core::issue::AuthoringPosture;
 use std::path::PathBuf;
 
 #[derive(clap::Args)]
 pub struct InitArgs {
     /// The project name; its store root is `.contextful/context/<name>/`.
     name: String,
+    /// `session` or `per_request`: who authors a table write that carries no credential.
+    /// Written when the declaration declares none; absent writes no posture, and every
+    /// table write refuses until one is declared.
+    #[arg(long, value_parser = posture)]
+    authoring_posture: Option<AuthoringPosture>,
+}
+
+fn posture(value: &str) -> Result<AuthoringPosture> {
+    AuthoringPosture::parse(value).ok_or_else(|| anyhow!("`{value}` is neither `session` nor `per_request`"))
 }
 
 /// A command's project and the declaration it reads.
@@ -43,5 +53,15 @@ pub fn run(args: InitArgs) -> Result<()> {
         Initialized::Unchanged => "unchanged, contextful.toml already declares it",
     };
     println!("{}: {what}; store root .contextful/context/{}/", args.name, args.name);
+    let prepended = match args.authoring_posture {
+        Some(p) => declare_posture(&cwd, p)?,
+        None => false,
+    };
+    let path = cwd.join(DECLARATION_FILE);
+    match declared_posture(&path, &std::fs::read_to_string(&path)?)? {
+        Some(p) if prepended => println!("authoring posture: {p}, declared by this init"),
+        Some(p) => println!("authoring posture: {p}"),
+        None => println!("no authoring posture: every table write refuses until one is declared (init --authoring-posture session|per_request)"),
+    }
     Ok(())
 }

@@ -10,7 +10,7 @@ The store is the canonical corpus of **Contextful**: Parquet any SQL tool opens,
 
 ## How it works
 
-`contextful init` names the project ({{store.init.declaration-file}}); commands below it find it ({{store.init.discovery}}).
+`contextful init` names the project ({{store.init.declaration-file}}) and its authoring posture ({{store.init.posture}}); commands below it find it ({{store.init.discovery}}).
 
 Files never change once written ({{store.lay-out.immutable-files}}). A write adds a run directory and commits by conditionally creating that run's manifest ({{store.lay-out.run-manifest}}); until the manifest exists, the run's parts join no read ({{store.lay-out.uncommitted-run}}). The pipeline's cursor rides inside the same commit, so rows and position land together ({{store.lay-out.cursor-in-commit}}).
 
@@ -18,9 +18,9 @@ A read resolves an explicit sorted file list from the pointer and the manifests,
 
 Runs accumulate until a fold compacts them. A fold works like closing a ledger's books: the open entries are copied into a new bound volume, and only when that volume is complete does the index page turn to it. A pass writes Parquet and every sidecar into staging ({{store.fold.pass}}), then publishes by replacing `_pointer.json` conditioned on the ETag it read at the start ({{store.fold.pointer-commit}}). Readers see a snapshot and its sidecars together or not at all ({{store.fold.partial-snapshot}}), and a statement in flight keeps the snapshot it started on ({{store.fold.non-blocking}}).
 
-Two SQLite catalogs sit beside the canonical files. `derived.sqlite` is a disposable cache rebuilt from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` holds one machine's journal, cursor cache and lease rows, and no pull or rebuild touches it ({{store.lay-out.machine-catalog}}). Both sit behind ports ({{store.lay-out.catalog-ports}}).
+Two SQLite catalogs sit beside the files. `derived.sqlite` is a disposable cache rebuilt from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` holds one machine's journal, cursor cache and lease rows, and no pull or rebuild touches it ({{store.lay-out.machine-catalog}}). Both sit behind ports ({{store.lay-out.catalog-ports}}).
 
-A bucket mirrors the tree key for key. A push uploads changed files, then commits the bucket manifest by compare-and-set, re-merging on a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}) and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers on different machines apart, with a fence the storage itself checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}).
+A bucket mirrors the tree. A push uploads changed files, commits the bucket manifest by compare-and-set, and re-merges a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}) and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers on different machines apart, with a fence the storage itself checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}).
 
 ## Worked example
 

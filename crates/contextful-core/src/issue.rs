@@ -372,21 +372,36 @@ impl AuthoringPosture {
     /// The manifest's top-level key (`authority.issue.posture-key`).
     pub const KEY: &'static str = "authoring_posture";
 
+    /// The value the manifest key spells.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AuthoringPosture::Session => "session",
+            AuthoringPosture::PerRequest => "per_request",
+        }
+    }
+
+    /// The posture `value` spells, or `None` for any other value.
+    pub fn parse(value: &str) -> Option<AuthoringPosture> {
+        [AuthoringPosture::Session, AuthoringPosture::PerRequest].into_iter().find(|p| p.as_str() == value)
+    }
+
     /// The posture a manifest declares. The key has no default: absent, or naming any
     /// value but `session` or `per_request`, it raises `AuthoringPostureUndeclared`.
     pub fn from_manifest(text: &str) -> Result<AuthoringPosture, AuthorityError> {
         let undeclared = |why: String| {
             AuthorityError::AuthoringPostureUndeclared(format!(
-                "{why}; declare `{key} = \"session\"` or `{key} = \"per_request\"` at the top of the manifest",
+                "{why}; declare `{key} = \"session\"` or `{key} = \"per_request\"` at the top of the manifest, \
+                 or run `contextful init <name> --authoring-posture <session|per_request>`",
                 key = Self::KEY
             ))
         };
         let value: toml::Value = toml::from_str(text).map_err(|e| undeclared(format!("the manifest does not parse: {}", e.message())))?;
         match value.get(Self::KEY) {
             None => Err(undeclared(format!("the manifest declares no `{}`", Self::KEY))),
-            Some(toml::Value::String(s)) if s == "session" => Ok(AuthoringPosture::Session),
-            Some(toml::Value::String(s)) if s == "per_request" => Ok(AuthoringPosture::PerRequest),
-            Some(other) => Err(undeclared(format!("`{}` is `{other}`", Self::KEY))),
+            Some(other) => match other.as_str().and_then(AuthoringPosture::parse) {
+                Some(posture) => Ok(posture),
+                None => Err(undeclared(format!("`{}` is `{other}`", Self::KEY))),
+            },
         }
     }
 

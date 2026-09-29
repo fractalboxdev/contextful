@@ -238,7 +238,7 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority*
 - `absent-author` — An absent authorship value on a landed row means no credential authorized the write: the uncredentialed owner or a timer-fired run.
   *A-authority*
-- `authoring-posture` — Every project load declares an authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.
+- `authoring-posture` — Every table write verb {{authority.verify.write-verbs}} runs under its manifest's authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.
   *A-authority*
 - `posture-key` — A manifest declares its posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.
   *A-authority*
@@ -273,6 +273,8 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority*
 - `key-rotation` — The issuer signing key rotates every 90 d, and at once on suspected compromise.
   *A-authority*
+
+unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the posture bind table write verbs alone? owner: authority affects: authority.issue
 
 ## verify
 

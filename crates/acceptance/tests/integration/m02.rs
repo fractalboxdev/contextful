@@ -124,14 +124,14 @@ fn m02_init_and_discovery() {
         Command::new(&cf).args(args).current_dir(dir).env_remove("CARGO_TARGET_DIR").env("CONTEXTFUL_NODE_ID", "ingest-a").output().unwrap()
     };
 
-    ok(&at(&p.root, &["init", "research"]));
+    ok(&at(&p.root, &["init", "research", "--authoring-posture", "per_request"]));
     assert!(p.root.join(STORE).is_dir());
     let declared = std::fs::read_to_string(p.root.join("contextful.toml")).unwrap();
-    ok(&at(&p.root, &["init", "research"]));
+    ok(&at(&p.root, &["init", "research", "--authoring-posture", "per_request"]));
     assert_eq!(std::fs::read_to_string(p.root.join("contextful.toml")).unwrap(), declared);
     refused(&at(&p.root, &["init", "archive"]), "StoreProjectConflict");
 
-    p.write("contextful.toml", &format!("authoring_posture = \"per_request\"\n{declared}\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\n"));
+    p.write("contextful.toml", &format!("{declared}\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\n"));
     p.write("inbox/batch.jsonl", "{\"document_id\":\"d1\",\"title\":\"draft\"}\n");
     let inbox = p.root.join("inbox");
     let land = ["context", "land", "filings", "--rows", "batch.jsonl", "--run-id", "run-0001", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"];
