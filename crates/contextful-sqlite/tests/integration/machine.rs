@@ -122,6 +122,38 @@ fn run_rows_list_by_pipeline_and_a_refused_update_writes_nothing() {
     assert!(c.update_run("run-9", &mut |_| Ok(())).unwrap().is_none());
 }
 
+/// The newest run start of one pipeline reads through an index on `pipeline_id`, so a
+/// scheduler beat costs the pipeline's rows, not the whole run history.
+#[test]
+fn the_newest_run_start_reads_one_pipeline_through_an_index() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    let c = catalog(&dir, &clock);
+    assert_eq!(c.last_run_start("feed").unwrap(), None);
+    for (id, pipeline, secs) in [("run-1", "feed", 0), ("run-2", "feed", 7200), ("run-3", "feed", 3600), ("run-4", "other", 9000)] {
+        let mut row = run_row(id, pipeline, RunStatus::Success);
+        row.started_at = at(T0).plus_secs(secs);
+        c.put_run(&row).unwrap();
+    }
+    // A sub-second start sorts after the whole second before it.
+    let mut row = run_row("run-5", "feed", RunStatus::Success);
+    row.started_at = contextful_core::time::Instant::parse("2030-01-01T02:00:00.5Z").unwrap();
+    c.put_run(&row).unwrap();
+    assert_eq!(c.last_run_start("feed").unwrap(), Some(row.started_at));
+    assert_eq!(c.last_run_start("other").unwrap(), Some(at(T0).plus_secs(9000)));
+    assert_eq!(c.last_run_start("none").unwrap(), None);
+
+    let conn = rusqlite::Connection::open(dir.path().join(MACHINE_CATALOG_FILE)).unwrap();
+    let plan: Vec<String> = conn
+        .prepare("EXPLAIN QUERY PLAN SELECT json_extract(row, '$.started_at') FROM run WHERE pipeline_id = 'feed'")
+        .unwrap()
+        .query_map([], |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(plan.iter().any(|d| d.contains("USING INDEX run_by_pipeline")), "{plan:?}");
+}
+
 #[test]
 fn rows_outlive_the_connection_that_wrote_them() {
     let dir = tempfile::tempdir().unwrap();

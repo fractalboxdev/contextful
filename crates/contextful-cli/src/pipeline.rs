@@ -157,7 +157,7 @@ pub(crate) enum Checked {
 }
 
 /// A registered host task, with the store table each of its tables lands in.
-struct HostChecked {
+pub(crate) struct HostChecked {
     config: DeriveConfig,
     task: Arc<dyn DeriveTask>,
     tables: BTreeMap<String, String>,

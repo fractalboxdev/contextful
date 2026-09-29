@@ -113,6 +113,8 @@ The control source, the snapshot pointer and its versions, the pure schedule dif
   *A-surface*
 - `loopback-only` — A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.
   *A-surface*
+- `url-layout` — A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.
+  *because one layout serves a snapshot directory unchanged over loopback HTTP*
 
 One reconciler beat, polled every 30 s by default:
 

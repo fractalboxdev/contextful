@@ -91,15 +91,17 @@ fn a_daemon_booting_past_missed_intervals_fires_once() {
     s.drain();
 }
 
-/// A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease
-/// held arms nothing and, under `--cycle`, exits naming the holder.
-// spec: surface.dispatch.lease-gated@f1237082
+/// A beat takes the cadence lease before it dispatches, and a held lease dispatches nothing until it lapses.
 #[test]
 fn a_held_cadence_lease_dispatches_nothing() {
     let (rig, rec) = rig_with(None);
     let other = rig.catalog().acquire(&LeaseKey::Cadence("prod".into()), "daemon-b", CADENCE_LEASE_TTL_SECS).unwrap().unwrap();
     assert_eq!(rig.catalog().lease_row(&LeaseKey::Cadence("prod".into())).unwrap().holder.as_deref(), Some("daemon-b"));
     let mut s = scheduler(&rig, &rec, 4);
+    // The process asks for the lease before it arms, and finding it held arms nothing.
+    assert_eq!(s.hold().unwrap(), LeaseState::HeldBy("daemon-b".into()));
+    assert!(s.armed().is_empty());
+    // A beat under a held lease dispatches nothing, whatever the armed set holds.
     s.arm(1, vec![hourly("feed")]).unwrap();
     let beat = s.beat().unwrap();
     assert_eq!(beat.lease, LeaseState::HeldBy("daemon-b".into()));
@@ -108,6 +110,7 @@ fn a_held_cadence_lease_dispatches_nothing() {
     assert!(fired(&rec).is_empty());
     // Once the other holder's lease lapses, this process takes it and fires.
     rig.clock.advance(CADENCE_LEASE_TTL_SECS as i64);
+    assert_eq!(s.hold().unwrap(), LeaseState::Held);
     let beat = s.beat().unwrap();
     assert_eq!(beat.lease, LeaseState::Held);
     assert_eq!(beat.started, ["feed"]);

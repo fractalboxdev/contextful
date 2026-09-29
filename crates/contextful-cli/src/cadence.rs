@@ -5,6 +5,9 @@
 //! (`run.declare.apply-fires-nothing`). `serve` arms the applied version's schedules and
 //! dispatches each due pipeline as a `pipeline run --applied <N>` child process through the
 //! engine's scheduler, which holds the deployment's cadence lease.
+//!
+//! The control source is the snapshot directory, or a loopback `[control] url` serving
+//! `manifest@current` and each `manifest@v<N>.toml` beneath it (`surface.reconcile.loopback-only`).
 
 use crate::pipeline::{check, manifests};
 use crate::project::Located;
@@ -14,24 +17,111 @@ use contextful_context::project::Project;
 use contextful_core::pipeline::declare::{collect, ManifestFile, PipelineSpec};
 use contextful_core::run::derive::task::Tasks;
 use contextful_core::surface::arm::{Schedule, TICK_INTERVAL_MS};
-use contextful_core::surface::control::{snapshot_file, DEFAULT_POLL};
+use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, snapshot_file, source_file, DEFAULT_POLL, POINTER_FILE};
 use contextful_core::surface::dispatch::DEFAULT_POOL;
 use contextful_core::surface::SurfaceError;
 use contextful_engine::control::{ControlError, SnapshotDir};
-use contextful_engine::scheduler::{Dispatch, Entry, LeaseState, Scheduler};
+use contextful_engine::scheduler::{Dispatch, Entry, Fired, LeaseState, Scheduler};
+use contextful_outbound::egress::{system, Outbound, Transport};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::BTreeMap;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
+use url::Url;
 
 /// Claims an apply retries after losing the pointer's compare-and-swap before it gives up.
 const CLAIM_ATTEMPTS: usize = 8;
 
+/// Wall clock one control-URL read may take.
+const CONTROL_READ_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Largest pointer or snapshot body a control-URL read takes.
+const CONTROL_READ_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+/// A loopback control plane serving the pointer and each version beneath one URL.
+struct ControlUrl {
+    base: Url,
+    addrs: Vec<SocketAddr>,
+    transport: Arc<dyn Transport>,
+}
+
+impl ControlUrl {
+    /// Parse `text` and admit its host only when every address it resolves to is loopback.
+    fn open(text: &str) -> Result<ControlUrl, SurfaceError> {
+        let base = control_url(text)?;
+        let host = base.host_str().unwrap_or_default().to_string();
+        let port = base.port_or_known_default().unwrap_or(80);
+        let transport = system();
+        let addrs = transport.resolve(&host, port).unwrap_or_default();
+        admit_loopback(&host, &addrs)?;
+        Ok(ControlUrl { base, addrs, transport })
+    }
+
+    /// The body of `file`; `None` on `404`. Any other status, a redirect included, raises
+    /// `ControlSnapshotUnreadable`: a poll follows no redirect and routes through no proxy.
+    fn get(&self, file: &str) -> Result<Option<String>, SurfaceError> {
+        let url = source_file(&self.base, file);
+        let unreadable = |why: String| SurfaceError::ControlSnapshotUnreadable(format!("{url}: {why}"));
+        let request = Outbound {
+            method: "GET",
+            url: &url,
+            addrs: &self.addrs,
+            headers: &[],
+            body: &[],
+            direct: true,
+            timeout: CONTROL_READ_TIMEOUT,
+            max_body: CONTROL_READ_MAX_BYTES,
+            read_body: true,
+        };
+        let answer = self.transport.send(&request).map_err(|e| unreadable(format!("{e:?}")))?;
+        match answer.status {
+            200 => String::from_utf8(answer.body).map(Some).map_err(|_| unreadable("the body is not UTF-8".into())),
+            404 => Ok(None),
+            status => Err(unreadable(format!("answered `{status}`"))),
+        }
+    }
+}
+
+/// Where applied versions come from.
+enum Source {
+    Dir(SnapshotDir),
+    Url(ControlUrl),
+}
+
+impl Source {
+    /// The applied version, or `None` before the first apply.
+    fn current(&self) -> Result<Option<u64>> {
+        match self {
+            Source::Dir(d) => Ok(d.current()?),
+            Source::Url(u) => Ok(u.get(POINTER_FILE)?.map(|body| parse_pointer(&body)).transpose()?),
+        }
+    }
+
+    /// The text of applied version `version`.
+    fn read(&self, version: u64) -> Result<String> {
+        match self {
+            Source::Dir(d) => Ok(d.read(version)?),
+            Source::Url(u) => Ok(u.get(&snapshot_file(version))?.ok_or_else(|| {
+                SurfaceError::ControlSnapshotUnreadable(format!("{}: answered `404`", source_file(&u.base, &snapshot_file(version))))
+            })?),
+        }
+    }
+
+    fn describe(&self) -> String {
+        match self {
+            Source::Dir(d) => format!("`{}`", d.root().display()),
+            Source::Url(u) => format!("`{}`", u.base),
+        }
+    }
+}
+
 /// The `[control]` block of the project manifest.
 struct ControlConfig {
-    snapshots: SnapshotDir,
+    source: Source,
     pool: usize,
     poll: Schedule,
 }
@@ -40,12 +130,11 @@ fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
     let value: toml::Value = if text.is_empty() { toml::Value::Table(Default::default()) } else { toml::from_str(text)? };
     let block = value.get("control").cloned().unwrap_or(toml::Value::Table(Default::default()));
     let block = block.as_table().context("`[control]` is a table")?;
-    if block.contains_key("url") {
-        bail!("`[control] url` names a control URL; this build reconciles from a local `snapshot_dir` alone");
-    }
-    let dir = match block.get("snapshot_dir") {
-        Some(v) => project.dir.join(v.as_str().context("`[control] snapshot_dir` is a path string")?),
-        None => project.dir.join(".contextful/control").join(&project.name),
+    let source = match (block.get("url"), block.get("snapshot_dir")) {
+        (Some(_), Some(_)) => bail!("`[control]` names one source: `url` or `snapshot_dir`"),
+        (Some(url), None) => Source::Url(ControlUrl::open(url.as_str().context("`[control] url` is a URL string")?)?),
+        (None, Some(v)) => Source::Dir(SnapshotDir::open(&project.dir.join(v.as_str().context("`[control] snapshot_dir` is a path string")?))),
+        (None, None) => Source::Dir(SnapshotDir::open(&project.dir.join(".contextful/control").join(&project.name))),
     };
     let pool = match block.get("pool") {
         Some(v) => usize::try_from(v.as_integer().context("`[control] pool` is an integer")?)
@@ -55,7 +144,7 @@ fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
         None => DEFAULT_POOL,
     };
     let poll = block.get("poll").map(|v| v.as_str().context("`[control] poll` is a schedule string")).transpose()?.unwrap_or(DEFAULT_POLL);
-    Ok(ControlConfig { snapshots: SnapshotDir::open(&dir), pool, poll: Schedule::parse(poll)? })
+    Ok(ControlConfig { source, pool, poll: Schedule::parse(poll)? })
 }
 
 fn located(project: &ProjectArgs, declaration: Option<PathBuf>) -> Result<(Located, String, ControlConfig)> {
@@ -68,11 +157,11 @@ fn located(project: &ProjectArgs, declaration: Option<PathBuf>) -> Result<(Locat
 /// The manifest file of applied version `version`, read by `pipeline run --applied`.
 pub(crate) fn snapshot_manifest(project: &Project, text: &str, version: u64) -> Result<ManifestFile> {
     let control = control_config(text, project)?;
-    Ok(ManifestFile { path: snapshot_file(version), text: control.snapshots.read(version)? })
+    Ok(ManifestFile { path: snapshot_file(version), text: control.source.read(version)? })
 }
 
 /// The applied version and the specifications it holds, by id; none before the first apply.
-fn applied(snaps: &SnapshotDir) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec>)> {
+fn applied(snaps: &Source) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec>)> {
     let Some(version) = snaps.current()? else { return Ok((None, BTreeMap::new())) };
     let text = snaps.read(version)?;
     let specs = collect(&[ManifestFile { path: snapshot_file(version), text }])
@@ -133,7 +222,7 @@ fn declared(declaration: &Path) -> Result<BTreeMap<String, PipelineSpec>> {
 /// `pipeline plan`: the declared set against the applied snapshot; reads only.
 pub(crate) fn plan(project: &ProjectArgs, declaration: Option<PathBuf>, as_json: bool) -> Result<()> {
     let (l, _, control) = located(project, declaration)?;
-    let (version, applied) = applied(&control.snapshots)?;
+    let (version, applied) = applied(&control.source)?;
     let changes = diff(&declared(&l.declaration)?, &applied);
     if as_json {
         println!("{}", serde_json::to_string_pretty(&json!({ "applied": version, "pipelines": changes }))?);
@@ -151,14 +240,25 @@ pub(crate) fn plan(project: &ProjectArgs, declaration: Option<PathBuf>, as_json:
 /// (`surface.apply.version-race`).
 pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Option<&str>, tasks: &Tasks) -> Result<()> {
     let (l, _, control) = located(project, declaration)?;
+    let snapshots = match &control.source {
+        Source::Dir(d) => d,
+        Source::Url(u) => {
+            return Err(SurfaceError::ConfigOwnerUnconfigured(format!(
+                "`[control] url` names `{}` as the configuration owner; an apply claims through that plane, and no local writer substitutes for it",
+                u.base
+            ))
+            .into())
+        }
+    };
+    let source = &control.source;
     let declared = declared(&l.declaration)?;
     if let Some(id) = id {
-        if !declared.contains_key(id) && !applied(&control.snapshots)?.1.contains_key(id) {
+        if !declared.contains_key(id) && !applied(source)?.1.contains_key(id) {
             bail!("no pipeline `{id}` is declared or applied");
         }
     }
     for _ in 0..CLAIM_ATTEMPTS {
-        let (version, base) = applied(&control.snapshots)?;
+        let (version, base) = applied(source)?;
         let mut target = base.clone();
         match id {
             Some(id) => match declared.get(id) {
@@ -184,7 +284,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
             }
             return Ok(());
         }
-        match control.snapshots.claim(version, &render(&target)?) {
+        match snapshots.claim(version, &render(&target)?) {
             Ok(v) => {
                 for c in &changes {
                     println!("{} {}", sigil(c.action), c.id);
@@ -233,7 +333,7 @@ impl Dispatch for ChildDispatch {
 
 /// Arm `scheduler` from the applied snapshot: every entry declaring a schedule, an
 /// unreadable one held back by name. `false` when no version is applied.
-fn arm(scheduler: &mut Scheduler, snaps: &SnapshotDir) -> Result<bool> {
+fn arm(scheduler: &mut Scheduler, snaps: &Source) -> Result<bool> {
     let (version, specs) = applied(snaps)?;
     let Some(version) = version else { return Ok(false) };
     if version == scheduler.version() && !scheduler.armed().is_empty() {
@@ -268,51 +368,91 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     if cycle {
         return serve_cycle(&mut scheduler, &control);
     }
-    let tick = std::time::Duration::from_millis(TICK_INTERVAL_MS);
+    contextful_engine::stop::install();
+    eprintln!("serving `{}` from {} as `{holder}`", l.project.name, control.source.describe());
+    let tick = Duration::from_millis(TICK_INTERVAL_MS);
     let mut next_poll = w.clock.now();
-    loop {
-        let now = w.clock.now();
-        if now >= next_poll {
-            // A failed poll leaves the armed set running (`surface.reconcile.fail-static`).
-            if let Err(e) = arm(&mut scheduler, &control.snapshots) {
-                eprintln!("{e:#}; the armed set stays in place");
-            }
-            next_poll = control.poll.next_after(now);
-        }
-        match scheduler.beat() {
-            Ok(beat) => {
-                if let LeaseState::HeldBy(h) = &beat.lease {
-                    eprintln!("the cadence lease of `{}` is held by `{h}`; nothing dispatches", l.project.name);
-                }
-                for id in &beat.started {
-                    eprintln!("fire {id}: started");
+    let mut held_by: Option<String> = None;
+    while !contextful_engine::stop::requested() {
+        // The lease comes before arming: a process finding it held arms nothing
+        // (`surface.dispatch.lease-gated`).
+        match scheduler.hold() {
+            Ok(LeaseState::HeldBy(h)) => {
+                if held_by.as_ref() != Some(&h) {
+                    eprintln!("the cadence lease of `{}` is held by `{h}`; nothing arms or dispatches", l.project.name);
+                    held_by = Some(h);
                 }
             }
-            Err(e) => eprintln!("beat: {e}"),
-        }
-        for f in scheduler.ended() {
-            match f.result {
-                Ok(line) => eprintln!("fire {}: done · {line}", f.id),
-                Err(line) => eprintln!("fire {}: failed · {line}", f.id),
+            Ok(LeaseState::Held) => {
+                if held_by.take().is_some() {
+                    eprintln!("took the cadence lease of `{}`", l.project.name);
+                }
+                let now = w.clock.now();
+                if now >= next_poll {
+                    // A failed poll leaves the armed set running (`surface.reconcile.fail-static`).
+                    if let Err(e) = arm(&mut scheduler, &control.source) {
+                        eprintln!("{e:#}; the armed set stays in place");
+                    }
+                    next_poll = control.poll.next_after(now);
+                }
+                match scheduler.beat() {
+                    Ok(beat) => {
+                        for id in &beat.started {
+                            eprintln!("fire {id}: started");
+                        }
+                    }
+                    Err(e) => eprintln!("beat: {e}"),
+                }
             }
+            Err(e) => eprintln!("cadence lease: {e}"),
         }
+        report(scheduler.ended());
         std::thread::sleep(tick);
+    }
+    eprintln!("stopping: waiting for dispatched units, then releasing the cadence lease");
+    report(scheduler.drain());
+    scheduler.release()?;
+    eprintln!("stopped");
+    Ok(())
+}
+
+fn report(ended: Vec<Fired>) {
+    for f in ended {
+        match f.result {
+            Ok(line) => eprintln!("fire {}: done · {line}", f.id),
+            Err(line) => eprintln!("fire {}: failed · {line}", f.id),
+        }
     }
 }
 
-/// One-shot evaluation (`surface.fire.cycle`).
+/// The answer of a cycle finding the cadence lease held: nothing armed, the holder named.
+fn held_answer(holder: &str) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(&json!({ "fired": [], "failed": [], "pending": [], "held_by": holder }))?);
+    Ok(())
+}
+
+/// One-shot evaluation (`surface.fire.cycle`). The lease comes first: finding it held,
+/// the cycle arms nothing and answers the holder (`surface.dispatch.lease-gated`).
 fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig) -> Result<()> {
-    if !arm(scheduler, &control.snapshots)? {
-        return Err(SurfaceError::CycleControlSourceUnresolved(format!(
-            "`{}` holds no applied version; run `contextful pipeline apply` first",
-            control.snapshots.root().display()
+    if let LeaseState::HeldBy(holder) = scheduler.hold()? {
+        return held_answer(&holder);
+    }
+    let armed = match arm(scheduler, &control.source) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(SurfaceError::CycleControlSourceUnresolved(format!(
+            "{} holds no applied version; run `contextful pipeline apply` first",
+            control.source.describe()
         ))
-        .into());
+        .into()),
+        Err(e) => Err(e),
+    };
+    if let Err(e) = armed {
+        scheduler.release()?;
+        return Err(e);
     }
     let beat = scheduler.beat()?;
     if let LeaseState::HeldBy(holder) = &beat.lease {
-        println!("{}", serde_json::to_string_pretty(&json!({ "fired": [], "failed": [], "pending": [], "armed": 0, "held_by": holder }))?);
-        return Ok(());
+        return held_answer(holder);
     }
     let ended = scheduler.drain();
     let mut fired: Vec<&str> = ended.iter().filter(|f| f.result.is_ok()).map(|f| f.id.as_str()).collect();

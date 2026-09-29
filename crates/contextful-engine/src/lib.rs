@@ -15,6 +15,7 @@ pub mod journal;
 pub mod project;
 pub mod runner;
 pub mod scheduler;
+pub mod stop;
 pub mod stores;
 
 pub use catalog::LocalCatalog;

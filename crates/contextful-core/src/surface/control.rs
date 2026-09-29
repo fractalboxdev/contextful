@@ -1,6 +1,8 @@
 //! The snapshot store's names and the pointer grammar (`surface.reconcile`).
 
 use super::SurfaceError;
+use std::net::SocketAddr;
+use url::Url;
 
 /// The poll schedule of a `[control]` block declaring none (`surface.reconcile.poll-cadence`).
 pub const DEFAULT_POLL: &str = "every 30s";
@@ -22,4 +24,42 @@ pub fn parse_pointer(body: &str) -> Result<u64, SurfaceError> {
         return Err(malformed("is not wholly a version"));
     }
     digits.parse::<u64>().map_err(|_| malformed("overflows a version"))
+}
+
+/// Read a `[control] url`: an `http` or `https` URL with no userinfo, query or fragment,
+/// under which the pointer and each version file sit (`surface.reconcile.url-layout`).
+pub fn control_url(text: &str) -> Result<Url, SurfaceError> {
+    let refused = |why: &str| SurfaceError::ControlSourceNotLoopback(format!("control URL `{text}` {why}"));
+    let url = Url::parse(text).map_err(|e| refused(&format!("does not parse: {e}")))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(refused("is not http or https"));
+    }
+    if !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
+        return Err(refused("carries userinfo, a query or a fragment"));
+    }
+    if url.host_str().is_none_or(str::is_empty) {
+        return Err(refused("names no host"));
+    }
+    Ok(url)
+}
+
+/// The URL of `file` beneath control URL `base` (`surface.reconcile.url-layout`).
+pub fn source_file(base: &Url, file: &str) -> Url {
+    let mut url = base.clone();
+    let path = format!("{}/{file}", base.path().trim_end_matches('/'));
+    url.set_path(&path);
+    url
+}
+
+/// Admit a control host only when it resolves, and every address it resolves to is a
+/// loopback address (`surface.reconcile.loopback-only`).
+pub fn admit_loopback(host: &str, addrs: &[SocketAddr]) -> Result<(), SurfaceError> {
+    if addrs.is_empty() || !addrs.iter().all(|a| a.ip().is_loopback()) {
+        let shown: Vec<String> = addrs.iter().map(|a| a.ip().to_string()).collect();
+        return Err(SurfaceError::ControlSourceNotLoopback(format!(
+            "control host `{host}` resolves to [{}]; a control source is a loopback address",
+            shown.join(", ")
+        )));
+    }
+    Ok(())
 }

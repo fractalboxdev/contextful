@@ -183,6 +183,11 @@ pub trait Catalog {
     fn put_run(&self, row: &RunRow) -> Result<(), Failure>;
     fn run(&self, run_id: &str) -> Result<Option<RunRow>, Failure>;
     fn runs(&self, pipeline_id: Option<&str>) -> Result<Vec<RunRow>, Failure>;
+    /// The start of `pipeline_id`'s newest journaled run, which the scheduler reads on
+    /// every beat; a backend answers it without decoding the pipeline's run rows.
+    fn last_run_start(&self, pipeline_id: &str) -> Result<Option<Instant>, Failure> {
+        Ok(self.runs(Some(pipeline_id))?.iter().map(|r| r.started_at).max())
+    }
     /// Apply `f` to a run row under the catalog's write serialization; `None` when no
     /// row carries `run_id`, and the row unchanged when `f` refuses.
     fn update_run(&self, run_id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure>;

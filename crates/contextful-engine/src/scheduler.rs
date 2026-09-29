@@ -146,9 +146,16 @@ impl Scheduler {
         }
     }
 
+    /// Take or renew the cadence lease outside a beat. A process calls it before arming, so
+    /// one finding the lease held arms nothing (`surface.dispatch.lease-gated`).
+    pub fn hold(&mut self) -> Result<LeaseState, Failure> {
+        let now = self.catalog.now()?;
+        self.hold_lease(now)
+    }
+
     /// The start of `id`'s newest journaled run.
     fn last_run(&self, id: &str) -> Result<Option<Instant>, Failure> {
-        Ok(self.catalog.runs(Some(id))?.iter().map(|r| r.started_at).max())
+        self.catalog.last_run_start(id)
     }
 
     fn next_of(&self, e: &Entry, now: Instant) -> Result<Instant, Failure> {

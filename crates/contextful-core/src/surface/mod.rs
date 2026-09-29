@@ -18,6 +18,12 @@ pub enum SurfaceError {
     /// (`surface.reconcile.fail-static`)
     #[error("ControlSnapshotUnreadable: {0}")]
     ControlSnapshotUnreadable(String),
+    /// (`surface.reconcile.loopback-only`)
+    #[error("ControlSourceNotLoopback: {0}")]
+    ControlSourceNotLoopback(String),
+    /// (`surface.apply.owner-unconfigured`)
+    #[error("ConfigOwnerUnconfigured: {0}")]
+    ConfigOwnerUnconfigured(String),
     /// (`surface.fire.cycle-control-source`)
     #[error("CycleControlSourceUnresolved: {0}")]
     CycleControlSourceUnresolved(String),
