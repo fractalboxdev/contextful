@@ -114,7 +114,7 @@ fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
     let path = dir.path().join("contextful.toml");
     let text = std::fs::read_to_string(&path).unwrap();
     let pipeline = concat!(
-        "[[pipeline]]\nid = \"doc-text\"\ntables = [{ name = \"passages\", primary_key = [\"unit_ref\", \"cue_seq\"] }]\n",
+        "[[pipeline]]\nid = \"doc-text\"\ntables = [{ name = \"passages\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }]\n",
         "[pipeline.source]\nname = \"derive\"\n",
         "config = { engine = \"reader\", source_table = \"documents\", media_column = \"path\", parent_id_column = \"doc_id\" }\n\n",
         "[derive.reader]\ndriver = \"exec\"\nmedia_root = \"media\"\n\n",
