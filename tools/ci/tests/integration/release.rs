@@ -28,6 +28,14 @@ fn status(rows: &[Row]) -> String {
     s
 }
 
+/// A `spec/status.md` whose milestone table carries `header` and `rows` verbatim.
+fn status_table(header: &str, rows: &[&str]) -> String {
+    let columns = header.trim_matches('|').split('|').count();
+    let mut s = format!("# Status\n\n## Milestones\n\n{header}\n|{}\n", " --- |".repeat(columns));
+    rows.iter().for_each(|r| s.push_str(&format!("{r}\n")));
+    s
+}
+
 fn root_manifest(version: Option<&str>) -> String {
     let mut s = String::from("[workspace]\nresolver = \"2\"\nmembers = [\"crates/*\"]\n\n[workspace.package]\nlicense = \"Apache-2.0\"\n");
     if let Some(v) = version {
@@ -158,6 +166,37 @@ fn the_version_counts_closed_milestones_and_earlier_tags_of_that_count() {
     let o = r.tag(&[]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(r.tags(), "v0.3.0\nv0.3.1\nv0.4.0");
+}
+
+/// The `Closed` column is found by its header name wherever it sits, and a table without one
+/// closes no milestone.
+#[test]
+fn the_closed_column_is_found_by_name_and_its_absence_closes_nothing() {
+    // `Closed` precedes a trailing column: the last cell of every row reads `closed`, yet
+    // only the rows whose `Closed` cell reads `closed` count.
+    let r = Release::new(&THREE_OF_FOUR, Some("0.2.0"));
+    r.repo.write(
+        "spec/status.md",
+        &status_table(
+            "| Milestone | Closed | Note |",
+            &["| 0 — The test-first gate | closed | closed |", "| 1 — The authority core | open | closed |", "| 2 — The store | closed | closed |"],
+        ),
+    );
+    r.repo.commit("closed column moved");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(r.tags(), "v0.2.0");
+
+    // No `Closed` column: a passing acceptance test closes nothing, so the minor is 0.
+    let r = Release::new(&THREE_OF_FOUR, Some("0.0.0"));
+    r.repo.write(
+        "spec/status.md",
+        &status_table("| Milestone | Acceptance |", &["| 0 — The test-first gate | passing |", "| 2 — The store | passing |"]),
+    );
+    r.repo.commit("no closed column");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(r.tags(), "v0.0.0");
 }
 
 /// `contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.

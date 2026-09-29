@@ -8,36 +8,38 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `assurance` | 2 | 15 | 212 | 56 | 22 | 16 | 100 | 0 | 100 |
 | `authority` | 2 | 16 | 238 | 64 | 27 | 8 | 172 | 0 | 172 |
 | `connector` | 2 | 13 | 282 | 76 | 19 | 9 | 156 | 0 | 156 |
-| `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
+| `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 151 | 26 | 22 | 18 | 119 | 0 | 119 |
 | `run` | 3 | 25 | 335 | 88 | 35 | 30 | 204 | 0 | 204 |
 | `store` | 1 | 16 | 201 | 49 | 12 | 17 | 160 | 0 | 160 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 151 | 1708 | 524 | 183 | 125 | 1001 | 0 | |
+| **total** | 19 | 151 | 1709 | 524 | 183 | 125 | 1002 | 0 | |
 
 Decision records: 18.
 
 ## Milestones
 
-| Milestone | Operations | Clauses | Performed | Acceptance |
-| --- | --- | --- | --- | --- |
-| 0 — The test-first gate | 2 | 18 | 6 | passing |
-| 1 — The authority core | 14 | 203 | 148 | passing |
-| 2 — The store | 9 | 150 | 114 | passing |
-| 3 — The run path | 11 | 197 | 125 | passing |
-| 4 — Ingest | 23 | 398 | 203 | passing |
-| 5 — The read face under enforcement | 17 | 239 | 163 | passing |
-| 6 — Sync and replicas | 7 | 51 | 46 | passing |
-| 7 — Memory | 6 | 22 | 22 | passing |
-| 8 — Accountability | 5 | 40 | 20 | open |
-| 9 — Visibility | 6 | 22 | 3 | open |
-| 10 — Cadence and the operator plane | 11 | 44 | 3 | open |
-| 11 — The derive tier | 7 | 78 | 55 | passing |
-| 12 — The console | 11 | 30 | 0 | absent |
-| 13 — Disclosure | 5 | 21 | 4 | open |
-| 14 — Assurance | 7 | 119 | 52 | open |
+A milestone reads `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause.
+
+| Milestone | Operations | Clauses | Performed | Acceptance | Closed |
+| --- | --- | --- | --- | --- | --- |
+| 0 — The test-first gate | 2 | 18 | 6 | passing | open |
+| 1 — The authority core | 14 | 203 | 148 | passing | closed |
+| 2 — The store | 9 | 150 | 114 | passing | closed |
+| 3 — The run path | 11 | 197 | 125 | passing | closed |
+| 4 — Ingest | 23 | 398 | 203 | passing | open |
+| 5 — The read face under enforcement | 17 | 239 | 163 | passing | open |
+| 6 — Sync and replicas | 7 | 51 | 46 | passing | closed |
+| 7 — Memory | 6 | 22 | 22 | passing | closed |
+| 8 — Accountability | 5 | 40 | 20 | open | open |
+| 9 — Visibility | 6 | 22 | 3 | open | open |
+| 10 — Cadence and the operator plane | 11 | 44 | 3 | open | open |
+| 11 — The derive tier | 7 | 78 | 55 | passing | open |
+| 12 — The console | 11 | 30 | 0 | absent | open |
+| 13 — Disclosure | 5 | 21 | 4 | open | open |
+| 14 — Assurance | 7 | 119 | 52 | open | open |
 
 Unscheduled operations: 10.
 
@@ -134,7 +136,7 @@ Unscheduled operations: 10.
 | `assurance.release.dirty-tree` | `tools/ci/tests/integration/release.rs::a_tree_differing_from_head_is_refused_before_the_gate` | performed |
 | `assurance.release.gate-failed` | `tools/ci/tests/integration/release.rs::a_failing_gate_stage_is_refused_and_creates_no_tag` | performed |
 | `assurance.release.off-branch` | `tools/ci/tests/integration/release.rs::a_head_the_default_branch_does_not_reach_is_refused` | performed |
-| `assurance.release.version` | `tools/ci/tests/integration/release.rs::the_version_counts_passing_milestones_and_earlier_tags_of_that_count` | performed |
+| `assurance.release.version` | `tools/ci/tests/integration/release.rs::the_version_counts_closed_milestones_and_earlier_tags_of_that_count` | performed |
 | `assurance.release.version-regressed` | `tools/ci/tests/integration/release.rs::a_milestone_reopening_below_the_last_tag_is_refused` | performed |
 | `assurance.release.workspace-version` | `tools/ci/tests/integration/release.rs::a_workspace_version_other_than_the_computed_one_is_refused` | performed |
 | `assurance.scope-claim.unnamed-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_claim_resting_on_an_unnamed_component_is_refused` | performed |
@@ -496,6 +498,7 @@ Unscheduled operations: 10.
 | `corpus.render.card` | `tools/spec/tests/integration/readable.rs::state_writes_a_card_per_contract_and_a_stale_card_is_a_render_finding` | performed |
 | `corpus.state.acceptance` | `spec/pins.toml` | performed |
 | `corpus.state.acceptance-first` | `spec/pins.toml` | performed |
+| `corpus.state.closed` | `spec/pins.toml` | performed |
 | `corpus.state.deferred-depth` | `spec/pins.toml` | performed |
 | `corpus.state.lean-tag` | `spec/pins.toml` | performed |
 | `corpus.state.roadmap` | `spec/pins.toml` | performed |
