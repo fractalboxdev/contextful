@@ -57,10 +57,12 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
 - `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes under one signed root once it holds its chain header's segment size, 4096 entries by default.
 - `chain-header` — `header.json`, written before a new chain's first entry, fixes the chain's format, its digest, `sha256` or `blake3`, and a segment size of at most 65536 entries; the first v1 entry's `prev_hash` is the canonical header's digest.
   *A-disclosure*
-- `header-unsupported` — Opening or verifying a chain whose header names another format or digest, or a segment size outside {{disclosure.record.chain-header}}, raises `AuditHeaderUnsupported`.
+- `header-unsupported` — Opening or verifying a chain whose header names another format or digest, a segment size outside {{disclosure.record.chain-header}}, or any field beyond `format`, `digest` and `segment_entries` raises `AuditHeaderUnsupported`.
   *because a verifier guessing at a digest it does not implement checks nothing*
 - `entry-format` — A v1 entry carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.
   *A-disclosure*
+- `entry-fields` — Verifying a chain holding an entry with any field beyond `format`, `seq`, `prev_hash`, `attributes` and `entry_hash` raises {{disclosure.attest.broken-chain}} at that entry.
+  *because the entry digest covers only `format`, `seq`, `prev_hash` and `attributes`, so without this an injected field verifies clean*
 - `inexact-integer` — Appending a v1 entry whose attributes hold an integer beyond ±(2^53 − 1) raises `AuditAttributeInexact` and appends nothing; verifying a chain holding such an entry raises {{disclosure.attest.broken-chain}}.
   *because RFC 8785 writes every number as an IEEE 754 double, so integers past 2^53 share a digest and an edit between two of them verifies*
 - `v0-chain` — A chain holding entries without `header.json` is a v0 chain: it verifies and appends under v0 rules, each entry digest over `seq`, `prev_hash` and attributes and each root its segment's last entry digest.
@@ -251,7 +253,7 @@ One v1 entry, its `prev_hash` the header's digest:
 {
   "format": 1,
   "seq": 1,
-  "prev_hash": "sha256:5c2e...",
+  "prev_hash": "sha256:a36fc99c...",
   "attributes": {
     "contextful.query.hash": "hmac-sha256:9f2c...",
     "contextful.subject.on_behalf_of": "user://ada",
@@ -270,7 +272,7 @@ A v1 root, and an inclusion proof of one entry:
 {
   "format": 1,
   "alg": "Ed25519",
-  "header": "sha256:5c2e...",
+  "header": "sha256:a36fc99c...",
   "segment": 1,
   "root": "sha256:a4f0...",
   "count": 4096,

@@ -1075,9 +1075,10 @@ fn a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link() {
     assert_eq!(AUDIT_SEGMENT_MAX, 65_536);
 }
 
-/// Opening or verifying a chain whose header names another format or digest, or a segment size outside
-/// {{disclosure.record.chain-header}}, raises `AuditHeaderUnsupported`.
-// spec: disclosure.record.header-unsupported@437479de
+/// Opening or verifying a chain whose header names another format or digest, a segment size outside
+/// {{disclosure.record.chain-header}}, or any field beyond `format`, `digest` and `segment_entries` raises
+/// `AuditHeaderUnsupported`.
+// spec: disclosure.record.header-unsupported@9994b8a3
 #[test]
 fn a_header_naming_another_format_digest_or_segment_size_raises_audit_header_unsupported() {
     let unsupported = |r: Result<_, AuditError>| matches!(r, Err(AuditError::AuditHeaderUnsupported(_)));
@@ -1086,6 +1087,7 @@ fn a_header_naming_another_format_digest_or_segment_size_raises_audit_header_uns
         r#"{"format":1,"digest":"md5","segment_entries":4096}"#.to_string(),
         r#"{"format":1,"digest":"sha256","segment_entries":0}"#.to_string(),
         format!(r#"{{"format":1,"digest":"sha256","segment_entries":{}}}"#, AUDIT_SEGMENT_MAX + 1),
+        r#"{"format":1,"digest":"sha256","segment_entries":4096,"digest_note":"md5"}"#.to_string(),
         "sha256".to_string(),
     ] {
         let dir = tempfile::tempdir().unwrap();
@@ -1098,6 +1100,49 @@ fn a_header_naming_another_format_digest_or_segment_size_raises_audit_header_uns
         assert!(unsupported(AuditLog::open_with(dir.path(), key(), with_header(header(DigestAlgorithm::Sha256, size))).map(|_| ())));
         assert!(!dir.path().join("header.json").exists(), "a refused header is never written");
     }
+
+    // A written chain whose header gains a field outside its digest.
+    let dir = log_of(3);
+    let path = dir.path().join("header.json");
+    let mut header: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    header["digest_note"] = json!("md5");
+    fs::write(&path, header.to_string()).unwrap();
+    assert!(unsupported(verify(dir.path()).map(|_| ())));
+    assert!(unsupported(verify_signed(dir.path(), &SignerKey::of(&key())).map(|_| ())));
+    assert!(unsupported(AuditLog::open(dir.path(), key()).map(|_| ())));
+}
+
+/// Verifying a chain holding an entry with any field beyond `format`, `seq`, `prev_hash`, `attributes` and
+/// `entry_hash` raises {{disclosure.attest.broken-chain}} at that entry.
+// spec: disclosure.record.entry-fields@ef77f599
+#[test]
+fn an_entry_carrying_a_field_outside_its_digest_breaks_the_chain_at_that_entry() {
+    let inject = |path: &Path, at: usize| {
+        let text = fs::read_to_string(path).unwrap();
+        let mut rows: Vec<Value> = text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        rows[at]["injected"] = json!("x");
+        fs::write(path, rows.iter().map(|r| r.to_string() + "\n").collect::<String>()).unwrap();
+    };
+
+    // A v1 chain.
+    let dir = log_of(3);
+    inject(&segment(dir.path(), 1), 1);
+    assert_eq!(broken_at(verify(dir.path())), 2);
+    assert_eq!(broken_at(verify_signed(dir.path(), &SignerKey::of(&key()))), 2);
+
+    // A v1 chain, the field on the last entry of a signed segment.
+    let dir = tempfile::tempdir().unwrap();
+    AuditLog::open(dir.path(), key()).unwrap().append_all((0..AUDIT_SEGMENT_ENTRIES).map(|i| attrs("agent://a", i)).collect()).unwrap();
+    inject(&segment(dir.path(), 1), AUDIT_SEGMENT_ENTRIES as usize - 1);
+    assert_eq!(broken_at(verify_signed(dir.path(), &SignerKey::of(&key()))), AUDIT_SEGMENT_ENTRIES);
+
+    // A v0 chain, whose entries carry no `format`, reads clean until a field is injected.
+    let dir = tempfile::tempdir().unwrap();
+    v0_chain(dir.path(), 3);
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 3);
+    inject(&segment(dir.path(), 1), 0);
+    assert_eq!(broken_at(verify(dir.path())), 1);
+    assert_eq!(broken_at(verify_signed(dir.path(), &SignerKey::of(&key()))), 1);
 }
 
 /// A chain holding entries without `header.json` is a v0 chain: it verifies and appends under v0 rules, each entry
