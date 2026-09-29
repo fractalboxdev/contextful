@@ -187,6 +187,10 @@ columns = ["claim_id", "subject", "predicate", "object", "scope", "tier", "confi
     assert!(ok(&write("Lee", "2025-03-01T00:00:00Z", "evt-2")).contains("retired 1"));
     // The same observation retried lands nothing.
     assert!(ok(&write("Dana", "2025-01-01T00:00:00Z", "evt-1")).contains("nothing landed"));
+    // An observation before Lee's contradicts a later fact and refuses.
+    let backfill = write("Kim", "2025-02-01T00:00:00Z", "evt-4");
+    assert!(!backfill.status.success());
+    assert!(String::from_utf8_lossy(&backfill.stderr).contains("MemoryObservationOutOfOrder"), "{backfill:?}");
 
     let reader = mint("agent://research-loop", &["read"]);
     let recall = |arguments: Value| column(&ask(&cf, &p, &public, &reader, "memory.recall", arguments), "object");

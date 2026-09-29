@@ -6,6 +6,7 @@ use super::fault::ReadFault;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::declare::Shape;
 use contextful_core::memory::recall::gate;
+use contextful_core::memory::revise::Tier;
 use contextful_core::memory::MemoryError;
 use contextful_core::read::respond::{Cell, Response};
 use contextful_core::read::Refusal;
@@ -16,6 +17,9 @@ use contextful_core::time::Instant;
 use contextful_policy::enforce::session::Session;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
+
+/// Claims read per page when no row ceiling bounds the recall.
+const UNBOUNDED_PAGE: u64 = 256;
 
 /// What a keyed recall asks for.
 #[derive(Debug, Clone)]
@@ -44,6 +48,27 @@ impl RecallRequest {
     pub fn bounds(&self) -> Bounds {
         Bounds { as_of: self.as_of_ingest, valid_as_of: None }
     }
+
+    /// The `contextful.bounds` echo: each supplied bound under its argument name, written
+    /// as `store.bound-time.echo` writes an instant, beside an `inclusive` map keyed the
+    /// same way (`read.recall.keyed-clocks`).
+    pub fn echo(&self) -> Option<Value> {
+        let supplied: Vec<(&str, Bound)> = [("as_of_ingest", self.as_of_ingest), ("observed_at", self.observed_at)]
+            .into_iter()
+            .filter_map(|(k, b)| b.map(|b| (k, b)))
+            .collect();
+        if supplied.is_empty() {
+            return None;
+        }
+        let mut echo = Map::new();
+        let mut inclusive = Map::new();
+        for (k, b) in supplied {
+            echo.insert(k.to_string(), json!(b.at.to_rfc3339_nanos()));
+            inclusive.insert(k.to_string(), json!(b.inclusive));
+        }
+        echo.insert("inclusive".to_string(), Value::Object(inclusive));
+        Some(Value::Object(echo))
+    }
 }
 
 impl Face {
@@ -63,30 +88,45 @@ impl Face {
         let columns: Vec<String> = Shape::Facts.canonical_columns().iter().map(|c| c.to_string()).collect();
         let observed = request.observed_at.unwrap_or(Bound { at: request.anchor, inclusive: true });
         let engine = self.pool.engine(session)?;
+        let touched = BTreeSet::from([table.to_string()]);
+        let ceiling = self.ceiling(session, &touched, request.limit, None);
+        // One claim past the ceiling marks the response truncated; gating stops there
+        // (`read.recall.keyed-window`).
+        let wanted = Response::fetch_count(Some(ceiling));
+        let page = wanted.unwrap_or(UNBOUNDED_PAGE);
         let mut suppressed: BTreeMap<&'static str, u64> = BTreeMap::new();
         let mut kept: Vec<Vec<Value>> = Vec::new();
+        let full = |kept: &Vec<Vec<Value>>| wanted.is_some_and(|w| kept.len() as u64 >= w);
         // A table no claim has landed in registers over the injected columns alone.
         if self.store.try_schema(table)?.is_some() {
-            let (sql, parameters) = keyed_sql(relation.name(), &columns, &request.subject, observed);
-            let (_, rows) = engine.run(&sql, &parameters, None)?;
             let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();
             let evidence_at = columns.iter().position(|c| c == "evidence").expect("a claim carries evidence");
-            for row in rows {
-                let evidence = match &row[evidence_at] {
-                    Cell::Text(t) => Some(t.as_str()),
-                    _ => None,
-                };
-                match gate(evidence, &memory_tables, |r| self.evidence_read(&engine, session, r)) {
-                    Ok(()) => kept.push(row.iter().map(Cell::to_json).collect()),
-                    Err(e) => *suppressed.entry(e.identifier()).or_insert(0) += 1,
+            let mut offset = 0u64;
+            loop {
+                let (sql, parameters) = keyed_sql(relation.name(), &columns, &request.subject, observed, page, offset);
+                let (_, rows) = engine.run(&sql, &parameters, None)?;
+                let read = rows.len() as u64;
+                for row in rows {
+                    if full(&kept) {
+                        break;
+                    }
+                    let evidence = match &row[evidence_at] {
+                        Cell::Text(t) => Some(t.as_str()),
+                        _ => None,
+                    };
+                    match gate(evidence, &memory_tables, |r| self.evidence_read(&engine, session, r)) {
+                        Ok(()) => kept.push(row.iter().map(Cell::to_json).collect()),
+                        Err(e) => *suppressed.entry(e.identifier()).or_insert(0) += 1,
+                    }
+                }
+                offset += page;
+                if read < page || full(&kept) {
+                    break;
                 }
             }
         }
-        let touched = BTreeSet::from([table.to_string()]);
-        let ceiling = self.ceiling(session, &touched, request.limit, None);
         let mut response = Response::cut(columns, kept, Some(ceiling));
-        let echo = Bounds { as_of: request.as_of_ingest, valid_as_of: request.observed_at };
-        if let Some(b) = echo.echo() {
+        if let Some(b) = request.echo() {
             response = response.with_block("bounds", b);
         }
         response = self.restrict(&engine, session, [table], response)?;
@@ -103,15 +143,17 @@ impl Face {
 /// validity comparison `store.bound-time.valid-as-of` makes, and no `superseded_by`
 /// filter; ordered by tier, `curated` first, then `valid_from` newest first, then
 /// `claim_id`.
-fn keyed_sql(relation: &str, columns: &[String], subject: &str, observed: Bound) -> (String, Bindings) {
+fn keyed_sql(relation: &str, columns: &[String], subject: &str, observed: Bound, limit: u64, offset: u64) -> (String, Bindings) {
     // mirrors: store.bound-time.valid-as-of
     // An exclusive bound asks about the instant just before it: a claim starting at the
     // bound is not yet valid, and a claim ending at it still is.
     let (from_cmp, to_cmp) = if observed.inclusive { ("<=", ">") } else { ("<", ">=") };
     let at = |c: &str| format!("TRY_CAST({} AS TIMESTAMPTZ)", ident(c));
+    // The highest standing ranks 0; a tier name the enum does not hold ranks last.
+    let ranks: String = Tier::ALL.iter().rev().enumerate().map(|(i, t)| format!("WHEN '{}' THEN {i} ", t.name())).collect();
     let sql = format!(
         "SELECT {} FROM {} WHERE {} = ? AND {} {from_cmp} ? AND ({} IS NULL OR {} {to_cmp} ?) \
-         ORDER BY CASE {} WHEN 'curated' THEN 0 WHEN 'derived' THEN 1 WHEN 'researched' THEN 2 ELSE 3 END, {} DESC, {}",
+         ORDER BY CASE {} {ranks}ELSE {} END, {} DESC, {} LIMIT {limit} OFFSET {offset}",
         columns.iter().map(|c| ident(c)).collect::<Vec<_>>().join(", "),
         ident(relation),
         ident("subject"),
@@ -119,6 +161,7 @@ fn keyed_sql(relation: &str, columns: &[String], subject: &str, observed: Bound)
         ident("valid_to"),
         at("valid_to"),
         ident("tier"),
+        Tier::ALL.len(),
         at("valid_from"),
         ident("claim_id"),
     );

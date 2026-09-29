@@ -428,7 +428,11 @@ fn memory_recall_answers_keyed_over_the_tool_protocol() {
     assert_eq!(objects(&now), [json!("Lee")], "{now}");
     let unknown = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", "as_of_ingest": "2030-01-01T12:00:00Z" }));
     assert_eq!(rows(&unknown), &json!([]), "{unknown}");
-    assert_eq!(echoed(&unknown), &json!({ "as_of": "2030-01-01T12:00:00.000000000Z", "inclusive": true }));
+    // The echo names the tool's own arguments, so a client passes it back unchanged.
+    let echo = json!({ "as_of_ingest": "2030-01-01T12:00:00.000000000Z", "inclusive": { "as_of_ingest": true } });
+    assert_eq!(echoed(&unknown), &echo);
+    let replayed = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", "as_of_ingest": echo["as_of_ingest"] }));
+    assert_eq!(echoed(&replayed), &echo, "{replayed}");
     for bound in ["as_of", "valid_as_of"] {
         let refused = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", bound: "2030-02-01" }));
         assert_eq!(refused["error"]["code"], json!(-32602), "{refused}");

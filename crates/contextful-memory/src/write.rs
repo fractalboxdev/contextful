@@ -4,7 +4,7 @@ use super::claims::{read_claims, require, Boundary, Landing, Writer};
 use super::MemoryFault;
 use contextful_context::read::Face;
 use contextful_core::grant::Action;
-use contextful_core::memory::revise::{claim_id, direct_write, keyed_claim_id, revise, tier, Claim, WritePath};
+use contextful_core::memory::revise::{claim_id, direct_write, keyed_claim_id, observed_order, revise, tier, Claim, WritePath};
 use contextful_core::memory::synthesize::{validate_claim, CandidateClaim};
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::lay_out::NodeId;
@@ -95,6 +95,7 @@ pub fn write_observed(
         grant_id: writer.grant_id.clone(),
         agent: writer.agent.clone(),
     };
+    observed_order(&claim, &live)?;
     let revision = revise(claim, &live);
     let mut writes = revision.retired.clone();
     writes.extend(revision.landed.iter().cloned());

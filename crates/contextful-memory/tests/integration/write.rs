@@ -142,3 +142,30 @@ fn a_dedup_key_seeds_the_claim_id_and_a_retry_lands_nothing() {
         [("Dana".to_string(), None), ("Dana".to_string(), Some("2030-02-01T00:00:00Z".to_string())), ("Lee".to_string(), Some("2030-03-01T00:00:00Z".to_string()))]
     );
 }
+
+/// A direct write whose `valid_from` precedes the `valid_from` of an unsuperseded claim of its subject, predicate and scope with another object raises `MemoryObservationOutOfOrder`, and nothing lands.
+// spec: read.revise.observed-order@abfadc9e
+#[test]
+fn an_observation_before_a_live_contradicting_prior_refuses() {
+    use contextful_memory::write::write_observed;
+    let f = Fixture::new();
+    let writer = f.writer();
+    let node = NodeId::parse("memory-a").unwrap();
+    let write = |object: &str, when: &str, key: &str, now: &str| {
+        write_observed(&f.face, &writer, "memory/facts", candidate(object), &keyed(when, Some(key)), &node, at(now), &super::synthesize::admit)
+    };
+    write("Lee", "2030-03-01T00:00:00Z", "evt-2", "2030-01-11T00:00:00Z").unwrap();
+    match write("Dana", "2030-01-01T00:00:00Z", "evt-1", "2030-01-12T00:00:00Z") {
+        Err(MemoryFault::Memory(MemoryError::ObservationOutOfOrder(why))) => assert!(why.contains("2030-03-01"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    let s = f.face.session(&writer, &contextful_policy::enforce::session::Request::default(), Default::default()).unwrap();
+    let rows = contextful_memory::claims::read_claims(&f.face, &s, "memory/facts").unwrap();
+    assert!(rows.iter().all(|c| c.valid_to.is_none_or(|end| end >= c.valid_from)), "{rows:?}");
+    assert!(rows.iter().any(|c| c.object == "Lee" && c.valid_to.is_none() && c.superseded_by.is_none()), "{rows:?}");
+    assert!(rows.iter().all(|c| c.object != "Dana"), "{rows:?}");
+    // Kim retires Lee and becomes the live prior a later observation must follow.
+    write("Kim", "2030-04-01T00:00:00Z", "evt-3", "2030-01-13T00:00:00Z").unwrap();
+    assert!(write("Dana", "2030-03-15T00:00:00Z", "evt-4", "2030-01-14T00:00:00Z").is_err());
+    assert!(write("Dana", "2030-05-01T00:00:00Z", "evt-5", "2030-01-15T00:00:00Z").is_ok());
+}

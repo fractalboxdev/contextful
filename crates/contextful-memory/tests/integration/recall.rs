@@ -87,8 +87,8 @@ fn a_keyed_recall_returns_the_subjects_claims_valid_at_the_observed_instant() {
     assert_eq!(objects("acme labs", "2030-02-01T00:00:00Z"), [json!("Kim")]);
 }
 
-/// `as_of_ingest` bounds the read as {{store.bound-time.as-of}} does. An absent `observed_at` reads at the call's instant, an absent `as_of_ingest` at the latest committed state, and each supplied bound echoes as {{store.bound-time.echo}}.
-// spec: read.recall.keyed-clocks@ce1a45ee
+/// `as_of_ingest` bounds the read as {{store.bound-time.as-of}} does; absent, the read takes the latest committed state, and an absent `observed_at` the call's instant. `contextful.bounds` echoes each supplied bound under its argument name, with a per-name `inclusive` map.
+// spec: read.recall.keyed-clocks@edef8aaa
 #[test]
 fn as_of_ingest_reads_what_was_known_then() {
     let f = Fixture::new();
@@ -103,7 +103,24 @@ fn as_of_ingest_reads_what_was_known_then() {
     assert_eq!(column(&known, "object"), [json!("Dana")]);
     assert_eq!(
         known.blocks["contextful.bounds"],
-        json!({ "as_of": "2030-01-11T12:00:00.000000000Z", "valid_as_of": "2030-04-01T00:00:00.000000000Z", "inclusive": true })
+        json!({
+            "as_of_ingest": "2030-01-11T12:00:00.000000000Z",
+            "observed_at": "2030-04-01T00:00:00.000000000Z",
+            "inclusive": { "as_of_ingest": true, "observed_at": true }
+        })
+    );
+    // A date literal reads exclusive; each bound echoes its own inclusivity.
+    let dated = RecallRequest {
+        as_of_ingest: Some(Bound::parse("2030-01-11T12:00:00Z").unwrap()),
+        ..keyed("memory/facts", "acme", Some("2030-03-31"))
+    };
+    assert_eq!(
+        recall(&f, &r, &dated).unwrap().blocks["contextful.bounds"],
+        json!({
+            "as_of_ingest": "2030-01-11T12:00:00.000000000Z",
+            "observed_at": "2030-04-01T00:00:00.000000000Z",
+            "inclusive": { "as_of_ingest": true, "observed_at": false }
+        })
     );
     // No observed instant: the call's own, where Lee holds; no bound supplied, no echo.
     let now = recall(&f, &r, &keyed("memory/facts", "acme", None)).unwrap();
@@ -139,6 +156,52 @@ fn a_keyed_claim_passes_the_evidence_gate() {
     assert!(!serde_json::to_string(&withheld.to_json()).unwrap().contains("Dana"));
     let seen = recall(&f, &reader(&f), &keyed("memory/facts", "acme", Some("2030-02-01T00:00:00Z"))).unwrap();
     assert_eq!(seen.blocks["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"], json!(0));
+}
+
+/// The keyed read gates claims in order and stops once it keeps one claim past the row ceiling, so the suppression count covers the claims gated before that stop.
+// spec: read.recall.keyed-window@fccd87ec
+#[test]
+fn the_keyed_read_stops_gating_one_claim_past_the_ceiling() {
+    let f = Fixture::new();
+    let writer = history(&f);
+    let w = Writer::of(&writer);
+    let node = NodeId::parse("memory-a").unwrap();
+    let claim = |id: &str, object: &str, tier: Tier, from: &str, table: &str| Claim {
+        claim_id: id.into(),
+        subject: "acme".into(),
+        predicate: "ceo".into(),
+        object: object.into(),
+        scope: None,
+        tier,
+        confidence: 0.6,
+        valid_from: at(from),
+        valid_to: None,
+        evidence: vec![EvidenceRef { table: table.into(), run: "run-0001".into(), seq: 0 }],
+        superseded_by: None,
+        grant_id: w.grant_id.clone(),
+        agent: w.agent.clone(),
+    };
+    // Two unresolvable claims rank ahead of Dana, one behind every resolvable claim.
+    let claims = [
+        claim("c-x1", "Xan", Tier::Curated, "2030-01-30T00:00:00Z", "nowhere/notes"),
+        claim("c-x2", "Yul", Tier::Curated, "2030-01-29T00:00:00Z", "nowhere/notes"),
+        claim("c-b", "Ola", Tier::Derived, "2030-01-20T00:00:00Z", "research/notes"),
+        claim("c-z", "Zed", Tier::Researched, "2030-01-20T00:00:00Z", "nowhere/notes"),
+    ];
+    Landing { node: &node, at: at("2030-01-13T00:00:00Z"), writer: &w, run_id: "memory-mixed".into(), boundary: &super::synthesize::admit, taint: None }
+        .commit(&f.face, "memory/facts", &claims, &[])
+        .unwrap();
+    let r = reader(&f);
+    let unresolved = |resp: &Response| resp.blocks["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"].clone();
+    // The first page holds two suppressed claims; the read pages on until it keeps two.
+    let one = recall(&f, &r, &RecallRequest { limit: Some(1), ..keyed("memory/facts", "acme", Some("2030-02-01T00:00:00Z")) }).unwrap();
+    assert_eq!(column(&one, "object"), [json!("Dana")]);
+    assert!(one.truncated);
+    assert_eq!(unresolved(&one), json!(2));
+    let all = recall(&f, &r, &keyed("memory/facts", "acme", Some("2030-02-01T00:00:00Z"))).unwrap();
+    assert_eq!(column(&all, "object"), [json!("Dana"), json!("Ola")]);
+    assert!(!all.truncated);
+    assert_eq!(unresolved(&all), json!(3));
 }
 
 /// Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.

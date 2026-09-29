@@ -22,6 +22,9 @@ pub enum Tier {
 }
 
 impl Tier {
+    /// Every tier, lowest standing first; a statement ranking tiers reads its order here.
+    pub const ALL: [Tier; 3] = [Tier::Researched, Tier::Derived, Tier::Curated];
+
     pub fn name(self) -> &'static str {
         match self {
             Tier::Researched => "researched",
@@ -121,6 +124,25 @@ impl Claim {
     /// Whether the claim is live at `at`: not superseded, and its validity not ended.
     pub fn live_at(&self, at: Instant) -> bool {
         self.superseded_by.is_none() && self.valid_to.is_none_or(|end| end > at)
+    }
+}
+
+/// A claim observed before a live, unsuperseded claim of its line with another object
+/// refuses: retiring that later prior at the earlier instant would invert its interval
+/// (`read.revise.observed-order`).
+pub fn observed_order(new: &Claim, stored: &[Claim]) -> Result<(), MemoryError> {
+    match stored.iter().find(|p| {
+        p.superseded_by.is_none() && p.same_line(new) && p.object != new.object && p.valid_from > new.valid_from
+    }) {
+        Some(later) => Err(MemoryError::ObservationOutOfOrder(format!(
+            "`{}` {} is observed at {}, before `{}` holds from {}",
+            new.subject,
+            new.predicate,
+            new.valid_from.to_rfc3339(),
+            later.object,
+            later.valid_from.to_rfc3339()
+        ))),
+        None => Ok(()),
     }
 }
 
