@@ -2,7 +2,7 @@
 //! whose values are templates hydrated per read (`connector.source.http-headers`).
 
 use crate::decode::{decode, workbook, Format};
-use contextful_core::connector::attach::{endpoint, scrub, Allowlist};
+use contextful_core::connector::attach::{endpoint, scrub, scrub_text, Allowlist};
 use contextful_core::connector::meter::LimiterDeclaration;
 use contextful_core::connector::probe::ScopeProbe;
 use contextful_core::connector::reference::{check_material, Template};
@@ -491,6 +491,13 @@ impl HttpSource {
         self
     }
 
+    /// Whether one pull walks every page: under a watermark, and under next-URL or
+    /// Link-header pagination, whose token is a whole URL whose query may carry a
+    /// credential the journal would hold unscrubbed (`connector.source.http-url-walk`).
+    fn walks_whole(&self) -> bool {
+        self.watermarked || matches!(self.config.pagination, Pagination::NextUrl { .. } | Pagination::LinkHeader)
+    }
+
     /// Hydrate every header just in time, a template holding a reference as sensitive material.
     fn headers(&self, idempotency_key: &str) -> Result<Vec<(String, HeaderValue)>, Failure> {
         let mut out = vec![("Idempotency-Key".to_string(), HeaderValue::Plain(idempotency_key.to_string()))];
@@ -532,7 +539,7 @@ impl HttpSource {
 
     /// The URL of the page `token` names; `None` names the walk's first page.
     fn page_url(&self, base: &Url, token: Option<&str>) -> Result<Url, Failure> {
-        let unreadable = |why: &str| Failure::deterministic(FailureTag::Config, format!("the page position `{}` {why}", token.unwrap_or_default()));
+        let unreadable = |why: &str| Failure::deterministic(FailureTag::Config, format!("the page position `{}` {why}", scrub_text(token.unwrap_or_default())));
         Ok(match (&self.config.pagination, token) {
             (Pagination::Page { param, start }, _) => {
                 let page = match token {
@@ -725,13 +732,13 @@ fn next_link(header: &str) -> Option<String> {
 impl Source for HttpSource {
     /// One pull reads one page and carries the next page's token as its position, so a
     /// walk resumes at the page it stopped on; the last page's position names the start.
-    /// A watermarked source walks every page in one pull.
+    /// A watermarked source, and one following next URLs, walks every page in one pull.
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
         if cancel.requested() {
             return Err(Failure::canceled("stopped ahead of the page request"));
         }
         self.open()?;
-        let pulled = if self.watermarked {
+        let pulled = if self.walks_whole() {
             serde_json::json!({ "rows": self.walk(request, cancel)?, "more": false })
         } else {
             let (rows, next) = self.read_page(request)?;

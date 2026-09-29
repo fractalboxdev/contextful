@@ -405,9 +405,9 @@ fn fire_with(dir: &Path, run: &str, env: &[(&str, &str)]) -> Output {
     cmd.output().unwrap()
 }
 
-/// The generic HTTP source declares its quota as a `limiter` table of quota, class and usage headers. The project
-/// manifest binds each quota under `[limiters.<quota>]` with endpoint, token and permits.
-// spec: connector.source.http-limiter@f213c855
+/// The generic HTTP source reads its limiter declaration from a `limiter` config table, and the project manifest holds
+/// each limiter binding under `[limiters.<quota>]`.
+// spec: connector.source.http-limiter@b6550a91
 #[test]
 fn a_bound_quota_meters_every_page_of_a_run() {
     let vendor = Vendor::start(|t| match t {

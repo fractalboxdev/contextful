@@ -368,9 +368,7 @@ fn pulled(s: &mut contextful_connectors::http::HttpSource, position: Option<Valu
     Ok((ids(&rows), v.get("cursor").cloned(), v["more"].as_bool().unwrap_or(false)))
 }
 
-/// A native source reads a table from a position, returning batches each paired with the position after it. A source
-/// unable to bound a half-open chunk range falls back to the unbounded read.
-// spec: connector.export.native-read@8775e13d
+/// One pull reads one page and pairs it with the position of the page after it.
 #[test]
 fn one_pull_reads_one_page_and_carries_the_next_as_its_position() {
     let vendor = Server::start(|r| match r.query("after").as_deref() {
@@ -400,9 +398,9 @@ fn one_pull_reads_one_page_and_carries_the_next_as_its_position() {
     assert_eq!(vendor.received("/v1").len(), 5);
 }
 
-/// Without an incremental field, one generic HTTP source pull reads one page and carries the next page's token as
-/// its position. The walk's last page carries a position naming the first page.
-// spec: connector.source.http-page-pull@4ad4cfc2
+/// Under page-number, next-cursor or no pagination and without an incremental field, one generic HTTP source pull
+/// reads one page and carries the next page's token as its position. The walk's last page carries a position naming the first page.
+// spec: connector.source.http-page-pull@8b42240d
 #[test]
 fn a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page() {
     let pages = Server::start(|r| match r.query("p").as_deref() {
@@ -415,6 +413,42 @@ fn a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page() {
     assert_eq!(pulled(&mut p, Some(json!({"next": null}))).unwrap().0, ["p1"], "the next run walks from the first page");
     let asked: Vec<Option<String>> = pages.received("/v1").iter().map(|r| r.query("p")).collect();
     assert_eq!(asked, [Some("1".into()), Some("2".into()), Some("1".into())]);
+}
+
+/// Under next-URL or Link-header pagination, one generic HTTP source pull walks every page, and no position carries
+/// a page URL.
+// spec: connector.source.http-url-walk@ef55a50e
+#[test]
+fn a_next_url_walk_keeps_the_next_urls_query_out_of_every_position() {
+    for (key, value) in [("next_url_path", json!("/next")), ("link_header", json!(true))] {
+        let secret = "SEKRET123";
+        let fail = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let failing = fail.clone();
+        let vendor = Server::start(move |r| match r.path() {
+            "/v1" => Response {
+                status: 200,
+                headers: vec![("Link".into(), format!("</v1/2?access_token={secret}>; rel=\"next\""))],
+                body: format!("{{\"data\":[{{\"id\":\"a\"}}],\"next\":\"/v1/2?access_token={secret}\"}}").into_bytes(),
+            },
+            _ if failing.load(std::sync::atomic::Ordering::SeqCst) => Response::json(400, "{}"),
+            _ => Response::json(200, "{\"data\":[{\"id\":\"b\"}]}"),
+        });
+        let mut config = json!({"endpoint": vendor.url("/v1"), "records": "/data"});
+        config[key] = value.clone();
+        let mut s = source(config.clone(), vec![]);
+        // A page failing mid-walk leaves no pulled bytes behind, and its message carries no query.
+        let f = s.pull(&request(None), &Never).unwrap_err();
+        assert!(!f.message.contains(secret), "{key}: {f}");
+
+        fail.store(false, std::sync::atomic::Ordering::SeqCst);
+        let mut s = source(config, vec![]);
+        let bytes = s.pull(&request(None), &Never).unwrap();
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        assert!(!text.contains(secret), "{key}: {text}");
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!((v["more"].as_bool(), v.get("cursor")), (Some(false), None), "{key}: {text}");
+        assert_eq!(v["rows"].as_array().map(Vec::len), Some(2), "{key}: one pull walks every page");
+    }
 }
 
 /// Under an incremental field, one generic HTTP source pull walks every page from the stored watermark.
@@ -544,9 +578,9 @@ fn an_operator_hook_composes_in_front_of_the_reservation() {
     assert_eq!((seen[0].class.as_deref(), seen[0].run_id.as_deref()), (Some("batch-read"), Some("run-7")));
 }
 
-/// The generic HTTP source declares a `scope_probe` table and runs it once, through its own mediated client,
-/// carrying its first reference-bound header ahead of its first page request.
-// spec: connector.source.http-scope-probe@c909a06d
+/// The generic HTTP source reads its scope probe from a `scope_probe` config table and carries its first
+/// reference-bound header as the bound credential.
+// spec: connector.source.http-scope-probe@09566d74
 #[test]
 fn the_scope_probe_runs_before_the_first_page() {
     let grant = std::sync::Arc::new(std::sync::Mutex::new("items.read"));

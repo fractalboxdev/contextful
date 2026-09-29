@@ -335,12 +335,14 @@ The declared behavior of each source compiled into the engine.
 
 - `http-headers` — The generic HTTP source binds credentials through a `headers` table whose values are templates in the {{connector.reference.value-template}} grammar, hydrated per read.
   *A-connector*
-- `http-page-pull` — Without an incremental field, one generic HTTP source pull reads one page and carries the next page's token as its position. The walk's last page carries a position naming the first page.
+- `http-page-pull` — Under page-number, next-cursor or no pagination and without an incremental field, one generic HTTP source pull reads one page and carries the next page's token as its position. The walk's last page carries a position naming the first page.
   *because a failed walk resumes at the page it stopped on, and the next run walks the whole table again*
+- `http-url-walk` — Under next-URL or Link-header pagination, one generic HTTP source pull walks every page, and no position carries a page URL.
+  *because a next URL's query may carry a credential, and a position lands unscrubbed in the journal*
 - `http-watermark-walk` — Under an incremental field, one generic HTTP source pull walks every page from the stored watermark.
   *because a watermark position carries no page token*
-- `http-limiter` — The generic HTTP source declares its quota as a `limiter` table of quota, class and usage headers. The project manifest binds each quota under `[limiters.<quota>]` with endpoint, token and permits.
-- `http-scope-probe` — The generic HTTP source declares a `scope_probe` table and runs it once, through its own mediated client, carrying its first reference-bound header ahead of its first page request.
+- `http-limiter` — The generic HTTP source reads its {{connector.meter.limiter-declaration}} from a `limiter` config table, and the project manifest holds each {{connector.meter.limiter-binding}} under `[limiters.<quota>]`.
+- `http-scope-probe` — The generic HTTP source reads its {{connector.declare-capability.scope-probe}} from a `scope_probe` config table and carries its first reference-bound header as the bound credential.
 - `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `jsonl`, `csv` or a workbook — and one decoder serves the HTTP, file and object sources. Over HTTP the format is explicit; file sources infer it from the extension.
 - `format-key-mismatch` — A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises `ConnectorFormatKeyRejected` at build.
   *P1*
@@ -471,6 +473,8 @@ The declared behavior of each source compiled into the engine.
 - `drive-oauth-shape` — `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.
 - `drive-origin` — The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
 - `drive-position-owned` — `incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.
+
+unsettled: Does a next-URL walk resume mid-walk through a position holding the URL with every credential-bearing query parameter removed? owner: connector affects: connector.source
 
 unsettled: Does an incremental HTTP pull carry its page token beside the watermark, so a watermarked walk resumes mid-walk rather than from the watermark? owner: connector affects: connector.source
 
