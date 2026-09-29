@@ -1,7 +1,8 @@
 //! An embedding binary: the `contextful` command line with one compiled derive task,
 //! `word-split`, registered before build. Each unit is a `documents` row; the task lands one
 //! `words` row per word, one `stats` row per document, and a marker in `units`.
-//! `WORD_SPLIT_VERSION` sets the task's version, `1` by default.
+//! `WORD_SPLIT_VERSION` sets the task's version, `1` by default; `WORD_SPLIT_SKIP` names,
+//! comma-separated, the content tables the task returns no rows for.
 
 use contextful_core::run::RunError;
 use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Tasks};
@@ -11,6 +12,7 @@ use std::sync::Arc;
 
 struct WordSplit {
     version: String,
+    skip: Vec<String>,
 }
 
 fn row(v: serde_json::Value) -> Row {
@@ -59,14 +61,21 @@ impl DeriveTask for WordSplit {
             "stats".into(),
             vec![row(json!({ "word_count": words.len() as i64 }))],
         );
+        out.retain(|table, _| !self.skip.contains(table));
         Ok(out)
     }
 }
 
 fn main() {
     let version = std::env::var("WORD_SPLIT_VERSION").unwrap_or_else(|_| "1".into());
+    let skip = std::env::var("WORD_SPLIT_SKIP")
+        .unwrap_or_default()
+        .split(',')
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect();
     let mut tasks = Tasks::default();
-    if let Err(e) = tasks.register("word-split", Arc::new(WordSplit { version })) {
+    if let Err(e) = tasks.register("word-split", Arc::new(WordSplit { version, skip })) {
         eprintln!("{e}");
         std::process::exit(1);
     }

@@ -300,12 +300,9 @@ pub fn check_env_name(name: &str) -> Result<(), RunError> {
     }
 }
 
-/// The key every derive output table declares (`run.emit.primary-key`).
-pub const DERIVE_PRIMARY_KEY: [&str; 3] = ["unit_ref", super::emit::DERIVATION_KEY, "cue_seq"];
-
-/// Refuse a derive output table whose key is not [`DERIVE_PRIMARY_KEY`], or that names the
-/// reserved `kind` column (`run.emit.primary-key`, `run.emit.reserved-discriminator`).
-pub fn check_output_table(table: &crate::store::declare::TableDecl) -> Result<(), RunError> {
+/// Refuse a derive table naming the reserved `kind` column in its key, `order_by`,
+/// `cluster_by` or `partition_by` (`run.emit.reserved-discriminator`).
+pub fn check_reserved_discriminator(table: &crate::store::declare::TableDecl) -> Result<(), RunError> {
     let named = table.primary_key().iter().chain(table.order_by.iter()).chain(table.cluster_by()).chain(table.partition_by());
     if named.into_iter().any(|c| c == super::emit::KIND) {
         return Err(RunError::DeriveReservedDiscriminator(format!(
@@ -313,6 +310,16 @@ pub fn check_output_table(table: &crate::store::declare::TableDecl) -> Result<()
             table.name
         )));
     }
+    Ok(())
+}
+
+/// The key every derive output table declares (`run.emit.primary-key`).
+pub const DERIVE_PRIMARY_KEY: [&str; 3] = ["unit_ref", super::emit::DERIVATION_KEY, "cue_seq"];
+
+/// Refuse a derive output table whose key is not [`DERIVE_PRIMARY_KEY`], or that names the
+/// reserved `kind` column (`run.emit.primary-key`, `run.emit.reserved-discriminator`).
+pub fn check_output_table(table: &crate::store::declare::TableDecl) -> Result<(), RunError> {
+    check_reserved_discriminator(table)?;
     if table.primary_key() != DERIVE_PRIMARY_KEY {
         return Err(RunError::DerivePrimaryKeyMissing(format!(
             "derive table `{}` declares `primary_key = {:?}`; a derive table keys on [\"unit_ref\", \"derivation_key\", \"cue_seq\"]",

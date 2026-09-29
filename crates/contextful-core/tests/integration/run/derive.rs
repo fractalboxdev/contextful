@@ -439,6 +439,21 @@ fn a_derive_table_keys_on_unit_derivation_and_sequence() {
 fn a_derive_table_naming_kind_refuses() {
     let t = TableDecl { primary_key: Some(DERIVE_PRIMARY_KEY.map(String::from).to_vec()), cluster_by: Some(vec!["kind".into()]), ..TableDecl::named("t") };
     assert!(matches!(check_output_table(&t), Err(RunError::DeriveReservedDiscriminator(_))));
+    // A host content table refuses `kind` wherever it declares a column, as an output table does.
+    let content = |pk: &[&str]| TableDecl { primary_key: Some(pk.iter().map(|s| s.to_string()).collect()), ..TableDecl::named("words") };
+    let kinded = [
+        content(&["unit_ref", "derivation_key", "kind"]),
+        TableDecl { cluster_by: Some(vec!["kind".into()]), ..content(&["unit_ref", "derivation_key"]) },
+        TableDecl { order_by: Some("kind".into()), ..content(&["unit_ref", "derivation_key"]) },
+        TableDecl { partition_by: Some(vec!["kind".into()]), ..content(&["unit_ref", "derivation_key"]) },
+    ];
+    for c in &kinded {
+        assert!(matches!(check_output_table(c), Err(RunError::DeriveReservedDiscriminator(_))), "{c:?}");
+        assert!(matches!(check_content_table(c), Err(RunError::DeriveReservedDiscriminator(_))), "{c:?}");
+        let task = registered().get("split").unwrap();
+        let tables = [c.clone(), TableDecl { name: "units".into(), ..t.clone() }];
+        assert!(matches!(check_host_tables("doc-text", "split", task.as_ref(), &tables), Err(RunError::DeriveReservedDiscriminator(_))), "{c:?}");
+    }
 }
 
 /// SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.

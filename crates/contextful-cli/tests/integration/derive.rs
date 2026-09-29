@@ -124,20 +124,21 @@ fn a_failure_before_the_marker_re_runs_the_unit_and_its_rows_collapse_by_key() {
     assert!(!failed.status.success() && err.contains("split-1.split_units"), "the marker table's landing fails: {err}");
     std::fs::remove_file(&blocked).unwrap();
     let count = |t: &str| select(p, &format!("SELECT count(*) AS n FROM \"{t}\""))[0][0].clone();
-    assert_eq!((count("split_words"), count("split_stats")), ("3".into(), "2".into()), "the content tables landed first");
+    // `d3` derives no word: each content table holds its `empty` marker.
+    assert_eq!((count("split_words"), count("split_stats")), ("4".into(), "3".into()), "the content tables landed first");
     assert_eq!(count("split_units"), "0", "no marker landed");
 
     // The next fire derives every unit again; its content rows land under the same keys.
     ok(&fire(&host, p, "split-2", "2030-01-01T02:00:00Z", &[]));
-    assert_eq!((count("split_words"), count("split_stats"), count("split_units")), ("3".into(), "2".into(), "3".into()));
+    assert_eq!((count("split_words"), count("split_stats"), count("split_units")), ("4".into(), "3".into(), "3".into()));
     let statuses = select(p, "SELECT unit_ref, unit_status, task_version FROM \"split_units\" ORDER BY unit_ref");
     assert_eq!(statuses, [["d1", "ok", "1"], ["d2", "ok", "1"], ["d3", "empty", "1"]]);
     let words = select(p, "SELECT unit_ref, word, kind FROM \"split_words\" ORDER BY unit_ref, word_seq");
-    assert_eq!(words, [["d1", "alpha", "passage"], ["d1", "beta", "passage"], ["d2", "gamma", "passage"]]);
+    assert_eq!(words, [["d1", "alpha", "passage"], ["d1", "beta", "passage"], ["d2", "gamma", "passage"], ["d3", "null", "marker"]]);
 
     // Every unit settled: a third fire derives nothing.
     ok(&fire(&host, p, "split-3", "2030-01-01T03:00:00Z", &[]));
-    assert_eq!((count("split_words"), count("split_stats"), count("split_units")), ("3".into(), "2".into(), "3".into()));
+    assert_eq!((count("split_words"), count("split_stats"), count("split_units")), ("4".into(), "3".into(), "3".into()));
 }
 
 /// On an output table declaring `retain_versions`, rows under an earlier task version stay current under that version beside the newer version's rows.
@@ -149,7 +150,11 @@ fn a_raised_task_version_re_derives_and_a_retaining_table_keeps_both_versions() 
     let p = dir.path();
     ok(&fire(&host, p, "split-1", "2030-01-01T01:00:00Z", &[]));
     ok(&fire(&host, p, "split-2", "2030-01-01T02:00:00Z", &[("WORD_SPLIT_VERSION", "2")]));
-    let by_version = |t: &str| select(p, &format!("SELECT task_version, count(*) AS n FROM \"{t}\" GROUP BY 1 ORDER BY 1"));
+    // A content table's passages, or the marker table's markers, per task version.
+    let by_version = |t: &str| {
+        let kind = if t == "split_units" { "marker" } else { "passage" };
+        select(p, &format!("SELECT task_version, count(*) AS n FROM \"{t}\" WHERE kind = '{kind}' GROUP BY 1 ORDER BY 1"))
+    };
     // `words` retains versions: each version's rows read under their own version.
     assert_eq!(by_version("split_words"), [["1", "3"], ["2", "3"]]);
     // `stats` and the markers supersede: the earlier version's rows stop answering.
@@ -162,4 +167,37 @@ fn a_raised_task_version_re_derives_and_a_retaining_table_keeps_both_versions() 
     }
     assert_eq!(by_version("split_words"), [["1", "3"], ["2", "3"]]);
     assert_eq!(by_version("split_stats"), [["2", "2"]]);
+}
+
+/// A host unit landing no row in a content table lands one `kind` `marker`, `unit_status` `empty` row there under its key, so {{run.emit.stale-supersedes}} holds in every content table.
+// spec: run.emit.content-empty@17beeffb
+#[test]
+fn a_content_table_left_without_rows_stops_answering_the_earlier_key() {
+    let host = host_binary();
+    let dir = host_project(&host_manifest("word-split").replace(", retain_versions = true", ""));
+    let p = dir.path();
+    let passages = |t: &str| select(p, &format!("SELECT unit_ref, task_version FROM \"{t}\" WHERE kind = 'passage' ORDER BY unit_ref, task_version"));
+    ok(&fire(&host, p, "split-1", "2030-01-01T01:00:00Z", &[]));
+    assert_eq!(passages("split_stats"), [["d1", "1"], ["d2", "1"]]);
+
+    // Version 2 returns no `stats` rows: the earlier `stats` rows stop answering.
+    ok(&fire(&host, p, "split-2", "2030-01-01T02:00:00Z", &[("WORD_SPLIT_VERSION", "2"), ("WORD_SPLIT_SKIP", "stats")]));
+    assert_eq!(passages("split_words"), [["d1", "2"], ["d1", "2"], ["d2", "2"]]);
+    assert!(passages("split_stats").is_empty(), "{:?}", passages("split_stats"));
+
+    // Version 3 derives nothing for any unit: every content table answers no passage.
+    ok(&fire(&host, p, "split-3", "2030-01-01T03:00:00Z", &[("WORD_SPLIT_VERSION", "3"), ("WORD_SPLIT_SKIP", "words,stats")]));
+    let statuses = select(p, "SELECT unit_ref, unit_status, task_version FROM \"split_units\" ORDER BY unit_ref");
+    assert_eq!(statuses, [["d1", "empty", "3"], ["d2", "empty", "3"], ["d3", "empty", "3"]]);
+    for t in ["split_words", "split_stats"] {
+        assert!(passages(t).is_empty(), "{t}: {:?}", passages(t));
+        let markers = select(p, &format!("SELECT unit_ref, unit_status, task_version FROM \"{t}\" WHERE kind = 'marker' ORDER BY unit_ref"));
+        assert_eq!(markers, [["d1", "empty", "3"], ["d2", "empty", "3"], ["d3", "empty", "3"]], "{t}");
+    }
+
+    // A fold keeps what a read answers.
+    for t in ["split_words", "split_stats"] {
+        ok(&cf(p, &["context", "compact", t, "--project", "research", "--now", "2030-01-01T04:00:00Z"]));
+        assert!(passages(t).is_empty(), "{t} after fold: {:?}", passages(t));
+    }
 }

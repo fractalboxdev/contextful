@@ -286,7 +286,13 @@ fn a_unit_lands_stamped_content_rows_and_one_marker() {
 
     let empty = unit("d2", "   ", "3");
     let out = host_rows(&empty, "split", &task, task.derive(&empty));
-    assert_eq!(out.keys().collect::<Vec<_>>(), ["units"]);
+    assert_eq!(out.keys().collect::<Vec<_>>(), ["stats", "units", "words"]);
+    assert!(
+        ["stats", "words"]
+            .iter()
+            .all(|t| out[*t].len() == 1 && out[*t][0]["kind"] == json!("marker")),
+        "no content row lands: {out:?}"
+    );
     assert_eq!(
         (
             &out["units"][0]["unit_status"],
@@ -308,6 +314,134 @@ fn a_unit_lands_stamped_content_rows_and_one_marker() {
         ["words", "stats", "units"],
         "the marker table lands last"
     );
+}
+
+/// Stamp `rows` as landed by run `run` at hour `hour`, in order.
+fn landed_at(rows: &[Row], run: &str, hour: u32) -> Vec<Row> {
+    rows.iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let mut r = r.clone();
+            r.insert(
+                "_ingested_at".into(),
+                json!(format!("2030-01-01T{hour:02}:00:00Z")),
+            );
+            r.insert("_run_id".into(), json!(run));
+            r.insert("_row_seq".into(), json!(i));
+            r
+        })
+        .collect()
+}
+
+/// A host unit landing no row in a content table lands one `kind` `marker`, `unit_status` `empty` row there under its key, so {{run.emit.stale-supersedes}} holds in every content table.
+#[test]
+fn a_content_table_a_unit_lands_nothing_in_takes_an_empty_marker() {
+    struct Partial;
+    impl DeriveTask for Partial {
+        fn version(&self) -> &str {
+            "2"
+        }
+        fn columns(&self) -> Vec<String> {
+            vec!["body".into()]
+        }
+        fn marker_table(&self) -> String {
+            "units".into()
+        }
+        fn content_tables(&self) -> Vec<String> {
+            vec!["words".into(), "stats".into()]
+        }
+        fn derive(&self, _unit: &HostUnit) -> Result<Derived, RunError> {
+            let mut out = Derived::new();
+            out.insert(
+                "words".into(),
+                vec![row(json!({"word_seq": 0, "word": "alpha"}))],
+            );
+            Ok(out)
+        }
+    }
+    // Version 1 lands d1 in both content tables.
+    let v1 = unit("d1", "alpha beta", "1");
+    let mut before = Derived::new();
+    before.insert(
+        "words".into(),
+        vec![row(json!({"word_seq": 0, "word": "alpha"}))],
+    );
+    before.insert("stats".into(), vec![row(json!({"word_count": 2}))]);
+    let first = host_rows(&v1, "split", &Split { version: "1" }, Ok(before));
+
+    // A blank body derives nothing: each content table takes one `empty` marker.
+    let blank = unit("d1", "  ", "1");
+    let task = Split { version: "1" };
+    let out = host_rows(&blank, "split", &task, task.derive(&blank));
+    for t in ["words", "stats"] {
+        assert_eq!(out[t].len(), 1, "{t}");
+        let m = &out[t][0];
+        assert_eq!(
+            (
+                &m["unit_ref"],
+                &m["derivation_key"],
+                &m[TASK_VERSION],
+                &m["kind"],
+                &m["unit_status"]
+            ),
+            (
+                &json!("d1"),
+                &json!(blank.derivation_key),
+                &json!("1"),
+                &json!("marker"),
+                &json!("empty")
+            ),
+            "{t}"
+        );
+        let table = [landed_at(&first[t], "r1", 1), landed_at(&out[t], "r2", 2)].concat();
+        let flags = superseded(&table);
+        assert!(
+            flags[..first[t].len()].iter().all(|s| *s),
+            "{t}: the earlier key yields to the empty landing"
+        );
+        assert!(!flags[first[t].len()], "{t}: the empty landing stands");
+    }
+    assert_eq!(out["units"][0]["unit_status"], json!("empty"));
+
+    // A unit returning rows for `words` alone lands the empty marker in `stats`.
+    let v2 = unit("d1", "alpha beta", "2");
+    let out = host_rows(&v2, "split", &Partial, Partial.derive(&v2));
+    assert_eq!(
+        (out["words"][0]["kind"].clone(), out["words"].len()),
+        (json!("passage"), 1)
+    );
+    assert_eq!(
+        (
+            out["stats"][0]["kind"].clone(),
+            out["stats"][0]["unit_status"].clone()
+        ),
+        (json!("marker"), json!("empty"))
+    );
+    assert_eq!(out["units"][0]["unit_status"], json!("ok"));
+    let stats = [
+        landed_at(&first["stats"], "r1", 1),
+        landed_at(&out["stats"], "r2", 2),
+    ]
+    .concat();
+    assert_eq!(
+        superseded(&stats),
+        [true, false],
+        "the earlier stats row stops answering"
+    );
+    assert_eq!(
+        superseded_within_version(&stats),
+        [false, false],
+        "a retaining table keeps version 1 under its own version"
+    );
+
+    // A failed unit lands its marker alone and supersedes nothing.
+    let failed = host_rows(
+        &v2,
+        "split",
+        &Partial,
+        Err(RunError::Invalid("no body".into())),
+    );
+    assert_eq!(failed.keys().collect::<Vec<_>>(), ["units"]);
 }
 
 /// A retaining table supersedes a row only within its own task version.

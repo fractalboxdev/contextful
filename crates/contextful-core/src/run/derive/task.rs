@@ -2,7 +2,7 @@
 //! embedding binary registers by name before build, the key a host unit derives under,
 //! and the rows it lands across a marker table and its content tables.
 
-use super::config::{DeriveConfig, check_output_table};
+use super::config::{DeriveConfig, check_output_table, check_reserved_discriminator};
 use super::emit::{
     DERIVATION_KEY, EMPTY_ATTEMPTS, KIND, MARKER_SEQ, UnitStatus, by_unit, redact, standing,
 };
@@ -221,10 +221,22 @@ pub fn host_marker(
     row
 }
 
+/// The one `empty` marker a content table takes for a unit landing no row in it, so the
+/// table's own rows carry the unit's latest key (`run.emit.content-empty`).
+fn content_marker(unit: &HostUnit, version: &str) -> Row {
+    let mut row: Row = json!({ KIND: "marker", "unit_status": UnitStatus::Empty.name() })
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    stamp(&mut row, unit, version);
+    row
+}
+
 /// The rows one unit's derivation lands as, per table name: its content rows stamped with
-/// the unit's key, derivation key and task version, and one marker — `ok` over content
-/// rows, `empty` over none, `failed` on an error or a row for an undeclared table
-/// (`run.emit.host-rows`, `run.emit.output-tables`).
+/// the unit's key, derivation key and task version, an `empty` marker in each content table
+/// it returns no row for, and one marker — `ok` over content rows, `empty` over none,
+/// `failed` on an error or a row for an undeclared table (`run.emit.host-rows`,
+/// `run.emit.content-empty`, `run.emit.output-tables`).
 pub fn host_rows(
     unit: &HostUnit,
     task_name: &str,
@@ -267,6 +279,10 @@ pub fn host_rows(
                 if !stamped.is_empty() {
                     out.insert(table, stamped);
                 }
+            }
+            for table in &content {
+                out.entry(table.clone())
+                    .or_insert_with(|| vec![content_marker(unit, version)]);
             }
             let status = if any {
                 UnitStatus::Ok
@@ -330,16 +346,11 @@ pub fn check_host_tables(
 /// The columns a host content table's key opens with.
 pub const CONTENT_KEY_PREFIX: [&str; 2] = ["unit_ref", DERIVATION_KEY];
 
-/// Refuse a host content table whose key does not open with [`CONTENT_KEY_PREFIX`], or
-/// that names the reserved `kind` column in its key.
+/// Refuse a host content table that names the reserved `kind` column, or whose key does not
+/// open with [`CONTENT_KEY_PREFIX`].
 pub fn check_content_table(table: &TableDecl) -> Result<(), RunError> {
+    check_reserved_discriminator(table)?;
     let pk = table.primary_key();
-    if pk.iter().any(|c| c == KIND) {
-        return Err(RunError::DeriveReservedDiscriminator(format!(
-            "derive table `{}` keys on column `kind`, which the tier writes to tell passages from markers",
-            table.name
-        )));
-    }
     if !is_derive_key(pk) {
         return Err(RunError::DerivePrimaryKeyMissing(format!(
             "host content table `{}` declares `primary_key = {pk:?}`; a content table's key opens with [\"unit_ref\", \"derivation_key\"]",
