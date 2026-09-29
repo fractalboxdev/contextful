@@ -9,6 +9,7 @@ mod mcp;
 mod memory;
 mod pipeline;
 mod project;
+mod query;
 mod run;
 mod sync;
 mod token;
@@ -47,6 +48,8 @@ enum Cmd {
     /// Synthesize memory from landed rows, and write claims directly.
     #[command(subcommand)]
     Memory(memory::MemoryCmd),
+    /// Run one operator statement raw and print the response projection; no network face reaches it.
+    Query(query::QueryArgs),
     /// Serve the read face over the tool protocol on standard input and output.
     Mcp(mcp::McpArgs),
     /// Elaborate and audit the Lean models under `formal/`.
@@ -63,6 +66,7 @@ fn main() {
         Cmd::Run(c) => run::run(c),
         Cmd::Sync(c) => sync::run(c),
         Cmd::Pipeline(c) => pipeline::run(c),
+        Cmd::Query(c) => query::run(c),
         Cmd::Mcp(c) => mcp::run(c),
         Cmd::Derive(c) => derive::run(c),
         Cmd::Memory(c) => memory::run(c),

@@ -8,5 +8,6 @@ mod init;
 mod mcp;
 mod memory;
 mod pipeline;
+mod query;
 mod run;
 mod token;

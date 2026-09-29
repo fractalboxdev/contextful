@@ -176,3 +176,37 @@ name = "hr/salaries"
 
     assert!(client.session.close().success());
 }
+
+/// The operator's raw verb: `contextful query --json` over a project's tables and over
+/// local files, printed as the one response projection, with an exact truncation flag.
+#[test]
+fn m05_operator_query() {
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    p.write("contextful.toml", "[[pipeline.tables]]\nname = \"research/notes\"\n");
+    p.write("notes.jsonl", &[json!({"note_id": "n1"}), json!({"note_id": "n2"}), json!({"note_id": "n3"})].map(|r| r.to_string()).join("\n"));
+    ok(&p.run(&cf, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
+    p.write("objects/a.json", "{\"k\":1}\n");
+    p.write("objects/b.json", "{\"k\":2}\n");
+
+    let parse = |out: &Output| -> Value { serde_json::from_str(&ok(out)).unwrap() };
+
+    let one = parse(&p.run(&cf, &["query", "--json", "SELECT 1 AS one"]));
+    assert_eq!(one, json!({ "columns": ["one"], "rows": [[1]], "truncated": false }));
+
+    let files = format!("SELECT count(*) AS n FROM read_json_objects('{}/objects/*.json')", p.root.display());
+    let objects = parse(&p.run(&cf, &["query", "--json", &files]));
+    assert_eq!(objects["rows"], json!([["2"]]), "{objects}");
+
+    let sql = r#"SELECT note_id FROM "research/notes" ORDER BY note_id"#;
+    let cut = parse(&p.run(&cf, &["query", "--json", "--project", "research", "--limit", "2", sql]));
+    assert_eq!(cut, json!({ "columns": ["note_id"], "rows": [["n1"], ["n2"]], "truncated": true }));
+    let whole = parse(&p.run(&cf, &["query", "--json", "--project", "research", sql]));
+    assert_eq!(whole["rows"], json!([["n1"], ["n2"], ["n3"]]));
+    assert_eq!(whole["truncated"], json!(false));
+
+    let two = p.run(&cf, &["query", "--json", "SELECT 1 AS a; SELECT 2 AS b"]);
+    assert!(!two.status.success() && two.stdout.is_empty());
+    let misspelt = p.run(&cf, &["query", "--json", "--project", "reserch", sql]);
+    assert!(!misspelt.status.success() && misspelt.stdout.is_empty());
+}
