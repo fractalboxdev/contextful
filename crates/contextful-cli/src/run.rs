@@ -311,11 +311,11 @@ fn awake_error(e: AwakeError) -> anyhow::Error {
 
 /// The grants of the credential accompanying a run-record read, admitted now; `None`
 /// when none accompanies it, the local owner reading its own catalog.
-fn reader_grants(admit: &AdmitArgs, what: &str) -> Result<Option<Vec<Grant>>> {
+fn reader_grants(admit: &AdmitArgs, project: &ProjectArgs, what: &str) -> Result<Option<Vec<Grant>>> {
     if !AdmitArgs::presented() {
         return Ok(None);
     }
-    let (authority, _) = admit.admit(what)?;
+    let (authority, _) = admit.admit(project.project.as_deref(), what)?;
     Ok(Some(authority.grants().to_vec()))
 }
 
@@ -331,7 +331,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let plan = Plan::compile(&bytes).with_context(|| format!("`{}`", plan.display()))?;
             let cwd = std::env::current_dir()?;
             let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", declaration.display()))?;
-            let author = admit.author(&text, &[&plan.spec.table], "`run start`")?;
+            let author = admit.author(project.project.as_deref(), &text, &[&plan.spec.table], "`run start`")?;
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let w = wire_at(&l.project, &project.now)?;
@@ -357,12 +357,16 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             }
         }
         RunCmd::Show { run_id, project, admit } => {
-            let grants = reader_grants(&admit, "`run show`")?;
+            let grants = reader_grants(&admit, &project, "`run show`")?;
             let w = wire(&project)?;
-            let row = w.engine.catalog.run(&run_id)?.with_context(|| format!("no run `{run_id}`"))?;
+            let row = w.engine.catalog.run(&run_id)?;
             if let Some(grants) = &grants {
-                trace_run(grants, &row.pipeline_id)?;
+                // No grant covers a run the catalog does not hold, so an absent run refuses
+                // exactly as an uncovered one and a credential learns no run id.
+                let covering: &[Grant] = if row.is_some() { grants } else { &[] };
+                trace_run(covering, row.as_ref().map_or("", |r| r.pipeline_id.as_str()))?;
             }
+            let row = row.with_context(|| format!("no run `{run_id}`"))?;
             println!("{}", serde_json::to_string_pretty(&row)?);
             Ok(())
         }
@@ -378,7 +382,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             Ok(())
         }
         RunCmd::History { project, pipelines, since, limit, export, admit } => {
-            let grants = reader_grants(&admit, "`run history`")?;
+            let grants = reader_grants(&admit, &project, "`run history`")?;
             let located = project.locate(None)?.project;
             let w = wire_at(&located, &project.now)?;
             let since = since.map(|s| parse_bound(&s)).transpose()?;

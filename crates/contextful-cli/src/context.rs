@@ -149,7 +149,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
     match cmd {
         ContextCmd::Land { table, store, rows, run_id, site_id, types, now: at, admit } => {
             let o = Opened::open(&store)?;
-            let author = admit.author(&o.manifest, &[&table], "`context land`")?;
+            let author = admit.author(None, &o.manifest, &[&table], "`context land`")?;
             let (node, _) = node::resolve(&o.store, |k| std::env::var(k).ok())?;
             let mut fixed = HashMap::new();
             for t in types {

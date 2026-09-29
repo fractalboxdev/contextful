@@ -42,6 +42,8 @@ AuthoringCredentialMissing           = { clause = "authority.issue.session-crede
 GrantWriteNotCovered                 = { clause = "authority.grant.write-not-covered", gloss = "A credentialed table write with no write grant over its destination." }
 IssuanceLifetimeAboveCeiling         = { clause = "authority.issue.above-ceiling", gloss = "A requested lifetime above the persisted ceiling." }
 IssuancePrincipalRequired            = { clause = "authority.issue.principal-required", gloss = "A write or execute grant naming no on-behalf-of principal." }
+IssuancePolicyExists                 = { clause = "authority.issue.policy-init", gloss = "A policy init over an existing issuance policy." }
+IssuanceCeilingNotLowered            = { clause = "authority.issue.lower-only", gloss = "A ceiling lowering to a value at or above the current ceiling." }
 IssuerKeyMissing                     = { clause = "authority.issue.missing-key", gloss = "A face configured with no issuer key." }
 IssuerKeyUnresolvable                = { clause = "authority.issue.unresolvable-key", gloss = "An issuer key reference resolving to no material." }
 SignatureAlgorithmMismatch           = { clause = "authority.issue.algorithm-mismatch", gloss = "A named scheme differing from the pinned key's." }
@@ -49,6 +51,8 @@ SignatureEncodingInvalid             = { clause = "authority.issue.encoding-inva
 IssuanceUnauthorized                 = { clause = "authority.issue.unauthorized-mint", gloss = "A mint request without an admin grant." }
 ReplicaCannotIssue                   = { clause = "authority.issue.replica-mint", gloss = "A mint attempted on a replica." }
 IssuanceZoneWildcard                 = { clause = "authority.issue.zone-wildcard", gloss = "A subject declaring a wildcard inference zone at the mint." }
+IssuerKeyRotationNotDue              = { clause = "authority.issue.rotation-not-due", gloss = "A scheduled rotation before the cadence falls due." }
+IssuerKeyUnrecorded                  = { clause = "authority.issue.unrecorded-key", gloss = "A scheduled rotation of a key the ledger does not date." }
 SignatureInvalid                     = { clause = "authority.verify.bad-signature", gloss = "A block signature failing against every pinned key." }
 AudienceMismatch                     = { clause = "authority.verify.audience-mismatch", gloss = "A credential audience differing from, or absent against, the declared one." }
 TimestampMalformed                   = { clause = "authority.verify.malformed-timestamp", gloss = "A credential timestamp outside the timestamp grammar." }
@@ -61,6 +65,8 @@ KeySetUnavailable                    = { clause = "authority.verify.key-set-unav
 KeySetStale                          = { clause = "authority.verify.key-set-stale", gloss = "A last-known-good key set past its staleness bound." }
 AuthorityRevoked                     = { clause = "authority.revoke.revoked", gloss = "A denylisted credential, or one below the current scoped epoch." }
 RotationGraceTooShort                = { clause = "authority.revoke.short-grace", gloss = "A rotation grace window shorter than the issuance ceiling." }
+KeySetLedgerUnavailable              = { clause = "authority.revoke.ledger-unavailable", gloss = "A required key-set ledger absent or malformed." }
+RevocationPrincipalClassUnknown      = { clause = "authority.revoke.unknown-principal-class", gloss = "An epoch bump naming an unknown principal class." }
 CredentialFormatWithdrawn            = { clause = "authority.revoke.format-withdrawn", gloss = "A credential in a withdrawn format." }
 ExchangeAssertionInvalid             = { clause = "authority.exchange.assertion-invalid", gloss = "An external assertion failing any exchange check." }
 ExchangeMaterialMissing              = { clause = "authority.exchange.material-missing", gloss = "An exchange configured with no verifying material." }

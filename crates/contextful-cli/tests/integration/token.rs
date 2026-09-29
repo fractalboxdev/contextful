@@ -175,8 +175,8 @@ fn verify_at(dir: &Path, pins: &str, at: &str, token: &str) -> Output {
     run(dir, &["token", "verify", "--public-key", pins, "--audience", AUD, "--at", at, "--token", token])
 }
 
-/// `contextful token policy init` writes the issuance policy naming its audience with a ceiling of the {{authority.verify.bearer-lifetime}} bound, and refuses to overwrite an existing policy.
-// spec: authority.issue.policy-init@25493aa4
+/// `contextful token policy init` writes the issuance policy naming its audience with a ceiling of the {{authority.verify.bearer-lifetime}} bound; over an existing policy it raises `IssuancePolicyExists` and writes nothing.
+// spec: authority.issue.policy-init@4ece3bcd
 #[test]
 fn a_fresh_project_writes_its_policy_and_mints_under_the_default_issuer_key() {
     let dir = tempfile::tempdir().unwrap();
@@ -186,7 +186,7 @@ fn a_fresh_project_writes_its_policy_and_mints_under_the_default_issuer_key() {
     stdout(&run(p, &["token", "policy", "init", "--audience", AUD]));
     let text = policy_text(p);
     assert!(text.contains(&format!("default_audience = \"{AUD}\"")) && text.contains("max_lifetime_secs = 3600"), "{text}");
-    assert!(stderr(&run(p, &["token", "policy", "init", "--audience", AUD])).contains("exists"));
+    assert!(stderr(&run(p, &["token", "policy", "init", "--audience", AUD])).starts_with("IssuancePolicyExists"));
     assert_eq!(policy_text(p), text, "an existing policy is left as it is");
 
     let token = stdout(&run(p, &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--table", "t", "--now", MINTED]));
@@ -215,8 +215,6 @@ fn lower_ceiling_records_the_previous_value_and_rotation_grace_answers_to_it() {
     stdout(&run(p.path(), &["token", "policy", "lower-ceiling", "--max-lifetime-secs", "3600", "--now", MINTED]));
     let text = policy_text(p.path());
     assert!(text.contains("max_lifetime_secs = 3600") && text.contains("previous_max_lifetime_secs = 86400") && text.contains(MINTED), "{text}");
-    // Only a lower value lowers.
-    assert!(stderr(&run(p.path(), &["token", "policy", "lower-ceiling", "--max-lifetime-secs", "7200", "--now", MINTED])).contains("3600"));
     assert!(stderr(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "t", "--ttl", "7200"])).contains("IssuanceLifetimeAboveCeiling"));
 
     // A 2 h grace window is too short while a 24 h credential minted before the lowering can live.
@@ -232,7 +230,7 @@ fn token_rotate_replaces_the_issuer_key_after_90_days_and_at_once_on_compromise(
     let p = project();
     let first = stdout(&run(p.path(), &["token", "keygen", "--now", MINTED]));
     let err = stderr(&run(p.path(), &["token", "rotate", "--now", "2030-03-31T23:59:59Z"]));
-    assert!(err.contains("2030-04-01T00:00:00Z"), "the refusal names when rotation falls due: {err}");
+    assert!(err.starts_with("IssuerKeyRotationNotDue") && err.contains("2030-04-01T00:00:00Z"), "the refusal names when rotation falls due: {err}");
     let second = stdout(&run(p.path(), &["token", "rotate", "--now", "2030-04-01T00:00:00Z"]));
     assert_ne!(first, second);
     let third = stdout(&run(p.path(), &["token", "rotate", "--compromise", "--now", "2030-04-01T00:00:01Z"]));
@@ -242,8 +240,7 @@ fn token_rotate_replaces_the_issuer_key_after_90_days_and_at_once_on_compromise(
     stdout(&verify_at(p.path(), &third, "2030-04-01T00:00:03Z", &token));
 }
 
-/// Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.
-// spec: authority.revoke.compromise@c14a17b8
+/// A compromise bumps the project-wide epoch and retires the key at once under `token verify`.
 #[test]
 fn a_compromise_bumps_the_project_epoch_and_retires_the_key_at_once() {
     let p = project();
@@ -286,4 +283,80 @@ fn token_revoke_bumps_one_scoped_epoch_and_a_later_mint_carries_it() {
     // A verifier pointed at another store reads no bump.
     std::fs::write(p.path().join("empty.toml"), "").unwrap();
     stdout(&run(p.path(), &["token", "verify", "--public-key", &public, "--audience", AUD, "--at", "2030-01-01T00:01:00Z", "--keyset", "empty.toml", "--token", &eu]));
+}
+
+/// `contextful token policy lower-ceiling` naming a value at or above the current ceiling raises `IssuanceCeilingNotLowered` and leaves the policy unchanged.
+// spec: authority.issue.lower-only@b3e0367d
+#[test]
+fn lower_ceiling_refuses_a_value_that_does_not_lower() {
+    let p = project();
+    let text = policy_text(p.path());
+    for secs in ["3600", "7200"] {
+        let err = stderr(&run(p.path(), &["token", "policy", "lower-ceiling", "--max-lifetime-secs", secs, "--now", MINTED]));
+        assert!(err.starts_with("IssuanceCeilingNotLowered") && err.contains("3600"), "{err}");
+    }
+    assert_eq!(policy_text(p.path()), text);
+}
+
+/// A rotation without `--compromise` before {{authority.issue.key-rotation}} falls due raises `IssuerKeyRotationNotDue`, naming the instant it falls due.
+// spec: authority.issue.rotation-not-due@cf51f0e8
+#[test]
+fn a_seed_written_by_any_spelling_of_the_default_path_dates_its_rotation() {
+    let p = project();
+    stdout(&run(p.path(), &["token", "keygen", "--out", "./.contextful/issuer.seed", "--now", MINTED]));
+    let err = stderr(&run(p.path(), &["token", "rotate", "--now", "2030-01-02T00:00:00Z"]));
+    assert!(err.starts_with("IssuerKeyRotationNotDue") && err.contains("2030-04-01T00:00:00Z"), "{err}");
+}
+
+/// A rotation without `--compromise` of an issuer key the key-set ledger does not date raises `IssuerKeyUnrecorded`; `contextful token record --since` dates it.
+// spec: authority.issue.unrecorded-key@deb270a4
+#[test]
+fn rotating_an_undated_issuer_key_refuses_until_the_ledger_records_it() {
+    let p = project();
+    stdout(&run(p.path(), &["token", "keygen", "--out", "elsewhere.seed"]));
+    std::fs::copy(p.path().join("elsewhere.seed"), p.path().join(".contextful/issuer.seed")).unwrap();
+    let err = stderr(&run(p.path(), &["token", "rotate", "--now", "2030-01-02T00:00:00Z"]));
+    assert!(err.starts_with("IssuerKeyUnrecorded") && err.contains("token record"), "{err}");
+
+    stdout(&run(p.path(), &["token", "record", "--since", MINTED]));
+    let err = stderr(&run(p.path(), &["token", "rotate", "--now", "2030-01-02T00:00:00Z"]));
+    assert!(err.starts_with("IssuerKeyRotationNotDue"), "{err}");
+    stdout(&run(p.path(), &["token", "rotate", "--now", "2030-04-01T00:00:00Z"]));
+    // A compromise rotates an undated key at once.
+    stdout(&run(p.path(), &["token", "keygen", "--out", "other.seed"]));
+    std::fs::copy(p.path().join("other.seed"), p.path().join(".contextful/issuer.seed")).unwrap();
+    stdout(&run(p.path(), &["token", "rotate", "--compromise", "--now", "2030-04-02T00:00:00Z"]));
+}
+
+/// `contextful token revoke --principal-class` naming neither `delegated` nor `unattributed` raises `RevocationPrincipalClassUnknown` and bumps nothing.
+// spec: authority.revoke.unknown-principal-class@83da912c
+#[test]
+fn revoke_refuses_an_unknown_principal_class() {
+    let p = project();
+    let err = stderr(&run(p.path(), &["token", "revoke", "--principal-class", "robots"]));
+    assert!(err.starts_with("RevocationPrincipalClassUnknown"), "{err}");
+    assert!(!p.path().join(".contextful/keyset.toml").exists());
+}
+
+/// The issuance policy, the default issuer seed and the key-set ledger sit under the directory {{store.init.discovery}} bases project paths on; with no `contextful.toml` upward, under the working directory.
+// spec: authority.issue.project-root@d6e9b46d
+#[test]
+fn token_commands_below_the_project_root_act_on_the_root_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    std::fs::write(p.join("contextful.toml"), "[project]\nname = \"research\"\n").unwrap();
+    let sub = p.join("notes/deep");
+    std::fs::create_dir_all(&sub).unwrap();
+    let public = stdout(&run(&sub, &["token", "keygen", "--now", MINTED]));
+    stdout(&run(&sub, &["token", "policy", "init", "--audience", AUD]));
+    assert!(p.join(".contextful/issuer.seed").is_file() && p.join(".contextful/issuance.toml").is_file());
+    let token = stdout(&run(&sub, &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--table", "t", "--now", MINTED]));
+    assert_eq!(stdout(&run(&sub, &["token", "revoke"])), "epoch 1");
+    assert!(!sub.join(".contextful").exists() && !p.join("notes/.contextful").exists());
+    // A verifier anywhere in the tree reads the root ledger's bump.
+    for at in [p, sub.as_path()] {
+        assert!(stderr(&verify_at(at, &public, "2030-01-01T00:01:00Z", &token)).contains("AuthorityRevoked"));
+    }
+    // The key keygen dated at the root answers to its cadence from below it.
+    assert!(stderr(&run(&sub, &["token", "rotate", "--now", "2030-01-02T00:00:00Z"])).starts_with("IssuerKeyRotationNotDue"));
 }

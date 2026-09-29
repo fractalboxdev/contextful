@@ -230,8 +230,10 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority*
 - `ceiling-lowering` — Lowering the ceiling records the previous value and its instant; rotation-grace validation uses the recorded value until the last credential minted under it lapses.
   *A-authority*
-- `policy-init` — `contextful token policy init` writes the issuance policy naming its audience with a ceiling of the {{authority.verify.bearer-lifetime}} bound, and refuses to overwrite an existing policy.
+- `policy-init` — `contextful token policy init` writes the issuance policy naming its audience with a ceiling of the {{authority.verify.bearer-lifetime}} bound; over an existing policy it raises `IssuancePolicyExists` and writes nothing.
   *because a fresh project mints under a policy it commits, and the served faces admit nothing longer-lived by default*
+- `lower-only` — `contextful token policy lower-ceiling` naming a value at or above the current ceiling raises `IssuanceCeilingNotLowered` and leaves the policy unchanged.
+  *because a raised ceiling mints credentials outliving the grace windows validated against the lower one*
 - `out-of-tree-mint` — Ceiling enforcement binds a mint run inside the project tree; a mint run outside it is bounded at the checkpoint by rotation-grace validation.
   *A-authority*
 - `principal-required` — A mint granting `write` or `execute` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.
@@ -252,6 +254,8 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *P3*
 - `default-key` — A mint naming no issuer key reads `.contextful/issuer.seed`; no file there raises {{authority.issue.missing-key}}.
   *because the seed `contextful token keygen` writes by default is the one a mint in the same tree reads*
+- `project-root` — The issuance policy, the default issuer seed and the key-set ledger sit under the directory {{store.init.discovery}} bases project paths on; with no `contextful.toml` upward, under the working directory.
+  *because a ledger read from a subdirectory hides every retirement and epoch bump the root records*
 - `unresolvable-key` — A set issuer key reference that resolves to no material raises `IssuerKeyUnresolvable`; no local key is fabricated.
   *P3*
 - `signing-port` — One signing port signs every credential's authority block and every audit root and tip; no mint path reads a private key. Seed files, secret references resolved at mint time and remote signing oracles are its adapters.
@@ -277,6 +281,10 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority*
 - `key-rotation` — The issuer signing key rotates every 90 d, and at once on suspected compromise.
   *A-authority*
+- `rotation-not-due` — A rotation without `--compromise` before {{authority.issue.key-rotation}} falls due raises `IssuerKeyRotationNotDue`, naming the instant it falls due.
+  *because a scheduled rotation ahead of its cadence churns every verifier's pins with nothing withdrawn*
+- `unrecorded-key` — A rotation without `--compromise` of an issuer key the key-set ledger does not date raises `IssuerKeyUnrecorded`; `contextful token record --since` dates it.
+  *because an undated key otherwise rotates at once, skipping the cadence the ledger enforces*
 
 unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the posture bind table write verbs alone? owner: authority affects: authority.issue
 
@@ -361,6 +369,10 @@ Ending a credential's usefulness ahead of expiry: short lifetimes, the denylist,
   *A-authority*
 - `epoch-store` — A project persists each scope's current epoch and each issuer key version's retirement in `.contextful/keyset.toml` beside the issuer seed; a mint stamps its scope's current epoch, and a checkpoint re-reads the file at each admission.
   *because a file the checkpoint reads locally keeps a policy service off the admission path, and the seed's directory already holds the issuer's custody*
+- `ledger-unavailable` — A checkpoint pointed at a key-set ledger, or that has read one, raises `KeySetLedgerUnavailable` and admits nothing once the file is absent or malformed.
+  *because a vanished ledger read as empty lifts every key retirement and epoch bump*
+- `unknown-principal-class` — `contextful token revoke --principal-class` naming neither `delegated` nor `unattributed` raises `RevocationPrincipalClassUnknown` and bumps nothing.
+  *because an epoch under a class no credential carries withdraws nothing while reporting success*
 - `revoked` — A credential on the denylist, or carrying an epoch below the current scoped epoch, raises `AuthorityRevoked` at the next effect boundary.
   *A-authority*
 - `compromise` — Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.

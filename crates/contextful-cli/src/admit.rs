@@ -16,6 +16,7 @@ use contextful_core::issue::AuthoringPosture;
 use contextful_policy::verify::{effect_boundary, verify_inherited_pipe, Admission, AdmittedAuthority};
 use crate::project::Located;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// The environment variable carrying the credential, kept out of the process arguments.
@@ -34,6 +35,9 @@ pub enum AdmitError {
     /// (`surface.package.stdio-credential`)
     #[error("StdioCredentialMissing: {0}")]
     StdioCredentialMissing(String),
+    /// (`authority.revoke.ledger-unavailable`)
+    #[error("KeySetLedgerUnavailable: {0}")]
+    KeySetLedgerUnavailable(String),
 }
 
 /// The static pins from `--public-key`, else [`PUBKEY_VAR`]; neither raises
@@ -56,16 +60,72 @@ pub fn live_pins(flag: Option<&str>, ledger: &KeySetLedger, now: Instant) -> Res
 /// The key version a denylist entry records for credentials verified under static pins.
 const STATIC_KEY_VERSION: &str = "static";
 
-/// The key-set ledger at `path`, else at [`KeySetLedger::PATH`] when that file exists,
-/// else an empty one: no key retired and no epoch bumped (`authority.revoke.epoch-store`).
-pub fn ledger(path: Option<&Path>) -> Result<KeySetLedger> {
-    let path = match path {
-        Some(p) => p,
-        None if Path::new(KeySetLedger::PATH).exists() => Path::new(KeySetLedger::PATH),
-        None => return Ok(KeySetLedger::default()),
-    };
-    let text = std::fs::read_to_string(path).with_context(|| format!("reading the key-set ledger {}", path.display()))?;
-    KeySetLedger::parse(&text, &path.display().to_string()).map_err(anyhow::Error::msg)
+/// The project's key-set ledger file (`authority.revoke.epoch-store`): `--keyset`, else
+/// [`KeySetLedger::PATH`] under the project root. A file `--keyset` names, or one this
+/// value has read, is required from then on: its absence raises `KeySetLedgerUnavailable`
+/// rather than reading as an empty ledger that lifts every retirement and epoch bump
+/// (`authority.revoke.ledger-unavailable`).
+#[derive(Debug)]
+pub struct LedgerFile {
+    path: PathBuf,
+    required: AtomicBool,
+}
+
+impl LedgerFile {
+    /// The ledger `flag` names, else the one under `root`.
+    pub fn at(root: &Path, flag: Option<&Path>) -> LedgerFile {
+        match flag {
+            Some(p) => LedgerFile { path: p.to_path_buf(), required: AtomicBool::new(true) },
+            None => LedgerFile { path: root.join(KeySetLedger::PATH), required: AtomicBool::new(false) },
+        }
+    }
+
+    /// Where the ledger is written.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// The ledger now. An absent default file that no earlier read found is empty: no key
+    /// retired and no epoch bumped.
+    pub fn read(&self) -> Result<KeySetLedger, AdmitError> {
+        let unavailable = |why: String| AdmitError::KeySetLedgerUnavailable(format!("{}: {why}", self.path.display()));
+        let text = match std::fs::read_to_string(&self.path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && !self.required.load(Ordering::SeqCst) => {
+                return Ok(KeySetLedger::default());
+            }
+            Err(e) => return Err(unavailable(e.to_string())),
+        };
+        self.required.store(true, Ordering::SeqCst);
+        KeySetLedger::parse(&text, &self.path.display().to_string()).map_err(unavailable)
+    }
+}
+
+/// Static pins filtered through the ledger at every read, so a key the ledger retires, at
+/// once or when its grace window lapses, drops from a running checkpoint at its next
+/// admission (`authority.revoke.immediate-retire`).
+pub struct LivePins<C> {
+    pins: StaticPins,
+    ledger: Arc<LedgerFile>,
+    clock: C,
+}
+
+impl<C: Clock + Send + Sync> LivePins<C> {
+    pub fn new(pins: StaticPins, ledger: Arc<LedgerFile>, clock: C) -> LivePins<C> {
+        LivePins { pins, ledger, clock }
+    }
+}
+
+impl<C: Clock + Send + Sync> KeySource for LivePins<C> {
+    fn keys(&self) -> Result<Arc<KeySet>, AuthorityError> {
+        let ledger = self.ledger.read().map_err(|e| AuthorityError::KeySetUnavailable(e.to_string()))?;
+        let now = self.clock.now();
+        self.pins.retaining(|k| ledger.verifies(k, now))?.keys()
+    }
+
+    fn keys_after_signature_failure(&self) -> Result<Arc<KeySet>, AuthorityError> {
+        self.keys()
+    }
 }
 
 /// The revocation state a checkpoint reads now: the denylist file, and the ledger's
@@ -92,7 +152,7 @@ pub struct AdmitArgs {
     #[arg(long)]
     pub denylist: Option<PathBuf>,
     /// The key-set ledger holding retired keys and scoped epochs; absent,
-    /// `.contextful/keyset.toml` when it exists.
+    /// `.contextful/keyset.toml` under the project root.
     #[arg(long)]
     pub keyset: Option<PathBuf>,
 }
@@ -106,7 +166,9 @@ impl AdmitArgs {
     /// Admit the credential in [`TOKEN_VAR`] now, as presented over the stdio pipe the
     /// process inherited (`authority.verify.local-peer-fallback`), returning it with the
     /// revocation state later effect boundaries re-read.
-    pub fn admit(&self, what: &str) -> Result<(AdmittedAuthority, RevocationState)> {
+    /// The ledger is the one under the root `--project` resolves to
+    /// (`authority.issue.project-root`).
+    pub fn admit(&self, project: Option<&str>, what: &str) -> Result<(AdmittedAuthority, RevocationState)> {
         let Some(token) = token() else {
             return Err(AdmitError::StdioCredentialMissing(format!(
                 "{TOKEN_VAR} is unset: {what} admits one capability credential and acts on nothing without it"
@@ -114,7 +176,7 @@ impl AdmitArgs {
             .into());
         };
         let now = SystemClock.now();
-        let ledger = ledger(self.keyset.as_deref())?;
+        let ledger = LedgerFile::at(&crate::project::root(project)?, self.keyset.as_deref()).read()?;
         let keys: Arc<KeySet> = live_pins(self.public_key.as_deref(), &ledger, now)?.keys()?;
         let revocation = revocation_state(self.denylist.as_deref(), &ledger)?;
         let authority = {
@@ -130,17 +192,17 @@ impl AdmitArgs {
     /// Who authors a table write verb's rows (`authority.verify.write-verbs`): under the
     /// manifest's posture, the credential in [`TOKEN_VAR`] when one accompanies the write,
     /// admitted and holding `write` over every table in `tables`; `None` lands unauthored.
-    pub fn author(&self, manifest: &str, tables: &[&str], what: &str) -> Result<Option<Author>> {
+    pub fn author(&self, project: Option<&str>, manifest: &str, tables: &[&str], what: &str) -> Result<Option<Author>> {
         let posture = AuthoringPosture::from_manifest(manifest)?;
         if token().is_none() {
             posture.unaccompanied(what)?;
             return Ok(None);
         }
-        let (authority, _) = self.admit(what)?;
+        let (authority, _) = self.admit(project, what)?;
         for table in tables {
             authority.require_write(table)?;
         }
-        Ok(Some(Author { authority, denylist: self.denylist.clone(), keyset: self.keyset.clone() }))
+        Ok(Some(Author { authority, denylist: self.denylist.clone(), ledger: LedgerFile::at(&crate::project::root(project)?, self.keyset.as_deref()) }))
     }
 }
 
@@ -153,7 +215,7 @@ fn token() -> Option<String> {
 pub struct Author {
     authority: AdmittedAuthority,
     denylist: Option<PathBuf>,
-    keyset: Option<PathBuf>,
+    ledger: LedgerFile,
 }
 
 impl Author {
@@ -165,7 +227,7 @@ impl Author {
     /// The commit boundary (`authority.verify.write-commit`): the denylist read afresh,
     /// and expiry, against the system clock.
     pub fn boundary(&self) -> Result<()> {
-        let revocation = revocation_state(self.denylist.as_deref(), &ledger(self.keyset.as_deref())?)?;
+        let revocation = revocation_state(self.denylist.as_deref(), &self.ledger.read()?)?;
         effect_boundary(&self.authority, &Admission::new(SystemClock.now(), &revocation))?;
         Ok(())
     }

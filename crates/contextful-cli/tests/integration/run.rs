@@ -311,6 +311,10 @@ fn run_show_gates_on_the_pipeline_its_run_record_names() {
     refused(&out, "GrantRunTraceDenied");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(!stderr.contains("feed-b"), "the refusal names no pipeline: {stderr}");
+    // An absent run refuses alike, so a credential cannot tell it from an uncovered one.
+    let absent = credentialed(dir.path(), &token, &public, &["run", "show", "zz"]);
+    refused(&absent, "GrantRunTraceDenied");
+    assert_eq!(String::from_utf8_lossy(&absent.stderr), stderr);
     // A grant over the landed table confers no trace.
     refused(&credentialed(dir.path(), &reader(dir.path(), "filings"), &public, &["run", "show", "a1"]), "GrantRunTraceDenied");
 }
