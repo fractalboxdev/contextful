@@ -31,7 +31,7 @@ fn a_producer_value_in_an_injected_column_is_dropped_for_the_engine_to_replace()
 // spec: store.reserve.no-placeholder@535d67e3
 #[test]
 fn a_missing_scope_omits_its_column() {
-    let full = Injection { run_id: "r".into(), site_id: "s".into(), batch_seq: Some(0), authored_by: Some("user://dana".into()) };
+    let full = Injection { run_id: "r".into(), site_id: "s".into(), batch_seq: Some(0), authored_by: Some("user://dana".into()), taint: None };
     let names = |i: &Injection| i.columns().into_iter().map(|c| (c.name, c.ty, c.nullable)).collect::<Vec<_>>();
     assert_eq!(
         names(&full),

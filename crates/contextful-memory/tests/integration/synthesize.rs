@@ -2,6 +2,7 @@
 
 use super::support::*;
 use contextful_context::read::{ReadOptions, RetrieveRequest};
+use contextful_core::connector::infer::Provenance;
 use contextful_core::grant::Action;
 use contextful_core::memory::MemoryError;
 use contextful_core::store::bound_time::Bounds;
@@ -83,6 +84,42 @@ fn a_landed_claim_names_the_grant_that_wrote_it() {
         rows,
         [vec![json!(writer.revocation_ids().last().unwrap()), json!("agent://synthesizer"), json!("user://dana@acme.example"), json!("derived")]]
     );
+}
+
+/// Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.
+// spec: connector.infer.output-taint@ad6fddaf
+#[test]
+fn a_synthesized_claim_lands_under_the_label_of_its_inputs() {
+    let f = Fixture::new();
+    let (writer, node) = (f.writer(), NodeId::parse("memory-a").unwrap());
+    land_rows(&f.face, "research/notes", "run-0001", json!([{ "note_id": "n1", "text": "Dana is Acme's CFO." }]));
+    let inference = Scripted::new(&[claims("acme", "cfo", "Dana", "run-0001")]);
+    pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
+    let (_, rows) = facts(&f, &writer, r#"SELECT object, _taint FROM "memory/facts""#);
+    let over_trusted = rows.iter().filter(|r| r[1] != json!("ingested:third-party")).count();
+    contextful_eval::record::emit("output-taint", over_trusted as f64, rows.len() as u64, 0);
+    assert_eq!(rows, [vec![json!("Dana"), json!("ingested:third-party")]]);
+}
+
+/// A source row carries its own `_taint`, else `ingested:third-party`. Every row a batch commits lands under {{store.reserve.taint}} with the least-trusted label among the batch's rows.
+// spec: read.synthesize.claim-taint@1762fcf6
+#[test]
+fn a_batch_lands_under_its_least_trusted_row() {
+    let f = Fixture::new();
+    let (writer, node) = (f.writer(), NodeId::parse("memory-a").unwrap());
+    land_labelled(&f.face, "research/notes", "run-0001", json!([{ "note_id": "n1", "text": "Dana is Acme's CFO." }]), Some(Provenance::Operator));
+    land_labelled(&f.face, "research/notes", "run-0002", json!([{ "note_id": "n2", "text": "Dana signs as CFO." }]), Some(Provenance::FirstParty));
+    let inference = Scripted::new(&[claims("acme", "cfo", "Dana", "run-0001"), claims("acme", "cfo", "Lee", "run-0003")]);
+    pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
+    let (_, first) = facts(&f, &writer, r#"SELECT object, _taint FROM "memory/facts""#);
+    assert_eq!(first, [vec![json!("Dana"), json!("ingested:first-party")]], "the batch's own labels, least-trusted wins");
+
+    // A row landed with no label is third-party, and the prior it retires re-lands under the same label.
+    land_rows(&f.face, "research/notes", "run-0003", json!([{ "note_id": "n3", "text": "Acme appointed Lee as CFO." }]));
+    let second = pass(&f, &writer, &inference, &node, "2030-01-13T00:00:00Z").run().unwrap();
+    assert_eq!((second.landed, second.retired), (1, 1));
+    let (_, rows) = facts(&f, &writer, r#"SELECT DISTINCT _taint FROM "memory/facts" WHERE _ingested_at > TIMESTAMP '2030-01-12'"#);
+    assert_eq!(rows, [vec![json!("ingested:third-party")]]);
 }
 
 /// A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced.
@@ -221,7 +258,7 @@ fn dead_claims_never_starve_a_live_one() {
         agent: w.agent.clone(),
     };
     let land = |run: &str, at_: &str, claims: Vec<Claim>| {
-        Landing { node: &node, at: at(at_), writer: &w, run_id: run.into(), boundary: &admit }.commit(&f.face, "memory/facts", &claims, &[]).unwrap();
+        Landing { node: &node, at: at(at_), writer: &w, run_id: run.into(), boundary: &admit, taint: None }.commit(&f.face, "memory/facts", &claims, &[]).unwrap();
     };
     land("memory-live", "2030-01-10T00:00:00Z", vec![claim("c-live", "Dana", false, false, "research/notes")]);
     let dead: Vec<Claim> = (0..250).map(|i| claim(&format!("c-r{i}"), "Old CFO", i % 2 == 0, i % 2 == 1, "research/notes")).collect();

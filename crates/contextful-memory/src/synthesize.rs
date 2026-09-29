@@ -16,7 +16,7 @@ use contextful_core::memory::synthesize::{feedback, judge, template_hash, Attemp
 use contextful_core::memory::MemoryError;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::lay_out::NodeId;
-use contextful_core::store::reserve::{ROW_SEQ, RUN_ID};
+use contextful_core::store::reserve::{ROW_SEQ, RUN_ID, TAINT};
 use contextful_core::time::Instant;
 use contextful_policy::enforce::session::{Request, Session};
 use contextful_policy::verify::AdmittedAuthority;
@@ -131,6 +131,12 @@ fn data_item(table: &str, row: &Map<String, Value>) -> (infer::DataItem, bool) {
     (infer::DataItem::new(format!("table={table} ref={reference}"), value), cut)
 }
 
+/// The label a source row carries: its own `_taint`, else `ingested:third-party`
+/// (`read.synthesize.claim-taint`).
+fn row_label(row: &Map<String, Value>) -> infer::Provenance {
+    row.get(TAINT).and_then(Value::as_str).and_then(|s| s.parse().ok()).unwrap_or(infer::Provenance::ThirdParty)
+}
+
 fn row_seq(row: &Map<String, Value>) -> i64 {
     row.get(ROW_SEQ).and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or_default()
 }
@@ -143,6 +149,8 @@ struct Batch {
     spans: Vec<(String, u64, u64)>,
     /// Rows the batch carries cut at [`VALUE_CHARS`].
     truncated: usize,
+    /// The label of each row the batch carries.
+    labels: Vec<infer::Provenance>,
 }
 
 impl Batch {
@@ -206,7 +214,7 @@ impl Pass<'_> {
         runs.dedup();
         runs.retain(|r| !start.get(r).is_some_and(|p| p.complete));
         let mut out: Vec<Batch> = Vec::new();
-        let mut current = Batch { items: Vec::new(), cursor: cursor.clone(), spans: Vec::new(), truncated: 0 };
+        let mut current = Batch { items: Vec::new(), cursor: cursor.clone(), spans: Vec::new(), truncated: 0, labels: Vec::new() };
         let mut bytes = 0;
         for run in runs {
             let mut rows = objects(&self.face.rows(session, self.source, Some(&run))?);
@@ -217,11 +225,12 @@ impl Pass<'_> {
                 let (item, cut) = data_item(self.source, row);
                 let len = infer::block_len(&item, VALUE_CHARS);
                 if !current.items.is_empty() && bytes + len > PROMPT_BYTES {
-                    out.push(std::mem::replace(&mut current, Batch { items: Vec::new(), cursor: cursor.clone(), spans: Vec::new(), truncated: 0 }));
+                    out.push(std::mem::replace(&mut current, Batch { items: Vec::new(), cursor: cursor.clone(), spans: Vec::new(), truncated: 0, labels: Vec::new() }));
                     bytes = 0;
                 }
                 bytes += len;
                 current.items.push(item);
+                current.labels.push(row_label(row));
                 current.truncated += usize::from(cut);
                 let n = i as u64 + 1;
                 match current.spans.last_mut() {
@@ -263,7 +272,8 @@ impl Pass<'_> {
         let mut report = PassReport::default();
         for batch in self.batches(&session, &start)? {
             let run_id = batch.run_id(self.source, self.into);
-            let landing = Landing { node: self.node, at: self.now, writer: &writer, run_id: run_id.clone(), boundary: self.boundary };
+            let taint = Some(infer::taint(batch.labels.iter().copied()));
+            let landing = Landing { node: self.node, at: self.now, writer: &writer, run_id: run_id.clone(), boundary: self.boundary, taint };
             if !batch.items.is_empty() {
                 self.commit(&session, target, &batch, &landing, &writer, &mut report)?;
                 report.batches += 1;

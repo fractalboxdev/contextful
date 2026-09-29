@@ -42,7 +42,7 @@ fn typed_reads(policy: &str) -> Result<Reads, ReadFault> {
     let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     land(&r.store, &decl, &Batch { rows, types: types() }, &ctx).unwrap();

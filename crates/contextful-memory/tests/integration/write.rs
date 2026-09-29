@@ -84,7 +84,7 @@ fn a_curated_restatement_promotes_the_claim() {
         grant_id: w.grant_id.clone(),
         agent: w.agent.clone(),
     };
-    Landing { node: &node, at: at("2030-01-10T00:00:00Z"), writer: &w, run_id: "memory-derived".into(), boundary: &super::synthesize::admit }
+    Landing { node: &node, at: at("2030-01-10T00:00:00Z"), writer: &w, run_id: "memory-derived".into(), boundary: &super::synthesize::admit, taint: None }
         .commit(&f.face, "memory/facts", &[derived], &[])
         .unwrap();
     let promoted = write_claim(&f.face, &writer, "memory/facts", candidate("Dana"), &node, at("2030-01-11T00:00:00Z"), &super::synthesize::admit).unwrap();

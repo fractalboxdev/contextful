@@ -4,6 +4,7 @@
 use super::MemoryFault;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::Face;
+use contextful_core::connector::infer::Provenance;
 use contextful_core::grant::Action;
 use contextful_core::memory::revise::{Claim, Tier};
 use contextful_core::memory::synthesize::EvidenceRef;
@@ -120,6 +121,9 @@ pub struct Landing<'a> {
     /// the same run, and a table already holding it lands nothing again.
     pub run_id: String,
     pub boundary: &'a Boundary<'a>,
+    /// The label model output lands under; `None` for a write no model produced
+    /// (`store.reserve.taint`).
+    pub taint: Option<Provenance>,
 }
 
 impl Landing<'_> {
@@ -131,6 +135,7 @@ impl Landing<'_> {
                 site_id: "memory".into(),
                 batch_seq: Some(0),
                 authored_by: self.writer.on_behalf_of.clone(),
+                taint: self.taint,
             },
             committed_at: self.at,
         }

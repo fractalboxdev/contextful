@@ -150,7 +150,7 @@ fn a_preview_reads_the_named_file_alone() {
     };
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0002".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        injection: Injection { run_id: "run-0002".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: at("2030-01-11T00:00:00Z"),
     };
     let decl = TableDecl::named("research/vendor");

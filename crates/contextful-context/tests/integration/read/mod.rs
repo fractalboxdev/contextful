@@ -131,7 +131,7 @@ pub fn land_rows(store: &Store, table: &str, run: &str, rows: Value) {
     let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     land(store, &decl, &Batch { rows, types: HashMap::new() }, &ctx).unwrap();

@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 204 | 56 | 22 | 15 | 85 | 0 | 85 |
 | `authority` | 2 | 16 | 230 | 62 | 27 | 8 | 163 | 0 | 163 |
-| `connector` | 2 | 13 | 249 | 74 | 17 | 8 | 118 | 0 | 118 |
+| `connector` | 2 | 13 | 250 | 74 | 17 | 8 | 120 | 0 | 120 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
-| `read` | 2 | 15 | 135 | 24 | 19 | 18 | 103 | 0 | 103 |
+| `read` | 2 | 15 | 136 | 24 | 19 | 18 | 104 | 0 | 104 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
-| `store` | 1 | 15 | 184 | 44 | 12 | 12 | 145 | 0 | 145 |
+| `store` | 1 | 15 | 185 | 44 | 12 | 12 | 146 | 0 | 146 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1592 | 504 | 177 | 115 | 869 | 0 | |
+| **total** | 19 | 149 | 1595 | 504 | 177 | 115 | 873 | 0 | |
 
 Decision records: 18.
 
@@ -25,12 +25,12 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 196 | 140 | passing |
-| 2 — The store | 9 | 143 | 109 | passing |
+| 2 — The store | 9 | 144 | 110 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
-| 4 — Ingest | 22 | 353 | 151 | passing |
+| 4 — Ingest | 22 | 354 | 153 | passing |
 | 5 — The read face under enforcement | 17 | 223 | 147 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
-| 7 — Memory | 6 | 21 | 21 | passing |
+| 7 — Memory | 6 | 22 | 22 | passing |
 | 8 — Accountability | 5 | 40 | 20 | open |
 | 9 — Visibility | 6 | 22 | 3 | open |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
@@ -330,6 +330,8 @@ Unscheduled operations: 10.
 | `connector.infer.label-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::a_label_cannot_smuggle_a_marker` | performed |
 | `connector.infer.marker-derivation` | `crates/contextful-core/tests/integration/connector/infer.rs::a_fence_lookalike_in_content_cannot_close_its_own_block` | performed |
 | `connector.infer.mediated-call` | `crates/contextful-outbound/tests/integration/infer.rs::a_completion_passes_the_hook_and_the_address_check` | performed |
+| `connector.infer.output-taint` | `crates/contextful-memory/tests/integration/synthesize.rs::a_synthesized_claim_lands_under_the_label_of_its_inputs` | performed |
+| `connector.infer.provenance-order` | `crates/contextful-core/tests/integration/connector/infer.rs::provenance_labels_order_by_trust` | performed |
 | `connector.infer.replay` | `crates/contextful-core/tests/integration/connector/infer.rs::the_token_is_content_bound_not_a_constant` | performed |
 | `connector.infer.value-cap` | `crates/contextful-core/tests/integration/connector/infer.rs::an_over_long_value_is_capped_and_marked` | performed |
 | `connector.lease.bootstrap-declared-leased` | `crates/contextful-outbound/tests/integration/lease.rs::the_bootstrap_name_cannot_be_leased` | performed |
@@ -573,6 +575,7 @@ Unscheduled operations: 10.
 | `read.settle.settling-citation` | `crates/contextful-core/tests/integration/memory/settle.rs::a_judged_verdict_carries_a_web_citation` | performed |
 | `read.settle.source-mismatch` | `crates/contextful-core/tests/integration/memory/settle.rs::a_verdict_from_another_source_is_refused` | performed |
 | `read.synthesize.attribution` | `crates/contextful-memory/tests/integration/synthesize.rs::a_landed_claim_names_the_grant_that_wrote_it` | performed |
+| `read.synthesize.claim-taint` | `crates/contextful-memory/tests/integration/synthesize.rs::a_batch_lands_under_its_least_trusted_row` | performed |
 | `read.synthesize.dead-letter` | `crates/contextful-memory/tests/integration/synthesize.rs::an_exhausted_batch_dead_letters_and_holds_the_cursor` | performed |
 | `read.synthesize.extract-attempts` | `crates/contextful-core/tests/integration/memory/synthesize.rs::an_invalid_response_is_retried_with_feedback_three_attempts_in_all` | performed |
 | `read.synthesize.pass-cursor` | `crates/contextful-memory/tests/integration/synthesize.rs::a_pass_reads_the_runs_past_its_cursor` | performed |
@@ -893,6 +896,7 @@ Unscheduled operations: 10.
 | `store.reserve.no-placeholder` | `crates/contextful-core/tests/integration/store/reserve.rs::a_missing_scope_omits_its_column` | performed |
 | `store.reserve.row-seq` | `crates/contextful-context/tests/integration/declare.rs::the_last_write_per_key_wins_within_a_run_and_across_runs_at_one_instant` | performed |
 | `store.reserve.table-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_table_inside_a_reserved_namespace_is_refused` | performed |
+| `store.reserve.taint` | `crates/contextful-context/tests/integration/reserve.rs::a_model_output_row_carries_the_engine_taint_and_no_other_row_does` | performed |
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |
 | `topology.compose.script-runtime` | `tools/ci/tests/integration/topology.rs::a_crate_linking_a_javascript_runtime_is_refused` | performed |
 | `topology.compose.undeclared-crossing` | `tools/ci/tests/integration/topology.rs::a_run_path_crate_reaching_a_read_path_crate_is_refused` | performed |

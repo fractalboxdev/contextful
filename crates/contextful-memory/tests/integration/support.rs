@@ -4,6 +4,7 @@
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::Face;
 use contextful_context::Store;
+use contextful_core::connector::infer::Provenance;
 use contextful_core::grant::{Action, Grant, TablePattern};
 use contextful_core::identify::Subject;
 use contextful_core::issue::{IssuancePolicy, Lifetime, MintContext, MintRequest, NodeRole, SignatureAlgorithm};
@@ -57,10 +58,15 @@ pub struct Fixture {
 }
 
 pub fn land_rows(face: &Face, table: &str, run: &str, rows: Value) {
+    land_labelled(face, table, run, rows, None);
+}
+
+/// Land rows as a model's output lands them: under the engine-injected `_taint`.
+pub fn land_labelled(face: &Face, table: &str, run: &str, rows: Value, taint: Option<Provenance>) {
     let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     land(face.store(), &TableDecl::named(table), &Batch { rows, types: HashMap::new() }, &ctx).unwrap();

@@ -3,6 +3,7 @@
 
 use super::reconcile::{Column, ColumnType, Schema};
 use super::StoreError;
+use crate::connector::infer::Provenance;
 
 pub const INGESTED_AT: &str = "_ingested_at";
 pub const RUN_ID: &str = "_run_id";
@@ -10,9 +11,11 @@ pub const ROW_SEQ: &str = "_row_seq";
 pub const BATCH_SEQ: &str = "_batch_seq";
 pub const SITE_ID: &str = "_site_id";
 pub const AUTHORED_BY: &str = "_authored_by";
+pub const TAINT: &str = "_taint";
 
-/// Columns the engine injects, replacing any producer value (`store.reserve.injected`).
-pub const INJECTED: [&str; 6] = [INGESTED_AT, RUN_ID, ROW_SEQ, BATCH_SEQ, SITE_ID, AUTHORED_BY];
+/// Columns the engine injects, replacing any producer value (`store.reserve.injected`,
+/// `store.reserve.taint`).
+pub const INJECTED: [&str; 7] = [INGESTED_AT, RUN_ID, ROW_SEQ, BATCH_SEQ, SITE_ID, AUTHORED_BY, TAINT];
 
 /// Injected columns every write path carries, so no file lacks them and each is non-null
 /// in the merged schema whichever landing created it.
@@ -40,6 +43,9 @@ pub struct Injection {
     pub site_id: String,
     pub batch_seq: Option<i32>,
     pub authored_by: Option<String>,
+    /// The label a model's output lands under; `None` for a row no model produced
+    /// (`store.reserve.taint`).
+    pub taint: Option<Provenance>,
 }
 
 impl Injection {
@@ -56,6 +62,9 @@ impl Injection {
         cols.push(Column::new(SITE_ID, ColumnType::Utf8, false));
         if self.authored_by.is_some() {
             cols.push(Column::new(AUTHORED_BY, ColumnType::Utf8, false));
+        }
+        if self.taint.is_some() {
+            cols.push(Column::new(TAINT, ColumnType::Utf8, false));
         }
         cols
     }

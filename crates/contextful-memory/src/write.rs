@@ -61,6 +61,6 @@ pub fn write_claim(
     let mut writes = revision.retired.clone();
     writes.extend(revision.landed.iter().cloned());
     let run_id = format!("memory-write-{}", now.unix_nanos());
-    Landing { node, at: now, writer: &writer, run_id, boundary }.commit(face, into, &writes, &[])?;
+    Landing { node, at: now, writer: &writer, run_id, boundary, taint: None }.commit(face, into, &writes, &[])?;
     Ok(Written { claim: revision.landed, retired: revision.retired })
 }

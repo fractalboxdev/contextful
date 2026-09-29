@@ -19,7 +19,7 @@ fn land_run(store: &Store, i: usize) {
         .collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: format!("run-{i:04}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        injection: Injection { run_id: format!("run-{i:04}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     land(store, &TableDecl::named(EVENTS), &Batch { rows, types: HashMap::new() }, &ctx).unwrap();

@@ -154,7 +154,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             let batch = Batch { rows: read_rows(&rows)?, types: fixed };
             let ctx = RunContext {
                 node,
-                injection: Injection { run_id, site_id, batch_seq: Some(0), authored_by: None },
+                injection: Injection { run_id, site_id, batch_seq: Some(0), authored_by: None, taint: None },
                 committed_at: now(at)?,
             };
             let m = land(&o.store, &o.decl(&table), &batch, &ctx)?;

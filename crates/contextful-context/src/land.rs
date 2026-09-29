@@ -13,7 +13,7 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
 use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, VECTOR_ITEM};
 use contextful_core::store::reserve::{
-    optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, INGESTED_AT, ROW_SEQ,
+    optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, INGESTED_AT, ROW_SEQ, TAINT,
     RUN_ID, SITE_ID,
 };
 use contextful_core::store::StoreError;
@@ -360,6 +360,7 @@ pub fn land_batches(
                 BATCH_SEQ => Arc::new(arrow_array::Int32Array::from(vec![injection.batch_seq.unwrap_or_default(); n])),
                 SITE_ID => Arc::new(arrow_array::StringArray::from(vec![injection.site_id.as_str(); n])),
                 AUTHORED_BY => Arc::new(arrow_array::StringArray::from(vec![injection.authored_by.as_deref().unwrap_or_default(); n])),
+                TAINT => Arc::new(arrow_array::StringArray::from(vec![injection.taint.map(|p| p.as_str()).unwrap_or_default(); n])),
                 other => unreachable!("no injected column `{other}`"),
             };
             cols.push(c);
