@@ -46,12 +46,20 @@ pub struct Pull {
     /// (`run.land.typed-pull`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub types: BTreeMap<String, String>,
+    /// Inputs the source declined to land whole, which the run row sums
+    /// (`run.record.skipped-count`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub skipped: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 impl Pull {
     /// Decode a pull. Bytes outside the shape are a deterministic `SchemaIncompatible`.
     pub fn decode(bytes: &[u8]) -> Result<Pull, Failure> {
-        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\", \"types\"}}`: {e}")))
+        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\", \"types\", \"skipped\"}}`: {e}")))
     }
 }
 

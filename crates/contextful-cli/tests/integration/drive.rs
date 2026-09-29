@@ -184,6 +184,12 @@ fn a_drive_fire_lands_files_and_pages_then_only_what_changed() {
     let out = fire(dir.path(), "run-1", "2031-03-01T00:00:00Z");
     assert!(out.contains("team_files: run-1.team_files success · 7 rows"), "{out}");
     assert!(out.contains("team_pages: run-1.team_pages success · 7 rows"), "{out}");
+    assert!(out.contains("· 3 skipped"), "the video over the cap, the form and the shortcut: {out}");
+    // Each table's run record counts the files skipped by name.
+    let history = ok(&cf(dir.path(), &["run", "history", "--project", "research", "--export"]));
+    let runs: Vec<Value> = history.lines().skip(1).map(|l| serde_json::from_str(l).unwrap()).collect();
+    let skipped = |run: &str| runs.iter().find(|r| r["run_id"] == run).map(|r| r["skipped"].clone());
+    assert_eq!((skipped("run-1.team_files"), skipped("run-1.team_pages")), (Some(json!(3)), Some(json!(3))), "{history}");
     assert_eq!(fake.count("/token"), 1, "one mint serves the fire");
     assert_eq!(fake.count("/drive/v3/files/doc-plan/export"), 1, "both tables share one export");
 

@@ -118,9 +118,26 @@ impl PageDecoder for InProcess {
     }
 }
 
+/// A decoder refusing the board report as unreadable and crashing on the deck, decoding the rest in process.
+struct Refusing;
+
+impl PageDecoder for Refusing {
+    fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure> {
+        match input {
+            "Finance/Board/report.pdf" => Err(Failure::deterministic(FailureTag::Permanent, RunError::PipelineUnreadableInput(format!("`{input}` holds no text layer")).to_string())),
+            "Finance/Board/Deck" => Err(Failure::deterministic(FailureTag::Permanent, RunError::PipelineParseCrashed(format!("decoding `{input}`: the decode process died on signal 11")).to_string())),
+            _ => InProcess.pages(body, input),
+        }
+    }
+}
+
 fn drive(config: Value) -> Arc<Drive> {
+    drive_with(config, Arc::new(InProcess))
+}
+
+fn drive_with(config: Value, decoder: Arc<dyn PageDecoder>) -> Arc<Drive> {
     let secrets = vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)];
-    Drive::new(DriveConfig::parse(&config).unwrap(), resolver(secrets), Arc::new(InProcess)).unwrap()
+    Drive::new(DriveConfig::parse(&config).unwrap(), resolver(secrets), decoder).unwrap()
 }
 
 /// Pull `source` from `position`, answering its rows and the position after them.
@@ -406,4 +423,54 @@ fn a_root_that_is_no_folder_fails_before_any_listing() {
         assert!(f.deterministic && f.message.contains(id), "{id}: {f}");
     }
     assert!(fake.received("/drive/v3/files").is_empty());
+}
+
+/// A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming
+/// the failure and no pages, and the read continues.
+// spec: connector.source.drive-unreadable@eb615de8
+#[test]
+fn an_unreadable_or_crashing_pdf_is_skipped_and_every_other_file_lands() {
+    let fake = Fake::start();
+    let d = drive_with(fake.config(json!({})), Arc::new(Refusing));
+    let (files, at, _) = pull(&mut d.source("files").unwrap(), None);
+    assert_eq!(files.len(), 7, "every file lands its row");
+    let report = by_id(&files, "pdf-report");
+    assert!(report["skipped"].as_str().unwrap().contains("PipelineUnreadableInput"), "{report:?}");
+    assert_eq!((report["pages"].clone(), report["removed"].clone()), (Value::Null, json!(false)));
+    assert!(report["sha256"].is_string(), "the bytes were read whole, so the digest names them");
+    let deck = by_id(&files, "slides-deck");
+    assert!(deck["skipped"].as_str().unwrap().contains("PipelineParseCrashed"), "{deck:?}");
+    assert_eq!(deck["export_mime_type"], json!("application/pdf"), "the export was read");
+    assert!(by_id(&files, "doc-plan")["skipped"].is_null());
+    let (pages, pat, _) = pull(&mut d.source("pages").unwrap(), None);
+    assert!(pages_of(&pages, "pdf-report").is_empty() && pages_of(&pages, "slides-deck").is_empty());
+    assert_eq!(pages_of(&pages, "doc-plan"), [(1, json!("Quarterly plan")), (2, json!("Hiring targets"))]);
+    assert_eq!(pages_of(&pages, "sheet-budget"), [(1, json!("Budget 2031"))]);
+    assert_eq!(fake.received("/drive/v3/files/pdf-report").len(), 1, "both tables share the one refused read");
+    // The position advances past the refused files: an unchanged tree lands nothing on the next read.
+    assert_eq!(at["files"]["pdf-report"]["pages"], json!(0));
+    let again = drive_with(fake.config(json!({})), Arc::new(Refusing));
+    assert!(pull(&mut again.source("files").unwrap(), Some(at)).0.is_empty());
+    assert!(pull(&mut again.source("pages").unwrap(), Some(pat)).0.is_empty());
+}
+
+/// Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a
+/// fire's `files` run and `pages` run each carry the tally.
+// spec: connector.source.drive-skip-count@3994398e
+#[test]
+fn each_pull_counts_the_files_it_skipped() {
+    let skipped = |bytes: &[u8]| serde_json::from_slice::<Value>(bytes).unwrap().get("skipped").and_then(Value::as_u64).unwrap_or(0);
+    let fake = Fake::start();
+    let d = drive(fake.config(json!({})));
+    let (_, at, files) = pull(&mut d.source("files").unwrap(), None);
+    let (_, _, pages) = pull(&mut d.source("pages").unwrap(), None);
+    assert_eq!((skipped(&files), skipped(&pages)), (3, 3), "the video over the cap, the form and the shortcut");
+    // A refused decode counts beside them.
+    let refused = drive_with(fake.config(json!({})), Arc::new(Refusing));
+    let (_, _, files) = pull(&mut refused.source("files").unwrap(), None);
+    assert_eq!(skipped(&files), 5);
+    // A read landing no skipped file counts none.
+    fake.overlay("second.json");
+    let (_, _, files) = pull(&mut drive(fake.config(json!({}))).source("files").unwrap(), Some(at));
+    assert_eq!(skipped(&files), 0);
 }

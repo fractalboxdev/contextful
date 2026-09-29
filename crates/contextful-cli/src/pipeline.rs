@@ -424,7 +424,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     }
                 };
                 if row.status == RunStatus::Success {
-                    println!("{table}: {} success · {} rows in {} batches", row.run_id, row.rows, row.batches);
+                    let skipped = if row.skipped > 0 { format!(" · {} skipped", row.skipped) } else { String::new() };
+                    println!("{table}: {} success · {} rows in {} batches{skipped}", row.run_id, row.rows, row.batches);
                     continue;
                 }
                 let e = RunError::PipelineTableFailed(format!(

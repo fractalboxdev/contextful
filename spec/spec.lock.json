@@ -6548,6 +6548,17 @@
       "line": 364
     },
     {
+      "id": "run.record.skipped-count",
+      "contract": "run",
+      "operation": "record",
+      "subject": "skipped-count",
+      "kind": "behavior",
+      "statement": "A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.",
+      "why": "because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows",
+      "file": "spec/30-run.md",
+      "line": 365
+    },
+    {
       "id": "run.project.best-effort",
       "contract": "run",
       "operation": "project",
@@ -6556,7 +6567,7 @@
       "statement": "Live run state is a best-effort projection of events the runner emits after durable state changes; execution never reads it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 372
+      "line": 374
     },
     {
       "id": "run.project.wire-snapshot",
@@ -6567,7 +6578,7 @@
       "statement": "The wire snapshot carries run id, workflow id, a status from {{run.record.status-set}}, an ordered step list, an application metadata map, optional start and end instants, an optional tagged error and a version. Every deploy target emits it identically.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 373
+      "line": 375
     },
     {
       "id": "run.project.step-view",
@@ -6578,7 +6589,7 @@
       "statement": "A step view carries its label, a status of `pending`, `running`, `completed`, `failed` or `retrying`, its attempt count, optional instants, an optional output reference with byte count, and an optional tagged failure.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 374
+      "line": 376
     },
     {
       "id": "run.project.stopped-step",
@@ -6589,7 +6600,7 @@
       "statement": "A stopped run reports its executing step `failed` with the `Canceled` tag and leaves the run-level error unset.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 375
+      "line": 377
     },
     {
       "id": "run.project.emission-never-blocks",
@@ -6600,7 +6611,7 @@
       "statement": "Progress emission is no journal step: events reach an in-process observer over a bounded channel that drops when full and never blocks the runner.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 376
+      "line": 378
     },
     {
       "id": "run.project.terminal-slot",
@@ -6611,7 +6622,7 @@
       "statement": "A terminal transition bypasses the lossy channel through a per-run slot that is never dropped; a projection reading non-terminal behind a terminal run record reconciles from the record.",
       "why": "because a dropped terminal event otherwise leaves a finished run reading running forever",
       "file": "spec/30-run.md",
-      "line": 377
+      "line": 379
     },
     {
       "id": "run.project.coalescing",
@@ -6622,7 +6633,7 @@
       "statement": "Snapshot broadcasts coalesce to at most one per 100 ms, keeping only the latest; a terminal transition flushes immediately. The clock is injected.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 379
+      "line": 381
     },
     {
       "id": "run.project.metadata-too-large",
@@ -6633,7 +6644,7 @@
       "statement": "A metadata write whose serialized size exceeds 16384 B raises `RunMetadataTooLarge` naming size and bound, and the snapshot stands unchanged.",
       "why": "because a silently clipped map reads as the complete metadata",
       "file": "spec/30-run.md",
-      "line": 380
+      "line": 382
     },
     {
       "id": "run.project.version",
@@ -6644,7 +6655,7 @@
       "statement": "The snapshot version is `(epoch, counter)`, the epoch being the hub's start instant, compared lexicographically; a client discards any delta at or below the highest version it holds.",
       "why": "because a bare counter restarts at zero with the process and freezes every client's view",
       "file": "spec/30-run.md",
-      "line": 382
+      "line": 384
     },
     {
       "id": "run.project.reducer-is-total",
@@ -6655,7 +6666,7 @@
       "statement": "The reducer is total: nothing overwrites a terminal step or run status, a new step label appends, an existing one merges field-wise, and a stale delta is a no-op.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 384
+      "line": 386
     },
     {
       "id": "run.project.outputs-by-reference",
@@ -6666,7 +6677,7 @@
       "statement": "A step output appears as a post-redaction reference and a byte count, never inline; fetching the payload is a separately authorized request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 385
+      "line": 387
     },
     {
       "id": "run.project.connect",
@@ -6677,7 +6688,7 @@
       "statement": "A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 386
+      "line": 388
     },
     {
       "id": "run.project.broadcast-ring",
@@ -6688,7 +6699,7 @@
       "statement": "The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 387
+      "line": 389
     },
     {
       "id": "run.project.unauthenticated-upgrade",
@@ -6699,7 +6710,7 @@
       "statement": "The run-stream socket authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.",
       "why": "A-read",
       "file": "spec/30-run.md",
-      "line": 388
+      "line": 390
     },
     {
       "id": "run.project.read-only-socket",
@@ -6710,7 +6721,7 @@
       "statement": "A subscription is read-only; a stop travels as an authenticated route.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 390
+      "line": 392
     },
     {
       "id": "run.project.restart-discards",
@@ -6721,7 +6732,7 @@
       "statement": "A restart discards in-memory snapshots; a subscriber recovers history from the durable record.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 391
+      "line": 393
     },
     {
       "id": "run.project.delegated-progress",
@@ -6732,7 +6743,7 @@
       "statement": "A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 392
+      "line": 394
     },
     {
       "id": "run.declare.pipeline-spec",
@@ -10600,6 +10611,28 @@
       "line": 441
     },
     {
+      "id": "connector.source.drive-unreadable",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-unreadable",
+      "kind": "behavior",
+      "statement": "A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.",
+      "why": "because one unreadable file failing the fire holds back every other file's row and the position behind them",
+      "file": "spec/40-connector.md",
+      "line": 443
+    },
+    {
+      "id": "connector.source.drive-skip-count",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-skip-count",
+      "kind": "behavior",
+      "statement": "Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 445
+    },
+    {
       "id": "connector.source.drive-incremental",
       "contract": "connector",
       "operation": "source",
@@ -10608,7 +10641,7 @@
       "statement": "The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 443
+      "line": 446
     },
     {
       "id": "connector.source.drive-fire",
@@ -10619,7 +10652,7 @@
       "statement": "One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 444
+      "line": 447
     },
     {
       "id": "connector.source.drive-oauth",
@@ -10630,7 +10663,7 @@
       "statement": "The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.",
       "why": "because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour",
       "file": "spec/40-connector.md",
-      "line": 445
+      "line": 448
     },
     {
       "id": "connector.source.drive-oauth-shape",
@@ -10641,7 +10674,7 @@
       "statement": "`oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 447
+      "line": 450
     },
     {
       "id": "connector.source.drive-origin",
@@ -10652,7 +10685,7 @@
       "statement": "The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 448
+      "line": 451
     },
     {
       "id": "connector.source.drive-position-owned",
@@ -10663,7 +10696,7 @@
       "statement": "`incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 449
+      "line": 452
     },
     {
       "id": "connector.reference.credential-plane",
@@ -18943,6 +18976,14 @@
     [
       "connector.source.drive-page-grain",
       "run.land.parse-boundary"
+    ],
+    [
+      "connector.source.drive-unreadable",
+      "run.land.parse-boundary"
+    ],
+    [
+      "connector.source.drive-skip-count",
+      "run.record.skipped-count"
     ],
     [
       "connector.source.drive-origin",

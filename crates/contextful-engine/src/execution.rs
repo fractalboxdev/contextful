@@ -20,6 +20,14 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// What a successful run counted beside its destination counts.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Tally {
+    pub batches: u64,
+    /// The sum of every pull's `skipped` count (`run.record.skipped-count`).
+    pub skipped: u64,
+}
+
 /// A failure an execution closes on.
 pub(crate) enum Close {
     Refused(RunError),
@@ -163,6 +171,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             rows: 0,
             bytes: 0,
             batches: 0,
+            skipped: 0,
             error_kind: None,
             error_message: None,
             connector_id: connector.id,
@@ -380,7 +389,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
 
     /// Close on `outcome`: deregister from the keeper, release the held lease, record the status,
     /// then retire the owner where the status releases it (`run.own.pin-release`).
-    pub(crate) fn close_with(mut self, outcome: Result<(Landed, u64), Close>) -> Result<RunRow, EngineError> {
+    pub(crate) fn close_with(mut self, outcome: Result<(Landed, Tally), Close>) -> Result<RunRow, EngineError> {
         let engine = self.engine;
         drop(self.registration.take());
         let lease = self.held.lock().unwrap_or_else(|e| e.into_inner()).take();
@@ -394,11 +403,12 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
             r.phase = Phase::Commit;
             r.owner = None;
             match &outcome {
-                Ok((landed, batches)) => {
+                Ok((landed, tally)) => {
                     r.status = RunStatus::Success;
                     r.rows = landed.rows;
                     r.bytes = landed.bytes;
-                    r.batches = *batches;
+                    r.batches = tally.batches;
+                    r.skipped = tally.skipped;
                 }
                 Err(close) => {
                     let (tag, message) = close.recorded();
@@ -522,7 +532,7 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> ExecutionPort for Execution<
 
     fn close(self, outcome: Outcome) -> Result<RunRow, EngineError> {
         let outcome = match outcome {
-            Outcome::Success { rows, bytes, batches } => Ok((Landed { rows, bytes }, batches)),
+            Outcome::Success { rows, bytes, batches } => Ok((Landed { rows, bytes }, Tally { batches, skipped: 0 })),
             Outcome::Failed(f) => Err(Close::Failed(f)),
         };
         self.close_with(outcome)

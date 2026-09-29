@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 205 | 56 | 22 | 16 | 87 | 0 | 87 |
 | `authority` | 2 | 16 | 238 | 64 | 27 | 8 | 172 | 0 | 172 |
-| `connector` | 2 | 13 | 269 | 75 | 18 | 9 | 143 | 0 | 143 |
+| `connector` | 2 | 13 | 271 | 75 | 18 | 9 | 145 | 0 | 145 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 151 | 26 | 22 | 18 | 119 | 0 | 119 |
-| `run` | 3 | 24 | 311 | 84 | 34 | 31 | 180 | 0 | 180 |
+| `run` | 3 | 24 | 312 | 84 | 34 | 31 | 181 | 0 | 181 |
 | `store` | 1 | 15 | 189 | 46 | 12 | 14 | 147 | 0 | 147 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 10 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 22 | 0 | 22 |
-| **total** | 19 | 149 | 1649 | 513 | 181 | 124 | 934 | 0 | |
+| **total** | 19 | 149 | 1652 | 513 | 181 | 124 | 937 | 0 | |
 
 Decision records: 18.
 
@@ -26,8 +26,8 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 203 | 148 | passing |
 | 2 — The store | 9 | 148 | 111 | passing |
-| 3 — The run path | 11 | 184 | 112 | passing |
-| 4 — Ingest | 22 | 373 | 178 | passing |
+| 3 — The run path | 11 | 185 | 113 | passing |
+| 4 — Ingest | 22 | 375 | 180 | passing |
 | 5 — The read face under enforcement | 17 | 239 | 163 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 22 | 22 | passing |
@@ -429,8 +429,10 @@ Unscheduled operations: 10.
 | `connector.source.drive-page-grain` | `crates/contextful-connectors/tests/integration/drive.rs::a_doc_a_sheet_and_a_deck_land_as_their_pdf_pages` | performed |
 | `connector.source.drive-position-owned` | `crates/contextful-cli/tests/integration/drive.rs::an_incremental_field_beside_the_drive_source_refuses_at_validation` | performed |
 | `connector.source.drive-root` | `crates/contextful-connectors/tests/integration/drive.rs::a_root_that_is_no_folder_fails_before_any_listing` | performed |
+| `connector.source.drive-skip-count` | `crates/contextful-connectors/tests/integration/drive.rs::each_pull_counts_the_files_it_skipped` | performed |
 | `connector.source.drive-table-unmatched` | `crates/contextful-connectors/tests/integration/drive.rs::a_table_the_source_does_not_serve_refuses_before_any_request` | performed |
 | `connector.source.drive-tables` | `crates/contextful-connectors/tests/integration/drive.rs::a_file_row_carries_its_metadata_and_names_its_bytes_by_digest` | performed |
+| `connector.source.drive-unreadable` | `crates/contextful-connectors/tests/integration/drive.rs::an_unreadable_or_crashing_pdf_is_skipped_and_every_other_file_lands` | performed |
 | `connector.source.drive-walk` | `crates/contextful-connectors/tests/integration/drive.rs::a_three_level_tree_lands_one_row_per_file_with_its_path_from_the_root` | performed |
 | `connector.source.external-reference` | `crates/contextful-decode/tests/integration/workbook.rs::every_form_of_external_reference_is_refused` | performed |
 | `connector.source.format-key-mismatch` | `crates/contextful-connectors/tests/integration/http.rs::a_json_key_on_another_format_is_refused_at_build` | performed |
@@ -768,6 +770,7 @@ Unscheduled operations: 10.
 | `run.record.row-at-open` | `crates/contextful-engine/tests/integration/runner.rs::the_row_exists_before_the_first_pull` | performed |
 | `run.record.site-id-length` | `crates/contextful-core/tests/integration/run/record.rs::a_site_id_is_1_to_64_path_safe_chars` | performed |
 | `run.record.site-id-unresolved` | `crates/contextful-core/tests/integration/run/record.rs::a_site_id_resolves_from_exactly_one_bound_source` | performed |
+| `run.record.skipped-count` | `crates/contextful-engine/tests/integration/runner.rs::the_run_row_sums_the_skipped_count_of_every_pull` | performed |
 | `run.record.status-set` | `crates/contextful-core/tests/integration/run/record.rs::seven_statuses_spelled_once_for_record_and_wire` | performed |
 | `run.record.truncation-flag` | `crates/contextful-core/tests/integration/run/record.rs::history_echoes_its_window_and_flags_truncation` | performed |
 | `run.retry.decision-is-pure` | `crates/contextful-core/tests/integration/run/retry.rs::the_decision_is_a_function_of_attempt_failure_and_seed` | performed |

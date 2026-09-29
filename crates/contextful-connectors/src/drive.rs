@@ -441,9 +441,18 @@ impl Drive {
                         return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
                     }
                     Ok(resp) => {
-                        let pdf = e.exported() || e.mime == PDF;
-                        let pages = if pdf { Some(self.decoder.pages(&resp.body, &e.path)?) } else { None };
-                        Fetched { sha256: Some(hex(&Sha256::digest(&resp.body))), bytes: Some(resp.body.len() as u64), pages, skipped: None }
+                        let (sha256, bytes) = (Some(hex(&Sha256::digest(&resp.body))), Some(resp.body.len() as u64));
+                        if !(e.exported() || e.mime == PDF) {
+                            Fetched { sha256, bytes, pages: None, skipped: None }
+                        } else {
+                            // One body the decoder refuses or crashes on skips that file alone
+                            // (`connector.source.drive-unreadable`); a stop still ends the read.
+                            match self.decoder.pages(&resp.body, &e.path) {
+                                Ok(pages) => Fetched { sha256, bytes, pages: Some(pages), skipped: None },
+                                Err(f) if f.tag == FailureTag::Canceled => return Err(f),
+                                Err(f) => Fetched { sha256, bytes, pages: None, skipped: Some(format!("the PDF did not decode: {}", f.message)) },
+                            }
+                        }
                     }
                 }
             }
@@ -479,6 +488,15 @@ fn held(position: Option<&Value>) -> BTreeMap<String, Held> {
         .collect()
 }
 
+/// One read of a drive table.
+#[derive(Debug, Clone)]
+pub struct Read {
+    pub rows: Vec<Row>,
+    pub position: Value,
+    /// Files the read lands with a `skipped` reason.
+    pub skipped: u64,
+}
+
 /// The source landing one table of a drive fire.
 pub struct DriveSource {
     pub drive: Arc<Drive>,
@@ -493,7 +511,7 @@ impl DriveSource {
         r.insert("name".into(), json!(e.name));
         r.insert("path".into(), json!(e.path));
         r.insert("mime_type".into(), json!(e.mime));
-        r.insert("export_mime_type".into(), if e.exported() && f.skipped.is_none() { json!(PDF) } else { Value::Null });
+        r.insert("export_mime_type".into(), if e.exported() && f.sha256.is_some() { json!(PDF) } else { Value::Null });
         r.insert("modified_time".into(), json!(e.modified));
         r.insert("md5_checksum".into(), json!(e.md5));
         r.insert("sha256".into(), json!(f.sha256));
@@ -550,12 +568,14 @@ impl DriveSource {
         spelled.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
     }
 
-    /// The rows of this table since `position`, and the position after them.
-    pub fn read(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<(Vec<Row>, Value), Failure> {
+    /// The rows of this table since `position`, the position after them, and the files they
+    /// land with a `skipped` reason.
+    pub fn read(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<Read, Failure> {
         let before = held(position);
         let entries = self.drive.walk(cancel)?;
         let mut rows = Vec::new();
         let mut after = Map::new();
+        let mut skipped = 0u64;
         for e in entries.iter() {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped between files"));
@@ -565,6 +585,7 @@ impl DriveSource {
             let mut pages = prior.map_or(0, |h| h.pages);
             if !unchanged {
                 let f = self.drive.fetch(e)?;
+                skipped += u64::from(f.skipped.is_some());
                 let landed = f.pages.as_ref().map_or(0, |p| p.len() as u64);
                 match self.table {
                     Table::Files => rows.push(Self::file_row(e, &f)),
@@ -587,14 +608,15 @@ impl DriveSource {
                 Table::Pages => rows.extend((1..=h.pages).map(|p| Self::page_row(id, None, &h.path, p, None))),
             }
         }
-        Ok((rows, json!({ "files": after })))
+        Ok(Read { rows, position: json!({ "files": after }), skipped })
     }
 }
 
 impl Source for DriveSource {
     /// One pull is one whole walk; the position rides the pull as an opaque token.
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
-        let (rows, cursor) = self.read(request.position.as_ref(), cancel)?;
-        serde_json::to_vec(&json!({ "rows": rows, "cursor": cursor, "more": false, "types": self.types() })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+        let read = self.read(request.position.as_ref(), cancel)?;
+        // The skipped files are the pull's tally on the run record (`connector.source.drive-skip-count`).
+        serde_json::to_vec(&json!({ "rows": read.rows, "cursor": read.position, "more": false, "types": self.types(), "skipped": read.skipped })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }

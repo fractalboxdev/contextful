@@ -36,6 +36,7 @@ fn row(run_id: &str, st: RunStatus) -> RunRow {
         rows: 4,
         bytes: 900,
         batches: 3,
+        skipped: 0,
         error_kind: None,
         error_message: None,
         connector_id: "vendor".into(),

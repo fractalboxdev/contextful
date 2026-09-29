@@ -362,6 +362,8 @@ The durable run record, its statuses, its owner lease and windowed history over 
 - `failure-publishes` — The bucket push runs on the failure arm as on the success arm, for every failure past run open.
 - `per-table-accounting` — A table failing inside a multi-table fire leaves one row with its error kind, a step-failure and a run-failure event, and a position where the next run resumes, under either `on_table_error` setting.
 - `counts-at-destination` — Row and byte counts are measured at the destination, not at the source.
+- `skipped-count` — A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.
+  *because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows*
 
 unsettled: What does a run-record manifest carry for a catalog rebuild to restore history instead of resetting it? owner: run-path affects: run.record
 
