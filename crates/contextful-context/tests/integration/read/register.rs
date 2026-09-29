@@ -179,12 +179,12 @@ fn a_preview_reads_the_named_file_alone() {
 fn the_published_limit_is_the_applied_one() {
     let r = Reads::new();
     let on_prem = r.session(&["research/*"], None, None);
-    let notes = r.face.describe(&on_prem, Some("research/notes")).unwrap();
+    let notes = r.face.describe(&on_prem, Some("research/notes"), Bounds::default()).unwrap();
     assert_eq!(notes["limits"], json!({ "max_rows": 3 }));
     let all = r.query(&on_prem, r#"SELECT note_id FROM "research/notes""#).unwrap();
     assert_eq!((all.rows.len(), all.truncated), (3, true));
     let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
-    let vendor = r.face.describe(&s, Some("research/vendor")).unwrap();
+    let vendor = r.face.describe(&s, Some("research/vendor"), Bounds::default()).unwrap();
     assert!(vendor.get("limits").is_none(), "{vendor}");
     super::land_rows(&r.store, "research/vendor", "run-0002", json!([{ "item_id": "v2" }, { "item_id": "v3" }, { "item_id": "v4" }]));
     let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
@@ -205,7 +205,7 @@ fn the_row_ceiling_bounds_delivery_with_one_probe_row() {
     assert_eq!((column(&capped, "note_id"), capped.truncated), (vec![json!("n1"), json!("n2"), json!("n3")], true));
     let exact = r.query(&s, r#"SELECT note_id FROM "research/notes" WHERE tenant = 'acme'"#).unwrap();
     assert_eq!((exact.rows.len(), exact.truncated), (3, false));
-    let asked = r.face.query(&s, r#"SELECT note_id FROM "research/notes""#, ReadOptions { limit: Some(2), internals: true }).unwrap();
+    let asked = r.face.query(&s, r#"SELECT note_id FROM "research/notes""#, ReadOptions { limit: Some(2), internals: true, ..ReadOptions::default() }).unwrap();
     assert_eq!((asked.rows.len(), asked.truncated), (2, true));
     assert_eq!(asked.blocks["contextful.internals"]["limit"], json!(2));
 }

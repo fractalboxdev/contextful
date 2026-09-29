@@ -3,6 +3,7 @@
 
 use super::*;
 use contextful_core::identify::Subject;
+use contextful_core::store::bound_time::Bounds;
 use serde_json::json;
 
 fn contacts(r: &Reads, s: &Session, sql_tail: &str) -> Response {
@@ -75,7 +76,7 @@ fn every_row_path_takes_the_session() {
     // what this session sees of the contacts table.
     let statement = sorted(column(&contacts(&r, &s, ""), "contact_id"));
     let preview = r.face.file(&s, "tables/research/contacts/data/runs/run-0001/ingest-a/part-00000.parquet", ReadOptions::default()).unwrap();
-    let described = r.face.describe(&s, Some("research/contacts")).unwrap();
+    let described = r.face.describe(&s, Some("research/contacts"), Bounds::default()).unwrap();
     let ranked = r
         .face
         .retrieve(&s, &contextful_context::read::RetrieveRequest::new("research/contacts", "", at("2030-02-01T00:00:00Z")), Bounds::default())
@@ -259,9 +260,9 @@ fn an_ungranted_relation_is_unknown_everywhere() {
     let s = r.session(&["research/*"], None, None);
     refused_with(r.query(&s, r#"SELECT * FROM "hr/salaries""#), "EnforceUnknownRelation");
     refused_with(r.query(&s, r#"SELECT * FROM "hr/nothing""#), "EnforceUnknownRelation");
-    refused_with(r.face.describe(&s, Some("hr/salaries")), "EnforceUnknownRelation");
-    refused_with(r.face.describe(&s, Some("hr/nothing")), "EnforceUnknownRelation");
-    let listing = r.face.describe(&s, None).unwrap();
+    refused_with(r.face.describe(&s, Some("hr/salaries"), Bounds::default()), "EnforceUnknownRelation");
+    refused_with(r.face.describe(&s, Some("hr/nothing"), Bounds::default()), "EnforceUnknownRelation");
+    let listing = r.face.describe(&s, None, Bounds::default()).unwrap();
     let names: Vec<&str> = listing["tables"].as_array().unwrap().iter().map(|t| t["table"].as_str().unwrap()).collect();
     assert!(names.contains(&"research/notes") && !names.iter().any(|n| n.starts_with("hr/")), "{names:?}");
 }

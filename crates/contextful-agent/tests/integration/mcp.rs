@@ -1,7 +1,8 @@
 //! The tool protocol over the read face: the handshake, the closed tool set, in-band
-//! refusals and the effect-boundary re-read.
+//! refusals, the effect-boundary re-read and the bound arguments every read tool admits.
 
 use contextful_agent::mcp::Server;
+use contextful_context::fold::fold;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::Face;
 use contextful_context::Store;
@@ -10,6 +11,7 @@ use contextful_core::identify::Subject;
 use contextful_core::issue::{IssuancePolicy, Lifetime, MintContext, MintRequest, NodeRole, SignatureAlgorithm};
 use contextful_core::ports::FixedClock;
 use contextful_core::store::declare::TableDecl;
+use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::lay_out::NodeId;
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
@@ -20,7 +22,6 @@ use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::RevocationState;
 use contextful_policy::verify::{verify_local_bearer, Admission, AdmittedAuthority};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 
 const AUD: &str = "contextful://acme-research";
 const MANIFEST: &str = "[[pipeline.tables]]\nname = \"research/notes\"\n\n[[pipeline.tables]]\nname = \"hr/salaries\"\n";
@@ -35,22 +36,32 @@ struct Fixture {
     authority: AdmittedAuthority,
 }
 
+/// Land one batch of `rows` into `decl`'s table as run `run`, committed at `now`.
+fn put(store: &Store, decl: &TableDecl, run: &str, now: &str, rows: Value, types: &[(&str, ColumnType)]) {
+    let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        committed_at: at(now),
+    };
+    let types = types.iter().map(|(c, t)| (c.to_string(), *t)).collect();
+    land(store, decl, &Batch { rows, types }, &ctx).unwrap();
+}
+
 fn fixture() -> Fixture {
+    fixture_over(MANIFEST, |store| {
+        let notes = json!([{ "note_id": "n1", "title": "Solar battery storage" }, { "note_id": "n2", "title": "Hiring plan" }]);
+        put(store, &TableDecl::named("research/notes"), "run-0001", "2030-01-01T00:00:00Z", notes, &[]);
+        let salaries = json!([{ "employee": "e1", "title": "Battery storage engineer" }]);
+        put(store, &TableDecl::named("hr/salaries"), "run-0001", "2030-01-01T00:00:00Z", salaries, &[]);
+    })
+}
+
+fn fixture_over(manifest: &str, seed: impl FnOnce(&Store)) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path(), "research").unwrap();
-    for (table, rows) in [
-        ("research/notes", json!([{ "note_id": "n1", "title": "Solar battery storage" }, { "note_id": "n2", "title": "Hiring plan" }])),
-        ("hr/salaries", json!([{ "employee": "e1", "title": "Battery storage engineer" }])),
-    ] {
-        let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
-        let ctx = RunContext {
-            node: NodeId::parse("ingest-a").unwrap(),
-            injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
-            committed_at: at("2030-01-01T00:00:00Z"),
-        };
-        land(&store, &TableDecl::named(table), &Batch { rows, types: HashMap::new() }, &ctx).unwrap();
-    }
-    let face = Face::open(store, MANIFEST, Pepper::resolve(|_| None)).unwrap();
+    seed(&store);
+    let face = Face::open(store, manifest, Pepper::resolve(|_| None)).unwrap();
     let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
     let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
     let subject = Subject {
@@ -64,7 +75,7 @@ fn fixture() -> Fixture {
         tables: vec![TablePattern::parse("research/*").unwrap()],
         tenant: None,
         aggregate: None,
-        templates: None,
+        templates: Some(vec!["*".into()]),
         max_rows: None,
     };
     let mut req = MintRequest::custody(subject, vec![grant]);
@@ -147,4 +158,188 @@ fn every_call_re_reads_the_authority() {
     let stopped = call(&server, "context.query", json!({ "sql": "SELECT note_id FROM \"research/notes\"" }));
     assert_eq!(stopped["result"]["isError"], json!(true));
     assert!(stopped["result"]["content"][0]["text"].as_str().unwrap().contains("AuthorityExpired"));
+}
+
+const BOUNDED: &str = r#"[[pipeline.tables]]
+name = "research/filings"
+primary_key = ["doc"]
+
+[[pipeline.tables]]
+name = "research/rates"
+primary_key = ["ccy"]
+
+[pipeline.tables.valid_time]
+from = "from_ts"
+to = "to_ts"
+
+[[query_templates]]
+id = "filing"
+sql = "SELECT CAST(v AS VARCHAR) AS v FROM \"research/filings\" WHERE doc = ?"
+parameters = ["doc:string"]
+
+[[query_templates]]
+id = "rates"
+sql = "SELECT ccy FROM \"research/rates\" WHERE ccy <> ? ORDER BY ccy"
+parameters = ["skip:string"]
+"#;
+
+/// A keyed table folded after its second run, beside a table declaring a valid-time pair.
+fn bounded() -> Fixture {
+    let decls = TableDecl::parse_pipeline(BOUNDED).unwrap();
+    let decl = |name: &str| decls.iter().find(|d| d.name == name).unwrap().clone();
+    fixture_over(BOUNDED, |store| {
+        let filings = decl("research/filings");
+        put(store, &filings, "run-1", "2030-01-01T00:00:00Z", json!([{ "doc": "a", "v": 1 }]), &[]);
+        put(store, &filings, "run-2", "2030-01-01T02:00:00Z", json!([{ "doc": "a", "v": 2 }]), &[]);
+        fold(store, &filings, at("2030-01-01T03:00:00Z")).unwrap();
+        let ts = [("from_ts", ColumnType::Timestamp), ("to_ts", ColumnType::Timestamp)];
+        let rates = json!([
+            { "ccy": "eur", "from_ts": "2030-01-01T00:00:00Z", "to_ts": "2030-02-01T00:00:00Z" },
+            { "ccy": "gbp", "from_ts": "2030-01-15T00:00:00Z", "to_ts": null },
+        ]);
+        put(store, &decl("research/rates"), "run-1", "2030-01-01T00:00:00Z", rates, &ts);
+    })
+}
+
+fn rows(answer: &Value) -> &Value {
+    assert!(answer["result"].get("isError").is_none(), "{answer}");
+    &answer["result"]["structuredContent"]["rows"]
+}
+
+fn echoed(answer: &Value) -> &Value {
+    &answer["result"]["structuredContent"]["contextful.bounds"]
+}
+
+/// Over a keyed table folded after its second run, `as_of` on every read tool returns the pre-fold row and echoes the bound.
+#[test]
+fn as_of_on_every_read_tool_returns_the_pre_fold_row() {
+    let f = bounded();
+    let clock = FixedClock(at("2030-01-01T04:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let sql = r#"SELECT CAST(v AS VARCHAR) AS v FROM "research/filings""#;
+    let before = "2030-01-01T01:00:00Z";
+    let echo = json!({ "as_of": "2030-01-01T01:00:00.000000000Z", "inclusive": true });
+
+    let latest = call(&server, "context.query", json!({ "sql": sql }));
+    assert_eq!(rows(&latest), &json!([["2"]]));
+    assert!(latest["result"]["structuredContent"].get("contextful.bounds").is_none(), "{latest}");
+
+    let old = call(&server, "context.query", json!({ "sql": sql, "as_of": before }));
+    assert_eq!(rows(&old), &json!([["1"]]));
+    assert_eq!(echoed(&old), &echo);
+
+    let executed = call(&server, "context.execute_query", json!({ "id": "filing", "arguments": { "doc": "a" }, "as_of": before }));
+    assert_eq!(rows(&executed), &json!([["1"]]));
+    assert_eq!(echoed(&executed), &echo);
+
+    let template = call(&server, "filing", json!({ "doc": "a", "as_of": before }));
+    assert_eq!(rows(&template), &json!([["1"]]));
+    assert_eq!(echoed(&template), &echo);
+
+    let described = call(&server, "context.describe", json!({ "table": "research/filings", "as_of": before }));
+    assert_eq!(echoed(&described), &echo, "{described}");
+
+    // The listing under the bound holds run-1 alone; its preview reads, and run-2's refuses.
+    let listed = call(&server, "context.files", json!({ "as_of": before }));
+    let paths: Vec<String> = rows(&listed)
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r[0] == json!("research/filings"))
+        .map(|r| r[1].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(paths.len(), 1, "{listed}");
+    assert!(paths[0].contains("/runs/run-1/"), "{listed}");
+    assert_eq!(echoed(&listed), &echo);
+    let preview = call(&server, "context.file", json!({ "path": paths[0], "as_of": before }));
+    assert_eq!(rows(&preview).as_array().unwrap().len(), 1);
+    assert_eq!(echoed(&preview), &echo);
+    let later = paths[0].replace("/runs/run-1/", "/runs/run-2/");
+    let refused = call(&server, "context.file", json!({ "path": later, "as_of": before }));
+    assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
+}
+
+/// Every read tool, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
+// spec: read.register.bound-arguments@db8ab82b
+#[test]
+fn valid_as_of_wraps_only_the_tables_a_read_touches() {
+    let f = bounded();
+    let clock = FixedClock(at("2030-01-01T04:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let when = "2030-01-10T00:00:00Z";
+    let echo = json!({ "valid_as_of": "2030-01-10T00:00:00.000000000Z", "inclusive": true });
+    let sql = r#"SELECT ccy FROM "research/rates" ORDER BY ccy"#;
+
+    // `research/filings` declares no pair and sits in the session; the statement touches `research/rates` alone.
+    let rates = call(&server, "context.query", json!({ "sql": sql, "valid_as_of": when }));
+    assert_eq!(rows(&rates), &json!([["eur"]]));
+    assert_eq!(echoed(&rates), &echo);
+    let both = call(&server, "context.query", json!({ "sql": sql, "valid_as_of": "2030-01-20T00:00:00Z" }));
+    assert_eq!(rows(&both), &json!([["eur"], ["gbp"]]));
+
+    let executed = call(&server, "context.execute_query", json!({ "id": "rates", "arguments": { "skip": "usd" }, "valid_as_of": when }));
+    assert_eq!(rows(&executed), &json!([["eur"]]));
+    assert_eq!(echoed(&executed), &echo);
+    let template = call(&server, "rates", json!({ "skip": "usd", "valid_as_of": when }));
+    assert_eq!(rows(&template), &json!([["eur"]]));
+    assert_eq!(echoed(&template), &echo);
+
+    let undeclared = call(&server, "context.query", json!({ "sql": r#"SELECT v FROM "research/filings""#, "valid_as_of": when }));
+    assert_eq!(undeclared["result"]["isError"], json!(true), "{undeclared}");
+    assert!(undeclared["result"]["content"][0]["text"].as_str().unwrap().contains("research/filings"), "{undeclared}");
+
+    let described = call(&server, "context.describe", json!({ "table": "research/rates", "valid_as_of": when }));
+    assert_eq!(described["result"]["structuredContent"]["row_count"], json!("1"), "{described}");
+    assert_eq!(echoed(&described), &echo);
+
+    let listed = call(&server, "context.files", json!({}));
+    let part = rows(&listed).as_array().unwrap().iter().find(|r| r[0] == json!("research/rates")).unwrap()[1].clone();
+    let preview = call(&server, "context.file", json!({ "path": part, "valid_as_of": when }));
+    assert_eq!(rows(&preview).as_array().unwrap().len(), 1, "{preview}");
+    assert_eq!(echoed(&preview), &echo);
+
+    let retrieved = call(&server, "corpus.retrieve", json!({ "prefix": "research/rates", "query": "eur gbp", "valid_as_of": when }));
+    assert_eq!(rows(&retrieved).as_array().unwrap().len(), 1, "{retrieved}");
+    assert_eq!(echoed(&retrieved), &echo);
+}
+
+/// `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
+// spec: read.register.bound-listing@9360c1d2
+#[test]
+fn a_listing_ignores_valid_as_of_and_echoes_only_as_of() {
+    let f = bounded();
+    let clock = FixedClock(at("2030-01-01T04:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let when = "2030-01-10T00:00:00Z";
+    let before = "2030-01-01T01:00:00Z";
+    let echo = json!({ "as_of": "2030-01-01T01:00:00.000000000Z", "inclusive": true });
+
+    let unbounded = call(&server, "context.files", json!({}));
+    let valid_only = call(&server, "context.files", json!({ "valid_as_of": when }));
+    assert_eq!(rows(&valid_only), rows(&unbounded));
+    assert!(valid_only["result"]["structuredContent"].get("contextful.bounds").is_none(), "{valid_only}");
+    let both = call(&server, "context.files", json!({ "as_of": before, "valid_as_of": when }));
+    assert_eq!(rows(&both), rows(&call(&server, "context.files", json!({ "as_of": before }))));
+    assert_eq!(echoed(&both), &echo);
+
+    let tables = call(&server, "context.describe", json!({ "valid_as_of": when }));
+    assert!(tables["result"]["structuredContent"].get("contextful.bounds").is_none(), "{tables}");
+    let tables = call(&server, "context.describe", json!({ "as_of": before, "valid_as_of": when }));
+    assert_eq!(echoed(&tables), &echo, "{tables}");
+}
+
+#[test]
+fn every_read_tool_declares_both_bounds() {
+    let f = bounded();
+    let clock = FixedClock(at("2030-01-01T04:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let tools = ask(&server, 1, "tools/list", json!({}));
+    let tools = tools["result"]["tools"].as_array().unwrap();
+    assert!(tools.iter().any(|t| t["name"] == json!("filing")));
+    for tool in tools {
+        let properties = &tool["inputSchema"]["properties"];
+        for bound in ["as_of", "valid_as_of"] {
+            assert_eq!(properties[bound]["type"], json!("string"), "{} lacks `{bound}`", tool["name"]);
+        }
+    }
 }

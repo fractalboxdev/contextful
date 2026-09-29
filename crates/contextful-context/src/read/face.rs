@@ -16,6 +16,7 @@ use contextful_core::read::ReadError;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::declare::{DeclareError, MemoryDeclarations};
 use contextful_core::store::bound_time::Bounds;
+use contextful_core::store::StoreError;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
 use contextful_core::store::reconcile::{Column, ColumnType};
 use contextful_core::store::relation::{ident, relation};
@@ -36,6 +37,8 @@ pub struct ReadOptions {
     pub limit: Option<u64>,
     /// Return the internals block.
     pub internals: bool,
+    /// The read's transaction-time and valid-time bounds (`store.bound-time`).
+    pub bounds: Bounds,
 }
 
 /// The read face over one store and its manifest.
@@ -168,17 +171,23 @@ impl Face {
     }
 
     /// Open a session for an admitted authority: one relation per table its read grants
-    /// cover, compiled under the request's zone and bounds. A session pooled under the
-    /// same whole key is reused; the key is computed before any resolution, so a commit
-    /// racing the resolution lands under a key no later call computes
-    /// (`read.cache.session-pool`).
+    /// cover, compiled under the request's zone and bounds. A `valid_as_of` wraps only the
+    /// tables declaring a valid-time pair (`store.bound-time.valid-as-of`); a table
+    /// declaring none compiles under `as_of` alone and refuses only a read that names it
+    /// ([`Face::bind_valid_time`]). A session pooled under the same whole key is reused;
+    /// the key is computed before any resolution, so a commit racing the resolution lands
+    /// under a key no later call computes (`read.cache.session-pool`).
     pub fn session(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds) -> Result<Session, ReadFault> {
         let tables = self.tables()?;
         let granted: Vec<String> = tables.iter().filter(|t| raw_read_covers(authority.grants(), t)).cloned().collect();
         let principal = pool::principal(authority, request, bounds);
         let state = pool::store_state(&self.store, &tables, &granted)?;
+        let transaction = Bounds { valid_as_of: None, ..bounds };
         self.pool.session(principal, state, || {
-            let sources = granted.iter().map(|t| self.source(t, bounds)).collect::<Result<Vec<_>, _>>()?;
+            let sources = granted
+                .iter()
+                .map(|t| self.source(t, if self.decl(t).valid_time.is_some() { bounds } else { transaction }))
+                .collect::<Result<Vec<_>, _>>()?;
             Ok(Session::open(authority, request, sources, &self.pepper)?)
         })
     }
@@ -186,6 +195,21 @@ impl Face {
     /// The face's session pool (`read.cache.session-pool`).
     pub fn pool(&self) -> &SessionPool {
         &self.pool
+    }
+
+    /// Refuse a `valid_as_of` read touching a table that declares no valid-time pair
+    /// (`store.bound-time.valid-time-undeclared`). The session already compiles every
+    /// declaring table under `valid_as_of`, so a pooled connection is never re-registered.
+    pub(crate) fn bind_valid_time(&self, touched: &BTreeSet<String>, bounds: Bounds) -> Result<(), ReadFault> {
+        if bounds.valid_as_of.is_none() {
+            return Ok(());
+        }
+        for table in touched {
+            if self.decl(table).valid_time.is_none() {
+                return Err(StoreError::StoreValidTimeUndeclared(format!("table `{table}` declares no valid-time pair")).into());
+            }
+        }
+        Ok(())
     }
 
     /// The engine's serialization of a statement; no row is read.
@@ -214,7 +238,10 @@ impl Face {
         let started = std::time::Instant::now();
         let (columns, rows) = engine.run(sql, parameters, Response::fetch_count(ceiling))?;
         let rows: Vec<Vec<Value>> = rows.iter().map(|r| r.iter().map(Cell::to_json).collect()).collect();
-        let response = Response::cut(columns, rows, ceiling);
+        let mut response = Response::cut(columns, rows, ceiling);
+        if let Some(b) = opts.bounds.echo() {
+            response = response.with_block("bounds", b);
+        }
         Ok(if opts.internals {
             let internals = Internals {
                 sql: sql.to_string(),
@@ -238,6 +265,7 @@ impl Face {
         let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &[])?;
         engine.register_ledgers(session, &admitted.relations)?;
+        self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         self.respond(&engine, sql, &[], ceiling, opts)
     }
@@ -255,6 +283,7 @@ impl Face {
         let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &parameters)?;
         engine.register_ledgers(session, &admitted.relations)?;
+        self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         self.respond(&engine, &template.sql, &parameters, ceiling, opts)
     }
@@ -265,7 +294,13 @@ impl Face {
         let declared: Vec<String> = self.templates.iter().map(|t| t.id.clone()).collect();
         let allowed = list_templates(session.grants(), &declared);
         let mut tools: Vec<Value> = TOOLS.iter().map(|t| builtin_tool(t)).collect();
-        tools.extend(self.templates.iter().filter(|t| allowed.contains(&t.id.as_str())).map(QueryTemplate::tool));
+        tools.extend(self.templates.iter().filter(|t| allowed.contains(&t.id.as_str())).map(|t| {
+            let mut tool = t.tool();
+            for (name, schema) in bound_properties() {
+                tool["inputSchema"]["properties"].as_object_mut().expect("a template schema lists properties").insert(name, schema);
+            }
+            tool
+        }));
         tools
     }
 
@@ -276,16 +311,25 @@ impl Face {
     /// Describe one table the session reads, or list them all. A table outside the
     /// session is absent from the listing and refused by name
     /// (`authority.refuse.ungranted-table`). `limits.max_rows` appears exactly when the
-    /// engine applies it (`read.register.advertised-is-enforced`).
-    pub fn describe(&self, session: &Session, table: Option<&str>) -> Result<Value, ReadFault> {
+    /// engine applies it (`read.register.advertised-is-enforced`). The row count reads
+    /// under `bounds`, which a bounded description echoes; a listing reads under `as_of`
+    /// alone and echoes only it (`read.register.bound-listing`).
+    pub fn describe(&self, session: &Session, table: Option<&str>, bounds: Bounds) -> Result<Value, ReadFault> {
+        let echo = |mut v: Value, bounds: Bounds| {
+            if let Some(b) = bounds.echo() {
+                v["contextful.bounds"] = b;
+            }
+            v
+        };
         let Some(table) = table else {
             let tables: Vec<Value> = session
                 .relations()
                 .map(|r| json!({ "table": r.name(), "description": self.decl(r.name()).agent_description }))
                 .collect();
-            return Ok(json!({ "tables": tables }));
+            return Ok(echo(json!({ "tables": tables }), Bounds { valid_as_of: None, ..bounds }));
         };
         let r = self.registered(session, table)?;
+        self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
         let engine = self.pool.engine(session)?;
         let (_, count) = engine.run(&format!("SELECT count(*) FROM {}", ident(r.name())), &[], None)?;
         let row_count = count.first().and_then(|r| r.first()).map(Cell::to_json).unwrap_or(Value::Null);
@@ -313,39 +357,47 @@ impl Face {
         if let Some(max) = policy.max_rows {
             out["limits"] = json!({ "max_rows": max });
         }
-        Ok(out)
+        Ok(echo(out, bounds))
     }
 
     /// Committed data files of the tables the session reads, store-root-relative; a table
-    /// outside the session contributes no path (`read.register.file-listing`).
+    /// outside the session contributes no path (`read.register.file-listing`). Only `as_of`
+    /// selects files and only it echoes (`read.register.bound-listing`).
     pub fn files(&self, session: &Session, bounds: Bounds) -> Result<Response, ReadFault> {
+        let transaction = Bounds { valid_as_of: None, ..bounds };
         let mut rows = Vec::new();
         for r in session.relations() {
             if self.store.try_schema(r.name())?.is_none() {
                 continue;
             }
-            for f in scan(&self.store, &self.decl(r.name()), bounds)?.files {
+            for f in scan(&self.store, &self.decl(r.name()), transaction)?.files {
                 rows.push(vec![json!(r.name()), json!(f)]);
             }
         }
-        Ok(Response::cut(vec!["table".into(), "path".into()], rows, None))
+        let response = Response::cut(vec!["table".into(), "path".into()], rows, None);
+        Ok(match transaction.echo() {
+            Some(b) => response.with_block("bounds", b),
+            None => response,
+        })
     }
 
     /// Preview one committed run file through its table's registered relation. A snapshot
     /// part, a traversal, an absolute path or a ledger file resolves to no table
-    /// (`read.register.file-preview-target`).
+    /// (`read.register.file-preview-target`). Under `as_of` the file is one the bound
+    /// reaches; under `valid_as_of` its rows are those valid at the instant.
     pub fn file(&self, session: &Session, path: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
         let table = preview_target(path)?;
         self.registered(session, &table)?;
         let decl = self.decl(&table);
-        if !scan(&self.store, &decl, Bounds::default())?.files.iter().any(|f| f == path) {
+        let transaction = Bounds { valid_as_of: None, ..opts.bounds };
+        if !scan(&self.store, &decl, transaction)?.files.iter().any(|f| f == path) {
             return Err(ReadError::FilePreviewNotATable(format!("`{path}` is no committed data file of `{table}`")).into());
         }
         let file = self.absolute(path);
         let schema = self.store.schema(&table)?;
         let carried = crate::parquet_io::columns(std::path::Path::new(&file))?;
         let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
-        let base = relation(&decl, std::slice::from_ref(&file), &schema.columns, &absent, None)?;
+        let base = relation(&decl, std::slice::from_ref(&file), &schema.columns, &absent, opts.bounds.valid_as_of)?;
         let preview = session.relation_over(&table, &base, vec![file]).expect("a registered table carries its source");
         let engine = SqlEngine::open(session)?;
         engine.register(PREVIEW_RELATION, preview.sql())?;
@@ -402,7 +454,7 @@ fn preview_target(path: &str) -> Result<String, ReadError> {
 
 /// A built-in tool's definition.
 fn builtin_tool(name: &str) -> Value {
-    let (description, properties, required): (&str, Value, Vec<&str>) = match name {
+    let (description, mut properties, required): (&str, Value, Vec<&str>) = match name {
         "context.describe" => (
             "Describe one table this credential reads, or list them.",
             json!({ "table": { "type": "string" }, "zone": { "type": "string" } }),
@@ -439,9 +491,18 @@ fn builtin_tool(name: &str) -> Value {
             vec!["query"],
         ),
     };
+    for (bound, schema) in bound_properties() {
+        properties[bound.as_str()] = schema;
+    }
     json!({
         "name": name,
         "description": description,
         "inputSchema": { "type": "object", "properties": properties, "required": required, "additionalProperties": false },
     })
+}
+
+/// The two bound arguments every read tool declares (`read.register.bound-arguments`).
+fn bound_properties() -> [(String, Value); 2] {
+    let instant = || json!({ "type": "string", "description": "An RFC 3339 instant, or a YYYY-MM-DD date read as the start of the next day, exclusive." });
+    [("as_of".into(), instant()), ("valid_as_of".into(), instant())]
 }

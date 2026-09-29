@@ -7,6 +7,7 @@
 
 use contextful_context::read::{Face, ReadFault, ReadOptions, RetrieveRequest};
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
+use contextful_core::read::template::READ_ARGUMENTS;
 use contextful_core::read::Refusal;
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::ports::Clock;
@@ -82,17 +83,21 @@ fn required(args: &Map<String, Value>, name: &str) -> Result<String, Protocol> {
     string(args, name)?.ok_or_else(|| invalid(format!("`{name}` is required")))
 }
 
-/// Refuse an argument a tool does not declare.
-fn only(args: &Map<String, Value>, tool: &str, known: &[&str]) -> Result<(), Protocol> {
-    match args.keys().find(|k| !known.contains(&k.as_str())) {
-        Some(k) => Err(invalid(format!("`{tool}` takes no argument `{k}`"))),
-        None => Ok(()),
-    }
+fn bound(args: &Map<String, Value>, name: &str) -> Result<Option<Bound>, Protocol> {
+    string(args, name)?.map(|s| Bound::parse(&s)).transpose().map_err(|e| invalid(format!("`{name}`: {e}")))
 }
 
 fn bounds(args: &Map<String, Value>) -> Result<Bounds, Protocol> {
-    let as_of = string(args, "as_of")?.map(|s| Bound::parse(&s)).transpose().map_err(|e| invalid(e.to_string()))?;
-    Ok(Bounds { as_of, valid_as_of: None })
+    Ok(Bounds { as_of: bound(args, "as_of")?, valid_as_of: bound(args, "valid_as_of")? })
+}
+
+/// Refuse an argument a tool does not declare; every read tool declares both bounds and `zone`
+/// (`read.register.bound-arguments`).
+fn only(args: &Map<String, Value>, tool: &str, known: &[&str]) -> Result<(), Protocol> {
+    match args.keys().find(|k| !known.contains(&k.as_str()) && !READ_ARGUMENTS.contains(&k.as_str())) {
+        Some(k) => Err(invalid(format!("`{tool}` takes no argument `{k}`"))),
+        None => Ok(()),
+    }
 }
 
 fn instant(args: &Map<String, Value>, name: &str) -> Result<Option<Instant>, Protocol> {
@@ -105,7 +110,7 @@ fn instant(args: &Map<String, Value>, name: &str) -> Result<Option<Instant>, Pro
 }
 
 fn options(args: &Map<String, Value>) -> Result<ReadOptions, Protocol> {
-    Ok(ReadOptions { limit: integer(args, "limit")?, internals: boolean(args, "internals")? })
+    Ok(ReadOptions { limit: integer(args, "limit")?, internals: boolean(args, "internals")?, bounds: bounds(args)? })
 }
 
 /// A tool result: the structured value and its text rendering.
@@ -221,18 +226,19 @@ impl<'a> Server<'a> {
         let zone = zone.as_deref();
         Ok(match name {
             "context.describe" => {
-                only(args, name, &["table", "zone"])?;
+                only(args, name, &["table"])?;
                 let table = string(args, "table")?;
-                self.session(zone, Bounds::default()).and_then(|s| self.face.describe(&s, table.as_deref()))
+                let b = bounds(args)?;
+                self.session(zone, b).and_then(|s| self.face.describe(&s, table.as_deref(), b))
             }
             "context.query" => {
-                only(args, name, &["sql", "limit", "internals", "zone"])?;
+                only(args, name, &["sql", "limit", "internals"])?;
                 let sql = required(args, "sql")?;
                 let opts = options(args)?;
-                self.session(zone, Bounds::default()).and_then(|s| self.face.query(&s, &sql, opts)).map(|r| r.to_json())
+                self.session(zone, opts.bounds).and_then(|s| self.face.query(&s, &sql, opts)).map(|r| r.to_json())
             }
             "context.execute_query" => {
-                only(args, name, &["id", "arguments", "limit", "internals", "zone"])?;
+                only(args, name, &["id", "arguments", "limit", "internals"])?;
                 let id = required(args, "id")?;
                 let arguments = match arg(args, "arguments") {
                     None => Map::new(),
@@ -240,23 +246,23 @@ impl<'a> Server<'a> {
                     Some(_) => return Err(invalid("`arguments` is an object")),
                 };
                 let opts = options(args)?;
-                self.session(zone, Bounds::default())
+                self.session(zone, opts.bounds)
                     .and_then(|s| self.face.execute_template(&s, &id, &arguments, opts))
                     .map(|r| r.to_json())
             }
             "context.files" => {
-                only(args, name, &["as_of", "zone"])?;
+                only(args, name, &[])?;
                 let b = bounds(args)?;
                 self.session(zone, b).and_then(|s| self.face.files(&s, b)).map(|r| r.to_json())
             }
             "context.file" => {
-                only(args, name, &["path", "limit", "internals", "zone"])?;
+                only(args, name, &["path", "limit", "internals"])?;
                 let path = required(args, "path")?;
                 let opts = options(args)?;
-                self.session(zone, Bounds::default()).and_then(|s| self.face.file(&s, &path, opts)).map(|r| r.to_json())
+                self.session(zone, opts.bounds).and_then(|s| self.face.file(&s, &path, opts)).map(|r| r.to_json())
             }
             "corpus.retrieve" => {
-                only(args, name, &["prefix", "query", "query_embedding", "limit", "as_of", "since", "min_score", "internals", "zone"])?;
+                only(args, name, &["prefix", "query", "query_embedding", "limit", "since", "min_score", "internals"])?;
                 let query_embedding = match arg(args, "query_embedding") {
                     None => None,
                     Some(Value::Array(xs)) => Some(
@@ -282,10 +288,14 @@ impl<'a> Server<'a> {
                 self.session(zone, b).and_then(|s| self.face.retrieve(&s, &request, b)).map(|r| r.to_json())
             }
             template if self.face.templates().iter().any(|t| t.id == template) => {
+                // No template parameter takes a read argument's name (`read.guard.template-reserved-parameter`).
                 let mut arguments = args.clone();
-                arguments.remove("zone");
-                self.session(zone, Bounds::default())
-                    .and_then(|s| self.face.execute_template(&s, template, &arguments, ReadOptions::default()))
+                for key in READ_ARGUMENTS {
+                    arguments.remove(key);
+                }
+                let opts = ReadOptions { bounds: bounds(args)?, ..ReadOptions::default() };
+                self.session(zone, opts.bounds)
+                    .and_then(|s| self.face.execute_template(&s, template, &arguments, opts))
                     .map(|r| r.to_json())
             }
             other => return Err(invalid(format!("no tool `{other}`"))),
