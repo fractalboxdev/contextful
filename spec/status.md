@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 139 | 24 | 19 | 18 | 107 | 0 | 107 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
-| `store` | 1 | 15 | 185 | 44 | 12 | 12 | 146 | 0 | 146 |
+| `store` | 1 | 15 | 186 | 45 | 12 | 12 | 147 | 0 | 147 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1599 | 504 | 177 | 116 | 877 | 0 | |
+| **total** | 19 | 149 | 1600 | 505 | 177 | 116 | 878 | 0 | |
 
 Decision records: 18.
 
@@ -25,7 +25,7 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 196 | 140 | passing |
-| 2 — The store | 9 | 144 | 110 | passing |
+| 2 — The store | 9 | 145 | 111 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 354 | 153 | passing |
 | 5 — The read face under enforcement | 17 | 227 | 151 | passing |
@@ -806,6 +806,7 @@ Unscheduled operations: 10.
 | `store.index.not-in-file-set` | `crates/contextful-context/tests/integration/index.rs::a_sidecar_directory_joins_no_file_set` | performed |
 | `store.index.partition-type` | `crates/contextful-context/tests/integration/index.rs::a_binary_or_vector_partition_column_is_refused` | performed |
 | `store.index.partitioning` | `crates/contextful-context/tests/integration/index.rs::partitioning_is_off_unless_declared` | performed |
+| `store.index.path-collision` | `crates/contextful-core/tests/integration/store/index.rs::two_declarations_resolving_to_one_path_are_refused` | performed |
 | `store.index.postings` | `crates/contextful-context/tests/integration/index.rs::one_row_set_lays_out_one_postings_file_a_probe_reads_by_term` | performed |
 | `store.index.tenant-verbatim` | `crates/contextful-context/tests/integration/index.rs::a_tenant_value_is_kept_byte_for_byte` | performed |
 | `store.index.tokenizer` | `crates/contextful-core/tests/integration/store/index.rs::the_cjk_tokenizer_indexes_unspaced_stretches_as_bigrams` | performed |

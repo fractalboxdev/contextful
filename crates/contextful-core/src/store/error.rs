@@ -26,6 +26,9 @@ pub enum StoreError {
     /// An index is declared over a column redacted at write time. (`store.encrypt.redacted-index`)
     #[error("StoreIndexOverRedactedColumn: {0}")]
     StoreIndexOverRedactedColumn(String),
+    /// Two sidecar declarations resolve to one path. (`store.index.path-collision`)
+    #[error("StoreIndexPathCollision: {0}")]
+    StoreIndexPathCollision(String),
     /// A `primary_key` names a column neither declared nor injected. (`store.declare.key-unknown`)
     #[error("StoreKeyUnknownColumn: {0}")]
     StoreKeyUnknownColumn(String),

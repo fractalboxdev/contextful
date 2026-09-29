@@ -2,9 +2,11 @@
 //! shares, the full-text tokenizer, and the manifest entry each built sidecar records.
 
 use super::declare::TableDecl;
+use super::lay_out::escape;
 use super::reconcile::{ColumnType, Schema};
 use super::StoreError;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// The column naming the model that produced each row's vector (`read.embed.model-identifier`).
 pub const EMBEDDING_MODEL_COLUMN: &str = "embedding_model";
@@ -373,8 +375,31 @@ impl TableDecl {
         self.check_indexes(schema, true)
     }
 
+    /// Refuse two declarations resolving to one sidecar directory (`store.index.path-collision`).
+    fn check_index_paths(&self) -> Result<(), StoreError> {
+        let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+        for (i, idx) in self.indexes().iter().enumerate() {
+            let path = idx.path(escape);
+            if let Some(&first) = seen.get(&path) {
+                let describe = |n: usize, d: &IndexDecl| match d.kind {
+                    IndexKind::Vector => format!("`indexes[{n}]` (vector over `{}`, model `{}`)", d.column, d.model()),
+                    IndexKind::Fulltext => format!("`indexes[{n}]` (full-text over `{}`, tokenizer `{}`)", d.column, d.tokenizer().name()),
+                };
+                return Err(StoreError::StoreIndexPathCollision(format!(
+                    "table `{}`: {} and {} both resolve to `{path}`",
+                    self.name,
+                    describe(first, &self.indexes()[first]),
+                    describe(i, idx)
+                )));
+            }
+            seen.insert(path, i);
+        }
+        Ok(())
+    }
+
     /// `require` refuses a column `schema` lacks; otherwise an absent column passes.
     fn check_indexes(&self, schema: &Schema, require: bool) -> Result<(), StoreError> {
+        self.check_index_paths()?;
         let Some(id) = self.id_column()? else { return Ok(()) };
         match schema.get(id).map(|c| c.ty) {
             None if require => {

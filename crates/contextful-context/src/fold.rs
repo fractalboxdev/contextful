@@ -13,6 +13,7 @@ use arrow_select::take::take_record_batch;
 use contextful_core::store::declare::{TableDecl, WriteMode};
 use contextful_core::store::fold::FoldOutcome;
 use contextful_core::store::index::IndexKind;
+pub use contextful_core::store::lay_out::escape;
 use contextful_core::store::lay_out::{
     part_name, PartEntry, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, STAGING_SUFFIX,
 };
@@ -433,22 +434,6 @@ fn partition(b: &RecordBatch, by: &[String]) -> std::result::Result<Vec<(String,
         .into_iter()
         .map(|(dir, idx)| Ok((dir, take_record_batch(b, &UInt32Array::from(idx))?)))
         .collect()
-}
-
-/// Percent-escape every byte outside `[A-Za-z0-9._-]`.
-pub fn escape(v: &str) -> String {
-    let mut out = String::with_capacity(v.len());
-    for b in v.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-') {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    if out == "." || out == ".." {
-        out = out.replace('.', "%2E");
-    }
-    out
 }
 
 /// The staging directory for a snapshot id, for callers that inspect a pass in flight.

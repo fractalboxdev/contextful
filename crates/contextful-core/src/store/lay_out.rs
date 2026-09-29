@@ -26,6 +26,22 @@ pub fn store_root(project: &str) -> String {
     format!(".contextful/context/{project}")
 }
 
+/// Percent-escape every byte outside `[A-Za-z0-9._-]`, rendering a value as one path segment.
+pub fn escape(v: &str) -> String {
+    let mut out = String::with_capacity(v.len());
+    for b in v.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    if out == "." || out == ".." {
+        out = out.replace('.', "%2E");
+    }
+    out
+}
+
 /// A data file name (`store.lay-out.part-name`).
 pub fn part_name(ordinal: u32) -> String {
     format!("part-{ordinal:05}.parquet")

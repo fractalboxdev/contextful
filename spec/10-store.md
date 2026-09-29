@@ -296,6 +296,8 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
 - `id-unique` — A fold meeting one `id_column` value on two rows of the snapshot it stages raises `StoreIndexIdNotUnique`, naming the table, the column and the value, and publishes nothing.
   *A-store*
 - `paths` — A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>-<tokenizer>/`, inside the snapshot directory it indexes.
+- `path-collision` — Two sidecar declarations of one table resolving to one path under {{store.index.paths}} raise `StoreIndexPathCollision`, naming both, at manifest validation and before the fold builds either.
+  *because a second build overwrites the first sidecar's files, and the manifest then records an entry no reader opens*
 - `identity` — A sidecar's identity is `(column, builder, builder-version)`; two builders over one column coexist, the caller picks at query time, and `derived.sqlite` records each builder.
 - `rebuild` — Swapping a builder rebuilds the sidecar, leaves the Parquet untouched, and callers on the existing identity read through the cutover.
 - `not-in-file-set` — `indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names.
@@ -630,11 +632,15 @@ A run manifest, a snapshot manifest and a table pointer:
   "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,
   "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
   "indexes": [{ "kind": "vector", "path": "indexes/vec-embedding-e5-small/zone=all",
+                "table": "filings", "snapshot_id": "snapshot-01742054400000000000",
                 "column": "embedding", "id_column": "passage_id", "model": "e5-small", "dim": 384,
-                "metric": "cosine", "m": 16, "ef_construction": 200, "row_count": 128400,
+                "metric": "cosine", "m": 16, "ef_construction": 200,
+                "builder": "contextful-hnsw", "builder_version": 1, "row_count": 128400,
                 "key_version": 3 },
-              { "kind": "fulltext", "path": "indexes/fts-body-cjk", "column": "body",
-                "id_column": "passage_id", "tokenizer": "cjk", "row_count": 128400,
+              { "kind": "fulltext", "path": "indexes/fts-body-cjk",
+                "table": "filings", "snapshot_id": "snapshot-01742054400000000000", "column": "body",
+                "id_column": "passage_id", "tokenizer": "cjk",
+                "builder": "contextful-postings", "builder_version": 1, "row_count": 128400,
                 "term_count": 902113, "key_version": 3 }] }
 
 { "snapshot_id": "snapshot-01742054400000000000", "fence": 12 }
