@@ -124,7 +124,7 @@ fn binary_and_vector_types_take_no_promotion() {
     }
 }
 
-/// A producer declares these types; a JSON batch carries bytes as padded base64 and a vector as a number array of its dimension, and any other value meets {{store.reconcile.incompatible}}.
+/// A producer spells binary and vector types; padded base64 decodes and other spellings carry no bytes.
 #[test]
 fn a_producer_spells_binary_and_vector_types() {
     assert_eq!(ColumnType::parse("binary"), Some(Binary));

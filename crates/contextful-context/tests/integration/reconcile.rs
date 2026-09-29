@@ -37,8 +37,9 @@ fn a_read_hands_read_parquet_an_explicit_sorted_list() {
 fn a_column_resolves_to_the_supertype_of_its_files_with_no_cast() {
     let f = Fixture::new();
     let d = decl("name = \"prices\"");
-    f.land(&d, "run-1", json!([{"sku": "a", "price": 3}]), "2030-01-01T00:00:00Z").unwrap();
-    f.land(&d, "run-2", json!([{"sku": "b", "price": 2.5}]), "2030-01-01T00:01:00Z").unwrap();
+    let vector = [("embedding", ColumnType::FixedSizeList(FloatItem::Float16, 4))];
+    f.land_typed(&d, "run-1", json!([{"sku": "a", "price": 3, "embedding": [0.5, -1, 0.25, 2]}]), "2030-01-01T00:00:00Z", &vector).unwrap();
+    f.land_typed(&d, "run-2", json!([{"sku": "b", "price": 2.5, "embedding": [1, 0, -0.5, 4]}]), "2030-01-01T00:01:00Z", &vector).unwrap();
     // The files are physically mixed: one Int64, one Float64.
     let files = f.scan(&d, Bounds::default()).unwrap().files;
     let types: Vec<_> = files
@@ -47,12 +48,18 @@ fn a_column_resolves_to_the_supertype_of_its_files_with_no_cast() {
         .collect();
     assert_eq!(types, [vec![vec![s("INT64")]], vec![vec![s("DOUBLE")]]]);
 
+    // The relation's one cast is the vector's; the mixed scalar column resolves by union_by_name alone.
     let rel = f.scan(&d, Bounds::default()).unwrap().relation;
     assert!(rel.contains("union_by_name = true"), "{rel}");
-    assert!(!rel.contains("CAST("), "{rel}");
-    let typed = query(&format!("SELECT typeof(price) FROM ({rel}) LIMIT 1"));
-    assert_eq!(typed, [[s("DOUBLE")]]);
-    assert_eq!(f.query(&d, Bounds::default(), "SELECT sku, price FROM t ORDER BY sku"), [[s("a"), s("3.0")], [s("b"), s("2.5")]]);
+    assert_eq!(rel.matches("CAST(").count(), 1, "{rel}");
+    assert!(rel.contains("REPLACE (CAST(\"embedding\" AS FLOAT[4]) AS \"embedding\")"), "{rel}");
+    assert!(!rel.contains("CAST(\"price\"") && !rel.contains("CAST(\"sku\""), "{rel}");
+    let typed = query(&format!("SELECT typeof(price), typeof(embedding) FROM ({rel}) LIMIT 1"));
+    assert_eq!(typed, [[s("DOUBLE"), s("FLOAT[4]")]]);
+    assert_eq!(
+        f.query(&d, Bounds::default(), "SELECT sku, price, CAST(embedding AS VARCHAR) FROM t ORDER BY sku"),
+        [[s("a"), s("3.0"), s("[0.5, -1.0, 0.25, 2.0]")], [s("b"), s("2.5"), s("[1.0, 0.0, -0.5, 4.0]")]]
+    );
 }
 
 /// An `Int64` value above 9007199254740992 loses precision once a `Float64` batch lands on its column.
