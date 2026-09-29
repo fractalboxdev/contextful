@@ -240,6 +240,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                             config: pair.0.clone(),
                             binding: pair.1.clone(),
                             output_table: table.clone(),
+                            output_schema: serde_json::to_value(dest.decls.iter().find(|d| d.name == table).and_then(|d| d.columns.clone()))?,
                             reader: Box::new(StoreReader { store: Store::open(&cwd, &project.project)?, decls: dest.decls.clone() }),
                             resolver: resolver.clone(),
                             cwd: cwd.clone(),

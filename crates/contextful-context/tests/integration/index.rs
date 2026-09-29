@@ -426,3 +426,39 @@ fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
     assert!(contextful_context::fulltext::postings::Layout::parse(&a[..a.len() - 1]).is_none());
     assert!(contextful_context::fulltext::postings::Layout::parse(b"CFHNSW01").is_none());
 }
+
+/// A unit's rows landed under another key before its latest `ok` or `empty` landing are superseded: each answers until that landing, and the next fold drops it and rebuilds the table's sidecars without it.
+// spec: run.emit.stale-supersedes@85750284
+#[test]
+fn superseded_derived_rows_stop_answering_at_the_replacing_landing_and_leave_the_sidecar_at_the_fold() {
+    let f = Fixture::new();
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"]\n{FULLTEXT}id_column = \"row_id\"\n"));
+    let (k1, k2) = ("1".repeat(64), "2".repeat(64));
+    let passage = |unit: &str, key: &str, text: &str| json!({"row_id": format!("{unit}-{}", &key[..1]), "unit_ref": unit, "derivation_key": key, "cue_seq": 0, "kind": "passage", "unit_status": "ok", "body": text});
+    let marker = |unit: &str, key: &str, status: &str| json!({"row_id": null, "unit_ref": unit, "derivation_key": key, "cue_seq": -1, "kind": "marker", "unit_status": status, "body": null});
+    let probe = |words: &[&str]| {
+        let (m, dir) = current(&f, "passages");
+        let entry = m.indexes.iter().find(|x| x["kind"] == "fulltext").unwrap().clone();
+        let mut ids = probe_ids(&FulltextSidecar::open(&dir, "passages", &entry, &Sealing::Plaintext).unwrap(), words, 10);
+        ids.sort();
+        ids
+    };
+    f.land(&d, "run-1", json!([passage("a", &k1, "solar battery"), passage("b", &k1, "wind turbine"), passage("c", &k1, "tidal lagoon")]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T00:30:00Z")).unwrap();
+    assert_eq!(probe(&["solar"]), ["a-1"]);
+    // `a` re-derives, `b` retries under the new key, and `c` settles empty under it.
+    f.land(&d, "run-2", json!([passage("a", &k2, "hydro turbine"), marker("b", &k2, "unavailable"), marker("c", &k2, "empty")]), "2030-01-01T01:00:00Z").unwrap();
+    let live = || f.query(&d, Bounds::default(), "SELECT unit_ref, left(derivation_key, 1), kind FROM t ORDER BY 1, 2, 3");
+    let current = [[s("a"), s("2"), s("passage")], [s("b"), s("1"), s("passage")], [s("b"), s("2"), s("marker")], [s("c"), s("2"), s("marker")]];
+    // From the replacing landing on, the table's relation serves no superseded row, though
+    // the sidecar still holds it until the fold; a sidecar hit re-joins through the relation.
+    assert_eq!(probe(&["solar"]), ["a-1"]);
+    assert_eq!(live(), current, "a superseded row stops answering at the replacing landing");
+    let rejoined = f.query(&d, Bounds::default(), "SELECT row_id FROM t WHERE row_id IN ('a-1', 'c-1') ORDER BY 1");
+    assert!(rejoined.is_empty(), "a sidecar hit on a superseded row re-joins to nothing: {rejoined:?}");
+    fold(&f.store, &d, at("2030-01-01T01:30:00Z")).unwrap();
+    assert!(probe(&["solar"]).is_empty(), "the superseded passage leaves the sidecar");
+    assert!(probe(&["tidal"]).is_empty(), "an empty landing supersedes too");
+    assert_eq!(probe(&["turbine"]), ["a-2", "b-1"], "a retry marker supersedes nothing");
+    assert_eq!(live(), current);
+}

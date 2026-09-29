@@ -67,14 +67,18 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-connector*
 - `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
   *A-connector*
-- `anti-join` — Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker in the pipeline's own output table.
+- `anti-join` — Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker under its current {{run.emit.derivation-key}} in the pipeline's own output table.
   *A-run*
-- `latest-marker` — A unit's standing is its latest marker by `_ingested_at`, `_run_id` and `_row_seq`, never its highest attempt count.
+- `latest-marker` — A unit's standing under a key is its latest marker under that key by `_ingested_at`, `_run_id` and `_row_seq`, never its highest attempt count.
   *because an `empty` marker records 1 attempt, so ranking by count lets an older retry revive a settled unit*
+- `key-change` — Rows under the current key landed before the unit's latest `ok` or `empty` landing under another key count for nothing, so a key changed and changed back derives the unit again.
+  *A-run*
 
 unsettled: At what parent-table size does the in-memory scan stop fitting, and what replaces it? owner: derive affects: run.select
 
 unsettled: Does a dry run print eligible, already-derived and outstanding counts before a scheduled tick pays for them? owner: derive affects: run.select
+
+unsettled: In what order does one tick run derive pipelines whose source table is another derive pipeline's output, and what refuses a cycle? owner: derive affects: run.select
 
 ## bind
 
@@ -209,13 +213,17 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
   *A-run*
 - `reserved-discriminator` — A derive table declaring a column named `kind` raises `DeriveReservedDiscriminator`.
   *A-run*
-- `settled-revived` — A settled unit re-entering the outstanding set raises `DeriveSettledUnitRevived`.
+- `settled-revived` — A unit that settles under its current key while a tick derives it raises `DeriveSettledUnitRevived`, and that tick lands none of its rows; a changed key revives nothing.
   *A-run*
-- `attempts` — `attempts` is the prior count plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.
+- `attempts` — `attempts` is the prior count under the row's key plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.
 - `unredacted-error` — A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.
   *A-authority*
-- `primary-key` — A derive output table without `primary_key` `["unit_ref", "cue_seq"]` raises `DerivePrimaryKeyMissing`.
-  *because a re-derived unit otherwise lands duplicate passages beside the originals*
+- `primary-key` — A derive output table without `primary_key` `["unit_ref", "derivation_key", "cue_seq"]` raises `DerivePrimaryKeyMissing`.
+  *because a re-derived unit otherwise lands its new passages over the originals, or beside them with no key telling them apart*
+- `derivation-key` — Every passage and marker row carries `derivation_key`: lowercase hex SHA-256 over the engine id, the binding less its bounds and `zone`, the output table's declared columns, and the parent row's id, media value and `derivation_key`.
+  *A-run*
+- `stale-supersedes` — A unit's rows landed under another key before its latest `ok` or `empty` landing are superseded: each answers until that landing, and the next fold drops it and rebuilds the table's sidecars without it.
+  *A-run*
 - `marker-row` — A unit yielding no passage lands one marker row, `cue_seq` -1 and `kind` `marker`, carrying its status, attempts, last error and whether it retries.
   *A-run*
 - `empty-document` — Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty output, or blocks none of which parse, lands `unavailable`.
@@ -224,6 +232,10 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
 unsettled: What validated domain does `_modality` carry, and which value does a passage derived from a video row take? owner: derive affects: run.emit
 
 unsettled: What reaps derived rows whose parent row is deleted upstream? owner: derive affects: run.emit
+
+unsettled: Does a local media file whose bytes change under an unchanged path derive its unit again? owner: derive affects: run.emit
+
+unsettled: Which single column identifies a derived row for a sidecar's `id_column`, given a derive table keys on three? owner: derive affects: run.emit
 
 ## parse-cues
 

@@ -2,7 +2,7 @@
 
 # Target ledger
 
-61 entries: 35 gated, 2 recorded, 1 scheduled, 23 open.
+61 entries: 36 gated, 2 recorded, 1 scheduled, 22 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -17,7 +17,7 @@
 | `audit-truncation-detected` | `disclosure.attest.broken-chain` | `audit.truncation.undetected` | gate | test `contextful_policy::audit::every_trailing_truncation_under_a_rewritten_tip_is_detected` | `== 0` | gated |
 | `bearer-transport-bound` | `authority.issue.one-credential` | `authority.off_transport_admissions` | gate | issue 57 | `== 0` | open (issue 57) |
 | `cjk-subrun` | `read.retrieve.script-split-matching` | `retrieve.cjk.reciprocal_rank` | gate | test `contextful_core::read::retrieve::a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg` | `== 1` | gated |
-| `derivation-freshness` | `run.select.anti-join` | `derive.empty_reads` | gate | issue 45 | `== 0` | open (issue 45) |
+| `derivation-freshness` | `run.emit.stale-supersedes` | `derive.empty_reads` | gate | test `contextful_core::run::derive::a_changed_engine_rederives_every_unit_and_no_read_between_ticks_is_empty` | `== 0` | gated |
 | `egress-internal-address` | `connector.attach.private-address` | `egress.internal.admitted` | gate | test `contextful_core::connector::attach::a_permitted_name_resolving_inward_is_refused` | `== 0` | gated |
 | `egress-internal-address-resolved` | `connector.attach.private-address` | `egress.resolved_internal.admitted` | gate | test `contextful_outbound::egress::a_name_resolving_inward_never_reaches_the_send_half` | `== 0` | gated |
 | `egress-refusal-before-dns` | `connector.meter.hook-refusal` | `egress.refused.lookups` | gate | test `contextful_outbound::egress::a_refused_intent_resolves_no_name_and_is_never_retried` | `== 0` | gated |
