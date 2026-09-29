@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 205 | 56 | 22 | 15 | 87 | 0 | 87 |
 | `authority` | 2 | 16 | 238 | 64 | 27 | 8 | 172 | 0 | 172 |
-| `connector` | 2 | 13 | 250 | 74 | 17 | 8 | 120 | 0 | 120 |
+| `connector` | 2 | 13 | 251 | 74 | 17 | 8 | 121 | 0 | 121 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 151 | 26 | 22 | 18 | 119 | 0 | 119 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
-| `store` | 1 | 15 | 186 | 45 | 12 | 12 | 147 | 0 | 147 |
+| `store` | 1 | 16 | 196 | 48 | 12 | 13 | 157 | 0 | 157 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
-| `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1620 | 509 | 180 | 115 | 900 | 0 | |
+| `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 21 | 0 | 21 |
+| **total** | 19 | 150 | 1632 | 513 | 180 | 116 | 912 | 0 | |
 
 Decision records: 18.
 
@@ -26,10 +26,10 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 203 | 148 | passing |
 | 2 — The store | 9 | 145 | 111 | passing |
-| 3 — The run path | 11 | 184 | 110 | passing |
-| 4 — Ingest | 22 | 354 | 153 | passing |
+| 3 — The run path | 11 | 185 | 111 | passing |
+| 4 — Ingest | 22 | 355 | 154 | passing |
 | 5 — The read face under enforcement | 17 | 239 | 163 | passing |
-| 6 — Sync and replicas | 6 | 41 | 36 | passing |
+| 6 — Sync and replicas | 7 | 51 | 46 | passing |
 | 7 — Memory | 6 | 22 | 22 | passing |
 | 8 — Accountability | 5 | 40 | 20 | open |
 | 9 — Visibility | 6 | 22 | 3 | open |
@@ -398,6 +398,7 @@ Unscheduled operations: 10.
 | `connector.reference.material-in-a-declaration` | `crates/contextful-core/tests/integration/connector/reference.rs::a_credential_literal_in_a_declaration_is_refused` | performed |
 | `connector.reference.reference-scheme` | `crates/contextful-core/tests/integration/connector/reference.rs::a_reference_is_a_lowercase_logical_name_of_at_most_128_chars` | performed |
 | `connector.reference.value-template` | `crates/contextful-core/tests/integration/connector/reference.rs::a_template_is_literal_text_and_secret_placeholders` | performed |
+| `connector.reference.whole-value-reference` | `crates/contextful-outbound/tests/integration/resolve.rs::a_whole_value_reference_consults_the_environment` | performed |
 | `connector.resolve.cache-ttl` | `crates/contextful-outbound/tests/integration/resolve.rs::a_cached_value_retires_at_300_s` | performed |
 | `connector.resolve.first-hit-wins` | `crates/contextful-outbound/tests/integration/resolve.rs::the_earliest_answer_serves_and_later_adapters_are_left_alone` | performed |
 | `connector.resolve.provider-port` | `crates/contextful-outbound/tests/integration/resolve.rs::the_backend_variable_selects_the_adapters` | performed |
@@ -802,6 +803,15 @@ Unscheduled operations: 10.
 | `store.declare.write-mode` | `crates/contextful-core/tests/integration/store/declare.rs::write_mode_is_append_by_default_or_replace` | performed |
 | `store.encrypt.key-unbound` | `crates/contextful-context/tests/integration/encrypt.rs::an_unbound_key_source_refuses_to_open_the_store` | performed |
 | `store.encrypt.sidecar-reader` | `crates/contextful-context/tests/integration/encrypt.rs::a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone` | performed |
+| `store.endpoint.addressing` | `crates/contextful-sync/tests/integration/s3.rs::an_s3_bucket_signs_and_addresses_every_request` | performed |
+| `store.endpoint.conditional-answers` | `crates/contextful-sync/tests/integration/s3.rs::backend_answers_map_to_failed_conditions_and_refusals` | performed |
+| `store.endpoint.credential-unbound` | `crates/contextful-core/tests/integration/store/sync.rs::an_unbound_or_literal_credential_key_is_refused_naming_the_key` | performed |
+| `store.endpoint.credentials` | `crates/contextful-cli/tests/integration/sync/s3.rs::secret_references_hydrate_through_the_default_chain` | performed |
+| `store.endpoint.list-pages` | `crates/contextful-sync/tests/integration/s3.rs::a_list_follows_every_continuation_token` | performed |
+| `store.endpoint.missing-bucket` | `crates/contextful-sync/tests/integration/s3.rs::a_missing_bucket_answers_no_absent_object` | performed |
+| `store.endpoint.plaintext` | `crates/contextful-core/tests/integration/store/sync.rs::plaintext_http_opens_on_loopback_alone` | performed |
+| `store.endpoint.schemes` | `crates/contextful-core/tests/integration/store/sync.rs::each_endpoint_scheme_resolves_its_adapter_address` | performed |
+| `store.endpoint.unsupported-scheme` | `crates/contextful-core/tests/integration/store/sync.rs::an_endpoint_no_adapter_answers_is_refused_by_name` | performed |
 | `store.fold.collection-failed` | `crates/contextful-context/tests/integration/fold.rs::a_failed_collection_does_not_unpublish_the_snapshot` | performed |
 | `store.fold.includes-runs` | `crates/contextful-context/tests/integration/fold.rs::a_snapshot_names_the_runs_it_folded` | performed |
 | `store.fold.lost-pointer` | `crates/contextful-context/tests/integration/fold.rs::a_pass_losing_the_pointer_publishes_nothing` | performed |
@@ -882,6 +892,7 @@ Unscheduled operations: 10.
 | `store.probe.network-volume` | `crates/contextful-sync/tests/integration/push.rs::a_bucket_on_a_network_volume_resolves_single_writer_and_refuses_a_declared_cas` | performed |
 | `store.probe.sentinel` | `crates/contextful-sync/tests/integration/push.rs::the_probe_demonstrates_cas_and_leaves_no_sentinel` | performed |
 | `store.probe.unproven` | `crates/contextful-sync/tests/integration/push.rs::a_declared_cas_against_an_undemonstrated_backend_stops_the_push` | performed |
+| `store.pull.before-run` | `crates/contextful-cli/tests/integration/sync/mod.rs::a_cold_node_pulls_the_bucket_before_its_run_reads` | performed |
 | `store.pull.convergence` | `crates/contextful-sync/tests/integration/pull.rs::a_key_moving_mid_download_refetches_the_manifest_and_retries_the_shortfall` | performed |
 | `store.pull.digest-mismatch` | `crates/contextful-sync/tests/integration/pull.rs::an_object_whose_digest_differs_from_its_entry_is_refused_and_discarded` | performed |
 | `store.pull.pointer-advance` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies` | performed |
@@ -941,6 +952,7 @@ Unscheduled operations: 10.
 | `topology.package.dependency-direction` | `tools/ci/tests/integration/topology.rs::a_domain_crate_depending_on_an_adapter_is_refused` | performed |
 | `topology.package.domain-impurity` | `tools/ci/tests/integration/topology.rs::a_domain_crate_reaching_an_async_runtime_is_refused` | performed |
 | `topology.package.exchange-optional` | `tools/ci/tests/integration/topology.rs::a_library_reaching_the_exchange_stack_is_refused` | performed |
+| `topology.package.s3-sync-optional` | `tools/ci/tests/integration/topology.rs::a_sync_crate_linking_an_http_stack_without_its_s3_feature_is_refused` | performed |
 | `topology.package.sqlite-adapter` | `tools/ci/tests/integration/topology.rs::a_sqlite_link_forced_outside_the_binary_is_refused` | performed |
 | `topology.package.store-sqlite-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_reaching_the_sqlite_link_package_is_refused` | performed |
 | `topology.package.store-write-engine-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_linking_the_sql_engine_without_read_is_refused` | performed |
