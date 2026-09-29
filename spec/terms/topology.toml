@@ -15,13 +15,13 @@ DomainCrateImpurity         = { clause = "topology.package.domain-impurity", glo
 TopologyDependencyInversion = { clause = "topology.package.dependency-direction", gloss = "A dependency edge runs from the domain crate toward an adapter crate." }
 ComponentHostMissing        = { clause = "topology.package.host-missing", gloss = "A component connector is dispatched on a profile linking no component host." }
 ProfileDependencyLeak       = { clause = "topology.package.crdt-leak", gloss = "The CRDT library appears in the edge or full profile's dependency graph." }
-StoreWriteLinksEngine       = { clause = "topology.package.store-write-engine-free", gloss = "The store adapter without its read feature resolves the embedded SQL engine, an async runtime or an HTTP or TLS stack." }
+StoreWriteLinksEngine       = { clause = "topology.package.store-write-engine-free", gloss = "The store adapter without its read feature resolves the embedded SQL engine, SQLite, an async runtime or an HTTP or TLS stack." }
 CrateMapDrift               = { clause = "topology.package.crate-map-drift", gloss = "A workspace crate is missing from the crate tree, or the crate-map count disagrees with it." }
 TransportStackLinked        = { clause = "topology.package.transport-optional", gloss = "The mediated-request crate without its transport feature resolves an HTTP stack." }
 DecodeLinksNetwork          = { clause = "topology.package.decode-network-free", gloss = "The record-decoder package resolves the mediated-request crate or a network stack." }
 ExchangeDependencyLeak      = { clause = "topology.package.exchange-optional", gloss = "A package other than the binary resolves the external-assertion stack in its own dependency graph." }
 SqliteLinkForced            = { clause = "topology.package.sqlite-adapter", gloss = "A package other than the SQLite adapter declares the binding, or one other than the binary chooses the SQLite build." }
-StoreLinksSqlite            = { clause = "topology.package.store-sqlite-free", gloss = "The store adapter resolves the SQLite link package through a normal dependency." }
+StoreLinksSqlite            = { clause = "topology.package.store-sqlite-free", gloss = "The store adapter resolves the SQLite link package through a normal dependency, on any target." }
 TargetShapeUnsupported      = { clause = "topology.deploy.unsupported-shape", gloss = "A target profile claims a shape its provider's primitives do not express." }
 ParityDivergence            = { clause = "topology.deploy.parity-divergence", gloss = "A target's table parts differ byte-wise from the reference target's." }
 HostnamePostureMismatch     = { clause = "topology.publish-hostname.posture-mismatch", gloss = "An anonymous probe's answer disagrees with the hostname's declared gate, or the hostname is unreachable." }

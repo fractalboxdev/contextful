@@ -45,17 +45,29 @@ const IMPURE: [(&str, &str); 19] = [
     ("libduckdb-sys", "a columnar-format implementation"),
 ];
 
+/// The SQLite link-carrying package the store adapter resolves through no normal
+/// dependency, on any target (`topology.package.store-sqlite-free`).
+const SQLITE_SYS: &str = "libsqlite3-sys";
+
 /// The store adapter, whose write half — its graph with the `read` feature off, across every
-/// target — resolves no SQL engine, async runtime or HTTP or TLS stack
+/// target — resolves no SQL engine, async runtime, HTTP or TLS stack, or SQLite
 /// (`topology.package.store-write-engine-free`).
 const STORE: &str = "contextful-context";
 const STORE_READ_FEATURE: &str = "read";
-const STORE_WRITE_DENY: [&str; 11] =
-    ["duckdb", "libduckdb-sys", "tokio", "async-std", "smol", "async-executor", "ureq", "hyper", "reqwest", "rustls", "curl"];
-
-/// The SQLite link-carrying package the store adapter resolves through no normal
-/// dependency (`topology.package.store-sqlite-free`).
-const SQLITE_SYS: &str = "libsqlite3-sys";
+const STORE_WRITE_DENY: [&str; 12] = [
+    "duckdb",
+    "libduckdb-sys",
+    "tokio",
+    "async-std",
+    "smol",
+    "async-executor",
+    "ureq",
+    "hyper",
+    "reqwest",
+    "rustls",
+    "curl",
+    SQLITE_SYS,
+];
 
 /// The one package declaring the SQLite binding, and the binding's packages
 /// (`topology.package.sqlite-adapter`).
@@ -346,6 +358,9 @@ const DEFAULT: Resolve = Resolve { features_off: false, all_targets: false };
 const FEATURES_OFF: Resolve = Resolve { features_off: true, all_targets: false };
 /// The store adapter's write half, resolved alike on every host.
 const WRITE_HALF: Resolve = Resolve { features_off: true, all_targets: true };
+/// Default features on every target, so a link behind another target's `cfg` resolves on
+/// every host.
+const DEFAULT_ALL_TARGETS: Resolve = Resolve { features_off: false, all_targets: true };
 
 /// `cargo tree --locked` over the normal dependencies of `package` alone, one `<depth><name>`
 /// line per node. `cargo metadata` unifies features across the workspace, so a per-package
@@ -469,7 +484,7 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
             let name = path.rsplit(" -> ").next().unwrap_or_default();
             out.push(("StoreWriteLinksEngine", format!("`{STORE}` without `{STORE_READ_FEATURE}` links `{name}` through {path}")));
         }
-        for path in tree_paths(root, STORE, DEFAULT, &[SQLITE_SYS])? {
+        for path in tree_paths(root, STORE, DEFAULT_ALL_TARGETS, &[SQLITE_SYS])? {
             out.push(("StoreLinksSqlite", format!("`{STORE}` links `{SQLITE_SYS}` through {path}")));
         }
     }

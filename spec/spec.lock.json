@@ -1216,7 +1216,7 @@
       "operation": "package",
       "subject": "store-write-engine-free",
       "kind": "refusal",
-      "statement": "`contextful-context` resolved without its `read` feature, on any target, and reaching `duckdb`, `libduckdb-sys`, an async runtime or an HTTP or TLS stack through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.",
+      "statement": "`contextful-context` resolved without its `read` feature, on any target, and reaching `duckdb`, `libduckdb-sys`, `libsqlite3-sys`, an async runtime or an HTTP or TLS stack through a normal dependency raises `StoreWriteLinksEngine`, naming the package and path.",
       "why": "because a host that lands, folds or scans a store serves no read and opens no connection, so an engine, runtime or network stack is code it never calls",
       "file": "spec/01-topology.md",
       "line": 113
@@ -1271,7 +1271,7 @@
       "operation": "package",
       "subject": "store-sqlite-free",
       "kind": "refusal",
-      "statement": "`contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, raises `StoreLinksSqlite`, naming the path that pulled it.",
+      "statement": "`contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, on any target, raises `StoreLinksSqlite`, naming the path that pulled it.",
       "why": "A-store",
       "file": "spec/01-topology.md",
       "line": 123
@@ -23196,11 +23196,11 @@
           },
           "StoreLinksSqlite": {
             "clause": "topology.package.store-sqlite-free",
-            "gloss": "The store adapter resolves the SQLite link package through a normal dependency."
+            "gloss": "The store adapter resolves the SQLite link package through a normal dependency, on any target."
           },
           "StoreWriteLinksEngine": {
             "clause": "topology.package.store-write-engine-free",
-            "gloss": "The store adapter without its read feature resolves the embedded SQL engine, an async runtime or an HTTP or TLS stack."
+            "gloss": "The store adapter without its read feature resolves the embedded SQL engine, SQLite, an async runtime or an HTTP or TLS stack."
           },
           "TargetShapeUnsupported": {
             "clause": "topology.deploy.unsupported-shape",

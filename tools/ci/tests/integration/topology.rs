@@ -113,8 +113,8 @@ fn a_domain_crate_depending_on_an_adapter_is_refused() {
     assert!(!err.contains("serde_like"), "a non-workspace dependency is no inversion: {err}");
 }
 
-/// `contextful-context` resolved without its `read` feature and reaching `duckdb` or `libduckdb-sys` through a normal dependency raises `StoreWriteLinksEngine`, naming the package and the path that pulled it.
-// spec: topology.package.store-write-engine-free@a5e7aef1
+/// `contextful-context` resolved without its `read` feature, on any target, and reaching `duckdb`, `libduckdb-sys`, `libsqlite3-sys`, an async runtime or an HTTP or TLS stack through a normal dependency raises `StoreWriteLinksEngine`, naming the package and path.
+// spec: topology.package.store-write-engine-free@e0b06723
 #[test]
 fn a_store_adapter_linking_the_sql_engine_without_read_is_refused() {
     let r = Repo::init();
@@ -151,6 +151,22 @@ fn a_store_adapter_linking_the_sql_engine_without_read_is_refused() {
     let err = refused(&topology(&r.root), "StoreWriteLinksEngine");
     assert!(err.contains("`contextful-context` without `read` links `tokio` through contextful-context -> tokio"), "{err}");
     assert!(err.contains("links `rustls` through contextful-context -> hyper -> rustls"), "{err}");
+
+    // SQLite in the write half is refused and counted on every target, the host's or not.
+    stub(&r, "libsqlite3-sys", "", "");
+    stub(&r, "catalogkit", "libsqlite3-sys = { path = \"../libsqlite3-sys\" }\n", "");
+    package(&r, "contextful-context", "");
+    r.write(
+        "crates/contextful-context/Cargo.toml",
+        &format!(
+            "{}\n[target.'cfg(windows)'.dependencies]\ncatalogkit = {{ path = \"../../stubs/catalogkit\" }}\n",
+            manifest("contextful-context", "")
+        ),
+    );
+    let o = topology(&r.root);
+    assert!(stdout(&o).contains(", 1 forbidden"), "{}", stdout(&o));
+    let err = refused(&o, "StoreWriteLinksEngine");
+    assert!(err.contains("`contextful-context` without `read` links `libsqlite3-sys` through contextful-context -> catalogkit -> libsqlite3-sys"), "{err}");
 }
 
 /// `contextful-outbound` resolved without its `transport-ureq` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `TransportStackLinked`, naming the path that pulled it.
@@ -363,8 +379,8 @@ fn sqlite(r: &Repo, adapter_rusqlite: &str, adapter_default: &str) {
     package(r, "contextful-cli", "contextful-sqlite = { path = \"../contextful-sqlite\", features = [\"bundled\"] }\n");
 }
 
-/// `contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, raises `StoreLinksSqlite`, naming the path that pulled it.
-// spec: topology.package.store-sqlite-free@56b044c9
+/// `contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, on any target, raises `StoreLinksSqlite`, naming the path that pulled it.
+// spec: topology.package.store-sqlite-free@ae5daae8
 #[test]
 fn a_store_adapter_reaching_the_sqlite_link_package_is_refused() {
     let r = Repo::init();
@@ -379,6 +395,18 @@ fn a_store_adapter_reaching_the_sqlite_link_package_is_refused() {
     let err = refused(&topology(&r.root), "StoreLinksSqlite");
     assert!(err.contains("`contextful-context` links `libsqlite3-sys` through contextful-context -> catalogkit -> rusqlite -> libsqlite3-sys"), "{err}");
     assert!(!err.contains("SqliteLinkForced"), "a stub outside the workspace declares nothing the adapter rule reads: {err}");
+
+    // A link behind another target's `cfg` is refused alike.
+    package(&r, "contextful-context", "");
+    r.write(
+        "crates/contextful-context/Cargo.toml",
+        &format!(
+            "{}\n[target.'cfg(windows)'.dependencies]\ncatalogkit = {{ path = \"../../stubs/catalogkit\" }}\n",
+            manifest("contextful-context", "")
+        ),
+    );
+    let err = refused(&topology(&r.root), "StoreLinksSqlite");
+    assert!(err.contains("`contextful-context` links `libsqlite3-sys` through contextful-context -> catalogkit -> rusqlite -> libsqlite3-sys"), "{err}");
 }
 
 /// `contextful-sqlite` alone declares the SQLite binding and enables no link feature itself; only `contextful-cli` turns
