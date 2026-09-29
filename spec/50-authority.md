@@ -162,7 +162,7 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
   *P2*
 - `run-trace-denied` — Tracing a run gates on the pipeline resolved from the run record and raises `GrantRunTraceDenied` without naming that pipeline.
   *P2*
-- `row-ceiling` — A read's row ceiling is the least of the grant's, the request's, the template's and the serving face's; an undeclared component imposes none.
+- `row-ceiling` — A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.
   *A-authority*
 - `aggregate` — An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.
   *A-authority*

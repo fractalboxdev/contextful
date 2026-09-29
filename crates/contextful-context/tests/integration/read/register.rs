@@ -210,6 +210,27 @@ fn the_row_ceiling_bounds_delivery_with_one_probe_row() {
     assert_eq!(asked.blocks["contextful.internals"]["limit"], json!(2));
 }
 
+/// Every read on every face, `corpus.retrieve` included, delivers at most 10000 rows: the face ceiling is always a component of {{authority.grant.row-ceiling}}, declared or not, and bounds the candidate window.
+// spec: read.respond.face-ceiling@2dfe8ba4
+#[test]
+fn the_face_ceiling_bounds_every_read() {
+    let r = Reads::new();
+    let rows: Vec<serde_json::Value> = (0..10_001).map(|i| json!({ "item_id": format!("w{i:05}") })).collect();
+    super::land_rows(&r.store, "research/vendor", "run-0002", serde_json::Value::Array(rows));
+    let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
+    // The table publishes no ceiling and the grant, request and template declare none.
+    let vendor = r.face.describe(&s, Some("research/vendor"), Bounds::default()).unwrap();
+    assert!(vendor.get("limits").is_none(), "{vendor}");
+    let all = r.face.query(&s, r#"SELECT item_id FROM "research/vendor""#, ReadOptions { limit: None, internals: true, ..ReadOptions::default() }).unwrap();
+    assert_eq!((all.rows.len(), all.truncated), (10_000, true));
+    assert_eq!(all.blocks["contextful.internals"]["limit"], json!(10_000));
+    // A request asking past it meets it all the same; the count still scans every row.
+    let asked = r.face.query(&s, r#"SELECT item_id FROM "research/vendor""#, ReadOptions { limit: Some(50_000), internals: false, ..ReadOptions::default() }).unwrap();
+    assert_eq!((asked.rows.len(), asked.truncated), (10_000, true));
+    let counted = r.query(&s, r#"SELECT count(*) AS n FROM "research/vendor""#).unwrap();
+    assert_eq!(column(&counted, "n"), [json!("10002")]);
+}
+
 /// One mediated outbound call, as a test names it.
 pub(super) fn call(id: &str, batch_seq: Option<i32>, status: Option<u16>) -> RequestRecord {
     RequestRecord {

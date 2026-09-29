@@ -6,6 +6,7 @@ use contextful_core::grant::{
     tenant_child_expiry, trace_run, AggregateGrant, Action, Grant, TablePattern, TenantScope,
     AGGREGATE_GROUP_CEILING_FLOOR, TENANT_CHILD_LIFETIME_MINUTES,
 };
+use contextful_core::read::respond::FACE_ROW_CEILING;
 use contextful_core::AuthorityError;
 
 fn pattern(s: &str) -> TablePattern {
@@ -103,10 +104,10 @@ fn malformed_pattern() {
 fn fields() {
     let g: Grant = serde_json::from_str(r#"{"actions":["read"],"tables":["research/*"]}"#).unwrap();
     assert_eq!(g, grant(&[Action::Read], &["research/*"]));
-    // No tenant: every tenant's rows; no aggregate: raw reads; no row ceiling: none imposed.
+    // No tenant: every tenant's rows; no aggregate: raw reads; no row ceiling: only the face ceiling applies.
     assert!(g.tenant.is_none());
     assert!(raw_read_covers(std::slice::from_ref(&g), "research/filings"));
-    assert_eq!(least_row_ceiling([g.max_rows, None, None, None]), None);
+    assert_eq!(least_row_ceiling([g.max_rows, None, None, None]), FACE_ROW_CEILING);
     // No allowlist: no template, even a declared one.
     let declared = strings(&["quarterly_rollup"]);
     assert!(matches!(
@@ -233,13 +234,16 @@ fn run_trace_denied() {
     assert!(!e.to_string().contains("payroll"), "{e}");
 }
 
-/// A read's row ceiling is the least of the grant's, the request's, the template's and the serving face's; an undeclared component imposes none.
-// spec: authority.grant.row-ceiling@9f21dc40
+/// A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.
+// spec: authority.grant.row-ceiling@dea6c0fd
 #[test]
 fn row_ceiling() {
-    assert_eq!(least_row_ceiling([Some(5000), None, Some(100), Some(1000)]), Some(100));
-    assert_eq!(least_row_ceiling([None, Some(7), None, None]), Some(7));
-    assert_eq!(least_row_ceiling([None, None, None, None]), None);
+    assert_eq!(least_row_ceiling([Some(5000), None, Some(100), Some(1000)]), 100);
+    assert_eq!(least_row_ceiling([None, Some(7), None, None]), 7);
+    // The face ceiling is always a component, declared or not.
+    assert_eq!(FACE_ROW_CEILING, 10_000);
+    assert_eq!(least_row_ceiling([None, None, None, None]), FACE_ROW_CEILING);
+    assert_eq!(least_row_ceiling([Some(50_000), Some(u64::MAX), None, Some(20_000)]), FACE_ROW_CEILING);
 }
 
 /// An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.

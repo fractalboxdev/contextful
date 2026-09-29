@@ -32,10 +32,6 @@ use std::collections::BTreeMap;
 /// Default number of rows a ranked read returns.
 pub const DEFAULT_LIMIT: u64 = 10;
 
-/// Most rows one ranked read returns, whatever its limit and ceilings; it bounds the
-/// candidate window every arm reads.
-pub const MAX_LIMIT: u64 = 1000;
-
 /// Label-priority columns, which lead a snippet (`read.retrieve.snippet`).
 const LABEL_COLUMNS: [&str; 8] = ["title", "headline", "name", "subject", "summary", "abstract", "description", "thesis"];
 
@@ -153,11 +149,12 @@ impl Face {
     pub fn retrieve(&self, session: &Session, request: &RetrieveRequest, bounds: Bounds) -> Result<Response, ReadFault> {
         let arms: Vec<String> =
             session.relations().map(|r| r.name().to_string()).filter(|n| n.starts_with(&request.prefix)).collect();
-        // The same least row ceiling a statement meets: grants, the request and every arm's
-        // published `limits.max_rows` (`read.respond.row-ceiling`), capped at MAX_LIMIT.
-        let asked = request.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+        // The same least row ceiling a statement meets: grants, the request, every arm's
+        // published `limits.max_rows` and the face ceiling, which bounds the candidate window
+        // every arm reads (`read.respond.face-ceiling`).
+        let asked = request.limit.unwrap_or(DEFAULT_LIMIT);
         let touched: std::collections::BTreeSet<String> = arms.iter().cloned().collect();
-        let limit = self.ceiling(session, &touched, Some(asked), None).unwrap_or(asked);
+        let limit = self.ceiling(session, &touched, Some(asked), None);
         let tokens = content_tokens(&request.query);
         let floor = relevance_floor(&tokens, request.min_score);
         let window = candidate_window(limit);

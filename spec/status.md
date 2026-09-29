@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 250 | 74 | 17 | 8 | 120 | 0 | 120 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
-| `read` | 2 | 15 | 150 | 26 | 21 | 18 | 118 | 0 | 118 |
+| `read` | 2 | 15 | 151 | 26 | 22 | 18 | 119 | 0 | 119 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
 | `store` | 1 | 15 | 186 | 45 | 12 | 12 | 147 | 0 | 147 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1618 | 508 | 179 | 115 | 898 | 0 | |
+| **total** | 19 | 149 | 1619 | 508 | 180 | 115 | 899 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ Decision records: 18.
 | 2 — The store | 9 | 145 | 111 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 354 | 153 | passing |
-| 5 — The read face under enforcement | 17 | 238 | 162 | passing |
+| 5 — The read face under enforcement | 17 | 239 | 163 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 22 | 22 | passing |
 | 8 — Accountability | 5 | 40 | 20 | open |
@@ -562,6 +562,7 @@ Unscheduled operations: 10.
 | `read.resolve-entity.edge-endpoint` | `crates/contextful-core/tests/integration/memory/resolve.rs::an_edge_with_an_unresolved_endpoint_is_refused` | performed |
 | `read.respond.bytes-and-vectors` | `crates/contextful-core/tests/integration/read/respond.rs::bytes_are_base64_and_vectors_are_number_arrays` | performed |
 | `read.respond.cell-encoding` | `crates/contextful-core/tests/integration/read/respond.rs::cells_encode_by_their_sql_type` | performed |
+| `read.respond.face-ceiling` | `crates/contextful-context/tests/integration/read/register.rs::the_face_ceiling_bounds_every_read` | performed |
 | `read.respond.in-band-error` | `crates/contextful-agent/tests/integration/mcp.rs::a_refusal_arrives_in_band` | performed |
 | `read.respond.match-count` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_block_reports_how_many_rows_matched` | performed |
 | `read.respond.one-projection` | `crates/contextful-cli/tests/integration/query.rs::the_command_line_and_the_tool_protocol_print_one_projection` | performed |

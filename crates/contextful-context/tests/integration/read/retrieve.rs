@@ -176,7 +176,7 @@ fn a_ranked_read_meets_the_row_ceiling() {
     let one = r.face.retrieve(&g, &ask("research/notes", "solar battery storage"), Bounds::default()).unwrap();
     assert_eq!((one.rows.len(), one.truncated), (1, true));
     let huge = r.face.retrieve(&s, &RetrieveRequest { limit: Some(u64::MAX), ..ask("research/", "solar") }, Bounds::default()).unwrap();
-    assert!(huge.blocks["contextful.retrieval"]["window"].as_u64().unwrap() <= 8 * contextful_context::read::retrieve::MAX_LIMIT);
+    assert!(huge.blocks["contextful.retrieval"]["window"].as_u64().unwrap() <= 8 * contextful_core::read::respond::FACE_ROW_CEILING);
     let exact = r.face.retrieve(&s, &RetrieveRequest { limit: Some(2), ..ask("research/notes", "solar battery storage") }, Bounds::default()).unwrap();
     assert_eq!(exact.rows.len(), 2);
 }
@@ -371,4 +371,14 @@ fn a_sidecar_past_64_mib_of_vectors_stays_unloaded() {
     std::fs::remove_file(dir.join("graph.bin")).unwrap();
     assert_eq!(r.face.sidecar_candidates(&s, "lab/indexed", &[0.0, 0.0, 1.0], 10).err(), Some(Fallback::OverCap));
     assert_eq!(ids(&r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()).unwrap(), "passage_id"), exact);
+}
+
+/// Regression: a ranked read over tables publishing no ceiling clamps its limit to the
+/// face ceiling, and its candidate window follows the clamped limit.
+#[test]
+fn a_ranked_read_meets_the_face_ceiling() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
+    let huge = r.face.retrieve(&s, &RetrieveRequest { limit: Some(u64::MAX), ..ask("research/vendor", "feed") }, Bounds::default()).unwrap();
+    assert_eq!(huge.blocks["contextful.retrieval"]["window"], json!(8 * contextful_core::read::respond::FACE_ROW_CEILING));
 }
