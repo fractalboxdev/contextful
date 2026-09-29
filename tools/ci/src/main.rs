@@ -2,6 +2,7 @@
 //! pull-request workflow invoke the identical command.
 
 mod measure;
+mod tag;
 mod topology;
 
 use anyhow::{bail, Context, Result};
@@ -87,6 +88,17 @@ enum Cmd {
         #[arg(long, requires = "status")]
         check: bool,
     },
+    /// Cut the signed annotated release tag `v0.<closed>.<patch>` on HEAD once the tree is
+    /// clean, the default branch reaches it, the version rises and matches the workspace's,
+    /// and every gate stage passes.
+    Tag {
+        /// The default branch HEAD must be reachable from.
+        #[arg(long, default_value = "origin/HEAD")]
+        branch: String,
+        /// The revision the gate's test-first stage measures HEAD against.
+        #[arg(long, default_value = "HEAD~1")]
+        base: String,
+    },
 }
 
 /// A refusal the gate reports by its registered error name.
@@ -119,6 +131,7 @@ fn main() {
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
+        Cmd::Tag { branch, base } => tag::tag(&branch, &base),
         Cmd::Measure { tiers, status, check } => repo_root().and_then(|root| {
             if status {
                 return measure::status(&root, check);

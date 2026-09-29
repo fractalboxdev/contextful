@@ -759,7 +759,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "contextful-acceptance"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "parquet",
  "serde_json",
@@ -768,7 +768,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-agent"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "contextful-context",
  "contextful-core",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-ci"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-cli"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-connectors"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "contextful-core",
  "contextful-decode",
@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-context"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "arrow-array 57.3.1",
  "arrow-cast 57.3.1",
@@ -858,7 +858,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-core"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-decode"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "contextful-core",
  "quick-xml",
@@ -884,7 +884,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-engine"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "contextful-core",
  "contextful-eval",
@@ -899,7 +899,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-eval"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -909,7 +909,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-fs"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "contextful-eval",
  "getrandom 0.3.4",
@@ -919,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-memory"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "contextful-context",
  "contextful-core",
@@ -934,7 +934,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-outbound"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "contextful-core",
  "contextful-eval",
@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-policy"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "base64 0.22.1",
  "biscuit-auth",
@@ -971,7 +971,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-spec"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-sqlite"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "contextful-core",
  "contextful-engine",
@@ -999,7 +999,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-sync"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "contextful-context",
  "contextful-core",
@@ -1015,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-wasm"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "arrow-array 57.3.1",
  "arrow-ipc",
