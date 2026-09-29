@@ -23,7 +23,7 @@ enum Kind {
     Atom,
 }
 
-/// One item or entry as read: the first text of each direct child, the `href` links it
+/// One item or entry as read: the first non-empty text of each direct child, the `href` links it
 /// declares with their `rel`, and an Atom author's name.
 #[derive(Default)]
 struct Entry {
@@ -126,10 +126,9 @@ pub fn rows(body: &[u8], input: &str) -> Result<Vec<Row>, Failure> {
                     });
                 } else if let Some((d, current)) = entry.as_mut() {
                     if at == *d + 1 {
-                        if tag == "link" {
-                            current.links.extend(href(e));
-                        }
-                        if !empty {
+                        // An `href`-bearing link, such as an RSS item's `atom:link`, carries no link text.
+                        let linked = tag == "link" && href(e).inspect(|l| current.links.push(l.clone())).is_some();
+                        if !empty && !linked {
                             child = Some((tag, String::new()));
                         }
                     } else if at == *d + 2 && !empty && tag == "name" && child.as_ref().is_some_and(|(c, _)| c == "author") {
@@ -159,8 +158,11 @@ pub fn rows(body: &[u8], input: &str) -> Result<Vec<Row>, Failure> {
                             current.author_name.get_or_insert(n);
                         }
                     } else if depth == d + 1 {
+                        // The first non-empty text of each child names the field.
                         if let (Some((tag, value)), Some((_, current))) = (child.take(), entry.as_mut()) {
-                            current.fields.entry(tag).or_insert(value);
+                            if !value.trim().is_empty() {
+                                current.fields.entry(tag).or_insert(value);
+                            }
                         }
                     } else if depth == d {
                         if let Some((_, done)) = entry.take() {

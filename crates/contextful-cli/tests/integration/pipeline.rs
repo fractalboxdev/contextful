@@ -834,3 +834,49 @@ fn a_loopback_control_url_serves_the_applied_snapshot() {
     let out = cf(dir.path(), &["pipeline", "apply", "--project", "research"]);
     assert!(!out.status.success() && stderr(&out).contains("ConfigOwnerUnconfigured"), "{}", stderr(&out));
 }
+
+/// The GitHub recipe, its host swapped for `vendor` and its credential header dropped.
+fn github_recipe(vendor: &Vendor) -> tempfile::TempDir {
+    let recipe = include_str!("../../../../recipes/github.toml").replace("https://api.github.com", &vendor.url(""));
+    project(&recipe.lines().filter(|l| !l.starts_with("Authorization")).collect::<Vec<_>>().join("\n"))
+}
+
+/// Two recorded pages as one response body.
+fn recorded(pages: [&str; 2]) -> String {
+    let rows: Vec<serde_json::Value> = pages.iter().flat_map(|p| serde_json::from_str::<Vec<serde_json::Value>>(p).unwrap()).collect();
+    serde_json::to_string(&rows).unwrap()
+}
+
+/// `recipes/github.toml` keys issues on `id` and commits on `sha`, so the boundary row each poll re-serves lands as
+/// one row.
+// spec: connector.source.github-recipe-keys@f99fe817
+#[test]
+fn the_github_recipe_lands_one_row_per_key_across_polls() {
+    let issues = recorded([
+        include_str!("../../../contextful-connectors/tests/fixtures/github/issues-page-1.json"),
+        include_str!("../../../contextful-connectors/tests/fixtures/github/issues-page-2.json"),
+    ]);
+    let commits = recorded([
+        include_str!("../../../contextful-connectors/tests/fixtures/github/commits-page-1.json"),
+        include_str!("../../../contextful-connectors/tests/fixtures/github/commits-page-2.json"),
+    ]);
+    let vendor = Vendor::start(move |t| match t.split('?').next().unwrap_or_default() {
+        "/repos/octocat/Hello-World/issues" => (200, issues.clone()),
+        "/repos/octocat/Hello-World/commits" => (200, commits.clone()),
+        _ => (404, "{}".into()),
+    });
+    let dir = github_recipe(&vendor);
+    for (i, id) in ["github_issues", "github_commits"].iter().enumerate() {
+        for n in 0..3 {
+            ok(&fire(dir.path(), id, &format!("f{i}{n}"), &format!("2030-01-01T00:0{i}:{n}0Z")));
+        }
+    }
+    let counts = |sql: &str| -> serde_json::Value {
+        let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", sql]))).unwrap();
+        out["rows"].clone()
+    };
+    let per_sha = counts("SELECT substr(sha, 1, 7), count(*) FROM \"github_commits_octocat_hello_world\" GROUP BY sha ORDER BY sha");
+    assert_eq!(per_sha, serde_json::json!([["553c207", "1"], ["7629413", "1"], ["7fd1a60", "1"]]), "one row per sha");
+    let per_issue = counts("SELECT number, count(*) FROM \"github_issues_octocat_hello_world\" GROUP BY number ORDER BY number");
+    assert_eq!(per_issue, serde_json::json!([["7", "1"], ["12", "1"]]), "one row per issue");
+}

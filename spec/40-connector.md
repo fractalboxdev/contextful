@@ -358,6 +358,7 @@ The declared behavior of each source compiled into the engine.
 - `feed-published-at` — `published_at` is the Atom `published`, else `updated`, or the RSS `pubDate`, folded to an RFC 3339 instant in UTC; a date that is neither RFC 3339 nor RFC 2822 is unreadable input.
   *because a watermark over `published_at` then orders instants, whatever offset the feed spells*
 - `conditional-get` — `conditional = true` sends the position's `etag` as `If-None-Match` and `last_modified` as `If-Modified-Since`. A `304` lands no rows and holds the position; a `2xx` commits the validators it serves.
+- `conditional-position` — A conditional pull issues one request, and the validators are its whole position: no page token or watermark rides beside them, and the pull reports no further page.
 - `conditional-rejected` — `conditional` beside a pagination shape or a declared `incremental` raises `ConnectorConditionalRejected` at build.
   *because a validator names one document, and a watermark position leaves the validators nowhere to commit*
 - `pagination` — A walk declares exactly one pagination shape: a page parameter with a start page, a next-cursor path with a cursor parameter, a next-URL path, or link-header following.
@@ -377,6 +378,7 @@ The declared behavior of each source compiled into the engine.
 - `bound-column-occupied` — A fetched row already carrying a bound column raises `ConnectorBoundColumnOccupied`, failing the read.
   *because the vendor's value and the table's value otherwise disagree with nothing recording which one landed*
 - `github-recipe` — `recipes/github.toml` lands issues without pull requests and commits per `<owner>/<repo>` table, following the `Link` header, stamping `repo_full_name`, and clocking commits at `/commit/committer/date`.
+- `github-recipe-keys` — `recipes/github.toml` keys issues on `id` and commits on `sha`, so the boundary row each poll re-serves lands as one row.
 - `expansion` — An expansion block names its pointer as a URL template over the landed row's scalar columns, percent-encoded, or as a column holding a URL, and names the column the fetched document lands under.
 - `pointer-ambiguity` — Declaring both pointer forms raises `ConnectorPointerAmbiguous`.
   *P1*

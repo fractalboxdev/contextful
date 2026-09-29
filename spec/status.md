@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 216 | 56 | 22 | 16 | 106 | 0 | 106 |
 | `authority` | 2 | 16 | 263 | 77 | 27 | 10 | 200 | 0 | 200 |
-| `connector` | 2 | 13 | 295 | 78 | 19 | 14 | 169 | 0 | 169 |
+| `connector` | 2 | 13 | 297 | 78 | 19 | 14 | 171 | 0 | 171 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 164 | 28 | 22 | 20 | 139 | 0 | 139 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 215 | 53 | 12 | 17 | 175 | 0 | 175 |
 | `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 153 | 1817 | 555 | 184 | 138 | 1149 | 0 | |
+| **total** | 19 | 153 | 1819 | 555 | 184 | 138 | 1151 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 228 | 176 | passing | closed |
 | 2 — The store | 9 | 152 | 117 | passing | closed |
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
-| 4 — Ingest | 24 | 438 | 257 | passing | open |
+| 4 — Ingest | 24 | 440 | 259 | passing | open |
 | 5 — The read face under enforcement | 17 | 242 | 173 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
@@ -469,6 +469,7 @@ Unscheduled operations: 10.
 | `connector.source.bound-columns` | `crates/contextful-connectors/tests/integration/bound.rs::every_fetched_row_carries_its_bound_columns` | performed |
 | `connector.source.cell-out-of-range` | `crates/contextful-decode/tests/integration/workbook.rs::a_cell_past_the_header_width_is_refused_rather_than_dropped` | performed |
 | `connector.source.conditional-get` | `crates/contextful-connectors/tests/integration/conditional.rs::a_not_modified_feed_lands_nothing_and_holds_the_validators` | performed |
+| `connector.source.conditional-position` | `crates/contextful-connectors/tests/integration/conditional.rs::a_conditional_pull_commits_the_validators_alone` | performed |
 | `connector.source.conditional-rejected` | `crates/contextful-connectors/tests/integration/conditional.rs::conditional_beside_a_page_walk_or_an_incremental_field_is_refused` | performed |
 | `connector.source.decompression-budget` | `crates/contextful-decode/tests/integration/workbook.rs::an_office_read_decompresses_at_most_64_mib_by_claim_and_by_arrival` | performed |
 | `connector.source.delimited-cell` | `crates/contextful-decode/tests/integration/decode.rs::delimited_cells_land_as_strings_and_empty_unquoted_fields_as_null` | performed |
@@ -495,6 +496,7 @@ Unscheduled operations: 10.
 | `connector.source.feed-published-at` | `crates/contextful-decode/tests/integration/feed.rs::published_at_lands_as_a_utc_instant_or_null_and_an_unreadable_date_refuses` | performed |
 | `connector.source.format-key-mismatch` | `crates/contextful-connectors/tests/integration/http.rs::a_json_key_on_another_format_is_refused_at_build` | performed |
 | `connector.source.github-recipe` | `crates/contextful-connectors/tests/integration/github.rs::the_recipe_lands_issues_without_pull_requests_and_stamps_the_repository` | performed |
+| `connector.source.github-recipe-keys` | `crates/contextful-cli/tests/integration/pipeline.rs::the_github_recipe_lands_one_row_per_key_across_polls` | performed |
 | `connector.source.http-headers` | `crates/contextful-connectors/tests/integration/http.rs::header_templates_hydrate_onto_each_read` | performed |
 | `connector.source.http-limiter` | `crates/contextful-cli/tests/integration/pipeline.rs::a_bound_quota_meters_every_page_of_a_run` | performed |
 | `connector.source.http-page-pull` | `crates/contextful-connectors/tests/integration/http.rs::a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page` | performed |

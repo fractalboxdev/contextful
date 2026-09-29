@@ -92,3 +92,14 @@ fn a_document_that_is_neither_rss_nor_atom_refuses_whole() {
         assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("page.html"), "{f}");
     }
 }
+
+#[test]
+fn an_empty_or_href_bearing_child_leaves_the_rss_fields_to_their_text() {
+    let item = br#"<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><item>
+<atom:link rel="self" href="https://x.test/item.rss"></atom:link><link>https://x.test/1</link>
+<title></title><title>Real</title></item></channel></rss>"#;
+    let rows = feed(item);
+    assert_eq!(rows[0]["link"], json!("https://x.test/1"), "an href-bearing link carries no link text");
+    assert_eq!(rows[0]["entry_id"], json!("https://x.test/1"), "no guid: the RSS link identifies the item");
+    assert_eq!(rows[0]["title"], json!("Real"), "an empty child leaves the field to the next one");
+}

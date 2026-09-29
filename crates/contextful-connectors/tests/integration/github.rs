@@ -72,7 +72,7 @@ fn the_recipe_lands_issues_without_pull_requests_and_stamps_the_repository() {
         assert!(r.get("pull_request").is_none() && r.get("user").is_none());
     }
     assert_eq!(landed[0]["title"], json!("Hello World in all programming languages"));
-    assert!(landed[0]["author_login"].is_string());
+    assert_eq!((landed[0]["author_login"].clone(), landed[1]["author_login"].clone()), (json!("mwumvaxgh"), json!("dako3256")));
 
     let seen = server.received("/repos/octocat/Hello-World/issues");
     assert_eq!(seen.len(), 2);
@@ -105,8 +105,8 @@ fn the_recipe_lands_commits_under_a_nested_committer_clock() {
             "repo_full_name": TABLE,
             "committed_at": "2011-01-26T19:06:08Z",
             "message": "first commit",
-            "author_name": landed[2]["author_name"].clone(),
-            "author_login": landed[2]["author_login"].clone(),
+            "author_name": "cameronmcefee",
+            "author_login": "Cameron423698",
             "html_url": "https://github.com/octocat/Hello-World/commit/553c2077f0edc3d5dc5d17262f6aa498e69d6f8e",
         })
     );

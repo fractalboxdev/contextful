@@ -4,12 +4,13 @@
 # both pipelines. The token is a fine-grained personal access token or an installation
 # token granting `Issues: Read` and `Contents: Read` on those repositories, bound as
 # `github-token`. Each pipeline follows the `Link` header, 100 records per page, and
-# re-reads from its stored clock through the `since` parameter.
+# re-reads from its stored clock through the `since` parameter. Each poll re-serves the
+# boundary row, and the primary key (`id` for issues, `sha` for commits) holds each to one row.
 
 [[pipeline]]
 id = "github_issues"
 incremental = "updated_at"
-tables = ["octocat/Hello-World"]
+tables = [{ name = "octocat/Hello-World", primary_key = ["id"] }]
 
 [pipeline.source]
 name = "http"
@@ -43,7 +44,7 @@ columns = ["id", "number", "repo_full_name", "title", "body", "state", "state_re
 [[pipeline]]
 id = "github_commits"
 incremental = "/commit/committer/date"
-tables = ["octocat/Hello-World"]
+tables = [{ name = "octocat/Hello-World", primary_key = ["sha"] }]
 
 [pipeline.source]
 name = "http"

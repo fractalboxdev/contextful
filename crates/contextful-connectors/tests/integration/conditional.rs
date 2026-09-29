@@ -40,6 +40,7 @@ fn a_not_modified_feed_lands_nothing_and_holds_the_validators() {
     assert_eq!(first["rows"][1]["published_at"], json!("2026-02-03T08:00:00Z"));
     let validators = json!({"etag": ETAG, "last_modified": MODIFIED});
     assert_eq!(first["cursor"], validators, "a 2xx commits the served validators as the position");
+    assert_eq!(first["more"], json!(false), "a conditional pull reads one document");
 
     let second = pull(&mut s, Some(validators.clone()));
     assert_eq!(second["rows"], json!([]));
@@ -49,6 +50,26 @@ fn a_not_modified_feed_lands_nothing_and_holds_the_validators() {
     assert_eq!(seen.len(), 2);
     assert_eq!((seen[0].header("if-none-match"), seen[0].header("if-modified-since")), (None, None));
     assert_eq!((seen[1].header("if-none-match"), seen[1].header("if-modified-since")), (Some(ETAG), Some(MODIFIED)));
+}
+
+/// A conditional pull issues one request, and the validators are its whole position: no page token or watermark
+/// rides beside them, and the pull reports no further page.
+// spec: connector.source.conditional-position@67dec9d6
+#[test]
+fn a_conditional_pull_commits_the_validators_alone() {
+    let vendor = Server::start(|_| Response {
+        status: 200,
+        headers: vec![("ETag".into(), ETAG.into()), ("Link".into(), "</news.rss?page=2>; rel=\"next\"".into())],
+        body: FEED.as_bytes().to_vec(),
+    });
+    let mut s = source(json!({"endpoint": vendor.url("/news.rss"), "format": "feed", "conditional": true}), vec![]);
+    let out = pull(&mut s, Some(json!({"next": "/news.rss?page=2", "field": "published_at", "at": "2026-02-03T08:00:00Z", "etag": "W/\"old\""})));
+    assert_eq!(out["rows"].as_array().unwrap().len(), 2);
+    assert_eq!(out["cursor"], json!({"etag": ETAG}), "the served validators replace the whole position");
+    assert_eq!(out["more"], json!(false));
+    let seen = vendor.received("/news.rss");
+    assert_eq!(seen.len(), 1, "one request, the served next link unfollowed");
+    assert_eq!((seen[0].query("page"), seen[0].header("if-none-match")), (None, Some("W/\"old\"")));
 }
 
 #[test]
