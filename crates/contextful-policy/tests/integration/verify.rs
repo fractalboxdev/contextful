@@ -7,7 +7,14 @@ use contextful_core::revoke::Denylist;
 use contextful_policy::attenuate::Derivation;
 use contextful_policy::issue::MintClaims;
 use contextful_policy::revoke::{parse_denylist, RevocationState};
-use contextful_policy::verify::{effect_boundary, verify_local_bearer, Admission, BiscuitFormat, CredentialFormat};
+use contextful_core::ports::FixedClock;
+use contextful_core::AuthorityError;
+use contextful_policy::possession::{sign_proof, verify_proof, NonceCache, ProofRefusal, ProofRequest};
+use contextful_policy::verify::{
+    checkpoint_uid, effect_boundary, no_holder_proof, verify_inherited_pipe, verify_local, verify_with_proof, Admission, BiscuitFormat,
+    CredentialFormat, LocalTransport,
+};
+use std::os::unix::net::UnixStream;
 
 /// Verification yields an admitted-authority value carrying the normalized subject tuple and its grants. Every read surface and row-landing effect takes that value as an argument; nothing downstream re-parses a credential or reads ambient state.
 // spec: authority.verify.admitted-authority@6a9d4f19
@@ -118,12 +125,12 @@ fn a_declared_audience_refuses_another_or_none_and_an_undeclared_one_checks_noth
     let credential = minted(&signer);
     let revocation = no_revocation();
     let other = Admission::new(at(DURING), &revocation).expecting("contextful://other");
-    refused(verify_local_bearer(&credential, &keys(&signer), &other), "AudienceMismatch");
+    refused(verify_inherited_pipe(&credential, &keys(&signer), &other), "AudienceMismatch");
     let none = craft(&signer, &block(&signer), &["aud"], "");
     refused(admit(&none, &signer, DURING), "AudienceMismatch");
     let undeclared = Admission::new(at(DURING), &revocation);
-    assert!(verify_local_bearer(&credential, &keys(&signer), &undeclared).is_ok());
-    assert!(verify_local_bearer(&none, &keys(&signer), &undeclared).is_ok());
+    assert!(verify_inherited_pipe(&credential, &keys(&signer), &undeclared).is_ok());
+    assert!(verify_inherited_pipe(&none, &keys(&signer), &undeclared).is_ok());
 }
 
 /// A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.
@@ -185,6 +192,183 @@ fn the_authority_core_flow_admits_narrows_and_re_reads() {
     let rev = contextful_policy::verify::introspect(&child).unwrap().rev_id;
     let revocation = RevocationState { denylist: parse_denylist(&format!("{rev}\n"), "k1"), ..RevocationState::default() };
     let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
-    refused(verify_local_bearer(&child, &keys(&signer), &admission), "AuthorityRevoked");
-    assert!(verify_local_bearer(&parent, &keys(&signer), &admission).is_ok());
+    refused(verify_inherited_pipe(&child, &keys(&signer), &admission), "AuthorityRevoked");
+    assert!(verify_inherited_pipe(&parent, &keys(&signer), &admission).is_ok());
+}
+
+/// A credential bound to `holder`'s key, and the request and proof a local client sends.
+fn key_bound(signer: &contextful_policy::issue::SeedSigner, holder: &ed25519_dalek::SigningKey) -> String {
+    let jkt = contextful_policy::possession::jwk_thumbprint(holder.verifying_key().as_bytes());
+    contextful_policy::issue::mint(&plan(signer), &MintClaims { confirmation: Some(jkt), epoch: 0 }, signer).unwrap()
+}
+
+const LOCAL_TARGET: &str = "unix:///run/contextful.sock/v1/query";
+
+fn local_request() -> ProofRequest<'static> {
+    ProofRequest { method: "POST", target: LOCAL_TARGET, body: b"{\"sql\":\"select 1\"}" }
+}
+
+fn holder_proof<'a>(proof: &'a str, nonces: &'a mut NonceCache) -> impl FnOnce(&str) -> Result<(), ProofRefusal> + 'a {
+    move |jkt| verify_proof(jkt, proof, &local_request(), &FixedClock(at(DURING)), nonces)
+}
+
+#[track_caller]
+fn refused_proof<T: std::fmt::Debug>(r: Result<T, ProofRefusal>, error: &str) {
+    match r {
+        Err(ProofRefusal::Refused(e)) => assert_eq!(err_name(&e), error, "{e}"),
+        other => panic!("expected {error}, got {other:?}"),
+    }
+}
+
+fn own_socket(connection: u64) -> (LocalTransport, UnixStream) {
+    let (checkpoint_end, client_end) = UnixStream::pair().unwrap();
+    (LocalTransport::socket(connection, &checkpoint_end), client_end)
+}
+
+/// A local transport is a stdio pipe the checkpoint inherited from the process that spawned it, or a Unix socket; every other transport is a network transport.
+// spec: authority.verify.local-transport@1976a641
+#[test]
+fn a_local_transport_is_the_inherited_pipe_or_a_unix_socket_reporting_its_peer_uid() {
+    let (socket, _client) = own_socket(1);
+    assert_eq!(socket, LocalTransport::Socket { connection: 1, peer_uid: Some(checkpoint_uid()) });
+    assert_ne!(LocalTransport::InheritedPipe, socket);
+}
+
+/// On a local transport, a credential whose confirmation claim holds a thumbprint admits only with a proof as {{authority.verify.possession-binding}}; the peer fallback never applies to it, and a missing or failing proof is refused as {{authority.verify.possession-invalid}}.
+// spec: authority.verify.local-holder-proof@6d88ae5d
+#[test]
+fn a_key_bound_credential_admits_locally_only_with_its_holder_proof() {
+    let signer = issuer();
+    let holder = ed25519_dalek::SigningKey::from_bytes(&[7; 32]);
+    let credential = key_bound(&signer, &holder);
+    let revocation = no_revocation();
+    let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
+    let (socket, _client) = own_socket(1);
+    for transport in [LocalTransport::InheritedPipe, socket] {
+        // No proof: the peer fallback does not stand in for the key.
+        refused_proof(verify_local(&credential, &keys(&signer), &admission, transport, no_holder_proof), "PossessionProofInvalid");
+        // A thief's proof.
+        let thief = ed25519_dalek::SigningKey::from_bytes(&[8; 32]);
+        let mut nonces = NonceCache::new();
+        let stolen = sign_proof(&thief, &local_request(), at(DURING), "n-thief");
+        refused_proof(verify_local(&credential, &keys(&signer), &admission, transport, holder_proof(&stolen, &mut nonces)), "PossessionProofInvalid");
+        // The holder's proof.
+        let mut nonces = NonceCache::new();
+        let proof = sign_proof(&holder, &local_request(), at(DURING), "n-holder");
+        let admitted = verify_local(&credential, &keys(&signer), &admission, transport, holder_proof(&proof, &mut nonces)).unwrap();
+        assert_eq!(admitted.authority().confirmation(), Some(contextful_policy::possession::jwk_thumbprint(holder.verifying_key().as_bytes()).as_str()));
+    }
+    // The inherited-pipe shorthand carries no proof, so a key-bound credential refuses through it.
+    refused(verify_inherited_pipe(&credential, &keys(&signer), &admission), "PossessionProofInvalid");
+}
+
+/// On a local transport, a credential with no confirmation claim admits only through the operating system's peer authentication: an inherited stdio pipe, or a socket peer whose kernel-reported uid equals the checkpoint process's uid.
+// spec: authority.verify.local-peer-fallback@02d72015
+#[test]
+fn a_credential_binding_no_key_admits_through_the_inherited_pipe_or_a_same_uid_socket_peer() {
+    let signer = issuer();
+    let credential = minted(&signer);
+    let revocation = no_revocation();
+    let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
+    let piped = verify_local(&credential, &keys(&signer), &admission, LocalTransport::InheritedPipe, no_holder_proof::<AuthorityError>).unwrap();
+    assert_eq!(piped.authority().confirmation(), None);
+    assert!(verify_inherited_pipe(&credential, &keys(&signer), &admission).is_ok());
+    let (socket, _client) = own_socket(3);
+    let socketed = verify_local(&credential, &keys(&signer), &admission, socket, no_holder_proof::<AuthorityError>).unwrap();
+    assert_eq!(socketed.transport(), socket);
+    // The fallback admits after every other admission check: an expired credential still refuses.
+    let late = Admission::new(at("2030-01-01T00:20:00Z"), &revocation).expecting(AUD);
+    refused(verify_local(&credential, &keys(&signer), &late, socket, no_holder_proof::<AuthorityError>), "AuthorityExpired");
+}
+
+/// A socket peer presenting a credential with no confirmation claim, whose kernel-reported uid differs from the checkpoint process's uid or which the platform cannot report, raises `TransportPeerMismatch` and admits nothing.
+// spec: authority.verify.peer-mismatch@53b4e181
+#[test]
+fn a_socket_peer_of_another_or_an_unreported_uid_admits_nothing() {
+    let signer = issuer();
+    let credential = minted(&signer);
+    let revocation = no_revocation();
+    let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
+    let other = checkpoint_uid().wrapping_add(1);
+    for peer_uid in [Some(other), None] {
+        let transport = LocalTransport::Socket { connection: 4, peer_uid };
+        refused(verify_local(&credential, &keys(&signer), &admission, transport, no_holder_proof::<AuthorityError>), "TransportPeerMismatch");
+    }
+}
+
+/// A network checkpoint refuses a credential with no confirmation claim as {{authority.verify.possession-invalid}}, so a credential admitted by peer fallback admits nothing over a network.
+// spec: authority.verify.network-needs-key@1aaaea8b
+#[test]
+fn a_network_checkpoint_refuses_the_credential_the_peer_fallback_admits() {
+    let signer = issuer();
+    let credential = minted(&signer);
+    let revocation = no_revocation();
+    let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
+    assert!(verify_inherited_pipe(&credential, &keys(&signer), &admission).is_ok());
+    // Whatever proof the network client presents, the credential binds no key to check it against.
+    refused(verify_with_proof(&credential, &keys(&signer), &admission, |_| Ok::<(), AuthorityError>(())), "PossessionProofInvalid");
+}
+
+/// A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.
+// spec: authority.verify.connection-scoped@bb49fb3d
+#[test]
+fn a_local_admission_answers_only_on_the_connection_that_presented_the_credential() {
+    let signer = issuer();
+    let credential = minted(&signer);
+    let revocation = no_revocation();
+    let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
+    let (first, _a) = own_socket(1);
+    let (second, _b) = own_socket(2);
+    let admitted = verify_local(&credential, &keys(&signer), &admission, first, no_holder_proof::<AuthorityError>).unwrap();
+    assert!(admitted.on(&first).is_ok());
+    // A second connection from the same uid relays a request under the first admission.
+    refused(admitted.on(&second), "TransportPeerMismatch");
+    refused(admitted.on(&LocalTransport::InheritedPipe), "TransportPeerMismatch");
+    // The second connection presents the credential itself and admits on its own.
+    let own = verify_local(&credential, &keys(&signer), &admission, second, no_holder_proof::<AuthorityError>).unwrap();
+    assert!(own.on(&second).is_ok());
+    let piped = verify_local(&credential, &keys(&signer), &admission, LocalTransport::InheritedPipe, no_holder_proof::<AuthorityError>).unwrap();
+    refused(piped.on(&first), "TransportPeerMismatch");
+}
+
+const OFF_TRANSPORT_SEED: u64 = 0x5eed_0057;
+const OFF_TRANSPORT_ROUNDS: u64 = 32;
+
+/// A credential binding no key, presented off the transport that admits it — over a
+/// network, from a socket peer of another or an unreported uid, or on a connection other
+/// than the admitted one — admits nothing, over a seeded loop.
+#[test]
+fn a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_seeded_loop() {
+    let signer = issuer();
+    let revocation = no_revocation();
+    let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
+    let mut state = OFF_TRANSPORT_SEED;
+    let mut next = move |bound: u64| {
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        (state >> 33) % bound
+    };
+    let (mut admitted, mut attempts) = (0u64, 0u64);
+    let mut count = |ok: bool| {
+        attempts += 1;
+        admitted += ok as u64;
+    };
+    let own = checkpoint_uid();
+    for round in 0..OFF_TRANSPORT_ROUNDS {
+        let credential = minted(&signer);
+        let connection = next(1 << 20);
+        count(verify_with_proof(&credential, &keys(&signer), &admission, |_| Ok::<(), AuthorityError>(())).is_ok());
+        let stranger = own.wrapping_add(1 + next(u32::MAX as u64 - 1) as u32);
+        for peer_uid in [Some(stranger), None] {
+            let transport = LocalTransport::Socket { connection, peer_uid };
+            count(verify_local(&credential, &keys(&signer), &admission, transport, no_holder_proof::<AuthorityError>).is_ok());
+        }
+        let home = LocalTransport::Socket { connection, peer_uid: Some(own) };
+        let local = verify_local(&credential, &keys(&signer), &admission, home, no_holder_proof::<AuthorityError>)
+            .unwrap_or_else(|e| panic!("round {round}: {e}"));
+        let elsewhere = LocalTransport::Socket { connection: connection + 1 + next(1 << 20), peer_uid: Some(own) };
+        count(local.on(&elsewhere).is_ok());
+        count(local.on(&LocalTransport::InheritedPipe).is_ok());
+    }
+    contextful_eval::record::emit("bearer-transport-bound", admitted as f64, attempts, OFF_TRANSPORT_SEED);
+    assert_eq!(admitted, 0, "{admitted} of {attempts} off-transport presentations admitted");
 }

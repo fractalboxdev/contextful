@@ -35,8 +35,8 @@ fn invalid(r: Result<(), ProofRefusal>) -> String {
     }
 }
 
-/// A credential's confirmation claim holds a client public-key thumbprint. Each request carries a proof signed by the matching private key over method, target, body digest, issue instant and nonce.
-// spec: authority.verify.possession-binding@ca4a9e8d
+/// A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce.
+// spec: authority.verify.possession-binding@f66765ed
 #[test]
 fn a_proof_binds_method_target_body_instant_and_nonce_to_the_confirmation_thumbprint() {
     let key = client(7);

@@ -288,7 +288,7 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority*
 - `expired` — A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.
   *A-authority*
-- `possession-binding` — A credential's confirmation claim holds a client public-key thumbprint. Each request carries a proof signed by the matching private key over method, target, body digest, issue instant and nonce.
+- `possession-binding` — A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce.
   *A-authority*
 - `possession-invalid` — A request whose proof does not verify against the confirmation thumbprint raises `PossessionProofInvalid`.
   *A-authority*
@@ -297,6 +297,18 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
 - `clock-skew` — A proof issued more than 30 s after the checkpoint clock is refused as {{authority.verify.possession-invalid}}.
   *A-authority*
 - `replayed-nonce` — A proof whose nonce repeats inside the replay window raises `PossessionProofReplayed`.
+  *A-authority*
+- `local-transport` — A local transport is a stdio pipe the checkpoint inherited from the process that spawned it, or a Unix socket; every other transport is a network transport.
+  *A-authority*
+- `local-holder-proof` — On a local transport, a credential whose confirmation claim holds a thumbprint admits only with a proof as {{authority.verify.possession-binding}}; the peer fallback never applies to it, and a missing or failing proof is refused as {{authority.verify.possession-invalid}}.
+  *A-authority*
+- `local-peer-fallback` — On a local transport, a credential with no confirmation claim admits only through the operating system's peer authentication: an inherited stdio pipe, or a socket peer whose kernel-reported uid equals the checkpoint process's uid.
+  *A-authority*
+- `peer-mismatch` — A socket peer presenting a credential with no confirmation claim, whose kernel-reported uid differs from the checkpoint process's uid or which the platform cannot report, raises `TransportPeerMismatch` and admits nothing.
+  *A-authority*
+- `network-needs-key` — A network checkpoint refuses a credential with no confirmation claim as {{authority.verify.possession-invalid}}, so a credential admitted by peer fallback admits nothing over a network.
+  *A-authority*
+- `connection-scoped` — A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.
   *A-authority*
 - `nonce-cache` — A checkpoint's nonce cache holds at most 100000 entries; a proof arriving while it is full answers `503` and admits nothing.
   *because a proof the cache cannot record is a replay it cannot detect*
@@ -314,8 +326,6 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority*
 
 unsettled: Does a proof replayed against a sibling checkpoint need a shared nonce store or a checkpoint-issued nonce? owner: authority affects: authority.verify
-
-unsettled: Stdio and socket callers admit a bearer credential with no per-request proof; does A-authority bind their possession to the OS-authenticated transport peer instead? owner: authority affects: authority.verify
 
 ## revoke
 

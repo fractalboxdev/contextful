@@ -126,4 +126,9 @@ pub enum AuthorityError {
     /// A credential timestamp outside the timestamp grammar. (`authority.verify.malformed-timestamp`)
     #[error("TimestampMalformed: {0}")]
     TimestampMalformed(String),
+    /// A socket peer of another or an unreported uid holding a credential that binds no
+    /// key, or a request on a connection other than the admitted one.
+    /// (`authority.verify.peer-mismatch`)
+    #[error("TransportPeerMismatch: {0}")]
+    TransportPeerMismatch(String),
 }

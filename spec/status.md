@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 204 | 56 | 22 | 15 | 85 | 0 | 85 |
-| `authority` | 2 | 16 | 231 | 62 | 27 | 9 | 164 | 0 | 164 |
+| `authority` | 2 | 16 | 237 | 63 | 27 | 8 | 170 | 0 | 170 |
 | `connector` | 2 | 13 | 250 | 74 | 17 | 8 | 120 | 0 | 120 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 15 | 186 | 45 | 12 | 12 | 147 | 0 | 147 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1600 | 505 | 177 | 116 | 878 | 0 | |
+| **total** | 19 | 149 | 1606 | 506 | 177 | 115 | 884 | 0 | |
 
 Decision records: 18.
 
@@ -24,7 +24,7 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
-| 1 — The authority core | 14 | 196 | 140 | passing |
+| 1 — The authority core | 14 | 202 | 146 | passing |
 | 2 — The store | 9 | 145 | 111 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 354 | 153 | passing |
@@ -278,6 +278,7 @@ Unscheduled operations: 10.
 | `authority.verify.audience-mismatch` | `crates/contextful-policy/tests/integration/verify.rs::a_declared_audience_refuses_another_or_none_and_an_undeclared_one_checks_nothing` | performed |
 | `authority.verify.bad-signature` | `crates/contextful-policy/tests/integration/verify.rs::any_failing_block_signature_admits_nothing_not_even_a_verified_prefix` | performed |
 | `authority.verify.clock-skew` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_issued_more_than_thirty_seconds_ahead_refuses` | performed |
+| `authority.verify.connection-scoped` | `crates/contextful-policy/tests/integration/verify.rs::a_local_admission_answers_only_on_the_connection_that_presented_the_credential` | performed |
 | `authority.verify.effect-boundary` | `crates/contextful-policy/tests/integration/verify.rs::each_effect_boundary_re_reads_expiry_revocation_and_profile_version` | performed |
 | `authority.verify.expired` | `crates/contextful-policy/tests/integration/verify.rs::a_credential_past_its_expiry_is_refused_at_admission_and_every_later_boundary` | performed |
 | `authority.verify.format-interface` | `crates/contextful-policy/tests/integration/verify.rs::issue_attenuate_verify_and_introspect_run_through_one_interface` | performed |
@@ -285,8 +286,13 @@ Unscheduled operations: 10.
 | `authority.verify.key-set-refresh` | `crates/contextful-policy/tests/integration/keyset.rs::a_published_key_set_refreshes_every_300_s_single_flight_and_once_on_signature_failure` | performed |
 | `authority.verify.key-set-stale` | `crates/contextful-policy/tests/integration/keyset.rs::a_last_known_good_set_serves_under_one_hour_then_raises_key_set_stale` | performed |
 | `authority.verify.key-set-unavailable` | `crates/contextful-policy/tests/integration/keyset.rs::an_unobtainable_set_or_a_malformed_pin_raises_key_set_unavailable_and_declines_to_start` | performed |
+| `authority.verify.local-holder-proof` | `crates/contextful-policy/tests/integration/verify.rs::a_key_bound_credential_admits_locally_only_with_its_holder_proof` | performed |
+| `authority.verify.local-peer-fallback` | `crates/contextful-policy/tests/integration/verify.rs::a_credential_binding_no_key_admits_through_the_inherited_pipe_or_a_same_uid_socket_peer` | performed |
+| `authority.verify.local-transport` | `crates/contextful-policy/tests/integration/verify.rs::a_local_transport_is_the_inherited_pipe_or_a_unix_socket_reporting_its_peer_uid` | performed |
 | `authority.verify.malformed-timestamp` | `crates/contextful-core/tests/integration/time.rs::a_timestamp_outside_the_grammar_is_malformed` | performed |
+| `authority.verify.network-needs-key` | `crates/contextful-policy/tests/integration/verify.rs::a_network_checkpoint_refuses_the_credential_the_peer_fallback_admits` | performed |
 | `authority.verify.nonce-cache` | `crates/contextful-policy/tests/integration/possession.rs::a_full_nonce_cache_answers_503_and_admits_nothing` | performed |
+| `authority.verify.peer-mismatch` | `crates/contextful-policy/tests/integration/verify.rs::a_socket_peer_of_another_or_an_unreported_uid_admits_nothing` | performed |
 | `authority.verify.pin-source` | `crates/contextful-cli/tests/integration/token.rs::verify_reads_pins_and_audience_from_the_environment_and_accepts_a_bare_ed25519_key` | performed |
 | `authority.verify.possession-binding` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_binds_method_target_body_instant_and_nonce_to_the_confirmation_thumbprint` | performed |
 | `authority.verify.possession-invalid` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_from_another_key_or_malformed_raises_possession_proof_invalid` | performed |

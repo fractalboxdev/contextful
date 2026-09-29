@@ -182,8 +182,9 @@ clause = "authority.issue.one-credential"
 metric = "authority.off_transport_admissions"
 kind   = "test"
 tier   = "gate"
-method = { issue = 57 }
+method = { test = "contextful_policy::verify::a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_seeded_loop" }
 target = { op = "==", value = 0 }
+seed   = 0x5eed_0057
 
 # ---------------------------------------------------------------- connector runtime
 

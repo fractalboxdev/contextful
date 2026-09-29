@@ -20,7 +20,7 @@ use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::issue::{mint, MintClaims, SeedSigner};
 use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::RevocationState;
-use contextful_policy::verify::{verify_local_bearer, Admission, AdmittedAuthority};
+use contextful_policy::verify::{verify_inherited_pipe, Admission, AdmittedAuthority};
 use serde_json::{json, Value};
 
 const AUD: &str = "contextful://acme-research";
@@ -85,7 +85,7 @@ fn fixture_over(manifest: &str, seed: impl FnOnce(&Store)) -> Fixture {
     let token = mint(&plan, &MintClaims::default(), &signer).unwrap();
     let keys = StaticPins::parse(&signer.public_key_text()).unwrap().keys().unwrap();
     let revocation = RevocationState::default();
-    let authority = verify_local_bearer(&token, &keys, &Admission::new(at("2030-01-01T00:05:00Z"), &revocation).expecting(AUD)).unwrap();
+    let authority = verify_inherited_pipe(&token, &keys, &Admission::new(at("2030-01-01T00:05:00Z"), &revocation).expecting(AUD)).unwrap();
     Fixture { _dir: dir, face, authority }
 }
 
