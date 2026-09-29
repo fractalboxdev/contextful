@@ -1,6 +1,7 @@
 //! The `contextful` binary.
 
 mod admit;
+mod component;
 mod context;
 mod derive;
 mod differential;

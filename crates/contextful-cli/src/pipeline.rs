@@ -2,13 +2,16 @@
 //!
 //! `run` fires one pipeline once: it reads the manifests, checks the declaration before
 //! any I/O, assembles the credential resolver from the process environment, and runs
-//! each table through the engine with the built-in source.
+//! each table through the engine with a built-in source or a component guest.
 
+use crate::component::{self, ComponentTarget};
 use crate::run::{boot_id, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_connectors::derive::DeriveSource;
 use contextful_connectors::http::{HttpConfig, HttpSource};
+use contextful_core::connector::component::ComponentSource;
+use contextful_core::connector::ConnectorError;
 use contextful_core::run::derive::config::{bind, bindings, check_output_table, Binding, DeriveConfig};
 use contextful_core::run::ports::{Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag};
@@ -48,11 +51,17 @@ pub enum PipelineCmd {
         /// The environment variable holding this fire's site id; replaces the manifest's declaration.
         #[arg(long)]
         site_id_env: Option<String>,
+        /// The instruction set a component source compiles for.
+        #[arg(long, value_enum, env = "CONTEXTFUL_COMPONENT_TARGET", default_value_t = ComponentTarget::Native)]
+        component_target: ComponentTarget,
     },
-    /// Check every declared pipeline without I/O.
+    /// Check every declared pipeline without network I/O; a local component artifact loads and runs discovery.
     Validate {
         #[arg(long, default_value = "contextful.toml")]
         declaration: PathBuf,
+        /// The instruction set a component source compiles for.
+        #[arg(long, value_enum, env = "CONTEXTFUL_COMPONENT_TARGET", default_value_t = ComponentTarget::Native)]
+        component_target: ComponentTarget,
     },
 }
 
@@ -79,6 +88,7 @@ fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
 enum Checked {
     Http(HttpConfig),
     Derive(Box<(DeriveConfig, Binding)>),
+    Component(Box<ComponentSource>),
 }
 
 /// Hold a specification to every rule checked before I/O, returning its source configuration.
@@ -110,7 +120,20 @@ fn check(spec: &PipelineSpec, declaration: &Path) -> Result<Checked> {
             let binding = bind(&spec.id, &config, &bindings, &declaration.display().to_string())?.clone();
             Ok(Checked::Derive(Box::new((config, binding))))
         }
-        other => bail!("pipeline `{}` names source `{other}`; the compiled-in sources are {}", spec.id, contextful_connectors::BUILT_IN.join(", ")),
+        other => {
+            let Some(decl) = ComponentSource::parse(other, &spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))? else {
+                bail!("pipeline `{}` names source `{other}`; the compiled-in sources are {}", spec.id, contextful_connectors::BUILT_IN.join(", "));
+            };
+            component::check(other, &decl)?;
+            if let Some(field) = &spec.incremental {
+                return Err(ConnectorError::ConnectorPositionOwned(format!(
+                    "pipeline `{}` declares `incremental = \"{field}\"` beside component source `{other}`; the guest's cursor is the run's position",
+                    spec.id
+                ))
+                .into());
+            }
+            Ok(Checked::Component(Box::new(decl)))
+        }
     }
 }
 
@@ -150,19 +173,24 @@ fn build_source(spec: &PipelineSpec, role: &str, source: &SourceBlock) -> Result
     built().with_context(|| format!("pipeline `{}` {role}", spec.id))
 }
 
-/// The plan one table of `spec` runs against.
-fn plan(spec: &PipelineSpec, table: &str) -> Result<Plan> {
+/// The connector a built-in source's run pins.
+fn built_in(spec: &PipelineSpec) -> ConnectorSpec {
+    ConnectorSpec {
+        id: spec.source.name.clone(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        world: NATIVE_WORLD.to_string(),
+        command: vec![format!("builtin:{}", spec.source.name)],
+    }
+}
+
+/// The plan one table of `spec` runs against, pinning `connector`.
+fn plan(spec: &PipelineSpec, table: &str, connector: ConnectorSpec) -> Result<Plan> {
     let cursor_kind = if spec.incremental.is_some() { CursorKind::Monotonic } else { CursorKind::OpaqueToken };
     let plan = Plan {
         spec: PlanSpec {
             pipeline: spec.id.clone(),
             table: spec.table_name(table),
-            connector: ConnectorSpec {
-                id: spec.source.name.clone(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                world: NATIVE_WORLD.to_string(),
-                command: vec![format!("builtin:{}", spec.source.name)],
-            },
+            connector,
             cursor: CursorSpec { kind: Some(cursor_kind.name().to_string()), field: spec.incremental.clone() },
             retry: None,
             // A derive pipeline re-reads the store each tick and records no pull.
@@ -179,7 +207,7 @@ fn plan(spec: &PipelineSpec, table: &str) -> Result<Plan> {
 
 pub fn run(cmd: PipelineCmd) -> Result<()> {
     match cmd {
-        PipelineCmd::Validate { declaration } => {
+        PipelineCmd::Validate { declaration, component_target } => {
             let files = manifests(&declaration)?;
             // Store tables declared under `[pipeline]` answer to the same load checks the
             // store and the read face run.
@@ -187,12 +215,21 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                 TableDecl::parse_pipeline(&f.text).with_context(|| f.path.clone())?;
             }
             for d in collect(&files)? {
-                check(&d.spec, &declaration).with_context(|| format!("{}:{}", d.file, d.line))?;
-                println!("{}: valid ({} tables, content hash {})", d.spec.id, d.spec.tables.len(), &d.spec.content_hash()[..16]);
+                let checked = check(&d.spec, &declaration).with_context(|| format!("{}:{}", d.file, d.line))?;
+                let mut discovered = String::new();
+                if let Checked::Component(decl) = &checked {
+                    if component::is_local(decl) {
+                        let loaded = component::load(&d.spec.source.name, decl, component::base(&declaration), component_target)
+                            .with_context(|| format!("{}:{}", d.file, d.line))?;
+                        let names = loaded.discover(decl).with_context(|| format!("{}:{}", d.file, d.line))?;
+                        discovered = format!(" · discovers {}", names.join(", "));
+                    }
+                }
+                println!("{}: valid ({} tables, content hash {}){discovered}", d.spec.id, d.spec.tables.len(), &d.spec.content_hash()[..16]);
             }
             Ok(())
         }
-        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env } => {
+        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target } => {
             let l = project.locate(declaration)?;
             let declaration = l.declaration.clone();
             let text = if declaration.exists() { std::fs::read_to_string(&declaration)? } else { String::new() };
@@ -204,13 +241,20 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
             let w = wire_at(&l.project, &project.now)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
             let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
-            if let Checked::Http(config) = &checked {
-                resolver.preflight(config.headers.values())?;
+            match &checked {
+                Checked::Http(config) => resolver.preflight(config.headers.values())?,
+                Checked::Component(decl) => resolver.preflight(decl.attach.iter().map(|(_, t)| t))?,
+                Checked::Derive(_) => {}
             }
 
             // A declaration's relative paths resolve against the project directory
             // (`store.init.declaration-base`), whichever subdirectory the command runs from.
             let base = l.project.dir.clone();
+            // A component resolves, admits and compiles once per fire, before any run row.
+            let loaded = match &checked {
+                Checked::Component(decl) => Some(component::load(&spec.source.name, decl, &base, component_target)?),
+                _ => None,
+            };
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let decls: Vec<TableDecl> = spec
@@ -227,7 +271,10 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                 eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");
             }
             let base_run = run_id.unwrap_or_else(|| format!("run-{}", &sha256_hex(format!("{}{}", w.clock.now().unix_nanos(), std::process::id()).as_bytes())[..12]));
-            let artifact = sha256_hex(serde_json::to_string(&spec.source).unwrap_or_default().as_bytes());
+            let artifact = match &loaded {
+                Some(c) => c.content_hash(),
+                None => sha256_hex(serde_json::to_string(&spec.source).unwrap_or_default().as_bytes()),
+            };
             let mut failed: Vec<String> = Vec::new();
             for t in &spec.tables {
                 let table = spec.table_name(t.name());
@@ -236,7 +283,8 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                 // A table that cannot open is a failed table like one whose run fails, so
                 // `continue` lands the others.
                 let outcome = (|| -> Result<contextful_core::run::record::RunRow> {
-                    let plan = plan(&spec, t.name())?;
+                    let connector = loaded.as_ref().map_or_else(|| built_in(&spec), component::Loaded::connector_spec);
+                    let plan = plan(&spec, t.name(), connector)?;
                     let connector: ConnectorPin = plan.connector_pin(&artifact);
                     let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
                     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
@@ -252,6 +300,10 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                             resolver: resolver.clone(),
                             cwd: base.clone(),
                         }),
+                        Checked::Component(decl) => match &loaded {
+                            Some(c) => c.source(decl, t.name(), &resolver, &run_id)?,
+                            None => bail!("pipeline `{}`: component source `{}` did not load", spec.id, spec.source.name),
+                        },
                     };
                     Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
                 })();

@@ -281,6 +281,16 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `interpreted-target` — A host built with the `pulley` feature runs components on the interpreted target as portable bytecode, mapping no executable memory, under the same deadlines and mediated client; the compiled native target stays the default.
   *because a hardened runtime refusing writable-then-executable pages loads no compiled guest, and interpretation trades throughput for loading there*
 - `interpreted-target-absent` — A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature, before any component compiles.
+- `component-source` — A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes` and `require_pin`, the manifest flag of {{connector.package.pin-requirement}}.
+- `component-load` — `pipeline run` resolves a component source, admits it against its pin and compiles it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
+  *A-connector*
+- `component-grant` — A component session's grant is its declared `allow` hosts and `attach` headers alone, hydrated at session open; a source declaring no `allow` reaches no host.
+  *A-connector*
+- `component-validate` — `pipeline validate` loads a local component artifact and runs discovery, so a missing export or a world mismatch fails before any run; a remote artifact is checked without I/O.
+  *P1*
+- `component-position` — `incremental` beside a component source raises `ConnectorPositionOwned` at validation; the guest's opaque cursor is the run's position.
+  *because a watermark over one field replaces the cursor the guest resumes from, so its next read opens at a position it never reported*
+- `component-target` — `pipeline run` and `pipeline validate` compile components for the interpreted target when `--component-target pulley` or `CONTEXTFUL_COMPONENT_TARGET=pulley` selects it; native stays the default.
 - `linear-memory` — A connector runs under 256 MiB of linear memory by default, raised per connector to at most 2 GiB.
 - `call-deadline` — A read call carries a 30 s wall-clock deadline and a discovery call a 60 s one, armed by epoch interruption at 100 ms granularity.
 - `session-budget` — A session carries a 1 MiB logging budget, dropping and counting messages past it, and holds at most 8 requests outbound at once.
@@ -310,6 +320,8 @@ flowchart LR
   HASH -->|"no: ConnectorDigestMismatch"| REFUSE
   HASH -->|"yes, instantiate"| INST["component instance"]
 ```
+
+unsettled: How does a fire fetch a remote component artifact, over the mediated client for HTTPS and with which registry credential and layer for OCI? owner: connector affects: connector.package
 
 unsettled: Does `connector pin` record a precompiled artifact per target under its own digest, so a hardened build links no compiler and deserializes only pinned bytes? owner: connector affects: connector.package
 

@@ -5,6 +5,7 @@
 //! The resolver and the mediated client are `contextful-outbound`.
 
 pub mod attach;
+pub mod component;
 pub mod error;
 pub mod infer;
 pub mod lease;

@@ -112,7 +112,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     /// What this engine hosts: the native connector world, and awakeables when an
     /// awakeable store is wired.
     pub fn capabilities(&self) -> Capabilities {
-        Capabilities { worlds: vec![NATIVE_WORLD.to_string()], awakeables: self.awakeables.is_some() }
+        Capabilities { worlds: std::iter::once(NATIVE_WORLD.to_string()).chain(self.worlds.iter().cloned()).collect(), awakeables: self.awakeables.is_some() }
     }
 
     /// Open an execution under `open.scope`: write the run row, register with the keeper, then

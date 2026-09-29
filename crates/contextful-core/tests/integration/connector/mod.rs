@@ -2,6 +2,7 @@
 //! and artifact pins.
 
 mod attach;
+mod component;
 mod infer;
 mod lease;
 mod meter;

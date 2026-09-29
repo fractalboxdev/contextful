@@ -79,6 +79,9 @@ template: the lease provider heads the chain and answers for the declared name
 ({{connector.lease.lease}}). The request goes out over TLS, and the vendor's quota
 headers ride the next usage report ({{connector.meter.report}}).
 
+A pipeline names it by artifact path ({{connector.package.component-source}}), and each
+run records its hash ({{connector.package.component-load}}).
+
 Midway through, the limiter denies a permit. The guest sees an ordinary throttle response
 ({{connector.meter.synthesized-throttle}}), which the run retries under its schedule. Later
 the lease lapses while the mint endpoint is down: the run sends the vendor nothing

@@ -310,3 +310,19 @@ fn a_component_connector_is_refused_on_a_build_without_a_component_host() {
     assert!(source.calls().is_empty());
     assert!(rig.catalog().run("run-1").unwrap().is_none());
 }
+
+/// A component connector runs where a component host is linked: the full profile and the container or worker shapes
+/// built from it. The edge profile runs native connectors.
+// spec: topology.package.component-host@0fa605a1
+#[test]
+fn a_component_connector_runs_on_an_engine_wiring_its_world() {
+    let mut rig = Rig::new();
+    rig.engine.worlds = vec!["contextful:source/pull@1".to_string()];
+    let text = "pipeline = \"feed\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\nworld = \"contextful:source/pull@1\"\ncommand = [\"vendor\"]\n";
+    let p = contextful_core::run::plan::Plan::compile(text.as_bytes()).unwrap();
+    let row = rig.run(&p, "1", "run-1", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
+    assert_eq!(row.status, RunStatus::Success);
+    assert!(rig.engine.capabilities().hosts("native"), "a wired world adds to the native one");
+    let other = p.spec.connector.world.replace("@1", "@2");
+    assert!(!rig.engine.capabilities().hosts(&other), "a world the engine does not wire stays refused");
+}

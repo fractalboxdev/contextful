@@ -22,6 +22,8 @@ contextful-outbound = { path = "../contextful-outbound", default-features = fals
 # The binary is the one package compiling SQLite into the build (`topology.package.sqlite-adapter`).
 contextful-sqlite = { path = "../contextful-sqlite", features = ["bundled"] }
 contextful-sync = { path = "../contextful-sync" }
+# The component host (`topology.package.component-host`), linked under `component-host`.
+contextful-wasm = { path = "../contextful-wasm", default-features = false, optional = true }
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
@@ -36,8 +38,13 @@ toml_edit = "0.22"
 ed25519-dalek = "2"
 
 [features]
-default = ["transport-ureq"]
-transport-ureq = ["contextful-outbound/transport-ureq", "contextful-connectors/transport-ureq"]
+default = ["transport-ureq", "component-host"]
+transport-ureq = ["contextful-outbound/transport-ureq", "contextful-connectors/transport-ureq", "contextful-wasm?/transport-ureq"]
+# Component sources run as guests under the component host; without it each refuses as
+# `ComponentHostMissing`.
+component-host = ["dep:contextful-wasm"]
+# The interpreted target a component source selects with `--component-target pulley`.
+pulley = ["component-host", "contextful-wasm/pulley"]
 
 [[test]]
 name = "integration"

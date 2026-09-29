@@ -169,7 +169,7 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     let catalog = Arc::new(MachineCatalog::open(&project.store_root().join(MACHINE_CATALOG_FILE), clock.clone())?);
     let registry = Registry::open(&root, journal.clone());
     let awakeables = Some(Arc::new(FileAwakeableStore::open(&root)) as Arc<dyn AwakeableStore>);
-    Ok(Wired { engine: Engine { catalog, journal, awakeables, keeper: Keeper::default(), emitter: None }, registry, clock })
+    Ok(Wired { engine: Engine { catalog, journal, awakeables, keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
 }
 
 /// The boot identity of this machine: a process id means nothing across boots.
