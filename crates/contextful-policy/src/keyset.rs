@@ -5,7 +5,8 @@
 //! is an adapter behind [`KeySetFetcher`]; this crate holds no HTTP client.
 //!
 //! A pin is `[<version>=]<algorithm>/<hex>`, the key in the credential library's text
-//! form (`ed25519/…` or `secp256r1/…`); an unnamed pin's version is its key text. A
+//! form (`ed25519/…` or `secp256r1/…`), or a bare 64-hex Ed25519 key read as
+//! `ed25519/<hex>`; an unnamed pin's version is its normalized key text. A
 //! published document is `{"keys":[{"version":"…","key":"<algorithm>/<hex>"}]}` and
 //! lists the current and non-retired versions.
 
@@ -46,13 +47,29 @@ impl IssuerKey {
     }
 }
 
+/// The key forms a pin accepts, named in every refusal of an unparseable one.
+const ACCEPTED_FORMS: &str = "a pin is `ed25519/<hex>`, `secp256r1/<hex>` or a bare 64-hex Ed25519 key";
+
+/// A bare Ed25519 key's length in hex digits: 32 bytes.
+const BARE_ED25519_HEX_LEN: usize = 64;
+
+/// `text` as `<algorithm>/<hex>`: a bare 64-hex key reads as `ed25519/<hex>`
+/// (`authority.verify.pin-source`); any other text returns as given.
+fn normalize_key(text: &str) -> String {
+    if text.len() == BARE_ED25519_HEX_LEN && text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        format!("ed25519/{text}")
+    } else {
+        text.to_owned()
+    }
+}
+
 /// Parse `<algorithm>/<hex>` into a public key.
 fn parse_key(text: &str) -> Result<PublicKey, String> {
-    let (alg, hex) = text.split_once('/').ok_or_else(|| format!("`{text}` is not `<algorithm>/<hex>`"))?;
+    let (alg, hex) = text.split_once('/').ok_or_else(|| format!("`{text}` names no key scheme; {ACCEPTED_FORMS}"))?;
     let algorithm = match alg {
         "ed25519" => Algorithm::Ed25519,
         "secp256r1" => Algorithm::Secp256r1,
-        _ => return Err(format!("`{text}`: unknown key algorithm `{alg}`")),
+        _ => return Err(format!("`{text}`: unknown key scheme `{alg}`; {ACCEPTED_FORMS}")),
     };
     PublicKey::from_bytes_hex(hex, algorithm).map_err(|e| format!("`{text}`: {e}"))
 }
@@ -123,12 +140,12 @@ impl StaticPins {
                     return Err(malformed("an empty pin".into()));
                 }
                 let (version, key) = match entry.split_once('=') {
-                    Some((v, k)) if !v.trim().is_empty() => (v.trim(), k.trim()),
+                    Some((v, k)) if !v.trim().is_empty() => (Some(v.trim()), normalize_key(k.trim())),
                     Some(_) => return Err(malformed(format!("`{entry}` names an empty version"))),
-                    None => (entry, entry),
+                    None => (None, normalize_key(entry)),
                 };
-                let public_key = parse_key(key).map_err(malformed)?;
-                Ok(IssuerKey { version: version.to_owned(), public_key })
+                let public_key = parse_key(&key).map_err(malformed)?;
+                Ok(IssuerKey { version: version.map_or_else(|| key.clone(), str::to_owned), public_key })
             })
             .collect::<Result<Vec<_>, _>>()?;
         KeySet::new(keys).map(|s| StaticPins(Arc::new(s))).map_err(malformed)

@@ -21,6 +21,12 @@ fn run(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful")).args(args).current_dir(dir).output().unwrap()
 }
 
+fn run_env(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
+    cmd.args(args).current_dir(dir).env_remove("CONTEXTFUL_ISSUER_PUBKEY").env_remove("CONTEXTFUL_AUDIENCE");
+    cmd.envs(env.iter().copied()).output().unwrap()
+}
+
 fn stdout(out: &Output) -> String {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).trim().to_string()
@@ -120,4 +126,43 @@ fn a_mint_carries_a_tenant_scope_on_its_grant() {
     assert_eq!(json["authority"]["grants"][0]["tenant"], serde_json::json!({ "table": "research/notes", "value": "acme" }), "{text}");
     let err = stderr(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "research/*", "--tenant", "acme"]));
     assert!(err.contains("<table>=<value>"), "{err}");
+}
+
+/// A command-line checkpoint reads its pins from `--public-key`, else `CONTEXTFUL_ISSUER_PUBKEY`, and its audience from `--audience`, else `CONTEXTFUL_AUDIENCE`. A bare 64-hex pin reads as `ed25519/<hex>`; an unknown scheme prefix is refused as {{authority.verify.key-set-unavailable}}, naming the accepted forms.
+// spec: authority.verify.pin-source@ec6e8f8a
+#[test]
+fn verify_reads_pins_and_audience_from_the_environment_and_accepts_a_bare_ed25519_key() {
+    let p = project();
+    let public = keygen(p.path());
+    let token = stdout(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "t"]));
+    let verify = ["token", "verify", "--at", "2030-01-01T00:01:00Z", "--token", &token];
+
+    // No flags: the pins and the audience come from the environment.
+    let admitted = stdout(&run_env(p.path(), &verify, &[("CONTEXTFUL_ISSUER_PUBKEY", &public), ("CONTEXTFUL_AUDIENCE", AUD)]));
+    assert!(admitted.contains("\"user://dana@acme.example\""), "{admitted}");
+    // The environment audience is checked, not ignored.
+    let other = [("CONTEXTFUL_ISSUER_PUBKEY", public.as_str()), ("CONTEXTFUL_AUDIENCE", "contextful://other")];
+    assert!(stderr(&run_env(p.path(), &verify, &other)).contains("AudienceMismatch"));
+    // A flag wins over its variable.
+    let mut flagged = verify.to_vec();
+    flagged.extend_from_slice(&["--audience", AUD]);
+    stdout(&run_env(p.path(), &flagged, &other));
+
+    // A bare 64-hex key reads as an Ed25519 pin.
+    let bare = public.strip_prefix("ed25519/").unwrap();
+    assert_eq!(bare.len(), 64);
+    let mut args = verify.to_vec();
+    args.extend_from_slice(&["--public-key", bare, "--audience", AUD]);
+    stdout(&run_env(p.path(), &args, &[]));
+
+    // An unknown scheme prefix is a malformed pin whose message names the accepted forms.
+    let rsa = format!("rsa/{bare}");
+    let mut args = verify.to_vec();
+    args.extend_from_slice(&["--public-key", &rsa]);
+    let err = stderr(&run_env(p.path(), &args, &[]));
+    assert!(err.contains("KeySetUnavailable") && err.contains("`rsa`") && err.contains("ed25519/<hex>"), "{err}");
+
+    // Neither the flag nor the variable: the command names both.
+    let err = stderr(&run_env(p.path(), &verify, &[]));
+    assert!(err.contains("--public-key") && err.contains("CONTEXTFUL_ISSUER_PUBKEY"), "{err}");
 }

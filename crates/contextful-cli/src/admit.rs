@@ -1,11 +1,12 @@
 //! What every credentialed subcommand resolves before its first effect: the one
 //! credential, admitted against pinned keys, and the read face over the project.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use contextful_context::read::Face;
 use contextful_context::Store;
 use crate::run::SystemClock;
 use contextful_core::ports::Clock;
+use contextful_core::AuthorityError;
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::{parse_denylist, RevocationState};
@@ -15,6 +16,32 @@ use std::path::{Path, PathBuf};
 /// The environment variable carrying the credential, kept out of the process arguments.
 pub const TOKEN_VAR: &str = "CONTEXTFUL_TOKEN";
 
+/// The variable `--public-key` falls back to (`authority.verify.pin-source`).
+pub const PUBKEY_VAR: &str = "CONTEXTFUL_ISSUER_PUBKEY";
+
+/// The variable `--audience` falls back to (`authority.verify.pin-source`).
+pub const AUDIENCE_VAR: &str = "CONTEXTFUL_AUDIENCE";
+
+/// The refusals of admission over the process transport. `Display` begins with the
+/// identifier.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AdmitError {
+    /// (`surface.package.stdio-credential`)
+    #[error("StdioCredentialMissing: {0}")]
+    StdioCredentialMissing(String),
+}
+
+/// The static pins from `--public-key`, else [`PUBKEY_VAR`]; neither raises
+/// `KeySetUnavailable` naming both (`authority.verify.pin-source`).
+pub fn static_pins(flag: Option<&str>) -> Result<StaticPins, AuthorityError> {
+    let Some(list) = flag else {
+        return Err(AuthorityError::KeySetUnavailable(format!(
+            "no issuer key pins: pass --public-key or set {PUBKEY_VAR}"
+        )));
+    };
+    StaticPins::parse(list)
+}
+
 /// The key version a denylist entry records for credentials verified under static pins.
 const STATIC_KEY_VERSION: &str = "static";
 
@@ -22,10 +49,10 @@ const STATIC_KEY_VERSION: &str = "static";
 #[derive(clap::Args)]
 pub struct AdmitArgs {
     /// Comma-separated issuer key pins.
-    #[arg(long)]
-    pub public_key: String,
+    #[arg(long, env = PUBKEY_VAR)]
+    pub public_key: Option<String>,
     /// Expected audience; absent performs no audience check.
-    #[arg(long)]
+    #[arg(long, env = AUDIENCE_VAR)]
     pub audience: Option<String>,
     /// A file of revocation identifiers, one per line.
     #[arg(long)]
@@ -37,9 +64,12 @@ impl AdmitArgs {
     /// later effect boundaries re-read.
     pub fn admit(&self, what: &str) -> Result<(AdmittedAuthority, RevocationState)> {
         let Some(token) = std::env::var(TOKEN_VAR).ok().filter(|t| !t.trim().is_empty()) else {
-            bail!("{TOKEN_VAR} is unset: {what} admits one capability credential and acts on nothing without it");
+            return Err(AdmitError::StdioCredentialMissing(format!(
+                "{TOKEN_VAR} is unset: {what} admits one capability credential and acts on nothing without it"
+            ))
+            .into());
         };
-        let keys = StaticPins::parse(&self.public_key)?.keys()?;
+        let keys = static_pins(self.public_key.as_deref())?.keys()?;
         let mut revocation = RevocationState::default();
         if let Some(path) = &self.denylist {
             let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;

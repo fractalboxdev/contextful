@@ -85,6 +85,8 @@ The client library, its four deployment shapes and transports, and the credentia
 - `store-selector` — The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
   *A-topology*
 
+unsettled: What does an explicit owner flag admit over the process transport, and which credential stands behind it? owner: console affects: surface.package
+
 The client library's four shapes, and who holds the credential in each:
 
 ```mermaid

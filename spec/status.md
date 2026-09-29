@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 204 | 56 | 22 | 15 | 85 | 0 | 85 |
-| `authority` | 2 | 16 | 229 | 62 | 27 | 8 | 162 | 0 | 162 |
+| `authority` | 2 | 16 | 230 | 62 | 27 | 8 | 163 | 0 | 163 |
 | `connector` | 2 | 13 | 249 | 74 | 17 | 8 | 118 | 0 | 118 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
 | `read` | 2 | 14 | 124 | 21 | 19 | 16 | 90 | 0 | 90 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 170 | 0 | 170 |
 | `store` | 1 | 14 | 173 | 41 | 12 | 12 | 134 | 0 | 134 |
-| `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
+| `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 147 | 1568 | 498 | 177 | 112 | 842 | 0 | |
+| **total** | 19 | 147 | 1569 | 498 | 177 | 113 | 843 | 0 | |
 
 Decision records: 18.
 
@@ -24,7 +24,7 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
-| 1 — The authority core | 14 | 195 | 139 | passing |
+| 1 — The authority core | 14 | 196 | 140 | passing |
 | 2 — The store | 8 | 132 | 98 | passing |
 | 3 — The run path | 11 | 184 | 109 | passing |
 | 4 — Ingest | 22 | 353 | 151 | passing |
@@ -286,6 +286,7 @@ Unscheduled operations: 10.
 | `authority.verify.key-set-unavailable` | `crates/contextful-policy/tests/integration/keyset.rs::an_unobtainable_set_or_a_malformed_pin_raises_key_set_unavailable_and_declines_to_start` | performed |
 | `authority.verify.malformed-timestamp` | `crates/contextful-core/tests/integration/time.rs::a_timestamp_outside_the_grammar_is_malformed` | performed |
 | `authority.verify.nonce-cache` | `crates/contextful-policy/tests/integration/possession.rs::a_full_nonce_cache_answers_503_and_admits_nothing` | performed |
+| `authority.verify.pin-source` | `crates/contextful-cli/tests/integration/token.rs::verify_reads_pins_and_audience_from_the_environment_and_accepts_a_bare_ed25519_key` | performed |
 | `authority.verify.possession-binding` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_binds_method_target_body_instant_and_nonce_to_the_confirmation_thumbprint` | performed |
 | `authority.verify.possession-invalid` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_from_another_key_or_malformed_raises_possession_proof_invalid` | performed |
 | `authority.verify.public-key-only` | `crates/contextful-policy/tests/integration/keyset.rs::a_checkpoint_admits_from_public_keys_alone_with_no_call_out` | performed |

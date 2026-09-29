@@ -337,3 +337,20 @@ fn a_retired_version_drops_from_the_checkpoint_at_its_next_refresh() {
     let pins = StaticPins::parse(&format!("v2={}", pin(2))).unwrap();
     assert!(pins.keys().unwrap().get("v1").is_none());
 }
+
+#[test]
+fn a_bare_64_hex_pin_reads_as_ed25519_and_an_unknown_scheme_names_the_accepted_forms() {
+    let bare = pin(1).strip_prefix("ed25519/").unwrap().to_owned();
+    let set = StaticPins::parse(&bare).unwrap().keys().unwrap();
+    assert_eq!(set.get(&pin(1)).unwrap().algorithm(), SignatureAlgorithm::Ed25519, "the version is the normalized text");
+    assert_eq!(StaticPins::parse(&format!("k1={bare}")).unwrap().keys().unwrap().get("k1").unwrap().public_key.to_bytes(),
+        SigningKey::from_bytes(&[1; 32]).verifying_key().as_bytes());
+    for bad in [format!("rsa/{bare}"), "00ff".to_owned()] {
+        match StaticPins::parse(&bad) {
+            Err(AuthorityError::KeySetUnavailable(m)) => {
+                assert!(m.contains("ed25519/<hex>") && m.contains("secp256r1/<hex>"), "{m}")
+            }
+            other => panic!("expected KeySetUnavailable, got {other:?}"),
+        }
+    }
+}

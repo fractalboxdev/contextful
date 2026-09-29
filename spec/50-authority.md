@@ -304,6 +304,8 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority*
 - `key-set` — A checkpoint accepts a set of issuer keys: comma-separated static pins, or a project-published unauthenticated key route returning the current and non-retired versions, opted into per key.
   *A-authority*
+- `pin-source` — A command-line checkpoint reads its pins from `--public-key`, else `CONTEXTFUL_ISSUER_PUBKEY`, and its audience from `--audience`, else `CONTEXTFUL_AUDIENCE`. A bare 64-hex pin reads as `ed25519/<hex>`; an unknown scheme prefix is refused as {{authority.verify.key-set-unavailable}}, naming the accepted forms.
+  *because an operator exports the issuer key once per shell, and key tools commonly print a bare Ed25519 key with no scheme prefix*
 - `key-set-refresh` — A published key set refreshes every 300 s, single-flight, plus one refresh on a signature failure, with failure-forced refreshes throttled.
   *A-authority*
 - `key-set-unavailable` — A checkpoint opted into a published key set that obtains none, or holding a malformed pin, raises `KeySetUnavailable`: the engine declines to start and a gateway answers `503`.
