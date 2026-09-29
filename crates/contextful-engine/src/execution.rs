@@ -182,6 +182,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             execution_id: execution_id.clone(),
             stop: None,
             host_scope: open.scope.host_id().map(str::to_string),
+            input: None,
         };
         self.catalog.put_run(&row)?;
         let token = CancelToken::default();
@@ -223,6 +224,11 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
 }
 
 impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
+    /// The engine the execution runs on.
+    pub(crate) fn engine(&self) -> &'e Engine<J, B> {
+        self.engine
+    }
+
     pub fn scope(&self) -> &OwnerScope {
         &self.scope
     }
@@ -378,7 +384,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     }
 
     /// Set the run row's status, keeping every other field.
-    fn mark(&self, status: RunStatus) -> Result<(), EngineError> {
+    pub(crate) fn mark(&self, status: RunStatus) -> Result<(), EngineError> {
         self.engine.catalog.update_run(&self.run_id, &mut |r| {
             r.status = status;
             Ok(())
@@ -442,7 +448,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
 impl<J: JournalStore + Clone, B: BlobStore + Clone> Engine<J, B> {
     /// The awakeable registry over the wired store; `CapabilityUnwired` without one
     /// (`run.journal.unwired-capability`).
-    fn registry(&self, reach: &str) -> Result<Registry<Arc<dyn contextful_core::run::ports::AwakeableStore>, J, B>, RunError> {
+    pub(crate) fn registry(&self, reach: &str) -> Result<Registry<Arc<dyn contextful_core::run::ports::AwakeableStore>, J, B>, RunError> {
         let store = self.awakeables.clone().ok_or_else(|| RunError::CapabilityUnwired(format!("{reach} needs an awakeable store and this engine wires none")))?;
         Ok(Registry::over(store, self.journal.clone()))
     }

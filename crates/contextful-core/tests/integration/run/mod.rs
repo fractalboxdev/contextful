@@ -3,6 +3,7 @@
 mod advance;
 mod cancel;
 mod derive;
+mod drive;
 mod host_task;
 mod journal;
 mod own;
@@ -44,5 +45,6 @@ pub fn row(run_id: &str, started: &str) -> RunRow {
         execution_id: "x-1".into(),
         stop: None,
         host_scope: None,
+        input: None,
     }
 }

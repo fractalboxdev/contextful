@@ -145,8 +145,10 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *P1*
 - `cycle-control-source` — A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.
   *P3*
-
-unsettled: What name does the store-driven kind take in the union, and which refusal meets its job block when `max_in_flight` is absent (issue 96)? owner: control affects: surface.fire
+- `store-driven-concurrency` — A `store-driven` block declaring no positive integer `max_in_flight` raises `JobConcurrencyUnset` at validation; no default applies.
+  *A-surface*
+- `store-driven-body` — A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered` at validation.
+  *A-surface*
 
 ## dispatch
 
@@ -279,6 +281,15 @@ target   = "meta_ads_insights"
 name     = "hourly-push"
 schedule = "every 1h"
 kind     = "sync-push"
+
+[[job]]
+name          = "score-documents"
+kind          = "store-driven"
+body          = "score"               # compiled code the embedding binary registers
+statement     = "SELECT doc_id, body FROM documents ORDER BY doc_id"
+as_of         = "2030-01-01T00:00:00Z" # absent, the instant the execution opens
+max_in_flight = 4
+tables        = ["scores"]
 ```
 
 The wake route's answer:

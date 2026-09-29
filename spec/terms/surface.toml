@@ -29,6 +29,8 @@ ControlPointerMalformed       = { clause = "surface.reconcile.pointer-malformed"
 ControlSnapshotUnreadable     = { clause = "surface.reconcile.fail-static", gloss = "A poll that could not read its pointer or parse the named document." }
 ControlSourceNotLoopback      = { clause = "surface.reconcile.loopback-only", gloss = "A control URL whose host is not a loopback address." }
 JobKindUnknown                = { clause = "surface.fire.job-kind-unknown", gloss = "A job block naming a kind outside the union, or carrying a command." }
+JobConcurrencyUnset           = { clause = "surface.fire.store-driven-concurrency", gloss = "A store-driven job block declaring no positive `max_in_flight`." }
+JobBodyUnregistered           = { clause = "surface.fire.store-driven-body", gloss = "A store-driven job block naming a body the binary does not register." }
 JobTargetUnbound              = { clause = "surface.fire.target-unbound", gloss = "A job target binding to no produced table or declared model." }
 CycleControlSourceUnresolved  = { clause = "surface.fire.cycle-control-source", gloss = "A control source that does not resolve under one-shot evaluation." }
 DispatchUnitNotAHead          = { clause = "surface.dispatch.not-a-head", gloss = "A due id that is a step of a dependent run rather than its head." }

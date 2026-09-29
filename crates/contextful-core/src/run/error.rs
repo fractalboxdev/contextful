@@ -186,6 +186,9 @@ pub enum RunError {
     /// A snapshot metadata write past its serialized bound. (`run.project.metadata-too-large`)
     #[error("RunMetadataTooLarge: {0}")]
     RunMetadataTooLarge(String),
+    /// A store-driven input statement the read face truncated at its row ceiling. (`run.journal.input-truncated`)
+    #[error("RunInputTruncated: {0}")]
+    RunInputTruncated(String),
     /// A `retry_on` naming a tag outside the two retryable ones. (`run.retry.unretryable-tag`)
     #[error("RunRetryTagUnretryable: {0}")]
     RunRetryTagUnretryable(String),

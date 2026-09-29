@@ -47,6 +47,7 @@ fn row(run_id: &str, st: RunStatus) -> RunRow {
         execution_id: "exec-1".into(),
         stop: None,
         host_scope: None,
+        input: None,
     }
 }
 

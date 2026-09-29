@@ -1,6 +1,6 @@
 //! The `contextful` command line as a library: the `contextful` binary runs it with no host
-//! derive task, and an embedding binary runs it with the tasks it registers before build
-//! (`run.bind.host-task`).
+//! derive task and no row body, and an embedding binary runs it with the tasks and bodies it
+//! registers before build (`run.bind.host-task`, `surface.fire.store-driven-body`).
 
 mod admit;
 mod component;
@@ -9,6 +9,7 @@ mod derive;
 mod differential;
 mod eval;
 mod formal;
+mod job;
 mod mcp;
 mod memory;
 mod pipeline;
@@ -21,6 +22,7 @@ mod token;
 
 use clap::{Parser, Subcommand};
 use contextful_core::run::derive::task::Tasks;
+use contextful_core::run::drive::Bodies;
 
 #[derive(Parser)]
 #[command(name = "contextful", about = "The Contextful command line")]
@@ -48,6 +50,9 @@ enum Cmd {
     /// Push, pull, lease and compact against the store's bucket.
     #[command(subcommand)]
     Sync(sync::SyncCmd),
+    /// Validate job blocks and fire a store-driven job.
+    #[command(subcommand)]
+    Job(job::JobCmd),
     /// Start, inspect, stop and resume durable runs.
     #[command(subcommand)]
     Run(run::RunCmd),
@@ -77,15 +82,31 @@ enum Cmd {
     },
 }
 
+/// The compiled code an embedding binary registers before build: host derive tasks and
+/// store-driven row bodies.
+#[derive(Clone, Default, Debug)]
+pub struct Host {
+    pub tasks: Tasks,
+    pub bodies: Bodies,
+}
+
 /// Parse the process arguments and run the command, with `tasks` registered as host derive
 /// tasks; a failure prints and exits 1.
 pub fn main_with(tasks: Tasks) {
+    main_host(Host { tasks, bodies: Bodies::default() });
+}
+
+/// Parse the process arguments and run the command with `host`'s tasks and bodies
+/// registered; a failure prints and exits 1.
+pub fn main_host(host: Host) {
+    let Host { tasks, bodies } = host;
     let cli = Cli::parse();
     let result = match cli.cmd {
         Cmd::Init(c) => project::run(c),
         Cmd::Token(c) => token::run(c),
         Cmd::Context(c) => context::run(c),
         Cmd::Run(c) => run::run(c),
+        Cmd::Job(c) => job::run(c, &bodies),
         Cmd::Sync(c) => sync::run(c),
         Cmd::Pipeline(c) => pipeline::run(c, &tasks),
         Cmd::Query(c) => query::run(c),

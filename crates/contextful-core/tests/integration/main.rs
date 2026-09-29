@@ -8,6 +8,7 @@ mod grant;
 mod identify;
 mod memory;
 mod issue;
+mod job;
 mod pipeline;
 mod read;
 mod revoke;
