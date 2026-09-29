@@ -50,43 +50,36 @@ const EMBEDDING_COLUMN: &str = "embedding";
 /// Identifiers one re-join statement binds.
 const REJOIN_CHUNK: usize = 256;
 
-/// The arm-internal aliases carrying a row's key and its newest-first position among the
-/// rows sharing it; neither reaches the outer projection (`read.retrieve.row-key-stays-internal`).
-const ROW_KEY: &str = "_row_key";
+/// The arm-internal alias carrying a row's newest-first position among the rows sharing its
+/// row key. The leading `_` keeps it out of the `_row` object, and the outer projection is a
+/// fixed column list (`read.retrieve.row-key-stays-internal`).
 const ROW_RANK: &str = "_row_rank";
 
 /// The relation an arm reads: the table itself, or, where the arm deduplicates, the table
-/// widened by its row key and a `ROW_NUMBER` over it, newest ingestion first
-/// (`read.retrieve.row-key-dedup`). The window function spans the whole relation, so a
-/// row's position ignores the recency window's cut.
+/// widened by a `ROW_NUMBER` over its row key, newest ingestion first, and null for a null
+/// key (`read.retrieve.row-key-dedup`). The window function spans the whole relation, so a
+/// row's position ignores the recency window's cut and the relevance floor.
 fn arm_source(table: &str, row_key: Option<&str>, live: &str) -> String {
     match row_key {
         None => format!("{}{live}", ident(table)),
         Some(key) => format!(
-            "(SELECT *, CAST({k} AS VARCHAR) AS {rk}, ROW_NUMBER() OVER (PARTITION BY {k} ORDER BY {} DESC, {} DESC, {} DESC) AS {rr} FROM {}{live})",
+            "(SELECT *, CASE WHEN {k} IS NULL THEN NULL ELSE ROW_NUMBER() OVER (PARTITION BY {k} ORDER BY {} DESC, {} DESC, {} DESC) END AS {rr} FROM {}{live})",
             ident(INGESTED_AT),
             ident(RUN_ID),
             ident(ROW_SEQ),
             ident(table),
             k = ident(key),
-            rk = ident(ROW_KEY),
             rr = ident(ROW_RANK),
         ),
     }
 }
 
-/// Keep one candidate per `(table, row key)`, the newest; a null key keeps every row.
-/// Returns how many rows it dropped (`read.retrieve.row-key-dedup`).
+/// Drop every candidate that is not the newest copy under its `(table, row key)`, whether
+/// or not the newest copy is itself a candidate; a null key keeps every row. Returns how
+/// many rows it dropped (`read.retrieve.row-key-dedup`).
 fn dedup(rows: &mut Vec<Row>) -> u64 {
-    let mut newest: std::collections::HashMap<(String, String), i128> = std::collections::HashMap::new();
-    for r in rows.iter() {
-        if let Some((key, rank)) = &r.row_key {
-            let best = newest.entry((r.table.clone(), key.clone())).or_insert(*rank);
-            *best = (*best).min(*rank);
-        }
-    }
     let before = rows.len();
-    rows.retain(|r| r.row_key.as_ref().is_none_or(|(key, rank)| newest[&(r.table.clone(), key.clone())] == *rank));
+    rows.retain(|r| r.row_rank.is_none_or(|rank| rank == 1));
     (before - rows.len()) as u64
 }
 
@@ -155,9 +148,9 @@ struct Row {
     publication: Publication,
     basis_column: String,
     ingested: Option<Instant>,
-    /// The row key and the row's newest-first position under it, where the arm
-    /// deduplicates and the key is non-null.
-    row_key: Option<(String, i128)>,
+    /// The row's newest-first position under its row key, where the arm deduplicates and
+    /// the key is non-null.
+    row_rank: Option<i128>,
 }
 
 fn text_of(v: &Engine) -> Option<String> {
@@ -226,10 +219,12 @@ impl Face {
                 .map_or(INGESTED_AT, |p| *p)
                 .to_string();
             // The row key is the declared content-hash column; a table declaring none, or
-            // lacking the column, keys every row null (`read.retrieve.row-key-dedup`).
+            // lacking the column, keys every row null (`read.retrieve.row-key-dedup`), and so
+            // does a session mask that merges distinct hashes (`read.retrieve.row-key-under-mask`).
             let row_key = decl
                 .content_hash_column()
                 .filter(|c| deduplicating && schema.iter().any(|s| s.name == *c))
+                .filter(|c| policy.and_then(|p| p.columns.get(*c)).and_then(|p| p.mask.as_ref()).is_none_or(|m| m.keeps_distinct()))
                 .map(str::to_string);
             let claims = self.memory().table(table).is_some_and(|t| t.shape == Shape::Facts);
             recalled |= claims;
@@ -602,16 +597,11 @@ impl Face {
                 get(RUN_ID).and_then(text_of).unwrap_or_default(),
                 get(ROW_SEQ).and_then(text_of).unwrap_or_default()
             );
-            let row_key = get(ROW_KEY).and_then(text_of).zip(get(ROW_RANK).and_then(|x| match cell(x.clone()) {
+            let row_rank = get(ROW_RANK).and_then(|x| match cell(x.clone()) {
                 Cell::Integer { value, .. } => Some(value),
                 _ => None,
-            }));
-            let values = columns
-                .iter()
-                .zip(&v)
-                .filter(|(c, _)| *c != ROW_KEY && *c != ROW_RANK)
-                .map(|(c, x)| (c.clone(), cell(x.clone()).to_json()))
-                .collect();
+            });
+            let values = columns.iter().zip(&v).map(|(c, x)| (c.clone(), cell(x.clone()).to_json())).collect();
             *kept += 1;
             rows.push(Row {
                 table: cx.table.to_string(),
@@ -623,7 +613,7 @@ impl Face {
                 basis_column: cx.basis.to_string(),
                 ingested,
                 values,
-                row_key,
+                row_rank,
             });
         }
     }

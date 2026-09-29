@@ -2,7 +2,7 @@
 
 # Target ledger
 
-62 entries: 44 gated, 3 recorded, 1 scheduled, 14 open.
+62 entries: 45 gated, 3 recorded, 1 scheduled, 13 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -58,7 +58,7 @@
 | `pull-no-torn-snapshot` | `store.pull.pointer-last` | `pull.torn_reads` | gate | test `contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot` | `== 0` | gated |
 | `read-session-latency` | `read.cache.session-pool` | `session.warm_p95_ms` | trend | test `contextful_context::read::latency::session_and_statement_latency_at_one_fifty_and_five_hundred_runs` | — | recorded |
 | `read-session-one-engine` | `read.cache.session-pool` | `session.engine_opens` | gate | test `contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine` | `== 1` | gated |
-| `row-key-dedup` | `read.retrieve.row-key-dedup` | `retrieval.hybrid.duplicate_row_rate` | gate | issue 79 | `== 0` | open (issue 79) |
+| `row-key-dedup` | `read.retrieve.row-key-dedup` | `retrieval.hybrid.duplicate_row_rate` | gate | test `contextful_context::read::retrieve::a_ranked_read_keeps_the_newest_row_per_content_hash` | `== 0` | gated |
 | `sqlite-journal-conformance` | `run.journal.sqlite-stores` | `journal.sqlite_conformance.failed_cases` | gate | test `contextful_sqlite::stores::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically` | `== 0` | gated |
 | `stale-fence-differential` | `assurance.differential-test.protocol-harness` | `protocol.drift_cases` | gate | issue 76 | `== 0` | open (issue 76) |
 | `stale-fence-never-lands` | `store.lease.stale-fence` | `lease.stale_commits_landed` | gate | test `contextful_context::run_commit::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable` | `== 0` | gated |
