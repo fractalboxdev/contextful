@@ -1,9 +1,10 @@
 //! The runner: a client of the execution handle. It opens an execution for a table
-//! against its pinned plan, resolves each pull through the journal under the step's retry
-//! schedule, lands every batch in one commit carrying the position, retires the owner, and
-//! closes the run row.
+//! against its pinned plan, resolves each pull through the secret guard and the journal
+//! under the step's retry schedule, lands every batch in one commit carrying the position,
+//! retires the owner, and closes the run row.
 
 use crate::cancel::Keeper;
+use crate::guard::{log_counts, Guarded};
 use crate::execution::{Close, Execution};
 use crate::journal::{Journal, Resolved};
 use crate::project::Emitter;
@@ -160,7 +161,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             schedule: plan.schedule.clone(),
         };
         let mut execution = self.begin(&open)?;
-        let outcome = self.body(spec, &mut execution, source, shape, dest);
+        // Every pull passes the secret guard before the journal records it (`run.guard-secrets.placement`).
+        let mut source = Guarded { inner: source, report: log_counts };
+        let outcome = self.body(spec, &mut execution, &mut source, shape, dest);
         execution.close_with(outcome)
     }
 

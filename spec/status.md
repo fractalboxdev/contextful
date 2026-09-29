@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
 | `read` | 2 | 14 | 127 | 21 | 19 | 16 | 93 | 0 | 93 |
-| `run` | 3 | 24 | 304 | 82 | 34 | 27 | 170 | 0 | 170 |
+| `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
 | `store` | 1 | 15 | 184 | 44 | 12 | 12 | 145 | 0 | 145 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 148 | 1583 | 501 | 177 | 113 | 857 | 0 | |
+| **total** | 19 | 148 | 1583 | 501 | 177 | 113 | 858 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 196 | 140 | passing |
 | 2 — The store | 9 | 143 | 109 | passing |
-| 3 — The run path | 11 | 184 | 109 | passing |
+| 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 353 | 151 | passing |
 | 5 — The read face under enforcement | 16 | 215 | 137 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
@@ -644,6 +644,7 @@ Unscheduled operations: 10.
 | `run.journal.inline-cutoff` | `crates/contextful-core/tests/integration/run/journal.rs::values_up_to_1_mib_are_inline_and_larger_ones_are_blobs` | performed |
 | `run.journal.missing-blob` | `crates/contextful-engine/tests/integration/journal.rs::a_missing_blob_refuses_rather_than_reading_empty` | performed |
 | `run.journal.plan-pin` | `crates/contextful-engine/tests/integration/execution.rs::a_resumed_execution_holds_the_plan_reference_it_started_against` | performed |
+| `run.journal.recorded-batch` | `crates/contextful-cli/tests/integration/run.rs::run_start_journals_and_lands_only_masked_credentials` | performed |
 | `run.journal.redacting-source` | `crates/contextful-core/tests/integration/run/plan.rs::redaction_over_a_journaling_source_is_refused_at_validation` | performed |
 | `run.journal.replay-lands` | `crates/contextful-engine/tests/integration/runner.rs::a_resumed_run_lands_what_an_uninterrupted_one_lands` | performed |
 | `run.journal.sqlite-stores` | `crates/contextful-sqlite/tests/integration/stores.rs::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically` | performed |

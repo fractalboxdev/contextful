@@ -5,7 +5,8 @@ use contextful_core::pipeline::guard::guard_rows;
 use contextful_core::run::ports::{Cancellation, Pull, PullRequest, Source};
 use contextful_core::run::{Failure, FailureTag};
 
-/// A source whose every pull passes the secret guard.
+/// A source whose every pull passes the secret guard; `Engine::run_with` wraps every
+/// source it is handed in one.
 pub struct Guarded<S> {
     pub inner: S,
     /// Where the per-column masked-cell counts of each pull are reported.

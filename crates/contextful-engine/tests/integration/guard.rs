@@ -37,9 +37,8 @@ fn files_holding(dir: &std::path::Path, needle: &str) -> usize {
 fn the_journal_records_the_masked_pull_and_a_replay_lands_it_masked() {
     let rig = Rig::new();
     let pages = vec![vec![json!({"id": "d1", "note": format!("key {KEY}")})], vec![json!({"id": "d2", "note": "fine"})]];
-    let mut inner = Pages::new(pages.clone());
-    inner.die_after = Some(1);
-    let mut source = Guarded { inner, report: capture };
+    let mut source = Pages::new(pages.clone());
+    source.die_after = Some(1);
     let mut sink = Sink::default();
     let p = plan("kind = \"opaque-token\"", "");
     rig.crash(&p, "run-1", &mut source, &mut sink);

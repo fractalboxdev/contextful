@@ -172,3 +172,63 @@ fn a_pulled_type_lands_its_column_in_that_type() {
     refused(&start(dir.path(), "bad.toml", "b1", "2030-01-01T00:02:00Z"), "StoreSchemaIncompatible");
     assert_eq!(schema(dir.path()), s, "the failed pull lands nothing");
 }
+
+const AWS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
+const GITHUB_TOKEN: &str = "ghp_0123456789abcdefghijABCDEFGHIJ012345";
+const MARKER: &str = "[REDACTED:secret]";
+
+/// The count of files under `dir` whose bytes hold `needle`.
+fn files_holding(dir: &Path, needle: &str) -> usize {
+    let mut n = 0;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            if e.path().is_dir() {
+                stack.push(e.path());
+            } else if String::from_utf8_lossy(&std::fs::read(e.path()).unwrap()).contains(needle) {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+/// A journaled pull records the batch as the source handed it over, after the secret guard and ahead of the
+/// land path.
+// spec: run.journal.recorded-batch@ac3aadba
+#[test]
+fn run_start_journals_and_lands_only_masked_credentials() {
+    let dir = project();
+    // The first pull serves two credentials; the second fails until `ready` exists.
+    let script = format!(
+        "if [ \"$CONTEXTFUL_STEP\" = pull-0 ]; then printf '{{\"rows\":[{{\"id\":\"d1\",\"aws\":\"key {AWS_KEY}\",\"gh\":\"{GITHUB_TOKEN}\"}}],\"more\":true}}'\n\
+         elif [ -f ready ]; then printf '{{\"rows\":[],\"more\":false}}'\n\
+         else printf '{{\"error\":{{\"tag\":\"Permanent\",\"message\":\"feed down\"}}}}'; exit 1; fi\n"
+    );
+    std::fs::write(dir.path().join("leaky.sh"), script).unwrap();
+    std::fs::write(
+        dir.path().join("leaky.toml"),
+        "pipeline = \"leaky\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"leaky.sh\"]\n",
+    )
+    .unwrap();
+
+    let first = start(dir.path(), "leaky.toml", "l1", "2030-01-01T00:00:00Z");
+    assert!(!first.status.success(), "the second pull fails the first attempt");
+    let journal = dir.path().join(".contextful/run/research");
+    assert!(files_holding(&journal, MARKER) >= 1, "the journal records the masked pull");
+    for secret in [AWS_KEY, GITHUB_TOKEN] {
+        assert_eq!(files_holding(&journal, secret), 0, "the journal holds `{secret}`");
+    }
+
+    std::fs::write(dir.path().join("ready"), "").unwrap();
+    ok(&start(dir.path(), "leaky.toml", "l2", "2030-01-01T00:01:00Z"));
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let decl = contextful_core::store::declare::TableDecl::named("filings");
+    let rows = contextful_context::rows::table_rows(&store, &decl, &["aws", "gh"]).unwrap();
+    assert_eq!(rows.len(), 1, "the replay lands the recorded pull");
+    assert_eq!(rows[0]["aws"], format!("key {MARKER}"));
+    assert_eq!(rows[0]["gh"], MARKER);
+    for secret in [AWS_KEY, GITHUB_TOKEN] {
+        assert_eq!(files_holding(dir.path(), secret), 1, "only the connector script holds `{secret}`");
+    }
+}

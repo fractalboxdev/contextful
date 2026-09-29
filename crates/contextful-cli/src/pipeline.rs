@@ -2,7 +2,7 @@
 //!
 //! `run` fires one pipeline once: it reads the manifests, checks the declaration before
 //! any I/O, assembles the credential resolver from the process environment, and runs
-//! each table through the engine with the built-in source behind the secret guard.
+//! each table through the engine with the built-in source.
 
 use crate::run::{boot_id, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
@@ -23,7 +23,6 @@ use contextful_core::run::record::{resolve_site_id, RunStatus, SiteIdSources};
 use contextful_core::run::retry::Schedule;
 use contextful_core::run::RunError;
 use contextful_core::store::declare::TableDecl;
-use contextful_engine::guard::{log_counts, Guarded};
 use contextful_engine::RunSpec;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -238,7 +237,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                     let connector: ConnectorPin = plan.connector_pin(&artifact);
                     let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
                     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
-                    let inner: Box<dyn Source> = match &checked {
+                    let mut source: Box<dyn Source> = match &checked {
                         Checked::Http(config) => Box::new(HttpSource::new(config.clone(), t.name(), resolver.clone())?),
                         Checked::Derive(pair) => Box::new(DeriveSource {
                             pipeline_id: spec.id.clone(),
@@ -251,7 +250,6 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                             cwd: base.clone(),
                         }),
                     };
-                    let mut source = Guarded { inner, report: log_counts };
                     Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
                 })();
                 let row = match outcome {
