@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 205 | 56 | 22 | 16 | 87 | 0 | 87 |
 | `authority` | 2 | 16 | 238 | 64 | 27 | 8 | 172 | 0 | 172 |
-| `connector` | 2 | 13 | 250 | 74 | 17 | 8 | 120 | 0 | 120 |
+| `connector` | 2 | 13 | 256 | 75 | 17 | 9 | 128 | 0 | 128 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 151 | 26 | 22 | 18 | 119 | 0 | 119 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 32 | 171 | 0 | 171 |
 | `store` | 1 | 15 | 189 | 46 | 12 | 14 | 147 | 0 | 147 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 10 | 0 | 0 | 0 |
-| `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1623 | 510 | 180 | 124 | 900 | 0 | |
+| `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 22 | 0 | 22 |
+| **total** | 19 | 149 | 1629 | 511 | 180 | 125 | 910 | 0 | |
 
 Decision records: 18.
 
@@ -26,8 +26,8 @@ Decision records: 18.
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 203 | 148 | passing |
 | 2 — The store | 9 | 148 | 111 | passing |
-| 3 — The run path | 11 | 184 | 110 | passing |
-| 4 — Ingest | 22 | 354 | 153 | passing |
+| 3 — The run path | 11 | 184 | 112 | passing |
+| 4 — Ingest | 22 | 360 | 161 | passing |
 | 5 — The read face under enforcement | 17 | 239 | 163 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 22 | 22 | passing |
@@ -308,6 +308,7 @@ Unscheduled operations: 10.
 | `connector.attach.cleartext-endpoint` | `crates/contextful-outbound/tests/integration/attach.rs::a_credential_never_travels_in_cleartext_outside_loopback` | performed |
 | `connector.attach.credential-in-a-url` | `crates/contextful-core/tests/integration/connector/attach.rs::an_endpoint_carrying_userinfo_is_refused` | performed |
 | `connector.attach.landed-origin` | `crates/contextful-outbound/tests/integration/attach.rs::the_body_that_lands_comes_from_the_configured_origin` | performed |
+| `connector.attach.literal-attach-value` | `crates/contextful-core/tests/integration/connector/component.rs::an_attach_value_embedding_no_reference_is_refused` | performed |
 | `connector.attach.no-material-to-a-guest` | `crates/contextful-wasm/tests/integration/attach.rs::the_host_attaches_the_credential_and_the_guest_sees_only_the_response` | performed |
 | `connector.attach.private-address` | `crates/contextful-core/tests/integration/connector/attach.rs::a_permitted_name_resolving_inward_is_refused` | performed |
 | `connector.attach.redirect-pinning` | `crates/contextful-outbound/tests/integration/attach.rs::a_hop_is_followed_only_within_the_configured_origin` | performed |
@@ -383,11 +384,18 @@ Unscheduled operations: 10.
 | `connector.meter.unmetered-request` | `crates/contextful-outbound/tests/integration/meter.rs::no_granted_reservation_means_no_request` | performed |
 | `connector.meter.unreadable-answer` | `crates/contextful-outbound/tests/integration/meter.rs::an_unreadable_answer_fails_the_request_before_the_vendor` | performed |
 | `connector.package.call-deadline` | `crates/contextful-wasm/tests/integration/package.rs::a_read_call_is_interrupted_at_its_deadline` | performed |
+| `connector.package.component-grant` | `crates/contextful-cli/tests/integration/component.rs::a_guest_reaches_only_its_allowlist_and_the_host_attaches_its_credential` | performed |
+| `connector.package.component-load` | `crates/contextful-cli/tests/integration/component.rs::pipeline_run_lands_a_pinned_component_and_records_its_digest` | performed |
+| `connector.package.component-position` | `crates/contextful-cli/tests/integration/component.rs::an_incremental_field_beside_a_component_source_is_refused` | performed |
+| `connector.package.component-source` | `crates/contextful-core/tests/integration/connector/component.rs::a_component_source_reads_its_pin_grant_guest_table_and_bounds` | performed |
+| `connector.package.component-target` | `crates/contextful-cli/tests/integration/component.rs::the_interpreted_target_is_selected_by_flag_or_environment` | performed |
+| `connector.package.component-validate` | `crates/contextful-cli/tests/integration/component.rs::validate_loads_a_local_component_and_runs_discovery` | performed |
 | `connector.package.digest-mismatch` | `crates/contextful-wasm/tests/integration/package.rs::bytes_off_their_pin_never_reach_the_compiler` | performed |
 | `connector.package.insecure-artifact` | `crates/contextful-core/tests/integration/connector/package.rs::a_plain_http_artifact_is_refused` | performed |
 | `connector.package.interpreted-target` | `crates/contextful-wasm/tests/integration/target.rs::the_interpreted_target_runs_the_probe_under_its_deadline_and_mediated_client` | performed |
 | `connector.package.interpreted-target-absent` | `crates/contextful-wasm/tests/integration/target.rs::a_build_without_the_feature_refuses_the_interpreted_target` | performed |
 | `connector.package.linear-memory` | `crates/contextful-wasm/tests/integration/package.rs::linear_memory_defaults_to_256_mib_and_rises_to_at_most_2_gib` | performed |
+| `connector.package.local-unpinned` | `crates/contextful-cli/tests/integration/component.rs::an_unpinned_local_artifact_under_the_manifest_flag_is_refused_with_its_digest` | performed |
 | `connector.package.pin-requirement` | `crates/contextful-core/tests/integration/connector/package.rs::either_switch_requires_a_local_pin` | performed |
 | `connector.package.remote-unpinned` | `crates/contextful-core/tests/integration/connector/package.rs::a_remote_artifact_without_a_64_hex_pin_is_refused_at_parse` | performed |
 | `connector.package.request-body` | `crates/contextful-wasm/tests/integration/package.rs::an_outbound_body_past_8_mib_fails_the_call_before_the_vendor` | performed |
@@ -935,12 +943,14 @@ Unscheduled operations: 10.
 | `topology.coordinate.fence-advances` | `crates/contextful-engine/tests/integration/coordinate.rs::every_acquisition_takes_a_new_fence` | performed |
 | `topology.coordinate.fenced-commit` | `crates/contextful-engine/tests/integration/coordinate.rs::a_commit_carrying_a_superseded_fence_is_refused` | performed |
 | `topology.coordinate.lease-row` | `crates/contextful-engine/tests/integration/coordinate.rs::a_lease_row_carries_holder_expiry_and_fence_per_key` | performed |
+| `topology.package.component-host` | `crates/contextful-engine/tests/integration/runner.rs::a_component_connector_runs_on_an_engine_wiring_its_world` | performed |
 | `topology.package.crate-map` | `tools/ci/tests/integration/topology.rs::this_repository_crate_map_names_every_crate` | performed |
 | `topology.package.crate-map-drift` | `tools/ci/tests/integration/topology.rs::a_crate_missing_from_the_crate_map_is_refused` | performed |
 | `topology.package.decode-network-free` | `tools/ci/tests/integration/topology.rs::a_decode_package_linking_the_network_stack_is_refused` | performed |
 | `topology.package.dependency-direction` | `tools/ci/tests/integration/topology.rs::a_domain_crate_depending_on_an_adapter_is_refused` | performed |
 | `topology.package.domain-impurity` | `tools/ci/tests/integration/topology.rs::a_domain_crate_reaching_an_async_runtime_is_refused` | performed |
 | `topology.package.exchange-optional` | `tools/ci/tests/integration/topology.rs::a_library_reaching_the_exchange_stack_is_refused` | performed |
+| `topology.package.host-missing` | `crates/contextful-cli/tests/integration/component_absent.rs::a_component_source_is_refused_by_name_on_a_build_without_the_host` | performed |
 | `topology.package.sqlite-adapter` | `tools/ci/tests/integration/topology.rs::a_sqlite_link_forced_outside_the_binary_is_refused` | performed |
 | `topology.package.store-sqlite-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_reaching_the_sqlite_link_package_is_refused` | performed |
 | `topology.package.store-write-engine-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_linking_the_sql_engine_without_read_is_refused` | performed |

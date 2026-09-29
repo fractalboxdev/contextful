@@ -45,6 +45,9 @@ pub enum ConnectorError {
     /// An incremental position against a workbook source. (`connector.source.workbook-incremental`)
     #[error("ConnectorIncrementalUnsupported: {0}")]
     ConnectorIncrementalUnsupported(String),
+    /// An `incremental` field declared beside a component source, whose position the guest owns. (`connector.package.component-position`)
+    #[error("ConnectorPositionOwned: {0}")]
+    ConnectorPositionOwned(String),
     /// A non-HTTPS non-loopback limiter endpoint, one carrying a query, fragment or userinfo, or a limiter token that is not a `secret://` reference. (`connector.meter.binding-transport`)
     #[error("ConnectorLimiterBindingRejected: {0}")]
     ConnectorLimiterBindingRejected(String),

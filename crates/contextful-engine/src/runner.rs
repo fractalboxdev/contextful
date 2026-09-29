@@ -60,6 +60,9 @@ pub struct Engine<J = FileJournalStore, B = FileBlobStore> {
     pub keeper: Keeper,
     /// The live projection's emitter; every event follows the durable change it reports.
     pub emitter: Option<Emitter>,
+    /// The component worlds a linked component host answers, beside the native one; empty
+    /// on a build linking no host (`topology.package.component-host`).
+    pub worlds: Vec<String>,
 }
 
 fn json_bytes(v: &Option<Value>) -> Vec<u8> {

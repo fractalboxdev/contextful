@@ -810,6 +810,7 @@ dependencies = [
  "contextful-policy",
  "contextful-sqlite",
  "contextful-sync",
+ "contextful-wasm",
  "ed25519-dalek",
  "serde",
  "serde_json",

@@ -76,6 +76,8 @@ pub struct Traffic {
     pub held_back: Vec<String>,
     /// Requests the limiter denied, each answered with a synthesized `429`.
     pub throttled: u64,
+    /// Requests held back because a header failed to hydrate, each with the provider's failure.
+    pub unhydrated: Vec<Failure>,
 }
 
 type Answer = Result<(http::Response<WasiBody>, Box<dyn Future<Output = Result<(), Error>> + Send>), Error>;
@@ -84,6 +86,7 @@ type Answer = Result<(http::Response<WasiBody>, Box<dyn Future<Output = Result<(
 pub(crate) struct Mediator {
     allow: Allowlist,
     attach: Vec<(String, HeaderValue)>,
+    hydrate: Vec<(String, Arc<dyn crate::host::Hydrate>)>,
     gate: Option<Arc<dyn Reserve>>,
     hook: Option<Arc<dyn PreSendHook>>,
     class: Option<String>,
@@ -102,6 +105,7 @@ impl Mediator {
         Mediator {
             allow: grant.allow.clone(),
             attach: grant.attach.clone(),
+            hydrate: grant.hydrate.clone(),
             gate: grant.gate.clone(),
             hook: grant.hook.clone(),
             class: grant.class.clone(),
@@ -197,10 +201,14 @@ impl WasiHttpHooks for Mediator {
         let mut headers: Vec<(String, HeaderValue)> = request
             .headers()
             .iter()
-            .filter(|(k, _)| **k != http::header::HOST && !self.attach.iter().any(|(n, _)| n.eq_ignore_ascii_case(k.as_str())))
+            .filter(|(k, _)| {
+                let held = |n: &String| n.eq_ignore_ascii_case(k.as_str());
+                **k != http::header::HOST && !self.attach.iter().any(|(n, _)| held(n)) && !self.hydrate.iter().any(|(n, _)| held(n))
+            })
             .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str().to_string(), HeaderValue::Plain(v.to_string()))))
             .collect();
         headers.extend(self.attach.iter().cloned());
+        let hydrate = self.hydrate.clone();
         let client = self.client(&url);
         let method = request.method().as_str().to_string();
         let slots = self.in_flight.clone();
@@ -216,12 +224,26 @@ impl WasiHttpHooks for Mediator {
             let sent = scrub(&url);
             // The slot travels with the exchange, so a call abandoned at its deadline
             // frees it only once the exchange ends.
+            // Hydration runs here, on the blocking pool inside the call deadline, so the
+            // material lives only as long as this one request.
             let answer = tokio::task::spawn_blocking(move || {
                 let _slot = slot;
-                client.send(&method, &url, &headers, body.as_deref())
+                let mut headers = headers;
+                for (name, h) in &hydrate {
+                    headers.push((name.clone(), h.hydrate().map_err(Unhydrated)?));
+                }
+                client.send(&method, &url, &headers, body.as_deref()).map_err(Sent)
             })
             .await
             .map_err(|e| Error::InternalError(Some(e.to_string())))?;
+            let answer = match answer {
+                Err(Unhydrated(failure)) => {
+                    traffic.lock().unwrap_or_else(|e| e.into_inner()).unhydrated.push(failure);
+                    return Err(Error::InternalError(Some(format!("request to `{sent}` was not sent: a credential did not hydrate"))));
+                }
+                Ok(resp) => Ok(resp),
+                Err(Sent(failure)) => Err(failure),
+            };
             match answer {
                 Ok(resp) => {
                     traffic.lock().unwrap_or_else(|e| e.into_inner()).sent.push(host);
@@ -235,6 +257,14 @@ impl WasiHttpHooks for Mediator {
         })
     }
 }
+
+/// Why an exchange produced no response: a header failed to hydrate, so nothing went out,
+/// or the mediated client failed the exchange.
+enum Unsent {
+    Unhydrated(Failure),
+    Sent(Failure),
+}
+use Unsent::{Sent, Unhydrated};
 
 /// The request body, read up to [`REQUEST_BODY_BYTES`]; `None` once it runs past.
 async fn bounded_body(mut body: WasiBody) -> Result<Option<Vec<u8>>, Error> {

@@ -128,3 +128,75 @@ fn m04_ingest() {
     refused(&fire("run-3", "2030-01-01T03:00:00Z"), "SecretMaterialInDeclaration");
     assert_eq!(vendor.requests.lock().unwrap().len(), before);
 }
+
+/// The probe guest the component host's suite builds, kept as a pinned artifact.
+fn probe() -> Vec<u8> {
+    std::fs::read(contextful_acceptance::workspace_root().join("crates/contextful-wasm/tests/fixtures/probe.wasm")).unwrap()
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// `id` of every row in the landed parts of one run of `table`.
+fn landed_ids(p: &GitRepo, cf: &std::path::Path, table: &str, run: &str) -> Vec<i64> {
+    let listed = ok(&p.run(cf, &["context", "files", table, "--project", "research"]));
+    let mut ids = Vec::new();
+    for f in listed.lines().filter(|f| f.contains(&format!("/runs/{run}/"))) {
+        let reader = SerializedFileReader::new(std::fs::File::open(p.root.join(STORE).join(f)).unwrap()).unwrap();
+        for row in reader.get_row_iter(None).unwrap() {
+            for (name, field) in row.unwrap().get_column_iter() {
+                if let ("id", Field::Long(v)) = (name.as_str(), field) {
+                    ids.push(*v);
+                }
+            }
+        }
+    }
+    ids.sort();
+    ids
+}
+
+/// An operator adds a vendor connector as a pinned component, with no rebuild of the
+/// binary, and `pipeline run` lands its rows like a built-in's; its grant bounds its egress.
+#[test]
+fn m04_component_guest() {
+    let cf = bin("contextful");
+    let wasm = probe();
+    let pin = hex_digest(&wasm);
+    let vendor = Server::start(|_| Response::json(200, "{}"));
+    let p = GitRepo::init();
+    p.write(&format!("{STORE}/config.toml"), "[node]\nid = \"ingest-a\"\n");
+    std::fs::create_dir_all(p.root.join("connectors")).unwrap();
+    std::fs::write(p.root.join("connectors/vendor.wasm"), &wasm).unwrap();
+    let declaration = |pin: &str, tables: &str| {
+        format!(
+            "[[pipeline]]\nid = \"vendor\"\ntables = [{tables}]\n\n[pipeline.source]\nname = \"connectors/vendor.wasm\"\n\n\
+             [pipeline.source.config]\nsha256 = \"{pin}\"\nallow = [\"127.0.0.1\"]\n"
+        )
+    };
+    let fire = |run: &str| p.run(&cf, &["pipeline", "run", "vendor", "--project", "research", "--run-id", run, "--site-id", "site-a"]);
+
+    // Validation loads the component and runs its discovery before anything fires.
+    p.write("contextful.toml", &declaration(&pin, "\"items\""));
+    let out = ok(&p.run(&cf, &["pipeline", "validate"]));
+    assert!(out.contains("discovers items"), "{out}");
+
+    // The guest's rows land, and the run record names the artifact's digest.
+    let out = ok(&fire("run-1"));
+    assert!(out.contains("vendor_items: run-1 success · 3 rows"), "{out}");
+    assert_eq!(landed_ids(&p, &cf, "vendor_items", "run-1"), [1, 2, 3]);
+    let row: serde_json::Value = serde_json::from_str(&ok(&p.run(&cf, &["run", "show", "run-1", "--project", "research"]))).unwrap();
+    assert_eq!(row["connector_hash"], serde_json::json!(pin));
+
+    // A guest requesting a host outside its allowlist fails the read; no socket opens.
+    let off = format!("\"fetch http://localhost:{}/v1\"", vendor.port);
+    p.write("contextful.toml", &declaration(&pin, &off));
+    refused(&fire("run-2"), "SecretUnpermittedRequest");
+    assert!(vendor.requests.lock().unwrap().is_empty(), "the refused request reached the vendor");
+
+    // Bytes off their pin never load.
+    let wrong = hex_digest(b"another build");
+    p.write("contextful.toml", &declaration(&wrong, "\"items\""));
+    refused(&fire("run-3"), "ConnectorDigestMismatch");
+}
