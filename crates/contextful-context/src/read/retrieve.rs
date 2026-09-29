@@ -9,7 +9,7 @@ use contextful_core::memory::declare::Shape;
 use contextful_core::memory::recall::{gate, EvidenceRead};
 use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::read::embed::cosine;
-use contextful_core::read::template::Bound;
+use contextful_core::read::template::{Bindings, Bound};
 use crate::fulltext::{self, FulltextSidecar, SidecarCache};
 use crate::vector::{self, Fallback, VectorSidecar};
 use contextful_core::read::rank::{
@@ -194,9 +194,9 @@ impl Face {
                     ident("valid_to"),
                     ident("valid_to")
                 );
-                (live, vec![Bound::Timestamp(anchor)])
+                (live, Bindings::positional([Bound::Timestamp(anchor)]))
             } else {
-                (String::new(), Vec::new())
+                (String::new(), Bindings::default())
             };
             let (mut kept, mut offset) = (0u64, 0u64);
             loop {
@@ -262,7 +262,7 @@ impl Face {
                 for chunk in ids.chunks(REJOIN_CHUNK) {
                     let marks = vec!["?"; chunk.len()].join(", ");
                     let sql = format!("SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks})", ident(table), ident(&id_column));
-                    let parameters: Vec<Bound> = chunk.iter().map(|id| Bound::Text(id.clone())).collect();
+                    let parameters = Bindings::positional(chunk.iter().map(|id| Bound::Text(id.clone())));
                     let (columns, values) = engine.run_values(&sql, &parameters, None)?;
                     self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut suppressed);
                 }
@@ -446,7 +446,7 @@ impl Face {
         let Some(relation) = session.relation(&r.table) else { return EvidenceRead::UnknownTable };
         let sql = format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation.name()), ident(RUN_ID), ident(ROW_SEQ));
         let found = engine
-            .run(&sql, &[Bound::Text(r.run.clone()), Bound::Integer(r.seq)], None)
+            .run(&sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), None)
             .ok()
             .and_then(|(_, rows)| rows.first().and_then(|row| row.first().cloned()))
             .is_some_and(|c| matches!(c, Cell::Integer { value, .. } if value > 0));

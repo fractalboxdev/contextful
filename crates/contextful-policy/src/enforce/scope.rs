@@ -3,7 +3,7 @@
 
 use super::session::Session;
 use contextful_core::enforce::EnforceError;
-use contextful_core::read::template::Bound;
+use contextful_core::read::template::{Bindings, Bound};
 use serde_json::Value;
 
 /// Parse-tree nodes the scope guard visits (`authority.refuse.guard-walk`).
@@ -22,18 +22,17 @@ fn constant(v: &Value) -> Option<String> {
     }
 }
 
-fn bound(v: &Value, parameters: &[Bound]) -> Option<String> {
-    let i: usize = v["identifier"].as_str()?.parse().ok()?;
-    match parameters.get(i.checked_sub(1)?)? {
+fn bound(v: &Value, parameters: &Bindings) -> Option<String> {
+    match parameters.get(v["identifier"].as_str()?)? {
         Bound::Text(s) => Some(s.clone()),
         Bound::Integer(n) => Some(n.to_string()),
         _ => None,
     }
 }
 
-/// The value one operand settles: a literal, or a bound template parameter destined for
-/// the tenant column.
-fn settled(v: &Value, parameters: &[Bound]) -> Option<String> {
+/// The value one operand settles: a literal, or a value bound to a template or query
+/// placeholder destined for the tenant column.
+fn settled(v: &Value, parameters: &Bindings) -> Option<String> {
     match v["class"].as_str() {
         Some("CONSTANT") => constant(v),
         Some("PARAMETER") => bound(v, parameters),
@@ -56,7 +55,7 @@ fn names_column(v: &Value, column: &str, qualifiers: &[&str]) -> bool {
 
 /// The requested values one conjunct settles for the tenant column, or `None` where the
 /// guard cannot settle it.
-fn requested(conjunct: &Value, column: &str, qualifiers: &[&str], parameters: &[Bound]) -> Option<Vec<String>> {
+fn requested(conjunct: &Value, column: &str, qualifiers: &[&str], parameters: &Bindings) -> Option<Vec<String>> {
     match conjunct["type"].as_str()? {
         "COMPARE_EQUAL" => {
             let (l, r) = (&conjunct["left"], &conjunct["right"]);
@@ -95,7 +94,7 @@ fn nodes(v: &Value) -> usize {
 /// constraint the guard cannot settle, or a tree past the walk bound, passes as an
 /// ordinary conjunct and the engine-applied equality isolates
 /// (`authority.refuse.undecidable`).
-pub fn guard(statement: &Value, session: &Session, parameters: &[Bound]) -> Result<(), EnforceError> {
+pub fn guard(statement: &Value, session: &Session, parameters: &Bindings) -> Result<(), EnforceError> {
     let Some(node) = statement["statements"].as_array().and_then(|s| s.first()).map(|s| &s["node"]) else {
         return Ok(());
     };

@@ -11,7 +11,7 @@ use contextful_core::grant::{authorize_template, least_row_ceiling, list_templat
 use contextful_core::read::face::TOOLS;
 use contextful_core::read::guard::{admit, Admitted};
 use contextful_core::read::respond::{Cell, Internals, Response};
-use contextful_core::read::template::{parse_templates, Bound, QueryTemplate};
+use contextful_core::read::template::{bind_query, parse_templates, Bindings, Bound, ParamType, QueryTemplate};
 use contextful_core::read::ReadError;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::declare::{DeclareError, MemoryDeclarations};
@@ -131,8 +131,10 @@ impl Face {
         let r = self.registered(session, table)?;
         let engine = self.pool.engine(session)?;
         let (sql, parameters) = match run {
-            Some(run) => (format!("SELECT * FROM {} WHERE {} = ?", ident(r.name()), ident(RUN_ID)), vec![Bound::Text(run.to_string())]),
-            None => (format!("SELECT * FROM {}", ident(r.name())), Vec::new()),
+            Some(run) => {
+                (format!("SELECT * FROM {} WHERE {} = ?", ident(r.name()), ident(RUN_ID)), Bindings::positional([Bound::Text(run.to_string())]))
+            }
+            None => (format!("SELECT * FROM {}", ident(r.name())), Bindings::default()),
         };
         self.respond(&engine, &sql, &parameters, None, ReadOptions::default())
     }
@@ -231,7 +233,7 @@ impl Face {
         &self,
         engine: &SqlEngine,
         sql: &str,
-        parameters: &[Bound],
+        parameters: &Bindings,
         ceiling: Option<u64>,
         opts: ReadOptions,
     ) -> Result<Response, ReadFault> {
@@ -256,18 +258,25 @@ impl Face {
         })
     }
 
-    /// Admit and run caller-written SQL: exactly one read-only `SELECT` over this
-    /// session's registered relations, the scope guard over its tenant literals, then
-    /// execution under the least row ceiling.
+    /// Admit and run caller-written SQL carrying no parameter.
     pub fn query(&self, session: &Session, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
+        self.query_with(session, sql, &Map::new(), opts)
+    }
+
+    /// Admit and run caller-written SQL: exactly one read-only `SELECT` over this
+    /// session's registered relations, its placeholders bound from typed `parameters`
+    /// (`read.guard.query-binding`), the scope guard over its tenant literals and bound
+    /// values, then execution under the least row ceiling.
+    pub fn query_with(&self, session: &Session, sql: &str, parameters: &Map<String, Value>, opts: ReadOptions) -> Result<Response, ReadFault> {
         let engine = self.pool.engine(session)?;
         let tree = engine.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
-        scope::guard(&tree, session, &[])?;
+        let bindings = bind_query(parameters, &admitted.placeholders)?;
+        scope::guard(&tree, session, &bindings)?;
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
-        self.respond(&engine, sql, &[], ceiling, opts)
+        self.respond(&engine, sql, &bindings, ceiling, opts)
     }
 
     /// Run a declared template the credential's allowlist covers. Its body is operator
@@ -277,10 +286,11 @@ impl Face {
         let declared: Vec<String> = self.templates.iter().map(|t| t.id.clone()).collect();
         authorize_template(session.grants(), id, &declared)?;
         let template = self.templates.iter().find(|t| t.id == id).expect("an authorized template is declared");
-        let parameters = template.bind(arguments)?;
+        let values = template.bind(arguments)?;
         let engine = self.pool.engine(session)?;
         let tree = engine.serialize(&template.sql)?;
         let admitted = admit_in(session, &tree)?;
+        let parameters = template.bindings(values, &admitted.placeholders);
         scope::guard(&tree, session, &parameters)?;
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
@@ -331,7 +341,7 @@ impl Face {
         let r = self.registered(session, table)?;
         self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
         let engine = self.pool.engine(session)?;
-        let (_, count) = engine.run(&format!("SELECT count(*) FROM {}", ident(r.name())), &[], None)?;
+        let (_, count) = engine.run(&format!("SELECT count(*) FROM {}", ident(r.name())), &Bindings::default(), None)?;
         let row_count = count.first().and_then(|r| r.first()).map(Cell::to_json).unwrap_or(Value::Null);
         let decl = self.decl(table);
         let policy = session.policy(table).expect("a registered table carries its policy");
@@ -403,7 +413,7 @@ impl Face {
         engine.register(PREVIEW_RELATION, preview.sql())?;
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
-        self.respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &[], ceiling, opts)
+        self.respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), ceiling, opts)
     }
 }
 
@@ -461,8 +471,22 @@ fn builtin_tool(name: &str) -> Value {
             vec![],
         ),
         "context.query" => (
-            "Run one read-only SELECT over the tables this credential reads.",
-            json!({ "sql": { "type": "string" }, "limit": { "type": "integer" }, "internals": { "type": "boolean" }, "zone": { "type": "string" } }),
+            "Run one read-only SELECT over the tables this credential reads; each `$name` placeholder binds a typed parameter.",
+            json!({
+                "sql": { "type": "string" },
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "type": { "type": "string", "enum": ParamType::NAMES },
+                            "value": {}
+                        },
+                        "required": ["type", "value"],
+                        "additionalProperties": false
+                    }
+                },
+                "limit": { "type": "integer" }, "internals": { "type": "boolean" }, "zone": { "type": "string" } }),
             vec!["sql"],
         ),
         "context.execute_query" => (

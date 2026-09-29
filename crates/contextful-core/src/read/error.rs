@@ -21,6 +21,9 @@ pub enum ReadError {
     /// A client required a face this binary did not link. (`read.embed.required-face`)
     #[error("RequiredFaceAbsent: {0}")]
     RequiredFaceAbsent(String),
+    /// A query parameter was missing, unused, untyped or mistyped. (`read.guard.query-binding`)
+    #[error("QueryParameterRejected: {0}")]
+    QueryParameterRejected(String),
     /// Admitted text did not parse to exactly one read-only SELECT. (`read.guard.single-read-only-statement`)
     #[error("StatementNotReadOnly: {0}")]
     StatementNotReadOnly(String),
@@ -42,6 +45,7 @@ impl ReadError {
             ReadError::FilePreviewNotATable(_) => "FilePreviewNotATable",
             ReadError::FilterBudgetExceeded(_) => "FilterBudgetExceeded",
             ReadError::LedgerNotTenantScoped(_) => "LedgerNotTenantScoped",
+            ReadError::QueryParameterRejected(_) => "QueryParameterRejected",
             ReadError::RequiredFaceAbsent(_) => "RequiredFaceAbsent",
             ReadError::StatementNotReadOnly(_) => "StatementNotReadOnly",
             ReadError::TableFunctionRefused(_) => "TableFunctionRefused",

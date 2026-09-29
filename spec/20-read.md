@@ -115,8 +115,10 @@ Admission of caller-written SQL: what parses, what a base relation names, whose 
   *because a parameter sharing a read argument's name hides that bound from the template tool*
 - `template-relation-shape` — Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier collides with a built-in tool prefix, raising `TemplateNamesForeignRelation`.
   *A-read*
-- `template-binding` — A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders cover exactly the declared parameters.
+- `template-binding` — A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders are `$1`…`$n` or `?` in declaration order, or exactly the declared names.
   *A-read*
+- `query-binding` — `context.query` takes `parameters`, mapping each placeholder name to a `type` among {{read.guard.template-declaration}} types and a `value`. A missing, unused, untyped or mismatched parameter raises `QueryParameterRejected` ahead of execution, with no coercion; bound values reach {{authority.refuse.scope-guard}}.
+  *because a value bound to a placeholder reaches no parser, and the tenant guard decides a bound value as it decides a literal*
 - `startup-time-check` — Template checks are caller-independent and run once at startup; a request pays nothing for them.
 
 Admission of one statement, by provenance, and of one template:
@@ -130,7 +132,9 @@ flowchart LR
   TF -->|"yes: TableFunctionRefused"| TOK
   TF -->|"no"| REL{"every relation registered?"}
   REL -->|"no: ungranted table"| TOK
-  REL -->|"yes"| EXEC
+  REL -->|"yes"| PAR{"parameters match placeholders?"}
+  PAR -->|"no: QueryParameterRejected"| TOK
+  PAR -->|"yes"| EXEC
   OPR -->|"authors at startup"| TPL["query template"]
   TPL -->|"checked once"| START{"names store tables only?"}
   START -->|"no: TemplateNamesForeignRelation"| OPR

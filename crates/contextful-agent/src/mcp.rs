@@ -232,10 +232,17 @@ impl<'a> Server<'a> {
                 self.session(zone, b).and_then(|s| self.face.describe(&s, table.as_deref(), b))
             }
             "context.query" => {
-                only(args, name, &["sql", "limit", "internals"])?;
+                only(args, name, &["sql", "parameters", "limit", "internals"])?;
                 let sql = required(args, "sql")?;
+                let parameters = match arg(args, "parameters") {
+                    None => Map::new(),
+                    Some(Value::Object(m)) => m.clone(),
+                    Some(_) => return Err(invalid("`parameters` is an object")),
+                };
                 let opts = options(args)?;
-                self.session(zone, opts.bounds).and_then(|s| self.face.query(&s, &sql, opts)).map(|r| r.to_json())
+                self.session(zone, opts.bounds)
+                    .and_then(|s| self.face.query_with(&s, &sql, &parameters, opts))
+                    .map(|r| r.to_json())
             }
             "context.execute_query" => {
                 only(args, name, &["id", "arguments", "limit", "internals"])?;

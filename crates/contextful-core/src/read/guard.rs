@@ -20,8 +20,9 @@ pub struct Admitted {
     pub relations: BTreeSet<String>,
     /// Common table expressions the statement declares.
     pub ctes: BTreeSet<String>,
-    /// Distinct parameters the statement carries.
-    pub parameters: usize,
+    /// Identifiers of the distinct placeholders the statement carries: `1`, `2`, … for
+    /// positional ones, the name for `$name`.
+    pub placeholders: BTreeSet<String>,
 }
 
 /// The one statement of a serialization, or `StatementNotReadOnly`
@@ -66,9 +67,9 @@ fn qualifier(o: &serde_json::Map<String, Value>) -> Option<String> {
 pub fn admit(serialized: &Value, registered: impl Fn(&str) -> bool) -> Result<Admitted, Refusal> {
     let statement = single_statement(serialized)?;
     let mut admitted = Admitted::default();
-    let mut parameters = BTreeSet::new();
-    walk(statement, &BTreeSet::new(), &registered, &mut admitted, &mut parameters)?;
-    admitted.parameters = parameters.len();
+    let mut placeholders = BTreeSet::new();
+    walk(statement, &BTreeSet::new(), &registered, &mut admitted, &mut placeholders)?;
+    admitted.placeholders = placeholders;
     Ok(admitted)
 }
 

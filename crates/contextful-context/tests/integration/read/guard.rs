@@ -208,3 +208,97 @@ fn template_checks_run_once_when_the_face_opens() {
     let r = Reads::new();
     assert_eq!(r.face.templates().len(), 1);
 }
+
+/// `context.query` takes `parameters`, mapping each placeholder name to a `type` among {{read.guard.template-declaration}} types and a `value`. A missing, unused, untyped or mismatched parameter raises `QueryParameterRejected` ahead of execution, with no coercion; bound values reach {{authority.refuse.scope-guard}}.
+// spec: read.guard.query-binding@676487ee
+#[test]
+fn query_parameters_bind_by_declared_type() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], None, None);
+    let params = |v: Value| v.as_object().unwrap().clone();
+    let run = |sql: &str, p: Value| r.face.query_with(&s, sql, &params(p), ReadOptions::default());
+    let sql = r#"SELECT note_id FROM "research/notes" WHERE tenant = $tenant AND published_at >= $since ORDER BY note_id"#;
+    let typed = json!({ "tenant": { "type": "string", "value": "acme" }, "since": { "type": "string", "value": "2030-01-01" } });
+    assert_eq!(column(&run(sql, typed).unwrap(), "note_id"), [json!("n1"), json!("n3")]);
+    let all = run(
+        "SELECT $n + 1 AS n, $f * 2 AS f, $b AS b, $t AS t",
+        json!({
+            "n": { "type": "integer", "value": 41 }, "f": { "type": "float", "value": 1.25 },
+            "b": { "type": "boolean", "value": true }, "t": { "type": "timestamp", "value": "2030-01-05T00:00:00Z" },
+        }),
+    )
+    .unwrap();
+    assert_eq!(all.rows.len(), 1);
+    assert_eq!(column(&all, "n"), [json!("42")]);
+
+    let one = |ty: &str, value: Value| json!({ "tenant": { "type": ty, "value": value } });
+    let tenant_sql = r#"SELECT note_id FROM "research/notes" WHERE tenant = $tenant"#;
+    for (text, p, needle) in [
+        (sql, json!({ "tenant": { "type": "string", "value": "acme" } }), "`since`"),
+        (tenant_sql, json!({ "tenant": { "type": "string", "value": "acme" }, "extra": { "type": "integer", "value": 1 } }), "`extra`"),
+        (tenant_sql, one("decimal", json!("acme")), "`decimal`"),
+        (tenant_sql, json!({ "tenant": "acme" }), "`tenant`"),
+        (tenant_sql, json!({ "tenant": { "value": "acme" } }), "`tenant`"),
+        (tenant_sql, json!({ "tenant": { "type": "string", "value": "acme", "cast": true } }), "`cast`"),
+        (tenant_sql, one("integer", json!("2")), "`tenant`"),
+        (tenant_sql, one("integer", json!(2.0)), "`tenant`"),
+        (tenant_sql, one("boolean", json!(1)), "`tenant`"),
+        (tenant_sql, one("timestamp", json!("yesterday")), "`tenant`"),
+        (r#"SELECT note_id FROM "research/notes" WHERE tenant = ?"#, json!({}), "`1`"),
+        // Numbered placeholders run contiguously from `1`; a gap is a placeholder with no parameter.
+        (r#"SELECT note_id FROM "research/notes" WHERE tenant = $2"#, json!({ "2": { "type": "string", "value": "acme" } }), "`1`"),
+        (
+            r#"SELECT note_id FROM "research/notes" WHERE tenant = $2 AND note_id <> $3"#,
+            json!({ "2": { "type": "string", "value": "acme" }, "3": { "type": "string", "value": "n2" } }),
+            "`1`",
+        ),
+    ] {
+        let message = refused_with(run(text, p.clone()), "QueryParameterRejected");
+        assert!(message.contains(needle), "{p}: {message}");
+    }
+    // The statement guard answers first: a parameter refusal never masks an ungranted table.
+    refused_with(run(r#"SELECT * FROM "hr/salaries" WHERE employee = $e"#, json!({})), "EnforceUnknownRelation");
+
+    // A bound tenant value reaches the scope guard as a literal does.
+    let scoped = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
+    let tenant = |t: &str| params(json!({ "tenant": { "type": "string", "value": t } }));
+    refused_with(r.face.query_with(&scoped, tenant_sql, &tenant("globex"), ReadOptions::default()), "EnforceScopeDenied");
+    assert_eq!(r.face.query_with(&scoped, tenant_sql, &tenant("acme"), ReadOptions::default()).unwrap().rows.len(), 3);
+}
+
+/// Regression: a template's placeholders are `$1`…`$n` or `?` in declaration order, or the
+/// declared names; either spelling binds and runs, and any other placeholder set refuses
+/// the face at startup.
+#[test]
+fn a_template_binds_numbered_and_named_placeholders() {
+    let tail = r#"
+[[query_templates]]
+id = "notes_named"
+sql = "SELECT note_id FROM \"research/notes\" WHERE tenant = $tenant AND note_id <> $skip ORDER BY note_id"
+parameters = ["tenant:string", "skip:string"]
+
+[[query_templates]]
+id = "notes_numbered"
+sql = "SELECT note_id FROM \"research/notes\" WHERE note_id <> $2 AND tenant = $1 ORDER BY note_id"
+parameters = ["tenant:string", "skip:string"]
+"#;
+    let r = Reads::with_manifest(&format!("{MANIFEST}\n{tail}"));
+    let mut grant = read(&["research/*"], None);
+    grant.templates = Some(vec!["notes_named".into(), "notes_numbered".into()]);
+    let s = r.session_for(loop_subject("agent://research-loop"), vec![grant], None);
+    let args = json!({ "tenant": "acme", "skip": "n2" }).as_object().unwrap().clone();
+    for id in ["notes_named", "notes_numbered"] {
+        let rows = r.face.execute_template(&s, id, &args, ReadOptions::default()).unwrap();
+        assert_eq!(column(&rows, "note_id"), [json!("n1"), json!("n3")], "{id}");
+    }
+    for sql in [
+        r#"SELECT note_id FROM \"research/notes\" WHERE tenant = $tenant AND note_id <> $other"#,
+        r#"SELECT note_id FROM \"research/notes\" WHERE tenant = $2 AND note_id <> $3"#,
+        r#"SELECT note_id FROM \"research/notes\" WHERE tenant = $tenant"#,
+    ] {
+        let refused = refused_template(&format!(
+            "[[query_templates]]\nid = \"off\"\nsql = \"{sql}\"\nparameters = [\"tenant:string\", \"skip:string\"]\n"
+        ));
+        assert!(refused.starts_with("TemplateArgumentRejected"), "{sql}: {refused}");
+    }
+}
