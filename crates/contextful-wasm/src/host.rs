@@ -291,9 +291,50 @@ fn load_failure(e: impl std::fmt::Display) -> Failure {
     Failure::deterministic(FailureTag::Config, format!("the component does not load: {e}"))
 }
 
+/// The instruction set a host compiles components for (`connector.package.interpreted-target`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Target {
+    /// Machine code for the host, mapped executable.
+    #[default]
+    Native,
+    /// Pulley bytecode, run by an interpreter in ordinary data pages: the target for a
+    /// process that may not map writable-then-executable memory.
+    Pulley,
+}
+
+/// Pulley's triple for the host's pointer width and byte order.
+#[cfg(feature = "pulley")]
+fn interpreted(config: &mut Config) -> Result<(), Failure> {
+    let triple = match (cfg!(target_pointer_width = "64"), cfg!(target_endian = "big")) {
+        (true, false) => "pulley64",
+        (true, true) => "pulley64be",
+        (false, false) => "pulley32",
+        (false, true) => "pulley32be",
+    };
+    config.target(triple).map(|_| ()).map_err(load_failure)
+}
+
+#[cfg(not(feature = "pulley"))]
+fn interpreted(_: &mut Config) -> Result<(), Failure> {
+    Err(Failure::deterministic(
+        FailureTag::Config,
+        "the interpreted target needs contextful-wasm built with its `pulley` feature".to_string(),
+    ))
+}
+
 impl ComponentHost {
+    /// A host compiling for the native target.
     pub fn new() -> Result<ComponentHost, Failure> {
+        ComponentHost::with_target(Target::Native)
+    }
+
+    /// A host compiling for `target`. The interpreted target refuses in a build without
+    /// the `pulley` feature (`connector.package.interpreted-target-absent`).
+    pub fn with_target(target: Target) -> Result<ComponentHost, Failure> {
         let mut config = Config::new();
+        if target == Target::Pulley {
+            interpreted(&mut config)?;
+        }
         config.wasm_component_model(true);
         config.epoch_interruption(true);
         let engine = Engine::new(&config).map_err(load_failure)?;

@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 14 | 197 | 51 | 22 | 15 | 78 | 0 | 78 |
 | `authority` | 2 | 16 | 229 | 62 | 27 | 8 | 162 | 0 | 162 |
-| `connector` | 2 | 13 | 247 | 74 | 17 | 7 | 116 | 0 | 116 |
+| `connector` | 2 | 13 | 249 | 74 | 17 | 8 | 118 | 0 | 118 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
 | `read` | 2 | 14 | 120 | 21 | 17 | 17 | 86 | 0 | 86 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 14 | 173 | 41 | 12 | 12 | 134 | 0 | 134 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 146 | 1551 | 493 | 175 | 109 | 824 | 0 | |
+| **total** | 19 | 146 | 1553 | 493 | 175 | 110 | 826 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ Decision records: 18.
 | 1 — The authority core | 14 | 195 | 139 | passing |
 | 2 — The store | 8 | 132 | 98 | passing |
 | 3 — The run path | 11 | 184 | 109 | passing |
-| 4 — Ingest | 22 | 350 | 148 | passing |
+| 4 — Ingest | 22 | 352 | 150 | passing |
 | 5 — The read face under enforcement | 16 | 208 | 130 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
@@ -364,6 +364,8 @@ Unscheduled operations: 10.
 | `connector.package.call-deadline` | `crates/contextful-wasm/tests/integration/package.rs::a_read_call_is_interrupted_at_its_deadline` | performed |
 | `connector.package.digest-mismatch` | `crates/contextful-wasm/tests/integration/package.rs::bytes_off_their_pin_never_reach_the_compiler` | performed |
 | `connector.package.insecure-artifact` | `crates/contextful-core/tests/integration/connector/package.rs::a_plain_http_artifact_is_refused` | performed |
+| `connector.package.interpreted-target` | `crates/contextful-wasm/tests/integration/target.rs::the_interpreted_target_runs_the_probe_under_its_deadline_and_mediated_client` | performed |
+| `connector.package.interpreted-target-absent` | `crates/contextful-wasm/tests/integration/target.rs::a_build_without_the_feature_refuses_the_interpreted_target` | performed |
 | `connector.package.linear-memory` | `crates/contextful-wasm/tests/integration/package.rs::linear_memory_defaults_to_256_mib_and_rises_to_at_most_2_gib` | performed |
 | `connector.package.pin-requirement` | `crates/contextful-core/tests/integration/connector/package.rs::either_switch_requires_a_local_pin` | performed |
 | `connector.package.remote-unpinned` | `crates/contextful-core/tests/integration/connector/package.rs::a_remote_artifact_without_a_64_hex_pin_is_refused_at_parse` | performed |
