@@ -82,6 +82,9 @@ pub enum ConnectorError {
     /// A table off the source's table pattern, or binding a dot segment. (`connector.source.table-unmatched`)
     #[error("ConnectorTableUnmatched: {0}")]
     ConnectorTableUnmatched(String),
+    /// A provider call to a non-TLS transport or a host other than the provider's. (`connector.source.provider-origin`)
+    #[error("ConnectorProviderOriginRejected: {0}")]
+    ConnectorProviderOriginRejected(String),
     /// Host access a connector reaches for that its manifest does not list. (`connector.declare-capability.undeclared-access`)
     #[error("ConnectorUndeclaredAccess: {0}")]
     ConnectorUndeclaredAccess(String),

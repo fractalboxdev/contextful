@@ -1,0 +1,27 @@
+{
+  "comment": "Exchanges replacing those in recording.json on a second read: `Plan` is edited down to one page and `report.pdf` leaves the tree.",
+  "exchanges": [
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'root-f' in parents and trashed = false"},
+      "status": 200,
+      "body": {
+        "nextPageToken": "root-page-2",
+        "files": [
+          {"id": "doc-plan", "name": "Plan", "mimeType": "application/vnd.google-apps.document", "modifiedTime": "2031-02-01T09:00:00.000Z", "version": "6"},
+          {"id": "fin-f", "name": "Finance", "mimeType": "application/vnd.google-apps.folder", "modifiedTime": "2031-01-01T08:00:00.000Z", "version": "2"}
+        ]
+      }
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'board-f' in parents and trashed = false"},
+      "status": 200,
+      "body": {
+        "files": [
+          {"id": "slides-deck", "name": "Deck", "mimeType": "application/vnd.google-apps.presentation", "modifiedTime": "2031-01-05T13:00:00.000Z", "version": "4"},
+          {"id": "bin-video", "name": "all-hands.mp4", "mimeType": "video/mp4", "modifiedTime": "2031-01-07T15:00:00.000Z", "version": "1", "size": "209715200", "md5Checksum": "0cc175b9c0f1b6a831c399e269772661"}
+        ]
+      }
+    },
+    {"method": "GET", "path": "/drive/v3/files/doc-plan/export", "query": {"mimeType": "application/pdf"}, "status": 200, "body_file": "plan-v2.pdf"}
+  ]
+}

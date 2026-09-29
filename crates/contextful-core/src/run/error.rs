@@ -162,6 +162,12 @@ pub enum RunError {
     /// One table's pull failing inside a fire. (`run.land.table-failed`)
     #[error("PipelineTableFailed: {0}")]
     PipelineTableFailed(String),
+    /// A non-zero exit or fatal signal from the decode process. (`run.land.parse-crashed`)
+    #[error("PipelineParseCrashed: {0}")]
+    PipelineParseCrashed(String),
+    /// A read covering part of a multi-part input. (`run.land.partial-parse`)
+    #[error("PipelinePartialParse: {0}")]
+    PipelinePartialParse(String),
     /// A chain operation emitting more rows than it consumed. (`run.transform.arity`)
     #[error("PipelineTransformArity: {0}")]
     PipelineTransformArity(String),

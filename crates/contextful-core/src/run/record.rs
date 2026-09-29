@@ -140,6 +140,9 @@ pub struct RunRow {
     pub bytes: u64,
     /// Batches the run landed.
     pub batches: u64,
+    /// Inputs the run's pulls declared skipped, summed (`run.record.skipped-count`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub skipped: u64,
     #[serde(default)]
     pub error_kind: Option<FailureTag>,
     #[serde(default)]
@@ -158,6 +161,10 @@ pub struct RunRow {
     /// pipeline and table name its scope (`run.own.host-scope`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_scope: Option<String>,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 impl RunRow {

@@ -6,6 +6,8 @@
 //! sandboxed host links the decoders alone (`topology.package.decode-network-free`).
 
 mod ooxml;
+#[cfg(feature = "pdf")]
+pub mod pdf;
 pub mod workbook;
 
 use contextful_core::connector::ConnectorError;

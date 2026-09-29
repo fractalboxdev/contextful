@@ -326,3 +326,50 @@ fn a_component_connector_runs_on_an_engine_wiring_its_world() {
     let other = p.spec.connector.world.replace("@1", "@2");
     assert!(!rig.engine.capabilities().hosts(&other), "a world the engine does not wire stays refused");
 }
+
+/// A vendor whose page `n` declares `skipped[n]` inputs it declined to land, and dies after serving the page
+/// named in `die_after`, before the runner records it.
+struct Skipping {
+    skipped: Vec<u64>,
+    die_after: Option<usize>,
+    calls: usize,
+}
+
+impl Source for Skipping {
+    fn pull(&mut self, request: &PullRequest, _cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        self.calls += 1;
+        let n = request.position.as_ref().and_then(Value::as_u64).unwrap_or(0) as usize;
+        let body = json!({ "rows": [{"id": format!("d{n}")}], "cursor": n + 1, "more": n + 1 < self.skipped.len(), "skipped": self.skipped[n] });
+        if self.die_after == Some(n) {
+            self.die_after = None;
+            panic!("the process dies after the vendor served page {n}");
+        }
+        Ok(serde_json::to_vec(&body).unwrap())
+    }
+}
+
+/// A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the
+/// run's pulls, replayed pulls included, beside the destination counts.
+// spec: run.record.skipped-count@849043a6
+#[test]
+fn the_run_row_sums_the_skipped_count_of_every_pull() {
+    let rig = Rig::new();
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut Skipping { skipped: vec![2, 0, 1], die_after: None, calls: 0 }, &mut Sink::default()).unwrap();
+    assert_eq!((row.status, row.rows, row.skipped), (RunStatus::Success, 3, 3));
+    assert_eq!(rig.row("run-1").skipped, 3, "the catalog holds the count");
+
+    // A pull recorded before a crash counts when the next attempt replays it.
+    let crashed = Rig::new();
+    let mut source = Skipping { skipped: vec![2, 0, 1], die_after: Some(1), calls: 0 };
+    let mut sink = Sink::default();
+    crashed.crash(&opaque(), "run-1", &mut source, &mut sink);
+    crashed.clock.advance(60);
+    let row = crashed.run(&opaque(), "1.0.0", "run-2", &mut source, &mut sink).unwrap();
+    assert_eq!((row.status, row.skipped), (RunStatus::Success, 3));
+    assert_eq!(source.calls, 4, "page 0 replays from the journal; page 1 is served again");
+
+    // A source declaring no count leaves the row at zero.
+    let plain = Rig::new();
+    let row = plain.run(&opaque(), "1.0.0", "run-1", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
+    assert_eq!(row.skipped, 0);
+}

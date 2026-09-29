@@ -430,8 +430,49 @@ The declared behavior of each source compiled into the engine.
   *because its output is unbounded and has no recorded exchange to replay*
 - `twin-api` — A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. A sanctioned, disclosed organization-wide export path is admitted.
   *A-read*
+- `drive-walk` — The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder, within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is followed.
+  *because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot*
+- `drive-root` — A `folder_id` naming no folder, or one outside a declared `drive_id`, fails the read as a configuration fault before any listing.
+- `drive-tables` — The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the root, MIME type, `modifiedTime`, Drive's `md5Checksum` and the SHA-256 of the bytes read, and `pages`.
+- `drive-table-unmatched` — A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any request.
+- `drive-export` — A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.
+- `drive-page-grain` — A PDF body lands one `pages` row per page under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column.
+  *because a page is what retrieval ranks and a citation names, and the digest identifies the bytes without a second copy of the file*
+- `drive-file-cap` — A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap and no pages. No byte past the cap is read, and the read continues.
+  *because a row naming the skipped file answers for it, where truncated bytes read as the whole document*
+- `drive-unreadable` — A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.
+  *because one unreadable file failing the fire holds back every other file's row and the position behind them*
+- `drive-skip-count` — Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.
+- `drive-incremental` — The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.
+- `drive-fire` — One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.
+- `drive-oauth` — The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.
+  *because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour*
+- `drive-oauth-shape` — `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.
+- `drive-origin` — The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
+- `drive-position-owned` — `incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.
 
 ## Shapes
+
+A drive source, built with the `drive` feature:
+
+```toml
+[[pipeline]]
+id = "team"
+tables = [{ name = "files", primary_key = ["file_id"] }, { name = "pages", primary_key = ["file_id", "page"] }]
+
+[pipeline.source]
+name = "drive"
+
+[pipeline.source.config]
+folder_id      = "1AbCdEfGhIjKlMnOp"
+drive_id       = "0AExampleDrive"             # a shared drive; absent for a folder in My Drive
+max_file_bytes = 33554432
+
+[pipeline.source.config.oauth]
+refresh_token = "${secret://drive-refresh}"
+client_id     = "${secret://drive-client-id}"
+client_secret = "${secret://drive-client-secret}"
+```
 
 A connector manifest in the adopted posture:
 

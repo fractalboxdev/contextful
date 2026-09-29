@@ -45,6 +45,8 @@ transport-ureq = ["contextful-outbound/transport-ureq", "contextful-connectors/t
 component-host = ["dep:contextful-wasm"]
 # The interpreted target a component source selects with `--component-target pulley`.
 pulley = ["component-host", "contextful-wasm/pulley"]
+# The Google Drive source and the PDF decode worker behind its process boundary.
+drive = ["contextful-connectors/drive"]
 
 [[test]]
 name = "integration"

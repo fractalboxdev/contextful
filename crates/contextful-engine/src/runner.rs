@@ -5,7 +5,7 @@
 
 use crate::cancel::Keeper;
 use crate::guard::{log_counts, Guarded};
-use crate::execution::{Close, Execution};
+use crate::execution::{Close, Execution, Tally};
 use crate::journal::{Journal, Resolved};
 use crate::project::Emitter;
 use crate::stores::{FileBlobStore, FileJournalStore};
@@ -170,7 +170,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         execution.close_with(outcome)
     }
 
-    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<(Landed, u64), Close> {
+    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<(Landed, Tally), Close> {
         let plan = &spec.plan;
         let (pipeline_id, table) = (plan.spec.pipeline.as_str(), plan.spec.table.as_str());
 
@@ -198,6 +198,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         };
         let mut batches: Vec<Vec<Row>> = Vec::new();
         let mut types = Types::new();
+        let mut skipped = 0u64;
         for ordinal in 0.. {
             if execution.token().requested() {
                 return Err(Close::Failed(Failure::canceled("stopped between pulls")));
@@ -207,6 +208,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             let request = PullRequest { step_label: label.clone(), position: position.clone(), idempotency_key: key.idempotency_key() };
             let resolved = self.step(spec, execution, &key, &request, source)?;
             let pull = Pull::decode(resolved.bytes())?;
+            skipped = skipped.saturating_add(pull.skipped);
             for (column, ty) in shape.shape_types(pulled_types(&pull)?) {
                 match types.get(&column) {
                     Some(held) if *held != ty => {
@@ -318,7 +320,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             }
         }
         self.journal.collect(&execution_id)?;
-        Ok((landed, batch_count))
+        Ok((landed, Tally { batches: batch_count, skipped }))
     }
 
     /// Resolve one pull through the execution's journal under the plan's retry schedule.

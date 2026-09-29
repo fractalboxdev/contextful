@@ -62,6 +62,15 @@ enum Cmd {
     /// Elaborate and audit the Lean models under `formal/`.
     #[command(subcommand)]
     Formal(formal::FormalCmd),
+    /// The decode worker a compiled-in source runs behind the process boundary
+    /// (`run.land.parse-boundary`): standard input in, decoded JSON out.
+    #[cfg(feature = "drive")]
+    #[command(hide = true)]
+    Decode {
+        kind: String,
+        #[arg(long)]
+        input: String,
+    },
 }
 
 /// Parse the process arguments and run the command, with `tasks` registered as host derive
@@ -81,6 +90,8 @@ pub fn main_with(tasks: Tasks) {
         Cmd::Derive(c) => derive::run(c),
         Cmd::Memory(c) => memory::run(c),
         Cmd::Formal(c) => formal::run(c),
+        #[cfg(feature = "drive")]
+        Cmd::Decode { kind, input } => std::process::exit(contextful_connectors::boundary::worker(&kind, &input)),
     };
     if let Err(e) = result {
         eprintln!("{e:#}");
