@@ -4,7 +4,10 @@
 use contextful_core::pipeline::declare::{read_manifest, ManifestFile};
 use contextful_core::run::RunError;
 use contextful_core::store::declare::TableDecl;
-use contextful_core::store::index::{is_cjk, IndexKind, Metric, Tokenizer, DEFAULT_EF_CONSTRUCTION, DEFAULT_M};
+use contextful_core::store::index::{
+    is_cjk, FulltextEntry, IndexKind, Metric, Tokenizer, VectorEntry, DEFAULT_EF_CONSTRUCTION, DEFAULT_M, FULLTEXT_BUILDER,
+    FULLTEXT_BUILDER_VERSION, VECTOR_BUILDER, VECTOR_BUILDER_VERSION,
+};
 use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema};
 use contextful_core::store::StoreError;
 
@@ -209,4 +212,77 @@ fn the_cjk_tokenizer_indexes_unspaced_stretches_as_bigrams() {
     for c in ['a', 'é', '1', 'ß', 'Ж'] {
         assert!(!is_cjk(c), "{c}");
     }
+}
+
+/// Two sidecar declarations of one table resolving to one path under `store.index.paths` raise `StoreIndexPathCollision`, naming both, at manifest validation and before the fold builds either.
+// spec: store.index.path-collision@458056c1
+#[test]
+fn two_declarations_resolving_to_one_path_are_refused() {
+    let vector = |column: &str, model: &str, m: u32| {
+        format!("[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"{column}\"\nmodel = \"{model}\"\ndim = 4\nm = {m}\n")
+    };
+    let v4 = ColumnType::FixedSizeList(FloatItem::Float32, 4);
+    for (block, columns) in [
+        // One column and model declared twice, differing only in a builder parameter.
+        (format!("{}{}", vector("embedding", "e5", 4), vector("embedding", "e5", 8)), vec!["embedding"]),
+        // `-` inside a column or a model aliases across the column/model boundary.
+        (format!("{}{}", vector("a-b", "c", 4), vector("a", "b-c", 4)), vec!["a-b", "a"]),
+        // One column and tokenizer declared twice.
+        (format!("{FULLTEXT}{FULLTEXT}"), vec![]),
+    ] {
+        let block = format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{block}");
+        let mut cols = vec![("passage_id", ColumnType::Utf8), ("body", ColumnType::Utf8)];
+        cols.extend(columns.iter().map(|c| (*c, v4)));
+        let got = table(&block).validate_indexes(&schema(&cols));
+        match got {
+            Err(StoreError::StoreIndexPathCollision(m)) => assert!(m.contains("indexes[0]") && m.contains("indexes[1]"), "{m}"),
+            other => panic!("{block}: expected StoreIndexPathCollision, got {other:?}"),
+        }
+        let got = validate_manifest(&block);
+        assert!(matches!(got, Err(RunError::Store(StoreError::StoreIndexPathCollision(_)))), "{block}: {got:?}");
+    }
+    // Distinct paths validate: two models over one column, and both kinds over one column.
+    let block = format!(
+        "name = \"passages\"\nprimary_key = [\"passage_id\"]\n{}{}{FULLTEXT}{FULLTEXT}tokenizer = \"cjk\"\n",
+        vector("embedding", "e5", 4),
+        vector("embedding", "bge", 4)
+    );
+    table(&block)
+        .validate_indexes(&schema(&[("passage_id", ColumnType::Utf8), ("body", ColumnType::Utf8), ("embedding", v4)]))
+        .unwrap();
+    validate_manifest(&block).unwrap();
+}
+
+/// The snapshot manifest example in `spec/10-store.md` deserializes: each `indexes` entry
+/// carries every field its entry type writes, and no other.
+#[test]
+fn the_spec_snapshot_manifest_example_deserializes_its_index_entries() {
+    let spec = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../spec/10-store.md")).unwrap();
+    let after = spec.split("A run manifest, a snapshot manifest and a table pointer:").nth(1).expect("the manifest examples");
+    let block = after.split("```json").nth(1).and_then(|b| b.split("```").next()).expect("a json block");
+    let manifest = serde_json::Deserializer::from_str(block)
+        .into_iter::<serde_json::Value>()
+        .map(Result::unwrap)
+        .find(|v| v.get("indexes").is_some())
+        .expect("a snapshot manifest carrying indexes");
+    let entries = manifest["indexes"].as_array().unwrap();
+    let (mut vectors, mut fulltexts) = (0, 0);
+    for entry in entries {
+        match entry["kind"].as_str() {
+            Some("vector") => {
+                let e: VectorEntry = serde_json::from_value(entry.clone()).unwrap_or_else(|err| panic!("{entry}: {err}"));
+                assert_eq!((e.builder.as_str(), e.builder_version), (VECTOR_BUILDER, VECTOR_BUILDER_VERSION));
+                assert_eq!((e.table.as_str(), e.snapshot_id.as_str()), (manifest["table"].as_str().unwrap(), manifest["snapshot_id"].as_str().unwrap()));
+                vectors += 1;
+            }
+            Some("fulltext") => {
+                let e: FulltextEntry = serde_json::from_value(entry.clone()).unwrap_or_else(|err| panic!("{entry}: {err}"));
+                assert_eq!((e.builder.as_str(), e.builder_version), (FULLTEXT_BUILDER, FULLTEXT_BUILDER_VERSION));
+                assert_eq!((e.table.as_str(), e.snapshot_id.as_str()), (manifest["table"].as_str().unwrap(), manifest["snapshot_id"].as_str().unwrap()));
+                fulltexts += 1;
+            }
+            other => panic!("unknown index kind {other:?}"),
+        }
+    }
+    assert_eq!((vectors, fulltexts), (1, 1));
 }
