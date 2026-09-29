@@ -45,15 +45,29 @@ const IMPURE: [(&str, &str); 19] = [
     ("libduckdb-sys", "a columnar-format implementation"),
 ];
 
-/// The store adapter, whose write half resolves no SQL engine with its `read` feature off
+/// The SQLite link-carrying package the store adapter resolves through no normal
+/// dependency, on any target (`topology.package.store-sqlite-free`).
+const SQLITE_SYS: &str = "libsqlite3-sys";
+
+/// The store adapter, whose write half — its graph with the `read` feature off, across every
+/// target — resolves no SQL engine, async runtime, HTTP or TLS stack, or SQLite
 /// (`topology.package.store-write-engine-free`).
 const STORE: &str = "contextful-context";
 const STORE_READ_FEATURE: &str = "read";
-const SQL_ENGINE: [&str; 2] = ["duckdb", "libduckdb-sys"];
-
-/// The SQLite link-carrying package the store adapter resolves through no normal
-/// dependency (`topology.package.store-sqlite-free`).
-const SQLITE_SYS: &str = "libsqlite3-sys";
+const STORE_WRITE_DENY: [&str; 12] = [
+    "duckdb",
+    "libduckdb-sys",
+    "tokio",
+    "async-std",
+    "smol",
+    "async-executor",
+    "ureq",
+    "hyper",
+    "reqwest",
+    "rustls",
+    "curl",
+    SQLITE_SYS,
+];
 
 /// The one package declaring the SQLite binding, and the binding's packages
 /// (`topology.package.sqlite-adapter`).
@@ -178,7 +192,7 @@ struct Graph {
 impl Graph {
     fn load(root: &Path) -> Result<Graph> {
         let out = Command::new("cargo")
-            .args(["metadata", "--format-version", "1", "-q"])
+            .args(["metadata", "--format-version", "1", "-q", "--locked"])
             .current_dir(root)
             .output()
             .context("running cargo metadata")?;
@@ -331,26 +345,66 @@ fn manifest_line(root: &Path, manifest: &str, dep: &str) -> String {
     }
 }
 
-/// Each normal-dependency path from `package` to a package named in `targets`, resolved
-/// by `cargo tree` for `package` alone — with its default features, or with every feature
-/// off when `features_off` — as `a -> b -> c`. `cargo metadata` unifies features across
-/// the workspace, so a per-package graph comes from `cargo tree -p`.
-fn tree_paths(root: &Path, package: &str, features_off: bool, targets: &[&str]) -> Result<Vec<String>> {
-    let mut args = vec!["tree", "-q", "-p", package];
-    if features_off {
+/// Which graph of one package `cargo tree` resolves.
+#[derive(Clone, Copy)]
+struct Resolve {
+    /// Every feature off, where `false` keeps the default features.
+    features_off: bool,
+    /// Every target platform, where `false` resolves the host's alone.
+    all_targets: bool,
+}
+
+const DEFAULT: Resolve = Resolve { features_off: false, all_targets: false };
+const FEATURES_OFF: Resolve = Resolve { features_off: true, all_targets: false };
+/// The store adapter's write half, resolved alike on every host.
+const WRITE_HALF: Resolve = Resolve { features_off: true, all_targets: true };
+/// Default features on every target, so a link behind another target's `cfg` resolves on
+/// every host.
+const DEFAULT_ALL_TARGETS: Resolve = Resolve { features_off: false, all_targets: true };
+
+/// `cargo tree --locked` over the normal dependencies of `package` alone, one `<depth><name>`
+/// line per node. `cargo metadata` unifies features across the workspace, so a per-package
+/// graph comes from `cargo tree -p`.
+fn tree(root: &Path, package: &str, resolve: Resolve) -> Result<String> {
+    let mut args = vec!["tree", "-q", "--locked", "-p", package];
+    if resolve.features_off {
         args.push("--no-default-features");
+    }
+    if resolve.all_targets {
+        args.extend(["--target", "all"]);
     }
     args.extend(["-e", "normal", "--prefix", "depth", "--format", "{p}"]);
     let out = Command::new("cargo").args(&args).current_dir(root).output().context("running cargo tree")?;
     if !out.status.success() {
         bail!("cargo tree -p {package}: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The `(depth, package name)` of each line `cargo tree --prefix depth` printed.
+fn nodes(tree: &str) -> impl Iterator<Item = (usize, String)> + '_ {
+    tree.lines().filter_map(|line| {
+        let rest = line.trim_start_matches(|c: char| c.is_ascii_digit());
+        let depth = line[..line.len() - rest.len()].parse::<usize>().ok()?;
+        Some((depth, rest.split_whitespace().next().unwrap_or_default().to_string()))
+    })
+}
+
+/// The distinct package names in `package`'s graph under `resolve`, itself included.
+fn tree_packages(root: &Path, package: &str, resolve: Resolve) -> Result<Vec<String>> {
+    let mut names: Vec<String> = nodes(&tree(root, package, resolve)?).map(|(_, n)| n).collect();
+    names.sort_unstable();
+    names.dedup();
+    Ok(names)
+}
+
+/// Each normal-dependency path from `package` to a package named in `targets` under
+/// `resolve`, as `a -> b -> c`.
+fn tree_paths(root: &Path, package: &str, resolve: Resolve, targets: &[&str]) -> Result<Vec<String>> {
+    let text = tree(root, package, resolve)?;
     let mut stack: Vec<String> = Vec::new();
     let mut paths = Vec::new();
-    for line in String::from_utf8_lossy(&out.stdout).lines() {
-        let rest = line.trim_start_matches(|c: char| c.is_ascii_digit());
-        let Ok(depth) = line[..line.len() - rest.len()].parse::<usize>() else { continue };
-        let name = rest.split_whitespace().next().unwrap_or_default().to_string();
+    for (depth, name) in nodes(&text) {
         stack.truncate(depth);
         stack.push(name.clone());
         if depth > 0 && targets.contains(&name.as_str()) {
@@ -426,22 +480,22 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
     }
 
     if g.id_of(STORE).is_some() {
-        for path in tree_paths(root, STORE, true, &SQL_ENGINE)? {
+        for path in tree_paths(root, STORE, WRITE_HALF, &STORE_WRITE_DENY)? {
             let name = path.rsplit(" -> ").next().unwrap_or_default();
             out.push(("StoreWriteLinksEngine", format!("`{STORE}` without `{STORE_READ_FEATURE}` links `{name}` through {path}")));
         }
-        for path in tree_paths(root, STORE, false, &[SQLITE_SYS])? {
+        for path in tree_paths(root, STORE, DEFAULT_ALL_TARGETS, &[SQLITE_SYS])? {
             out.push(("StoreLinksSqlite", format!("`{STORE}` links `{SQLITE_SYS}` through {path}")));
         }
     }
     if g.id_of(RUNTIME).is_some() {
-        for path in tree_paths(root, RUNTIME, true, &HTTP_STACK)? {
+        for path in tree_paths(root, RUNTIME, FEATURES_OFF, &HTTP_STACK)? {
             let name = path.rsplit(" -> ").next().unwrap_or_default();
             out.push(("TransportStackLinked", format!("`{RUNTIME}` without `{RUNTIME_TRANSPORT_FEATURE}` links `{name}` through {path}")));
         }
     }
     if g.id_of(DECODE).is_some() {
-        for path in tree_paths(root, DECODE, false, &DECODE_BANNED)? {
+        for path in tree_paths(root, DECODE, DEFAULT, &DECODE_BANNED)? {
             let name = path.rsplit(" -> ").next().unwrap_or_default();
             out.push(("DecodeLinksNetwork", format!("`{DECODE}` links `{name}` through {path}")));
         }
@@ -595,7 +649,7 @@ fn exchange_leaks(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>>
         if name == BINARY && mentions(&root.join(&src), EXCHANGE_MODULE) {
             continue;
         }
-        if let Some(path) = tree_paths(root, name, false, &EXCHANGE_STACK)?.into_iter().next() {
+        if let Some(path) = tree_paths(root, name, DEFAULT, &EXCHANGE_STACK)?.into_iter().next() {
             let dep = path.rsplit(" -> ").next().unwrap_or_default();
             let unwired = if name == BINARY {
                 format!(", and no source under {} names `{EXCHANGE_MODULE}`", src.display())
@@ -685,9 +739,17 @@ fn mentions(dir: &Path, needle: &str) -> bool {
     })
 }
 
-/// Run every topology dependency rule over the workspace at `root`.
+/// Run every topology dependency rule over the workspace at `root`, each graph resolved
+/// `--locked` so a `Cargo.lock` behind its manifests fails before any rule runs
+/// (`assurance.gate.locked-resolve`). The store adapter's write half prints its distinct
+/// package count and how many of them the write half is denied, which the ledger records.
 pub fn check(root: &Path) -> Result<()> {
     let g = Graph::load(root)?;
+    if g.id_of(STORE).is_some() {
+        let names = tree_packages(root, STORE, WRITE_HALF)?;
+        let forbidden = names.iter().filter(|n| STORE_WRITE_DENY.contains(&n.as_str())).count();
+        println!("store write half: {} unique package(s), {forbidden} forbidden", names.len());
+    }
     let mut found = findings(root, &g)?;
     found.extend(exchange_leaks(root, &g)?);
     found.extend(crate_map_drift(root, &g)?);

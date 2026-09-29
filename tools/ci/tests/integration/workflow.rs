@@ -19,7 +19,7 @@ fn the_workflow_dispatches_every_gate_stage() {
     let dispatched: Vec<String> = matrix.split(',').map(|s| s.trim().to_string()).collect();
     assert_eq!(dispatched, stages);
     assert!(yml.contains("\"checkLabel\": \"${{ matrix.stage }}\""));
-    assert!(yml.contains("contextful-ci -- gate --stage ${{ matrix.stage }}"));
+    assert!(yml.contains("\"command\": \"cargo run --locked -q -p contextful-ci -- gate --stage ${{ matrix.stage }}"));
 }
 
 /// The pull-request workflow dispatches only a head commit pushed to the repository itself; a pull request from a fork dispatches no stage and so carries none of the required checks.

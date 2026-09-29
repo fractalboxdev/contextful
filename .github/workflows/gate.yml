@@ -3,7 +3,7 @@
 # Each matrix entry dispatches `contextful-ci gate --stage <stage>` to the org's
 # Dispatcher, which clones the PR head into a Rust-equipped sandbox and reports the
 # verdict as the check-run `flare-dispatch/check:<stage>`. This job goes green once
-# the dispatch is accepted; branch protection requires the six check-runs:
+# the dispatch is accepted; branch protection requires the seven check-runs:
 #
 #   flare-dispatch/check:schema      secrets of record, mirrors: annotations, contextful-spec lint
 #   flare-dispatch/check:test-first  a test under tests/ fails against the base source
@@ -11,6 +11,7 @@
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
 #   flare-dispatch/check:evaluate    every gate-tier entry of evals/ledger.toml, held to its target
 #   flare-dispatch/check:features    each package declaring a feature, tested with none and with all
+#   flare-dispatch/check:crate-graph the topology dependency rules over `cargo tree --locked` per package
 #
 # Lean is provisioned by the dispatched command, not by a step in this file:
 # `contextful-ci gate` runs `provision_lean` (tools/ci/src/main.rs) before the
@@ -19,7 +20,7 @@
 # and CONTEXTFUL_REQUIRE_LEAN=1, and fails the stage when setup fails, so a
 # Lean-backed test fails rather than skips.
 #
-# A contributor runs the same stages locally: `cargo run -q -p contextful-ci -- gate`.
+# A contributor runs the same stages locally: `cargo run --locked -q -p contextful-ci -- gate`.
 # `contextful-ci`'s integration suite fails when this matrix and its stage list differ.
 #
 # A fork's pull request dispatches nothing: the dispatch signs with the org's HMAC
@@ -40,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stage: [schema, test-first, workspace, acceptance, evaluate, features]
+        stage: [schema, test-first, workspace, acceptance, evaluate, features, crate-graph]
     steps:
       - uses: fractalboxdev/flare-dispatch/actions/flare-dispatch-action@a5118d6594c8f3e4040bb90afcb02898a6e7b7bd
         with:
@@ -53,7 +54,7 @@ jobs:
               "repo": "${{ github.repository }}",
               "sha": "${{ github.event.pull_request.head.sha }}",
               "checkLabel": "${{ matrix.stage }}",
-              "command": "cargo run -q -p contextful-ci -- gate --stage ${{ matrix.stage }} --base ${{ github.event.pull_request.base.sha }}",
+              "command": "cargo run --locked -q -p contextful-ci -- gate --stage ${{ matrix.stage }} --base ${{ github.event.pull_request.base.sha }}",
               "failOnNonZeroExit": true,
               "timeoutSec": 1800
             }

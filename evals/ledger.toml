@@ -360,8 +360,18 @@ clause = "topology.package.store-write-engine-free"
 metric = "topology.store_write.forbidden_packages"
 kind   = "size"
 tier   = "gate"
-method = { issue = 80 }
+method = { test = "contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package" }
 target = { op = "==", value = 0 }
+
+# A ratchet: the write half's distinct packages across every target, under the locked
+# resolve. Growth past the ceiling reds the evaluate stage.
+[entry.store-write-package-count]
+clause = "topology.package.store-write-engine-free"
+metric = "topology.store_write.unique_packages"
+kind   = "size"
+tier   = "gate"
+method = { test = "contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package" }
+target = { op = "<=", value = 200 }
 
 [entry.no-sqlite-link]
 clause = "topology.package.store-sqlite-free"
