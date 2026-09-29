@@ -288,6 +288,8 @@ flowchart LR
   DEDUP -->|"unique candidates"| RANK["ranker"]
 ```
 
+unsettled: Does the row id {{run.normalize.identity-columns}} injects serve as the row key of a table declaring no content-hash column? owner: read-path affects: read.retrieve
+
 unsettled: What adaptive over-fetch policy holds where rows a reader cannot see cluster near a query point and the visibility estimate under-fills the requested top-K? owner: read-path affects: read.retrieve
 
 ## rank
