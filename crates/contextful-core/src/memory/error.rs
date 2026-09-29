@@ -21,6 +21,9 @@ pub enum MemoryError {
     /// A claim's evidence does not resolve through the caller's session. (`read.recall.evidence-unresolved`)
     #[error("MemoryEvidenceUnresolved: {0}")]
     EvidenceUnresolved(String),
+    /// A keyed recall named a table declaring no `memory_facts` shape. (`read.recall.keyed-not-claims`)
+    #[error("MemoryRecallNotClaims: {0}")]
+    RecallNotClaims(String),
     /// An extract batch exhausted its attempts and was dead-lettered. (`read.synthesize.dead-letter`)
     #[error("MemoryExtractExhausted: {0}")]
     ExtractExhausted(String),
@@ -51,6 +54,7 @@ impl MemoryError {
             MemoryError::EvidenceOverflow(_) => "MemoryEvidenceOverflow",
             MemoryError::EvidenceUnresolved(_) => "MemoryEvidenceUnresolved",
             MemoryError::ExtractExhausted(_) => "MemoryExtractExhausted",
+            MemoryError::RecallNotClaims(_) => "MemoryRecallNotClaims",
             MemoryError::ShapeColumnMissing(_) => "MemoryShapeColumnMissing",
             MemoryError::UndeclaredRelation(_) => "MemoryUndeclaredRelation",
             MemoryError::OutcomeCitationMissing(_) => "OutcomeCitationMissing",

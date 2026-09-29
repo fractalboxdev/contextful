@@ -7,7 +7,7 @@
 //! arrives in-band — a result flagged as an error under transport success — carrying the
 //! refusal's wire payload (`read.respond.in-band-error`).
 
-use contextful_context::read::{Face, ReadFault, ReadOptions, RetrieveRequest};
+use contextful_context::read::{Face, ReadFault, ReadOptions, RecallRequest, RetrieveRequest};
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
 use contextful_core::read::template::READ_ARGUMENTS;
 use contextful_core::read::Refusal;
@@ -337,6 +337,20 @@ impl<'a> Tools<'a> {
                     )
                 };
                 self.session(caller, zone, b).and_then(|s| self.face.retrieve(&s, &request, b)).map(|r| r.to_json())
+            }
+            "memory.recall" => {
+                only(args, name, &["table", "subject", "observed_at", "as_of_ingest", "limit"])?;
+                // The keyed read names its two clocks itself (`read.register.bound-arguments`).
+                if let Some(k) = ["as_of", "valid_as_of"].into_iter().find(|k| args.contains_key(*k)) {
+                    return Err(invalid(format!("`{name}` takes no argument `{k}`; it reads `observed_at` and `as_of_ingest`")));
+                }
+                let request = RecallRequest {
+                    observed_at: bound(args, "observed_at")?,
+                    as_of_ingest: bound(args, "as_of_ingest")?,
+                    limit: integer(args, "limit")?,
+                    ..RecallRequest::new(required(args, "table")?, required(args, "subject")?, self.clock.now())
+                };
+                self.session(caller, zone, request.bounds()).and_then(|s| self.face.recall(&s, &request)).map(|r| r.to_json())
             }
             template if self.face.templates().iter().any(|t| t.id == template) => {
                 // No template parameter takes a read argument's name (`read.guard.template-reserved-parameter`).

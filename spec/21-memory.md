@@ -106,6 +106,11 @@ Supersession within one validity line, confidence decay, the direct write and it
   *A-read*
 - `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.
   *A-read*
+- `observed-at` — `contextful memory write --observed-at <instant>` lands the claim with `valid_from` at that instant; without it, `valid_from` is the write's own instant.
+- `dedup-key` — `--dedup-key <key>` derives `claim_id` from the key beside the subject, predicate, object and scope, and a write whose `claim_id` the table already holds lands nothing.
+  *because a retried write restates one observation, while one fact observed twice under two keys keeps two validity intervals*
+
+unsettled: Does a claim observed before a live prior of its line land beneath that prior with a bounded end, or refuse? owner: memory affects: read.revise
 
 unsettled: How are two unscoped writers colliding on one subject, predicate and scope surfaced to a human, rather than the later one landing not live? owner: memory affects: read.revise
 
@@ -113,7 +118,7 @@ unsettled: What decay half-life applies to a claim nothing reinforces, and is fa
 
 ## recall
 
-Serving live memory at present time: the two clocks, tier-first ordering, the scope filter, the tombstone filter, the evidence gate.
+Serving memory: the ranked arm at the read's anchor, the keyed read at an observed instant, the two clocks, tier-first ordering, the scope filter, the tombstone filter, the evidence gate.
 
 - `evidence-unresolved` — An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.
   *A-read*
@@ -122,6 +127,14 @@ Serving live memory at present time: the two clocks, tier-first ordering, the sc
 - `ranked-arm` — A `corpus.retrieve` arm over a `memory_facts` table serves only live claims — no `superseded_by`, and a `valid_to` null or past the read's anchor — whose evidence passes the gate.
 - `suppression-count` — A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.
   *because a count discloses that a conclusion was withheld, never what it concluded*
+- `keyed` — `memory.recall` takes `table`, `subject`, `observed_at`, `as_of_ingest` and `limit`, and returns the claims whose `subject` equals `subject` exactly and whose `valid_from` and `valid_to` cover `observed_at` as {{store.bound-time.valid-as-of}} does.
+- `keyed-clocks` — `as_of_ingest` bounds the read as {{store.bound-time.as-of}} does. An absent `observed_at` reads at the call's instant, an absent `as_of_ingest` at the latest committed state, and each supplied bound echoes as {{store.bound-time.echo}}.
+- `keyed-history` — A claim a successor retired still answers an `observed_at` inside its validity; the keyed read filters on validity alone, never on `superseded_by`.
+  *because the question is what held at that instant, and the retired claim is the answer its interval records*
+- `keyed-gate` — Every keyed claim passes {{read.recall.evidence-unresolved}} and {{read.recall.evidence-references}}, and the response carries {{read.recall.suppression-count}}.
+- `keyed-order` — Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.
+- `keyed-not-claims` — A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.
+  *because a keyed read answers with a claim's subject, validity and evidence, which no other table carries*
 
 The evidence check a claim passes on its way to a grounded turn:
 

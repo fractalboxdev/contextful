@@ -100,6 +100,19 @@ pub fn claim_id(subject: &str, predicate: &str, object: &str, scope: Option<&str
     format!("c-{}", h.finalize().iter().take(12).map(|b| format!("{b:02x}")).collect::<String>())
 }
 
+/// The dedup key a writer supplies: one claim per key, subject, predicate, object and
+/// scope, so a retried observation restates and the same fact under two keys keeps two
+/// validity intervals (`read.revise.dedup-key`).
+pub fn keyed_claim_id(dedup_key: &str, subject: &str, predicate: &str, object: &str, scope: Option<&str>) -> String {
+    let mut h = Sha256::new();
+    h.update(b"dedup_key");
+    for part in [dedup_key, subject, predicate, object, scope.unwrap_or("")] {
+        h.update((part.len() as u64).to_be_bytes());
+        h.update(part.as_bytes());
+    }
+    format!("c-{}", h.finalize().iter().take(12).map(|b| format!("{b:02x}")).collect::<String>())
+}
+
 impl Claim {
     fn same_line(&self, other: &Claim) -> bool {
         self.subject == other.subject && self.predicate == other.predicate && self.scope == other.scope

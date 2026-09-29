@@ -547,6 +547,7 @@ fn preview_target(path: &str) -> Result<String, ReadError> {
 
 /// A built-in tool's definition.
 fn builtin_tool(name: &str) -> Value {
+    let instant = |about: &str| json!({ "type": "string", "description": format!("{about} {INSTANT_LITERAL}") });
     let (description, mut properties, required): (&str, Value, Vec<&str>) = match name {
         "context.describe" => (
             "Describe one table this credential reads, or list them.",
@@ -587,6 +588,16 @@ fn builtin_tool(name: &str) -> Value {
             json!({ "path": { "type": "string" }, "limit": { "type": "integer" }, "internals": { "type": "boolean" }, "zone": { "type": "string" } }),
             vec!["path"],
         ),
+        "memory.recall" => (
+            "The claims of one subject, matched exactly, valid at `observed_at` as known at `as_of_ingest`.",
+            json!({
+                "table": { "type": "string" }, "subject": { "type": "string" },
+                "observed_at": instant("The valid-time instant the claims cover; absent, the call's own."),
+                "as_of_ingest": instant("The transaction-time bound; absent, the latest committed state."),
+                "limit": { "type": "integer" }, "zone": { "type": "string" }
+            }),
+            vec!["table", "subject"],
+        ),
         _ => (
             "Ranked rows across the tables under a prefix.",
             json!({
@@ -598,8 +609,11 @@ fn builtin_tool(name: &str) -> Value {
             vec!["query"],
         ),
     };
-    for (bound, schema) in bound_properties() {
-        properties[bound.as_str()] = schema;
+    // `memory.recall` names its two clocks itself (`read.register.bound-arguments`).
+    if name != "memory.recall" {
+        for (bound, schema) in bound_properties() {
+            properties[bound.as_str()] = schema;
+        }
     }
     json!({
         "name": name,
@@ -608,8 +622,12 @@ fn builtin_tool(name: &str) -> Value {
     })
 }
 
-/// The two bound arguments every read tool declares (`read.register.bound-arguments`).
+/// How a bound argument's literal reads (`store.bound-time.instant-comparison`).
+const INSTANT_LITERAL: &str = "An RFC 3339 instant, or a YYYY-MM-DD date read as the start of the next day, exclusive.";
+
+/// The two bound arguments every read tool but `memory.recall` declares
+/// (`read.register.bound-arguments`).
 fn bound_properties() -> [(String, Value); 2] {
-    let instant = || json!({ "type": "string", "description": "An RFC 3339 instant, or a YYYY-MM-DD date read as the start of the next day, exclusive." });
+    let instant = || json!({ "type": "string", "description": INSTANT_LITERAL });
     [("as_of".into(), instant()), ("valid_as_of".into(), instant())]
 }

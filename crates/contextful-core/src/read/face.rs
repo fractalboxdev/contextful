@@ -6,12 +6,19 @@ use crate::enforce::EnforceError;
 use serde::Serialize;
 
 /// The closed tool set (`read.register.tool-set`).
-pub const TOOLS: [&str; 6] =
-    ["context.describe", "context.query", "context.execute_query", "context.files", "context.file", "corpus.retrieve"];
+pub const TOOLS: [&str; 7] = [
+    "context.describe",
+    "context.query",
+    "context.execute_query",
+    "context.files",
+    "context.file",
+    "corpus.retrieve",
+    "memory.recall",
+];
 
 /// Prefixes the built-in tools hold; no template identifier takes one
 /// (`read.guard.template-relation-shape`).
-pub const TOOL_PREFIXES: [&str; 2] = ["context.", "corpus."];
+pub const TOOL_PREFIXES: [&str; 3] = ["context.", "corpus.", "memory."];
 
 /// What this binary links, as the handshake reports it (`read.embed.build-identity`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]

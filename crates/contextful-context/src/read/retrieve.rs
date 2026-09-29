@@ -493,7 +493,7 @@ impl Face {
 
     /// How one evidence row reads through the caller's session: its table registered, the
     /// row visible through the relation, and no cell of the table masked or nulled by zone.
-    fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef) -> EvidenceRead {
+    pub(crate) fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef) -> EvidenceRead {
         let Some(relation) = session.relation(&r.table) else { return EvidenceRead::UnknownTable };
         let sql = format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation.name()), ident(RUN_ID), ident(ROW_SEQ));
         let found = engine

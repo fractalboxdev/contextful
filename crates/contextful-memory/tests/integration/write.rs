@@ -90,3 +90,55 @@ fn a_curated_restatement_promotes_the_claim() {
     let promoted = write_claim(&f.face, &writer, "memory/facts", candidate("Dana"), &node, at("2030-01-11T00:00:00Z"), &super::synthesize::admit).unwrap();
     assert_eq!(promoted.claim.map(|c| c.tier), Some(Tier::Curated));
 }
+
+fn keyed(at_: &str, key: Option<&str>) -> contextful_memory::write::Observation {
+    contextful_memory::write::Observation { observed_at: Some(at(at_)), dedup_key: key.map(str::to_string) }
+}
+
+/// `contextful memory write --observed-at <instant>` lands the claim with `valid_from` at that instant; without it, `valid_from` is the write's own instant.
+// spec: read.revise.observed-at@c39aeee4
+#[test]
+fn an_observed_write_lands_valid_from_its_observed_instant() {
+    use contextful_memory::write::{write_observed, Observation};
+    let f = Fixture::new();
+    let writer = f.writer();
+    let node = NodeId::parse("memory-a").unwrap();
+    let observed = write_observed(&f.face, &writer, "memory/facts", candidate("Dana"), &keyed("2029-06-01T00:00:00Z", None), &node, at("2030-01-11T00:00:00Z"), &super::synthesize::admit).unwrap();
+    assert_eq!(observed.claim.unwrap().valid_from, at("2029-06-01T00:00:00Z"));
+    let unobserved = CandidateClaim { subject: "globex".into(), ..candidate("Kim") };
+    let now = write_observed(&f.face, &writer, "memory/facts", unobserved, &Observation::default(), &node, at("2030-01-12T00:00:00Z"), &super::synthesize::admit).unwrap();
+    assert_eq!(now.claim.unwrap().valid_from, at("2030-01-12T00:00:00Z"));
+}
+
+/// `--dedup-key <key>` derives `claim_id` from the key beside the subject, predicate, object and scope, and a write whose `claim_id` the table already holds lands nothing.
+// spec: read.revise.dedup-key@8c1ffcb6
+#[test]
+fn a_dedup_key_seeds_the_claim_id_and_a_retry_lands_nothing() {
+    use contextful_core::memory::revise::claim_id;
+    use contextful_memory::write::write_observed;
+    let f = Fixture::new();
+    let writer = f.writer();
+    let node = NodeId::parse("memory-a").unwrap();
+    let write = |object: &str, when: &str, key: &str, now: &str| {
+        write_observed(&f.face, &writer, "memory/facts", candidate(object), &keyed(when, Some(key)), &node, at(now), &super::synthesize::admit).unwrap()
+    };
+    let first = write("Dana", "2030-01-01T00:00:00Z", "evt-1", "2030-01-11T00:00:00Z").claim.unwrap();
+    assert_ne!(first.claim_id, claim_id("acme", "cfo", "Dana", None));
+    // The same observation retried lands nothing, even after a successor retired it.
+    let lee = write("Lee", "2030-02-01T00:00:00Z", "evt-2", "2030-01-12T00:00:00Z");
+    assert_eq!(lee.retired.len(), 1);
+    let retried = write("Dana", "2030-01-01T00:00:00Z", "evt-1", "2030-01-13T00:00:00Z");
+    assert_eq!((retried.claim, retried.retired.len()), (None, 0));
+    // Dana observed again under a new key keeps both intervals.
+    let again = write("Dana", "2030-03-01T00:00:00Z", "evt-3", "2030-01-14T00:00:00Z").claim.unwrap();
+    assert_ne!(again.claim_id, first.claim_id);
+    let s = f.face.session(&writer, &contextful_policy::enforce::session::Request::default(), Default::default()).unwrap();
+    let rows = contextful_memory::claims::read_claims(&f.face, &s, "memory/facts").unwrap();
+    let mut spans: Vec<(String, Option<String>)> =
+        rows.iter().map(|c| (c.object.clone(), c.valid_to.map(|t| t.to_rfc3339()))).collect();
+    spans.sort();
+    assert_eq!(
+        spans,
+        [("Dana".to_string(), None), ("Dana".to_string(), Some("2030-02-01T00:00:00Z".to_string())), ("Lee".to_string(), Some("2030-03-01T00:00:00Z".to_string()))]
+    );
+}
