@@ -27,7 +27,8 @@ pub enum Kind {
     Assignment,
 }
 
-/// Keywords whose assigned value is masked, keeping the `key=` prefix.
+/// Keywords whose assigned value is masked, keeping the `key=` prefix. A key matches when it
+/// ends in one, `-` read as `_`.
 pub const KEYWORDS: [&str; 8] = ["password", "passwd", "secret", "token", "api_key", "apikey", "access_key", "auth"];
 
 fn upper_alnum(b: u8) -> bool {
@@ -218,17 +219,22 @@ fn slack(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
     }
 }
 
+/// `key=value` and `key: value` where the key ends in a keyword: the keyword opens the key or
+/// follows `_`, `-` or `.`, so `client_secret`, `x-api-key` and `db.password` all qualify.
+/// The scan reads `-` as `_`, so `api-key` spells `api_key`.
 fn assignment(s: &str, lower: &str, out: &mut Vec<(Kind, Range<usize>)>) {
     let b = s.as_bytes();
+    // Replacing one ASCII byte with another keeps every offset, so a hit in `keys` indexes `s`.
+    let keys = lower.replace('-', "_");
     for k in KEYWORDS {
         // A later keyword inside a value already scanned starts no scan of its own, so each byte is read once per keyword.
         let mut floor = 0;
-        for i in find_all(lower, k) {
+        for i in find_all(&keys, k) {
             if i < floor {
                 continue;
             }
-            // The keyword is a whole word ending in `=` or `:`.
-            if i > 0 && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_') {
+            // A letter or digit before the keyword makes it part of a longer word.
+            if i > 0 && b[i - 1].is_ascii_alphanumeric() {
                 continue;
             }
             let mut j = i + k.len();
