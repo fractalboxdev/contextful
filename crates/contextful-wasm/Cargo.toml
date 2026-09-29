@@ -29,6 +29,9 @@ wasmtime-wasi-http = { version = "49", default-features = false, features = ["p2
 [features]
 default = ["transport-ureq"]
 transport-ureq = ["contextful-outbound/transport-ureq"]
+# The interpreted target: components compile to Pulley bytecode and run without
+# executable memory, for processes under a hardened runtime that refuses JIT.
+pulley = ["wasmtime/pulley"]
 
 # The suite drives loopback servers over the ureq adapter, with or without the feature.
 [dev-dependencies]

@@ -9,7 +9,7 @@ pub mod limits;
 mod mediate;
 pub mod source;
 
-pub use host::{ComponentHost, Connector, Cursor, CursorKind, DataType, Field, Grant, LogLine, Schema, Session, WORLD};
+pub use host::{ComponentHost, Connector, Cursor, CursorKind, DataType, Field, Grant, LogLine, Schema, Session, Target, WORLD};
 pub use limits::Limits;
 pub use mediate::{Reservation, Reserve, Traffic};
 pub use source::GuestSource;

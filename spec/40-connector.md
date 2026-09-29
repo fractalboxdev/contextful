@@ -276,6 +276,9 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *A-connector*
 - `path-remap` — Every build remaps the source root and the package cache, so checkout location is not a digest input.
 - `native-verification` — `--verify --native` checks host triple, compiler and package manager against pinned constants and clears byte-moving configuration before building. A mismatch exits with a status distinct from digest drift.
+- `interpreted-target` — A host built with the `pulley` feature runs components on the interpreted target as portable bytecode, mapping no executable memory, under the same deadlines and mediated client; the compiled native target stays the default.
+  *because a hardened runtime refusing writable-then-executable pages loads no compiled guest, and interpretation trades throughput for loading there*
+- `interpreted-target-absent` — A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature, before any component compiles.
 - `linear-memory` — A connector runs under 256 MiB of linear memory by default, raised per connector to at most 2 GiB.
 - `call-deadline` — A read call carries a 30 s wall-clock deadline and a discovery call a 60 s one, armed by epoch interruption at 100 ms granularity.
 - `session-budget` — A session carries a 1 MiB logging budget, dropping and counting messages past it, and holds at most 8 requests outbound at once.
@@ -305,6 +308,8 @@ flowchart LR
   HASH -->|"no: ConnectorDigestMismatch"| REFUSE
   HASH -->|"yes, instantiate"| INST["component instance"]
 ```
+
+unsettled: Does `connector pin` record a precompiled artifact per target under its own digest, so a hardened build links no compiler and deserializes only pinned bytes? owner: connector affects: connector.package
 
 unsettled: Which generation of the sandbox interface does the guest world target, and what does native async change about the per-call deadline and the reservation bridge? owner: connector affects: connector.package
 
