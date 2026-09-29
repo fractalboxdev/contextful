@@ -16776,7 +16776,7 @@
       "operation": "gate",
       "subject": "locked-resolve",
       "kind": "behavior",
-      "statement": "The crate-graph stage resolves every graph `--locked`, so a `Cargo.lock` behind its manifests fails the stage before any rule runs and the stage never rewrites it.",
+      "statement": "The crate-graph stage resolves every graph `--locked` against the committed `Cargo.lock`, so a lock behind its manifests, or one rewritten before the stage starts, fails the stage before any rule runs; the stage never rewrites it.",
       "why": "because a rule held over a graph the lock file does not record passes a build that resolves another",
       "file": "spec/81-engineering.md",
       "line": 162

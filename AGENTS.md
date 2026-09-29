@@ -92,8 +92,8 @@ the gate enforces it.
    it `passing`.
 
 ```sh
-cargo run -q -p contextful-ci -- gate                          # every stage, against origin/HEAD
-cargo run -q -p contextful-ci -- gate --stage test-first --base <rev>
+cargo run --locked -q -p contextful-ci -- gate                 # every stage, against origin/HEAD
+cargo run --locked -q -p contextful-ci -- gate --stage test-first --base <rev>
 ```
 
 The gate measures commits, so commit before running it.

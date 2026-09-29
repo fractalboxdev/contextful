@@ -188,9 +188,34 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             "acceptance" => acceptance(&root)?,
             "evaluate" => measure::evaluate(&root)?,
             "features" => features(&root)?,
-            "crate-graph" => topology::check(&root)?,
+            "crate-graph" => {
+                committed_lock(&root)?;
+                topology::check(&root)?
+            }
             _ => unreachable!(),
         }
+    }
+    Ok(())
+}
+
+/// Refuse a `Cargo.lock` that differs from the one the measured commit records: `cargo
+/// run` without `--locked` rewrites a stale lock before this binary starts, and the
+/// crate-graph rules then resolve a graph the commit does not (`assurance.gate.locked-resolve`).
+fn committed_lock(root: &Path) -> Result<()> {
+    let out = Command::new("git")
+        .args(["status", "--porcelain", "--", "Cargo.lock"])
+        .current_dir(root)
+        .output()
+        .context("running git")?;
+    if !out.status.success() {
+        bail!("git status: {}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    let changed = String::from_utf8_lossy(&out.stdout);
+    if !changed.trim().is_empty() {
+        bail!(
+            "`Cargo.lock` differs from the committed one ({}); resolve with `cargo run --locked` and commit the lock the manifests need",
+            changed.trim()
+        );
     }
     Ok(())
 }

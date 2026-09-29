@@ -697,8 +697,10 @@ fn the_crate_graph_stage_refuses_an_undeclared_crossing() {
     assert!(err.contains("run-path crate `contextful-engine` reaches read-path crate `contextful-context`"), "{err}");
 }
 
-/// A `Cargo.lock` the manifests disagree with stops the rules before any runs.
-// spec: assurance.gate.locked-resolve@3966f7ce
+/// A `Cargo.lock` the manifests disagree with stops the rules before any runs, and so does
+/// one rewritten before the stage starts, as `cargo run` without `--locked` rewrites a
+/// stale one: it differs from the committed lock.
+// spec: assurance.gate.locked-resolve@08cdd401
 #[test]
 fn a_lock_file_behind_its_manifests_stops_the_crate_graph() {
     let r = Repo::init();
@@ -714,6 +716,12 @@ fn a_lock_file_behind_its_manifests_stops_the_crate_graph() {
     // The rules left the lock file as it stood.
     let lock_file = std::fs::read_to_string(r.root.join("Cargo.lock")).unwrap();
     assert!(!lock_file.contains("leftpad"), "{lock_file}");
+
+    r.commit("a dependency the committed lock does not record");
+    lock(&r.root);
+    let o = r.gate(&["--stage", "crate-graph"]);
+    assert!(!o.status.success(), "a rewritten lock file passed: {}", stdout(&o));
+    assert!(stderr(&o).contains("`Cargo.lock` differs from the committed one"), "{}", stderr(&o));
 }
 
 /// This repository's store write half resolves no forbidden package, and its unique

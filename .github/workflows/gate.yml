@@ -20,7 +20,7 @@
 # and CONTEXTFUL_REQUIRE_LEAN=1, and fails the stage when setup fails, so a
 # Lean-backed test fails rather than skips.
 #
-# A contributor runs the same stages locally: `cargo run -q -p contextful-ci -- gate`.
+# A contributor runs the same stages locally: `cargo run --locked -q -p contextful-ci -- gate`.
 # `contextful-ci`'s integration suite fails when this matrix and its stage list differ.
 #
 # A fork's pull request dispatches nothing: the dispatch signs with the org's HMAC
@@ -54,7 +54,7 @@ jobs:
               "repo": "${{ github.repository }}",
               "sha": "${{ github.event.pull_request.head.sha }}",
               "checkLabel": "${{ matrix.stage }}",
-              "command": "cargo run -q -p contextful-ci -- gate --stage ${{ matrix.stage }} --base ${{ github.event.pull_request.base.sha }}",
+              "command": "cargo run --locked -q -p contextful-ci -- gate --stage ${{ matrix.stage }} --base ${{ github.event.pull_request.base.sha }}",
               "failOnNonZeroExit": true,
               "timeoutSec": 1800
             }

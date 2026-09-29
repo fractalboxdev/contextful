@@ -159,7 +159,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because a provider token cannot report its own grants, so the comment above it is the one record of what it reaches*
 - `crate-graph` — The crate-graph stage holds run-path crates to reaching read-path crates through the three crossing crates alone; another edge raises `CrateGraphViolation`, naming both crates.
   *P5*
-- `locked-resolve` — The crate-graph stage resolves every graph `--locked`, so a `Cargo.lock` behind its manifests fails the stage before any rule runs and the stage never rewrites it.
+- `locked-resolve` — The crate-graph stage resolves every graph `--locked` against the committed `Cargo.lock`, so a lock behind its manifests, or one rewritten before the stage starts, fails the stage before any rule runs; the stage never rewrites it.
   *because a rule held over a graph the lock file does not record passes a build that resolves another*
 - `row-token` — Every row-returning function of the store crate takes the enforcement token type, whose constructor is private to the enforcement module; a row path outside a registered relation raises `EnforceUnmediatedPath`, naming the function.
   *P5*
