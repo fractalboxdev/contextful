@@ -10,7 +10,8 @@ use std::time::Duration;
 
 const STATUS_FILE: &str = "spec/status.md";
 const MILESTONES_HEADING: &str = "## Milestones";
-const PASSING: &str = "passing";
+const CLOSED_COLUMN: &str = "Closed";
+const CLOSED: &str = "closed";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Version {
@@ -73,7 +74,7 @@ pub fn tag(branch: &str, base: &str) -> Result<()> {
     if let Some(last) = existing.iter().max().filter(|last| version < **last) {
         return Err(refuse(
             "TagVersionRegressed",
-            format!("{} milestone(s) pass at HEAD, giving v{version}, below the existing tag v{last}", closed.len()),
+            format!("{} milestone(s) close at HEAD, giving v{version}, below the existing tag v{last}", closed.len()),
         ));
     }
 
@@ -99,7 +100,7 @@ pub fn tag(branch: &str, base: &str) -> Result<()> {
 
     // `assurance.release.annotated`: without `--force`, git refuses an existing name.
     let name = format!("v{version}");
-    let mut message = format!("Contextful {name}\n\n{} milestone(s) pass their acceptance test:\n", closed.len());
+    let mut message = format!("Contextful {name}\n\n{} milestone(s) close:\n", closed.len());
     closed.iter().for_each(|m| message.push_str(&format!("- {m}\n")));
     git(&["tag", "--sign", "--message", &message, &name, &head]).context("creating the signed tag")?;
     println!("tag: created signed {name} on {short}; publish it with `git push origin {name}`");
@@ -116,16 +117,20 @@ fn reaches(tip: &str, commit: &str) -> Result<bool> {
     }
 }
 
-/// The label of each row of the `## Milestones` table whose last cell reads `passing`.
+/// The label of each row of the `## Milestones` table whose `Closed` cell reads `closed`.
+/// A table without a `Closed` column closes no milestone.
 fn closed_milestones(status: &str) -> Vec<String> {
+    let cells = |row: &str| -> Vec<String> { row.trim().trim_matches('|').split('|').map(|c| c.trim().to_string()).collect() };
     let mut lines = status.lines().skip_while(|l| l.trim() != MILESTONES_HEADING).skip(1);
-    let table = lines.by_ref().skip_while(|l| !l.trim_start().starts_with('|'));
+    let mut table = lines.by_ref().skip_while(|l| !l.trim_start().starts_with('|')).take_while(|l| l.trim_start().starts_with('|'));
+    let Some(column) = table.next().and_then(|header| cells(header).iter().position(|c| c == CLOSED_COLUMN)) else {
+        return Vec::new();
+    };
     table
-        .take_while(|l| l.trim_start().starts_with('|'))
-        .skip(2)
+        .skip(1)
         .filter_map(|row| {
-            let cells: Vec<&str> = row.trim().trim_matches('|').split('|').map(str::trim).collect();
-            (cells.last() == Some(&PASSING)).then(|| cells[0].to_string())
+            let cells = cells(row);
+            (cells.get(column).map(String::as_str) == Some(CLOSED)).then(|| cells[0].clone())
         })
         .collect()
 }

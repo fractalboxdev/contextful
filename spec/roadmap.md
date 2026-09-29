@@ -7,8 +7,8 @@ The order in which the corpus is built. A milestone names the operations it clos
 Each milestone's `Reach:` line is its acceptance criterion, and its `Acceptance:` line
 names the test in `crates/acceptance/` that drives that reach through a built binary.
 The acceptance test lands before the first clause of its milestone is pinned, ignored
-while the milestone is open; the milestone closes when the ignore comes off and the
-test passes.
+while the milestone is open; the milestone closes when the ignore comes off, the
+test passes, and every operation it names holds a performed clause.
 
 A `Depth: operation` line specifies a milestone at operation level: its operations carry
 refusal and limit clauses, unsettled lines and diagrams, and no behavior clause. Removing

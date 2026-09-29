@@ -167,8 +167,10 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *P8*
 - `roadmap` — `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.
   *P8*
-- `acceptance` — A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored, and `passing` otherwise.
+- `acceptance` — A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored or holding a body line that opens with `todo!`, and `passing` otherwise.
   *A-assurance*
+- `closed` — A milestone computes `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause, and `open` otherwise.
+  *because one passing acceptance test drives one path through a milestone, and an operation without a performed clause demonstrates nothing*
 - `acceptance-first` — A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.
   *A-assurance*
 - `deferred-depth` — A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.

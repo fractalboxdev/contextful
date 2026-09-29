@@ -62,17 +62,52 @@ fn a_pin_in_a_milestone_with_no_acceptance_test_is_refused_until_one_exists() {
     assert!(codes(&s.lint("state"), "SpecAcceptanceMissing").is_empty());
 }
 
+/// The `| <heading> ` row of the `## Milestones` table in `spec/status.md`.
+fn milestone_row(status: &str, heading: &str) -> String {
+    status.lines().find(|l| l.starts_with(&format!("| {heading} "))).unwrap_or_default().to_string()
+}
+
 #[test]
 fn status_reports_each_milestone_acceptance_verdict() {
     let s = Scratch::copy();
     s.write("crates/acceptance/tests/integration/m02.rs", "#[test]\n#[ignore]\nfn m02_store() {}\n");
     s.write("crates/acceptance/tests/integration/m03.rs", "#[test]\nfn m03_run_path() {}\n");
+    s.write("crates/acceptance/tests/integration/m04.rs", "#[test]\nfn m04_ingest() {\n    todo!(\"ingest\")\n}\n");
     assert!(s.cmd(&["state"]).status.success());
     let status = s.read("spec/status.md");
-    let row = |m: &str| status.lines().find(|l| l.starts_with(&format!("| {m} "))).unwrap_or_default().to_string();
-    assert!(row("2 — The store").ends_with("| open |"), "{status}");
-    assert!(row("3 — The run path").ends_with("| passing |"), "{status}");
-    assert!(row("4 — Ingest").ends_with("| absent |"), "{status}");
+    assert!(status.contains("| Performed | Acceptance | Closed |"), "{status}");
+    assert!(milestone_row(&status, "2 — The store").ends_with("| open | open |"), "{status}");
+    assert!(milestone_row(&status, "3 — The run path").ends_with("| passing | open |"), "{status}");
+    assert!(milestone_row(&status, "4 — Ingest").ends_with("| open | open |"), "{status}");
+    assert!(milestone_row(&status, "6 — Sync and replicas").ends_with("| absent | open |"), "{status}");
+}
+
+#[test]
+fn a_milestone_closes_only_when_every_operation_it_names_holds_a_performed_clause() {
+    let s = Scratch::copy();
+    s.write("crates/acceptance/tests/integration/m07.rs", "#[test]\nfn m07_memory() {}\n");
+    let ops = ["read.declare", "read.synthesize", "read.revise", "read.recall", "read.resolve-entity", "read.settle"];
+    let mut lib = String::new();
+    for (i, op) in ops.iter().enumerate() {
+        lib.push_str(&format!("#[test]\nfn covers_{i}() {{}}\n"));
+        if i + 1 < ops.len() {
+            s.pin(&s.clause_of(op), "test", &format!("x::covers_{i}"));
+        }
+    }
+    s.write("crates/x/src/lib.rs", &lib);
+    assert!(s.cmd(&["state"]).status.success());
+    let row = milestone_row(&s.read("spec/status.md"), "7 — Memory");
+    assert!(row.ends_with("| passing | open |"), "`read.settle` holds no performed clause: {row}");
+
+    s.pin(&s.clause_of("read.settle"), "test", "x::covers_5");
+    assert!(s.cmd(&["state"]).status.success());
+    let row = milestone_row(&s.read("spec/status.md"), "7 — Memory");
+    assert!(row.ends_with("| passing | closed |"), "{row}");
+
+    s.write("crates/acceptance/tests/integration/m07.rs", "#[test]\n#[ignore]\nfn m07_memory() {}\n");
+    assert!(s.cmd(&["state"]).status.success());
+    let row = milestone_row(&s.read("spec/status.md"), "7 — Memory");
+    assert!(row.ends_with("| open | open |"), "{row}");
 }
 
 /// Insert `Depth: operation` after the `Reach:` line of the milestone headed `heading`.

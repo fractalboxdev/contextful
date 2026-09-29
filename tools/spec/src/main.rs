@@ -205,7 +205,8 @@ pub fn status_text(c: &Corpus) -> String {
     let _ = writeln!(s, "\nDecision records: {records}.\n");
     let (claim, _) = checks::expand_roadmap(c);
     if !claim.is_empty() {
-        s.push_str("## Milestones\n\n| Milestone | Operations | Clauses | Performed | Acceptance |\n| --- | --- | --- | --- | --- |\n");
+        s.push_str("## Milestones\n\nA milestone reads `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause.\n\n");
+        s.push_str("| Milestone | Operations | Clauses | Performed | Acceptance | Closed |\n| --- | --- | --- | --- | --- | --- |\n");
         for ml in checks::milestone_lines(c) {
             let m = ml.heading.clone();
             let ops: Vec<&String> = claim.iter().filter(|(_, v)| **v == m).map(|(k, _)| k).collect();
@@ -213,12 +214,13 @@ pub fn status_text(c: &Corpus) -> String {
                 .clauses()
                 .filter(|cl| ops.iter().any(|o| **o == format!("{}.{}", cl.contract, cl.operation)))
                 .collect();
-            let perf = cls
-                .iter()
-                .filter(|cl| verdicts.get(&cl.id) == Some(&"performed"))
-                .count();
+            let performed: Vec<&&Clause> = cls.iter().filter(|cl| verdicts.get(&cl.id) == Some(&"performed")).collect();
+            let perf = performed.len();
             let acc = checks::acceptance_verdict(c, ml.acceptance.as_deref());
-            let _ = writeln!(s, "| {m} | {} | {} | {perf} | {acc} |", ops.len(), cls.len());
+            // `corpus.state.closed`: every named operation holds at least one performed clause.
+            let covered = ops.iter().all(|o| performed.iter().any(|cl| **o == format!("{}.{}", cl.contract, cl.operation)));
+            let closed = if acc == "passing" && !ops.is_empty() && covered { "closed" } else { "open" };
+            let _ = writeln!(s, "| {m} | {} | {} | {perf} | {acc} | {closed} |", ops.len(), cls.len());
         }
         let unscheduled = c
             .reg

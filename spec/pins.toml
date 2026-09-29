@@ -42,6 +42,7 @@
 "assurance.gate.secret-scope"       = { test = "contextful_ci::secrets::a_key_with_no_scope_comment_above_it_is_refused" }
 "assurance.structure-tree.mirror-unresolved" = { test = "contextful_ci::mirrors::an_annotation_naming_no_clause_is_refused" }
 "corpus.state.acceptance"           = { test = "contextful_spec::state::status_reports_each_milestone_acceptance_verdict" }
+"corpus.state.closed"               = { test = "contextful_spec::state::a_milestone_closes_only_when_every_operation_it_names_holds_a_performed_clause" }
 "corpus.state.deferred-depth"       = { test = "contextful_spec::state::a_behavior_clause_in_an_operation_depth_milestone_is_refused" }
 "corpus.state.acceptance-first"     = { test = "contextful_spec::state::a_pin_in_a_milestone_with_no_acceptance_test_is_refused_until_one_exists" }
 "corpus.state.roadmap"              = { test = "contextful_spec::state::a_milestone_without_an_acceptance_line_is_a_roadmap_finding" }
@@ -54,7 +55,7 @@
 assurance = 100
 authority = 172
 connector = 156
-corpus = 37
+corpus = 38
 disclosure = 27
 read = 119
 run = 204
