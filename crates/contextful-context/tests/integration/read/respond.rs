@@ -4,6 +4,7 @@
 
 use super::*;
 use contextful_context::read::RetrieveRequest;
+use contextful_core::store::bound_time::Bounds;
 use serde_json::json;
 
 const VENDOR_FILE: &str = "tables/research/vendor/data/runs/run-0001/ingest-a/part-00000.parquet";
@@ -85,7 +86,7 @@ fn rows_dropped_counts_the_relation_never_the_statement() {
 fn describe_reports_the_session_zone_and_each_tables_admission() {
     let r = Reads::new();
     let s = r.session(&["research/*"], Some(("research/notes", "acme")), None);
-    let listing = r.face.describe(&s, None).unwrap();
+    let listing = r.face.describe(&s, None, Bounds::default()).unwrap();
     assert_eq!(listing["session_zone"], json!("on-prem:hq"));
     let admitted = |name: &str| {
         listing["tables"].as_array().unwrap().iter().find(|t| t["table"] == json!(name)).unwrap_or_else(|| panic!("{name}"))["zone_admitted"]
@@ -94,10 +95,10 @@ fn describe_reports_the_session_zone_and_each_tables_admission() {
     assert_eq!(admitted("research/vendor"), json!(false));
     assert_eq!(admitted("research/notes"), json!(true));
     assert_eq!(admitted("research/visits"), json!(true));
-    let vendor = r.face.describe(&s, Some("research/vendor")).unwrap();
+    let vendor = r.face.describe(&s, Some("research/vendor"), Bounds::default()).unwrap();
     assert_eq!((vendor["session_zone"].clone(), vendor["zone_admitted"].clone()), (json!("on-prem:hq"), json!(false)));
     let public = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
-    let vendor = r.face.describe(&public, Some("research/vendor")).unwrap();
+    let vendor = r.face.describe(&public, Some("research/vendor"), Bounds::default()).unwrap();
     assert_eq!((vendor["session_zone"].clone(), vendor["zone_admitted"].clone()), (json!("public-cloud:us-east-1"), json!(true)));
 }
 
