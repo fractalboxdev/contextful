@@ -64,7 +64,7 @@ Criteria: MCP-client compatibility, then one surface per guarantee, then revocat
 | Admission once per connection or session | Revocation latency | A revoked credential reads until its connection closes. |
 | A default ceiling | Silence | A guessed number meets production load unreviewed. |
 
-Consequences: admission and a possession-proof check sit on every read, so an MCP client signs each request with its holder key.
+Consequences: admission sits on every read, and a possession-proof check sits on every read under a holder-bound credential; an MCP client that signs nothing reads with a short-lived audience-bound bearer and re-exchanges it before expiry.
 Revisit: a caller needs server-initiated messages or resumable streams.
 
 ## Memory writes validate or dead-letter, and outcomes settle under their source
