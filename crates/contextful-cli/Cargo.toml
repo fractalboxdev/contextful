@@ -32,6 +32,9 @@ thiserror = "2"
 toml = "0.8"
 toml_edit = "0.22"
 
+[dev-dependencies]
+ed25519-dalek = "2"
+
 [features]
 default = ["transport-ureq"]
 transport-ureq = ["contextful-outbound/transport-ureq", "contextful-connectors/transport-ureq"]

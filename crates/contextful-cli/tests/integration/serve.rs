@@ -1,0 +1,178 @@
+//! `contextful serve --http` through the built binary: startup refusals, then MCP
+//! Streamable HTTP admitting a holder-bound credential minted by `token mint --holder`
+//! under a proof on every request.
+
+use contextful_core::time::Instant;
+use contextful_policy::possession::{jwk_thumbprint, sign_proof, ProofRequest};
+use ed25519_dalek::SigningKey;
+use serde_json::{json, Value};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
+use std::path::Path;
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+const AUD: &str = "contextful://acme-research";
+
+fn run(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(args)
+        .current_dir(dir)
+        .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
+        .env_remove("CONTEXTFUL_AUDIENCE")
+        .output()
+        .unwrap()
+}
+
+fn stdout(out: &Output) -> String {
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// A project holding one landed table and an issuer; the issuer's public key.
+fn project() -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    std::fs::create_dir_all(p.join(".contextful")).unwrap();
+    std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
+    std::fs::write(p.join("contextful.toml"), "[[pipeline.tables]]\nname = \"research/notes\"\n").unwrap();
+    std::fs::write(p.join("notes.jsonl"), "{\"note_id\":\"n1\"}\n").unwrap();
+    stdout(&run(p, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
+    let public = stdout(&run(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    (dir, public)
+}
+
+/// A started face, killed however the test ends.
+struct Listener(Child);
+
+impl Drop for Listener {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Start the face; its address, reported on standard error.
+fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(args)
+        .current_dir(dir)
+        .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
+        .env_remove("CONTEXTFUL_AUDIENCE")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut err = BufReader::new(child.stderr.take().unwrap());
+    let listener = Listener(child);
+    let mut line = String::new();
+    while err.read_line(&mut line).unwrap() > 0 {
+        if let Some(addr) = line.trim().strip_prefix("listening on http://").and_then(|a| a.strip_suffix("/mcp")) {
+            return (listener, addr.to_string());
+        }
+        line.clear();
+    }
+    panic!("the face never listened")
+}
+
+static NONCE: AtomicU64 = AtomicU64::new(0);
+
+/// `POST /mcp` carrying `message`, with a proof from `key` or as a bare bearer.
+fn post(addr: &str, message: &Value, token: &str, key: Option<&SigningKey>) -> (u16, Value) {
+    let body = message.to_string();
+    let auth = match key {
+        None => format!("Authorization: Bearer {token}\r\n"),
+        Some(key) => {
+            let now = Instant::from_unix_secs(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64).unwrap();
+            let nonce = format!("cli-nonce-{}", NONCE.fetch_add(1, Ordering::SeqCst));
+            let proof = sign_proof(key, &ProofRequest { method: "POST", target: "/mcp", body: body.as_bytes() }, now, &nonce);
+            format!("Authorization: DPoP {token}\r\nDPoP: {proof}\r\n")
+        }
+    };
+    let mut s = TcpStream::connect(addr).unwrap();
+    write!(s, "POST /mcp HTTP/1.1\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).unwrap();
+    let (head, answer) = raw.split_once("\r\n\r\n").unwrap();
+    (head.split(' ').nth(1).unwrap().parse().unwrap(), serde_json::from_str(answer).unwrap())
+}
+
+fn query() -> Value {
+    json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })
+}
+
+/// The network transport refuses to start without its audience, its ceiling, or an issuer key that resolves and parses.
+#[test]
+fn serve_refuses_to_start_without_its_declarations_or_an_issuer_key() {
+    let (dir, public) = project();
+    let p = dir.path();
+    let base = ["serve", "--http", "127.0.0.1:0", "--project", "research", "--public-key", public.as_str()];
+    for (extra, flag) in [(vec!["--audience", AUD], "--max-in-flight"), (vec!["--audience", AUD, "--max-in-flight", "0"], "--max-in-flight"), (vec!["--max-in-flight", "2"], "--audience")] {
+        let out = run(p, &[&base[..], &extra[..]].concat());
+        assert!(!out.status.success());
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.starts_with("ServeDeclarationMissing") && err.contains(flag) && !err.contains("listening"), "{err}");
+    }
+    for key in [None, Some("ed25519/not-hex")] {
+        let mut args = vec!["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "4", "--project", "research"];
+        if let Some(k) = key {
+            args.extend(["--public-key", k]);
+        }
+        let out = run(p, &args);
+        assert!(!out.status.success());
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.starts_with("IssuerKeyUnusable") && err.contains("--public-key"), "{err}");
+    }
+}
+
+/// `token mint --holder` binds a credential to a holder key: the network face admits it
+/// under a proof on every request and refuses a credential binding no key, and the stdio
+/// server, whose pipe carries no proof, refuses the bound one.
+#[test]
+fn serve_admits_a_holder_bound_credential_per_request_and_refuses_one_binding_no_key() {
+    let (dir, public) = project();
+    let p = dir.path();
+    let mint = |holder: Option<&str>| {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "900"];
+        if let Some(h) = holder {
+            args.extend(["--holder", h]);
+        }
+        stdout(&run(p, &args))
+    };
+    let key = SigningKey::from_bytes(&[11; 32]);
+    let jkt = jwk_thumbprint(key.verifying_key().as_bytes());
+    let bound = mint(Some(&jkt));
+    let introspected: Value = serde_json::from_str(&stdout(&run(p, &["token", "introspect", "--token", &bound]))).unwrap();
+    assert_eq!(introspected["authority"]["cnf"]["jkt"], json!(jkt), "{introspected}");
+    assert!(!run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--table", "research/*", "--holder", "short"]).status.success());
+    let unbound = mint(None);
+
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    for _ in 0..2 {
+        let (status, answer) = post(&addr, &query(), &bound, Some(&key));
+        assert_eq!(status, 200, "{answer}");
+        assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]));
+    }
+    for (token, key) in [(&bound, None), (&unbound, None), (&unbound, Some(&key))] {
+        let (status, answer) = post(&addr, &query(), token, key);
+        assert_eq!((status, answer["error"]["identifier"].clone()), (401, json!("PossessionProofInvalid")), "{answer}");
+    }
+
+    // Over the inherited stdio pipe the bound credential carries no proof, and refuses.
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["mcp", "--project", "research", "--public-key", &public, "--audience", AUD])
+        .current_dir(p)
+        .env("CONTEXTFUL_TOKEN", &bound)
+        .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
+        .env_remove("CONTEXTFUL_AUDIENCE")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let _ = writeln!(child.stdin.take().unwrap(), "{}", query());
+    let out = child.wait_with_output().unwrap();
+    assert!(!out.status.success() && out.stdout.is_empty(), "{}", String::from_utf8_lossy(&out.stdout));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("PossessionProofInvalid"), "{err}");
+}

@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 205 | 56 | 22 | 15 | 87 | 0 | 87 |
-| `authority` | 2 | 16 | 237 | 63 | 27 | 8 | 170 | 0 | 170 |
+| `authority` | 2 | 16 | 237 | 63 | 27 | 8 | 171 | 0 | 171 |
 | `connector` | 2 | 13 | 250 | 74 | 17 | 8 | 120 | 0 | 120 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
-| `read` | 2 | 15 | 139 | 24 | 19 | 18 | 107 | 0 | 107 |
+| `read` | 2 | 15 | 150 | 26 | 21 | 18 | 118 | 0 | 118 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
 | `store` | 1 | 15 | 186 | 45 | 12 | 12 | 147 | 0 | 147 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1607 | 506 | 177 | 115 | 886 | 0 | |
+| **total** | 19 | 149 | 1618 | 508 | 179 | 115 | 898 | 0 | |
 
 Decision records: 18.
 
@@ -24,11 +24,11 @@ Decision records: 18.
 | Milestone | Operations | Clauses | Performed | Acceptance |
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
-| 1 — The authority core | 14 | 202 | 146 | passing |
+| 1 — The authority core | 14 | 202 | 147 | passing |
 | 2 — The store | 9 | 145 | 111 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 354 | 153 | passing |
-| 5 — The read face under enforcement | 17 | 227 | 151 | passing |
+| 5 — The read face under enforcement | 17 | 238 | 162 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 22 | 22 | passing |
 | 8 — Accountability | 5 | 40 | 20 | open |
@@ -196,6 +196,7 @@ Unscheduled operations: 10.
 | `authority.issue.der-at-the-edge` | `crates/contextful-policy/tests/integration/issue.rs::an_es256_raw_signature_leaves_the_port_as_der_in_the_credential_and_the_audit_chain` | performed |
 | `authority.issue.encoding-invalid` | `crates/contextful-policy/tests/integration/issue.rs::a_signature_off_its_tag_or_its_key_raises_signature_encoding_invalid` | performed |
 | `authority.issue.key-rotation` | `crates/contextful-core/tests/integration/issue.rs::the_issuer_key_rotates_every_90_days_and_at_once_on_compromise` | performed |
+| `authority.issue.one-credential` | `crates/contextful-agent/tests/integration/http.rs::a_static_secret_or_a_foreign_credential_admits_nothing` | performed |
 | `authority.issue.oracle-custody` | `crates/contextful-policy/tests/integration/issue.rs::the_custodian_records_one_signing_call_per_mint` | performed |
 | `authority.issue.principal-required` | `crates/contextful-core/tests/integration/issue.rs::a_write_or_execute_mint_without_a_principal_refuses` | performed |
 | `authority.issue.public-key-text` | `crates/contextful-policy/tests/integration/issue.rs::a_public_key_prints_under_its_scheme_tag_and_parses_back` | performed |
@@ -532,18 +533,29 @@ Unscheduled operations: 10.
 | `read.recall.evidence-unresolved` | `crates/contextful-core/tests/integration/memory/recall.rs::unresolvable_evidence_suppresses_the_claim` | performed |
 | `read.recall.ranked-arm` | `crates/contextful-memory/tests/integration/synthesize.rs::a_ranked_arm_over_claims_serves_live_claims_alone` | performed |
 | `read.recall.suppression-count` | `crates/contextful-memory/tests/integration/synthesize.rs::a_suppressed_claim_is_counted_and_never_named` | performed |
+| `read.register.admission-refused` | `crates/contextful-agent/tests/integration/http.rs::a_refused_admission_answers_401_with_its_identifier` | performed |
 | `read.register.advertised-is-enforced` | `crates/contextful-context/tests/integration/read/register.rs::the_published_limit_is_the_applied_one` | performed |
 | `read.register.bare-name` | `crates/contextful-context/tests/integration/read/register.rs::every_bare_name_resolves_to_the_callers_relation` | performed |
 | `read.register.bound-arguments` | `crates/contextful-agent/tests/integration/mcp.rs::valid_as_of_wraps_only_the_tables_a_read_touches` | performed |
 | `read.register.bound-listing` | `crates/contextful-agent/tests/integration/mcp.rs::a_listing_ignores_valid_as_of_and_echoes_only_as_of` | performed |
+| `read.register.concurrent-statements` | `crates/contextful-agent/tests/integration/http.rs::a_fast_statement_answers_while_a_slow_one_runs` | performed |
 | `read.register.connection-views` | `crates/contextful-context/tests/integration/read/register.rs::a_session_connection_registers_views_over_the_current_file_lists` | performed |
+| `read.register.credential-missing` | `crates/contextful-agent/tests/integration/http.rs::a_request_without_a_credential_is_refused_401` | performed |
 | `read.register.describe-zone` | `crates/contextful-context/tests/integration/read/respond.rs::describe_reports_the_session_zone_and_each_tables_admission` | performed |
 | `read.register.engine` | `crates/contextful-context/tests/integration/read/register.rs::the_embedded_engine_reads_the_parquet_an_external_reader_opens` | performed |
 | `read.register.file-listing` | `crates/contextful-context/tests/integration/read/register.rs::file_listing_covers_the_callers_tables_alone` | performed |
 | `read.register.file-preview-target` | `crates/contextful-context/tests/integration/read/register.rs::a_preview_reads_a_run_file_through_its_relation` | performed |
+| `read.register.health` | `crates/contextful-agent/tests/integration/http.rs::health_answers_the_build_identity_without_a_credential` | performed |
 | `read.register.ledger-relation` | `crates/contextful-context/tests/integration/read/register.rs::a_tables_request_ledger_reads_as_its_child_relation` | performed |
+| `read.register.network-transport` | `crates/contextful-agent/tests/integration/http.rs::post_mcp_answers_each_message_as_the_stdio_tool_server_does` | performed |
+| `read.register.past-ceiling` | `crates/contextful-agent/tests/integration/http.rs::past_the_ceiling_a_request_answers_503_with_retry_after` | performed |
+| `read.register.per-request-admission` | `crates/contextful-agent/tests/integration/http.rs::one_listener_admits_holder_bound_credentials_each_on_its_own_grants_and_proof` | performed |
+| `read.register.per-request-revocation` | `crates/contextful-agent/tests/integration/http.rs::a_credential_revoked_between_requests_is_refused_on_the_next` | performed |
 | `read.register.quiet-table` | `crates/contextful-context/tests/integration/read/register.rs::a_quiet_table_reads_empty` | performed |
+| `read.register.request-body` | `crates/contextful-agent/tests/integration/http.rs::a_body_over_one_mebibyte_answers_413` | performed |
 | `read.register.scoped-ledger` | `crates/contextful-context/tests/integration/read/register.rs::a_tenant_scoped_read_naming_the_ledger_is_refused` | performed |
+| `read.register.serve-declaration` | `crates/contextful-agent/tests/integration/http.rs::a_missing_audience_or_ceiling_refuses_the_face` | performed |
+| `read.register.stateless-session` | `crates/contextful-agent/tests/integration/http.rs::a_notification_answers_202_and_the_face_holds_no_session_or_stream` | performed |
 | `read.register.template-projection` | `crates/contextful-core/tests/integration/read/template.rs::a_template_projects_into_a_tool_with_every_field_required` | performed |
 | `read.register.tool-set` | `crates/contextful-agent/tests/integration/mcp.rs::the_tool_list_is_the_closed_read_set` | performed |
 | `read.resolve-entity.ambiguous-mention` | `crates/contextful-core/tests/integration/memory/resolve.rs::a_mention_two_identities_share_is_ambiguous` | performed |

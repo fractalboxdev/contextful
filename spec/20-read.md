@@ -57,7 +57,7 @@ flowchart LR
 
 ## register
 
-The relations, tools and templates one connection sees, and the engine executing against them.
+The relations, tools and templates one connection sees, the engine executing against them, and the network transport carrying the tools.
 
 - `connection-views` — A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.
 - `engine` — The executor is an embedded columnar SQL engine, linked into every profile that serves reads, reading Parquet natively in standard SQL. An external process reads the same files with the engine uninstalled.
@@ -88,6 +88,28 @@ The relations, tools and templates one connection sees, and the engine executing
 - `lexicon-surface` — The describe payload carries the store's numeric-identifier and badge vocabulary. Aliases, time-window phrases and distillation examples stay on the serving side.
 - `reserved-relation` — The engine's reserved table namespaces register like any other relation, with no privileged path underneath.
   *P5*
+- `network-transport` — `contextful serve --http <addr> --audience <aud> --max-in-flight <n>` answers MCP Streamable HTTP at `POST /mcp`: one JSON-RPC message per request, answered as `application/json` by the tool server the stdio transport runs.
+  *A-read*
+- `concurrent-statements` — Requests on any number of connections run concurrently, each statement on its own engine connection under {{read.cache.pool-connections}}; a slow statement delays no other request.
+  *A-read*
+- `serve-declaration` — A serve with no `--audience`, or no positive `--max-in-flight`, raises `ServeDeclarationMissing` naming the flag and binds no listener; neither ships a default.
+  *P3*
+- `past-ceiling` — A request arriving while the ceiling's count of requests is in flight answers `503` with a `Retry-After` of 1 s and admits nothing.
+  *A-read*
+- `per-request-admission` — Each request carries `Authorization: DPoP <credential>` and a `DPoP` proof header, admitted per request under {{authority.verify.possession-binding}} and {{authority.verify.network-needs-key}}, so one listener serves many credentials, each reading its own grants.
+  *A-read*
+- `credential-missing` — A request carrying no `Authorization` credential raises `HttpCredentialMissing` with `401` and reads no row.
+  *A-read*
+- `admission-refused` — A request its admission refuses answers `401` carrying the refusal's identifier, except a full nonce cache, which answers `503` under {{authority.verify.nonce-cache}}.
+  *A-read*
+- `per-request-revocation` — Each request re-reads the `--denylist` file, so a credential revoked between two requests is refused on the next with no restart; an unreadable denylist answers `503` and admits nothing.
+  *A-read*
+- `stateless-session` — A notification answers `202` with no body. The face holds no protocol session and opens no server stream: a `GET` or `DELETE` on `/mcp` answers `405`, any other path `404`.
+  *A-read*
+- `request-body` — A request body over 1 MiB answers `413` and is read no further.
+  *because the listener reads the body before admission, and an unbounded body lets an unadmitted caller hold memory*
+- `health` — `GET /health` answers `200` with the build identity of {{read.embed.build-identity}}, admitting no credential and reading no row.
+  *because a container runtime probes readiness before any caller holds a credential*
 
 unsettled: Is a cross-table join worth a first-class retrieval call, or does an operator-defined view plus the describe payload stay the route? owner: read-path affects: read.register
 

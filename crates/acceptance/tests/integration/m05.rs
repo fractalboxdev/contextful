@@ -224,3 +224,176 @@ fn m05_operator_query() {
     let misspelt = p.run(&cf, &["query", "--json", "--project", "reserch", sql]);
     assert!(!misspelt.status.success() && misspelt.stdout.is_empty());
 }
+
+/// A network client's holder key: the credential names its RFC 7638 thumbprint, and each
+/// request carries a proof it signs.
+struct HolderKey(ed25519_dalek::SigningKey);
+
+impl HolderKey {
+    fn x(&self) -> String {
+        use base64::Engine;
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(self.0.verifying_key().as_bytes())
+    }
+
+    /// The RFC 7638 thumbprint `token mint --holder` takes.
+    fn thumbprint(&self) -> String {
+        use base64::Engine;
+        use sha2::Digest;
+        let canonical = format!("{{\"crv\":\"Ed25519\",\"kty\":\"OKP\",\"x\":\"{}\"}}", self.x());
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(canonical.as_bytes()))
+    }
+
+    /// An EdDSA `dpop+jwt` over `POST /mcp` and `body`, issued now under a fresh nonce.
+    fn proof(&self, body: &str) -> String {
+        use base64::Engine;
+        use ed25519_dalek::Signer;
+        use sha2::Digest;
+        static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+        let header = json!({ "typ": "dpop+jwt", "alg": "EdDSA", "jwk": { "kty": "OKP", "crv": "Ed25519", "x": self.x() } });
+        let iat = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let nonce = format!("m05-{}", NONCE.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+        let claims = json!({ "htm": "POST", "htu": "/mcp", "bd": b64(&sha2::Sha256::digest(body.as_bytes())), "iat": iat, "jti": nonce });
+        let input = format!("{}.{}", b64(header.to_string().as_bytes()), b64(claims.to_string().as_bytes()));
+        let signature = self.0.sign(input.as_bytes());
+        format!("{input}.{}", b64(&signature.to_bytes()))
+    }
+}
+
+/// One MCP Streamable HTTP message over a new connection, presenting `token` with a proof
+/// from its holder key when one is given; the status, head and body of the answer.
+fn post_mcp(addr: &str, message: &Value, token: Option<(&str, &HolderKey)>) -> (u16, String, Vec<u8>) {
+    use std::io::{Read, Write};
+    let body = message.to_string();
+    let auth = token.map(|(t, key)| format!("Authorization: DPoP {t}\r\nDPoP: {}\r\n", key.proof(&body))).unwrap_or_default();
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    write!(s, "POST /mcp HTTP/1.1\r\nHost: {addr}\r\n{auth}Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = Vec::new();
+    s.read_to_end(&mut raw).unwrap();
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+    let head = String::from_utf8_lossy(&raw[..split]).into_owned();
+    (head.split(' ').nth(1).unwrap().parse().unwrap(), head, raw[split + 4..].to_vec())
+}
+
+/// The networked read face: one MCP Streamable HTTP listener serves concurrent
+/// statements for many holder-bound credentials, each admitted per request under its own
+/// proof, answering what the stdio transport answers for the same grants.
+#[test]
+fn m05_http_face() {
+    use std::io::{BufRead, BufReader};
+
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n"));
+    p.write("contextful.toml", "[[pipeline.tables]]\nname = \"research/notes\"\n\n[[pipeline.tables]]\nname = \"research/nums\"\n\n[[pipeline.tables]]\nname = \"hr/salaries\"\n");
+    p.write("notes.jsonl", &[json!({"note_id": "n1"}), json!({"note_id": "n2"})].map(|r| r.to_string()).join("\n"));
+    p.write("nums.jsonl", &(0..1000).map(|x| json!({ "x": x }).to_string()).collect::<Vec<_>>().join("\n"));
+    p.write("salaries.jsonl", &json!({"employee": "e1"}).to_string());
+    for (table, rows) in [("research/notes", "notes.jsonl"), ("research/nums", "nums.jsonl"), ("hr/salaries", "salaries.jsonl")] {
+        ok(&p.run(&cf, &["context", "land", table, "--project", "research", "--rows", rows, "--run-id", "run-0001", "--site-id", "site-a"]));
+    }
+    let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let mint = |table: &str, holder: Option<&HolderKey>| {
+        let jkt = holder.map(HolderKey::thumbprint);
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", table, "--ttl", "3600"];
+        if let Some(jkt) = jkt.as_deref() {
+            args.extend(["--holder", jkt]);
+        }
+        ok(&p.run(&cf, &args))
+    };
+    let (dana, lee) = (HolderKey(ed25519_dalek::SigningKey::from_bytes(&[5; 32])), HolderKey(ed25519_dalek::SigningKey::from_bytes(&[6; 32])));
+    let research_token = mint("research/*", Some(&dana));
+    let hr_token = mint("hr/*", Some(&lee));
+    let (research, hr) = ((research_token.as_str(), &dana), (hr_token.as_str(), &lee));
+    p.write(".contextful/denylist", "");
+
+    /// The listener, killed however the test ends.
+    struct Listener(std::process::Child);
+    impl Drop for Listener {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let mut child = std::process::Command::new(&cf)
+        .args(["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public, "--denylist", ".contextful/denylist"])
+        .current_dir(&p.root)
+        .env_remove("CARGO_TARGET_DIR")
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut err = BufReader::new(child.stderr.take().unwrap());
+    let _listener = Listener(child);
+    let addr = loop {
+        let mut line = String::new();
+        assert!(err.read_line(&mut line).unwrap() > 0, "the face never listened");
+        if let Some(a) = line.trim().strip_prefix("listening on http://").and_then(|a| a.strip_suffix("/mcp")) {
+            break a.to_string();
+        }
+    };
+    let parse = |b: &[u8]| -> Value { serde_json::from_slice(b).unwrap() };
+    let call = |sql: &str| json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": sql } } });
+    let fast = call(r#"SELECT note_id FROM "research/notes" ORDER BY note_id"#);
+    let slow = call(r#"SELECT count(*) AS n FROM "research/nums" a, "research/nums" b, "research/nums" c WHERE c.x < 50 AND a.x * b.x = c.x - 7"#);
+    let rows = |b: &[u8]| parse(b)["result"]["structuredContent"]["rows"].clone();
+
+    // The handshake reports the network face.
+    let (status, _, hello) = post_mcp(&addr, &json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }), Some(research));
+    assert_eq!((status, parse(&hello)["result"]["contextful.build"]["faces"].clone()), (200, json!(["http"])));
+
+    // Two credentials on one listener each read their own grants.
+    let (status, _, notes) = post_mcp(&addr, &fast, Some(research));
+    assert_eq!((status, rows(&notes)), (200, json!([["n1"], ["n2"]])));
+    let (status, _, salaries) = post_mcp(&addr, &call(r#"SELECT employee FROM "hr/salaries""#), Some(hr));
+    assert_eq!((status, rows(&salaries)), (200, json!([["e1"]])));
+    let (_, _, crossed) = post_mcp(&addr, &call(r#"SELECT * FROM "hr/salaries""#), Some(research));
+    assert_eq!(parse(&crossed)["result"]["isError"], json!(true));
+
+    // The answer is byte-identical to the stdio answer for the same grants and snapshot;
+    // the stdio pipe carries no proof, so its credential binds no key.
+    let piped = mint("research/*", None);
+    let session = Session::spawn(&cf, &["mcp", "--project", "research", "--public-key", &public, "--audience", AUD], &p.root, &[("CONTEXTFUL_TOKEN", &piped)]);
+    let mut client = Client { session, next: 0 };
+    let answer = client.request("tools/call", fast["params"].clone());
+    assert_eq!(String::from_utf8(notes).unwrap(), answer.to_string());
+    assert!(client.session.close().success());
+
+    // No credential: 401. A credential binding no key, or a proof from another key: 401.
+    let (status, _, missing) = post_mcp(&addr, &fast, None);
+    assert_eq!((status, parse(&missing)["error"]["identifier"].clone()), (401, json!("HttpCredentialMissing")));
+    for presented in [(piped.as_str(), &dana), (research_token.as_str(), &lee)] {
+        let (status, _, refused) = post_mcp(&addr, &fast, Some(presented));
+        assert_eq!((status, parse(&refused)["error"]["identifier"].clone()), (401, json!("PossessionProofInvalid")));
+    }
+
+    // A fast statement answers while a slow one runs; past the ceiling of 2, a third answers 503.
+    let slow_open = std::sync::atomic::AtomicBool::new(true);
+    std::thread::scope(|s| {
+        let slow_done = s.spawn(|| {
+            assert_eq!(post_mcp(&addr, &slow, Some(research)).0, 200);
+            slow_open.store(false, std::sync::atomic::Ordering::SeqCst);
+            std::time::Instant::now()
+        });
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(slow_open.load(std::sync::atomic::Ordering::SeqCst), "the slow statement is in flight");
+        assert_eq!(post_mcp(&addr, &fast, Some(research)).0, 200);
+        let fast_answered = std::time::Instant::now();
+        // The fast answer arrives while the slow request is still open.
+        assert!(slow_open.load(std::sync::atomic::Ordering::SeqCst), "the fast statement answered only after the slow one completed");
+        let second_slow = s.spawn(|| post_mcp(&addr, &slow, Some(research)).0);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let (status, head, _) = post_mcp(&addr, &fast, Some(research));
+        assert_eq!(status, 503, "{head}");
+        assert!(head.contains("Retry-After: 1"), "{head}");
+        let margin = slow_done.join().unwrap().checked_duration_since(fast_answered);
+        assert!(margin.is_some_and(|m| m >= std::time::Duration::from_millis(100)), "the slow statement completed {margin:?} after the fast answer");
+        assert_eq!(second_slow.join().unwrap(), 200);
+    });
+
+    // Revoked between requests: refused on the next, with no restart.
+    let introspected: Value = serde_json::from_str(&ok(&p.run(&cf, &["token", "introspect", "--token", &research_token]))).unwrap();
+    p.write(".contextful/denylist", &format!("{}\n", introspected["rev_id"].as_str().unwrap()));
+    let (status, _, revoked) = post_mcp(&addr, &fast, Some(research));
+    assert_eq!((status, parse(&revoked)["error"]["identifier"].clone()), (401, json!("AuthorityRevoked")));
+    assert_eq!(post_mcp(&addr, &call(r#"SELECT employee FROM "hr/salaries""#), Some(hr)).0, 200);
+}

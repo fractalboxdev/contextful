@@ -10,4 +10,5 @@ mod memory;
 mod pipeline;
 mod query;
 mod run;
+mod serve;
 mod token;
