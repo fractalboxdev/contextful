@@ -52,13 +52,15 @@ fn m11_derive() {
     p.write("docs/memo.txt", "Quarterly revenue rose.\n\nThe board approved the plan.\n");
     p.write("docs/brief.txt", "Filing deadline is Friday.\n");
     p.write("engine.sh", ENGINE);
-    p.write(
-        "contextful.toml",
-        "[[pipeline]]\nid = \"doc-text\"\ntables = [{ name = \"passages\", primary_key = [\"unit_ref\", \"cue_seq\"] }]\n\
-         [pipeline.source]\nname = \"derive\"\n\
-         config = { engine = \"text-reader\", source_table = \"documents\", media_column = \"path\", parent_id_column = \"doc_id\" }\n\n\
-         [derive.text-reader]\ndriver = \"exec\"\n\n[derive.text-reader.engine]\ncommand = [\"sh\", \"engine.sh\", \"{input}\"]\noutput_format = \"srt\"\n",
-    );
+    let manifest = |args: &str| {
+        format!(
+            "[[pipeline]]\nid = \"doc-text\"\ntables = [{{ name = \"passages\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }}]\n\
+             [pipeline.source]\nname = \"derive\"\n\
+             config = {{ engine = \"text-reader\", source_table = \"documents\", media_column = \"path\", parent_id_column = \"doc_id\" }}\n\n\
+             [derive.text-reader]\ndriver = \"exec\"\n\n[derive.text-reader.engine]\ncommand = [\"sh\", \"engine.sh\", \"{{input}}\"{args}]\noutput_format = \"srt\"\n"
+        )
+    };
+    p.write("contextful.toml", &manifest(""));
     p.write(
         "documents.jsonl",
         "{\"doc_id\":\"d1\",\"path\":\"docs/memo.txt\"}\n{\"doc_id\":\"d2\",\"path\":\"docs/brief.txt\"}\n{\"doc_id\":\"d3\",\"path\":\"docs/lost.txt\"}\n",
@@ -94,4 +96,22 @@ fn m11_derive() {
     assert_eq!(markers.len(), 1, "one marker per unit: {markers:?}");
     assert_eq!(markers[0]["attempts"], "2");
     assert_eq!(derived.iter().filter(|r| r["unit_ref"] == "d1").count(), 1, "a derived unit is not derived twice");
+    let first_key = derived.iter().find(|r| r["unit_ref"] == "d1").unwrap()["derivation_key"].clone();
+
+    // A changed engine argument re-derives every unit on the next tick; once folded, each
+    // re-derived unit answers from the new derivation alone.
+    p.write("contextful.toml", &manifest(", \"--strict\""));
+    ok(&fire("derive-3", "2030-01-01T04:00:00Z"));
+    ok(&p.run(&cf, &["context", "compact", "doc_text_passages", "--project", "research", "--now", "2030-01-01T05:00:00Z"]));
+    let derived = rows(&p, &cf, "doc_text_passages");
+    for doc in ["d1", "d2"] {
+        let rs: Vec<_> = derived.iter().filter(|r| r["unit_ref"] == doc).collect();
+        assert_eq!(rs.len(), 1, "{doc}: the superseded passage is folded away: {rs:?}");
+        assert_ne!(rs[0]["derivation_key"], first_key, "{doc}");
+    }
+    let d1 = derived.iter().find(|r| r["unit_ref"] == "d1").unwrap();
+    assert_eq!(d1["text"], "Quarterly revenue rose. The board approved the plan.");
+    let retried: Vec<_> = derived.iter().filter(|r| r["unit_ref"] == "d3" && r["derivation_key"] != markers[0]["derivation_key"]).collect();
+    assert_eq!(retried.len(), 1, "the failing unit restarts its attempts under the new key: {retried:?}");
+    assert_eq!(retried[0]["attempts"], "1");
 }

@@ -3,7 +3,7 @@
 
 use crate::run::RunError;
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 
 /// Units one run attempts: 25 rows (`run.select.rows-per-run`).
@@ -118,6 +118,15 @@ pub enum OutputFormat {
     Vtt,
 }
 
+impl OutputFormat {
+    pub fn name(self) -> &'static str {
+        match self {
+            OutputFormat::Srt => "srt",
+            OutputFormat::Vtt => "vtt",
+        }
+    }
+}
+
 /// One step of an exec chain.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -135,6 +144,14 @@ pub struct StepSpec {
 }
 
 impl StepSpec {
+    /// Every key of the step, as a derivation key reads it.
+    fn params(&self) -> Value {
+        json!({
+            "command": self.command, "sha256": self.sha256, "output_path": self.output_path,
+            "output_format": self.output_format.map(OutputFormat::name), "when": self.when,
+        })
+    }
+
     /// The step's argument array.
     pub fn argv(&self, engine: &str) -> Result<Vec<String>, RunError> {
         match &self.command {
@@ -182,6 +199,22 @@ pub struct Binding {
 
 fn exec() -> String {
     "exec".into()
+}
+
+impl Binding {
+    /// The binding less its bounds and advisory `zone`: the parameters a derivation key reads
+    /// (`run.emit.derivation-key`). A bound decides whether a unit finishes, not what it derives.
+    pub fn derivation_params(&self) -> Value {
+        json!({
+            "driver": self.driver,
+            "media_root": self.media_root,
+            "preprocess": self.preprocess.iter().map(StepSpec::params).collect::<Vec<_>>(),
+            "engine": self.engine.as_ref().map(StepSpec::params),
+            "env": self.env,
+            "allow_hosts": self.allow_hosts,
+            "allow_image_hosts": self.allow_image_hosts,
+        })
+    }
 }
 
 /// Every `[derive.<name>]` block of a manifest.
@@ -235,8 +268,11 @@ pub fn check_env_name(name: &str) -> Result<(), RunError> {
     }
 }
 
-/// Refuse a derive output table whose key is not `["unit_ref", "cue_seq"]`, or that
-/// names the reserved `kind` column (`run.emit.primary-key`, `run.emit.reserved-discriminator`).
+/// The key every derive output table declares (`run.emit.primary-key`).
+pub const DERIVE_PRIMARY_KEY: [&str; 3] = ["unit_ref", super::emit::DERIVATION_KEY, "cue_seq"];
+
+/// Refuse a derive output table whose key is not [`DERIVE_PRIMARY_KEY`], or that names the
+/// reserved `kind` column (`run.emit.primary-key`, `run.emit.reserved-discriminator`).
 pub fn check_output_table(table: &crate::store::declare::TableDecl) -> Result<(), RunError> {
     let named = table.primary_key().iter().chain(table.order_by.iter()).chain(table.cluster_by()).chain(table.partition_by());
     if named.into_iter().any(|c| c == super::emit::KIND) {
@@ -245,9 +281,9 @@ pub fn check_output_table(table: &crate::store::declare::TableDecl) -> Result<()
             table.name
         )));
     }
-    if table.primary_key() != ["unit_ref", "cue_seq"] {
+    if table.primary_key() != DERIVE_PRIMARY_KEY {
         return Err(RunError::DerivePrimaryKeyMissing(format!(
-            "derive table `{}` declares `primary_key = {:?}`; a derive table keys on [\"unit_ref\", \"cue_seq\"]",
+            "derive table `{}` declares `primary_key = {:?}`; a derive table keys on [\"unit_ref\", \"derivation_key\", \"cue_seq\"]",
             table.name,
             table.primary_key()
         )));

@@ -285,11 +285,11 @@ method = { test = "contextful_core::run::record::only_an_in_flight_row_with_a_la
 target = { op = "==", value = 0 }
 
 [entry.derivation-freshness]
-clause = "run.select.anti-join"
+clause = "run.emit.stale-supersedes"
 metric = "derive.empty_reads"
 kind   = "test"
 tier   = "gate"
-method = { issue = 45 }
+method = { test = "contextful_core::run::derive::a_changed_engine_rederives_every_unit_and_no_read_between_ticks_is_empty" }
 target = { op = "==", value = 0 }
 
 # ---------------------------------------------------------------- store

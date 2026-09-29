@@ -4,6 +4,7 @@
 use super::config::DeriveConfig;
 use super::cues::{Cue, Parsed};
 use crate::connector::attach::scrub_text;
+use crate::run::journal::sha256_hex;
 use crate::run::ports::Row;
 use crate::run::RunError;
 use serde_json::{json, Value};
@@ -49,13 +50,43 @@ impl UnitStatus {
     }
 }
 
+/// The column every passage and marker row carries its derivation key in (`run.emit.derivation-key`).
+pub const DERIVATION_KEY: &str = "derivation_key";
+
+/// What a unit's rows are derived under, besides the parent row: the engine id, the
+/// binding's output-bearing parameters and the output table's declared columns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Derivation {
+    pub engine_id: String,
+    /// `Binding::derivation_params`.
+    pub binding: Value,
+    /// The output table's declared columns.
+    pub output_schema: Value,
+}
+
+impl Derivation {
+    /// The key of one parent row: lowercase hex SHA-256 over this derivation and the parent's
+    /// id, media value and own key, which a derive parent carries (`run.emit.derivation-key`).
+    pub fn key(&self, parent_id: &str, media: &str, parent_key: Option<&str>) -> String {
+        let doc = json!({
+            "engine": self.engine_id,
+            "binding": self.binding,
+            "columns": self.output_schema,
+            "parent": { "id": parent_id, "media": media, "key": parent_key },
+        });
+        sha256_hex(&serde_json::to_vec(&doc).expect("a JSON value serializes"))
+    }
+}
+
 /// One unit to derive.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unit {
     pub key: String,
     pub media: String,
-    /// Attempts its marker records so far.
+    /// Attempts its marker under `derivation_key` records so far.
     pub prior_attempts: i64,
+    /// The key its rows land under.
+    pub derivation_key: String,
 }
 
 /// The outstanding set of one tick.
@@ -75,9 +106,10 @@ fn text(v: Option<&Value>) -> Option<String> {
 }
 
 /// The columns of the output table `select` reads.
-pub const OUTPUT_COLUMNS: [&str; 8] = ["unit_ref", KIND, "attempts", "unit_status", "retryable", "_ingested_at", "_run_id", "_row_seq"];
+pub const OUTPUT_COLUMNS: [&str; 9] =
+    ["unit_ref", DERIVATION_KEY, KIND, "attempts", "unit_status", "retryable", "_ingested_at", "_run_id", "_row_seq"];
 
-/// A marker's place in landing order: `_ingested_at` (fixed-width RFC 3339), `_run_id`,
+/// A row's place in landing order: `_ingested_at` (fixed-width RFC 3339), `_run_id`,
 /// `_row_seq`, then its position in the read.
 type Recency = (String, String, i64, usize);
 
@@ -86,33 +118,77 @@ fn recency(r: &Row, position: usize) -> Recency {
     (s("_ingested_at"), s("_run_id"), r.get("_row_seq").and_then(Value::as_i64).unwrap_or(0), position)
 }
 
-/// The attempts a unit's latest marker records and whether it settled, per unit.
-fn markers(derived: &[Row], max_attempts: i64) -> (BTreeMap<String, (i64, bool)>, BTreeMap<String, ()>) {
-    let mut marked: BTreeMap<String, (Recency, i64, bool)> = BTreeMap::new();
-    let mut derived_units = BTreeMap::new();
-    for (position, r) in derived.iter().enumerate() {
-        let Some(unit) = text(r.get("unit_ref")) else { continue };
-        if r.get(KIND).and_then(Value::as_str) != Some("marker") {
-            derived_units.insert(unit, ());
-            continue;
-        }
-        let attempts = r.get("attempts").and_then(Value::as_i64).unwrap_or(0);
-        let status = r.get("unit_status").and_then(Value::as_str).and_then(|s| UnitStatus::parse(s).ok()).unwrap_or(UnitStatus::Failed);
-        let permanent = r.get("retryable").and_then(Value::as_bool) == Some(false);
-        let settled = matches!(status, UnitStatus::Ok | UnitStatus::Empty) || permanent || attempts >= max_attempts;
-        let at = recency(r, position);
-        if marked.get(&unit).is_none_or(|(latest, _, _)| at > *latest) {
-            marked.insert(unit, (at, attempts, settled));
-        }
-    }
-    (marked.into_iter().map(|(u, (_, a, s))| (u, (a, s))).collect(), derived_units)
+/// One landed row of a unit, as standing reads it.
+struct Landed {
+    key: Option<String>,
+    at: Recency,
+    passage: bool,
+    status: UnitStatus,
+    attempts: i64,
+    permanent: bool,
 }
 
-/// Recompute the outstanding set: every parent row not already holding passages or a
-/// settled marker in the output table, truncated to the run's row budget after the
-/// anti-join. A parent missing its key or media value is skipped and reported.
-pub fn select(parents: &[Row], derived: &[Row], config: &DeriveConfig) -> Selection {
-    let (marked, done) = markers(derived, config.max_attempts);
+impl Landed {
+    fn read(r: &Row, position: usize) -> Landed {
+        Landed {
+            key: text(r.get(DERIVATION_KEY)),
+            at: recency(r, position),
+            passage: r.get(KIND).and_then(Value::as_str) != Some("marker"),
+            status: r.get("unit_status").and_then(Value::as_str).and_then(|s| UnitStatus::parse(s).ok()).unwrap_or(UnitStatus::Failed),
+            attempts: r.get("attempts").and_then(Value::as_i64).unwrap_or(0),
+            permanent: r.get("retryable").and_then(Value::as_bool) == Some(false),
+        }
+    }
+
+    /// Whether this row establishes what its key derives: passages, or an `ok` or `empty`
+    /// marker. Only such a landing supersedes another key's rows.
+    fn establishes(&self) -> bool {
+        self.passage || matches!(self.status, UnitStatus::Ok | UnitStatus::Empty)
+    }
+}
+
+/// Every unit's landed rows, keyed by `unit_ref`.
+fn by_unit(derived: &[Row]) -> BTreeMap<String, Vec<Landed>> {
+    let mut units: BTreeMap<String, Vec<Landed>> = BTreeMap::new();
+    for (position, r) in derived.iter().enumerate() {
+        if let Some(unit) = text(r.get("unit_ref")) {
+            units.entry(unit).or_default().push(Landed::read(r, position));
+        }
+    }
+    units
+}
+
+/// A unit's latest landing that establishes its key: that key and when it landed.
+fn current(rows: &[Landed]) -> Option<(Option<&str>, &Recency)> {
+    rows.iter().filter(|l| l.establishes()).max_by(|a, b| a.at.cmp(&b.at)).map(|l| (l.key.as_deref(), &l.at))
+}
+
+/// A unit's standing under `key`: `None` when it settled there, else the attempts its
+/// latest marker there records. Rows under `key` landed before the unit's latest
+/// establishing landing under another key count for nothing (`run.select.key-change`).
+fn standing(rows: &[Landed], key: &str, max_attempts: i64) -> Option<i64> {
+    let since = match current(rows) {
+        Some((k, _)) if k == Some(key) => return None,
+        Some((_, at)) => Some(at),
+        None => None,
+    };
+    let latest = rows
+        .iter()
+        .filter(|l| l.key.as_deref() == Some(key) && since.is_none_or(|at| l.at > *at))
+        .max_by(|a, b| a.at.cmp(&b.at));
+    match latest {
+        None => Some(0),
+        Some(l) if l.establishes() || l.permanent || l.attempts >= max_attempts => None,
+        Some(l) => Some(l.attempts),
+    }
+}
+
+/// Recompute the outstanding set: every parent row holding neither passages nor a settled
+/// marker under its current derivation key in the output table, truncated to the run's row
+/// budget after the anti-join. A parent missing its key or media value is skipped and
+/// reported.
+pub fn select(parents: &[Row], derived: &[Row], config: &DeriveConfig, derivation: &Derivation) -> Selection {
+    let units = by_unit(derived);
     let mut sel = Selection::default();
     let mut seen = BTreeMap::new();
     for r in parents {
@@ -123,18 +199,52 @@ pub fn select(parents: &[Row], derived: &[Row], config: &DeriveConfig) -> Select
             )));
             continue;
         };
-        if done.contains_key(&key) || seen.insert(key.clone(), ()).is_some() {
+        if seen.insert(key.clone(), ()).is_some() {
             continue;
         }
-        let prior = match marked.get(&key) {
-            Some((_, true)) => continue,
-            Some((attempts, false)) => *attempts,
+        let derivation_key = derivation.key(&key, &media, text(r.get(DERIVATION_KEY)).as_deref());
+        let prior = match units.get(&key) {
             None => 0,
+            Some(rows) => match standing(rows, &derivation_key, config.max_attempts) {
+                None => continue,
+                Some(attempts) => attempts,
+            },
         };
-        sel.outstanding.push(Unit { key, media, prior_attempts: prior });
+        sel.outstanding.push(Unit { key, media, prior_attempts: prior, derivation_key });
     }
     sel.outstanding.truncate(usize::try_from(config.max_rows_per_run).unwrap_or(usize::MAX));
     sel
+}
+
+/// Refuse landing `unit`'s rows when the output table already holds it settled under its
+/// key, as a concurrent tick lands it (`run.emit.settled-revived`).
+pub fn revived(unit: &Unit, derived: &[Row], max_attempts: i64) -> Option<RunError> {
+    let units = by_unit(derived);
+    let rows = units.get(&unit.key)?;
+    standing(rows, &unit.derivation_key, max_attempts).is_none().then(|| {
+        RunError::DeriveSettledUnitRevived(format!(
+            "unit `{}` settled under key `{}` while this tick derived it; its rows are not landed",
+            unit.key,
+            &unit.derivation_key[..unit.derivation_key.len().min(12)]
+        ))
+    })
+}
+
+/// Per row of `derived`, whether it is superseded: landed under another key before its
+/// unit's latest `ok` or `empty` landing (`run.emit.stale-supersedes`).
+pub fn superseded(derived: &[Row]) -> Vec<bool> {
+    let units = by_unit(derived);
+    let latest: BTreeMap<&str, (Option<&str>, &Recency)> = units.iter().filter_map(|(u, rows)| Some((u.as_str(), current(rows)?))).collect();
+    derived
+        .iter()
+        .enumerate()
+        .map(|(position, r)| {
+            let Some(unit) = text(r.get("unit_ref")) else { return false };
+            let Some((key, at)) = latest.get(unit.as_str()) else { return false };
+            let own = text(r.get(DERIVATION_KEY));
+            own.as_deref() != *key && recency(r, position) < **at
+        })
+        .collect()
 }
 
 /// What a unit's cue document establishes: `ok` when it yields passages, `empty` only for
@@ -168,6 +278,7 @@ pub fn passage_rows(unit: &Unit, passages: &[Cue], engine_id: &str) -> Vec<Row> 
                 "unit_ref": unit.key, "cue_seq": i as i64, KIND: "passage", "text": p.text,
                 "start_ms": p.start_ms as i64, "end_ms": p.end_ms as i64,
                 "unit_status": UnitStatus::Ok.name(), "attempts": unit.prior_attempts + 1, "engine_id": engine_id,
+                DERIVATION_KEY: unit.derivation_key,
             });
             v.as_object().cloned().unwrap_or_default()
         })
@@ -181,6 +292,7 @@ pub fn marker_row(unit: &Unit, status: UnitStatus, error: Option<&str>, retryabl
     let v = json!({
         "unit_ref": unit.key, "cue_seq": MARKER_SEQ, KIND: "marker", "unit_status": status.name(),
         "attempts": attempts, "last_error": error.map(redact), "retryable": retryable, "engine_id": engine_id,
+        DERIVATION_KEY: unit.derivation_key,
     });
     v.as_object().cloned().unwrap_or_default()
 }

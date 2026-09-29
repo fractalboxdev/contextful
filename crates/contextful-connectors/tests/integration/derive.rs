@@ -193,6 +193,7 @@ fn source(dir: &Path, parents: Value, engine_toml: &str) -> DeriveSource {
         config,
         binding: binding(engine_toml),
         output_table: "doc_text_passages".into(),
+        output_schema: json!({}),
         reader: Box::new(Rows(vec![("documents".into(), parents)])),
         resolver: Arc::new(contextful_outbound::Resolver::new(vec![], false, Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::from_unix_secs(0).unwrap())))),
         cwd: dir.to_path_buf(),
@@ -372,4 +373,51 @@ fn silence_lands_unavailable_and_a_cue_free_webvtt_lands_empty() {
     assert_eq!((silent[0]["unit_status"].as_str(), silent[0]["retryable"].as_bool(), silent[0]["attempts"].as_i64()), (Some("unavailable"), Some(true), Some(1)));
     let empty = pulled(&mut source(dir.path(), parents, "[derive.reader.engine]\ncommand = [\"printf\", \"WEBVTT\\n\"]\n"));
     assert_eq!((empty[0]["unit_status"].as_str(), empty[0]["retryable"].as_bool()), (Some("empty"), Some(false)));
+}
+
+/// A parent table, and an output table whose rows appear from its second read on, as a concurrent tick landing
+/// them while this one derives.
+struct Racing {
+    parents: Vec<Row>,
+    landed: Vec<Row>,
+    output_reads: std::sync::Mutex<usize>,
+}
+
+impl TableReader for Racing {
+    fn rows(&self, table: &str, _columns: &[&str]) -> Result<Vec<Row>, Failure> {
+        if table == "documents" {
+            return Ok(self.parents.clone());
+        }
+        let mut reads = self.output_reads.lock().unwrap();
+        *reads += 1;
+        Ok(if *reads > 1 { self.landed.clone() } else { Vec::new() })
+    }
+}
+
+/// A unit that settles under its current key while a tick derives it raises `DeriveSettledUnitRevived`, and that
+/// tick lands none of its rows; a changed key revives nothing.
+// spec: run.emit.settled-revived@29ec5fda
+#[test]
+fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("memo.txt"), "Hello there.\n").unwrap();
+    std::fs::write(dir.path().join("brief.txt"), "Filing is due.\n").unwrap();
+    let parents = json!([{"doc_id": "memo", "path": "memo.txt"}, {"doc_id": "brief", "path": "brief.txt"}]);
+    let mut s = source(dir.path(), parents.clone(), SRT_ENGINE);
+    let d = s.derivation().unwrap();
+    let settled = |unit: &str, key: String| {
+        json!({"unit_ref": unit, "cue_seq": 0, "kind": "passage", "derivation_key": key, "_ingested_at": "2030-01-01T00:00:00.000000000Z", "_run_id": "other", "_row_seq": 0})
+            .as_object()
+            .unwrap()
+            .clone()
+    };
+    let parent_rows: Vec<Row> = parents.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
+    s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![settled("memo", d.key("memo", "memo.txt", None))], output_reads: Default::default() });
+    let rows = pulled(&mut s);
+    assert!(rows.iter().all(|r| r["unit_ref"] != "memo"), "the revived unit lands nothing: {rows:?}");
+    assert_eq!(unit(&rows, "brief")["text"], "Filing is due.");
+    assert_eq!(unit(&rows, "brief")["derivation_key"], d.key("brief", "brief.txt", None).as_str());
+    // A concurrent landing under another key settles nothing under this one.
+    s.reader = Box::new(Racing { parents: parent_rows, landed: vec![settled("memo", "0".repeat(64))], output_reads: Default::default() });
+    assert_eq!(unit(&pulled(&mut s), "memo")["text"], "Hello there.");
 }

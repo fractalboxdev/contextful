@@ -6,7 +6,9 @@
 use contextful_core::connector::reference::Template;
 use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec};
 use contextful_core::run::derive::cues::{parse, passages};
-use contextful_core::run::derive::emit::{document_status, marker_row, passage_rows, select, Unit, UnitStatus, OUTPUT_COLUMNS};
+use contextful_core::run::derive::emit::{
+    document_status, marker_row, passage_rows, revived, select, Derivation, Unit, UnitStatus, DERIVATION_KEY, OUTPUT_COLUMNS,
+};
 use contextful_core::run::derive::exec::{
     engine_id, excerpt, expand, is_url, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
@@ -308,6 +310,8 @@ pub struct DeriveSource {
     pub binding: Binding,
     /// The pipeline's own output table, the anti-join's other side.
     pub output_table: String,
+    /// The output table's declared columns, which its derivation key reads.
+    pub output_schema: serde_json::Value,
     pub reader: Box<dyn TableReader>,
     pub resolver: Arc<Resolver>,
     /// Where relative media paths and path-form binaries resolve.
@@ -315,6 +319,17 @@ pub struct DeriveSource {
 }
 
 impl DeriveSource {
+    /// What this pipeline's rows derive under on this machine: the resolved chain's id, the
+    /// binding's parameters and the output table's declared columns.
+    pub fn derivation(&self) -> Result<Derivation, RunError> {
+        let chain = Chain::resolve(&self.config.engine, &self.binding, &self.cwd)?;
+        Ok(self.derivation_of(&chain))
+    }
+
+    fn derivation_of(&self, chain: &Chain) -> Derivation {
+        Derivation { engine_id: chain.id.clone(), binding: self.binding.derivation_params(), output_schema: self.output_schema.clone() }
+    }
+
     /// Resolve media to a local file under the media root: an address declines unless a step
     /// handles it, a path escaping the root refuses, and a value that is neither refuses, each
     /// for that unit alone.
@@ -368,20 +383,21 @@ impl DeriveSource {
 
 impl Source for DeriveSource {
     fn pull(&mut self, _request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
-        let parents = self.reader.rows(&self.config.source_table, &[&self.config.parent_id_column, &self.config.media_column])?;
+        let chain = Chain::resolve(&self.config.engine, &self.binding, &self.cwd).map_err(refused)?;
+        let derivation = self.derivation_of(&chain);
+        let parents = self.reader.rows(&self.config.source_table, &[&self.config.parent_id_column, &self.config.media_column, DERIVATION_KEY])?;
         let derived = self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)?;
-        let sel = select(&parents, &derived, &self.config);
+        let sel = select(&parents, &derived, &self.config, &derivation);
         for e in &sel.incomplete {
             eprintln!("{}: {e}", self.pipeline_id);
         }
-        let chain = Chain::resolve(&self.config.engine, &self.binding, &self.cwd).map_err(refused)?;
         let mut env = Vec::new();
         for (k, t) in &chain.env {
             env.push((k.clone(), self.resolver.render(t)?.reveal().to_string()));
         }
         let started = Instant::now();
         let budget = self.config.max_seconds_per_run.map(Duration::from_secs);
-        let mut rows = Vec::new();
+        let mut derived_units = Vec::new();
         for unit in &sel.outstanding {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped between units"));
@@ -389,7 +405,16 @@ impl Source for DeriveSource {
             if budget.is_some_and(|b| started.elapsed() >= b) {
                 break;
             }
-            rows.extend(self.derive_unit(&chain, &env, unit, cancel)?);
+            derived_units.push((unit, self.derive_unit(&chain, &env, unit, cancel)?));
+        }
+        // A concurrent tick may have settled a unit under its key while this one derived it.
+        let landed = if derived_units.is_empty() { Vec::new() } else { self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)? };
+        let mut rows = Vec::new();
+        for (unit, unit_rows) in derived_units {
+            match revived(unit, &landed, self.config.max_attempts) {
+                Some(e) => eprintln!("{}: {e}", self.pipeline_id),
+                None => rows.extend(unit_rows),
+            }
         }
         serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
