@@ -166,3 +166,21 @@ Criteria: one outcome per event, which decided it; wakeups scale with deadlines,
 
 Consequences: the stop channel and its cadence stay as `run.cancel` states them.
 Revisit: a renewal lags measurably under a large deadline heap.
+
+## A host-registered derive task is compiled code, versioned into the derivation key
+
+**Status:** accepted; narrows the derivation-key decision above: an output table declaring `retain_versions` keeps earlier task versions current under their own version instead of superseded.
+
+Context: `task` names `transcribe` or `link_preview`, a unit is one row of one table, and a derive pipeline lands one output table, so scoring and schema mapping fit nowhere. Criteria: configuration selects only engine-named code; a task version change re-selects every settled unit; a reader never sees half a unit.
+
+Decision: an embedding binary registers compiled derive tasks by name before build, and `task` names a registered symbol, never a command. `task_version` folds into `derivation_key`. An output table opting into `retain_versions` keys its rows by version. A task lands several output tables under one commit per table per run, the marker table last.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Registered compiled task, version in the key, marker last *(chosen)* | — | A new task is a host release; a failure between tables re-runs the unit, its rows collapsing by key. |
+| A task as a command in configuration | Who may introduce code | A manifest author gains execution. |
+| Task version outside the derivation key | Freshness | A version bump leaves every settled unit stale. |
+| Every earlier version superseded | Side-by-side reads | Old and new outputs of one unit cannot be compared. |
+| One atomic commit across output tables | Commit model | `run.own.one-commit-per-run` commits each table alone. |
+
+Consequences: a unit spanning several tables is whole once its marker lands. The accepted cost: retained versions occupy the table, and every reader filters by version.

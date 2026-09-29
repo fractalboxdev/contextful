@@ -43,3 +43,20 @@ The server decides every capability a turn exercises. `surface.ground` dispatche
 | Memory exposed to the planner with a documented predicate | The checks | A predicate the model writes is one it can omit. |
 
 Consequences: an injected instruction finds no write tool to reach for.
+
+## A store-driven job runs host-registered code per row over a pinned input
+
+**Status:** accepted; amends the configuration decision above: the fire union gains one fixed store-driven kind, and a job block still names no command.
+
+Context: every run opens against a connector plan, and no job kind takes store rows as its input, so per-row paid work over a snapshot has no resumable home. Criteria: configuration reaches only engine-named code; a resume never repeats a recorded call; a resume against changed input refuses.
+
+Decision: one store-driven kind joins the fire union. Its per-row body resolves only to compiled code the host registers, named by the manifest, never an argument vector. Its input is a statement read through `Face` under the job's grant at an `as_of` resolved once at open; statement and `as_of` join the plan hash, so `run.journal.plan-pin` holds a resume to them. `max_in_flight` is required, with no default.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Fixed kind, registered body, pinned input *(chosen)* | — | A new body is a host release, and every dispatch site matches one more kind. |
+| A body as an argument vector | Trust boundary | A manifest writer gains execution with the store's credentials and egress. |
+| Input re-read on each resume | Resume determinism | A fold or a later landing changes the row set mid-run. |
+| A default `max_in_flight` | Spend visibility | Paid concurrency rises with no line in the manifest. |
+
+Consequences: a job over store rows resumes without paying twice. The accepted cost: the operator states concurrency for every such job, and the closed union grows to seven kinds.

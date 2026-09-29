@@ -118,7 +118,7 @@ The domain crate, dependency direction, and the three build profiles with what e
   *A-connector*
 - `exchange-optional` — `contextful-policy` links the external-assertion stack, `jsonwebtoken` and `rsa`, only under its non-default `exchange` feature, which only the binary may enable, and only alongside wiring {{authority.exchange.surface}}. Another `crates/` package whose resolved graph reaches either raises `ExchangeDependencyLeak`, naming the path.
   *because an embedder admitting credentials with no identity provider then links no RSA code, and `rsa` carries a timing advisory with no patched release*
-- `sqlite-adapter` — `contextful-sqlite` alone declares the SQLite binding and enables no link feature itself; only `contextful-cli` turns on its `bundled` feature. Any other declaration or enablement raises `SqliteLinkForced`, naming the manifest line.
+- `sqlite-adapter` — `contextful-sqlite` alone declares the SQLite binding as a normal dependency and enables no link feature itself; only `contextful-cli` turns on its `bundled` feature. Any other normal-dependency declaration or enablement raises `SqliteLinkForced`, naming the manifest line.
   *A-store*
 - `store-sqlite-free` — `contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, on any target, raises `StoreLinksSqlite`, naming the path that pulled it.
   *A-store*

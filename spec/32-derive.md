@@ -110,6 +110,8 @@ Where a derive engine's definition lives, the port every engine implements, and 
 
 unsettled: Does a build-time check refuse an engine whose declared locality is wider than the source table's admitted zones? owner: derive affects: run.bind
 
+unsettled: Which registration call binds a host's compiled derive task to the name `task` resolves, and does a pure task's socket refusal reuse the metered-client check (issue 95)? owner: derive affects: run.bind
+
 ## exec
 
 Operator-declared argv chains against local binaries: resolution, pinning, environment, bounds and identity.
@@ -236,6 +238,8 @@ unsettled: What reaps derived rows whose parent row is deleted upstream? owner: 
 unsettled: Does a local media file whose bytes change under an unchanged path derive its unit again? owner: derive affects: run.emit
 
 unsettled: Which single column identifies a derived row for a sidecar's `id_column`, given a derive table keys on three? owner: derive affects: run.emit
+
+unsettled: How does the primary key of an output table declaring `retain_versions` carry `task_version`, and which clause fixes the marker table committing after its content tables (issue 95)? owner: derive affects: run.emit
 
 ## parse-cues
 

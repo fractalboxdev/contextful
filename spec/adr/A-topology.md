@@ -86,3 +86,20 @@ Complete mediation is a property of the composition, not a setting: a bypassing 
 
 Consequences: a bulk export or offline diagnostic is slower than a direct read.
 Revisit: an adapter through the stack misses a stated throughput requirement; audit bypasses cluster in one tooling category; a layer proves a no-op on some path.
+
+## Export reads committed runs and is no second destination
+
+**Status:** accepted; amends the one-destination decision above: an OTLP export arm reads landed rows after commit, and the destination set stays one.
+
+Context: a deployment mirrors landed spans, logs and metrics to another OTLP backend, and `_ingested_at` is stamped per run, so two writers commit out of stamp order and a cursor over it skips the late run. Criteria: credential custody; delivery semantics the commit model honors; every row read through the enforcement stack.
+
+Decision: export is a post-commit reader of committed runs with one built-in OTLP arm. Target secrets resolve through `connector.resolve`, and delivery leaves through egress. A cursor over a new per-table commit sequence, committed after the target acknowledges, gives at-least-once delivery; `store.reserve.commit-seq` fixes commit order apart from `_ingested_at`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Post-commit reader, OTLP arm, commit-sequence cursor *(chosen)* | — | A target sees a batch again after a crash between acknowledgement and cursor commit; one more injected column. |
+| Export as a second land destination | Delivery semantics | A failing target fails the landing run. |
+| A consumer cursor over `_ingested_at` | Ordering | A run committing late under an earlier stamp is skipped. |
+| A sink plugin per backend | Attack surface | Loaded code holds target credentials. |
+
+Consequences: landing never waits on a target, and a mirror is at-least-once, never exactly-once. The accepted cost: duplicates reach the target on recovery, and the engine speaks a second wire format beside the store's layout.

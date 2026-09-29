@@ -361,7 +361,7 @@ Resolution of a named published-model build at read time, and the state each res
 - `unknown-build` — An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.
   *because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states*
 - `earlier-bound-wins` — A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.
-- `resolved-echo` — A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not.
+- `resolved-echo` — A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not; the watermark names, per input table, the snapshot id and the committed runs it omits.
 - `absent-watermark` — The watermark is null for a materialization carrying none, distinct from a watermark of zero.
   *P4*
 - `consumer-comparison` — A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.

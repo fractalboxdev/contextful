@@ -171,7 +171,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *P1*
 - `formal-stage` — The formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.
   *P7*
-- `container` — The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a per-stage wall clock — and a run dies on any one.
+- `container` — The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a 30 min per-stage wall clock — and a run dies on any one.
 - `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.
 - `free-disk` — A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.
   *P7*
@@ -223,6 +223,8 @@ flowchart LR
 ```
 
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate
+
+unsettled: Which cache hit rate holds `test-first` and `workspace` under the per-stage wall clock once the `Cargo.lock`-keyed build cache serves the gate container (issue 31)? owner: build affects: assurance.gate
 
 unsettled: What ordering holds when a selected stage subset omits a stage a later stage reads output from? owner: build affects: assurance.gate
 

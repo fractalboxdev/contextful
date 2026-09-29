@@ -409,9 +409,10 @@ fn a_store_adapter_reaching_the_sqlite_link_package_is_refused() {
     assert!(err.contains("`contextful-context` links `libsqlite3-sys` through contextful-context -> catalogkit -> rusqlite -> libsqlite3-sys"), "{err}");
 }
 
-/// `contextful-sqlite` alone declares the SQLite binding and enables no link feature itself; only `contextful-cli` turns
-/// on its `bundled` feature. Any other declaration or enablement raises `SqliteLinkForced`, naming the manifest line.
-// spec: topology.package.sqlite-adapter@c4f8e1cd
+/// `contextful-sqlite` alone declares the SQLite binding as a normal dependency and enables no link feature itself; only
+/// `contextful-cli` turns on its `bundled` feature. Any other normal-dependency declaration or enablement raises
+/// `SqliteLinkForced`, naming the manifest line.
+// spec: topology.package.sqlite-adapter@0b106b19
 #[test]
 fn a_sqlite_link_forced_outside_the_binary_is_refused() {
     let r = Repo::init();
@@ -461,6 +462,14 @@ fn a_sqlite_link_forced_outside_the_binary_is_refused() {
     let err = refused(&topology(&r.root), "SqliteLinkForced");
     assert!(err.contains("`contextful-memory` enables `contextful-sqlite/bundled` through feature `fast` (fast -> contextful-sqlite/bundled, crates/contextful-memory/Cargo.toml:"), "{err}");
     assert!(!err.contains("`contextful-sqlite` turns on"), "{err}");
+
+    // A dev- or build-dependency on the binding, `bundled` included, stays out of every profile's normal graph.
+    let binding = "rusqlite = { path = \"../../stubs/rusqlite\", features = [\"bundled\"] }\n";
+    r.write(
+        "crates/contextful-memory/Cargo.toml",
+        &format!("{}\n[dev-dependencies]\n{binding}\n[build-dependencies]\n{binding}", manifest("contextful-memory", "")),
+    );
+    passes(&r);
 }
 
 /// This repository's store adapter resolves no SQLite, and its binary alone compiles one in.

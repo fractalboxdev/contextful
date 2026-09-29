@@ -119,6 +119,8 @@ unsettled: Does a journal store apart from the catalog retire an owner's rows af
 
 unsettled: How do fan-out bodies express an explicit join, and what does a partially-failed fan-out record? owner: run-path affects: run.journal
 
+unsettled: How does a store-driven run record its resolved snapshot ids and ordered input row keys as its first step, and scope each row's step labels to the row key (issue 96)? owner: run-path affects: run.journal
+
 ## advance
 
 Committing an incremental read position under its declared kind, and the boundary a poll re-reads.

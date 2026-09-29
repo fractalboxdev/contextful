@@ -129,3 +129,52 @@ Decision: the store reaches `derived.sqlite` and `machine.sqlite` through port t
 | Loading the system SQLite at run time | Host resolves its own build | Two SQLite builds share one process with no link-time check. |
 
 Consequences: a gate rule like `topology.package.store-write-engine-free` holds `contextful-context` free of `libsqlite3-sys`.
+
+## A variant column keeps each row's scalar kind in one Struct
+
+**Status:** accepted; amends the lattice decision above, whose variant row lost on read-time recoverability because no single Arrow type described the column.
+
+Context: one attribute key arrives as a string from one sender and an integer from another; the lattice refuses the pair, and a `Json` column holds no bytes kind and parses on every read. Criteria: every value reads back with the type it was sent as; one Arrow type describes the column; the linked engine and parquet releases read it.
+
+Decision: a `variant` column is a Struct of per-kind fields `str`, `int`, `double`, `bool` and `bytes` plus a `kind` tag, so it rests on the Struct column type. Land checks that a row holds at most one non-null field. Parquet `VARIANT` stays rejected until DuckDB and parquet support for it is measured.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Struct of per-kind fields and a kind tag *(chosen)* | — | Five nullable fields per value, and a raw query projects by `kind`. |
+| Parquet `VARIANT` | Engine support | Unmeasured in the linked DuckDB and parquet releases. |
+| A declaration key expanding to sibling typed columns | One column | Every table repeats six columns, and the check spans them. |
+| The long table left to each consumer | One check | Every consumer re-implements the at-most-one-non-null check. |
+
+Consequences: a mixed-kind source lands without widening the lattice, and an `Int64` past the exact float range keeps its value. The accepted cost is a wider stored schema and a variant column that takes no promotion.
+
+## A view is a SQL model the engine builds, published with a per-input frontier
+
+**Status:** accepted; amends `run.publish.manifest-section` and `read.resolve-pin.resolved-echo`, whose watermark becomes a per-input frontier.
+
+Context: `view` is a table key no package reads, so a derived relation reaches a caller only as SQL sent with every statement, and every read pays the rollup. Criteria: two figures compare only when their builds saw the same landings; a view never publishes a row a reader's restriction withholds; a refused build removes nothing.
+
+Decision: `view` holds one `SELECT` over store tables and other views, admitted by `read.guard` at declaration. The engine builds it and publishes it as a model; a refused build keeps the prior build serving. Its watermark is a per-input frontier: per input table, the snapshot id and the committed runs that snapshot omits. A view over a table carrying a row policy or masks declares its own `policy`, else `ViewPolicyUndeclared`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Engine-built model, per-input frontier, own policy *(chosen)* | — | Each build rescans its inputs, and a view author writes a policy for every restricted input. |
+| SQL prepended to each statement | Read cost | Every panel pays the full rollup and version selection. |
+| A single-instant watermark | Comparability | Two writers commit out of stamp order, so an instant names no landing set. |
+| Input policies inherited by the view | Soundness | A join or aggregate changes which rows a restriction reaches. |
+
+Consequences: `contextful.resolved` names the landings behind each figure. A build reads as the operator, so the declared policy is the only restriction a view carries.
+
+## The SQLite link rule reads normal dependencies alone
+
+**Status:** accepted; narrows the catalog-port decision above, whose link rule named no dependency kind.
+
+Context: `topology.package.sqlite-adapter` refused any declaration of the binding outside the adapter, while its sibling link rules read normal dependencies alone and the check skips every entry carrying a kind. Criteria: a rule refuses what reaches a profile's link line; sibling rules read one dependency kind; clause and check agree.
+
+Decision: the rule reads normal dependencies. Under Cargo's resolver 2 a dev-dependency enters only test builds and a build-dependency's features resolve apart from the normal graph, so neither forces a SQLite build into a profile.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Normal dependencies alone *(chosen)* | — | A test or build script may link its own SQLite, which the rule does not see. |
+| Every dependency kind, exempting the adapter's own dev-dependency | Profile relevance | A test fixture linking SQLite reds a gate guarding the profile graphs. |
+
+Consequences: the check and its clause agree, and a build script's SQLite answers to Cargo's own `links` check alone.

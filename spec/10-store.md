@@ -168,8 +168,14 @@ A table's declaration block: its key, ordering column and write mode, and what a
 - `empty-run` — A run landing zero rows commits a manifest with no parts and replaces nothing; a table with no rows registers as a zero-row relation over its declared and injected columns.
 - `fold-coverage` — Validation warns, naming the table, where a key is declared and no enabled compaction job covers the table.
 - `read-side-keys` — A declaration key changes what a read returns and rewrites no committed part; a key added after rows land applies from the next read.
+- `view-definition` — `view` holds one `SELECT` naming store tables and other views, admitted by {{read.guard.single-read-only-statement}} at validation; the engine builds it into staging and publishes it as a model through {{run.publish.staging}}.
+  *A-store*
+- `view-policy` — A `view` reading a table that carries a row policy or column masks declares its own `policy`; one declaring none raises `ViewPolicyUndeclared` at validation.
+  *A-store*
 
 unsettled: What retires a key a source stops serving under `append`, given the source-side deletion is invisible in the tree? owner: store affects: store.declare
+
+unsettled: Does a view build fire on input commits since the last build, on an interval, or on either, and what refuses a cycle among views (issue 94)? owner: store affects: store.declare
 
 ## reserve
 
@@ -180,6 +186,8 @@ The column and table namespaces the engine holds, the provenance columns it inje
   *because a string instant does not sort by time once fractions or offsets appear*
 - `row-seq` — The engine injects `_row_seq`, a non-null int64 numbering a run's rows from 0 in batch order, replacing any producer value.
   *because a run's rows share `_ingested_at` and `_run_id`, and keeping the last write per key needs an order among them*
+- `commit-seq` — The engine injects `_commit_seq`, a non-null int64 its commit assigns above every value the table holds; a run committing after a read carries a value above every row that read returned, whatever its `_ingested_at`.
+  *A-topology*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
 - `taint` — The engine injects `_taint`, a label under {{connector.infer.provenance-order}}, on each row a model's output lands as, replacing any producer value; a row no model produced omits it.
   *because a label a producer sets is one injected text can forge*
@@ -228,6 +236,8 @@ Schema evolution across a table's file set: the type lattice, additive columns, 
 - `reserved-set-versioned` — Adding an injected column advances the semantics version, whose fingerprint recipe names the column.
 
 unsettled: What dimension caps a fixed-size vector column, given the engine bounds an `ARRAY` width? owner: store affects: store.reconcile
+
+unsettled: Do the linked DuckDB and parquet releases read and write Parquet `VARIANT`, so the variant column's Struct encoding gives way to it (issue 90)? owner: store affects: store.reconcile
 
 ## fold
 
