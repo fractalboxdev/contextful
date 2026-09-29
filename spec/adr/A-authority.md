@@ -179,22 +179,20 @@ Revisit: fragment-level provenance through synthesis becomes observable; per-zon
 
 Consequences: a push refuses until the bucket is clean; a replica keeps resolving permissions and staleness while tables are withheld.
 
-## Local transports bind possession to the operating-system peer
+## Local transports bind possession to the holder key, then to the OS peer
 
-**Status:** proposed
+Context: MCP hosts spawn a server over stdio or relay to a Unix socket, and many sign nothing per request. The sender-constrained decision was judged for network transports.
 
-Context: an MCP host spawns a server over stdio, or relays to a Unix socket, holding a static credential and signing nothing, so `authority.verify` admits none of them. The sender-constrained decision rejects bearer bytes on theft yield, judged for network transports.
+Decision: a local transport checks the holder key first: a credential carrying a confirmation thumbprint admits only with a proof from that key. A credential with no confirmation claim falls back to the kernel's peer authentication: an inherited stdio pipe, or a socket peer whose uid — `SO_PEERCRED` on Linux, `getpeereid` on macOS — equals the checkpoint's. A network checkpoint refuses a credential with no confirmation claim.
 
-Decision: on a local transport the kernel's peer authentication replaces the per-request proof. A Unix socket admits a bearer only when the peer credential — `SO_PEERCRED` on Linux, `getpeereid` or `LOCAL_PEERCRED` on macOS — reports the uid the credential was issued to. A stdio credential carries confirmation `transport:stdio` and binds to the spawned child for the session; a network checkpoint refuses it with `PossessionProofInvalid`. A credential with no confirmation claim refuses on every path.
-
-Criteria: theft yield, then host compatibility; theft yield decided it.
+Criteria: theft yield, then host compatibility; theft yield decided the order.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Peer uid on sockets, `transport:stdio` confirmation on pipes *(chosen)* | — | Admission rests on a per-platform peer call; the uid is the boundary. |
+| Holder proof first, peer uid when no confirmation claim *(chosen)* | — | Two local admission paths; the fallback rests on a per-platform peer call, and the uid is its boundary. |
+| Peer uid alone, `transport:stdio` confirmation on pipes | Theft yield | A key-holding client gains nothing from its key; any same-uid process acts with its credential. |
 | Per-request proof on every transport | Host compatibility | Every local client needs a signing shim. |
-| Unconstrained bearer on local transports | Theft yield | A copied credential admits over the network until expiry. |
 | Peer process identity, by pid or audit token | Portability | No call common to Linux and macOS names the process; a pid is reusable. |
 
-Consequences: the bearer rejection holds for network transports alone. The accepted cost: a same-uid process that reads the host's configuration acts with the credential locally, never over a network.
-Revisit: stdio hosts gain per-request signing; a portable call names the peer process.
+Consequences: a key-holding local client keeps network-grade theft resistance; a credential with no confirmation claim is local-only. Accepted cost: on the fallback, a same-uid process reading the host's configuration acts with the credential locally.
+Revisit: stdio hosts sign per request, retiring the fallback; a portable call names the peer process.
