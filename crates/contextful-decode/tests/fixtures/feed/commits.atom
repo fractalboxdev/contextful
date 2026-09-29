@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:/octocat/Hello-World/commits/master</id>
+  <link type="text/html" rel="alternate" href="https://github.com/octocat/Hello-World/commits/master"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/octocat/Hello-World/commits/master.atom"/>
+  <title>Recent Commits to Hello-World:master</title>
+  <updated>2012-03-06T23:06:50Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Grit::Commit/7fd1a60b01f91b314f59955a4e4d4e80d8edf11d</id>
+    <link type="text/html" rel="alternate" href="https://github.com/octocat/Hello-World/commit/7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"/>
+    <title>
+        Merge pull request #6 from Spaceghost/patch-1
+    </title>
+    <updated>2012-03-06T23:06:50Z</updated>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/583231?s=30&amp;v=4"/>
+    <author>
+      <name>octocat</name>
+      <uri>https://github.com/octocat</uri>
+    </author>
+    <content type="html">
+      &lt;pre style=&#39;white-space:pre-wrap;width:81ex&#39;&gt;Merge pull request #6 from Spaceghost/patch-1
+
+New line at end of file.&lt;/pre&gt;
+    </content>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Grit::Commit/762941318ee16e59dabbacb1b4049eec22f0d303</id>
+    <link type="text/html" rel="alternate" href="https://github.com/octocat/Hello-World/commit/762941318ee16e59dabbacb1b4049eec22f0d303"/>
+    <title>
+        New line at end of file. --Signed off by Spaceghost
+    </title>
+    <updated>2011-09-14T04:42:41Z</updated>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/251370?s=30&amp;v=4"/>
+    <author>
+      <name>Spaceghost</name>
+      <uri>https://github.com/Spaceghost</uri>
+    </author>
+    <content type="html">
+      &lt;pre style=&#39;white-space:pre-wrap;width:81ex&#39;&gt;New line at end of file. --Signed off by Spaceghost&lt;/pre&gt;
+    </content>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Grit::Commit/553c2077f0edc3d5dc5d17262f6aa498e69d6f8e</id>
+    <link type="text/html" rel="alternate" href="https://github.com/octocat/Hello-World/commit/553c2077f0edc3d5dc5d17262f6aa498e69d6f8e"/>
+    <title>
+        first commit
+    </title>
+    <updated>2011-01-26T19:06:08Z</updated>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/94719050?s=30&amp;v=4"/>
+    <author>
+      <name>Cameron423698</name>
+      <uri>https://github.com/Cameron423698</uri>
+    </author>
+    <content type="html">
+      &lt;pre style=&#39;white-space:pre-wrap;width:81ex&#39;&gt;first commit&lt;/pre&gt;
+    </content>
+  </entry>
+</feed>

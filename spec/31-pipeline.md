@@ -85,6 +85,7 @@ The pipeline specification, its serializations, manifest discovery, the content 
 - `table-error-exit` — Under continue, `run` exits non-zero naming the failed runs, `apply` prints a partial line, and a scheduled fire appends its failure count to its log line.
 - `chunked-load` — `on_table_error` governs the single-pass live pull alone; a seed or backfill chunk plan halts the fire on failure under either setting.
 - `incremental-field` — `incremental = "<field>"` names the stream clock on the pipeline. Declared, the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}; undeclared, it refetches in full.
+- `incremental-pointer` — An `incremental` value opening with `/` is an RFC 6901 pointer read from each fetched row, so a nested clock such as `/commit/committer/date` orders the stream and names its watermark.
 
 unsettled: What retires a key a source stops serving under `append`: a run declaring itself complete state, or a per-connector delete signal? owner: pipeline affects: run.declare
 
@@ -111,19 +112,21 @@ The plan a specification becomes at build time: node kinds, version and schema.
 
 The declarative chain that rewrites a batch in place.
 
-- `chain` — The chain is an ordered list of `select`, `rename`, `cast` and a single-column `filter`, declared once per pipeline and bound to the root table.
+- `chain` — The chain is an ordered list of `select`, `rename`, `cast`, `extract` and a single-column `filter`, declared once per pipeline and bound to the root table.
 - `arity` — A chain operation emitting more rows than it consumed raises `PipelineTransformArity`.
   *A-run*
 - `filter` — A filter dropping a root row drops that row's nested children with it.
   *because a child landing under a parent id no surviving row carries is a dangling reference*
-- `column-missing` — A filter or cast naming a column the batch does not carry raises `PipelineTransformColumnMissing`, printing the column and the table.
+- `column-missing` — A value filter or cast naming a column the batch does not carry raises `PipelineTransformColumnMissing`, printing the column and the table.
   *because a cast over an absent column otherwise lands the batch untransformed*
 - `cast` — A cast rewrites one column's type and keeps its name and position.
 - `projection` — `select` fixes the outgoing column set by name, and `rename` maps an incoming name onto an outgoing one.
 - `typed-cast` — A cast to `binary`, `binary(n)`, `float32[n]` or `float16[n]` keeps a value that type's JSON form reads, nulls any other, and lands the column in that type.
 - `type-carry` — A `rename` carries a pulled column type to the new name, a `select` drops it with its column, and a cast to a scalar type drops it.
+- `extract` — `extract` copies the value at an RFC 6901 pointer into a named column, null where the pointer names nothing, keeps the source column, and lands the new column with no pulled type.
+- `presence-filter` — A `filter` naming `absent` keeps the rows whose column is missing or null, and one naming `present` keeps the rest; neither requires the batch to carry the column.
 
-unsettled: Does the chain grow past these four operations, or does richer work stay post-landing SQL? owner: pipeline affects: run.transform
+unsettled: Does the chain grow past these five operations, or does richer work stay post-landing SQL? owner: pipeline affects: run.transform
 
 ## normalize
 

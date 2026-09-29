@@ -47,7 +47,9 @@ ConnectorClockColumnRejected    = { clause = "connector.source.clock-column-spel
 ConnectorPaginationAmbiguous    = { clause = "connector.source.pagination-ambiguity", gloss = "Two pagination shapes on one source." }
 ConnectorPageLoop               = { clause = "connector.source.page-loop", gloss = "A paging token or link the vendor already served." }
 ConnectorTableUnmatched         = { clause = "connector.source.table-unmatched", gloss = "A table off the source's table pattern, or binding a dot segment." }
-ConnectorPlaceholderUnbound     = { clause = "connector.source.placeholder-unbound", gloss = "A URL placeholder with no table pattern to bind it." }
+ConnectorPlaceholderUnbound     = { clause = "connector.source.placeholder-unbound", gloss = "A URL or bound-column placeholder with no table pattern to bind it." }
+ConnectorBoundColumnOccupied    = { clause = "connector.source.bound-column-occupied", gloss = "A fetched row already carrying a column the source binds from the table name." }
+ConnectorConditionalRejected    = { clause = "connector.source.conditional-rejected", gloss = "A conditional read beside a pagination shape or a declared incremental field." }
 ConnectorPointerAmbiguous       = { clause = "connector.source.pointer-ambiguity", gloss = "Both expansion pointer forms on one block." }
 ConnectorExpansionFailed        = { clause = "connector.source.follow-up-failure", gloss = "A failed expansion follow-up, failing the whole read." }
 ConnectorTemplateRejected       = { clause = "connector.source.template-shape", gloss = "A pointer template with no placeholder, or one binding into the URL authority." }

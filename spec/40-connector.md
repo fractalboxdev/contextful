@@ -343,7 +343,7 @@ The declared behavior of each source compiled into the engine.
   *because a watermark position carries no page token*
 - `http-limiter` — The generic HTTP source reads its {{connector.meter.limiter-declaration}} from a `limiter` config table, and the project manifest holds each {{connector.meter.limiter-binding}} under `[limiters.<quota>]`.
 - `http-scope-probe` — The generic HTTP source reads its {{connector.declare-capability.scope-probe}} from a `scope_probe` config table and carries its first reference-bound header as the bound credential.
-- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `jsonl`, `csv` or a workbook — and one decoder serves the HTTP, file and object sources. Over HTTP the format is explicit; file sources infer it from the extension.
+- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `jsonl`, `csv`, `feed` or a workbook — and one decoder serves the HTTP, file and object sources. Over HTTP the format is explicit; file sources infer it from the extension.
 - `format-key-mismatch` — A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises `ConnectorFormatKeyRejected` at build.
   *P1*
 - `delimited-cell` — A delimited source lands every cell as a string and an empty unquoted field as null.
@@ -352,6 +352,14 @@ The declared behavior of each source compiled into the engine.
   *P1*
 - `clock-column-spelling` — A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.
   *because the watermark compares text*
+- `feed-format` — `format = "feed"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`, `link`, `published_at`, `summary` and `author`, each null where the entry holds none.
+- `feed-entry-id` — A feed row's `entry_id` is the Atom `id` or the RSS `guid`, else the entry's link; an entry carrying neither is unreadable input under {{run.land.unreadable-input}}.
+  *because a primary key over `entry_id` then collapses every re-fetched entry onto one row*
+- `feed-published-at` — `published_at` is the Atom `published`, else `updated`, or the RSS `pubDate`, folded to an RFC 3339 instant in UTC; a date that is neither RFC 3339 nor RFC 2822 is unreadable input.
+  *because a watermark over `published_at` then orders instants, whatever offset the feed spells*
+- `conditional-get` — `conditional = true` sends the position's `etag` as `If-None-Match` and `last_modified` as `If-Modified-Since`. A `304` lands no rows and holds the position; a `2xx` commits the validators it serves.
+- `conditional-rejected` — `conditional` beside a pagination shape or a declared `incremental` raises `ConnectorConditionalRejected` at build.
+  *because a validator names one document, and a watermark position leaves the validators nowhere to commit*
 - `pagination` — A walk declares exactly one pagination shape: a page parameter with a start page, a next-cursor path with a cursor parameter, a next-URL path, or link-header following.
 - `pagination-ambiguity` — Declaring two pagination shapes raises `ConnectorPaginationAmbiguous`.
   *P1*
@@ -363,8 +371,12 @@ The declared behavior of each source compiled into the engine.
 - `table-pattern` — A table pattern binds table-name segments into the request URL, percent-encoded, and each table holds its own position.
 - `table-unmatched` — A table not matching the declared pattern, or binding `.` or `..` into a placeholder, raises `ConnectorTableUnmatched` ahead of any request.
   *P1*
-- `placeholder-unbound` — A URL placeholder with no pattern to bind it raises `ConnectorPlaceholderUnbound` at build.
+- `placeholder-unbound` — A URL or bound-column placeholder naming neither `{table}` nor a table-pattern field raises `ConnectorPlaceholderUnbound` at build.
   *P1*
+- `bound-columns` — `bound_columns` maps a column name to a template over `{table}` and the table pattern's fields; every row a read fetches carries each column at its filled value, unencoded.
+- `bound-column-occupied` — A fetched row already carrying a bound column raises `ConnectorBoundColumnOccupied`, failing the read.
+  *because the vendor's value and the table's value otherwise disagree with nothing recording which one landed*
+- `github-recipe` — `recipes/github.toml` lands issues without pull requests and commits per `<owner>/<repo>` table, following the `Link` header, stamping `repo_full_name`, and clocking commits at `/commit/committer/date`.
 - `expansion` — An expansion block names its pointer as a URL template over the landed row's scalar columns, percent-encoded, or as a column holding a URL, and names the column the fetched document lands under.
 - `pointer-ambiguity` — Declaring both pointer forms raises `ConnectorPointerAmbiguous`.
   *P1*
@@ -477,6 +489,10 @@ The declared behavior of each source compiled into the engine.
 unsettled: Does a next-URL walk resume mid-walk through a position holding the URL with every credential-bearing query parameter removed? owner: connector affects: connector.source
 
 unsettled: Does an incremental HTTP pull carry its page token beside the watermark, so a watermarked walk resumes mid-walk rather than from the watermark? owner: connector affects: connector.source
+
+unsettled: Does a conditional read also carry a watermark in one position, so a feed both skips an unchanged document and filters entries by `published_at`? owner: connector affects: connector.source
+
+unsettled: Does a feed entry with an unreadable date land with a null `published_at` rather than refusing the whole document? owner: connector affects: connector.source
 
 ## Shapes
 

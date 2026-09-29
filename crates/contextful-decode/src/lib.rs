@@ -1,10 +1,11 @@
 //! The one decoder set every source shares (`connector.source.body-format`): JSON, JSON
-//! Lines, delimited text and a workbook. Input a decoder cannot read refuses whole, naming
-//! the input and the position inside it.
+//! Lines, delimited text, an RSS or Atom feed and a workbook. Input a decoder cannot read
+//! refuses whole, naming the input and the position inside it.
 //!
 //! The package reaches no mediated-request crate and no network stack, so an offline or
 //! sandboxed host links the decoders alone (`topology.package.decode-network-free`).
 
+pub mod feed;
 mod ooxml;
 #[cfg(feature = "pdf")]
 pub mod pdf;
@@ -20,6 +21,8 @@ pub enum Format {
     Json,
     Jsonl,
     Csv,
+    /// An RSS or Atom document, one row per item or entry.
+    Feed,
     /// An Office Open XML workbook, one worksheet per read.
     Workbook,
 }
@@ -30,8 +33,9 @@ impl Format {
             "json" => Ok(Format::Json),
             "jsonl" => Ok(Format::Jsonl),
             "csv" => Ok(Format::Csv),
+            "feed" => Ok(Format::Feed),
             "xlsx" => Ok(Format::Workbook),
-            other => Err(ConnectorError::ConnectorFormatKeyRejected(format!("format `{other}` is none of json, jsonl, csv and xlsx"))),
+            other => Err(ConnectorError::ConnectorFormatKeyRejected(format!("format `{other}` is none of json, jsonl, csv, feed and xlsx"))),
         }
     }
 
@@ -40,6 +44,7 @@ impl Format {
             Format::Json => "json",
             Format::Jsonl => "jsonl",
             Format::Csv => "csv",
+            Format::Feed => "feed",
             Format::Workbook => "xlsx",
         }
     }
@@ -100,6 +105,7 @@ pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -
             let text = std::str::from_utf8(body).map_err(|e| unreadable(input, format!("byte {}", e.valid_up_to()), "the body is not UTF-8"))?;
             Ok((csv(text, input)?, None))
         }
+        Format::Feed => Ok((feed::rows(body, input)?, None)),
         Format::Workbook => Ok((workbook::rows(body, None, 0, input)?, None)),
     }
 }

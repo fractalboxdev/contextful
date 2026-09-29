@@ -1,0 +1,85 @@
+# GitHub issues and commits over the generic HTTP source.
+#
+# Each table is one repository, `<owner>/<repo>`; list every repository to ingest under
+# both pipelines. The token is a fine-grained personal access token or an installation
+# token granting `Issues: Read` and `Contents: Read` on those repositories, bound as
+# `github-token`. Each pipeline follows the `Link` header, 100 records per page, and
+# re-reads from its stored clock through the `since` parameter.
+
+[[pipeline]]
+id = "github_issues"
+incremental = "updated_at"
+tables = ["octocat/Hello-World"]
+
+[pipeline.source]
+name = "http"
+
+[pipeline.source.config]
+endpoint = "https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=updated&direction=asc&per_page=100"
+table_pattern = "{owner}/{repo}"
+link_header = true
+since_param = "since"
+bound_columns = { repo_full_name = "{owner}/{repo}" }
+
+[pipeline.source.config.headers]
+Accept = "application/vnd.github+json"
+Authorization = "Bearer ${secret://github-token}"
+X-GitHub-Api-Version = "2022-11-28"
+
+# The issues endpoint also serves pull requests; a pull request carries `pull_request`.
+[[pipeline.transforms]]
+op = "filter"
+absent = "pull_request"
+
+[[pipeline.transforms]]
+op = "extract"
+pointer = "/user/login"
+to = "author_login"
+
+[[pipeline.transforms]]
+op = "select"
+columns = ["id", "number", "repo_full_name", "title", "body", "state", "state_reason", "author_login", "comments", "created_at", "updated_at", "closed_at", "html_url"]
+
+[[pipeline]]
+id = "github_commits"
+incremental = "/commit/committer/date"
+tables = ["octocat/Hello-World"]
+
+[pipeline.source]
+name = "http"
+
+[pipeline.source.config]
+endpoint = "https://api.github.com/repos/{owner}/{repo}/commits?per_page=100"
+table_pattern = "{owner}/{repo}"
+link_header = true
+since_param = "since"
+bound_columns = { repo_full_name = "{owner}/{repo}" }
+
+[pipeline.source.config.headers]
+Accept = "application/vnd.github+json"
+Authorization = "Bearer ${secret://github-token}"
+X-GitHub-Api-Version = "2022-11-28"
+
+[[pipeline.transforms]]
+op = "extract"
+pointer = "/commit/committer/date"
+to = "committed_at"
+
+[[pipeline.transforms]]
+op = "extract"
+pointer = "/commit/message"
+to = "message"
+
+[[pipeline.transforms]]
+op = "extract"
+pointer = "/commit/author/name"
+to = "author_name"
+
+[[pipeline.transforms]]
+op = "extract"
+pointer = "/author/login"
+to = "author_login"
+
+[[pipeline.transforms]]
+op = "select"
+columns = ["sha", "repo_full_name", "committed_at", "message", "author_name", "author_login", "html_url"]
