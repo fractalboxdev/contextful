@@ -242,9 +242,8 @@ fn plaintext_http_opens_on_loopback_alone() {
     }
 }
 
-/// `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each bind `secret://<name>`,
-/// hydrated through the provider chain, or `env://NAME`, read whole from the process environment, as the bucket opens.
-// spec: store.endpoint.credentials@97944cb2
+/// `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each parse as a `secret://<name>` or
+/// an `env://NAME` reference.
 #[test]
 fn credential_keys_bind_secret_or_environment_references() {
     let c = SyncConfig {

@@ -1,5 +1,6 @@
 //! `store.endpoint`: the S3 adapter against a loopback S3 server that verifies every
 //! request's signature and arbitrates each conditional put under one lock.
+#![cfg(feature = "s3-sync")]
 
 use crate::support::{at, node};
 use contextful_acceptance::s3::{S3Server, ACCESS_KEY, SECRET_KEY};
@@ -46,9 +47,9 @@ fn an_s3_bucket_signs_and_addresses_every_request() {
     assert!(matches!(S3Bucket::open(&server.endpoint, "us-east-1", "Context_Team", credentials(SECRET_KEY)), Err(ObjectError::Unsupported(_))));
 }
 
-/// A `412` or `409`, or a `404` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported
+/// A `412` or `409`, or a `404` naming `NoSuchKey` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported
 /// method and a `403` a forbidden credential, both read by `store.probe.inconclusive`.
-// spec: store.endpoint.conditional-answers@7c90e1c9
+// spec: store.endpoint.conditional-answers@4c5e3b70
 #[test]
 fn backend_answers_map_to_failed_conditions_and_refusals() {
     let server = S3Server::start(BUCKET);
@@ -74,6 +75,28 @@ fn backend_answers_map_to_failed_conditions_and_refusals() {
         server.fail_puts(&[code]);
         assert!(matches!(a.syncer.probe(), Err(SyncError::Store(StoreError::SyncProbeInconclusive(_)))), "{code}");
     }
+}
+
+/// A `404` naming any code but `NoSuchKey`, `NoSuchBucket` among them, answers no absent object and no failed
+/// condition: the get, put, delete or list fails as transport, naming the code.
+// spec: store.endpoint.missing-bucket@7e8b0846
+#[test]
+fn a_missing_bucket_answers_no_absent_object() {
+    let server = S3Server::start(BUCKET);
+    let b = S3Bucket::open(&server.endpoint, "us-east-1", "context-typo", credentials(SECRET_KEY)).unwrap();
+    let key = "team/manifest.json";
+    let transport = |r: Result<(), ObjectError>, what: &str| match r {
+        Err(ObjectError::Transport(m)) => assert!(m.contains("NoSuchBucket"), "{what}: {m}"),
+        other => panic!("{what}: expected a transport failure naming NoSuchBucket, got {other:?}"),
+    };
+    transport(b.get(key).map(|_| ()), "get");
+    transport(b.put(key, b"{}", Condition::IfMatch("\"0123\"".into())).map(|_| ()), "If-Match put");
+    transport(b.put(key, b"{}", Condition::IfNoneMatch).map(|_| ()), "If-None-Match put");
+    transport(b.delete(key), "delete");
+    transport(b.list("team/").map(|_| ()), "list");
+    // The bucket that exists still answers a missing key as absent.
+    assert_eq!(open(&server).get(key).unwrap(), None);
+    assert!(server.keys().is_empty());
 }
 
 /// A list follows each continuation token until the backend reports the listing complete, and returns every key

@@ -30,6 +30,11 @@ fn config(e: ConnectorError) -> Failure {
     Failure::deterministic(FailureTag::Config, e.to_string())
 }
 
+/// `name` answered by `serving` and by `behind` after it (`connector.resolve.shadowed-name`).
+fn shadowed(name: &SecretName, serving: &dyn Provider, behind: &dyn Provider) -> Failure {
+    config(ConnectorError::SecretNameShadowed(format!("`secret://{name}` is answered by `{}` and by `{}` behind it", serving.name(), behind.name())))
+}
+
 /// The environment variable an environment adapter reads for `name`: upper-cased, `-` as `_`.
 pub fn env_var(name: &SecretName) -> String {
     name.as_str().to_ascii_uppercase().replace('-', "_")
@@ -189,17 +194,32 @@ impl Resolver {
                 let at = self.chain.iter().position(|c| Arc::ptr_eq(c, p)).unwrap_or(self.chain.len());
                 for behind in &self.chain[at + 1..] {
                     if behind.answer(name)?.is_some() {
-                        return Err(config(ConnectorError::SecretNameShadowed(format!(
-                            "`secret://{name}` is answered by `{}` and by `{}` behind it",
-                            p.name(),
-                            behind.name()
-                        ))));
+                        return Err(shadowed(name, p.as_ref(), behind.as_ref()));
                     }
                 }
             }
             self.answered_by.lock().unwrap_or_else(|e| e.into_inner()).insert(name.to_string(), p.name().to_string());
             let retires = retires_at(now, answer.expires_at);
             self.cache.lock().unwrap_or_else(|e| e.into_inner()).insert(name.clone(), Cached { value: answer.value.clone(), retires_at: retires });
+            return Ok(answer.value);
+        }
+        Err(config(ConnectorError::SecretUnresolvedReference(format!("no assembled adapter answers `secret://{name}`"))))
+    }
+
+    /// Hydrate `name` bound whole, outside any template: every assembled adapter serves, the
+    /// process environment included (`connector.reference.whole-value-reference`). The
+    /// earliest answering adapter wins and one behind it answering too refuses as shadowing.
+    /// The answer stays out of the cache, so no template ever reads a value the
+    /// environment served this way.
+    pub fn resolve(&self, name: &SecretName) -> Result<Hydrated, Failure> {
+        for (at, p) in self.chain.iter().enumerate() {
+            let Some(answer) = p.answer(name)? else { continue };
+            for behind in &self.chain[at + 1..] {
+                if behind.answer(name)?.is_some() {
+                    return Err(shadowed(name, p.as_ref(), behind.as_ref()));
+                }
+            }
+            self.answered_by.lock().unwrap_or_else(|e| e.into_inner()).insert(name.to_string(), p.name().to_string());
             return Ok(answer.value);
         }
         Err(config(ConnectorError::SecretUnresolvedReference(format!("no assembled adapter answers `secret://{name}`"))))

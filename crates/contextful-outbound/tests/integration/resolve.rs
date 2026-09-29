@@ -160,3 +160,25 @@ fn the_environment_answers_no_template() {
     let opted = Resolver::new(vec![env], true, Arc::new(clock.clone()));
     assert_eq!(opted.hydrate(&name("other-token")).unwrap().reveal(), "env-only");
 }
+
+/// A `secret://<name>` bound whole, outside any template, hydrates through every assembled adapter, the process
+/// environment included, under `connector.resolve.first-hit-wins` and `connector.resolve.shadowed-name`.
+// spec: connector.reference.whole-value-reference@6d0cffce
+#[test]
+fn a_whole_value_reference_consults_the_environment() {
+    let clock = SetClock::new();
+    // The default chain is the environment alone: a template misses, a whole value answers.
+    let r = assemble(&vars(&[("SYNC_KEY_ID", "from-env")]), Arc::new(clock.clone())).unwrap();
+    assert!(r.hydrate(&name("sync-key-id")).unwrap_err().message.starts_with("SecretUnresolvedReference"));
+    assert_eq!(r.resolve(&name("sync-key-id")).unwrap().reveal(), "from-env");
+    assert!(r.resolve(&name("sync-absent")).unwrap_err().message.starts_with("SecretUnresolvedReference"));
+    assert_eq!(r.attribution().get("sync-key-id").map(String::as_str), Some("env"));
+    // A whole-value answer never reaches a template through the cache.
+    assert!(r.hydrate(&name("sync-key-id")).unwrap_err().message.starts_with("SecretUnresolvedReference"));
+    // An adapter ahead of the environment answers first; the environment answering too shadows it.
+    let env: Arc<dyn Provider> = Arc::new(EnvProvider::new(vars(&[("VENDOR_TOKEN", "from-env")])));
+    let both: Vec<Arc<dyn Provider>> = vec![Fixed::new("manager", &[("vendor-token", "from-manager")]), env.clone()];
+    assert!(resolver(both, &clock).resolve(&name("vendor-token")).unwrap_err().message.starts_with("SecretNameShadowed"));
+    let other: Vec<Arc<dyn Provider>> = vec![Fixed::new("manager", &[("other-token", "from-manager")]), env];
+    assert_eq!(resolver(other, &clock).resolve(&name("vendor-token")).unwrap().reveal(), "from-env");
+}

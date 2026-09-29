@@ -401,10 +401,12 @@ Opening a store's bucket: the endpoint schemes, the transport, request addressin
 - `plaintext` — An `http://` endpoint opens on a loopback host alone; any other host raises `SyncEndpointInsecure`, naming it.
   *because objects and signed requests crossing a network in plaintext are readable and replayable by anyone on the path*
 - `addressing` — An S3 or R2 bucket addresses each object path-style, `<endpoint>/<bucket>/<key>` with every key segment percent-encoded, and signs every request with AWS Signature Version 4 for service `s3` at the endpoint's region.
-- `credentials` — `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each bind `secret://<name>`, hydrated through {{connector.resolve.provider-chain}}, or `env://NAME`, read whole from the process environment, as the bucket opens.
+- `credentials` — `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each bind `secret://<name>`, hydrated as {{connector.reference.whole-value-reference}}, or `env://NAME`, read whole from the process environment, as the bucket opens.
 - `credential-unbound` — An S3 or R2 endpoint whose `[sync]` omits `access_key_id` or `secret_access_key`, binds a credential key to anything but a reference, or names an unset variable raises `SyncCredentialUnbound`, naming the key.
   *because a literal key in `config.toml` sits in plaintext on every disk and backup holding the store root*
-- `conditional-answers` — A `412` or `409`, or a `404` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported method and a `403` a forbidden credential, both read by {{store.probe.inconclusive}}.
+- `conditional-answers` — A `412` or `409`, or a `404` naming `NoSuchKey` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported method and a `403` a forbidden credential, both read by {{store.probe.inconclusive}}.
+- `missing-bucket` — A `404` naming any code but `NoSuchKey`, `NoSuchBucket` among them, answers no absent object and no failed condition: the get, put, delete or list fails as transport, naming the code.
+  *because a mistyped or deleted bucket otherwise reads as an empty bucket, a free lease or a lost compare-and-set*
 - `list-pages` — A list follows each continuation token until the backend reports the listing complete, and returns every key under the prefix sorted.
 
 unsettled: Does an S3 bucket whose `[sync]` binds no key sign with the instance or container role's credentials? owner: store affects: store.endpoint
