@@ -61,10 +61,10 @@ pub enum RunCmd {
         /// The catalog run id of this attempt; absent mints one.
         #[arg(long)]
         run_id: Option<String>,
-        /// The site id, declared on the command line.
+        /// The site id of this run; replaces the manifest's `site_id` or `site_id_env`.
         #[arg(long)]
         site_id: Option<String>,
-        /// The environment variable holding the site id.
+        /// The environment variable holding this run's site id; replaces the manifest's declaration.
         #[arg(long)]
         site_id_env: Option<String>,
     },
@@ -261,6 +261,14 @@ impl Destination for StoreDestination {
     }
 }
 
+/// The site id of one run: the command line's declaration when it makes one, else the
+/// manifest's (`run.record.site-id-unresolved`).
+pub(crate) fn site_id_for(manifest: &str, path: &Path, id: Option<String>, env: Option<String>) -> Result<String> {
+    let var = |k: &str| std::env::var(k).ok();
+    let declared = SiteIdSources::from_manifest(manifest, var).with_context(|| format!("`{}`", path.display()))?;
+    Ok(resolve_site_id(&SiteIdSources::declared(id, env, var).over(declared))?)
+}
+
 fn awake_error(e: AwakeError) -> anyhow::Error {
     match e {
         AwakeError::Refused(r) => r.into(),
@@ -271,14 +279,13 @@ fn awake_error(e: AwakeError) -> anyhow::Error {
 pub fn run(cmd: RunCmd) -> Result<()> {
     match cmd {
         RunCmd::Start { project, plan, declaration, run_id, site_id, site_id_env } => {
-            let sources = SiteIdSources { manifest: site_id, env: site_id_env.map(|v| { let value = std::env::var(&v).ok(); (v, value) }) };
-            let site_id = resolve_site_id(&sources)?;
-            let bytes = std::fs::read(&plan).with_context(|| format!("reading the plan `{}`", plan.display()))?;
-            let plan = Plan::compile(&bytes).with_context(|| format!("`{}`", plan.display()))?;
-            let cwd = std::env::current_dir()?;
             let l = project.locate(declaration)?;
             let declaration = &l.declaration;
             let text = std::fs::read_to_string(declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
+            let site_id = site_id_for(&text, declaration, site_id, site_id_env)?;
+            let bytes = std::fs::read(&plan).with_context(|| format!("reading the plan `{}`", plan.display()))?;
+            let plan = Plan::compile(&bytes).with_context(|| format!("`{}`", plan.display()))?;
+            let cwd = std::env::current_dir()?;
             let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", declaration.display()))?;
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;

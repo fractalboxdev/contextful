@@ -19,7 +19,7 @@ use contextful_core::run::advance::CursorKind;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::own::ConnectorPin;
 use contextful_core::run::plan::{ConnectorSpec, CursorSpec, Plan, PlanSpec, NATIVE_WORLD};
-use contextful_core::run::record::{resolve_site_id, RunStatus, SiteIdSources};
+use contextful_core::run::record::RunStatus;
 use contextful_core::run::retry::Schedule;
 use contextful_core::run::RunError;
 use contextful_core::store::declare::TableDecl;
@@ -42,8 +42,10 @@ pub enum PipelineCmd {
         /// The run id of the fire; a pipeline with several tables suffixes it with each destination table name.
         #[arg(long)]
         run_id: Option<String>,
+        /// The site id of this fire; replaces the manifest's `site_id` or `site_id_env`.
         #[arg(long)]
         site_id: Option<String>,
+        /// The environment variable holding this fire's site id; replaces the manifest's declaration.
         #[arg(long)]
         site_id_env: Option<String>,
     },
@@ -191,9 +193,10 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
             Ok(())
         }
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env } => {
-            let site_id = resolve_site_id(&SiteIdSources { manifest: site_id, env: site_id_env.map(|v| { let value = std::env::var(&v).ok(); (v, value) }) })?;
             let l = project.locate(declaration)?;
             let declaration = l.declaration.clone();
+            let text = if declaration.exists() { std::fs::read_to_string(&declaration)? } else { String::new() };
+            let site_id = crate::run::site_id_for(&text, &declaration, site_id, site_id_env)?;
             let declared: Vec<Declared> = collect(&manifests(&declaration)?)?;
             let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| format!("no pipeline `{id}` is declared"))?;
             let spec = d.spec;

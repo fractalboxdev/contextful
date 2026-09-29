@@ -103,9 +103,10 @@ fn a_site_id_is_1_to_64_path_safe_chars() {
     }
 }
 
-/// A site id comes from the manifest or a named environment variable; an unset variable, or both sources
-/// declared, raises `SiteIdUnresolved` at startup.
-// spec: run.record.site-id-unresolved@af987184
+/// A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's
+/// `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset
+/// variable raises `SiteIdUnresolved` at startup.
+// spec: run.record.site-id-unresolved@4e549cda
 #[test]
 fn a_site_id_resolves_from_exactly_one_bound_source() {
     let manifest = |id: &str| SiteIdSources { manifest: Some(id.into()), env: None };
@@ -122,6 +123,36 @@ fn a_site_id_resolves_from_exactly_one_bound_source() {
             other => panic!("{sources:?}: {other:?}"),
         }
     }
+}
+
+/// The manifest declares a site id through its top-level `site_id` or `site_id_env` key, and a command-line
+/// declaration replaces the manifest's whole.
+#[test]
+fn the_manifest_declares_a_site_id_and_the_command_line_replaces_it() {
+    let var = |name: &str| (name == "CONTEXTFUL_SITE").then(|| "site-env".to_string());
+    let read = |text: &str| SiteIdSources::from_manifest(text, var);
+    let tables = "[[pipeline.tables]]\nname = \"filings\"\n";
+    assert_eq!(read(&format!("site_id = \"site-m\"\n{tables}")).unwrap(), SiteIdSources { manifest: Some("site-m".into()), env: None });
+    assert_eq!(
+        read("site_id_env = \"CONTEXTFUL_SITE\"\n").unwrap(),
+        SiteIdSources { manifest: None, env: Some(("CONTEXTFUL_SITE".into(), Some("site-env".into()))) }
+    );
+    assert_eq!(read("site_id_env = \"UNSET_SITE\"\n").unwrap().env, Some(("UNSET_SITE".into(), None)));
+    assert_eq!(read(tables).unwrap(), SiteIdSources::default());
+    match read("site_id = 7\n") {
+        Err(RunError::SiteIdUnresolved(m)) => assert!(m.contains("`site_id`"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+
+    let manifest = read("site_id = \"site-m\"\n").unwrap();
+    let flag = SiteIdSources::declared(Some("site-f".into()), None, var);
+    assert_eq!(resolve_site_id(&flag.over(manifest.clone())).unwrap(), "site-f");
+    let flag_env = SiteIdSources::declared(None, Some("CONTEXTFUL_SITE".into()), var);
+    assert_eq!(resolve_site_id(&flag_env.over(manifest.clone())).unwrap(), "site-env");
+    assert_eq!(resolve_site_id(&SiteIdSources::declared(None, None, var).over(manifest)).unwrap(), "site-m");
+    // Both keys in one place stay a refusal after the merge.
+    let both = read("site_id = \"site-m\"\nsite_id_env = \"CONTEXTFUL_SITE\"\n").unwrap();
+    assert!(matches!(resolve_site_id(&SiteIdSources::default().over(both)), Err(RunError::SiteIdUnresolved(_))));
 }
 
 /// The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.

@@ -199,6 +199,35 @@ pub struct SiteIdSources {
     pub env: Option<(String, Option<String>)>,
 }
 
+impl SiteIdSources {
+    /// One place's declaration: a literal id, a variable name looked up through `var`, or both.
+    pub fn declared(id: Option<String>, env: Option<String>, var: impl Fn(&str) -> Option<String>) -> SiteIdSources {
+        SiteIdSources { manifest: id, env: env.map(|name| { let value = var(&name); (name, value) }) }
+    }
+
+    /// The declaration a manifest's top-level `site_id` and `site_id_env` keys make.
+    pub fn from_manifest(text: &str, var: impl Fn(&str) -> Option<String>) -> Result<SiteIdSources, RunError> {
+        let value: toml::Value = toml::from_str(text).map_err(|e| RunError::Invalid(format!("manifest: {}", e.message())))?;
+        let key = |k: &str| match value.get(k) {
+            None => Ok(None),
+            Some(toml::Value::String(s)) => Ok(Some(s.clone())),
+            Some(other) => Err(RunError::SiteIdUnresolved(format!("`{k}` in the manifest is a {}, not a string", other.type_str()))),
+        };
+        Ok(SiteIdSources::declared(key("site_id")?, key("site_id_env")?, var))
+    }
+
+    /// Whether this place declares a site id at all.
+    pub fn is_declared(&self) -> bool {
+        self.manifest.is_some() || self.env.is_some()
+    }
+
+    /// This declaration when it makes one, else `fallback` whole: a run's command line
+    /// replaces the manifest (`run.record.site-id-unresolved`).
+    pub fn over(self, fallback: SiteIdSources) -> SiteIdSources {
+        if self.is_declared() { self } else { fallback }
+    }
+}
+
 /// Resolve the site id at startup (`run.record.site-id-unresolved`).
 pub fn resolve_site_id(sources: &SiteIdSources) -> Result<String, RunError> {
     let id = match (&sources.manifest, &sources.env) {

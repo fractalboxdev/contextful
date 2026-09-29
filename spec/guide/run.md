@@ -11,7 +11,7 @@ to pull and which tables it lands; a run executes it once against a pinned plan,
 commits rows with the position behind them or leaves a resume point. The derive tier reuses
 the machinery for per-row work over landed rows, such as turning a recording into passages.
 Every effect a run makes is recorded, so a replay reads the record instead of repeating the
-outside world: the journal is a flight recorder the next attempt flies from.
+outside world.
 
 ## How it works
 
@@ -47,18 +47,21 @@ Host jobs open it under their own scope ({{run.own.host-scope}}).
 Each pull is a journaled step: its value is recorded once while its effect may run more than
 once ({{run.journal.step-output}}), and each outbound request carries an idempotency key
 derived from the entry key ({{run.journal.idempotency-key}}). The journal, its blobs and the
-awakeable registry persist through three store ports, so a host brings its own
-store; the file tree ({{run.journal.storage-ports}}) and a SQLite file
+awakeable registry persist through three store ports; the file tree ({{run.journal.storage-ports}}) and a SQLite file
 ({{run.journal.sqlite-stores}}) are adapters. A batch then passes one fixed
 stage order ({{run.land.stage-order}}). Rows and the new cursor commit on one marker
 ({{run.advance.commit-with-rows}}), so no crash leaves one moved without the other.
 
 Failures cross every port as one tagged type ({{run.retry.failure-taxonomy}}). Only the
 transient and rate-limited tags retry ({{run.retry.retryable-classes}}), under the step's
-schedule, the only retry layer in the stack ({{run.retry.one-layer}}). A stop is a mark on the
+schedule, the only retry layer ({{run.retry.one-layer}}). A stop is a mark on the
 run row that every await observes through one token ({{run.cancel.one-token}}), and landing
 is never cut mid-write ({{run.cancel.land-path-uncut}}). A run waiting on an outside party
 suspends durably until its single-use token is posted back ({{run.suspend.awakeable}}).
+
+A deployment declares its writing site ({{run.record.writing-site}}) once in `contextful.toml`,
+as `site_id` or `site_id_env`; `--site-id` replaces it for one run
+({{run.record.site-id-unresolved}}).
 
 Every run closes on a status from one shared set ({{run.record.status-set}}); live progress is
 a best-effort projection the runner never reads back ({{run.project.best-effort}}).
