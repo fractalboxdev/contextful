@@ -205,7 +205,6 @@ fn pipeline_resource() {
 }
 
 /// Describing an uncovered pipeline raises `GrantPipelineNotCovered`, naming it. Listing filters to covered identifiers and raises it when none is covered; a project declaring no pipelines lists empty.
-// spec: authority.grant.pipeline-not-covered@a7aff20e
 #[test]
 fn pipeline_not_covered() {
     let grants = vec![grant(&[Action::Read], &["filings_*"])];
@@ -224,7 +223,6 @@ fn pipeline_not_covered() {
 }
 
 /// Tracing a run gates on the pipeline resolved from the run record and raises `GrantRunTraceDenied` without naming that pipeline.
-// spec: authority.grant.run-trace-denied@3e65cef9
 #[test]
 fn run_trace_denied() {
     let grants = vec![grant(&[Action::Read], &["filings_*"])];

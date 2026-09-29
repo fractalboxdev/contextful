@@ -230,6 +230,8 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority*
 - `ceiling-lowering` — Lowering the ceiling records the previous value and its instant; rotation-grace validation uses the recorded value until the last credential minted under it lapses.
   *A-authority*
+- `policy-init` — `contextful token policy init` writes the issuance policy naming its audience with a ceiling of the {{authority.verify.bearer-lifetime}} bound, and refuses to overwrite an existing policy.
+  *because a fresh project mints under a policy it commits, and the served faces admit nothing longer-lived by default*
 - `out-of-tree-mint` — Ceiling enforcement binds a mint run inside the project tree; a mint run outside it is bounded at the checkpoint by rotation-grace validation.
   *A-authority*
 - `principal-required` — A mint granting `write` or `execute` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.
@@ -248,6 +250,8 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority*
 - `missing-key` — A face configured with no issuer key raises `IssuerKeyMissing`, prints the command that fixes it, and binds no port.
   *P3*
+- `default-key` — A mint naming no issuer key reads `.contextful/issuer.seed`; no file there raises {{authority.issue.missing-key}}.
+  *because the seed `contextful token keygen` writes by default is the one a mint in the same tree reads*
 - `unresolvable-key` — A set issuer key reference that resolves to no material raises `IssuerKeyUnresolvable`; no local key is fabricated.
   *P3*
 - `signing-port` — One signing port signs every credential's authority block and every audit root and tip; no mint path reads a private key. Seed files, secret references resolved at mint time and remote signing oracles are its adapters.
@@ -355,6 +359,8 @@ Ending a credential's usefulness ahead of expiry: short lifetimes, the denylist,
   *A-authority*
 - `epoch` — A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.
   *A-authority*
+- `epoch-store` — A project persists each scope's current epoch and each issuer key version's retirement in `.contextful/keyset.toml` beside the issuer seed; a mint stamps its scope's current epoch, and a checkpoint re-reads the file at each admission.
+  *because a file the checkpoint reads locally keeps a policy service off the admission path, and the seed's directory already holds the issuer's custody*
 - `revoked` — A credential on the denylist, or carrying an epoch below the current scoped epoch, raises `AuthorityRevoked` at the next effect boundary.
   *A-authority*
 - `compromise` — Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.
@@ -380,7 +386,7 @@ stateDiagram-v2
     Retired --> [*]: checkpoints drop it at the next refresh
 ```
 
-unsettled: Where does a scoped revocation epoch live, and how does a checkpoint read it without a policy service on the admission path? owner: authority affects: authority.revoke
+unsettled: How does a bumped epoch reach a checkpoint on another node before the credentials it supersedes lapse? owner: authority affects: authority.revoke
 
 ## exchange
 

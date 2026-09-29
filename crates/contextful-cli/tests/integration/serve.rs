@@ -186,3 +186,30 @@ fn serve_admits_a_holder_bound_credential_under_proof_and_a_short_lived_bearer()
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("PossessionProofInvalid"), "{err}");
 }
+
+/// A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.
+// spec: authority.revoke.epoch@a8e2dbfc
+#[test]
+fn a_running_face_refuses_a_credential_below_the_scoped_epoch_from_the_next_request() {
+    let (dir, public) = project();
+    let p = dir.path();
+    let mint = |on_behalf_of: Option<&str>| {
+        let mut args = vec!["token", "mint", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "900"];
+        if let Some(who) = on_behalf_of {
+            args.extend(["--on-behalf-of", who]);
+        }
+        stdout(&run(p, &args))
+    };
+    let (delegated, unattributed) = (mint(Some("user://dana@acme.example")), mint(None));
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    for token in [&delegated, &unattributed] {
+        assert_eq!(post(&addr, &query(), token, None).0, 200);
+    }
+    assert_eq!(stdout(&run(p, &["token", "revoke", "--principal-class", "delegated"])), "epoch 1");
+    let (status, answer) = post(&addr, &query(), &delegated, None);
+    assert_eq!((status, answer["error"]["identifier"].clone()), (401, json!("AuthorityRevoked")), "{answer}");
+    // The bump reaches its principal class alone, and a credential minted after it admits.
+    assert_eq!(post(&addr, &query(), &unattributed, None).0, 200);
+    let (status, answer) = post(&addr, &query(), &mint(Some("user://dana@acme.example")), None);
+    assert_eq!(status, 200, "{answer}");
+}

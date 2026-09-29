@@ -166,3 +166,124 @@ fn verify_reads_pins_and_audience_from_the_environment_and_accepts_a_bare_ed2551
     let err = stderr(&run_env(p.path(), &verify, &[]));
     assert!(err.contains("--public-key") && err.contains("CONTEXTFUL_ISSUER_PUBKEY"), "{err}");
 }
+
+fn policy_text(dir: &Path) -> String {
+    std::fs::read_to_string(dir.join(".contextful/issuance.toml")).unwrap()
+}
+
+fn verify_at(dir: &Path, pins: &str, at: &str, token: &str) -> Output {
+    run(dir, &["token", "verify", "--public-key", pins, "--audience", AUD, "--at", at, "--token", token])
+}
+
+/// `contextful token policy init` writes the issuance policy naming its audience with a ceiling of the {{authority.verify.bearer-lifetime}} bound, and refuses to overwrite an existing policy.
+// spec: authority.issue.policy-init@25493aa4
+#[test]
+fn a_fresh_project_writes_its_policy_and_mints_under_the_default_issuer_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    let public = stdout(&run(p, &["token", "keygen"]));
+    assert!(p.join(".contextful/issuer.seed").is_file());
+    stdout(&run(p, &["token", "policy", "init", "--audience", AUD]));
+    let text = policy_text(p);
+    assert!(text.contains(&format!("default_audience = \"{AUD}\"")) && text.contains("max_lifetime_secs = 3600"), "{text}");
+    assert!(stderr(&run(p, &["token", "policy", "init", "--audience", AUD])).contains("exists"));
+    assert_eq!(policy_text(p), text, "an existing policy is left as it is");
+
+    let token = stdout(&run(p, &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--table", "t", "--now", MINTED]));
+    stdout(&verify_at(p, &public, "2030-01-01T00:01:00Z", &token));
+}
+
+/// A mint naming no issuer key reads `.contextful/issuer.seed`; no file there raises {{authority.issue.missing-key}}.
+// spec: authority.issue.default-key@b934db75
+#[test]
+fn a_mint_naming_no_issuer_key_reads_the_default_seed() {
+    let p = project();
+    let err = stderr(&run(p.path(), &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--table", "t"]));
+    assert!(err.contains("IssuerKeyMissing") && err.contains("contextful token keygen"), "{err}");
+    let public = keygen(p.path());
+    let token = stdout(&run(p.path(), &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--table", "t", "--now", MINTED]));
+    stdout(&verify_at(p.path(), &public, "2030-01-01T00:01:00Z", &token));
+}
+
+/// Lowering the ceiling records the previous value and its instant; rotation-grace validation uses the recorded value until the last credential minted under it lapses.
+// spec: authority.issue.ceiling-lowering@776caba7
+#[test]
+fn lower_ceiling_records_the_previous_value_and_rotation_grace_answers_to_it() {
+    let p = project();
+    std::fs::write(p.path().join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
+    stdout(&run(p.path(), &["token", "keygen", "--now", "2029-01-01T00:00:00Z"]));
+    stdout(&run(p.path(), &["token", "policy", "lower-ceiling", "--max-lifetime-secs", "3600", "--now", MINTED]));
+    let text = policy_text(p.path());
+    assert!(text.contains("max_lifetime_secs = 3600") && text.contains("previous_max_lifetime_secs = 86400") && text.contains(MINTED), "{text}");
+    // Only a lower value lowers.
+    assert!(stderr(&run(p.path(), &["token", "policy", "lower-ceiling", "--max-lifetime-secs", "7200", "--now", MINTED])).contains("3600"));
+    assert!(stderr(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "t", "--ttl", "7200"])).contains("IssuanceLifetimeAboveCeiling"));
+
+    // A 2 h grace window is too short while a 24 h credential minted before the lowering can live.
+    let rotate = |now: &str| run(p.path(), &["token", "rotate", "--grace-secs", "7200", "--now", now]);
+    assert!(stderr(&rotate("2030-01-01T23:59:59Z")).contains("RotationGraceTooShort"));
+    stdout(&rotate("2030-01-02T00:00:00Z"));
+}
+
+/// The issuer signing key rotates every 90 d, and at once on suspected compromise.
+// spec: authority.issue.key-rotation@1080980b
+#[test]
+fn token_rotate_replaces_the_issuer_key_after_90_days_and_at_once_on_compromise() {
+    let p = project();
+    let first = stdout(&run(p.path(), &["token", "keygen", "--now", MINTED]));
+    let err = stderr(&run(p.path(), &["token", "rotate", "--now", "2030-03-31T23:59:59Z"]));
+    assert!(err.contains("2030-04-01T00:00:00Z"), "the refusal names when rotation falls due: {err}");
+    let second = stdout(&run(p.path(), &["token", "rotate", "--now", "2030-04-01T00:00:00Z"]));
+    assert_ne!(first, second);
+    let third = stdout(&run(p.path(), &["token", "rotate", "--compromise", "--now", "2030-04-01T00:00:01Z"]));
+    assert_ne!(second, third);
+    // The seed holds the newest key: a fresh mint verifies under it alone.
+    let token = stdout(&run(p.path(), &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--table", "t", "--now", "2030-04-01T00:00:02Z"]));
+    stdout(&verify_at(p.path(), &third, "2030-04-01T00:00:03Z", &token));
+}
+
+/// Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.
+// spec: authority.revoke.compromise@c14a17b8
+#[test]
+fn a_compromise_bumps_the_project_epoch_and_retires_the_key_at_once() {
+    let p = project();
+    let old = keygen(p.path());
+    let before = stdout(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "t"]));
+    std::fs::copy(p.path().join(".contextful/issuer.seed"), p.path().join("stolen.seed")).unwrap();
+    let new = stdout(&run(p.path(), &["token", "rotate", "--compromise", "--now", "2030-01-01T00:00:30Z"]));
+    let pins = format!("{old},{new}");
+
+    // The retired key verifies nothing, though the pins still carry it.
+    let err = stderr(&verify_at(p.path(), &pins, "2030-01-01T00:01:00Z", &before));
+    assert!(err.contains("SignatureInvalid"), "{err}");
+    // A credential the stolen seed signs after the bump carries the new epoch, and still admits nothing.
+    let forged = stdout(&run(p.path(), &["token", "mint", "--issuer-key", "stolen.seed", "--on-behalf-of", "user://dana@acme.example", "--table", "t", "--now", MINTED]));
+    assert!(!verify_at(p.path(), &pins, "2030-01-01T00:01:00Z", &forged).status.success());
+    // The bump is project-wide: the store records it on the project's audience alone.
+    let keyset = std::fs::read_to_string(p.path().join(".contextful/keyset.toml")).unwrap();
+    assert!(keyset.contains(&format!("project = \"{AUD}\"")) && keyset.contains("epoch = 1"), "{keyset}");
+
+    let after = stdout(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "t"]));
+    let admitted = stdout(&verify_at(p.path(), &pins, "2030-01-01T00:01:00Z", &after));
+    assert!(admitted.contains("\"epoch\":1") || admitted.contains("\"epoch\": 1"), "{admitted}");
+}
+
+/// A project persists each scope's current epoch and each issuer key version's retirement in `.contextful/keyset.toml` beside the issuer seed; a mint stamps its scope's current epoch, and a checkpoint re-reads the file at each admission.
+// spec: authority.revoke.epoch-store@275939f3
+#[test]
+fn token_revoke_bumps_one_scoped_epoch_and_a_later_mint_carries_it() {
+    let p = project();
+    let public = keygen(p.path());
+    let tenant = |value: &str| {
+        stdout(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "research/*", "--tenant", &format!("research/notes={value}")]))
+    };
+    let (eu, us) = (tenant("acme-eu"), tenant("acme-us"));
+    assert_eq!(stdout(&run(p.path(), &["token", "revoke", "--tenant", "acme-eu"])), "epoch 1");
+    let err = stderr(&verify_at(p.path(), &public, "2030-01-01T00:01:00Z", &eu));
+    assert!(err.contains("AuthorityRevoked"), "{err}");
+    stdout(&verify_at(p.path(), &public, "2030-01-01T00:01:00Z", &us));
+    stdout(&verify_at(p.path(), &public, "2030-01-01T00:01:00Z", &tenant("acme-eu")));
+    // A verifier pointed at another store reads no bump.
+    std::fs::write(p.path().join("empty.toml"), "").unwrap();
+    stdout(&run(p.path(), &["token", "verify", "--public-key", &public, "--audience", AUD, "--at", "2030-01-01T00:01:00Z", "--keyset", "empty.toml", "--token", &eu]));
+}

@@ -67,6 +67,133 @@ pub struct Epochs {
     current: BTreeMap<EpochScope, u64>,
 }
 
+/// One scope's current epoch as the key-set ledger persists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EpochEntry {
+    pub project: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub principal_class: Option<String>,
+    pub epoch: u64,
+}
+
+/// One issuer key version's life as the key-set ledger persists it: the instant it began
+/// signing, and the instant it began retiring under a grace window, or retired at once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeyVersion {
+    /// The public key in static-pin form, `<algorithm>/<hex>`.
+    pub key: String,
+    pub since: Instant,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retiring_since: Option<Instant>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grace_secs: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retired_at: Option<Instant>,
+}
+
+/// The project's key-set ledger, persisted beside the issuer seed at
+/// [`KeySetLedger::PATH`]: each issuer key version's life and each scope's current
+/// revocation epoch (`authority.revoke.epoch-store`). A mint stamps the epoch it reads
+/// here; a checkpoint reads the file with no service call.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeySetLedger {
+    #[serde(default, rename = "key", skip_serializing_if = "Vec::is_empty")]
+    pub keys: Vec<KeyVersion>,
+    #[serde(default, rename = "epoch", skip_serializing_if = "Vec::is_empty")]
+    pub epochs: Vec<EpochEntry>,
+}
+
+impl KeySetLedger {
+    /// Where a project persists its ledger, beside `.contextful/issuer.seed`.
+    pub const PATH: &'static str = ".contextful/keyset.toml";
+
+    /// Decode a ledger file; malformed text names the file.
+    pub fn parse(text: &str, origin: &str) -> Result<KeySetLedger, String> {
+        toml::from_str(text).map_err(|e| format!("{origin}: {}", e.message()))
+    }
+
+    /// The ledger file's text.
+    pub fn to_toml(&self) -> String {
+        toml::to_string(self).expect("a key-set ledger serializes")
+    }
+
+    /// The current epoch of every recorded scope.
+    pub fn current_epochs(&self) -> Epochs {
+        let mut epochs = Epochs::default();
+        for e in &self.epochs {
+            let scope = EpochScope { project: e.project.clone(), tenant: e.tenant.clone(), principal_class: e.principal_class.clone() };
+            let slot = epochs.current.entry(scope).or_insert(0);
+            *slot = (*slot).max(e.epoch);
+        }
+        epochs
+    }
+
+    /// Advance `scope`'s epoch, returning the new value.
+    pub fn bump(&mut self, scope: EpochScope) -> u64 {
+        let found = self
+            .epochs
+            .iter_mut()
+            .find(|e| e.project == scope.project && e.tenant == scope.tenant && e.principal_class == scope.principal_class);
+        match found {
+            Some(e) => {
+                e.epoch += 1;
+                e.epoch
+            }
+            None => {
+                self.epochs.push(EpochEntry { project: scope.project, tenant: scope.tenant, principal_class: scope.principal_class, epoch: 1 });
+                1
+            }
+        }
+    }
+
+    /// The recorded version of `key`, if any.
+    pub fn version(&self, key: &str) -> Option<&KeyVersion> {
+        self.keys.iter().find(|k| k.key == key)
+    }
+
+    /// Record `key` as signing from `since`.
+    pub fn record(&mut self, key: &str, since: Instant) {
+        if self.version(key).is_none() {
+            self.keys.push(KeyVersion { key: key.to_string(), since, retiring_since: None, grace_secs: None, retired_at: None });
+        }
+    }
+
+    /// Begin retiring `key` at `at` under `rotation`'s grace window.
+    pub fn retire_after_grace(&mut self, key: &str, at: Instant, rotation: &RotationPolicy) {
+        self.record(key, at);
+        if let Some(k) = self.keys.iter_mut().find(|k| k.key == key) {
+            k.retiring_since = Some(at);
+            k.grace_secs = Some(rotation.grace_secs);
+        }
+    }
+
+    /// Retire `key` at once (`authority.revoke.immediate-retire`).
+    pub fn retire_now(&mut self, key: &str, at: Instant) {
+        self.record(key, at);
+        if let Some(k) = self.keys.iter_mut().find(|k| k.key == key) {
+            k.retired_at = Some(at);
+        }
+    }
+
+    /// Whether a checkpoint still verifies under `key` at `now`: an unrecorded key does,
+    /// a retired one does not, and a retiring one does until its grace window lapses.
+    pub fn verifies(&self, key: &str, now: Instant) -> bool {
+        match self.version(key) {
+            None => true,
+            Some(k) if k.retired_at.is_some_and(|at| now >= at) => false,
+            Some(k) => match (k.retiring_since, k.grace_secs) {
+                (Some(since), Some(grace)) => RotationPolicy::default().with_grace(grace).retiring_key_verifies(since, now),
+                _ => true,
+            },
+        }
+    }
+}
+
 impl Epochs {
     /// Advance `scope`'s epoch, returning the new value.
     pub fn bump(&mut self, scope: EpochScope) -> u64 {

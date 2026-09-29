@@ -7,6 +7,7 @@
 
 use crate::admit::{AdmitArgs, Author};
 use crate::project::{locate, Located};
+use contextful_core::grant::{describe_pipeline, list_pipelines, trace_run, Grant};
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use clap::Subcommand;
@@ -77,6 +78,8 @@ pub enum RunCmd {
         run_id: String,
         #[command(flatten)]
         project: ProjectArgs,
+        #[command(flatten)]
+        admit: AdmitArgs,
     },
     /// Write a stop onto a pending, running or waiting run.
     Cancel {
@@ -105,6 +108,8 @@ pub enum RunCmd {
         /// NDJSON: a header line, then one run per line.
         #[arg(long)]
         export: bool,
+        #[command(flatten)]
+        admit: AdmitArgs,
     },
     /// Resolve an awakeable with a payload, printing the recorded payload.
     Awake {
@@ -304,6 +309,16 @@ fn awake_error(e: AwakeError) -> anyhow::Error {
     }
 }
 
+/// The grants of the credential accompanying a run-record read, admitted now; `None`
+/// when none accompanies it, the local owner reading its own catalog.
+fn reader_grants(admit: &AdmitArgs, what: &str) -> Result<Option<Vec<Grant>>> {
+    if !AdmitArgs::presented() {
+        return Ok(None);
+    }
+    let (authority, _) = admit.admit(what)?;
+    Ok(Some(authority.grants().to_vec()))
+}
+
 pub fn run(cmd: RunCmd) -> Result<()> {
     match cmd {
         RunCmd::Start { project, plan, declaration, run_id, site_id, site_id_env, admit } => {
@@ -341,9 +356,13 @@ pub fn run(cmd: RunCmd) -> Result<()> {
                 bail!("{}: {} — {}", row.run_id, row.status, row.error_message.unwrap_or_default())
             }
         }
-        RunCmd::Show { run_id, project } => {
+        RunCmd::Show { run_id, project, admit } => {
+            let grants = reader_grants(&admit, "`run show`")?;
             let w = wire(&project)?;
             let row = w.engine.catalog.run(&run_id)?.with_context(|| format!("no run `{run_id}`"))?;
+            if let Some(grants) = &grants {
+                trace_run(grants, &row.pipeline_id)?;
+            }
             println!("{}", serde_json::to_string_pretty(&row)?);
             Ok(())
         }
@@ -358,13 +377,33 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             }
             Ok(())
         }
-        RunCmd::History { project, pipelines, since, limit, export } => {
+        RunCmd::History { project, pipelines, since, limit, export, admit } => {
+            let grants = reader_grants(&admit, "`run history`")?;
             let located = project.locate(None)?.project;
             let w = wire_at(&located, &project.now)?;
             let since = since.map(|s| parse_bound(&s)).transpose()?;
             let ceiling = if export { export_ceiling(limit) } else { describe_ceiling(limit) };
             let window = Window { since, ceiling };
-            let names: Vec<Option<&str>> = if pipelines.is_empty() { vec![None] } else { pipelines.iter().map(|p| Some(p.as_str())).collect() };
+            if let Some(grants) = &grants {
+                for p in &pipelines {
+                    describe_pipeline(grants, p)?;
+                }
+            }
+            let covered: Vec<String> = match (&grants, pipelines.is_empty()) {
+                // A credentialed listing reads the pipelines the catalog records and keeps
+                // the covered ones; none covered refuses.
+                (Some(grants), true) => {
+                    let mut recorded: Vec<String> = w.engine.catalog.runs(None)?.into_iter().map(|r| r.pipeline_id).collect();
+                    recorded.sort();
+                    recorded.dedup();
+                    list_pipelines(grants, &recorded)?.into_iter().map(str::to_string).collect()
+                }
+                _ => pipelines.clone(),
+            };
+            let names: Vec<Option<&str>> = match (&grants, covered.is_empty()) {
+                (None, true) => vec![None],
+                _ => covered.iter().map(|p| Some(p.as_str())).collect(),
+            };
             // Each pipeline's window takes the full ceiling before the merged result is clipped once.
             let mut merged = Vec::new();
             let mut truncated = false;

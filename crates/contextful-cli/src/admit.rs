@@ -6,14 +6,17 @@ use contextful_context::read::Face;
 use contextful_context::Store;
 use crate::run::SystemClock;
 use contextful_core::ports::Clock;
+use contextful_core::revoke::KeySetLedger;
+use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
 use contextful_policy::enforce::mask::Pepper;
-use contextful_policy::keyset::{KeySource, StaticPins};
+use contextful_policy::keyset::{KeySet, KeySource, StaticPins};
 use contextful_policy::revoke::{parse_denylist, RevocationState};
 use contextful_core::issue::AuthoringPosture;
 use contextful_policy::verify::{effect_boundary, verify_inherited_pipe, Admission, AdmittedAuthority};
 use crate::project::Located;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// The environment variable carrying the credential, kept out of the process arguments.
 pub const TOKEN_VAR: &str = "CONTEXTFUL_TOKEN";
@@ -44,8 +47,37 @@ pub fn static_pins(flag: Option<&str>) -> Result<StaticPins, AuthorityError> {
     StaticPins::parse(list)
 }
 
+/// The static pins less every key the ledger retires at `now`
+/// (`authority.revoke.immediate-retire`).
+pub fn live_pins(flag: Option<&str>, ledger: &KeySetLedger, now: Instant) -> Result<StaticPins, AuthorityError> {
+    static_pins(flag)?.retaining(|k| ledger.verifies(k, now))
+}
+
 /// The key version a denylist entry records for credentials verified under static pins.
 const STATIC_KEY_VERSION: &str = "static";
+
+/// The key-set ledger at `path`, else at [`KeySetLedger::PATH`] when that file exists,
+/// else an empty one: no key retired and no epoch bumped (`authority.revoke.epoch-store`).
+pub fn ledger(path: Option<&Path>) -> Result<KeySetLedger> {
+    let path = match path {
+        Some(p) => p,
+        None if Path::new(KeySetLedger::PATH).exists() => Path::new(KeySetLedger::PATH),
+        None => return Ok(KeySetLedger::default()),
+    };
+    let text = std::fs::read_to_string(path).with_context(|| format!("reading the key-set ledger {}", path.display()))?;
+    KeySetLedger::parse(&text, &path.display().to_string()).map_err(anyhow::Error::msg)
+}
+
+/// The revocation state a checkpoint reads now: the denylist file, and the ledger's
+/// current scoped epochs.
+pub fn revocation_state(denylist: Option<&Path>, ledger: &KeySetLedger) -> Result<RevocationState> {
+    let mut revocation = RevocationState { epochs: ledger.current_epochs(), ..RevocationState::default() };
+    if let Some(path) = denylist {
+        let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        revocation.denylist = parse_denylist(&text, STATIC_KEY_VERSION);
+    }
+    Ok(revocation)
+}
 
 /// How a credential is admitted.
 #[derive(clap::Args)]
@@ -59,9 +91,18 @@ pub struct AdmitArgs {
     /// A file of revocation identifiers, one per line.
     #[arg(long)]
     pub denylist: Option<PathBuf>,
+    /// The key-set ledger holding retired keys and scoped epochs; absent,
+    /// `.contextful/keyset.toml` when it exists.
+    #[arg(long)]
+    pub keyset: Option<PathBuf>,
 }
 
 impl AdmitArgs {
+    /// Whether a credential accompanies the command in [`TOKEN_VAR`].
+    pub fn presented() -> bool {
+        token().is_some()
+    }
+
     /// Admit the credential in [`TOKEN_VAR`] now, as presented over the stdio pipe the
     /// process inherited (`authority.verify.local-peer-fallback`), returning it with the
     /// revocation state later effect boundaries re-read.
@@ -72,10 +113,12 @@ impl AdmitArgs {
             ))
             .into());
         };
-        let keys = static_pins(self.public_key.as_deref())?.keys()?;
-        let revocation = revocation(self.denylist.as_deref())?;
+        let now = SystemClock.now();
+        let ledger = ledger(self.keyset.as_deref())?;
+        let keys: Arc<KeySet> = live_pins(self.public_key.as_deref(), &ledger, now)?.keys()?;
+        let revocation = revocation_state(self.denylist.as_deref(), &ledger)?;
         let authority = {
-            let mut admission = Admission::new(SystemClock.now(), &revocation);
+            let mut admission = Admission::new(now, &revocation);
             if let Some(aud) = self.audience.as_deref() {
                 admission = admission.expecting(aud);
             }
@@ -97,7 +140,7 @@ impl AdmitArgs {
         for table in tables {
             authority.require_write(table)?;
         }
-        Ok(Some(Author { authority, denylist: self.denylist.clone() }))
+        Ok(Some(Author { authority, denylist: self.denylist.clone(), keyset: self.keyset.clone() }))
     }
 }
 
@@ -106,20 +149,11 @@ fn token() -> Option<String> {
     std::env::var(TOKEN_VAR).ok().filter(|t| !t.trim().is_empty())
 }
 
-/// The revocation state the denylist file holds now.
-fn revocation(denylist: Option<&Path>) -> Result<RevocationState> {
-    let mut revocation = RevocationState::default();
-    if let Some(path) = denylist {
-        let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        revocation.denylist = parse_denylist(&text, STATIC_KEY_VERSION);
-    }
-    Ok(revocation)
-}
-
 /// The admitted credential a table write lands under.
 pub struct Author {
     authority: AdmittedAuthority,
     denylist: Option<PathBuf>,
+    keyset: Option<PathBuf>,
 }
 
 impl Author {
@@ -131,7 +165,7 @@ impl Author {
     /// The commit boundary (`authority.verify.write-commit`): the denylist read afresh,
     /// and expiry, against the system clock.
     pub fn boundary(&self) -> Result<()> {
-        let revocation = revocation(self.denylist.as_deref())?;
+        let revocation = revocation_state(self.denylist.as_deref(), &ledger(self.keyset.as_deref())?)?;
         effect_boundary(&self.authority, &Admission::new(SystemClock.now(), &revocation))?;
         Ok(())
     }

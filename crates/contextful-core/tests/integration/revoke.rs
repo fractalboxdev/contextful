@@ -86,7 +86,6 @@ fn denying_a_derivation_withdraws_its_subtree_and_leaves_the_root() {
 }
 
 /// A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.
-// spec: authority.revoke.epoch@a8e2dbfc
 #[test]
 fn a_scoped_epoch_invalidates_only_its_slice() {
     let deny = Denylist::default();
