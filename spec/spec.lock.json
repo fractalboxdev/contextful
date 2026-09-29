@@ -12211,7 +12211,7 @@
       "operation": "verify",
       "subject": "possession-binding",
       "kind": "behavior",
-      "statement": "A credential's confirmation claim holds a client public-key thumbprint. Each request carries a proof signed by the matching private key over method, target, body digest, issue instant and nonce.",
+      "statement": "A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
       "line": 291
@@ -12321,7 +12321,7 @@
       "operation": "verify",
       "subject": "connection-scoped",
       "kind": "behavior",
-      "statement": "A local admission holds for the pipe or socket connection that presented the credential; a request on any other connection admits afresh.",
+      "statement": "A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
       "line": 311
@@ -18460,6 +18460,10 @@
       "authority.verify.possession-invalid"
     ],
     [
+      "authority.verify.connection-scoped",
+      "authority.verify.peer-mismatch"
+    ],
+    [
       "authority.verify.pin-source",
       "authority.verify.key-set-unavailable"
     ],
@@ -19703,7 +19707,7 @@
           },
           "TransportPeerMismatch": {
             "clause": "authority.verify.peer-mismatch",
-            "gloss": "A socket peer, holding a credential with no confirmation claim, whose uid differs from the checkpoint's or is unreportable."
+            "gloss": "A socket peer, holding a credential with no confirmation claim, whose uid differs from the checkpoint's or is unreportable; a request on a connection other than the admitted one."
           }
         },
         "limit": {

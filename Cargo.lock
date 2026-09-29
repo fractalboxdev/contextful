@@ -957,6 +957,7 @@ dependencies = [
  "hex",
  "hmac",
  "jsonwebtoken",
+ "libc",
  "p256",
  "prost",
  "rand 0.8.8",

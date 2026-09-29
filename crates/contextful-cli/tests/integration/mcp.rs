@@ -113,3 +113,24 @@ fn a_server_with_no_credential_raises_stdio_credential_missing() {
         assert!(err.starts_with("StdioCredentialMissing") && err.contains("CONTEXTFUL_TOKEN"), "{err}");
     }
 }
+
+/// The server admits over the stdio pipe it inherited: a credential binding no key admits
+/// through that pipe, and one binding a holder key refuses, since the pipe carries no
+/// per-request holder proof.
+#[test]
+fn a_server_admits_over_its_inherited_pipe_only_a_credential_binding_no_key() {
+    let (dir, public, token) = project();
+    let args = ["mcp", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let hello = [json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} })];
+    let unbound = serve(dir.path(), &args, Some(&token), &hello);
+    assert!(unbound.status.success(), "{}", String::from_utf8_lossy(&unbound.stderr));
+    let derivation = contextful_policy::attenuate::Derivation {
+        confirmation: Some(contextful_policy::possession::jwk_thumbprint(&[7; 32])),
+        ..contextful_policy::attenuate::Derivation::default()
+    };
+    let bound = contextful_policy::attenuate::attenuate(&token, &derivation).unwrap();
+    let refused = serve(dir.path(), &args, Some(&bound), &hello);
+    assert!(!refused.status.success() && refused.stdout.is_empty(), "a key-bound credential writes no framing");
+    let err = String::from_utf8_lossy(&refused.stderr);
+    assert!(err.contains("PossessionProofInvalid"), "{err}");
+}

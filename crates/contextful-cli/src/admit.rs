@@ -10,7 +10,7 @@ use contextful_core::AuthorityError;
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::{parse_denylist, RevocationState};
-use contextful_policy::verify::{verify_local_bearer, Admission, AdmittedAuthority};
+use contextful_policy::verify::{verify_inherited_pipe, Admission, AdmittedAuthority};
 use crate::project::Located;
 use std::path::PathBuf;
 
@@ -61,8 +61,9 @@ pub struct AdmitArgs {
 }
 
 impl AdmitArgs {
-    /// Admit the credential in [`TOKEN_VAR`] now, returning it with the revocation state
-    /// later effect boundaries re-read.
+    /// Admit the credential in [`TOKEN_VAR`] now, as presented over the stdio pipe the
+    /// process inherited (`authority.verify.local-peer-fallback`), returning it with the
+    /// revocation state later effect boundaries re-read.
     pub fn admit(&self, what: &str) -> Result<(AdmittedAuthority, RevocationState)> {
         let Some(token) = std::env::var(TOKEN_VAR).ok().filter(|t| !t.trim().is_empty()) else {
             return Err(AdmitError::StdioCredentialMissing(format!(
@@ -81,7 +82,7 @@ impl AdmitArgs {
             if let Some(aud) = self.audience.as_deref() {
                 admission = admission.expecting(aud);
             }
-            verify_local_bearer(&token, &keys, &admission)?
+            verify_inherited_pipe(&token, &keys, &admission)?
         };
         Ok((authority, revocation))
     }

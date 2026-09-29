@@ -52,7 +52,7 @@ TimestampMalformed                   = { clause = "authority.verify.malformed-ti
 AuthorityExpired                     = { clause = "authority.verify.expired", gloss = "A credential past its expiry at admission or an effect boundary." }
 PossessionProofInvalid               = { clause = "authority.verify.possession-invalid", gloss = "A request proof failing against the confirmation thumbprint." }
 PossessionProofReplayed              = { clause = "authority.verify.replayed-nonce", gloss = "A proof nonce repeated inside the replay window." }
-TransportPeerMismatch                = { clause = "authority.verify.peer-mismatch", gloss = "A socket peer, holding a credential with no confirmation claim, whose uid differs from the checkpoint's or is unreportable." }
+TransportPeerMismatch                = { clause = "authority.verify.peer-mismatch", gloss = "A socket peer, holding a credential with no confirmation claim, whose uid differs from the checkpoint's or is unreportable; a request on a connection other than the admitted one." }
 KeySetUnavailable                    = { clause = "authority.verify.key-set-unavailable", gloss = "An opted-into published key set that could not be obtained, or a malformed pin." }
 KeySetStale                          = { clause = "authority.verify.key-set-stale", gloss = "A last-known-good key set past its staleness bound." }
 AuthorityRevoked                     = { clause = "authority.revoke.revoked", gloss = "A denylisted credential, or one below the current scoped epoch." }

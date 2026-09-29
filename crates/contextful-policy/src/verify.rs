@@ -185,15 +185,135 @@ pub(crate) fn token_bytes(credential: &str) -> Result<Vec<u8>, AuthorityError> {
         .map_err(|e| AuthorityError::SignatureInvalid(format!("the credential is not a signed chain: {e}")))
 }
 
-/// Admit a bearer credential with no possession proof: the local path stdio and socket
-/// callers take while `authority.verify` leaves transport-bound possession unsettled.
-pub fn verify_local_bearer(credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError> {
-    admit(credential, keys, admission, |_| Ok(()))
+/// A local transport (`authority.verify.local-transport`): the stdio pipe the checkpoint
+/// inherited from the process that spawned it, or one accepted Unix socket connection.
+/// Every other transport is a network transport, admitted through [`verify_with_proof`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalTransport {
+    InheritedPipe,
+    /// The checkpoint's own number for the accepted connection, and the uid the kernel
+    /// reports for its peer; `None` when the platform reports none.
+    Socket { connection: u64, peer_uid: Option<u32> },
+}
+
+impl LocalTransport {
+    /// The accepted connection `stream`, numbered `connection` by the checkpoint, with the
+    /// peer uid the kernel reports: `SO_PEERCRED` on Linux, `getpeereid` elsewhere.
+    pub fn socket(connection: u64, stream: &std::os::unix::net::UnixStream) -> LocalTransport {
+        LocalTransport::Socket { connection, peer_uid: peer_uid(stream) }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn peer_uid(stream: &std::os::unix::net::UnixStream) -> Option<u32> {
+    use std::os::fd::AsRawFd;
+    let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: `cred` and `len` are valid for writes of the sizes passed.
+    let rc = unsafe {
+        libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut libc::ucred).cast(), &mut len)
+    };
+    (rc == 0 && len as usize == std::mem::size_of::<libc::ucred>()).then_some(cred.uid)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn peer_uid(stream: &std::os::unix::net::UnixStream) -> Option<u32> {
+    use std::os::fd::AsRawFd;
+    let (mut uid, mut gid) = (0 as libc::uid_t, 0 as libc::gid_t);
+    // SAFETY: `uid` and `gid` are valid for writes.
+    let rc = unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) };
+    (rc == 0).then_some(uid)
+}
+
+/// The checkpoint process's effective uid, the one a socket peer's must equal
+/// (`authority.verify.local-peer-fallback`).
+pub fn checkpoint_uid() -> u32 {
+    // SAFETY: `geteuid` reads process state and cannot fail.
+    unsafe { libc::geteuid() }
+}
+
+/// An admission on a local transport, bound to the connection that presented the
+/// credential (`authority.verify.connection-scoped`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocalAdmission {
+    authority: AdmittedAuthority,
+    transport: LocalTransport,
+}
+
+impl LocalAdmission {
+    pub fn authority(&self) -> &AdmittedAuthority {
+        &self.authority
+    }
+    pub fn transport(&self) -> LocalTransport {
+        self.transport
+    }
+    pub fn into_authority(self) -> AdmittedAuthority {
+        self.authority
+    }
+
+    /// The admitted authority for a request arriving on `transport`; a request on any
+    /// other connection raises `TransportPeerMismatch` until that connection admits itself.
+    pub fn on(&self, transport: &LocalTransport) -> Result<&AdmittedAuthority, AuthorityError> {
+        if *transport == self.transport {
+            Ok(&self.authority)
+        } else {
+            Err(AuthorityError::TransportPeerMismatch(format!(
+                "the credential was admitted on {:?}; a request on {transport:?} presents it afresh",
+                self.transport
+            )))
+        }
+    }
+}
+
+/// The holder-proof check of a local client that presents none: a credential binding a
+/// holder key refuses with `PossessionProofInvalid`.
+pub fn no_holder_proof<E: From<AuthorityError>>(_jkt: &str) -> Result<(), E> {
+    Err(AuthorityError::PossessionProofInvalid("the credential binds a holder key and the request carries no proof".into()).into())
+}
+
+/// Admit a credential on a local transport: a credential binding a holder key admits only
+/// through `holder_proof` (`authority.verify.local-holder-proof`); one binding none admits
+/// through the inherited pipe or a socket peer of the checkpoint's uid
+/// (`authority.verify.local-peer-fallback`), and a socket peer of another or an unreported
+/// uid raises `TransportPeerMismatch` (`authority.verify.peer-mismatch`).
+pub fn verify_local<E: From<AuthorityError>>(
+    credential: &str,
+    keys: &KeySet,
+    admission: &Admission<'_>,
+    transport: LocalTransport,
+    holder_proof: impl FnOnce(&str) -> Result<(), E>,
+) -> Result<LocalAdmission, E> {
+    let authority = admit(credential, keys, admission, |cnf| match cnf {
+        Some(jkt) => holder_proof(jkt),
+        None => peer_fallback(transport).map_err(E::from),
+    })?;
+    Ok(LocalAdmission { authority, transport })
+}
+
+fn peer_fallback(transport: LocalTransport) -> Result<(), AuthorityError> {
+    match transport {
+        LocalTransport::InheritedPipe => Ok(()),
+        LocalTransport::Socket { peer_uid: Some(uid), .. } if uid == checkpoint_uid() => Ok(()),
+        LocalTransport::Socket { peer_uid: Some(uid), .. } => Err(AuthorityError::TransportPeerMismatch(format!(
+            "the socket peer runs as uid {uid}; the checkpoint runs as uid {}",
+            checkpoint_uid()
+        ))),
+        LocalTransport::Socket { peer_uid: None, .. } => {
+            Err(AuthorityError::TransportPeerMismatch("the platform reports no uid for the socket peer".into()))
+        }
+    }
+}
+
+/// Admit a credential presented through the stdio pipe the checkpoint inherited, with no
+/// holder proof: the admission a spawned tool server makes of its one credential.
+pub fn verify_inherited_pipe(credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError> {
+    verify_local(credential, keys, admission, LocalTransport::InheritedPipe, no_holder_proof).map(LocalAdmission::into_authority)
 }
 
 /// Admit a credential whose chain-final confirmation claim a request proof must match.
 /// `proof` receives the thumbprint and runs the checkpoint's proof check; a credential
-/// binding no key refuses with `PossessionProofInvalid`.
+/// binding no key refuses with `PossessionProofInvalid`
+/// (`authority.verify.network-needs-key`).
 pub fn verify_with_proof<E: From<AuthorityError>>(
     credential: &str,
     keys: &KeySet,
@@ -341,7 +461,7 @@ impl CredentialFormat for BiscuitFormat {
         crate::attenuate::attenuate(credential, derivation)
     }
     fn verify(&self, credential: &str, keys: &KeySet, admission: &Admission<'_>) -> Result<AdmittedAuthority, AuthorityError> {
-        verify_local_bearer(credential, keys, admission)
+        verify_inherited_pipe(credential, keys, admission)
     }
     fn introspect(&self, credential: &str) -> Result<Introspection, AuthorityError> {
         introspect(credential)

@@ -288,7 +288,7 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority*
 - `expired` — A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.
   *A-authority*
-- `possession-binding` — A credential's confirmation claim holds a client public-key thumbprint. Each request carries a proof signed by the matching private key over method, target, body digest, issue instant and nonce.
+- `possession-binding` — A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce.
   *A-authority*
 - `possession-invalid` — A request whose proof does not verify against the confirmation thumbprint raises `PossessionProofInvalid`.
   *A-authority*
@@ -308,7 +308,7 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority*
 - `network-needs-key` — A network checkpoint refuses a credential with no confirmation claim as {{authority.verify.possession-invalid}}, so a credential admitted by peer fallback admits nothing over a network.
   *A-authority*
-- `connection-scoped` — A local admission holds for the pipe or socket connection that presented the credential; a request on any other connection admits afresh.
+- `connection-scoped` — A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.
   *A-authority*
 - `nonce-cache` — A checkpoint's nonce cache holds at most 100000 entries; a proof arriving while it is full answers `503` and admits nothing.
   *because a proof the cache cannot record is a replay it cannot detect*

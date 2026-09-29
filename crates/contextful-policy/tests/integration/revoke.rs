@@ -5,7 +5,7 @@ use crate::support::*;
 use contextful_core::revoke::EpochScope;
 use contextful_policy::issue::{mint, MintClaims};
 use contextful_policy::revoke::{parse_denylist, revocation_claims, RevocationState, PRINCIPAL_CLASS_DELEGATED};
-use contextful_policy::verify::{introspect, verify_local_bearer, Admission, BISCUIT_FORMAT};
+use contextful_policy::verify::{introspect, verify_inherited_pipe, Admission, BISCUIT_FORMAT};
 
 #[test]
 fn a_denylist_file_holds_one_identifier_per_line() {
@@ -34,9 +34,9 @@ fn an_epoch_below_the_current_scoped_epoch_is_refused_at_admission() {
     let mut state = RevocationState::default();
     let scope = EpochScope { project: AUD.into(), tenant: None, principal_class: Some(PRINCIPAL_CLASS_DELEGATED.into()) };
     state.epochs.bump(scope.clone());
-    assert!(verify_local_bearer(&credential, &keys(&signer), &Admission::new(at(DURING), &state)).is_ok());
+    assert!(verify_inherited_pipe(&credential, &keys(&signer), &Admission::new(at(DURING), &state)).is_ok());
     state.epochs.bump(scope);
-    refused(verify_local_bearer(&credential, &keys(&signer), &Admission::new(at(DURING), &state)), "AuthorityRevoked");
+    refused(verify_inherited_pipe(&credential, &keys(&signer), &Admission::new(at(DURING), &state)), "AuthorityRevoked");
 }
 
 #[test]
@@ -45,6 +45,6 @@ fn a_withdrawn_format_is_refused_from_its_cutover() {
     let credential = minted(&signer);
     let mut state = RevocationState::default();
     state.withdrawals.withdraw(BISCUIT_FORMAT, at("2030-01-01T00:10:00Z"));
-    assert!(verify_local_bearer(&credential, &keys(&signer), &Admission::new(at(DURING), &state)).is_ok());
-    refused(verify_local_bearer(&credential, &keys(&signer), &Admission::new(at("2030-01-01T00:10:00Z"), &state)), "CredentialFormatWithdrawn");
+    assert!(verify_inherited_pipe(&credential, &keys(&signer), &Admission::new(at(DURING), &state)).is_ok());
+    refused(verify_inherited_pipe(&credential, &keys(&signer), &Admission::new(at("2030-01-01T00:10:00Z"), &state)), "CredentialFormatWithdrawn");
 }

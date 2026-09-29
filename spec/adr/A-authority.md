@@ -123,7 +123,7 @@ Revisit: per-request mint latency dominates reads; a face needs a caller class n
 
 ## Credentials are sender-constrained, with a nonce replay window
 
-Holding a credential admits nothing without proof of its key, and a captured request is not re-sendable. `authority.verify` requires a confirmation thumbprint of a client public key in every credential, and a per-request signature over method, target, body digest and nonce from the matching private key; a mismatch refuses. A nonce repeating inside the checkpoint's local replay window refuses; one outside it is not remembered. The proof establishes key possession and claims nothing about what the client is.
+Over a network, holding a credential admits nothing without proof of its key, and a captured request is not re-sendable. A network checkpoint requires a confirmation thumbprint of a client public key in every credential; under a credential carrying one, every transport requires a per-request signature over method, target, body digest and nonce from the matching private key; a mismatch refuses. A credential with none admits only locally, as the local-transports section records. A nonce repeating inside the checkpoint's local replay window refuses; one outside it is not remembered. The proof establishes key possession and claims nothing about what the client is.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -181,9 +181,9 @@ Consequences: a push refuses until the bucket is clean; a replica keeps resolvin
 
 ## Local transports bind possession to the holder key, then to the OS peer
 
-Context: MCP hosts spawn a server over stdio or relay to a Unix socket, and many sign nothing per request. The sender-constrained decision was judged for network transports.
+Context: MCP hosts spawn a server over stdio or relay to a Unix socket, and many sign nothing per request.
 
-Decision: a local transport checks the holder key first: a credential carrying a confirmation thumbprint admits only with a proof from that key. A credential with no confirmation claim falls back to the kernel's peer authentication: an inherited stdio pipe, or a socket peer whose uid — `SO_PEERCRED` on Linux, `getpeereid` on macOS — equals the checkpoint's. A network checkpoint refuses a credential with no confirmation claim.
+Decision: a local transport checks the holder key first: a credential carrying a confirmation thumbprint admits only with a proof from that key. A credential with no confirmation claim falls back to the kernel's peer authentication: an inherited stdio pipe, or a socket peer whose uid — `SO_PEERCRED` on Linux, `getpeereid` on macOS — equals the checkpoint's. A network checkpoint refuses a credential with no confirmation claim. An admission binds to its connection.
 
 Criteria: theft yield, then host compatibility; theft yield decided the order.
 

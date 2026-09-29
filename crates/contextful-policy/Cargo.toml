@@ -36,6 +36,8 @@ jsonwebtoken = { version = "11", features = ["rust_crypto"], optional = true }
 hex = "0.4"
 prost = "0.10"
 rand = "0.8"
+# Local admission: the kernel-reported uid of a Unix socket peer.
+libc = "0.2"
 
 [features]
 # The exchange suite runs under `--features exchange`; the gate's features stage tests
