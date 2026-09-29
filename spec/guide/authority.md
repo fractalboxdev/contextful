@@ -107,8 +107,8 @@ both scopes named ({{authority.refuse.scope-denied}}).
 
 The session declares `local:device`, which the table's fail-closed default admits. A
 `contact_email` column tokenized by policy arrives masked where it stands. The response
-envelope reports how many rows the predicate and the zone removed and which columns were
-masked, carrying no removed value ({{authority.place.envelope}}).
+envelope reports how many rows the zone removed and which columns it masked, carrying no
+removed value ({{authority.place.envelope}}).
 
 An operator then denylists the sub-agent's derivation. At its next effect boundary the
 sub-agent's credential refuses ({{authority.revoke.revoked}}), while the agent's parent credential,

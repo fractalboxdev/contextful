@@ -145,8 +145,22 @@ name = "hr/salaries"
     // A statement reads through the same restriction.
     let notes = client.query(r#"SELECT note_id FROM "research/notes" ORDER BY note_id"#).unwrap();
     assert_eq!(column(&notes, "note_id"), [json!("n1"), json!("n2"), json!("n3")]);
+    // A zone-excluded table answers empty and says so: the restriction block names it and
+    // counts what the zone step removed, whatever the statement asked.
+    let excluded = json!({
+        "zone": "on-prem:hq",
+        "incognito": false,
+        "tables": [{ "table": "research/vendor", "excluded": true, "rows_dropped": 1, "columns_masked": [] }],
+    });
     let vendor = client.query(r#"SELECT * FROM "research/vendor""#).unwrap();
     assert_eq!(vendor["rows"], json!([]), "{vendor}");
+    assert_eq!(vendor["contextful.restriction"], excluded, "{vendor}");
+    let filtered = client.query(r#"SELECT * FROM "research/vendor" WHERE item_id = 'none'"#).unwrap();
+    assert_eq!(filtered["contextful.restriction"], excluded, "{filtered}");
+    assert!(notes.get("contextful.restriction").is_none(), "{notes}");
+    assert_eq!(ranked["contextful.restriction"], excluded, "{ranked}");
+    let described = client.call("context.describe", json!({ "table": "research/vendor" })).unwrap();
+    assert_eq!((&described["session_zone"], &described["zone_admitted"]), (&json!("on-prem:hq"), &json!(false)), "{described}");
 
     // Outside the authority, a read is refused by name rather than answered empty.
     let refused = |r: Result<Value, String>, error: &str| {

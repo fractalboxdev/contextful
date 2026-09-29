@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 204 | 56 | 22 | 15 | 85 | 0 | 85 |
-| `authority` | 2 | 16 | 230 | 62 | 27 | 8 | 163 | 0 | 163 |
+| `authority` | 2 | 16 | 231 | 62 | 27 | 9 | 164 | 0 | 164 |
 | `connector` | 2 | 13 | 250 | 74 | 17 | 8 | 120 | 0 | 120 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
-| `read` | 2 | 15 | 136 | 24 | 19 | 18 | 104 | 0 | 104 |
+| `read` | 2 | 15 | 139 | 24 | 19 | 18 | 107 | 0 | 107 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
 | `store` | 1 | 15 | 185 | 44 | 12 | 12 | 146 | 0 | 146 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1595 | 504 | 177 | 115 | 873 | 0 | |
+| **total** | 19 | 149 | 1599 | 504 | 177 | 116 | 877 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ Decision records: 18.
 | 2 — The store | 9 | 144 | 110 | passing |
 | 3 — The run path | 11 | 184 | 110 | passing |
 | 4 — Ingest | 22 | 354 | 153 | passing |
-| 5 — The read face under enforcement | 17 | 223 | 147 | passing |
+| 5 — The read face under enforcement | 17 | 227 | 151 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 22 | 22 | passing |
 | 8 — Accountability | 5 | 40 | 20 | open |
@@ -230,6 +230,7 @@ Unscheduled operations: 10.
 | `authority.place.disjunctive` | `crates/contextful-policy/tests/integration/enforce/zone.rs::any_matching_entry_admits_the_zone` | performed |
 | `authority.place.evidence-floor` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_synthesized_row_resolves_to_its_evidence_intersection` | performed |
 | `authority.place.excluded-cell` | `crates/contextful-context/tests/integration/read/enforce.rs::a_cell_outside_its_column_set_arrives_null` | performed |
+| `authority.place.excluded-disclosed` | `crates/contextful-context/tests/integration/read/respond.rs::rows_dropped_counts_the_relation_never_the_statement` | performed |
 | `authority.place.excluded-row` | `crates/contextful-context/tests/integration/read/enforce.rs::a_zone_outside_the_table_set_drops_its_rows` | performed |
 | `authority.place.fail-closed` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_undeclared_table_resolves_to_the_fail_closed_pair` | performed |
 | `authority.place.floor-widened` | `crates/contextful-policy/tests/integration/enforce/zone.rs::widening_a_protected_surface_needs_the_override` | performed |
@@ -528,6 +529,7 @@ Unscheduled operations: 10.
 | `read.register.bound-arguments` | `crates/contextful-agent/tests/integration/mcp.rs::valid_as_of_wraps_only_the_tables_a_read_touches` | performed |
 | `read.register.bound-listing` | `crates/contextful-agent/tests/integration/mcp.rs::a_listing_ignores_valid_as_of_and_echoes_only_as_of` | performed |
 | `read.register.connection-views` | `crates/contextful-context/tests/integration/read/register.rs::a_session_connection_registers_views_over_the_current_file_lists` | performed |
+| `read.register.describe-zone` | `crates/contextful-context/tests/integration/read/respond.rs::describe_reports_the_session_zone_and_each_tables_admission` | performed |
 | `read.register.engine` | `crates/contextful-context/tests/integration/read/register.rs::the_embedded_engine_reads_the_parquet_an_external_reader_opens` | performed |
 | `read.register.file-listing` | `crates/contextful-context/tests/integration/read/register.rs::file_listing_covers_the_callers_tables_alone` | performed |
 | `read.register.file-preview-target` | `crates/contextful-context/tests/integration/read/register.rs::a_preview_reads_a_run_file_through_its_relation` | performed |
@@ -543,6 +545,7 @@ Unscheduled operations: 10.
 | `read.respond.in-band-error` | `crates/contextful-agent/tests/integration/mcp.rs::a_refusal_arrives_in_band` | performed |
 | `read.respond.match-count` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_block_reports_how_many_rows_matched` | performed |
 | `read.respond.one-projection` | `crates/contextful-cli/tests/integration/query.rs::the_command_line_and_the_tool_protocol_print_one_projection` | performed |
+| `read.respond.restriction-block` | `crates/contextful-context/tests/integration/read/respond.rs::a_zone_excluded_relation_is_named_beside_its_empty_rows` | performed |
 | `read.respond.row-ceiling` | `crates/contextful-context/tests/integration/read/register.rs::the_row_ceiling_bounds_delivery_with_one_probe_row` | performed |
 | `read.respond.truncation-is-exact` | `crates/contextful-core/tests/integration/read/respond.rs::truncation_follows_the_probe_row` | performed |
 | `read.respond.type-is-the-cell` | `crates/contextful-core/tests/integration/read/respond.rs::the_envelope_carries_no_type_list` | performed |
@@ -551,6 +554,7 @@ Unscheduled operations: 10.
 | `read.retrieve.candidate-window` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_candidate_window_is_the_larger_of_a_multiple_and_a_floor` | performed |
 | `read.retrieve.content-tokens` | `crates/contextful-core/tests/integration/read/retrieve.rs::content_tokens_are_lowercased_split_stopped_and_deduplicated` | performed |
 | `read.retrieve.engine-resolved-date` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_engine_resolves_the_publication_column` | performed |
+| `read.retrieve.excluded-arm` | `crates/contextful-context/tests/integration/read/respond.rs::a_ranked_read_names_its_excluded_arms` | performed |
 | `read.retrieve.fulltext-probe` | `crates/contextful-context/tests/integration/read/fulltext.rs::a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot` | performed |
 | `read.retrieve.fulltext-sealed-cap` | `crates/contextful-context/tests/integration/encrypt.rs::a_sealed_full_text_sidecar_past_256_mib_stays_unopened` | performed |
 | `read.retrieve.gain-never-loss` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_accelerated_arm_returns_every_exact_row_and_readers_can_differ` | performed |
