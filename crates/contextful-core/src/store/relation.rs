@@ -5,6 +5,8 @@ use super::bound_time::Bound;
 use super::declare::TableDecl;
 use super::reconcile::Column;
 use super::StoreError;
+use crate::run::derive::config::DERIVE_PRIMARY_KEY;
+use crate::run::derive::emit::SUPERSEDE_COLUMNS;
 
 /// Double-quote an identifier.
 pub fn ident(name: &str) -> String {
@@ -70,6 +72,9 @@ pub fn relation(
     } else {
         base
     };
+    if decl.primary_key() == DERIVE_PRIMARY_KEY && SUPERSEDE_COLUMNS.iter().all(|n| schema_columns.iter().any(|c| c.name == *n)) {
+        rel = unsuperseded(&rel);
+    }
 
     if let Some(b) = valid_as_of {
         let vt = decl.valid_time.as_ref().ok_or_else(|| {
@@ -86,4 +91,21 @@ pub fn relation(
         rel = format!("SELECT * FROM ({rel}) WHERE {pred}");
     }
     Ok(rel)
+}
+
+/// `rel` less a derive table's superseded rows: each unit's rows landed under another key
+/// before its latest passage, `ok` or `empty` landing (`run.emit.stale-supersedes`). The
+/// fold drops the same rows, so a read before and after it answers alike.
+fn unsuperseded(rel: &str) -> String {
+    let [unit, key, kind, status, at, run, seq] = SUPERSEDE_COLUMNS.map(ident);
+    let latest = format!(
+        "SELECT {unit} AS __unit, {key} AS __key, {at} AS __at, {run} AS __run, {seq} AS __seq FROM (\
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY {unit} ORDER BY {at} DESC, {run} DESC, {seq} DESC) AS __n FROM ({rel}) \
+         WHERE {kind} IS DISTINCT FROM 'marker' OR {status} IN ('ok', 'empty')) WHERE __n = 1"
+    );
+    format!(
+        "SELECT __d.* FROM ({rel}) AS __d LEFT JOIN ({latest}) AS __c ON __d.{unit} = __c.__unit \
+         WHERE __c.__unit IS NULL OR __d.{key} IS NOT DISTINCT FROM __c.__key OR __d.{at} > __c.__at \
+         OR (__d.{at} = __c.__at AND (__d.{run} > __c.__run OR (__d.{run} = __c.__run AND __d.{seq} >= __c.__seq)))"
+    )
 }

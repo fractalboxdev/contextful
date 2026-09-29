@@ -17,8 +17,8 @@ use contextful_core::store::lay_out::{
     part_name, PartEntry, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, STAGING_SUFFIX,
 };
 use contextful_core::run::derive::config::DERIVE_PRIMARY_KEY;
-use contextful_core::run::derive::emit::{superseded, DERIVATION_KEY, KIND};
-use contextful_core::store::reserve::{INGESTED_AT, ROW_SEQ, RUN_ID, TIEBREAK};
+use contextful_core::run::derive::emit::{superseded, SUPERSEDE_COLUMNS};
+use contextful_core::store::reserve::TIEBREAK;
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
 use std::collections::{BTreeMap, BTreeSet};
@@ -402,9 +402,6 @@ fn supersede(b: &RecordBatch) -> Result<RecordBatch> {
     let keep: BooleanArray = superseded(&standing).into_iter().map(|s| Some(!s)).collect();
     filter_record_batch(b, &keep).map_err(|e| ContextError::Invalid(format!("superseding derived rows: {e}")))
 }
-
-/// The columns deciding whether a derived row is superseded.
-const SUPERSEDE_COLUMNS: [&str; 7] = ["unit_ref", DERIVATION_KEY, KIND, "unit_status", INGESTED_AT, RUN_ID, ROW_SEQ];
 
 /// Split rows by the `partition_by` columns, outermost first, into `col=value`
 /// directories; a value is written byte for byte, percent-escaped only in its directory

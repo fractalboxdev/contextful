@@ -230,6 +230,9 @@ pub fn revived(unit: &Unit, derived: &[Row], max_attempts: i64) -> Option<RunErr
     })
 }
 
+/// The columns deciding whether a derived row is superseded.
+pub const SUPERSEDE_COLUMNS: [&str; 7] = ["unit_ref", DERIVATION_KEY, KIND, "unit_status", "_ingested_at", "_run_id", "_row_seq"];
+
 /// Per row of `derived`, whether it is superseded: landed under another key before its
 /// unit's latest `ok` or `empty` landing (`run.emit.stale-supersedes`).
 pub fn superseded(derived: &[Row]) -> Vec<bool> {
