@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 230 | 62 | 27 | 8 | 163 | 0 | 163 |
 | `connector` | 2 | 13 | 249 | 74 | 17 | 8 | 118 | 0 | 118 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
-| `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
+| `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 135 | 24 | 19 | 18 | 103 | 0 | 103 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 171 | 0 | 171 |
 | `store` | 1 | 15 | 184 | 44 | 12 | 12 | 145 | 0 | 145 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 149 | 1591 | 504 | 177 | 115 | 868 | 0 | |
+| **total** | 19 | 149 | 1592 | 504 | 177 | 115 | 869 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ Decision records: 18.
 | 5 — The read face under enforcement | 17 | 223 | 147 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
-| 8 — Accountability | 5 | 39 | 19 | open |
+| 8 — Accountability | 5 | 40 | 20 | open |
 | 9 — Visibility | 6 | 22 | 3 | open |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
 | 11 — The derive tier | 7 | 71 | 48 | passing |
@@ -458,6 +458,7 @@ Unscheduled operations: 10.
 | `disclosure.declare-fidelity.family-bound` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_level_the_family_does_not_permit_is_refused` | performed |
 | `disclosure.declare-fidelity.family-undeclared` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_block_naming_no_family_is_refused` | performed |
 | `disclosure.record.chain-header` | `crates/contextful-policy/tests/integration/audit.rs::a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link` | performed |
+| `disclosure.record.entry-fields` | `crates/contextful-policy/tests/integration/audit.rs::an_entry_carrying_a_field_outside_its_digest_breaks_the_chain_at_that_entry` | performed |
 | `disclosure.record.entry-format` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_entry_digests_the_rfc_8785_form_of_its_whole_entry` | performed |
 | `disclosure.record.group-commit` | `crates/contextful-policy/tests/integration/audit.rs::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together` | performed |
 | `disclosure.record.header-unsupported` | `crates/contextful-policy/tests/integration/audit.rs::a_header_naming_another_format_digest_or_segment_size_raises_audit_header_unsupported` | performed |

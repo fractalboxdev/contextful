@@ -14202,7 +14202,7 @@
       "operation": "record",
       "subject": "header-unsupported",
       "kind": "refusal",
-      "statement": "Opening or verifying a chain whose header names another format or digest, or a segment size outside {{disclosure.record.chain-header}}, raises `AuditHeaderUnsupported`.",
+      "statement": "Opening or verifying a chain whose header names another format or digest, a segment size outside {{disclosure.record.chain-header}}, or any field beyond `format`, `digest` and `segment_entries` raises `AuditHeaderUnsupported`.",
       "why": "because a verifier guessing at a digest it does not implement checks nothing",
       "file": "spec/62-accountability.md",
       "line": 60
@@ -14219,6 +14219,17 @@
       "line": 62
     },
     {
+      "id": "disclosure.record.entry-fields",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "entry-fields",
+      "kind": "behavior",
+      "statement": "Verifying a chain holding an entry with any field beyond `format`, `seq`, `prev_hash`, `attributes` and `entry_hash` raises {{disclosure.attest.broken-chain}} at that entry.",
+      "why": "because the entry digest covers only `format`, `seq`, `prev_hash` and `attributes`, so without this an injected field verifies clean",
+      "file": "spec/62-accountability.md",
+      "line": 64
+    },
+    {
       "id": "disclosure.record.inexact-integer",
       "contract": "disclosure",
       "operation": "record",
@@ -14227,7 +14238,7 @@
       "statement": "Appending a v1 entry whose attributes hold an integer beyond ±(2^53 − 1) raises `AuditAttributeInexact` and appends nothing; verifying a chain holding such an entry raises {{disclosure.attest.broken-chain}}.",
       "why": "because RFC 8785 writes every number as an IEEE 754 double, so integers past 2^53 share a digest and an edit between two of them verifies",
       "file": "spec/62-accountability.md",
-      "line": 64
+      "line": 66
     },
     {
       "id": "disclosure.record.v0-chain",
@@ -14238,7 +14249,7 @@
       "statement": "A chain holding entries without `header.json` is a v0 chain: it verifies and appends under v0 rules, each entry digest over `seq`, `prev_hash` and attributes and each root its segment's last entry digest.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 66
+      "line": 68
     },
     {
       "id": "disclosure.record.group-commit",
@@ -14249,7 +14260,7 @@
       "statement": "Concurrent appends form one append group, which issues 1 sync of its segment file between segment opens; every member returns after that sync, or every member raises {{disclosure.record.unpersisted-entry}}.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 68
+      "line": 70
     },
     {
       "id": "disclosure.record.segment-open",
@@ -14260,7 +14271,7 @@
       "statement": "An append group that creates a segment file adds 1 sync of the segments directory.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 70
+      "line": 72
     },
     {
       "id": "disclosure.record.tip-signing",
@@ -14271,7 +14282,7 @@
       "statement": "The signed tip writes at segment close, once the log sees no append for 1 s, and at export; an append group closing no segment writes no tip.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 72
+      "line": 74
     },
     {
       "id": "disclosure.record.unpersisted-entry",
@@ -14282,7 +14293,7 @@
       "statement": "A read whose entry fails to reach local durable storage raises `AuditEntryUnpersisted` and returns no rows.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 74
+      "line": 76
     },
     {
       "id": "disclosure.record.single-writer",
@@ -14293,7 +14304,7 @@
       "statement": "One process holds a directory's audit log at a time; opening a log another holds raises `AuditLogHeld`.",
       "why": "because two writers caching one tip append the same seq twice, and every later verification breaks there",
       "file": "spec/62-accountability.md",
-      "line": 76
+      "line": 78
     },
     {
       "id": "disclosure.record.read-only",
@@ -14304,7 +14315,7 @@
       "statement": "A read-only audit handle verifies the chain without the writer lock; an append through it raises `AuditLogReadOnly`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 78
+      "line": 80
     },
     {
       "id": "disclosure.record.unanchored-over-signed",
@@ -14315,7 +14326,7 @@
       "statement": "An unanchored handle links entries under an unsigned tip and writes no root; opening one over a signed tip, a signed root or the signed `chain.held` a held open writes raises `AuditLogAnchored`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 80
+      "line": 82
     },
     {
       "id": "disclosure.record.unsigned-tip",
@@ -14326,7 +14337,7 @@
       "statement": "A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 82
+      "line": 84
     },
     {
       "id": "disclosure.record.projection",
@@ -14337,7 +14348,7 @@
       "statement": "The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 84
+      "line": 86
     },
     {
       "id": "disclosure.explain.no-row",
@@ -14348,7 +14359,7 @@
       "statement": "An explanation returning a row, field value or excerpt from the resource it decides about raises `VisibilityDiagnosticRow`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 113
+      "line": 115
     },
     {
       "id": "disclosure.explain.empty-window",
@@ -14359,7 +14370,7 @@
       "statement": "A window holding no observations raises `VisibilityNoObservations` and states that no claim is available.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 115
+      "line": 117
     },
     {
       "id": "disclosure.explain.unqualified-assurance",
@@ -14370,7 +14381,7 @@
       "statement": "A negative assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 117
+      "line": 119
     },
     {
       "id": "disclosure.explain.groups-not-members",
@@ -14381,7 +14392,7 @@
       "statement": "A reader-facing explanation rendering the member identities of a group on the path raises `VisibilityIndividualNamed`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 119
+      "line": 121
     },
     {
       "id": "disclosure.attest.broken-chain",
@@ -14392,7 +14403,7 @@
       "statement": "A disagreeing digest, entry format or Merkle root, a sequence gap, a failing signature, or, beside `chain.tip`, `chain.held` or a signed root, an absent chain or a missing or unsigned tip raises `AuditChainBroken` at the earliest failing index.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 126
+      "line": 128
     },
     {
       "id": "disclosure.attest.merkle-root",
@@ -14403,7 +14414,7 @@
       "statement": "A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry digests in `seq` order.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 128
+      "line": 130
     },
     {
       "id": "disclosure.attest.root-tag",
@@ -14414,7 +14425,7 @@
       "statement": "A v1 signed root carries its signing algorithm, `Ed25519` or `ES256`, and signs it with the header digest, segment number, entry count and root.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 130
+      "line": 132
     },
     {
       "id": "disclosure.attest.inclusion-proof",
@@ -14425,7 +14436,7 @@
       "statement": "`prove` returns one entry, its chain header, its RFC 6962 audit path and its segment's signed root; the proof verifies offline under the signer's public key alone.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 132
+      "line": 134
     },
     {
       "id": "disclosure.attest.proof-invalid",
@@ -14436,7 +14447,7 @@
       "statement": "A proof whose entry, audit path, header, root or root signature disagrees raises `AuditProofInvalid`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 134
+      "line": 136
     },
     {
       "id": "disclosure.attest.proof-unavailable",
@@ -14447,7 +14458,7 @@
       "statement": "Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises `AuditProofUnavailable`.",
       "why": "because an open segment has no signed root yet, and a v0 root commits to no tree",
       "file": "spec/62-accountability.md",
-      "line": 136
+      "line": 138
     },
     {
       "id": "disclosure.attest.root-replication",
@@ -14458,7 +14469,7 @@
       "statement": "Signed roots reach the replication bucket asynchronously every 10 min.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 138
+      "line": 140
     },
     {
       "id": "disclosure.erase.privilege",
@@ -14469,7 +14480,7 @@
       "statement": "Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.",
       "why": "A-read",
       "file": "spec/62-accountability.md",
-      "line": 146
+      "line": 148
     },
     {
       "id": "disclosure.erase.subject-column",
@@ -14480,7 +14491,7 @@
       "statement": "A table names its subject column as `subject_id = \"<column>\"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 148
+      "line": 150
     },
     {
       "id": "disclosure.erase.cascade",
@@ -14491,7 +14502,7 @@
       "statement": "In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 150
+      "line": 152
     },
     {
       "id": "disclosure.erase.cascade-unbounded",
@@ -14502,7 +14513,7 @@
       "statement": "A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 152
+      "line": 154
     },
     {
       "id": "disclosure.erase.physical-removal",
@@ -14513,7 +14524,7 @@
       "statement": "Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 154
+      "line": 156
     },
     {
       "id": "disclosure.erase.restaging-gate",
@@ -14524,7 +14535,7 @@
       "statement": "`--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 156
+      "line": 158
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -14535,7 +14546,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 158
+      "line": 160
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -14546,7 +14557,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 160
+      "line": 162
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -14557,7 +14568,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 162
+      "line": 164
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -14568,7 +14579,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 191
+      "line": 193
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -14579,7 +14590,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 193
+      "line": 195
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -14590,7 +14601,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 195
+      "line": 197
     },
     {
       "id": "disclosure.receipt.no-rewrite-engine",
@@ -14601,7 +14612,7 @@
       "statement": "A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.",
       "why": "because a receipt over a rewrite that did not run states a false claim",
       "file": "spec/62-accountability.md",
-      "line": 197
+      "line": 199
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -18281,6 +18292,10 @@
     [
       "disclosure.record.header-unsupported",
       "disclosure.record.chain-header"
+    ],
+    [
+      "disclosure.record.entry-fields",
+      "disclosure.attest.broken-chain"
     ],
     [
       "disclosure.record.inexact-integer",

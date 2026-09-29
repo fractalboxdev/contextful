@@ -194,8 +194,10 @@ impl DigestAlgorithm {
 }
 
 /// A v1 chain's header, `header.json`: the format, the digest and the segment size, fixed
-/// for the chain's life (`disclosure.record.chain-header`).
+/// for the chain's life (`disclosure.record.chain-header`). Any other field refuses to read
+/// (`disclosure.record.header-unsupported`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChainHeader {
     pub format: u32,
     pub digest: DigestAlgorithm,
@@ -451,8 +453,10 @@ fn root_from_path(digest: DigestAlgorithm, index: u64, size: u64, leaf: [u8; 32]
     (s == 0).then_some(r)
 }
 
-/// One entry: its format, the audited attributes and their linkage to the entry before.
+/// One entry: its format, the audited attributes and their linkage to the entry before. Any
+/// other field sits outside the entry digest and refuses to read (`disclosure.record.entry-fields`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AuditEntry {
     /// `1` on a v1 entry; absent, read as `0`, on a v0 entry.
     #[serde(default, skip_serializing_if = "is_zero")]
