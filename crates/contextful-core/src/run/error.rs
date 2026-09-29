@@ -141,6 +141,9 @@ pub enum RunError {
     /// A hold naming a build no committed manifest records. (`run.model.hold-unknown-build`)
     #[error("ModelBuildUnknown: {0}")]
     ModelBuildUnknown(String),
+    /// A build reading a table that declares a disclosure key. (`run.model.restricted-input`)
+    #[error("ModelInputRestricted: {0}")]
+    ModelInputRestricted(String),
     /// A model test returning a row. (`run.model.test-failed`)
     #[error("ModelTestFailed: {0}")]
     ModelTestFailed(String),

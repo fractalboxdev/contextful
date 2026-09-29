@@ -164,7 +164,7 @@ mod materialize {
     use arrow_row::{RowConverter, SortField};
     use arrow_schema::{Field, Schema as ArrowSchema};
     use contextful_core::pipeline::model::{
-        BuildStatus, InputFrontier, ModelSpec, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
+        disclosure_digest, withholds_cells, BuildStatus, InputFrontier, ModelSpec, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
     };
     use contextful_core::read::guard::admit;
     use contextful_core::read::template::Bindings;
@@ -304,6 +304,40 @@ mod materialize {
         Ok(out)
     }
 
+    /// Refuse a model whose table a landing wrote: a committed run, or a snapshot folding
+    /// one, names it (`run.model.model-id`). A model build commits neither.
+    fn check_owned(store: &Store, model: &str) -> std::result::Result<(), ReadFault> {
+        let runs = store.committed_runs(model)?.len();
+        let (chain, _) = store.chain(model)?;
+        let folded = chain.iter().any(|s| !s.includes_runs.is_empty());
+        if runs > 0 || folded {
+            return Err(ContextError::from(RunError::PipelineTableNameCollision(format!(
+                "model `{model}` builds table `{model}`, which a landing wrote ({runs} committed runs{}); name the model apart",
+                if folded { ", folded into its snapshots" } else { "" }
+            )))
+            .into());
+        }
+        Ok(())
+    }
+
+    /// Refuse an input declaring a disclosure key (`run.model.restricted-input`): the build
+    /// reads it unmasked, so the model's table serves its cells to every reader.
+    fn check_unrestricted(model: &str, input: &TableDecl) -> std::result::Result<(), ReadFault> {
+        let keys: Vec<&str> = [("class", input.class.is_some()), ("policy", input.policy.is_some()), ("visibility", input.visibility.is_some())]
+            .into_iter()
+            .filter_map(|(k, set)| set.then_some(k))
+            .collect();
+        if keys.is_empty() {
+            return Ok(());
+        }
+        Err(ContextError::from(RunError::ModelInputRestricted(format!(
+            "model `{model}` reads table `{}`, which declares {}; a model reads only tables declaring no class, policy or visibility",
+            input.name,
+            keys.join(", ")
+        )))
+        .into())
+    }
+
     /// Hold the rows to declared nullability and the grain (`run.model.unique-key`).
     fn check_rows(spec: &ModelSpec, cols: &[Column], rows: &RecordBatch) -> std::result::Result<(), ReadFault> {
         for c in cols.iter().filter(|c| !c.nullable) {
@@ -364,10 +398,17 @@ mod materialize {
             }
         }
 
+        check_owned(store, &spec.id)?;
+        // The model's table reads, and collects, under its own declaration.
+        let own = face.decl(&spec.id);
+
         let engine = SqlEngine::raw()?;
         let tables = face.register_operator(&engine)?;
         let sql = spec.sql.trim().trim_end_matches(';');
         let admitted = admit(&engine.serialize(sql)?, |n| n != spec.id && tables.iter().any(|t| t == n))?;
+        for t in &admitted.relations {
+            check_unrestricted(&spec.id, &face.decl(t))?;
+        }
         let mut watermark = Watermark::default();
         for t in &admitted.relations {
             let (f, at) = frontier(store, &face.decl(t))?;
@@ -452,8 +493,8 @@ mod materialize {
                     watermark: watermark.clone(),
                     max_lag: spec.max_lag().map(str::to_string),
                     last_build_status: BuildStatus::Published,
-                    withheld_cells: false,
-                    disclosure_digest: spec.disclosure_digest(),
+                    withheld_cells: withholds_cells(&own),
+                    disclosure_digest: disclosure_digest(&own),
                     partitions_failed: None,
                     semantics_version: Some(SEMANTICS_VERSION),
                     fingerprint_recipe: Some(FINGERPRINT_RECIPE.to_string()),
@@ -528,8 +569,7 @@ mod materialize {
         }
         drop(_schema_lock);
 
-        let decl = TableDecl::named(spec.id.clone());
-        crate::fold::collect(store, &decl, req.completed_at)?;
+        crate::fold::collect(store, &own, req.completed_at)?;
         if publishes {
             write_logs(store, &spec.id)?;
         }

@@ -195,16 +195,8 @@ impl TableDecl {
     /// The `retain_runs` window in seconds: `<n>d`, `<n>h`, `<n>m` or `<n>s`.
     pub fn retain_runs_secs(&self) -> Result<u64, DeclarationMalformed> {
         let Some(s) = &self.retain_runs else { return Ok(DEFAULT_RETAIN_RUNS_SECS) };
-        let bad = || DeclarationMalformed(format!("table `{}`: retain_runs `{s}` is not <n>d, <n>h, <n>m or <n>s", self.name));
-        let per = match s.chars().next_back().ok_or_else(bad)? {
-            'd' => 86_400,
-            'h' => 3_600,
-            'm' => 60,
-            's' => 1,
-            _ => return Err(bad()),
-        };
-        let n: u64 = s[..s.len() - 1].parse().map_err(|_| bad())?;
-        n.checked_mul(per).ok_or_else(bad)
+        crate::time::duration_secs(s)
+            .ok_or_else(|| DeclarationMalformed(format!("table `{}`: retain_runs `{s}` is not <n>d, <n>h, <n>m or <n>s", self.name)))
     }
 
     /// Hold the declaration to the table's reconciled schema, before any Parquet lands.

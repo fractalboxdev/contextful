@@ -1,5 +1,6 @@
 //! `run.model` and `run.publish` over the store: a model build materialized into staging,
 //! published through the pointer with its manifest section, held, and logged.
+#![cfg(feature = "read")]
 
 use crate::support::{at, decl, Fixture};
 use contextful_context::build::{build, current_section, hold, holds, manifests, BuildRequest, Built};
@@ -8,7 +9,8 @@ use contextful_core::pipeline::declare::{collect, ManifestFile};
 use contextful_core::pipeline::model::{
     collect_models, BuildEntry, ContractHistoryEntry, HoldRecord, ModelSpec, Receipt, BUILDS_LOG, CONTRACT_HISTORY_LOG, HOLDS_LOG,
 };
-use contextful_core::run::journal::sha256_hex;
+use contextful_core::pipeline::model::disclosure_digest;
+use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{MANIFEST_FILE, POINTER_FILE};
 use contextful_policy::enforce::mask::Pepper;
 use serde_json::{json, Value};
@@ -54,8 +56,14 @@ impl Project {
     }
 
     fn build(&self, manifest: &str, now: &str) -> Result<Built, ReadFault> {
-        let spec = model(manifest);
-        build(&self.face(manifest), &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) })
+        self.build_over(TABLES, manifest, now)
+    }
+
+    /// Build under `tables` in place of the default `events` declaration.
+    fn build_over(&self, tables: &str, manifest: &str, now: &str) -> Result<Built, ReadFault> {
+        let spec = model_over(tables, manifest);
+        let face = Face::open(self.fx.store.clone(), &format!("{tables}{manifest}"), Pepper::resolve(|_| None)).unwrap();
+        build(&face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) })
     }
 
     fn rows(&self, sql: &str) -> Vec<Vec<Value>> {
@@ -71,8 +79,8 @@ impl Project {
     }
 }
 
-fn model(manifest: &str) -> ModelSpec {
-    let files = [ManifestFile { path: "contextful.toml".into(), text: format!("{TABLES}{manifest}") }];
+fn model_over(tables: &str, manifest: &str) -> ModelSpec {
+    let files = [ManifestFile { path: "contextful.toml".into(), text: format!("{tables}{manifest}") }];
     collect_models(&files, &collect(&files).unwrap()).unwrap().remove(0).spec
 }
 
@@ -239,7 +247,7 @@ fn a_fingerprint_moving_under_one_major_is_refused_until_the_major_moves() {
     p.build(&widened.replace("\"1.0.0\"", "\"2.0.0\""), "2030-01-01T03:00:00Z").unwrap();
     let history: Vec<ContractHistoryEntry> = p.log(CONTRACT_HISTORY_LOG);
     assert_eq!(history.iter().map(|h| h.contract_version.as_str()).collect::<Vec<_>>(), ["1.0.0", "2.0.0"]);
-    // A minor bump over an unchanged fingerprint publishes, and the history records no new identity.
+    // A minor bump over an unchanged fingerprint publishes; the version change is a new identity entry.
     p.build(&widened.replace("\"1.0.0\"", "\"2.1.0\""), "2030-01-01T04:00:00Z").unwrap();
     assert_eq!(p.log::<ContractHistoryEntry>(CONTRACT_HISTORY_LOG).len(), 3, "a version change is a new identity entry");
 }
@@ -365,16 +373,61 @@ fn a_tampered_log_is_rewritten_and_collected_history_kept() {
     assert_eq!((ids[0].as_str(), ids[1].as_str(), ids[3].as_str()), (a.build_id.as_str(), b.build_id.as_str(), c.build_id.as_str()));
 }
 
-/// A build records a digest over its declared disclosure policy, set-valued fields sorted, in the manifest and in the build log.
-// spec: run.publish.disclosure-digest@e6e75ce5
+/// A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.
+// spec: run.publish.disclosure-digest@fea4a83b
 #[test]
-fn the_disclosure_digest_rides_the_manifest_and_the_build_log() {
+fn the_disclosure_digest_covers_the_policy_the_model_table_reads_under() {
     let p = Project::new();
-    let built = p.build(MODEL, "2030-01-01T00:00:00Z").unwrap();
-    let digest = built.section.unwrap().disclosure_digest;
-    // A model block declares no policy of its own: its digest is the empty declaration's.
-    assert_eq!(digest, sha256_hex(b"null"));
-    let logged: Vec<BuildEntry> = p.log(BUILDS_LOG);
-    assert_eq!(logged[0].disclosure_digest, digest);
-    assert_eq!(current_section(&p.fx.store, "daily").unwrap().unwrap().disclosure_digest, digest);
+    let open = p.build(MODEL, "2030-01-01T00:00:00Z").unwrap().section.unwrap();
+    assert_eq!(open.disclosure_digest, disclosure_digest(&TableDecl::named("daily")));
+    assert!(!open.withheld_cells, "an undeclared table withholds no cell");
+    let masked = format!("{MODEL}[[pipeline.tables]]\nname = \"daily\"\n[pipeline.tables.policy.columns]\nn = {{ strategy = \"drop\" }}\n");
+    let section = p.build(&masked, "2030-01-01T01:00:00Z").unwrap().section.unwrap();
+    assert_ne!(section.disclosure_digest, open.disclosure_digest);
+    assert!(section.withheld_cells, "a masked table withholds cells");
+    let logged: Vec<String> = p.log::<BuildEntry>(BUILDS_LOG).into_iter().map(|e| e.disclosure_digest).collect();
+    assert_eq!(logged, [open.disclosure_digest.clone(), section.disclosure_digest.clone()]);
+    assert_eq!(current_section(&p.fx.store, "daily").unwrap().unwrap().disclosure_digest, section.disclosure_digest);
+}
+
+/// A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.
+// spec: run.model.model-id@237baca3
+#[test]
+fn a_model_id_naming_a_landed_table_is_refused() {
+    let p = Project::new();
+    p.fx.land(&decl("name = \"daily\""), "r9", json!([{"note": "keep-me"}]), "2030-01-01T00:10:00Z").unwrap();
+    let e = refused(p.build(MODEL, "2030-01-01T01:00:00Z"), "PipelineTableNameCollision");
+    assert!(e.contains("`daily`"), "{e}");
+    assert_eq!(p.rows("SELECT note FROM daily"), [[json!("keep-me")]]);
+    // A fold moves the runs into a snapshot, and the table still belongs to its landing.
+    contextful_context::fold::fold(&p.fx.store, &decl("name = \"daily\""), at("2030-01-01T02:00:00Z")).unwrap();
+    refused(p.build(MODEL, "2030-01-01T03:00:00Z"), "PipelineTableNameCollision");
+    assert_eq!(p.rows("SELECT note FROM daily"), [[json!("keep-me")]]);
+}
+
+/// A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
+// spec: run.model.restricted-input@25682f0f
+#[test]
+fn a_build_over_a_restricted_input_is_refused() {
+    let p = Project::new();
+    let masked = "[[pipeline.tables]]\nname = \"events\"\n[pipeline.tables.policy.columns]\nv = { strategy = \"drop\" }\n";
+    let e = refused(p.build_over(masked, MODEL, "2030-01-01T01:00:00Z"), "ModelInputRestricted");
+    assert!(e.contains("`events`") && e.contains("policy"), "{e}");
+    let classed = "[[pipeline.tables]]\nname = \"events\"\nclass = \"email\"\n";
+    let e = refused(p.build_over(classed, MODEL, "2030-01-01T01:00:00Z"), "ModelInputRestricted");
+    assert!(e.contains("class"), "{e}");
+    assert!(current_section(&p.fx.store, "daily").unwrap().is_none(), "nothing was published");
+    assert!(!p.dir().join("data/snapshots").read_dir().is_ok_and(|mut d| d.next().is_some()), "no row was staged");
+    p.build(MODEL, "2030-01-01T02:00:00Z").unwrap();
+}
+
+/// A model table's declared `retain_runs` governs the collection each of its builds runs.
+#[test]
+fn collection_after_a_build_follows_the_declared_window() {
+    let p = Project::new();
+    let kept = format!("{MODEL}[[pipeline.tables]]\nname = \"daily\"\nretain_runs = \"30d\"\n");
+    let first = p.build(&kept, "2030-01-01T01:00:00Z").unwrap();
+    p.build(&kept, "2030-01-01T01:00:01Z").unwrap();
+    p.build(&kept, "2030-01-09T00:00:00Z").unwrap();
+    assert!(p.dir().join("data/snapshots").join(&first.build_id).is_dir(), "a 30 d window keeps a build 8 days old");
 }

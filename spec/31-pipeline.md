@@ -306,8 +306,10 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
   *A-run*
 - `top-level-block` — A manifest's top-level key outside the set the engine enumerates raises `PipelineUnknownBlock`, naming the key, the file and the accepted set.
   *because a misspelled block parses as nothing, and its declaration silently never runs*
-- `model-id` — A model's `id` names the store table it builds; an id declared twice, or equal to a pipeline destination table, refuses as {{run.declare.table-name-collision}}.
+- `model-id` — A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.
 - `sql` — `sql` is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through the table its last build published.
+- `restricted-input` — A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
+  *because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader*
 - `materialized` — `materialized` is `table`, the default: each build replaces the model's rows whole.
 - `unique-key` — `unique_key` is the model's grain; a build whose rows repeat one grain value, or hold a null in a grain column, refuses as {{run.publish.contract-mismatch}}.
 - `contract-block` — `[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a `name`, a `type` spelled as {{store.reconcile.typed-landing}} reads it, and `nullable`, default true.
@@ -335,7 +337,9 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
 
 unsettled: Does a model materialize incrementally, merging each build into its prior one on `unique_key`? owner: pipeline affects: run.model
 
-unsettled: Does `build` run the pipelines feeding a model's inputs first, and does a model over a restricted table declare its own policy? owner: pipeline affects: run.model
+unsettled: Does `build` run the pipelines feeding a model's inputs first? owner: pipeline affects: run.model
+
+unsettled: Does a model over a restricted table declare its own policy, or inherit the strictest policy among its inputs? owner: pipeline affects: run.model
 
 unsettled: Does a validation verb refuse a cycle among models before any build reaches one? owner: pipeline affects: run.model
 
@@ -361,7 +365,7 @@ A published table's contract identity, build, freshness and holds, committed wit
 - `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
 - `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
-- `disclosure-digest` — A build records a digest over its declared disclosure policy, set-valued fields sorted, in the manifest and in the build log.
+- `disclosure-digest` — A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.
 
 unsettled: Where does a refused or partial build's entry land, given the history logs derive from committed manifests and a refused build commits none? owner: pipeline affects: run.publish
 

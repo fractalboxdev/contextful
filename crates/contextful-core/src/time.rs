@@ -97,6 +97,24 @@ impl Instant {
     }
 }
 
+/// A span spelled as ASCII digits followed by `s`, `m`, `h` or `d`, in seconds; zero reads
+/// as zero, and any other spelling, or a span past `u64` seconds, as `None`. The one parser
+/// of `retain_runs` and `max_lag`.
+pub fn duration_secs(s: &str) -> Option<u64> {
+    let per = match s.chars().next_back()? {
+        's' => 1,
+        'm' => 60,
+        'h' => 3_600,
+        'd' => 86_400,
+        _ => return None,
+    };
+    let digits = &s[..s.len() - 1];
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse::<u64>().ok()?.checked_mul(per)
+}
+
 impl std::fmt::Display for Instant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.to_rfc3339())

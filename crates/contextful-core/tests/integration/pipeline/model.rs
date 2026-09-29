@@ -118,7 +118,6 @@ fn a_top_level_key_outside_the_manifest_blocks_is_refused() {
 }
 
 /// A model's `id` names the store table it builds; an id declared twice, or equal to a pipeline destination table, refuses as {{run.declare.table-name-collision}}.
-// spec: run.model.model-id@5ff8dc34
 #[test]
 fn a_model_id_is_its_table_and_collides_with_no_other() {
     let twice = format!("{}\n{}", model_doc(""), model_doc(""));
@@ -366,4 +365,26 @@ fn a_hold_is_active_until_its_expiry() {
     let h = HoldRecord { build_id: "b".into(), principal: "ops".into(), placed_at: at("2030-01-01T00:00:00Z"), expires_at: at("2030-01-08T00:00:00Z") };
     assert!(h.active(at("2030-01-07T23:59:59Z")));
     assert!(!h.active(at("2030-01-08T00:00:00Z")));
+}
+
+/// The disclosure digest reads the table's `class`, `policy` and `visibility` alone, with a
+/// set-valued field's order ignored and a list of objects kept in order.
+#[test]
+fn the_disclosure_digest_sorts_set_valued_fields() {
+    use contextful_core::pipeline::model::{disclosure_digest, withholds_cells};
+    use contextful_core::store::declare::TableDecl;
+    use serde_json::json;
+    let with = |policy: serde_json::Value| TableDecl { policy: Some(policy), ..TableDecl::named("t") };
+    let open = TableDecl::named("t");
+    assert_eq!(disclosure_digest(&open), disclosure_digest(&TableDecl { retain_runs: Some("30d".into()), ..TableDecl::named("u") }));
+    assert!(!withholds_cells(&open));
+    let ab = with(json!({"zone": {"allow": ["a", "b"]}}));
+    let ba = with(json!({"zone": {"allow": ["b", "a"]}}));
+    assert_eq!(disclosure_digest(&ab), disclosure_digest(&ba));
+    assert_ne!(disclosure_digest(&ab), disclosure_digest(&open));
+    assert!(withholds_cells(&ab));
+    let first = with(json!({"rows": {"predicate": "p", "exception": [{"when": "x", "predicate": "1"}, {"when": "y", "predicate": "2"}]}}));
+    let swapped = with(json!({"rows": {"predicate": "p", "exception": [{"when": "y", "predicate": "2"}, {"when": "x", "predicate": "1"}]}}));
+    assert_ne!(disclosure_digest(&first), disclosure_digest(&swapped), "exceptions apply first-match, so their order counts");
+    assert!(withholds_cells(&TableDecl { class: Some(json!("email")), ..TableDecl::named("t") }));
 }

@@ -76,6 +76,7 @@ PipelineSeedSourceChanged      = { clause = "run.seed.source-changed", gloss = "
 PipelineContractMismatch       = { clause = "run.publish.contract-mismatch", gloss = "A materialization failing its declared contract." }
 PipelineUnknownBlock           = { clause = "run.model.top-level-block", gloss = "A manifest top-level key outside the enumerated blocks." }
 ModelContractUndeclared        = { clause = "run.model.contract-required", gloss = "A published model declaring no contract." }
+ModelInputRestricted           = { clause = "run.model.restricted-input", gloss = "A build reading a table that declares a disclosure key." }
 ModelTestFailed                = { clause = "run.model.test-failed", gloss = "A model test returning a row." }
 ModelUndeclared                = { clause = "run.model.unknown-model", gloss = "A build naming no declared model." }
 ModelBuildUnknown              = { clause = "run.model.hold-unknown-build", gloss = "A hold naming a build no committed manifest records." }

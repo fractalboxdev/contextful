@@ -6,6 +6,7 @@ use super::canonical::canonical_json;
 use super::declare::{Declared, ManifestFile};
 use crate::run::journal::sha256_hex;
 use crate::run::RunError;
+use crate::store::declare::TableDecl;
 use crate::store::lay_out::SnapshotManifest;
 use crate::store::reconcile::ColumnType;
 use crate::store::reserve::{check_table_name, ALWAYS_INJECTED};
@@ -72,21 +73,10 @@ impl<'de> Deserialize<'de> for ContractVersion {
     }
 }
 
-/// A duration spelled as an integer followed by `s`, `m`, `h` or `d`, in seconds; zero
-/// and any other spelling read as `None`.
+/// A positive span in the [`crate::time::duration_secs`] grammar, as `max_lag` and a
+/// hold's `--for` read it; zero reads as `None`.
 pub fn duration_secs(s: &str) -> Option<u64> {
-    let per = match s.chars().next_back()? {
-        's' => 1,
-        'm' => 60,
-        'h' => 3_600,
-        'd' => 86_400,
-        _ => return None,
-    };
-    let digits = &s[..s.len() - 1];
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    digits.parse::<u64>().ok()?.checked_mul(per).filter(|n| *n > 0)
+    crate::time::duration_secs(s).filter(|n| *n > 0)
 }
 
 fn spelled_type<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
@@ -214,13 +204,44 @@ impl ModelSpec {
         let v = json!({"columns": columns, "grain": self.grain(), "injected": ALWAYS_INJECTED});
         Some(sha256_hex(canonical_json(&v).as_bytes()))
     }
+}
 
-    /// The digest over the model's declared disclosure policy, set-valued fields sorted
-    /// (`run.publish.disclosure-digest`). A model block declares no policy of its own, so
-    /// every model's policy is the empty declaration.
-    pub fn disclosure_digest(&self) -> String {
-        sha256_hex(canonical_json(&Value::Null).as_bytes())
+/// The disclosure keys of a table declaration a model's table reads under.
+fn disclosure_policy(decl: &TableDecl) -> Value {
+    let mut out = serde_json::Map::new();
+    for (key, v) in [("class", &decl.class), ("policy", &decl.policy), ("visibility", &decl.visibility)] {
+        if let Some(v) = v {
+            out.insert(key.to_string(), sort_sets(v.clone()));
+        }
     }
+    Value::Object(out)
+}
+
+/// Sort every array of scalars, the set-valued fields; an array holding an object keeps
+/// its order, since row exceptions apply first match.
+fn sort_sets(v: Value) -> Value {
+    match v {
+        Value::Array(items) if items.iter().all(|i| !i.is_object() && !i.is_array()) => {
+            let mut keyed: Vec<(String, Value)> = items.into_iter().map(|i| (canonical_json(&i), i)).collect();
+            keyed.sort_by(|a, b| a.0.cmp(&b.0));
+            Value::Array(keyed.into_iter().map(|(_, i)| i).collect())
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(sort_sets).collect()),
+        Value::Object(map) => Value::Object(map.into_iter().map(|(k, v)| (k, sort_sets(v))).collect()),
+        other => other,
+    }
+}
+
+/// The digest over the `class`, `policy` and `visibility` a model's table declares,
+/// set-valued fields sorted and absent keys omitted (`run.publish.disclosure-digest`).
+pub fn disclosure_digest(decl: &TableDecl) -> String {
+    sha256_hex(canonical_json(&disclosure_policy(decl)).as_bytes())
+}
+
+/// Whether a model's table declares any disclosure key, so that some reader is served
+/// fewer cells than the build wrote (`run.publish.disclosure-digest`).
+pub fn withholds_cells(decl: &TableDecl) -> bool {
+    decl.class.is_some() || decl.policy.is_some() || decl.visibility.is_some()
 }
 
 /// A model and where it was declared.

@@ -68,3 +68,18 @@ fn instants_carry_nanoseconds() {
     assert_eq!(at("2030-01-01T00:15:00Z").minus_secs(900), at("2030-01-01T00:00:00Z"));
     assert!(Instant::from_unix_nanos(i128::MAX).is_err());
 }
+
+/// One `<n>[smhd]` duration grammar serves `retain_runs` and `max_lag`: digits then one
+/// unit character, zero admitted; a caller needing a positive span refuses zero itself.
+#[test]
+fn one_duration_grammar_reads_n_then_a_unit() {
+    use contextful_core::time::duration_secs;
+    assert_eq!(duration_secs("90s"), Some(90));
+    assert_eq!(duration_secs("15m"), Some(900));
+    assert_eq!(duration_secs("2h"), Some(7_200));
+    assert_eq!(duration_secs("7d"), Some(604_800));
+    assert_eq!(duration_secs("0d"), Some(0));
+    for bad in ["", "d", "+5d", "-1h", "1.5h", "1 h", "1w", "7天", "٧d", "99999999999999999999d"] {
+        assert_eq!(duration_secs(bad), None, "`{bad}`");
+    }
+}
