@@ -5,8 +5,8 @@ use super::bound_time::Bound;
 use super::declare::TableDecl;
 use super::reconcile::Column;
 use super::StoreError;
-use crate::run::derive::config::DERIVE_PRIMARY_KEY;
 use crate::run::derive::emit::SUPERSEDE_COLUMNS;
+use crate::run::derive::task::{is_derive_key, TASK_VERSION};
 
 /// Double-quote an identifier.
 pub fn ident(name: &str) -> String {
@@ -72,8 +72,9 @@ pub fn relation(
     } else {
         base
     };
-    if decl.primary_key() == DERIVE_PRIMARY_KEY && SUPERSEDE_COLUMNS.iter().all(|n| schema_columns.iter().any(|c| c.name == *n)) {
-        rel = unsuperseded(&rel);
+    if is_derive_key(decl.primary_key()) && SUPERSEDE_COLUMNS.iter().all(|n| schema_columns.iter().any(|c| c.name == *n)) {
+        let by_version = decl.retain_versions == Some(true) && schema_columns.iter().any(|c| c.name == TASK_VERSION);
+        rel = unsuperseded(&rel, by_version);
     }
 
     if let Some(b) = valid_as_of {
@@ -95,16 +96,24 @@ pub fn relation(
 
 /// `rel` less a derive table's superseded rows: each unit's rows landed under another key
 /// before its latest passage, `ok` or `empty` landing (`run.emit.stale-supersedes`). The
-/// fold drops the same rows, so a read before and after it answers alike.
-fn unsuperseded(rel: &str) -> String {
+/// fold drops the same rows, so a read before and after it answers alike. On a table
+/// retaining versions, a unit's rows yield only within their own `task_version`
+/// (`run.emit.version-retained`).
+fn unsuperseded(rel: &str, by_version: bool) -> String {
     let [unit, key, kind, status, at, run, seq] = SUPERSEDE_COLUMNS.map(ident);
+    let version = ident(TASK_VERSION);
+    let (partition, carry, join) = if by_version {
+        (format!("{unit}, {version}"), format!(", {version} AS __version"), format!(" AND __d.{version} IS NOT DISTINCT FROM __c.__version"))
+    } else {
+        (unit.clone(), String::new(), String::new())
+    };
     let latest = format!(
-        "SELECT {unit} AS __unit, {key} AS __key, {at} AS __at, {run} AS __run, {seq} AS __seq FROM (\
-         SELECT *, ROW_NUMBER() OVER (PARTITION BY {unit} ORDER BY {at} DESC, {run} DESC, {seq} DESC) AS __n FROM ({rel}) \
+        "SELECT {unit} AS __unit, {key} AS __key, {at} AS __at, {run} AS __run, {seq} AS __seq{carry} FROM (\
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY {partition} ORDER BY {at} DESC, {run} DESC, {seq} DESC) AS __n FROM ({rel}) \
          WHERE {kind} IS DISTINCT FROM 'marker' OR {status} IN ('ok', 'empty')) WHERE __n = 1"
     );
     format!(
-        "SELECT __d.* FROM ({rel}) AS __d LEFT JOIN ({latest}) AS __c ON __d.{unit} = __c.__unit \
+        "SELECT __d.* FROM ({rel}) AS __d LEFT JOIN ({latest}) AS __c ON __d.{unit} = __c.__unit{join} \
          WHERE __c.__unit IS NULL OR __d.{key} IS NOT DISTINCT FROM __c.__key OR __d.{at} > __c.__at \
          OR (__d.{at} = __c.__at AND (__d.{run} > __c.__run OR (__d.{run} = __c.__run AND __d.{seq} >= __c.__seq)))"
     )

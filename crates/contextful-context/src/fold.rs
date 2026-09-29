@@ -17,8 +17,8 @@ pub use contextful_core::store::lay_out::escape;
 use contextful_core::store::lay_out::{
     part_name, PartEntry, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, STAGING_SUFFIX,
 };
-use contextful_core::run::derive::config::DERIVE_PRIMARY_KEY;
-use contextful_core::run::derive::emit::{superseded, SUPERSEDE_COLUMNS};
+use contextful_core::run::derive::emit::{superseded, superseded_within_version, SUPERSEDE_COLUMNS};
+use contextful_core::run::derive::task::{is_derive_key, TASK_VERSION};
 use contextful_core::store::reserve::TIEBREAK;
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -145,8 +145,8 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         }
         rows = dedupe(&rows, &line, decl.order_by()).map_err(invalid)?;
     }
-    if decl.primary_key() == DERIVE_PRIMARY_KEY {
-        rows = supersede(&rows)?;
+    if is_derive_key(decl.primary_key()) {
+        rows = supersede(&rows, decl.retain_versions == Some(true))?;
     }
     if !decl.cluster_by().is_empty() {
         rows = sort(&rows, decl.cluster_by()).map_err(invalid)?;
@@ -398,9 +398,14 @@ fn dedupe(b: &RecordBatch, line: &[String], order_by: &str) -> std::result::Resu
 
 /// Drop a derive table's superseded rows, so the snapshot and every sidecar built over it
 /// hold each unit's rows under its latest established key alone (`run.emit.stale-supersedes`).
-fn supersede(b: &RecordBatch) -> Result<RecordBatch> {
-    let standing = crate::rows::batch_rows(b, &SUPERSEDE_COLUMNS)?;
-    let keep: BooleanArray = superseded(&standing).into_iter().map(|s| Some(!s)).collect();
+fn supersede(b: &RecordBatch, retain_versions: bool) -> Result<RecordBatch> {
+    let mut columns = SUPERSEDE_COLUMNS.to_vec();
+    if retain_versions {
+        columns.push(TASK_VERSION);
+    }
+    let standing = crate::rows::batch_rows(b, &columns)?;
+    let flags = if retain_versions { superseded_within_version(&standing) } else { superseded(&standing) };
+    let keep: BooleanArray = flags.into_iter().map(|s| Some(!s)).collect();
     filter_record_batch(b, &keep).map_err(|e| ContextError::Invalid(format!("superseding derived rows: {e}")))
 }
 

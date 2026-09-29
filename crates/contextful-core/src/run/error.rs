@@ -108,9 +108,15 @@ pub enum RunError {
     /// A unit status outside the four. (`run.emit.unit-status`)
     #[error("DeriveUnitStatusUnknown: {0}")]
     DeriveUnitStatusUnknown(String),
-    /// A `task` outside the supported pair. (`run.bind.unknown-task`)
+    /// A `task` naming neither a built-in nor a registered task. (`run.bind.unknown-task`)
     #[error("DeriveUnknownTask: {0}")]
     DeriveUnknownTask(String),
+    /// A host task registered under a name already taken. (`run.bind.host-task`)
+    #[error("DeriveTaskNameTaken: {0}")]
+    DeriveTaskNameTaken(String),
+    /// A host-task pipeline's tables, or a unit's rows, outside its task's tables. (`run.emit.output-tables`)
+    #[error("DeriveOutputTablesMismatch: {0}")]
+    DeriveOutputTablesMismatch(String),
     /// A preprocess condition naming no known condition. (`run.exec.step-condition`)
     #[error("DeriveStepConditionUnknown: {0}")]
     DeriveStepConditionUnknown(String),

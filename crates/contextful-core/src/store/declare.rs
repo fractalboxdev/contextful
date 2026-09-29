@@ -72,6 +72,10 @@ pub struct TableDecl {
     pub partition_by: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retain_runs: Option<String>,
+    /// A derive output table keeping each task version's rows current under that version
+    /// (`run.emit.version-retained`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retain_versions: Option<bool>,
     /// Column types every landing reads (`store.declare.column-types`), spelled as
     /// [`ColumnType::parse`] reads them; an unreadable spelling refuses the block.
     #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "spelled_types")]

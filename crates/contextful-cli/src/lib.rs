@@ -1,0 +1,89 @@
+//! The `contextful` command line as a library: the `contextful` binary runs it with no host
+//! derive task, and an embedding binary runs it with the tasks it registers before build
+//! (`run.bind.host-task`).
+
+mod admit;
+mod component;
+mod context;
+mod derive;
+mod differential;
+mod formal;
+mod mcp;
+mod memory;
+mod pipeline;
+mod project;
+mod query;
+mod run;
+mod serve;
+mod sync;
+mod token;
+
+use clap::{Parser, Subcommand};
+use contextful_core::run::derive::task::Tasks;
+
+#[derive(Parser)]
+#[command(name = "contextful", about = "The Contextful command line")]
+struct Cli {
+    #[command(subcommand)]
+    cmd: Cmd,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Declare a project in `contextful.toml` here and create its store root.
+    Init(project::InitArgs),
+    /// Mint, attenuate, verify, introspect and exchange capability credentials.
+    #[command(subcommand)]
+    Token(token::TokenCmd),
+    /// Land, list, scan and fold a project's store tables.
+    #[command(subcommand)]
+    Context(context::ContextCmd),
+    /// Run one derive engine outside a pipeline.
+    #[command(subcommand)]
+    Derive(derive::DeriveCmd),
+    /// Validate and fire declared pipelines.
+    #[command(subcommand)]
+    Pipeline(pipeline::PipelineCmd),
+    /// Push, pull, lease and compact against the store's bucket.
+    #[command(subcommand)]
+    Sync(sync::SyncCmd),
+    /// Start, inspect, stop and resume durable runs.
+    #[command(subcommand)]
+    Run(run::RunCmd),
+    /// Synthesize memory from landed rows, and write claims directly.
+    #[command(subcommand)]
+    Memory(memory::MemoryCmd),
+    /// Run one operator statement raw and print the response projection; no network face reaches it.
+    Query(query::QueryArgs),
+    /// Serve the read face over the tool protocol on standard input and output.
+    Mcp(mcp::McpArgs),
+    /// Serve the tool protocol over MCP Streamable HTTP, admitting each request on its own credential.
+    Serve(serve::ServeArgs),
+    /// Elaborate and audit the Lean models under `formal/`.
+    #[command(subcommand)]
+    Formal(formal::FormalCmd),
+}
+
+/// Parse the process arguments and run the command, with `tasks` registered as host derive
+/// tasks; a failure prints and exits 1.
+pub fn main_with(tasks: Tasks) {
+    let cli = Cli::parse();
+    let result = match cli.cmd {
+        Cmd::Init(c) => project::run(c),
+        Cmd::Token(c) => token::run(c),
+        Cmd::Context(c) => context::run(c),
+        Cmd::Run(c) => run::run(c),
+        Cmd::Sync(c) => sync::run(c),
+        Cmd::Pipeline(c) => pipeline::run(c, &tasks),
+        Cmd::Query(c) => query::run(c),
+        Cmd::Mcp(c) => mcp::run(c),
+        Cmd::Serve(c) => serve::run(c),
+        Cmd::Derive(c) => derive::run(c),
+        Cmd::Memory(c) => memory::run(c),
+        Cmd::Formal(c) => formal::run(c),
+    };
+    if let Err(e) = result {
+        eprintln!("{e:#}");
+        std::process::exit(1);
+    }
+}

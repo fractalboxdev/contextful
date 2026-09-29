@@ -1,6 +1,7 @@
 //! `run.select` and `run.bind`: the derive source's configuration, the machine's binding
 //! of an engine name, and the checks each is held to before any unit runs.
 
+use super::task::{Tasks, BUILT_IN_TASKS};
 use crate::run::RunError;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -20,18 +21,25 @@ pub const KEYS: [&str; 10] =
 pub const MACHINE_KEYS: [&str; 4] = ["command", "preprocess", "env", "allow_hosts"];
 
 /// What a derive pipeline does with a unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Task {
     Transcribe,
     LinkPreview,
+    /// A compiled task the embedding binary registered under this name (`run.bind.host-task`).
+    Host(String),
 }
 
 impl Task {
-    pub fn name(self) -> &'static str {
+    pub fn name(&self) -> &str {
         match self {
             Task::Transcribe => "transcribe",
             Task::LinkPreview => "link_preview",
+            Task::Host(name) => name,
         }
+    }
+
+    pub fn is_host(&self) -> bool {
+        matches!(self, Task::Host(_))
     }
 }
 
@@ -53,8 +61,14 @@ fn int(cfg: &Map<String, Value>, key: &str) -> Option<i64> {
 }
 
 impl DeriveConfig {
-    /// Parse a derive source's configuration for pipeline `pipeline_id`.
+    /// Parse a derive source's configuration for pipeline `pipeline_id`, with no host task registered.
     pub fn parse(pipeline_id: &str, config: &Value) -> Result<DeriveConfig, RunError> {
+        DeriveConfig::parse_with(pipeline_id, config, &Tasks::default())
+    }
+
+    /// Parse a derive source's configuration for pipeline `pipeline_id`, resolving `task`
+    /// against the built-in tasks and those `tasks` registers (`run.bind.unknown-task`).
+    pub fn parse_with(pipeline_id: &str, config: &Value, tasks: &Tasks) -> Result<DeriveConfig, RunError> {
         let empty = Map::new();
         let cfg = config.as_object().unwrap_or(&empty);
         if let Some(k) = cfg.keys().find(|k| MACHINE_KEYS.contains(&k.as_str())) {
@@ -76,16 +90,33 @@ impl DeriveConfig {
                 _ => Err(RunError::DeriveConfigKeyMissing(format!("pipeline `{pipeline_id}` declares no `{key}`"))),
             }
         };
-        let engine = required("engine")?;
-        let source_table = required("source_table")?;
-        let media_column = required("media_column")?;
-        let parent_id_column = required("parent_id_column")?;
         let task = match cfg.get("task").and_then(Value::as_str) {
             None | Some("transcribe") => Task::Transcribe,
             Some("link_preview") => Task::LinkPreview,
+            Some(name) if tasks.get(name).is_some() => Task::Host(name.to_string()),
             Some(other) => {
-                return Err(RunError::DeriveUnknownTask(format!("task `{other}` is neither `transcribe` nor `link_preview`")))
+                let registered = tasks.names();
+                return Err(RunError::DeriveUnknownTask(format!(
+                    "task `{other}` is none of the built-in tasks {} or the registered tasks {}",
+                    BUILT_IN_TASKS.join(", "),
+                    if registered.is_empty() { "(none)".to_string() } else { registered.join(", ") }
+                )));
             }
+        };
+        let source_table = required("source_table")?;
+        let parent_id_column = required("parent_id_column")?;
+        // A host task reads the parent columns it declares and binds no engine (`run.bind.driver-mismatch`).
+        let (engine, media_column) = if task.is_host() {
+            if let Some(engine) = cfg.get("engine") {
+                return Err(RunError::DeriveDriverMismatch(format!(
+                    "pipeline `{pipeline_id}` names engine {engine} for host task `{}`, which is compiled code and binds no engine",
+                    task.name()
+                )));
+            }
+            let media = cfg.get("media_column").and_then(Value::as_str).map(str::trim).unwrap_or_default().to_string();
+            (String::new(), media)
+        } else {
+            (required("engine")?, required("media_column")?)
         };
         if cfg.get("journal").and_then(Value::as_bool) == Some(true) {
             return Err(RunError::DeriveJournaledPull(format!(
@@ -99,12 +130,12 @@ impl DeriveConfig {
             source_table,
             media_column,
             parent_id_column,
-            task,
+            task: task.clone(),
             max_rows_per_run: positive_or(int(cfg, "max_rows_per_run"), ROWS_PER_RUN),
             max_attempts: positive_or(int(cfg, "max_attempts"), ATTEMPTS_PER_UNIT),
-            max_seconds_per_run: seconds.or(match task {
+            max_seconds_per_run: seconds.or(match &task {
                 Task::LinkPreview => Some(LINK_SECONDS_PER_RUN),
-                Task::Transcribe => None,
+                Task::Transcribe | Task::Host(_) => None,
             }),
         })
     }
@@ -245,6 +276,7 @@ pub fn bind<'a>(pipeline_id: &str, config: &DeriveConfig, bindings: &'a BTreeMap
     let fits = match config.task {
         Task::Transcribe => b.driver == "exec" || b.driver == "none",
         Task::LinkPreview => b.driver == "fetch",
+        Task::Host(_) => false,
     };
     if !fits {
         return Err(RunError::DeriveDriverMismatch(format!(

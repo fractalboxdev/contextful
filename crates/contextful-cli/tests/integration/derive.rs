@@ -1,4 +1,5 @@
-//! `contextful derive test-engine` through the built binary.
+//! `contextful derive test-engine` through the built binary, and host derive tasks through
+//! an embedding binary.
 
 use std::process::{Command, Output};
 
@@ -24,4 +25,141 @@ fn the_verb_refuses_a_fetch_engine_and_runs_a_transcriber_over_one_file() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let line: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(line, serde_json::json!({"start_ms": 1000, "end_ms": 2000, "text": "hello"}));
+}
+
+/// The embedding binary under `examples/host_derive.rs`, built on first request: the command
+/// line with the compiled `word-split` task registered.
+fn host_binary() -> std::path::PathBuf {
+    static BUILT: std::sync::Once = std::sync::Once::new();
+    BUILT.call_once(|| {
+        let status = Command::new(env!("CARGO")).args(["build", "-q", "-p", "contextful-cli", "--example", "host_derive"]).status().unwrap();
+        assert!(status.success(), "building the host_derive example");
+    });
+    std::path::Path::new(env!("CARGO_BIN_EXE_contextful")).parent().unwrap().join("examples").join("host_derive")
+}
+
+fn run_bin(bin: &std::path::Path, dir: &std::path::Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+    Command::new(bin).args(args).envs(env.iter().copied()).current_dir(dir).env_remove("CONTEXTFUL_NODE_ID").output().unwrap()
+}
+
+fn ok(out: &Output) -> String {
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// A `word-split` pipeline over `documents`: `words` retains versions, `stats` does not, and
+/// `units` holds the markers.
+fn host_manifest(task: &str) -> String {
+    format!(
+        "[[pipeline]]\nid = \"split\"\ntables = [\n  \
+         {{ name = \"words\", primary_key = [\"unit_ref\", \"derivation_key\", \"word_seq\"], retain_versions = true }},\n  \
+         {{ name = \"stats\", primary_key = [\"unit_ref\", \"derivation_key\"] }},\n  \
+         {{ name = \"units\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }},\n]\n\
+         [pipeline.source]\nname = \"derive\"\n\
+         config = {{ task = \"{task}\", source_table = \"documents\", parent_id_column = \"doc_id\" }}\n"
+    )
+}
+
+fn host_project(manifest: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), manifest).unwrap();
+    std::fs::write(
+        dir.path().join("documents.jsonl"),
+        "{\"doc_id\":\"d1\",\"body\":\"alpha beta\"}\n{\"doc_id\":\"d2\",\"body\":\"gamma\"}\n{\"doc_id\":\"d3\",\"body\":\"   \"}\n",
+    )
+    .unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    dir
+}
+
+/// The rows `sql` answers over the project, each as its cells' text.
+fn select(dir: &std::path::Path, sql: &str) -> Vec<Vec<String>> {
+    let v: serde_json::Value = serde_json::from_str(&ok(&cf(dir, &["query", "--json", "--project", "research", sql]))).unwrap();
+    v["rows"].as_array().unwrap().iter().map(|r| r.as_array().unwrap().iter().map(|c| c.as_str().map(str::to_string).unwrap_or_else(|| c.to_string())).collect()).collect()
+}
+
+fn fire(bin: &std::path::Path, dir: &std::path::Path, run: &str, now: &str, env: &[(&str, &str)]) -> Output {
+    run_bin(bin, dir, &["pipeline", "run", "split", "--project", "research", "--run-id", run, "--site-id", "site", "--now", now], env)
+}
+
+/// A pipeline naming a registered host task builds; an unregistered name raises `DeriveUnknownTask`, listing the
+/// built-in and registered names.
+#[test]
+fn a_registered_host_task_builds_and_an_unregistered_name_lists_both_sets() {
+    let host = host_binary();
+    let dir = host_project(&host_manifest("word-split"));
+    let valid = ok(&run_bin(&host, dir.path(), &["pipeline", "validate"], &[]));
+    assert!(valid.contains("split: valid (3 tables"), "{valid}");
+
+    // The stock binary registers no host task, so the same name is unknown to it.
+    let stock = cf(dir.path(), &["pipeline", "validate"]);
+    let err = String::from_utf8_lossy(&stock.stderr);
+    assert!(!stock.status.success() && err.contains("DeriveUnknownTask") && err.contains("(none)"), "{err}");
+
+    std::fs::write(dir.path().join("contextful.toml"), host_manifest("word-splat")).unwrap();
+    let out = run_bin(&host, dir.path(), &["pipeline", "validate"], &[]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "{err}");
+    for name in ["DeriveUnknownTask", "word-splat", "transcribe, link_preview", "word-split"] {
+        assert!(err.contains(name), "{name}: {err}");
+    }
+}
+
+/// A host-task run commits each content table under its own commit, then the marker table, and a content table failing stops the fire before its marker lands, so the unit re-runs and its rows collapse by key.
+// spec: run.emit.marker-last@466e5fca
+#[test]
+fn a_failure_before_the_marker_re_runs_the_unit_and_its_rows_collapse_by_key() {
+    let host = host_binary();
+    let dir = host_project(&host_manifest("word-split"));
+    let p = dir.path();
+    // A file where the marker table's run directory belongs fails that table's landing alone.
+    let blocked = p.join(".contextful/context/research/tables/split_units/data/runs/split-1.split_units");
+    std::fs::create_dir_all(blocked.parent().unwrap()).unwrap();
+    std::fs::write(&blocked, "").unwrap();
+    let failed = fire(&host, p, "split-1", "2030-01-01T01:00:00Z", &[]);
+    let err = String::from_utf8_lossy(&failed.stderr);
+    assert!(!failed.status.success() && err.contains("split-1.split_units"), "the marker table's landing fails: {err}");
+    std::fs::remove_file(&blocked).unwrap();
+    let count = |t: &str| select(p, &format!("SELECT count(*) AS n FROM \"{t}\""))[0][0].clone();
+    assert_eq!((count("split_words"), count("split_stats")), ("3".into(), "2".into()), "the content tables landed first");
+    assert_eq!(count("split_units"), "0", "no marker landed");
+
+    // The next fire derives every unit again; its content rows land under the same keys.
+    ok(&fire(&host, p, "split-2", "2030-01-01T02:00:00Z", &[]));
+    assert_eq!((count("split_words"), count("split_stats"), count("split_units")), ("3".into(), "2".into(), "3".into()));
+    let statuses = select(p, "SELECT unit_ref, unit_status, task_version FROM \"split_units\" ORDER BY unit_ref");
+    assert_eq!(statuses, [["d1", "ok", "1"], ["d2", "ok", "1"], ["d3", "empty", "1"]]);
+    let words = select(p, "SELECT unit_ref, word, kind FROM \"split_words\" ORDER BY unit_ref, word_seq");
+    assert_eq!(words, [["d1", "alpha", "passage"], ["d1", "beta", "passage"], ["d2", "gamma", "passage"]]);
+
+    // Every unit settled: a third fire derives nothing.
+    ok(&fire(&host, p, "split-3", "2030-01-01T03:00:00Z", &[]));
+    assert_eq!((count("split_words"), count("split_stats"), count("split_units")), ("3".into(), "2".into(), "3".into()));
+}
+
+/// On an output table declaring `retain_versions`, rows under an earlier task version stay current under that version beside the newer version's rows.
+// spec: run.emit.version-retained@7759092f
+#[test]
+fn a_raised_task_version_re_derives_and_a_retaining_table_keeps_both_versions() {
+    let host = host_binary();
+    let dir = host_project(&host_manifest("word-split"));
+    let p = dir.path();
+    ok(&fire(&host, p, "split-1", "2030-01-01T01:00:00Z", &[]));
+    ok(&fire(&host, p, "split-2", "2030-01-01T02:00:00Z", &[("WORD_SPLIT_VERSION", "2")]));
+    let by_version = |t: &str| select(p, &format!("SELECT task_version, count(*) AS n FROM \"{t}\" GROUP BY 1 ORDER BY 1"));
+    // `words` retains versions: each version's rows read under their own version.
+    assert_eq!(by_version("split_words"), [["1", "3"], ["2", "3"]]);
+    // `stats` and the markers supersede: the earlier version's rows stop answering.
+    assert_eq!(by_version("split_stats"), [["2", "2"]]);
+    assert_eq!(by_version("split_units"), [["2", "3"]]);
+
+    // A fold keeps what a read answers.
+    for t in ["split_words", "split_stats"] {
+        ok(&cf(p, &["context", "compact", t, "--project", "research", "--now", "2030-01-01T03:00:00Z"]));
+    }
+    assert_eq!(by_version("split_words"), [["1", "3"], ["2", "3"]]);
+    assert_eq!(by_version("split_stats"), [["2", "2"]]);
 }

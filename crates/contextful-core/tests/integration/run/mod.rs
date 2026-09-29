@@ -3,6 +3,7 @@
 mod advance;
 mod cancel;
 mod derive;
+mod host_task;
 mod journal;
 mod own;
 mod plan;
