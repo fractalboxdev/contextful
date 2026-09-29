@@ -7,8 +7,8 @@ use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer};
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
-    admit_format, confine, generation_key, is_commit_log, is_pointer, merge, owner_of, BucketManifest, Coordination, Entry, SyncConfig,
-    MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
+    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, BucketManifest, Coordination, Entry, SyncConfig,
+    GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
 };
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -284,21 +284,33 @@ impl Syncer {
         match self.bucket.get(&self.key(&key)?)? {
             Some((bytes, _)) => parse_manifest(&key, &bytes),
             None => {
-                let newest = self.manifest()?.0.generation;
+                let newest = self.generations()?.last().copied().unwrap_or(0).max(self.manifest()?.0.generation);
                 Err(StoreError::SyncGenerationAbsent(format!("the bucket holds no `{key}`; its newest generation is {newest}")).into())
             }
         }
     }
 
+    /// Every generation the bucket holds a generation manifest for, ascending.
+    fn generations(&self) -> Result<Vec<u64>> {
+        let root = self.key(GENERATION_PREFIX)?;
+        let under = root.strip_suffix(GENERATION_PREFIX).unwrap_or_default().to_string();
+        let mut out: Vec<u64> = self.bucket.list(&root)?.iter().filter_map(|k| generation_of(k.strip_prefix(&under)?)).collect();
+        out.sort_unstable();
+        Ok(out)
+    }
+
     /// Create generation `n`'s immutable copy holding `bytes`; a copy already there holds
-    /// the same commit (`store.push.generation`).
+    /// the same commit, or the push refuses after its commit (`store.push.generation-conflict`).
     fn put_generation(&self, n: u64, bytes: &[u8]) -> Result<()> {
         let key = generation_key(n);
         match self.bucket.put(&self.key(&key)?, bytes, Condition::IfNoneMatch)? {
             Put::Applied(_) => Ok(()),
             Put::ConditionFailed => match self.bucket.get(&self.key(&key)?)? {
                 Some((existing, _)) if existing == bytes => Ok(()),
-                _ => Err(SyncError::Context(ContextError::Invalid(format!("`{key}` is immutable and the bucket holds another commit under it")))),
+                _ => Err(StoreError::SyncGenerationConflict(format!(
+                    "generation {n} committed to the bucket manifest, and `{key}` already holds another commit; `pull --generation {n}` restores that one, and the next push numbers past it"
+                ))
+                .into()),
             },
         }
     }
@@ -366,16 +378,7 @@ impl Syncer {
             (e, _) => e,
         })?;
         let plan = self.plan_manifest()?;
-        let remote = match self.manifest_bytes()? {
-            Some((remote, bytes, _)) => {
-                // A commit whose generation copy never landed gets it now (`store.push.generation-heal`).
-                if remote.generation > 0 {
-                    self.put_generation(remote.generation, &bytes)?;
-                }
-                remote
-            }
-            None => BucketManifest::default(),
-        };
+        let remote = self.manifest()?.0;
         let mut report = PushReport::default();
         // A copy of a key another node owns is never pushed; a shared mergeable key commits by its merge.
         for (key, entry) in &plan.mine {
@@ -401,7 +404,20 @@ impl Syncer {
         let retries = self.config.push_retries().max(1);
         let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
         for round in 1..=retries {
-            let (remote, etag) = self.manifest()?;
+            let (remote, etag) = match self.manifest_bytes()? {
+                Some((remote, bytes, etag)) => (Some((remote, bytes)), Some(etag)),
+                None => (None, None),
+            };
+            let generations = self.generations()?;
+            let newest = generations.last().copied().unwrap_or(0);
+            // No commit lands past a generation whose copy is absent (`store.push.generation-heal`).
+            if let Some((remote, bytes)) = &remote {
+                if remote.generation > 0 && generations.binary_search(&remote.generation).is_err() {
+                    // A copy a concurrent writer created between the listing and this put already stands.
+                    self.bucket.put(&self.key(&generation_key(remote.generation))?, bytes, Condition::IfNoneMatch)?;
+                }
+            }
+            let remote = remote.map(|(m, _)| m).unwrap_or_default();
             // Pointers read before the commit name snapshots whose files earlier commits listed.
             let pointers = self.project_pointers()?;
             let mut entries = plan.mine.clone();
@@ -416,7 +432,8 @@ impl Syncer {
             entries.extend(others);
             let merged = merge(&remote, &entries, &self.node, now)?;
             let mut committed = merged.manifest;
-            committed.generation = remote.generation + 1;
+            // A manifest rewritten by a writer predating `generation` reads 0; the files keep the count (`store.push.generation-floor`).
+            committed.generation = remote.generation.max(newest) + 1;
             committed.pointers = remote.pointers.iter().filter(|(k, _)| !in_project(k)).map(|(k, p)| (k.clone(), p.clone())).collect();
             committed.pointers.extend(pointers);
             let bytes = serde_json::to_vec_pretty(&committed).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;

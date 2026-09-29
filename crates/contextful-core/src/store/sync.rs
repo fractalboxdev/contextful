@@ -23,7 +23,15 @@ pub const MANIFEST_FORMAT: u32 = 1;
 
 /// The immutable copy of generation `n`'s committed manifest, under the prefix (`store.push.generation`).
 pub fn generation_key(n: u64) -> String {
-    format!("manifests/gen-{n}.json")
+    format!("{GENERATION_PREFIX}gen-{n}.json")
+}
+
+/// Where the generation manifests live under the prefix.
+pub const GENERATION_PREFIX: &str = "manifests/";
+
+/// The generation a key under the prefix names, when it is a generation manifest's key.
+pub fn generation_of(key: &str) -> Option<u64> {
+    key.strip_prefix(GENERATION_PREFIX)?.strip_prefix("gen-")?.strip_suffix(".json")?.parse().ok()
 }
 
 /// Hold a manifest's `format` to the newest this build parses (`store.push.format-unsupported`).

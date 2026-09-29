@@ -107,10 +107,10 @@ fn a_manifest_of_a_newer_format_refuses_push_and_pull() {
     assert!(!c.root().join("tables/filings").exists(), "the pull writes no file");
 }
 
-/// Each manifest commit carries `generation`, one past the replaced copy's, and the project's table pointers as read
-/// before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under
+/// Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as
+/// read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under
 /// `If-None-Match`.
-// spec: store.push.generation@c90d327a
+// spec: store.push.generation@083ca1fc
 #[test]
 fn each_push_commits_the_next_generation_and_writes_it_immutably() {
     let dir = tempfile::tempdir().unwrap();
@@ -137,9 +137,104 @@ fn each_push_commits_the_next_generation_and_writes_it_immutably() {
     assert_eq!(gen2.generation, 2);
 }
 
-/// A push finding the committed generation's `gen-<N>.json` absent creates it from the bucket manifest before
-/// uploading.
-// spec: store.push.generation-heal@3423991b
+/// A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the
+/// newest `gen-<N>.json` under the prefix.
+// spec: store.push.generation-floor@cb58002c
+#[test]
+fn a_manifest_rewritten_without_its_generation_numbers_past_the_newest_generation_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    assert_eq!(a.syncer.push(at(NOW)).unwrap().generation, 1);
+    // A format-1 writer predating the field rewrites the manifest and drops `generation`.
+    let (bytes, etag) = b.get("team/manifest.json").unwrap().unwrap();
+    let mut raw: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    raw.as_object_mut().unwrap().remove("generation");
+    b.put("team/manifest.json", &serde_json::to_vec(&raw).unwrap(), Condition::IfMatch(etag)).unwrap();
+    a.land("run-2", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    assert_eq!(a.syncer.push(at(NOW)).unwrap().generation, 2);
+    assert_eq!(a.syncer.push(at(NOW)).unwrap().generation, 3);
+    let gen2: BucketManifest = serde_json::from_slice(&b.get(&format!("team/{}", generation_key(2))).unwrap().unwrap().0).unwrap();
+    assert!(gen2.entries.contains_key("research/tables/filings/data/runs/run-2/ingest-a/part-00000.parquet"));
+    assert_eq!(b.get(&format!("team/{}", generation_key(3))).unwrap().unwrap().0, b.get("team/manifest.json").unwrap().unwrap().0);
+}
+
+/// A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after
+/// its manifest commit applied.
+// spec: store.push.generation-conflict@4aba4e8b
+#[test]
+fn a_generation_file_holding_another_commit_refuses_and_the_next_push_numbers_past_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let raced = inner.clone();
+    let once = std::sync::Mutex::new(true);
+    let b: Arc<dyn ObjectStore> = Arc::new(Scripted {
+        inner: inner.clone(),
+        script: Script {
+            on_put: Some(Box::new(move |key, _| {
+                // Another commit takes `gen-2.json` between this push's manifest commit and its generation write.
+                if key == "team/manifests/gen-2.json" && std::mem::take(&mut *once.lock().unwrap()) {
+                    raced.put(key, br#"{"format":1,"generation":2,"entries":{}}"#, Condition::IfNoneMatch).unwrap();
+                }
+                None
+            })),
+            ..Script::default()
+        },
+    });
+    let a = node("ingest-a", b, "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    a.land("run-2", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    match a.syncer.push(at(NOW)) {
+        Err(SyncError::Store(StoreError::SyncGenerationConflict(m))) => assert!(m.contains("gen-2.json"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(manifest(inner.as_ref()).generation, 2, "the manifest commit applied");
+    assert_eq!(a.syncer.push(at(NOW)).unwrap().generation, 3, "the next push numbers past the taken generation");
+    assert_eq!(a.syncer.push(at(NOW)).unwrap().generation, 4);
+}
+
+/// Before each manifest commit, a push finding no `gen-<N>.json` for the generation of the manifest it read creates it
+/// from the bytes it read.
+// spec: store.push.generation-heal@e4a13c43
+#[test]
+fn a_generation_committed_under_a_concurrent_push_is_written_before_the_next_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let a = node("ingest-a", inner.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    // Another push commits generation 2 while this one uploads, and stops before writing `gen-2.json`.
+    let raced = inner.clone();
+    let gen2 = Arc::new(std::sync::Mutex::new(None::<Vec<u8>>));
+    let taken = gen2.clone();
+    let b: Arc<dyn ObjectStore> = Arc::new(Scripted {
+        inner: inner.clone(),
+        script: Script {
+            on_put: Some(Box::new(move |key, _| {
+                let mut taken = taken.lock().unwrap();
+                if key == "team/manifest.json" && taken.is_none() {
+                    let (bytes, etag) = raced.get(key).unwrap().unwrap();
+                    let mut m: BucketManifest = serde_json::from_slice(&bytes).unwrap();
+                    m.generation = 2;
+                    let committed = serde_json::to_vec_pretty(&m).unwrap();
+                    raced.put(key, &committed, Condition::IfMatch(etag)).unwrap();
+                    *taken = Some(committed);
+                }
+                None
+            })),
+            ..Script::default()
+        },
+    });
+    let c = node("ingest-b", b, "");
+    c.land("run-2", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    let report = c.syncer.push(at(NOW)).unwrap();
+    assert_eq!((report.generation, report.rounds), (3, 2));
+    let written = inner.get(&format!("team/{}", generation_key(2))).unwrap().map(|(b, _)| b);
+    assert_eq!(written, gen2.lock().unwrap().clone(), "gen-2.json holds the concurrent commit");
+}
+
 #[test]
 fn a_missing_generation_is_written_by_the_next_push() {
     let dir = tempfile::tempdir().unwrap();

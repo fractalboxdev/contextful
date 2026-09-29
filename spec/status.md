@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 162 | 28 | 22 | 20 | 133 | 0 | 133 |
 | `run` | 3 | 25 | 335 | 88 | 35 | 30 | 204 | 0 | 204 |
-| `store` | 1 | 17 | 211 | 52 | 12 | 17 | 170 | 0 | 170 |
+| `store` | 1 | 17 | 213 | 53 | 12 | 17 | 172 | 0 | 172 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 152 | 1730 | 529 | 183 | 127 | 1026 | 0 | |
+| **total** | 19 | 152 | 1732 | 530 | 183 | 127 | 1028 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 11 | 197 | 125 | passing | closed |
 | 4 — Ingest | 23 | 398 | 203 | passing | open |
 | 5 — The read face under enforcement | 17 | 240 | 167 | passing | open |
-| 6 — Sync and replicas | 8 | 61 | 56 | passing | closed |
+| 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
 | 8 — Accountability | 5 | 40 | 20 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
@@ -1006,7 +1006,9 @@ Unscheduled operations: 10.
 | `store.pull.unconverged` | `crates/contextful-sync/tests/integration/pull.rs::a_key_that_keeps_moving_refuses_and_writes_no_pointer` | performed |
 | `store.push.format-unsupported` | `crates/contextful-sync/tests/integration/generation.rs::a_manifest_of_a_newer_format_refuses_push_and_pull` | performed |
 | `store.push.generation` | `crates/contextful-sync/tests/integration/generation.rs::each_push_commits_the_next_generation_and_writes_it_immutably` | performed |
-| `store.push.generation-heal` | `crates/contextful-sync/tests/integration/generation.rs::a_missing_generation_is_written_by_the_next_push` | performed |
+| `store.push.generation-conflict` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_file_holding_another_commit_refuses_and_the_next_push_numbers_past_it` | performed |
+| `store.push.generation-floor` | `crates/contextful-sync/tests/integration/generation.rs::a_manifest_rewritten_without_its_generation_numbers_past_the_newest_generation_file` | performed |
+| `store.push.generation-heal` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_committed_under_a_concurrent_push_is_written_before_the_next_commit` | performed |
 | `store.push.in-flight` | `crates/contextful-sync/tests/integration/push.rs::a_second_push_of_one_store_refuses_while_the_first_runs` | performed |
 | `store.push.manifest-commit` | `crates/contextful-sync/tests/integration/push.rs::the_manifest_commits_by_replace_on_the_etag_read` | performed |
 | `store.push.manifest-format` | `crates/contextful-sync/tests/integration/generation.rs::a_manifest_without_a_format_reads_as_format_one` | performed |

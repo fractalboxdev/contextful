@@ -448,10 +448,14 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
 - `manifest-format` — The bucket manifest and every generation manifest carry `format`, `1` for this layout; a manifest without `format` reads as `1`.
 - `format-unsupported` — A bucket or generation manifest whose `format` exceeds 1 raises `SyncManifestFormatUnsupported`, naming the key and its format, before the push commits or the pull writes a file.
   *because a reader rewriting a manifest it parses only in part drops the fields a newer writer added*
-- `generation` — Each manifest commit carries `generation`, one past the replaced copy's, and the project's table pointers as read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.
+- `generation` — Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.
   *because a restore or a pre-push gate names one committed state, and the live manifest and pointers move on*
-- `generation-heal` — A push finding the committed generation's `gen-<N>.json` absent creates it from the bucket manifest before uploading.
-  *because a push stopping between its commit and its generation write leaves a gap the next push closes*
+- `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
+  *because a format-1 writer predating the field drops `generation`, and reusing a taken number collides with its immutable copy*
+- `generation-heal` — Before each manifest commit, a push finding no `gen-<N>.json` for the generation of the manifest it read creates it from the bytes it read.
+  *because a commit of N+1 landing while `gen-<N>.json` is absent leaves a gap no later push sees*
+- `generation-conflict` — A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.
+  *because the immutable copy keeps the first commit, and a push reporting success names a state `pull --generation` does not restore*
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 

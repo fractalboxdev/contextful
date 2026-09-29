@@ -122,6 +122,9 @@ pub enum StoreError {
     /// An endpoint's scheme names no bucket adapter this build links. (`store.endpoint.unsupported-scheme`)
     #[error("SyncEndpointUnsupported: {0}")]
     SyncEndpointUnsupported(String),
+    /// A generation manifest already holds another commit's bytes under the number a push committed. (`store.push.generation-conflict`)
+    #[error("SyncGenerationConflict: {0}")]
+    SyncGenerationConflict(String),
     /// A pull names a generation the bucket holds no generation manifest for. (`store.pull.generation-absent`)
     #[error("SyncGenerationAbsent: {0}")]
     SyncGenerationAbsent(String),
