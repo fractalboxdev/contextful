@@ -2,7 +2,7 @@
 
 # Target ledger
 
-61 entries: 36 gated, 2 recorded, 1 scheduled, 22 open.
+61 entries: 37 gated, 3 recorded, 1 scheduled, 20 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -56,8 +56,8 @@
 | `possession-replay` | `authority.verify.replayed-nonce` | `possession.adversarial.admitted` | gate | test `contextful_policy::possession::replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop` | `== 0` | gated |
 | `profile-footprint` | `assurance.gate.footprint` | `footprint.profiles_over_budget` | gate | issue 77 | `== 0` | open (issue 77) |
 | `pull-no-torn-snapshot` | `store.pull.pointer-last` | `pull.torn_reads` | gate | test `contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot` | `== 0` | gated |
-| `read-session-latency` | `read.retrieve.ranked-call` | `session.warm_p95_ms` | trend | issue 40 | — | open (issue 40) |
-| `read-session-one-engine` | `read.retrieve.ranked-call` | `session.engine_opens` | gate | issue 40 | `== 1` | open (issue 40) |
+| `read-session-latency` | `read.cache.session-pool` | `session.warm_p95_ms` | trend | test `contextful_context::read::latency::session_and_statement_latency_at_one_fifty_and_five_hundred_runs` | — | recorded |
+| `read-session-one-engine` | `read.cache.session-pool` | `session.engine_opens` | gate | test `contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine` | `== 1` | gated |
 | `row-key-dedup` | `read.retrieve.row-key-dedup` | `retrieval.hybrid.duplicate_row_rate` | gate | issue 79 | `== 0` | open (issue 79) |
 | `sqlite-journal-conformance` | `run.journal.sqlite-stores` | `journal.sqlite_conformance.failed_cases` | gate | test `contextful_sqlite::stores::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically` | `== 0` | gated |
 | `stale-fence-differential` | `assurance.differential-test.protocol-harness` | `protocol.drift_cases` | gate | issue 76 | `== 0` | open (issue 76) |

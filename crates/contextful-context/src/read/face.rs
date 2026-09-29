@@ -4,6 +4,7 @@
 
 use super::engine::{SqlEngine, ENGINE};
 use super::fault::ReadFault;
+use super::pool::{self, SessionPool};
 use crate::scan::scan;
 use crate::store::Store;
 use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers};
@@ -47,6 +48,8 @@ pub struct Face {
     pepper: Pepper,
     /// Opened full-text sidecars (`read.rank.lexical-index-cache`).
     pub(crate) fulltext: crate::fulltext::SidecarCache<crate::fulltext::FulltextSidecar>,
+    /// Resolved sessions and their connections (`read.cache.session-pool`).
+    pub(crate) pool: SessionPool,
 }
 
 /// The columns a table with no landed batch registers over: the injected columns every
@@ -89,7 +92,7 @@ impl Face {
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
         let fulltext = crate::fulltext::SidecarCache::new(contextful_core::read::rank::LEXICAL_INDEX_CACHE_ENTRIES);
-        let face = Face { store, decls, policies, templates, memory, pepper, fulltext };
+        let face = Face { store, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default() };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {
@@ -123,7 +126,7 @@ impl Face {
     /// the table's registered relation; an engine-composed read with no row ceiling.
     pub fn rows(&self, session: &Session, table: &str, run: Option<&str>) -> Result<Response, ReadFault> {
         let r = self.registered(session, table)?;
-        let engine = SqlEngine::open(session)?;
+        let engine = self.pool.engine(session)?;
         let (sql, parameters) = match run {
             Some(run) => (format!("SELECT * FROM {} WHERE {} = ?", ident(r.name()), ident(RUN_ID)), vec![Bound::Text(run.to_string())]),
             None => (format!("SELECT * FROM {}", ident(r.name())), Vec::new()),
@@ -165,15 +168,24 @@ impl Face {
     }
 
     /// Open a session for an admitted authority: one relation per table its read grants
-    /// cover, compiled under the request's zone and bounds.
+    /// cover, compiled under the request's zone and bounds. A session pooled under the
+    /// same whole key is reused; the key is computed before any resolution, so a commit
+    /// racing the resolution lands under a key no later call computes
+    /// (`read.cache.session-pool`).
     pub fn session(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds) -> Result<Session, ReadFault> {
-        let mut sources = Vec::new();
-        for t in self.tables()? {
-            if raw_read_covers(authority.grants(), &t) {
-                sources.push(self.source(&t, bounds)?);
-            }
-        }
-        Ok(Session::open(authority, request, sources, &self.pepper)?)
+        let tables = self.tables()?;
+        let granted: Vec<String> = tables.iter().filter(|t| raw_read_covers(authority.grants(), t)).cloned().collect();
+        let principal = pool::principal(authority, request, bounds);
+        let state = pool::store_state(&self.store, &tables, &granted)?;
+        self.pool.session(principal, state, || {
+            let sources = granted.iter().map(|t| self.source(t, bounds)).collect::<Result<Vec<_>, _>>()?;
+            Ok(Session::open(authority, request, sources, &self.pepper)?)
+        })
+    }
+
+    /// The face's session pool (`read.cache.session-pool`).
+    pub fn pool(&self) -> &SessionPool {
+        &self.pool
     }
 
     /// The engine's serialization of a statement; no row is read.
@@ -221,7 +233,7 @@ impl Face {
     /// session's registered relations, the scope guard over its tenant literals, then
     /// execution under the least row ceiling.
     pub fn query(&self, session: &Session, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
-        let engine = SqlEngine::open(session)?;
+        let engine = self.pool.engine(session)?;
         let tree = engine.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &[])?;
@@ -238,7 +250,7 @@ impl Face {
         authorize_template(session.grants(), id, &declared)?;
         let template = self.templates.iter().find(|t| t.id == id).expect("an authorized template is declared");
         let parameters = template.bind(arguments)?;
-        let engine = SqlEngine::open(session)?;
+        let engine = self.pool.engine(session)?;
         let tree = engine.serialize(&template.sql)?;
         let admitted = admit_in(session, &tree)?;
         scope::guard(&tree, session, &parameters)?;
@@ -274,7 +286,7 @@ impl Face {
             return Ok(json!({ "tables": tables }));
         };
         let r = self.registered(session, table)?;
-        let engine = SqlEngine::open(session)?;
+        let engine = self.pool.engine(session)?;
         let (_, count) = engine.run(&format!("SELECT count(*) FROM {}", ident(r.name())), &[], None)?;
         let row_count = count.first().and_then(|r| r.first()).map(Cell::to_json).unwrap_or(Value::Null);
         let decl = self.decl(table);

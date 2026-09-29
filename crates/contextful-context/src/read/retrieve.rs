@@ -161,7 +161,7 @@ impl Face {
         let tokens = content_tokens(&request.query);
         let floor = relevance_floor(&tokens, request.min_score);
         let window = candidate_window(limit);
-        let engine = SqlEngine::open(session)?;
+        let engine = self.pool.engine(session)?;
         let anchor = request.anchor;
         let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();
         let mut suppressed: BTreeMap<&'static str, u64> = BTreeMap::new();

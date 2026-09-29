@@ -404,19 +404,19 @@ target = { op = "==", value = 0 }
 # ---------------------------------------------------------------- read
 
 [entry.read-session-one-engine]
-clause = "read.retrieve.ranked-call"
+clause = "read.cache.session-pool"
 metric = "session.engine_opens"
 kind   = "test"
 tier   = "gate"
-method = { issue = 40 }
+method = { test = "contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine" }
 target = { op = "==", value = 1 }
 
 [entry.read-session-latency]
-clause = "read.retrieve.ranked-call"
+clause = "read.cache.session-pool"
 metric = "session.warm_p95_ms"
 kind   = "bench"
 tier   = "trend"
-method = { issue = 40 }
+method = { test = "contextful_context::read::latency::session_and_statement_latency_at_one_fifty_and_five_hundred_runs" }
 
 [entry.vector-recall]
 clause = "read.retrieve.sidecar-generates-candidates"

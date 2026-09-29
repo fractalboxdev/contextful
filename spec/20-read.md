@@ -58,7 +58,7 @@ flowchart LR
 
 The relations, tools and templates one connection sees, and the engine executing against them.
 
-- `connection-views` — Ahead of a statement the engine opens a connection and issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}. No view directory exists on disk.
+- `connection-views` — A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.
 - `engine` — The executor is an embedded columnar SQL engine, linked into every profile that serves reads, reading Parquet natively in standard SQL. An external process reads the same files with the engine uninstalled.
   *A-topology*
 - `quiet-table` — A quiet table registers as {{store.declare.empty-run}}. A read of it returns an empty result, never a missing-relation fault.
@@ -273,7 +273,7 @@ unsettled: What replaces min-max window normalization as a cross-index score cal
 
 ## cache
 
-Locality of the bytes a read touches, and reuse of a result across requests.
+Locality of the bytes a read touches, reuse of a resolved session and its connections, and reuse of a result across requests.
 
 - `hot-local-parquet` — The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.
 - `cold-start` — A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.
@@ -283,8 +283,14 @@ Locality of the bytes a read touches, and reuse of a result across requests.
 - `snapshot-invalidates` — A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}}.
   *P4*
 - `keep-warm-is-per-deployment` — A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.
-
-unsettled: Does session and engine setup exceed a quarter of warm `Face::query` p95 at 50 unfolded runs, admitting a pooled engine? owner: read-path affects: read.cache
+- `session-pool` — `Face` reuses a resolved session and its connections while the whole key holds: admitted authority with token id and revocation epoch, request zone, bounds, table set, and per granted table its schema digest, pointer, run set and ledger files.
+  *A-read*
+- `change-misses` — A committed run, snapshot, schema edit, new table, request-ledger file or token under another id or epoch misses the pool, and the next statement reads the new state on a new connection.
+  *A-read*
+- `pool-entries` — The pool holds at most 16 entries, oldest evicted first; a miss evicts the same principal's entries under an older store state.
+  *because connections hold memory per authority, and an entry under a superseded store state is never hit again*
+- `pool-connections` — One pool entry keeps at most 4 connections idle; a concurrent statement past them opens its own and closes it afterwards.
+  *because concurrency on one session is bursty, and an idle connection holds its footer cache in memory*
 
 ## resolve-pin
 
