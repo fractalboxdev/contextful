@@ -119,7 +119,7 @@ fn recency(r: &Row, position: usize) -> Recency {
 }
 
 /// One landed row of a unit, as standing reads it.
-struct Landed {
+pub(super) struct Landed {
     key: Option<String>,
     at: Recency,
     passage: bool,
@@ -148,11 +148,26 @@ impl Landed {
 }
 
 /// Every unit's landed rows, keyed by `unit_ref`.
-fn by_unit(derived: &[Row]) -> BTreeMap<String, Vec<Landed>> {
+pub(super) fn by_unit(derived: &[Row]) -> BTreeMap<String, Vec<Landed>> {
+    grouped(derived, false)
+}
+
+/// A row's supersession group: its `unit_ref`, joined with its `task_version` when the
+/// table retains versions (`run.emit.version-retained`).
+fn group_of(r: &Row, by_version: bool) -> Option<String> {
+    let unit = text(r.get("unit_ref"))?;
+    if !by_version {
+        return Some(unit);
+    }
+    let version = r.get(super::task::TASK_VERSION).and_then(Value::as_str).unwrap_or_default();
+    Some(format!("{unit}\u{0}{version}"))
+}
+
+fn grouped(derived: &[Row], by_version: bool) -> BTreeMap<String, Vec<Landed>> {
     let mut units: BTreeMap<String, Vec<Landed>> = BTreeMap::new();
     for (position, r) in derived.iter().enumerate() {
-        if let Some(unit) = text(r.get("unit_ref")) {
-            units.entry(unit).or_default().push(Landed::read(r, position));
+        if let Some(group) = group_of(r, by_version) {
+            units.entry(group).or_default().push(Landed::read(r, position));
         }
     }
     units
@@ -166,7 +181,7 @@ fn current(rows: &[Landed]) -> Option<(Option<&str>, &Recency)> {
 /// A unit's standing under `key`: `None` when it settled there, else the attempts its
 /// latest marker there records. Rows under `key` landed before the unit's latest
 /// establishing landing under another key count for nothing (`run.select.key-change`).
-fn standing(rows: &[Landed], key: &str, max_attempts: i64) -> Option<i64> {
+pub(super) fn standing(rows: &[Landed], key: &str, max_attempts: i64) -> Option<i64> {
     let since = match current(rows) {
         Some((k, _)) if k == Some(key) => return None,
         Some((_, at)) => Some(at),
@@ -236,13 +251,24 @@ pub const SUPERSEDE_COLUMNS: [&str; 7] = ["unit_ref", DERIVATION_KEY, KIND, "uni
 /// Per row of `derived`, whether it is superseded: landed under another key before its
 /// unit's latest `ok` or `empty` landing (`run.emit.stale-supersedes`).
 pub fn superseded(derived: &[Row]) -> Vec<bool> {
-    let units = by_unit(derived);
+    superseded_in(derived, false)
+}
+
+/// Per row of a table declaring `retain_versions`, whether it is superseded: landed under
+/// another key before the latest `ok` or `empty` landing of its unit under the same
+/// `task_version` (`run.emit.version-retained`).
+pub fn superseded_within_version(derived: &[Row]) -> Vec<bool> {
+    superseded_in(derived, true)
+}
+
+fn superseded_in(derived: &[Row], by_version: bool) -> Vec<bool> {
+    let units = grouped(derived, by_version);
     let latest: BTreeMap<&str, (Option<&str>, &Recency)> = units.iter().filter_map(|(u, rows)| Some((u.as_str(), current(rows)?))).collect();
     derived
         .iter()
         .enumerate()
         .map(|(position, r)| {
-            let Some(unit) = text(r.get("unit_ref")) else { return false };
+            let Some(unit) = group_of(r, by_version) else { return false };
             let Some((key, at)) = latest.get(unit.as_str()) else { return false };
             let own = text(r.get(DERIVATION_KEY));
             own.as_deref() != *key && recency(r, position) < **at

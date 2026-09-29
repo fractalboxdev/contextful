@@ -12,10 +12,12 @@ use contextful_core::run::derive::emit::{
 use contextful_core::run::derive::exec::{
     engine_id, excerpt, expand, is_url, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
+use contextful_core::run::derive::task::{host_revived, host_rows, landing_order, select_host, DeriveTask, Derived, HostUnit};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_outbound::Resolver;
+use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -417,5 +419,74 @@ impl Source for DeriveSource {
             }
         }
         serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+    }
+}
+
+/// A host task's derivation for one fire: every outstanding unit derived once, its rows
+/// split per output table, the marker table landing last (`run.emit.marker-last`).
+pub struct HostDerive {
+    pub pipeline_id: String,
+    pub config: DeriveConfig,
+    pub task: Arc<dyn DeriveTask>,
+    /// The store table each of the task's tables lands in, keyed by the task's name for it.
+    pub tables: BTreeMap<String, String>,
+    pub reader: Box<dyn TableReader>,
+}
+
+impl HostDerive {
+    fn store_table(&self, table: &str) -> String {
+        self.tables.get(table).cloned().unwrap_or_else(|| table.to_string())
+    }
+
+    /// Derive every outstanding unit and return each store table's rows in landing order:
+    /// the content tables, then the marker table.
+    pub fn stage(&self, cancel: &dyn Cancellation) -> Result<Vec<(String, Vec<Row>)>, Failure> {
+        let task = self.task.as_ref();
+        let name = self.config.task.name().to_string();
+        let marker_table = self.store_table(&task.marker_table());
+        let mut columns: Vec<String> = vec![self.config.parent_id_column.clone(), DERIVATION_KEY.to_string()];
+        columns.extend(task.columns());
+        let wanted: Vec<&str> = columns.iter().map(String::as_str).collect();
+        let parents = self.reader.rows(&self.config.source_table, &wanted)?;
+        let markers = self.reader.rows(&marker_table, &OUTPUT_COLUMNS)?;
+        let sel = select_host(&parents, &markers, &self.config, task);
+        for e in &sel.incomplete {
+            eprintln!("{}: {e}", self.pipeline_id);
+        }
+        let started = Instant::now();
+        let budget = self.config.max_seconds_per_run.map(Duration::from_secs);
+        let mut derived: Vec<(&HostUnit, Derived)> = Vec::new();
+        for unit in &sel.outstanding {
+            if cancel.requested() {
+                return Err(Failure::canceled("stopped between units"));
+            }
+            if budget.is_some_and(|b| started.elapsed() >= b) {
+                break;
+            }
+            derived.push((unit, host_rows(unit, &name, task, task.derive(unit))));
+        }
+        // A concurrent tick may have settled a unit under its key while this one derived it.
+        let landed = if derived.is_empty() { Vec::new() } else { self.reader.rows(&marker_table, &OUTPUT_COLUMNS)? };
+        let mut per_table: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+        for (unit, rows) in derived {
+            if let Some(e) = host_revived(unit, &landed, self.config.max_attempts) {
+                eprintln!("{}: {e}", self.pipeline_id);
+                continue;
+            }
+            for (table, rows) in rows {
+                per_table.entry(table).or_default().extend(rows);
+            }
+        }
+        Ok(landing_order(task).into_iter().map(|t| (self.store_table(&t), per_table.remove(&t).unwrap_or_default())).collect())
+    }
+}
+
+/// A source handing over rows already derived: one table's share of a host task's fire.
+/// Every pull hands over the same rows, so a retried step lands them again.
+pub struct Staged(pub Vec<Row>);
+
+impl Source for Staged {
+    fn pull(&mut self, _request: &PullRequest, _cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        serde_json::to_vec(&serde_json::json!({ "rows": self.0, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }

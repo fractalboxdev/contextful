@@ -7,11 +7,37 @@ use contextful_core::run::derive::cues::{parse, passages, Cue, PASSAGES_PER_DOCU
 use contextful_core::run::derive::emit::{
     document_status, marker_row, passage_rows, revived, select, superseded, Derivation, Unit, UnitStatus, DERIVATION_KEY, EMPTY_ATTEMPTS,
 };
+use contextful_core::run::derive::task::{check_content_table, check_host_tables, host_key, select_host, DeriveTask, Derived, HostUnit, Tasks};
 use contextful_core::run::derive::exec::{engine_id, excerpt, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS, STEP_ERROR_EXCERPT_BYTES};
 use contextful_core::run::ports::Row;
 use contextful_core::run::RunError;
 use contextful_core::store::declare::TableDecl;
 use serde_json::{json, Value};
+
+/// A registry holding `split`, a host task landing `words` and its markers in `units`.
+fn registered() -> Tasks {
+    struct Split;
+    impl DeriveTask for Split {
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn columns(&self) -> Vec<String> {
+            vec!["body".into()]
+        }
+        fn marker_table(&self) -> String {
+            "units".into()
+        }
+        fn content_tables(&self) -> Vec<String> {
+            vec!["words".into()]
+        }
+        fn derive(&self, _unit: &HostUnit) -> Result<Derived, RunError> {
+            Ok(Derived::new())
+        }
+    }
+    let mut t = Tasks::default();
+    t.register("split", std::sync::Arc::new(Split)).unwrap();
+    t
+}
 
 fn cfg(v: Value) -> Result<DeriveConfig, RunError> {
     DeriveConfig::parse("doc-text", &v)
@@ -49,11 +75,20 @@ fn unit(key: &str, media: &str, prior_attempts: i64) -> Unit {
     Unit { key: key.into(), media: media.into(), prior_attempts, derivation_key: k(key, media) }
 }
 
-/// An absent or blank `engine`, `source_table`, `media_column` or `parent_id_column` raises
-/// `DeriveConfigKeyMissing`, naming the key and the pipeline.
-// spec: run.select.required-key@d3d60868
+/// An absent or blank `source_table` or `parent_id_column`, or an absent or blank `engine` or `media_column`
+/// behind a built-in task, raises `DeriveConfigKeyMissing`, naming the key and the pipeline.
+// spec: run.select.required-key@abb2e19c
 #[test]
 fn a_missing_or_blank_required_key_refuses() {
+    // A host task binds no engine and reads no media column; it still names its source.
+    let host = registered();
+    let host_cfg = json!({"task": "split", "source_table": "documents", "parent_id_column": "doc_id"});
+    assert!(DeriveConfig::parse_with("doc-text", &host_cfg, &host).is_ok());
+    for key in ["source_table", "parent_id_column"] {
+        let mut v = host_cfg.clone();
+        v[key] = json!(" ");
+        assert!(matches!(DeriveConfig::parse_with("doc-text", &v, &host), Err(RunError::DeriveConfigKeyMissing(m)) if m.contains(key)), "{key}");
+    }
     for key in ["engine", "source_table", "media_column", "parent_id_column"] {
         for blank in [Value::Null, json!(""), json!("   ")] {
             let mut v = base();
@@ -135,8 +170,8 @@ fn a_derive_pipeline_journaling_its_pulls_refuses() {
 }
 
 /// Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker under
-/// its current {{run.emit.derivation-key}} in the pipeline's own output table.
-// spec: run.select.anti-join@6f9164d7
+/// its current {{run.emit.derivation-key}} in the pipeline's own output table, or, for a host task, its marker table.
+// spec: run.select.anti-join@bb0e90e2
 #[test]
 fn the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker() {
     let c = cfg(base()).unwrap();
@@ -156,6 +191,22 @@ fn the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker() {
     let sel = select(&parents, &derived, &c, &derivation());
     assert_eq!(sel.outstanding.iter().map(|u| u.key.as_str()).collect::<Vec<_>>(), ["retry", "new", "unkeyed", "other-key"]);
     assert!(sel.outstanding.iter().all(|u| u.derivation_key == k(&u.key, "p")), "each unit carries its current key");
+    assert!(matches!(&sel.incomplete[..], [RunError::DeriveUnitIncomplete(_)]));
+
+    // A host task anti-joins against its marker table: an `ok` or `empty` marker settles a unit.
+    let host = registered();
+    let task = host.get("split").unwrap();
+    let hc = DeriveConfig::parse_with("doc-text", &json!({"task": "split", "source_table": "documents", "parent_id_column": "doc_id"}), &host).unwrap();
+    let parents = rows(json!([{"doc_id": "done", "body": "a"}, {"doc_id": "empty", "body": ""}, {"doc_id": "retry", "body": "b"}, {"doc_id": "new", "body": "c"}, {"body": "x"}]));
+    let hk = |id: &str| host_key("split", "1", id, parents.iter().find(|r| r["doc_id"] == json!(id)).unwrap(), &["body".into()]);
+    let markers = rows(json!([
+        {"unit_ref": "done", "kind": "marker", "unit_status": "ok", "attempts": 1, "derivation_key": hk("done")},
+        {"unit_ref": "empty", "kind": "marker", "unit_status": "empty", "attempts": 1, "derivation_key": hk("empty")},
+        {"unit_ref": "retry", "kind": "marker", "unit_status": "failed", "attempts": 1, "retryable": true, "derivation_key": hk("retry")}
+    ]));
+    let sel = select_host(&parents, &markers, &hc, task.as_ref());
+    assert_eq!(sel.outstanding.iter().map(|u| (u.key.as_str(), u.prior_attempts)).collect::<Vec<_>>(), [("retry", 1), ("new", 0)]);
+    assert_eq!(sel.outstanding[1].row["body"], json!("c"), "a unit carries its parent row");
     assert!(matches!(&sel.incomplete[..], [RunError::DeriveUnitIncomplete(_)]));
 }
 
@@ -211,23 +262,32 @@ fn an_executable_key_in_the_manifest_refuses() {
     }
 }
 
-/// `task` is `transcribe`, the default, or `link_preview`; any other value raises `DeriveUnknownTask`, printing
-/// both.
-// spec: run.bind.unknown-task@ae19fcd9
+/// `task` names `transcribe`, the default, `link_preview`, or a task the embedding binary registered; any other
+/// value raises `DeriveUnknownTask`, listing the built-in and registered names.
+// spec: run.bind.unknown-task@d7129e2a
 #[test]
 fn a_task_outside_the_pair_refuses_printing_both() {
     match cfg(with("task", json!("summarize"))) {
         Err(RunError::DeriveUnknownTask(m)) => assert!(m.contains("transcribe") && m.contains("link_preview") && m.contains("summarize"), "{m}"),
         other => panic!("{other:?}"),
     }
+    let host = registered();
+    match DeriveConfig::parse_with("doc-text", &with("task", json!("summarize")), &host) {
+        Err(RunError::DeriveUnknownTask(m)) => assert!(m.contains("transcribe, link_preview") && m.contains("split"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    let named = json!({"task": "split", "source_table": "documents", "parent_id_column": "doc_id"});
+    assert_eq!(DeriveConfig::parse_with("doc-text", &named, &host).unwrap().task, Task::Host("split".into()));
     assert_eq!(cfg(base()).unwrap().task, Task::Transcribe, "transcribe is the default");
 }
 
-/// `driver` is `exec` or `"none"` behind `transcribe` and `fetch` behind `link_preview`; any other pairing raises
-/// `DeriveDriverMismatch`.
-// spec: run.bind.driver-mismatch@02fc3d61
+/// `driver` is `exec` or `"none"` behind `transcribe` and `fetch` behind `link_preview`, and a host task names no
+/// `engine`; any other pairing raises `DeriveDriverMismatch`.
+// spec: run.bind.driver-mismatch@d38ed4fd
 #[test]
 fn a_driver_the_task_does_not_serve_refuses() {
+    let host = json!({"task": "split", "engine": "reader", "source_table": "documents", "parent_id_column": "doc_id"});
+    assert!(matches!(DeriveConfig::parse_with("doc-text", &host, &registered()), Err(RunError::DeriveDriverMismatch(_))));
     let b = bindings("[derive.reader]\ndriver = \"fetch\"\n").unwrap();
     assert!(matches!(bind("doc-text", &cfg(base()).unwrap(), &b, "m"), Err(RunError::DeriveDriverMismatch(_))));
     let link = DeriveConfig { task: Task::LinkPreview, ..cfg(base()).unwrap() };
@@ -346,9 +406,9 @@ fn only_a_well_formed_webvtt_without_cues_is_empty() {
     assert_eq!(status("1\n00:00:01,000 --> 00:00:02,000\nhello\n"), UnitStatus::Ok);
 }
 
-/// A derive output table without `primary_key` `["unit_ref", "derivation_key", "cue_seq"]` raises
-/// `DerivePrimaryKeyMissing`.
-// spec: run.emit.primary-key@00c9e711
+/// A derive output table or host marker table without `primary_key` `["unit_ref", "derivation_key", "cue_seq"]`, or
+/// a host content table whose key does not open with `unit_ref` and `derivation_key`, raises `DerivePrimaryKeyMissing`.
+// spec: run.emit.primary-key@1069896e
 #[test]
 fn a_derive_table_keys_on_unit_derivation_and_sequence() {
     let keyed = |pk: &[&str]| TableDecl { primary_key: Some(pk.iter().map(|s| s.to_string()).collect()), ..TableDecl::named("doc_text_passages") };
@@ -357,6 +417,20 @@ fn a_derive_table_keys_on_unit_derivation_and_sequence() {
     for pk in [&["unit_ref", "cue_seq"][..], &["unit_ref"], &["derivation_key", "unit_ref", "cue_seq"], &[]] {
         assert!(matches!(check_output_table(&keyed(pk)), Err(RunError::DerivePrimaryKeyMissing(_))), "{pk:?}");
     }
+    // A host content table's key opens with the unit and its derivation key.
+    for pk in [&["unit_ref", "derivation_key"][..], &["unit_ref", "derivation_key", "word_seq"]] {
+        assert!(check_content_table(&keyed(pk)).is_ok(), "{pk:?}");
+    }
+    for pk in [&["unit_ref", "word_seq"][..], &["derivation_key", "unit_ref"], &["unit_ref"], &[]] {
+        assert!(matches!(check_content_table(&keyed(pk)), Err(RunError::DerivePrimaryKeyMissing(_))), "{pk:?}");
+    }
+    // The marker table holds the output table's key.
+    let task = registered().get("split").unwrap();
+    let named = |name: &str, pk: &[&str]| TableDecl { name: name.into(), ..keyed(pk) };
+    let words = named("words", &["unit_ref", "derivation_key", "word_seq"]);
+    assert!(check_host_tables("doc-text", "split", task.as_ref(), &[words.clone(), named("units", &DERIVE_PRIMARY_KEY)]).is_ok());
+    let loose = [words, named("units", &["unit_ref", "cue_seq"])];
+    assert!(matches!(check_host_tables("doc-text", "split", task.as_ref(), &loose), Err(RunError::DerivePrimaryKeyMissing(_))));
 }
 
 /// A derive table declaring a column named `kind` raises `DeriveReservedDiscriminator`.
@@ -365,6 +439,21 @@ fn a_derive_table_keys_on_unit_derivation_and_sequence() {
 fn a_derive_table_naming_kind_refuses() {
     let t = TableDecl { primary_key: Some(DERIVE_PRIMARY_KEY.map(String::from).to_vec()), cluster_by: Some(vec!["kind".into()]), ..TableDecl::named("t") };
     assert!(matches!(check_output_table(&t), Err(RunError::DeriveReservedDiscriminator(_))));
+    // A host content table refuses `kind` wherever it declares a column, as an output table does.
+    let content = |pk: &[&str]| TableDecl { primary_key: Some(pk.iter().map(|s| s.to_string()).collect()), ..TableDecl::named("words") };
+    let kinded = [
+        content(&["unit_ref", "derivation_key", "kind"]),
+        TableDecl { cluster_by: Some(vec!["kind".into()]), ..content(&["unit_ref", "derivation_key"]) },
+        TableDecl { order_by: Some("kind".into()), ..content(&["unit_ref", "derivation_key"]) },
+        TableDecl { partition_by: Some(vec!["kind".into()]), ..content(&["unit_ref", "derivation_key"]) },
+    ];
+    for c in &kinded {
+        assert!(matches!(check_output_table(c), Err(RunError::DeriveReservedDiscriminator(_))), "{c:?}");
+        assert!(matches!(check_content_table(c), Err(RunError::DeriveReservedDiscriminator(_))), "{c:?}");
+        let task = registered().get("split").unwrap();
+        let tables = [c.clone(), TableDecl { name: "units".into(), ..t.clone() }];
+        assert!(matches!(check_host_tables("doc-text", "split", task.as_ref(), &tables), Err(RunError::DeriveReservedDiscriminator(_))), "{c:?}");
+    }
 }
 
 /// SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.

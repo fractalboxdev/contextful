@@ -50,7 +50,7 @@ flowchart LR
 
 The derive source: its configuration, the outstanding set recomputed each tick, eligibility and a run's budget.
 
-- `required-key` — An absent or blank `engine`, `source_table`, `media_column` or `parent_id_column` raises `DeriveConfigKeyMissing`, naming the key and the pipeline.
+- `required-key` — An absent or blank `source_table` or `parent_id_column`, or an absent or blank `engine` or `media_column` behind a built-in task, raises `DeriveConfigKeyMissing`, naming the key and the pipeline.
   *A-run*
 - `no-store-root` — A source built without a store root or without its pipeline id raises `DeriveNoStoreRoot`, naming which is absent.
   *A-run*
@@ -67,7 +67,7 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-connector*
 - `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
   *A-connector*
-- `anti-join` — Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker under its current {{run.emit.derivation-key}} in the pipeline's own output table.
+- `anti-join` — Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker under its current {{run.emit.derivation-key}} in the pipeline's own output table, or, for a host task, its marker table.
   *A-run*
 - `latest-marker` — A unit's standing under a key is its latest marker under that key by `_ingested_at`, `_run_id` and `_row_seq`, never its highest attempt count.
   *because an `empty` marker records 1 attempt, so ranking by count lets an older retry revive a settled unit*
@@ -88,9 +88,11 @@ Where a derive engine's definition lives, the port every engine implements, and 
   *A-run*
 - `command-in-manifest` — `command`, `preprocess`, `env` or `allow_hosts` inside `[pipeline.source.config]` raises `DeriveCommandInManifest`.
   *A-run*
-- `unknown-task` — `task` is `transcribe`, the default, or `link_preview`; any other value raises `DeriveUnknownTask`, printing both.
+- `unknown-task` — `task` names `transcribe`, the default, `link_preview`, or a task the embedding binary registered; any other value raises `DeriveUnknownTask`, listing the built-in and registered names.
   *A-run*
-- `driver-mismatch` — `driver` is `exec` or `"none"` behind `transcribe` and `fetch` behind `link_preview`; any other pairing raises `DeriveDriverMismatch`.
+- `host-task` — An embedding binary registers each compiled derive task under a name before build, and configuration names that symbol, never a command; a name repeating a built-in or registered task raises `DeriveTaskNameTaken`.
+  *A-run*
+- `driver-mismatch` — `driver` is `exec` or `"none"` behind `transcribe` and `fetch` behind `link_preview`, and a host task names no `engine`; any other pairing raises `DeriveDriverMismatch`.
   *A-run*
 - `endpoint-host-bare` — An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`.
   *A-run*
@@ -110,7 +112,7 @@ Where a derive engine's definition lives, the port every engine implements, and 
 
 unsettled: Does a build-time check refuse an engine whose declared locality is wider than the source table's admitted zones? owner: derive affects: run.bind
 
-unsettled: Which registration call binds a host's compiled derive task to the name `task` resolves, and does a pure task's socket refusal reuse the metered-client check (issue 95)? owner: derive affects: run.bind
+unsettled: Does a host task declaring no model reach refuse a socket it opens, as {{run.select.metered-client}} refuses one for `link_preview` (issue 95)? owner: derive affects: run.bind
 
 ## exec
 
@@ -220,11 +222,23 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
 - `attempts` — `attempts` is the prior count under the row's key plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.
 - `unredacted-error` — A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.
   *A-authority*
-- `primary-key` — A derive output table without `primary_key` `["unit_ref", "derivation_key", "cue_seq"]` raises `DerivePrimaryKeyMissing`.
+- `primary-key` — A derive output table or host marker table without `primary_key` `["unit_ref", "derivation_key", "cue_seq"]`, or a host content table whose key does not open with `unit_ref` and `derivation_key`, raises `DerivePrimaryKeyMissing`.
   *because a re-derived unit otherwise lands its new passages over the originals, or beside them with no key telling them apart*
 - `derivation-key` — Every passage and marker row carries `derivation_key`: lowercase hex SHA-256 over the engine id, the binding less its bounds and `zone`, the output table's declared columns, and the parent row's id, media value and `derivation_key`.
   *A-run*
 - `stale-supersedes` — A unit's rows landed under another key before its latest `ok` or `empty` landing are superseded: each answers until that landing, and the next fold drops it and rebuilds the table's sidecars without it.
+  *A-run*
+- `task-version` — A host task's `derivation_key` hashes its registered name, its `task_version` and the parent row's id, declared columns and `derivation_key`, so raising the version re-selects every settled unit.
+  *A-run*
+- `host-rows` — A host task's content row carries its unit's `unit_ref`, `derivation_key` and `task_version`, `kind` `passage` and `unit_status` `ok`; every unit lands one marker, `ok` over content rows, `empty` over none.
+  *A-run*
+- `content-empty` — A host unit landing no row in a content table lands one `kind` `marker`, `unit_status` `empty` row there under its key, so {{run.emit.stale-supersedes}} holds in every content table.
+  *because a read and a fold supersede from one table's rows alone, so a content table never seeing the unit's newest key keeps its stale rows answering*
+- `output-tables` — A host-task pipeline declares exactly its task's marker and content tables, and a unit returns rows for its content tables alone; either breach raises `DeriveOutputTablesMismatch`, the second failing that unit alone.
+  *A-run*
+- `marker-last` — A host-task run commits each content table under its own commit, then the marker table, and a content table failing stops the fire before its marker lands, so the unit re-runs and its rows collapse by key.
+  *A-run*
+- `version-retained` — On an output table declaring `retain_versions`, {{run.emit.stale-supersedes}} holds per unit and `task_version`, so rows under an earlier task version stay current under that version beside the newer version's rows.
   *A-run*
 - `marker-row` — A unit yielding no passage lands one marker row, `cue_seq` -1 and `kind` `marker`, carrying its status, attempts, last error and whether it retries.
   *A-run*
@@ -238,8 +252,6 @@ unsettled: What reaps derived rows whose parent row is deleted upstream? owner: 
 unsettled: Does a local media file whose bytes change under an unchanged path derive its unit again? owner: derive affects: run.emit
 
 unsettled: Which single column identifies a derived row for a sidecar's `id_column`, given a derive table keys on three? owner: derive affects: run.emit
-
-unsettled: How does the primary key of an output table declaring `retain_versions` carry `task_version`, and which clause fixes the marker table committing after its content tables (issue 95)? owner: derive affects: run.emit
 
 ## parse-cues
 

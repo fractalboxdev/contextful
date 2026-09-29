@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 151 | 26 | 22 | 18 | 119 | 0 | 119 |
-| `run` | 3 | 24 | 304 | 82 | 34 | 32 | 171 | 0 | 171 |
+| `run` | 3 | 24 | 311 | 84 | 34 | 31 | 178 | 0 | 178 |
 | `store` | 1 | 15 | 189 | 46 | 12 | 14 | 147 | 0 | 147 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 10 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 22 | 0 | 22 |
-| **total** | 19 | 149 | 1629 | 511 | 180 | 125 | 910 | 0 | |
+| **total** | 19 | 149 | 1636 | 513 | 180 | 124 | 917 | 0 | |
 
 Decision records: 18.
 
@@ -34,7 +34,7 @@ Decision records: 18.
 | 8 — Accountability | 5 | 40 | 20 | open |
 | 9 — Visibility | 6 | 22 | 3 | open |
 | 10 — Cadence and the operator plane | 11 | 42 | 0 | absent |
-| 11 — The derive tier | 7 | 71 | 48 | passing |
+| 11 — The derive tier | 7 | 78 | 55 | passing |
 | 12 — The console | 11 | 30 | 0 | absent |
 | 13 — Disclosure | 5 | 21 | 4 | open |
 | 14 — Assurance | 7 | 112 | 39 | open |
@@ -625,6 +625,7 @@ Unscheduled operations: 10.
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
 | `run.bind.command-in-manifest` | `crates/contextful-core/tests/integration/run/derive.rs::an_executable_key_in_the_manifest_refuses` | performed |
 | `run.bind.driver-mismatch` | `crates/contextful-core/tests/integration/run/derive.rs::a_driver_the_task_does_not_serve_refuses` | performed |
+| `run.bind.host-task` | `crates/contextful-core/tests/integration/run/host_task.rs::a_registered_task_resolves_by_name_and_a_taken_name_refuses` | performed |
 | `run.bind.media-root` | `crates/contextful-connectors/tests/integration/derive.rs::media_outside_the_root_fails_that_unit_alone` | performed |
 | `run.bind.media-unreadable` | `crates/contextful-connectors/tests/integration/derive.rs::unreadable_media_fails_that_unit_alone` | performed |
 | `run.bind.remote-url-unsupported` | `crates/contextful-connectors/tests/integration/derive.rs::an_address_for_an_engine_reading_local_files_refuses_naming_the_step` | performed |
@@ -653,14 +654,20 @@ Unscheduled operations: 10.
 | `run.declare.table-name-collision` | `crates/contextful-core/tests/integration/pipeline/declare.rs::tables_folding_to_one_destination_name_are_refused` | performed |
 | `run.emit.attempts` | `crates/contextful-core/tests/integration/run/derive.rs::attempts_count_up_from_the_prior_and_an_empty_unit_takes_one` | performed |
 | `run.emit.canceled-unit` | `crates/contextful-connectors/tests/integration/derive.rs::a_stopped_chain_lands_no_row_and_the_pull_ends_canceled` | performed |
+| `run.emit.content-empty` | `crates/contextful-cli/tests/integration/derive.rs::a_content_table_left_without_rows_stops_answering_the_earlier_key` | performed |
 | `run.emit.derivation-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_derivation_key_hashes_engine_binding_columns_and_parent` | performed |
 | `run.emit.empty-document` | `crates/contextful-core/tests/integration/run/derive.rs::only_a_well_formed_webvtt_without_cues_is_empty` | performed |
+| `run.emit.host-rows` | `crates/contextful-core/tests/integration/run/host_task.rs::a_unit_lands_stamped_content_rows_and_one_marker` | performed |
+| `run.emit.marker-last` | `crates/contextful-cli/tests/integration/derive.rs::a_failure_before_the_marker_re_runs_the_unit_and_its_rows_collapse_by_key` | performed |
 | `run.emit.marker-row` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_without_passages_lands_one_marker_row` | performed |
+| `run.emit.output-tables` | `crates/contextful-core/tests/integration/run/host_task.rs::tables_outside_the_tasks_set_refuse` | performed |
 | `run.emit.primary-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_table_keys_on_unit_derivation_and_sequence` | performed |
 | `run.emit.reserved-discriminator` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_table_naming_kind_refuses` | performed |
 | `run.emit.settled-revived` | `crates/contextful-connectors/tests/integration/derive.rs::a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows` | performed |
 | `run.emit.stale-supersedes` | `crates/contextful-context/tests/integration/index.rs::superseded_derived_rows_stop_answering_at_the_replacing_landing_and_leave_the_sidecar_at_the_fold` | performed |
+| `run.emit.task-version` | `crates/contextful-core/tests/integration/run/host_task.rs::raising_the_task_version_re_selects_every_settled_unit` | performed |
 | `run.emit.unit-status` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_status_is_one_of_four` | performed |
+| `run.emit.version-retained` | `crates/contextful-cli/tests/integration/derive.rs::a_raised_task_version_re_derives_and_a_retaining_table_keeps_both_versions` | performed |
 | `run.exec.captured-output` | `crates/contextful-connectors/tests/integration/derive.rs::a_step_captures_8_mib_by_default_and_the_declared_bound_otherwise` | performed |
 | `run.exec.chain-deadline` | `crates/contextful-connectors/tests/integration/derive.rs::the_chain_runs_1800_s_by_default_and_the_declared_bound_otherwise` | performed |
 | `run.exec.deadline-elapsed` | `crates/contextful-connectors/tests/integration/derive.rs::a_chain_outrunning_its_deadline_refuses_naming_the_step` | performed |

@@ -8,11 +8,12 @@ use crate::component::{self, ComponentTarget};
 use crate::run::{boot_id, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
-use contextful_connectors::derive::DeriveSource;
+use contextful_connectors::derive::{DeriveSource, HostDerive, Staged};
 use contextful_connectors::http::{HttpConfig, HttpSource};
 use contextful_core::connector::component::ComponentSource;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::derive::config::{bind, bindings, check_output_table, Binding, DeriveConfig};
+use contextful_core::run::derive::task::{check_host_tables, DeriveTask, Tasks};
 use contextful_core::run::ports::{Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_context::{node, ContextError, Store};
@@ -94,11 +95,19 @@ enum Checked {
     Http(HttpConfig),
     Derive(Box<(DeriveConfig, Binding)>),
     Component(Box<ComponentSource>),
+    Host(Box<HostChecked>),
+}
+
+/// A registered host task, with the store table each of its tables lands in.
+struct HostChecked {
+    config: DeriveConfig,
+    task: Arc<dyn DeriveTask>,
+    tables: BTreeMap<String, String>,
 }
 
 /// Hold a specification to every rule checked before I/O, returning its source configuration.
 /// A declared seed source is built as a compiled-in HTTP source, so it refuses before a seeding run reaches it.
-fn check(spec: &PipelineSpec, declaration: &Path) -> Result<Checked> {
+fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> Result<Checked> {
     spec.validate()?;
     for op in &spec.transforms {
         op.validate()?;
@@ -115,7 +124,13 @@ fn check(spec: &PipelineSpec, declaration: &Path) -> Result<Checked> {
             Ok(Checked::Http(config))
         }
         contextful_connectors::derive::NAME => {
-            let config = DeriveConfig::parse(&spec.id, &spec.source.config)?;
+            let config = DeriveConfig::parse_with(&spec.id, &spec.source.config, tasks)?;
+            if let Some(task) = tasks.get(config.task.name()).filter(|_| config.task.is_host()) {
+                let decls: Vec<TableDecl> = spec.tables.iter().map(|t| t.decl()).collect();
+                check_host_tables(&spec.id, config.task.name(), task.as_ref(), &decls)?;
+                let tables = spec.tables.iter().map(|t| (t.name().to_string(), spec.table_name(t.name()))).collect();
+                return Ok(Checked::Host(Box::new(HostChecked { config, task, tables })));
+            }
             let [table] = spec.tables.as_slice() else {
                 bail!("derive pipeline `{}` declares {} tables; it writes one output table", spec.id, spec.tables.len());
             };
@@ -139,6 +154,15 @@ fn check(spec: &PipelineSpec, declaration: &Path) -> Result<Checked> {
             }
             Ok(Checked::Component(Box::new(decl)))
         }
+    }
+}
+
+/// A host task's staging runs outside any execution, so nothing stops it.
+struct Uncanceled;
+
+impl contextful_core::run::ports::Cancellation for Uncanceled {
+    fn requested(&self) -> bool {
+        false
     }
 }
 
@@ -221,7 +245,7 @@ fn declaration_base(project: Option<&str>) -> Result<PathBuf> {
     }
 }
 
-pub fn run(cmd: PipelineCmd) -> Result<()> {
+pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
     match cmd {
         PipelineCmd::Validate { declaration, project, component_target } => {
             let files = manifests(&declaration)?;
@@ -232,7 +256,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                 TableDecl::parse_pipeline(&f.text).with_context(|| f.path.clone())?;
             }
             for d in collect(&files)? {
-                let checked = check(&d.spec, &declaration).with_context(|| format!("{}:{}", d.file, d.line))?;
+                let checked = check(&d.spec, &declaration, tasks).with_context(|| format!("{}:{}", d.file, d.line))?;
                 let mut discovered = String::new();
                 if let Checked::Component(decl) = &checked {
                     if component::is_local(decl) {
@@ -254,14 +278,14 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
             let declared: Vec<Declared> = collect(&manifests(&declaration)?)?;
             let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| format!("no pipeline `{id}` is declared"))?;
             let spec = d.spec;
-            let checked = check(&spec, &declaration)?;
+            let checked = check(&spec, &declaration, tasks)?;
             let w = wire_at(&l.project, &project.now)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
             let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
             match &checked {
                 Checked::Http(config) => resolver.preflight(config.headers.values())?,
                 Checked::Component(decl) => resolver.preflight(decl.attach.iter().map(|(_, t)| t))?,
-                Checked::Derive(_) => {}
+                Checked::Derive(_) | Checked::Host(_) => {}
             }
 
             // A declaration's relative paths resolve against the project directory
@@ -292,8 +316,25 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                 Some(c) => c.content_hash(),
                 None => sha256_hex(serde_json::to_string(&spec.source).unwrap_or_default().as_bytes()),
             };
+            // A host task derives each unit once, then lands its content tables and its
+            // marker table last, stopping at the first failing table (`run.emit.marker-last`).
+            let mut staged: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+            let mut order: Vec<&contextful_core::pipeline::declare::TableEntry> = spec.tables.iter().collect();
+            if let Checked::Host(host) = &checked {
+                let derive = HostDerive {
+                    pipeline_id: spec.id.clone(),
+                    config: host.config.clone(),
+                    task: host.task.clone(),
+                    tables: host.tables.clone(),
+                    reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
+                };
+                let landing = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
+                order = landing.iter().filter_map(|(table, _)| spec.tables.iter().find(|t| spec.table_name(t.name()) == *table)).collect();
+                staged = landing.into_iter().collect();
+            }
+            let stop_on_failure = matches!(checked, Checked::Host(_)) || spec.on_table_error() == contextful_core::pipeline::declare::OnTableError::Abort;
             let mut failed: Vec<String> = Vec::new();
-            for t in &spec.tables {
+            for t in order {
                 let table = spec.table_name(t.name());
                 // The destination name is path-safe, so a run id built from it is too.
                 let run_id = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{table}") };
@@ -321,6 +362,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                             Some(c) => c.source(decl, t.name(), &resolver, &run_id)?,
                             None => bail!("pipeline `{}`: component source `{}` did not load", spec.id, spec.source.name),
                         },
+                        Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default())),
                     };
                     Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
                 })();
@@ -329,7 +371,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                     Err(e) => {
                         eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed as refused in run `{run_id}`: {e:#}")));
                         failed.push(run_id);
-                        if spec.on_table_error() == contextful_core::pipeline::declare::OnTableError::Abort {
+                        if stop_on_failure {
                             break;
                         }
                         continue;
@@ -347,7 +389,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                 ));
                 eprintln!("{e}");
                 failed.push(row.run_id);
-                if spec.on_table_error() == contextful_core::pipeline::declare::OnTableError::Abort {
+                if stop_on_failure {
                     break;
                 }
             }

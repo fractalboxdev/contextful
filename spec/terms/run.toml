@@ -77,7 +77,8 @@ DeriveUnmeteredGrant           = { clause = "run.select.unmetered-grant", gloss 
 DeriveMeteredClient            = { clause = "run.select.metered-client", gloss = "A link pipeline opening a socket outside the mediated client." }
 DeriveEngineUnbound            = { clause = "run.bind.unbound-engine", gloss = "A pipeline naming an engine the machine has not defined." }
 DeriveCommandInManifest        = { clause = "run.bind.command-in-manifest", gloss = "An executable key on the request side of the binding split." }
-DeriveUnknownTask              = { clause = "run.bind.unknown-task", gloss = "A `task` outside the supported pair." }
+DeriveUnknownTask              = { clause = "run.bind.unknown-task", gloss = "A `task` naming neither a built-in nor a registered task." }
+DeriveTaskNameTaken            = { clause = "run.bind.host-task", gloss = "A host task registered under a name already taken." }
 DeriveDriverMismatch           = { clause = "run.bind.driver-mismatch", gloss = "A driver and task pairing the tier does not serve." }
 DeriveEndpointHostNotBare      = { clause = "run.bind.endpoint-host-bare", gloss = "An engine host carrying more than a host." }
 DeriveRemoteUrlUnsupported     = { clause = "run.bind.remote-url-unsupported", gloss = "A remote address handed to an engine that declines them." }
@@ -107,6 +108,7 @@ DeriveReservedDiscriminator    = { clause = "run.emit.reserved-discriminator", g
 DeriveSettledUnitRevived       = { clause = "run.emit.settled-revived", gloss = "A settled unit re-entering the outstanding set." }
 DeriveUnredactedError          = { clause = "run.emit.unredacted-error", gloss = "A `last_error` written without address redaction." }
 DerivePrimaryKeyMissing        = { clause = "run.emit.primary-key", gloss = "A derive output table without the unit-and-sequence key." }
+DeriveOutputTablesMismatch     = { clause = "run.emit.output-tables", gloss = "A host-task pipeline or unit reaching tables other than its task's." }
 DeriveCueOutOfOrder            = { clause = "run.parse-cues.backward-cue", gloss = "A caption block starting before the one already accepted." }
 DeriveTestEngineUnsupported    = { clause = "run.test-engine.unsupported-driver", gloss = "The single-file verb handed a fetch engine." }
 
