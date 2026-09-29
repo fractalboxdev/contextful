@@ -1,0 +1,61 @@
+{
+  "comment": "Drive API v3 exchanges for a three-level tree under folder `root-f`. Each entry answers a request matching its method, path and listed query parameters; `body_file` names an export body beside this file.",
+  "exchanges": [
+    {
+      "method": "POST", "path": "/token",
+      "status": 200,
+      "body": {"access_token": "ya29.fixture-access-7Qx", "expires_in": 3599, "scope": "https://www.googleapis.com/auth/drive.readonly", "token_type": "Bearer"}
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files/root-f",
+      "status": 200,
+      "body": {"id": "root-f", "name": "Team", "mimeType": "application/vnd.google-apps.folder"}
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'root-f' in parents and trashed = false"},
+      "status": 200,
+      "body": {
+        "nextPageToken": "root-page-2",
+        "files": [
+          {"id": "doc-plan", "name": "Plan", "mimeType": "application/vnd.google-apps.document", "modifiedTime": "2031-01-02T09:00:00.000Z", "version": "5"},
+          {"id": "fin-f", "name": "Finance", "mimeType": "application/vnd.google-apps.folder", "modifiedTime": "2031-01-01T08:00:00.000Z", "version": "2"}
+        ]
+      }
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'root-f' in parents and trashed = false", "pageToken": "root-page-2"},
+      "status": 200,
+      "body": {
+        "files": [
+          {"id": "form-intake", "name": "Intake", "mimeType": "application/vnd.google-apps.form", "modifiedTime": "2031-01-03T10:00:00.000Z", "version": "3"},
+          {"id": "short-deck", "name": "Deck shortcut", "mimeType": "application/vnd.google-apps.shortcut", "modifiedTime": "2031-01-03T11:00:00.000Z", "version": "1", "shortcutDetails": {"targetId": "slides-deck", "targetMimeType": "application/vnd.google-apps.presentation"}}
+        ]
+      }
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'fin-f' in parents and trashed = false"},
+      "status": 200,
+      "body": {
+        "files": [
+          {"id": "board-f", "name": "Board", "mimeType": "application/vnd.google-apps.folder", "modifiedTime": "2031-01-01T08:30:00.000Z", "version": "2"},
+          {"id": "sheet-budget", "name": "Budget", "mimeType": "application/vnd.google-apps.spreadsheet", "modifiedTime": "2031-01-04T12:00:00.000Z", "version": "7"}
+        ]
+      }
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'board-f' in parents and trashed = false"},
+      "status": 200,
+      "body": {
+        "files": [
+          {"id": "slides-deck", "name": "Deck", "mimeType": "application/vnd.google-apps.presentation", "modifiedTime": "2031-01-05T13:00:00.000Z", "version": "4"},
+          {"id": "pdf-report", "name": "report.pdf", "mimeType": "application/pdf", "modifiedTime": "2031-01-06T14:00:00.000Z", "version": "1", "size": "614", "md5Checksum": "22359917bddc62856915e06ca6b50811"},
+          {"id": "bin-video", "name": "all-hands.mp4", "mimeType": "video/mp4", "modifiedTime": "2031-01-07T15:00:00.000Z", "version": "1", "size": "209715200", "md5Checksum": "0cc175b9c0f1b6a831c399e269772661"}
+        ]
+      }
+    },
+    {"method": "GET", "path": "/drive/v3/files/doc-plan/export", "query": {"mimeType": "application/pdf"}, "status": 200, "body_file": "plan.pdf"},
+    {"method": "GET", "path": "/drive/v3/files/sheet-budget/export", "query": {"mimeType": "application/pdf"}, "status": 200, "body_file": "budget.pdf"},
+    {"method": "GET", "path": "/drive/v3/files/slides-deck/export", "query": {"mimeType": "application/pdf"}, "status": 200, "body_file": "deck.pdf"},
+    {"method": "GET", "path": "/drive/v3/files/pdf-report", "query": {"alt": "media"}, "status": 200, "body_file": "report.pdf"}
+  ]
+}

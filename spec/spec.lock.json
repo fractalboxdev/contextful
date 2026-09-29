@@ -10523,6 +10523,149 @@
       "line": 431
     },
     {
+      "id": "connector.source.drive-walk",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-walk",
+      "kind": "behavior",
+      "statement": "The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder, within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is followed.",
+      "why": "because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot",
+      "file": "spec/40-connector.md",
+      "line": 433
+    },
+    {
+      "id": "connector.source.drive-root",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-root",
+      "kind": "behavior",
+      "statement": "A `folder_id` naming no folder, or one outside a declared `drive_id`, fails the read as a configuration fault before any listing.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 435
+    },
+    {
+      "id": "connector.source.drive-tables",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-tables",
+      "kind": "behavior",
+      "statement": "The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the root, MIME type, `modifiedTime`, Drive's `md5Checksum` and the SHA-256 of the bytes read, and `pages`.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 436
+    },
+    {
+      "id": "connector.source.drive-table-unmatched",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-table-unmatched",
+      "kind": "behavior",
+      "statement": "A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any request.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 437
+    },
+    {
+      "id": "connector.source.drive-export",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-export",
+      "kind": "behavior",
+      "statement": "A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 438
+    },
+    {
+      "id": "connector.source.drive-page-grain",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-page-grain",
+      "kind": "behavior",
+      "statement": "A PDF body lands one `pages` row per page under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column.",
+      "why": "because a page is what retrieval ranks and a citation names, and the digest identifies the bytes without a second copy of the file",
+      "file": "spec/40-connector.md",
+      "line": 439
+    },
+    {
+      "id": "connector.source.drive-file-cap",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-file-cap",
+      "kind": "limit",
+      "statement": "A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap and no pages. No byte past the cap is read, and the read continues.",
+      "why": "because a row naming the skipped file answers for it, where truncated bytes read as the whole document",
+      "file": "spec/40-connector.md",
+      "line": 441
+    },
+    {
+      "id": "connector.source.drive-incremental",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-incremental",
+      "kind": "behavior",
+      "statement": "The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 443
+    },
+    {
+      "id": "connector.source.drive-fire",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-fire",
+      "kind": "behavior",
+      "statement": "One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 444
+    },
+    {
+      "id": "connector.source.drive-oauth",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-oauth",
+      "kind": "behavior",
+      "statement": "The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.",
+      "why": "because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour",
+      "file": "spec/40-connector.md",
+      "line": 445
+    },
+    {
+      "id": "connector.source.drive-oauth-shape",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-oauth-shape",
+      "kind": "behavior",
+      "statement": "`oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 447
+    },
+    {
+      "id": "connector.source.drive-origin",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-origin",
+      "kind": "behavior",
+      "statement": "The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 448
+    },
+    {
+      "id": "connector.source.drive-position-owned",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-position-owned",
+      "kind": "behavior",
+      "statement": "`incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 449
+    },
+    {
       "id": "connector.reference.credential-plane",
       "contract": "connector",
       "operation": "reference",
@@ -18790,6 +18933,26 @@
       "run.land.parse-boundary"
     ],
     [
+      "connector.source.drive-table-unmatched",
+      "connector.source.table-unmatched"
+    ],
+    [
+      "connector.source.drive-page-grain",
+      "connector.source.document-grain"
+    ],
+    [
+      "connector.source.drive-page-grain",
+      "run.land.parse-boundary"
+    ],
+    [
+      "connector.source.drive-origin",
+      "connector.source.provider-origin"
+    ],
+    [
+      "connector.source.drive-position-owned",
+      "connector.package.component-position"
+    ],
+    [
       "connector.reference.environment-is-a-miss",
       "connector.resolve.unresolved-name"
     ],
@@ -20702,6 +20865,13 @@
             "unit": "s",
             "basis": "chosen",
             "gloss": "Wall-clock deadline on one discovery call."
+          },
+          "connector-drive-file-bytes": {
+            "clause": "connector.source.drive-file-cap",
+            "value": 64,
+            "unit": "MiB",
+            "basis": "chosen",
+            "gloss": "Default body bytes one drive file carries before it is skipped."
           },
           "connector-expansion-buffer": {
             "clause": "connector.source.expansion-budget",

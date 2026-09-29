@@ -93,6 +93,8 @@ fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
 /// A pipeline's source, checked and ready to build.
 enum Checked {
     Http(HttpConfig),
+    #[cfg(feature = "drive")]
+    Drive(contextful_connectors::drive::DriveConfig),
     Derive(Box<(DeriveConfig, Binding)>),
     Component(Box<ComponentSource>),
     Host(Box<HostChecked>),
@@ -122,6 +124,10 @@ fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> Result<Check
                 config.accepts_incremental()?;
             }
             Ok(Checked::Http(config))
+        }
+        contextful_connectors::DRIVE => {
+            contextful_connectors::compiled_in(contextful_connectors::DRIVE).map_err(|why| anyhow::anyhow!("pipeline `{}`: {why}", spec.id))?;
+            check_drive(spec)
         }
         contextful_connectors::derive::NAME => {
             let config = DeriveConfig::parse_with(&spec.id, &spec.source.config, tasks)?;
@@ -164,6 +170,29 @@ impl contextful_core::run::ports::Cancellation for Uncanceled {
     fn requested(&self) -> bool {
         false
     }
+}
+
+/// A drive source's configuration, every table it lands checked before any request.
+#[cfg(feature = "drive")]
+fn check_drive(spec: &PipelineSpec) -> Result<Checked> {
+    use contextful_connectors::drive::DriveConfig;
+    let config = DriveConfig::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
+    for t in &spec.tables {
+        config.table(t.name()).with_context(|| format!("pipeline `{}`", spec.id))?;
+    }
+    if let Some(field) = &spec.incremental {
+        return Err(ConnectorError::ConnectorPositionOwned(format!(
+            "pipeline `{}` declares `incremental = \"{field}\"` beside the `drive` source, whose position records each file's modification time",
+            spec.id
+        ))
+        .into());
+    }
+    Ok(Checked::Drive(config))
+}
+
+#[cfg(not(feature = "drive"))]
+fn check_drive(spec: &PipelineSpec) -> Result<Checked> {
+    bail!("pipeline `{}`: source `drive` is compiled out of this build", spec.id)
 }
 
 /// The store's landed tables, read for a derive source.
@@ -285,6 +314,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             match &checked {
                 Checked::Http(config) => resolver.preflight(config.headers.values())?,
                 Checked::Component(decl) => resolver.preflight(decl.attach.iter().map(|(_, t)| t))?,
+                #[cfg(feature = "drive")]
+                Checked::Drive(config) => resolver.preflight(config.templates())?,
                 Checked::Derive(_) | Checked::Host(_) => {}
             }
 
@@ -294,6 +325,16 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             // A component resolves, admits and compiles once per fire, before any run row.
             let loaded = match &checked {
                 Checked::Component(decl) => Some(component::load(&spec.source.name, decl, &base, component_target)?),
+                _ => None,
+            };
+            // One drive fire mints one token and walks the tree once for every table it lands.
+            #[cfg(feature = "drive")]
+            let drive = match &checked {
+                Checked::Drive(config) => {
+                    // PDF bodies decode in this binary's worker, behind the process boundary.
+                    let worker = contextful_connectors::boundary::Boundary::new(std::env::current_exe()?, &["decode", "pdf"]);
+                    Some(contextful_connectors::drive::Drive::new(config.clone(), resolver.clone(), Arc::new(worker))?)
+                }
                 _ => None,
             };
             let store = Store::open(&l.project.dir, &l.project.name)?;
@@ -348,6 +389,11 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
                     let mut source: Box<dyn Source> = match &checked {
                         Checked::Http(config) => Box::new(HttpSource::new(config.clone(), t.name(), resolver.clone())?),
+                        #[cfg(feature = "drive")]
+                        Checked::Drive(_) => match &drive {
+                            Some(d) => Box::new(d.source(t.name())?),
+                            None => bail!("pipeline `{}`: the drive source did not open", spec.id),
+                        },
                         Checked::Derive(pair) => Box::new(DeriveSource {
                             pipeline_id: spec.id.clone(),
                             config: pair.0.clone(),

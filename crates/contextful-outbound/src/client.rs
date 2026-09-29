@@ -22,6 +22,15 @@ pub const MAX_BODY_BYTES: u64 = 256 * 1024 * 1024;
 /// Wall clock one request may take.
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// The phrase a failure carries when a response body passes the client's ceiling.
+const OVER_LIMIT: &str = "answered a body over";
+
+/// Whether `f` is a response body passing the client's ceiling: deterministic, and past
+/// it on every retry.
+pub fn is_over_limit(f: &Failure) -> bool {
+    f.deterministic && f.message.contains(OVER_LIMIT)
+}
+
 /// A header value: plain text, or material hydrated from a reference.
 #[derive(Debug, Clone)]
 pub enum HeaderValue {
@@ -324,7 +333,7 @@ impl Client {
             Ok(inbound) => Hop::Answered(inbound),
             // A body past the ceiling is past it on every retry.
             Err(TransportFault::BodyOverLimit) => {
-                Hop::Failed(Failure::deterministic(FailureTag::Permanent, format!("`{}` answered a body over {} bytes", scrub(url), self.max_body)))
+                Hop::Failed(Failure::deterministic(FailureTag::Permanent, format!("`{}` {OVER_LIMIT} {} bytes", scrub(url), self.max_body)))
             }
             Err(TransportFault::Failed(why)) => Hop::Failed(Failure::new(FailureTag::Transient, format!("request to `{}` failed: {why}", scrub(url)))),
         }
