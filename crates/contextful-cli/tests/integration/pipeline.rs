@@ -315,6 +315,12 @@ fn a_keyed_table_no_fold_job_covers_warns_and_validates() {
     assert!(warned(&pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"items\"]")).is_empty());
     let store_table = warned("[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"id\"]\n");
     assert!(store_table.len() == 1 && store_table[0].contains("`filings`"), "{store_table:?}");
+
+    // A `[[table]]` memory table is keyed on its shape's key.
+    let memory = "[[table]]\nname = \"ents\"\nshape = \"memory_entities\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n";
+    let uncovered = warned(memory);
+    assert!(uncovered.len() == 1 && uncovered[0].contains("`ents`"), "{uncovered:?}");
+    assert!(warned(&format!("{memory}{}", FOLD_ITEMS.replace("orders_items", "ents"))).is_empty());
 }
 
 /// A seeded table that no job meeting {{store.declare.fold-job}} covers raises `PipelineSeedCompactionMissing`
@@ -356,6 +362,11 @@ fn validate_over_no_manifest_is_refused() {
 
     let out = cf(dir.path(), &["pipeline", "validate", "--declaration", "conf/typo.toml"]);
     assert!(stderr(&out).contains("PipelineManifestMissing") && stderr(&out).contains("conf/typo.toml"), "{}", stderr(&out));
+
+    // A directory is no manifest file.
+    std::fs::create_dir_all(dir.path().join("conf")).unwrap();
+    let out = cf(dir.path(), &["pipeline", "validate", "--declaration", "conf"]);
+    assert!(stderr(&out).contains("PipelineManifestMissing") && stderr(&out).contains("`conf`"), "{}", stderr(&out));
 
     // A pipelines directory alone is a manifest.
     std::fs::create_dir_all(dir.path().join("pipelines")).unwrap();

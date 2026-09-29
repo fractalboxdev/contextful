@@ -29,6 +29,7 @@ use contextful_core::run::plan::{ConnectorSpec, CursorSpec, Plan, PlanSpec, NATI
 use contextful_core::run::record::RunStatus;
 use contextful_core::run::retry::Schedule;
 use contextful_core::run::RunError;
+use contextful_core::memory::declare::MemoryDeclarations;
 use contextful_core::pipeline::seed::check_compaction;
 use contextful_core::store::declare::{FoldCoverage, TableDecl};
 use contextful_engine::RunSpec;
@@ -80,7 +81,7 @@ pub enum PipelineCmd {
 /// The manifest files, in reading order: the project manifest, then `pipelines/` sorted.
 pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
     let mut files = Vec::new();
-    if declaration.exists() {
+    if declaration.is_file() {
         files.push(ManifestFile { path: declaration.display().to_string(), text: std::fs::read_to_string(declaration)? });
     }
     let dir = declaration.parent().map(|p| p.join("pipelines")).unwrap_or_else(|| PathBuf::from("pipelines"));
@@ -371,6 +372,12 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
                 for t in TableDecl::parse_pipeline(&f.text).with_context(|| f.path.clone())? {
                     tables.insert(t.name.clone(), t);
+                }
+            }
+            // A `[[table]]` memory table is keyed on its shape's key.
+            for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
+                for t in MemoryDeclarations::parse(&f.text).with_context(|| f.path.clone())?.tables {
+                    tables.entry(t.name.clone()).or_insert_with(|| t.table_decl());
                 }
             }
             let coverage = fold_coverage(&files)?;

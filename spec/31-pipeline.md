@@ -421,6 +421,12 @@ chunk_size = "7d"
 [pipeline.seed]
 below = "2025-06-01T00:00:00Z"
 source = { name = "file", config = { root = "exports/meta-ads", format = "jsonl" } }
+
+[[job]]
+name = "nightly-fold"
+schedule = "0 3 * * *"
+kind = "fold"
+target = "meta_ads_insights"
 ```
 
 A model over a landed table, and the verbs that build and hold it:
