@@ -59,6 +59,8 @@ read-plural-suffix-floor     = { clause = "read.retrieve.plural-suffix-floor", v
 read-candidate-window-floor  = { clause = "read.retrieve.candidate-window", value = 200, unit = "rows", basis = "chosen", gloss = "Smallest candidate window of a ranked read." }
 read-candidate-window-factor = { clause = "read.retrieve.candidate-window", value = 8, unit = "times", basis = "chosen", gloss = "Multiple of the requested limit forming the candidate window." }
 read-filter-values           = { clause = "read.retrieve.filter-budget", value = 256, unit = "entries", basis = "chosen", gloss = "Values in one filter membership list." }
+read-filter-conditions       = { clause = "read.retrieve.filter-budget", value = 32, unit = "conditions", basis = "chosen", gloss = "Conditions in one ranked read's filter, `kinds` counting as one." }
+read-filter-bytes            = { clause = "read.retrieve.filter-budget", value = 16, unit = "KiB", basis = "chosen", gloss = "Serialized JSON size of one ranked read's filter and `kinds`." }
 read-sidecar-probe-floor     = { clause = "read.retrieve.sidecar-oversampling", value = 64, unit = "rows", basis = "chosen", gloss = "Smallest candidate count one sidecar probe requests." }
 read-sidecar-probe-factor    = { clause = "read.retrieve.sidecar-oversampling", value = 4, unit = "times", basis = "chosen", gloss = "Multiple of the limit one sidecar probe requests." }
 read-sidecar-restricted-factor = { clause = "read.retrieve.sidecar-oversampling", value = 4, unit = "times", basis = "chosen", gloss = "Further multiple applied when the request carries restriction context." }

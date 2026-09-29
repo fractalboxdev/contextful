@@ -614,6 +614,17 @@ fn builtin_tool(name: &str) -> Value {
             json!({
                 "prefix": { "type": "string" }, "query": { "type": "string" },
                 "query_embedding": { "type": "array", "items": { "type": "number" } },
+                "filter": {
+                    "type": "object",
+                    "description": "Each column to a string, number or boolean it equals, or a list of them it is a member of.",
+                    "additionalProperties": {
+                        "anyOf": [
+                            { "type": ["string", "number", "boolean"] },
+                            { "type": "array", "items": { "type": ["string", "number", "boolean"] }, "minItems": 1 }
+                        ]
+                    }
+                },
+                "kinds": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
                 "limit": { "type": "integer" }, "as_of": { "type": "string" }, "since": { "type": "string" },
                 "min_score": { "type": "integer" }, "internals": { "type": "boolean" }, "zone": { "type": "string" }
             }),

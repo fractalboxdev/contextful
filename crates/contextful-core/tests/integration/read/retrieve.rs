@@ -1,6 +1,9 @@
 //! `read.retrieve`: content tokens, matching, the relevance floor and the candidate window.
 
 use super::strings;
+use contextful_core::read::filter::{Filter, Scalar, FILTER_BYTES, FILTER_CONDITIONS, FILTER_VALUES};
+use contextful_core::read::ReadError;
+use serde_json::{json, Value};
 use contextful_core::read::rank::{
     candidate_window, saw_recency_slice, sidecar_probe_size, LexicalIndex, CANDIDATE_WINDOW_FACTOR, CANDIDATE_WINDOW_FLOOR,
     SIDECAR_PROBE_FACTOR, SIDECAR_PROBE_FLOOR, SIDECAR_RESTRICTED_FACTOR,
@@ -153,4 +156,63 @@ fn a_probe_oversamples_the_limit_and_widens_under_restriction() {
     assert_eq!(sidecar_probe_size(3, true), 256);
     assert_eq!(sidecar_probe_size(100, true), 1600);
     assert_eq!(sidecar_probe_size(u64::MAX, true), u64::MAX, "saturates");
+}
+
+fn budget_refused(r: Result<Filter, ReadError>) -> bool {
+    matches!(r, Err(ReadError::FilterBudgetExceeded(_)))
+}
+
+/// A filter holds at most 32 conditions, each membership list at most 256 entries, and its serialized JSON, `kinds` included, at most 16 KiB.
+// spec: read.retrieve.filter-budget@9e41155b
+#[test]
+fn a_filter_is_bounded_in_conditions_entries_and_bytes() {
+    assert_eq!((FILTER_CONDITIONS, FILTER_VALUES, FILTER_BYTES), (32, 256, 16 * 1024));
+    let list = |n: usize| json!({ "vendor_id": (0..n).map(|i| format!("v{i}")).collect::<Vec<_>>() });
+    assert_eq!(Filter::parse(Some(&list(256)), None).unwrap().conditions[0].values.len(), 256);
+    assert!(budget_refused(Filter::parse(Some(&list(257)), None)));
+    let conditions = |n: usize| Value::Object((0..n).map(|i| (format!("c{i}"), json!(i))).collect());
+    assert_eq!(Filter::parse(Some(&conditions(32)), None).unwrap().conditions.len(), 32);
+    assert!(budget_refused(Filter::parse(Some(&conditions(33)), None)));
+    // `kinds` counts as one condition and toward the bytes.
+    let memo = ["memo".to_string()];
+    assert_eq!(Filter::parse(Some(&conditions(31)), Some(&memo)).unwrap().conditions.len(), 32);
+    assert!(budget_refused(Filter::parse(Some(&conditions(32)), Some(&memo))));
+    let wide = |n: usize| json!({ "v": "x".repeat(n) });
+    let overhead = wide(0).to_string().len();
+    assert!(Filter::parse(Some(&wide(FILTER_BYTES - overhead)), None).is_ok());
+    assert!(budget_refused(Filter::parse(Some(&wide(FILTER_BYTES - overhead + 1)), None)));
+    let big_kinds = ["k".repeat(FILTER_BYTES)];
+    assert!(budget_refused(Filter::parse(None, Some(&big_kinds))));
+}
+
+/// A filter value is a string, a number or a boolean, and a membership list is non-empty; a null, a nested object or list, or an empty list is a malformed condition.
+// spec: read.retrieve.filter-values@d09f9733
+#[test]
+fn filter_values_are_scalars_and_lists_are_non_empty() {
+    let f = Filter::parse(Some(&json!({ "a": "x", "b": 3, "c": 1.5, "d": true, "e": ["p", 2] })), None).unwrap();
+    let values: Vec<(&str, &[Scalar])> = f.conditions.iter().map(|c| (c.column.as_str(), c.values.as_slice())).collect();
+    assert_eq!(
+        values,
+        [
+            ("a", &[Scalar::Text("x".into())][..]),
+            ("b", &[Scalar::Integer(3)][..]),
+            ("c", &[Scalar::Float(1.5)][..]),
+            ("d", &[Scalar::Boolean(true)][..]),
+            ("e", &[Scalar::Text("p".into()), Scalar::Integer(2)][..]),
+        ]
+    );
+    assert!(Filter::parse(None, None).unwrap().conditions.is_empty());
+    let malformed = [
+        json!({ "a": null }),
+        json!({ "a": { "eq": 1 } }),
+        json!({ "a": [[1]] }),
+        json!({ "a": [] }),
+        json!({ "a": [null] }),
+        json!(["a"]),
+        json!({ "": 1 }),
+    ];
+    for bad in malformed {
+        assert!(budget_refused(Filter::parse(Some(&bad), None)), "{bad}");
+    }
+    assert!(budget_refused(Filter::parse(None, Some(&[]))));
 }

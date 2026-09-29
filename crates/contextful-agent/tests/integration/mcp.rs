@@ -442,3 +442,43 @@ fn memory_recall_answers_keyed_over_the_tool_protocol() {
     let notes = call(&server, "memory.recall", json!({ "table": "research/notes", "subject": "acme" }));
     assert_eq!(notes["result"]["structuredContent"]["error"]["identifier"], json!("MemoryRecallNotClaims"), "{notes}");
 }
+
+/// `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
+// spec: read.retrieve.ranked-call@ea39e5ac
+#[test]
+fn corpus_retrieve_takes_a_filter_and_kinds() {
+    let f = fixture();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let tools = ask(&server, 1, "tools/list", json!({}));
+    let retrieve = tools["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == json!("corpus.retrieve")).unwrap().clone();
+    let properties = &retrieve["inputSchema"]["properties"];
+    assert_eq!(properties["filter"]["type"], json!("object"), "{retrieve}");
+    assert_eq!(properties["kinds"]["items"]["type"], json!("string"), "{retrieve}");
+    for argument in ["prefix", "query", "query_embedding", "limit", "since", "min_score", "as_of"] {
+        assert!(properties.get(argument).is_some(), "`corpus.retrieve` lacks `{argument}`");
+    }
+
+    let base = json!({ "prefix": "research/", "query": "solar battery storage", "min_score": 0 });
+    let with = |extra: Value| {
+        let mut a = base.clone();
+        a.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        a
+    };
+    let unfiltered = call(&server, "corpus.retrieve", base.clone());
+    assert_eq!(rows(&unfiltered).as_array().unwrap().len(), 2, "{unfiltered}");
+    let one = call(&server, "corpus.retrieve", with(json!({ "filter": { "note_id": "n2" } })));
+    let one = rows(&one).as_array().unwrap().clone();
+    assert_eq!(one.len(), 1);
+    assert_eq!(one[0][1]["note_id"], json!("n2"));
+    // No note carries a `kind` column, so the notes arm drops.
+    let memos = call(&server, "corpus.retrieve", with(json!({ "kinds": ["memo"] })));
+    assert_eq!(rows(&memos), &json!([]));
+
+    let values: Vec<String> = (0..257).map(|i| format!("n{i}")).collect();
+    let over = call(&server, "corpus.retrieve", with(json!({ "filter": { "note_id": values } })));
+    assert_eq!(over["result"]["isError"], json!(true), "{over}");
+    assert_eq!(over["result"]["structuredContent"]["error"]["identifier"], json!("FilterBudgetExceeded"));
+    let malformed = call(&server, "corpus.retrieve", with(json!({ "kinds": "memo" })));
+    assert_eq!(malformed["error"]["code"], json!(-32602), "{malformed}");
+}
