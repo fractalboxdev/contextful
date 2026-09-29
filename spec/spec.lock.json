@@ -9979,6 +9979,17 @@
       "line": 88
     },
     {
+      "id": "connector.resolve.wiped-on-drop",
+      "contract": "connector",
+      "operation": "resolve",
+      "subject": "wiped-on-drop",
+      "kind": "behavior",
+      "statement": "The wrapper zeroes its bytes when dropped, each duplicate and cache entry included. Bytes copied out of a revealed value, into a request header or a transport buffer, are outside the wrapper.",
+      "why": "because a freed credential otherwise stays readable until the allocator reuses its memory",
+      "file": "spec/41-secrets.md",
+      "line": 89
+    },
+    {
       "id": "connector.resolve.resolver-per-source",
       "contract": "connector",
       "operation": "resolve",
@@ -9987,7 +9998,7 @@
       "statement": "One resolver with its own cache is built per source, and concurrent first hydrations of one name collapse under a single-flight gate.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 89
+      "line": 91
     },
     {
       "id": "connector.resolve.cache-ttl",
@@ -9998,7 +10009,7 @@
       "statement": "A cache entry lives at most 300 s.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 90
+      "line": 92
     },
     {
       "id": "connector.resolve.unresolved-name",
@@ -10009,7 +10020,7 @@
       "statement": "A reference no assembled adapter answers raises `SecretUnresolvedReference` naming it, at preflight where the binding is static and at the call otherwise.",
       "why": "P2",
       "file": "spec/41-secrets.md",
-      "line": 91
+      "line": 93
     },
     {
       "id": "connector.resolve.posture",
@@ -10020,7 +10031,7 @@
       "statement": "Four postures order material's distance from the engine: inline environment material, reference with just-in-time hydration, an external manager read through workload identity, and a secretless broker sidecar. The workload-identity manager is the default.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 93
+      "line": 95
     },
     {
       "id": "connector.resolve.inline-outside-development",
@@ -10031,7 +10042,7 @@
       "statement": "A profile other than development binding plaintext material at a call site raises `SecretInlineCredential` naming the binding.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 95
+      "line": 97
     },
     {
       "id": "connector.resolve.forwarding-sidecar",
@@ -10042,7 +10053,7 @@
       "statement": "A sidecar reading a stored long-lived credential and forwarding it outward raises `SecretForwardingBroker`. A sidecar minting a short-lived scoped credential is a lease provider.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 97
+      "line": 99
     },
     {
       "id": "connector.resolve.adapter-is-optional",
@@ -10053,7 +10064,7 @@
       "statement": "Each managed backend is one adapter holding opaque versioned ciphertext; a deployment links only the adapters it uses.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 99
+      "line": 101
     },
     {
       "id": "connector.resolve.know-how-in-an-adapter",
@@ -10064,7 +10075,7 @@
       "statement": "An adapter exposing a provider-specific exchange, refresh or lifetime entry point raises `SecretProviderKnowHowInBackend` at load.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 100
+      "line": 102
     },
     {
       "id": "connector.lease.scope-declaration",
@@ -10075,7 +10086,7 @@
       "statement": "`CONTEXTFUL_LEASE_SCOPES` lists the logical names hydrating as run-time leases, each optionally as `name=scope`.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 121
+      "line": 123
     },
     {
       "id": "connector.lease.head-of-chain",
@@ -10086,7 +10097,7 @@
       "statement": "For a declared name the lease provider answers and no adapter behind it is reached; a shadowing adapter raises under {{connector.resolve.shadowed-name}}.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 122
+      "line": 124
     },
     {
       "id": "connector.lease.undeclared-name-defers",
@@ -10097,7 +10108,7 @@
       "statement": "An undeclared name sends the lease provider no request and leaves precedence among the other adapters untouched.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 124
+      "line": 126
     },
     {
       "id": "connector.lease.empty-scope-set",
@@ -10108,7 +10119,7 @@
       "statement": "Selecting the lease backend with no scope declared raises `SecretLeaseScopesEmpty` at startup.",
       "why": "P3",
       "file": "spec/41-secrets.md",
-      "line": 125
+      "line": 127
     },
     {
       "id": "connector.lease.lease",
@@ -10119,7 +10130,7 @@
       "statement": "A lease is material plus one expiry, held as a pair in memory for the run, evicted at expiry, and written to no file, journal entry or audit record.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 127
+      "line": 129
     },
     {
       "id": "connector.lease.malformed-lease",
@@ -10130,7 +10141,7 @@
       "statement": "A lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient failure.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 129
+      "line": 131
     },
     {
       "id": "connector.lease.cache-window",
@@ -10141,7 +10152,7 @@
       "statement": "A leased name's cache entry is bounded by the tighter of {{connector.resolve.cache-ttl}} and the lease's own expiry.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 131
+      "line": 133
     },
     {
       "id": "connector.lease.retirement-margin",
@@ -10152,7 +10163,7 @@
       "statement": "An entry retires 10 percent of its window ahead of expiry, the margin capped at 30 s.",
       "why": "because a request sent near the boundary still lands inside the grant",
       "file": "spec/41-secrets.md",
-      "line": 132
+      "line": 134
     },
     {
       "id": "connector.lease.endpoint",
@@ -10163,7 +10174,7 @@
       "statement": "The provider answers `POST <provider-url>/leases` carrying a bearer mint credential and body `{ \"scope\": \"<lease scope>\" }`.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 134
+      "line": 136
     },
     {
       "id": "connector.lease.response",
@@ -10174,7 +10185,7 @@
       "statement": "A success carries `value` plus one expiry — `expires_in` seconds, `expires_at` epoch seconds, or an RFC 3339 instant — at the top level or under `lease`.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 135
+      "line": 137
     },
     {
       "id": "connector.lease.unknown-scope",
@@ -10185,7 +10196,7 @@
       "statement": "A `404` raises `SecretLeaseScopeUnknown` as a configuration fault; a declared name never falls through to a stored credential.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 136
+      "line": 138
     },
     {
       "id": "connector.lease.mint-rejected",
@@ -10196,7 +10207,7 @@
       "statement": "A `401` or `403` raises `SecretMintRejected`, classed `auth_expired`.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 138
+      "line": 140
     },
     {
       "id": "connector.lease.rate-limited",
@@ -10207,7 +10218,7 @@
       "statement": "A `429` passes its `Retry-After` to the run's retry, classed `rate_limited`.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 140
+      "line": 142
     },
     {
       "id": "connector.lease.request-rejected",
@@ -10218,7 +10229,7 @@
       "statement": "Any other `4xx` raises `SecretLeaseRequestRejected` as a permanent configuration fault.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 142
+      "line": 144
     },
     {
       "id": "connector.lease.transient-class",
@@ -10229,7 +10240,7 @@
       "statement": "A `5xx` and a transport error are transient. The mint client retries nothing itself; the run's retry schedule is the one retry layer.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 144
+      "line": 146
     },
     {
       "id": "connector.lease.vendor-requests-on-failure",
@@ -10240,7 +10251,7 @@
       "statement": "A run holding an expired lease whose provider is unreachable issues 0 requests to the vendor.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 146
+      "line": 148
     },
     {
       "id": "connector.lease.calls-per-resolver",
@@ -10251,7 +10262,7 @@
       "statement": "A resolver issues at most 1 calls to the mint endpoint per declared name per lease window.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 148
+      "line": 150
     },
     {
       "id": "connector.lease.bootstrap-credential",
@@ -10262,7 +10273,7 @@
       "statement": "The engine authenticates to the mint endpoint with one standing `secret://` credential scoped to minting alone. Revoking it severs every leased source at its next expiry.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 149
+      "line": 151
     },
     {
       "id": "connector.lease.bootstrap-non-recursion",
@@ -10273,7 +10284,7 @@
       "statement": "The lease provider holds the chain as assembled before it joined, so the mint reference hydrates only through adapters behind it.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 151
+      "line": 153
     },
     {
       "id": "connector.lease.bootstrap-unserved",
@@ -10284,7 +10295,7 @@
       "statement": "A bootstrap name no adapter behind the lease provider answers raises `SecretBootstrapUnresolved`, naming the reference.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 152
+      "line": 154
     },
     {
       "id": "connector.lease.bootstrap-declared-leased",
@@ -10295,7 +10306,7 @@
       "statement": "Listing the bootstrap name among the leased scopes raises `SecretBootstrapLeased` at startup.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 154
+      "line": 156
     },
     {
       "id": "connector.lease.bootstrap-backend",
@@ -10306,7 +10317,7 @@
       "statement": "`CONTEXTFUL_LEASE_BOOTSTRAP_BACKEND` composes a customer-operated manager behind the lease provider to hold the mint reference.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 156
+      "line": 158
     },
     {
       "id": "connector.lease.mint-transport",
@@ -10317,7 +10328,7 @@
       "statement": "The mint client reaches its endpoint over TLS or loopback and ignores system proxy configuration.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 157
+      "line": 159
     },
     {
       "id": "connector.lease.redirect",
@@ -10328,7 +10339,7 @@
       "statement": "A `3xx` from the mint endpoint raises `SecretLeaseRedirect`; the mint credential is not replayed at the target.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 159
+      "line": 161
     },
     {
       "id": "connector.attach.host-mediation",
@@ -10339,7 +10350,7 @@
       "statement": "The host implements outbound HTTP itself: it judges every request against the declaration ahead of socket I/O, stamps a host-assigned request id, and writes the bound credential onto a permitted request.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 196
+      "line": 198
     },
     {
       "id": "connector.attach.no-material-to-a-guest",
@@ -10350,7 +10361,7 @@
       "statement": "No host import hands credential bytes to guest code; a guest names a request and receives a response.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 198
+      "line": 200
     },
     {
       "id": "connector.attach.unpermitted-request",
@@ -10361,7 +10372,7 @@
       "statement": "A request whose host the declaration does not cover raises `SecretUnpermittedRequest` and fails the guest call even where guest code discards the error.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 200
+      "line": 202
     },
     {
       "id": "connector.attach.transport-port",
@@ -10372,7 +10383,7 @@
       "statement": "The mediated client reaches the network only through a transport port. Its send half connects to an address the client vetted, follows no redirect, and applies the client's proxy choice, timeout and body ceiling.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 202
+      "line": 204
     },
     {
       "id": "connector.attach.resolve-half",
@@ -10383,7 +10394,7 @@
       "statement": "Name resolution runs through the port's resolve half, after {{connector.meter.pre-send-hook}} admits the hop; the client vets each address it answers under {{connector.attach.private-address}}.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 204
+      "line": 206
     },
     {
       "id": "connector.attach.resolve-once",
@@ -10394,7 +10405,7 @@
       "statement": "The host resolves a permitted host name once per request and connects to the address it vetted, with no second lookup between check and connect.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 206
+      "line": 208
     },
     {
       "id": "connector.attach.private-address",
@@ -10405,7 +10416,7 @@
       "statement": "A host name resolving to a private, link-local, unique-local, loopback or cloud-metadata address raises `ConnectorPrivateAddress`, unless the configured host is itself a loopback name or literal.",
       "why": "because an allowlisted name pointed at an internal range is SSRF",
       "file": "spec/41-secrets.md",
-      "line": 208
+      "line": 210
     },
     {
       "id": "connector.attach.bound-host",
@@ -10416,7 +10427,7 @@
       "statement": "A source binding any credential carries one non-wildcard host, checked at validation and at session open; a wildcard entry, or an endpoint host a table name binds, beside a bound credential raises `SecretWildcardHost`.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 210
+      "line": 212
     },
     {
       "id": "connector.attach.default-attachment",
@@ -10427,7 +10438,7 @@
       "statement": "With no further declaration the host writes `Authorization: Bearer <value>` from the single bound credential.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 212
+      "line": 214
     },
     {
       "id": "connector.attach.attach-block",
@@ -10438,7 +10449,7 @@
       "statement": "An `[attach]` block maps a header name to a value template. The host hydrates it onto the permitted request, overriding the guest's header of that name.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 213
+      "line": 215
     },
     {
       "id": "connector.attach.literal-attach-value",
@@ -10449,7 +10460,7 @@
       "statement": "An attach value embedding no reference raises `SecretLiteralAttachValue`.",
       "why": "because a constant header belongs in the guest's request construction",
       "file": "spec/41-secrets.md",
-      "line": 214
+      "line": 216
     },
     {
       "id": "connector.attach.redirect-pinning",
@@ -10460,7 +10471,7 @@
       "statement": "Every source, credential-bearing or not, follows a hop only when it keeps the configured host and port on the same or a stronger transport; cleartext to TLS at that host and port is followed.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 216
+      "line": 218
     },
     {
       "id": "connector.attach.weakened-hop",
@@ -10471,7 +10482,7 @@
       "statement": "A redirect or vendor-supplied next link moving from TLS to cleartext, or to another host or port, raises `SecretRedirectOffOrigin`, and the read fails.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 218
+      "line": 220
     },
     {
       "id": "connector.attach.landed-origin",
@@ -10482,7 +10493,7 @@
       "statement": "The origin answering the request whose body lands equals the configured host and port.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 220
+      "line": 222
     },
     {
       "id": "connector.attach.referer-off",
@@ -10493,7 +10504,7 @@
       "statement": "`Referer` is off on every outbound client.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 222
+      "line": 224
     },
     {
       "id": "connector.attach.header-selects-client",
@@ -10504,7 +10515,7 @@
       "statement": "Declaring any header, literal or hydrated, selects the hardened client, which bypasses the system proxy; a source declaring none keeps the proxy.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 223
+      "line": 225
     },
     {
       "id": "connector.attach.cleartext-endpoint",
@@ -10515,7 +10526,7 @@
       "statement": "A header hydrated from a reference is marked sensitive, and sending it to a cleartext endpoint raises `SecretCleartextEndpoint`, IPv4 and IPv6 loopback exempt.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 224
+      "line": 226
     },
     {
       "id": "connector.attach.sensitive-header-record",
@@ -10526,7 +10537,7 @@
       "statement": "A run records which header names carried a credential, by name only.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 226
+      "line": 228
     },
     {
       "id": "connector.attach.url-scrubbing",
@@ -10537,7 +10548,7 @@
       "statement": "A URL reaching an error message, a log line or a landed column carries scheme, host, port and path; query, fragment and userinfo are dropped.",
       "why": "A-authority",
       "file": "spec/41-secrets.md",
-      "line": 227
+      "line": 229
     },
     {
       "id": "connector.attach.typed-url-edit",
@@ -10548,7 +10559,7 @@
       "statement": "Metered vendor traffic and control-plane traffic each dispatch through one client whose error mapping clears the URL as a typed edit; a URL arriving otherwise is scrubbed as text.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 229
+      "line": 231
     },
     {
       "id": "connector.attach.credential-in-a-url",
@@ -10559,7 +10570,7 @@
       "statement": "A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.",
       "why": "A-authority",
       "file": "spec/41-secrets.md",
-      "line": 230
+      "line": 232
     },
     {
       "id": "connector.attach.mediation-covers-every-egress",
@@ -10570,7 +10581,7 @@
       "statement": "A built-in source, a guest connector, a model call, a limiter call and an exec step all attach through the mediated path. No second attachment point exists.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 232
+      "line": 234
     },
     {
       "id": "connector.rotate.division-of-labor",
@@ -10581,7 +10592,7 @@
       "statement": "A credential store contributes versioned storage and a trigger. The host drives the OAuth loop from the connector's auth policy and writes the token back as a blind versioned put.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "connector.rotate.expiry-hint",
@@ -10592,7 +10603,7 @@
       "statement": "The host may store an opaque `expires_at` hint beside the ciphertext for cache invalidation.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "connector.rotate.static-key",
@@ -10603,7 +10614,7 @@
       "statement": "A static key in a customer manager turns over with no engine step: a run hydrates the current version at its next cache miss.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 242
+      "line": 244
     },
     {
       "id": "connector.rotate.oauth-credential",
@@ -10614,7 +10625,7 @@
       "statement": "An OAuth credential refreshes ahead of its declared expiry, writes the new version to the customer's manager, and clears that name's cache entry in the same step.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "connector.rotate.operator-entered",
@@ -10625,7 +10636,7 @@
       "statement": "A development or keychain secret is re-entered by an operator re-pointing the reference.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 244
+      "line": 246
     },
     {
       "id": "connector.rotate.leased-credential",
@@ -10636,7 +10647,7 @@
       "statement": "A leased credential re-mints ahead of its window with no write-back, and a failed re-mint leaves the source with no credential rather than an older one.",
       "why": "P4",
       "file": "spec/41-secrets.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "connector.rotate.write-back-denied",
@@ -10647,7 +10658,7 @@
       "statement": "A manager refusing the versioned put raises `SecretRotationWriteDenied`, and the run fails closed.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 247
+      "line": 249
     },
     {
       "id": "connector.rotate.connector-owns-meaning",
@@ -10658,7 +10669,7 @@
       "statement": "Token lifetime, exchange rules, refresh endpoint and scopes, expired-token codes and rate-limit headers live in the connector's `[auth]`, `[rate_limit]` and `[retry]` blocks, pinned by connector id and version.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 249
+      "line": 251
     },
     {
       "id": "connector.rotate.no-master-key",
@@ -10669,7 +10680,7 @@
       "statement": "The engine holds references, and no single encryption key exists whose theft with a database copy yields every credential.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 251
+      "line": 253
     },
     {
       "id": "connector.rotate.turnover-preserves-the-name",
@@ -10680,7 +10691,7 @@
       "statement": "Every rotation mechanism keeps the logical name, touching no declaration and no pinned connector artifact.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 253
+      "line": 255
     },
     {
       "id": "connector.record.operator-record",
@@ -10691,7 +10702,7 @@
       "statement": "An operator record is the encrypted entry for one logical name plus a plaintext comment naming its grants in the provider's vocabulary, its account or tenancy, creation date, expiry or `no expiry`, and rotation location.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 261
+      "line": 263
     },
     {
       "id": "connector.record.committed-entry",
@@ -10702,7 +10713,7 @@
       "statement": "The entry file is committed, holds no fragment of any value in plaintext, and its decryption keys live outside the tree.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 262
+      "line": 264
     },
     {
       "id": "connector.record.surface-of-consumption",
@@ -10713,7 +10724,7 @@
       "statement": "An entry names each deployed surface consuming the credential and the secret name the value takes there.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 263
+      "line": 265
     },
     {
       "id": "connector.record.platform-only-credential",
@@ -10724,7 +10735,7 @@
       "statement": "A credential existing only as a deployed platform secret holds no value in the tree, and its record lands in the change setting or rotating it.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "connector.record.undocumented-entry",
@@ -10735,7 +10746,7 @@
       "statement": "An entry holding a value with no record above it raises `SecretUndocumentedEntry`, naming the logical name and the file.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 265
+      "line": 267
     },
     {
       "id": "connector.record.unverified-scope-is-marked",
@@ -10746,7 +10757,7 @@
       "statement": "Grants an operator has not established are recorded as unknown.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 267
+      "line": 269
     },
     {
       "id": "connector.record.rotation-updates-the-record",
@@ -10757,7 +10768,7 @@
       "statement": "A rotation rewrites the creation date and expiry in the commit landing the new ciphertext.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "connector.record.inventory",
@@ -10768,7 +10779,7 @@
       "statement": "`contextful secrets list` prints, per logical name, the answering adapter, the covered scope, the expiry and the days remaining, reading records and no value.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 269
+      "line": 271
     },
     {
       "id": "connector.record.expiry-warning",
@@ -10779,7 +10790,7 @@
       "statement": "The inventory marks an entry whose expiry falls within 30 d.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "connector.record.provider-attribution",
@@ -10790,7 +10801,7 @@
       "statement": "A run's audit records which adapter answered each reference, by logical name and adapter.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 271
+      "line": 273
     },
     {
       "id": "authority.identify.subject-tuple",
