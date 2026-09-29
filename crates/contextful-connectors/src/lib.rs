@@ -7,6 +7,7 @@ pub mod derive;
 #[cfg(feature = "drive")]
 pub mod drive;
 pub mod http;
+pub mod object;
 
 /// The Google Drive source's name, listed whether or not the build compiles it in.
 pub const DRIVE: &str = "drive";
@@ -14,7 +15,7 @@ pub const DRIVE: &str = "drive";
 pub const DRIVE_FEATURE: &str = "drive";
 
 /// The names resolving to compiled-in sources.
-pub const BUILT_IN: [&str; 3] = [http::NAME, derive::NAME, DRIVE];
+pub const BUILT_IN: [&str; 4] = [http::NAME, derive::NAME, DRIVE, object::NAME];
 
 /// Whether a listed source is compiled into this build; a feature-gated one that is not
 /// answers with the feature to rebuild with.

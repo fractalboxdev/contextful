@@ -12,6 +12,7 @@ use contextful_connectors::derive::{DeriveSource, HostDerive, Staged};
 use contextful_connectors::http::{HttpConfig, HttpSource};
 use contextful_core::connector::component::ComponentSource;
 use contextful_core::connector::ConnectorError;
+use contextful_connectors::object::{ObjectConfig, ObjectSource};
 use contextful_core::run::derive::config::{bind, bindings, check_output_table, Binding, DeriveConfig};
 use contextful_core::run::derive::task::{check_host_tables, DeriveTask, Tasks};
 use contextful_core::run::ports::{Row, Source, TableReader};
@@ -95,6 +96,7 @@ enum Checked {
     Http(HttpConfig),
     #[cfg(feature = "drive")]
     Drive(contextful_connectors::drive::DriveConfig),
+    Object(ObjectConfig),
     Derive(Box<(DeriveConfig, Binding)>),
     Component(Box<ComponentSource>),
     Host(Box<HostChecked>),
@@ -128,6 +130,17 @@ fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> Result<Check
         contextful_connectors::DRIVE => {
             contextful_connectors::compiled_in(contextful_connectors::DRIVE).map_err(|why| anyhow::anyhow!("pipeline `{}`: {why}", spec.id))?;
             check_drive(spec)
+        }
+        contextful_connectors::object::NAME => {
+            let config = ObjectConfig::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
+            if let (true, Some(field)) = (config.skip_unchanged, &spec.incremental) {
+                return Err(ConnectorError::ConnectorPositionOwned(format!(
+                    "pipeline `{}` declares `incremental = \"{field}\"` beside the `s3` source's `skip_unchanged`, whose position records each object's ETag",
+                    spec.id
+                ))
+                .into());
+            }
+            Ok(Checked::Object(config))
         }
         contextful_connectors::derive::NAME => {
             let config = DeriveConfig::parse_with(&spec.id, &spec.source.config, tasks)?;
@@ -318,6 +331,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 #[cfg(feature = "drive")]
                 Checked::Drive(config) => resolver.preflight(config.templates())?,
                 Checked::Derive(_) | Checked::Host(_) => {}
+                Checked::Object(config) => resolver.preflight(config.credentials())?,
             }
 
             // A declaration's relative paths resolve against the project directory
@@ -395,6 +409,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                             Some(d) => Box::new(d.source(t.name())?),
                             None => bail!("pipeline `{}`: the drive source did not open", spec.id),
                         },
+                        Checked::Object(config) => Box::new(ObjectSource::signed(config.clone(), resolver.clone())),
                         Checked::Derive(pair) => Box::new(DeriveSource {
                             pipeline_id: spec.id.clone(),
                             config: pair.0.clone(),

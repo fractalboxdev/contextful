@@ -13,6 +13,9 @@ publish = false
 contextful-core = { path = "../contextful-core" }
 contextful-decode = { path = "../contextful-decode" }
 contextful-outbound = { path = "../contextful-outbound", default-features = false }
+# The S3 client the bucket adapter signs with: sans-I/O, so requests send through the
+# mediated client.
+rusty-s3 = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -31,6 +34,7 @@ libc = "0.2"
 # The suite drives loopback servers over the ureq adapter, with or without the feature.
 [dev-dependencies]
 contextful-outbound = { path = "../contextful-outbound", features = ["transport-ureq"] }
+flate2 = "1"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 
 [[test]]

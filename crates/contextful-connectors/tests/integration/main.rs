@@ -4,5 +4,6 @@ mod boundary;
 mod derive;
 mod drive;
 mod http;
+mod object;
 mod support;
 mod workbook;

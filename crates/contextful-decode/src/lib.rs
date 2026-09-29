@@ -56,6 +56,20 @@ fn object(v: Value, input: &str, position: String) -> Result<Row, Failure> {
     }
 }
 
+/// Decompress a gzip `body` whole, holding at most `ceiling` decompressed bytes counted as
+/// they arrive. A body expanding past the ceiling refuses rather than truncating, and a body
+/// that is not whole gzip is unreadable input, each naming `input`.
+pub fn gunzip(body: &[u8], ceiling: u64, input: &str) -> Result<Vec<u8>, Failure> {
+    use std::io::Read;
+    let mut out = Vec::new();
+    let mut reader = flate2::read::MultiGzDecoder::new(body).take(ceiling.saturating_add(1));
+    reader.read_to_end(&mut out).map_err(|e| unreadable(input, format!("decompressed byte {}", out.len()), format!("the body is not whole gzip: {e}")))?;
+    if out.len() as u64 > ceiling {
+        return Err(Failure::deterministic(FailureTag::Permanent, format!("`{input}` decompresses past {ceiling} B; the read refuses rather than landing a truncated object")));
+    }
+    Ok(out)
+}
+
 /// Decode `body` into records, and the parsed JSON body a pagination pointer reads. A
 /// workbook lands its first sheet; [`workbook::rows`] selects another.
 pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -> Result<(Vec<Row>, Option<Value>), Failure> {

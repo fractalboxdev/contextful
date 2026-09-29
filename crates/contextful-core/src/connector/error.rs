@@ -42,6 +42,9 @@ pub enum ConnectorError {
     /// A limiter declaration forwarding a credential-bearing response header. (`connector.meter.forward-credential`)
     #[error("ConnectorForwardRejected: {0}")]
     ConnectorForwardRejected(String),
+    /// An object source declaring both or neither of a key and a prefix. (`connector.source.object-address`)
+    #[error("ConnectorObjectAddressRejected: {0}")]
+    ConnectorObjectAddressRejected(String),
     /// An incremental position against a workbook source. (`connector.source.workbook-incremental`)
     #[error("ConnectorIncrementalUnsupported: {0}")]
     ConnectorIncrementalUnsupported(String),
