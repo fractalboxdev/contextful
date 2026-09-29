@@ -53,6 +53,7 @@ AuthorityExpired                     = { clause = "authority.verify.expired", gl
 PossessionProofInvalid               = { clause = "authority.verify.possession-invalid", gloss = "A request proof failing against the confirmation thumbprint." }
 PossessionProofReplayed              = { clause = "authority.verify.replayed-nonce", gloss = "A proof nonce repeated inside the replay window." }
 TransportPeerMismatch                = { clause = "authority.verify.peer-mismatch", gloss = "A socket peer, holding a credential with no confirmation claim, whose uid differs from the checkpoint's or is unreportable; a request on a connection other than the admitted one." }
+BearerLifetimeExceeded               = { clause = "authority.verify.bearer-lifetime", gloss = "A bearer living longer than a network checkpoint admits." }
 KeySetUnavailable                    = { clause = "authority.verify.key-set-unavailable", gloss = "An opted-into published key set that could not be obtained, or a malformed pin." }
 KeySetStale                          = { clause = "authority.verify.key-set-stale", gloss = "A last-known-good key set past its staleness bound." }
 AuthorityRevoked                     = { clause = "authority.revoke.revoked", gloss = "A denylisted credential, or one below the current scoped epoch." }
@@ -94,6 +95,7 @@ issuer-key-rotation-cadence    = { clause = "authority.issue.key-rotation", valu
 proof-replay-window            = { clause = "authority.verify.replay-window", value = 300, unit = "s", basis = "chosen", gloss = "Oldest proof issue instant a checkpoint admits, and nonce retention." }
 proof-clock-skew               = { clause = "authority.verify.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Furthest a proof issue instant runs ahead of the checkpoint clock." }
 nonce-cache-entries            = { clause = "authority.verify.nonce-cache", value = 100000, unit = "entries", basis = "chosen", gloss = "Nonces one checkpoint retains." }
+bearer-lifetime-ceiling        = { clause = "authority.verify.bearer-lifetime", value = 3600, unit = "s", basis = "chosen", gloss = "Longest issue-to-expiry span of a bearer a network checkpoint admits." }
 key-set-refresh-interval       = { clause = "authority.verify.key-set-refresh", value = 300, unit = "s", basis = "chosen", gloss = "Lifetime of a fetched published key set." }
 key-set-stale-ceiling          = { clause = "authority.verify.key-set-stale", value = 1, unit = "h", basis = "chosen", gloss = "Age past which a last-known-good key set stops serving." }
 exchange-lifetime-default      = { clause = "authority.exchange.lifetime-default", value = 900, unit = "s", basis = "chosen", gloss = "Minted lifetime where the policy declares none." }

@@ -187,7 +187,7 @@ pub(crate) fn token_bytes(credential: &str) -> Result<Vec<u8>, AuthorityError> {
 
 /// A local transport (`authority.verify.local-transport`): the stdio pipe the checkpoint
 /// inherited from the process that spawned it, or one accepted Unix socket connection.
-/// Every other transport is a network transport, admitted through [`verify_with_proof`].
+/// Every other transport is a network transport, admitted through [`verify_network`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalTransport {
     InheritedPipe,
@@ -310,20 +310,46 @@ pub fn verify_inherited_pipe(credential: &str, keys: &KeySet, admission: &Admiss
     verify_local(credential, keys, admission, LocalTransport::InheritedPipe, no_holder_proof).map(LocalAdmission::into_authority)
 }
 
-/// Admit a credential whose chain-final confirmation claim a request proof must match.
-/// `proof` receives the thumbprint and runs the checkpoint's proof check; a credential
-/// binding no key refuses with `PossessionProofInvalid`
-/// (`authority.verify.network-needs-key`).
-pub fn verify_with_proof<E: From<AuthorityError>>(
+/// Longest span from issue to expiry of a bearer a network checkpoint admits
+/// (`authority.verify.bearer-lifetime`).
+pub const BEARER_LIFETIME_SECS: u64 = 3600;
+
+/// Admit a credential at a network checkpoint. A credential whose chain-final confirmation
+/// claim holds a thumbprint admits only through `proof`, which receives the thumbprint and
+/// runs the checkpoint's proof check (`authority.verify.possession-binding`). One binding
+/// no key admits as a bearer, asked for no proof, when the checkpoint declares an audience
+/// (`authority.verify.network-bearer`) and it lives at most [`BEARER_LIFETIME_SECS`] from
+/// issue to expiry (`authority.verify.bearer-lifetime`).
+pub fn verify_network<E: From<AuthorityError>>(
     credential: &str,
     keys: &KeySet,
     admission: &Admission<'_>,
     proof: impl FnOnce(&str) -> Result<(), E>,
 ) -> Result<AdmittedAuthority, E> {
-    admit(credential, keys, admission, |cnf| match cnf {
+    let admitted = admit(credential, keys, admission, |cnf| match cnf {
         Some(jkt) => proof(jkt),
-        None => Err(AuthorityError::PossessionProofInvalid("the credential binds no holder key; a network checkpoint admits only a credential bound to one".into()).into()),
-    })
+        None => Ok(()),
+    })?;
+    if admitted.confirmation.is_none() {
+        admit_bearer(&admitted, admission)?;
+    }
+    Ok(admitted)
+}
+
+fn admit_bearer(admitted: &AdmittedAuthority, admission: &Admission<'_>) -> Result<(), AuthorityError> {
+    if admission.audience.is_none() {
+        return Err(AuthorityError::AudienceMismatch(
+            "the credential binds no holder key, and a network checkpoint admits a bearer only against a declared audience".into(),
+        ));
+    }
+    let lifetime = admitted.expires_at.unix_secs() - admitted.issued_at.unix_secs();
+    if lifetime > BEARER_LIFETIME_SECS as i64 {
+        return Err(AuthorityError::BearerLifetimeExceeded(format!(
+            "the bearer lives {lifetime} s from issue to expiry; a network checkpoint admits a bearer living at most \
+             {BEARER_LIFETIME_SECS} s. Exchange for a short-lived credential, or mint with `--holder` and sign each request"
+        )));
+    }
+    Ok(())
 }
 
 fn admit<E: From<AuthorityError>>(

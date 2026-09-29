@@ -96,7 +96,7 @@ The relations, tools and templates one connection sees, the engine executing aga
   *P3*
 - `past-ceiling` — A request arriving while the ceiling's count of requests is in flight answers `503` with a `Retry-After` of 1 s and admits nothing.
   *A-read*
-- `per-request-admission` — Each request carries `Authorization: DPoP <credential>` and a `DPoP` proof header, admitted per request under {{authority.verify.possession-binding}} and {{authority.verify.network-needs-key}}, so one listener serves many credentials, each reading its own grants.
+- `per-request-admission` — Each request carries `Authorization: Bearer <credential>`, or `DPoP <credential>` with a `DPoP` proof header, admitted per request under {{authority.verify.possession-binding}} and {{authority.verify.network-bearer}}, so one listener serves many credentials, each reading its own grants.
   *A-read*
 - `credential-missing` — A request carrying no `Authorization` credential raises `HttpCredentialMissing` with `401` and reads no row.
   *A-read*

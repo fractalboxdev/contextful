@@ -6,7 +6,7 @@ use contextful_core::grant::{Action, TablePattern};
 use contextful_policy::attenuate::{attenuate, Derivation};
 use contextful_policy::issue::{mint, MintClaims};
 use contextful_policy::possession::{jwk_thumbprint, sign_proof, verify_proof, NonceCache, ProofRefusal, ProofRequest};
-use contextful_policy::verify::{introspect, verify_with_proof, Admission};
+use contextful_policy::verify::{introspect, verify_network, Admission};
 
 fn tables(names: &[&str]) -> Vec<TablePattern> {
     names.iter().map(|t| TablePattern::parse(t).unwrap()).collect()
@@ -84,12 +84,12 @@ fn each_sub_agent_child_binds_that_sub_agents_own_key() {
         // The child's own key proves possession of it.
         let proof = sign_proof(sub, &request, at(DURING), &format!("own-{i}"));
         let admitted =
-            verify_with_proof(&child, &ks, &admission, |cnf| verify_proof(cnf, &proof, &request, &clock, &mut nonces)).unwrap();
+            verify_network(&child, &ks, &admission, |cnf| verify_proof(cnf, &proof, &request, &clock, &mut nonces)).unwrap();
         assert_eq!(admitted.confirmation(), Some(jkt.as_str()));
         // Neither the agent's key nor a sibling's does.
         for (name, other) in [("agent", &agent), ("sibling", &sub_agents[1 - i])] {
             let proof = sign_proof(other, &request, at(DURING), &format!("{name}-{i}"));
-            let r = verify_with_proof(&child, &ks, &admission, |cnf| verify_proof(cnf, &proof, &request, &clock, &mut nonces));
+            let r = verify_network(&child, &ks, &admission, |cnf| verify_proof(cnf, &proof, &request, &clock, &mut nonces));
             assert!(
                 matches!(r, Err(ProofRefusal::Refused(contextful_core::AuthorityError::PossessionProofInvalid(_)))),
                 "{name}: {r:?}"
@@ -99,10 +99,10 @@ fn each_sub_agent_child_binds_that_sub_agents_own_key() {
 }
 
 #[test]
-fn a_credential_binding_no_key_refuses_a_possession_check() {
+fn a_credential_binding_no_key_is_asked_for_no_possession_proof() {
     let signer = issuer();
     let revocation = no_revocation();
-    let admission = Admission::new(at(DURING), &revocation);
-    let r = verify_with_proof(&minted(&signer), &keys(&signer), &admission, |_| Ok::<(), ProofRefusal>(()));
-    assert!(matches!(r, Err(ProofRefusal::Refused(contextful_core::AuthorityError::PossessionProofInvalid(_)))), "{r:?}");
+    let admission = Admission::new(at(DURING), &revocation).expecting(AUD);
+    let r = verify_network(&minted(&signer), &keys(&signer), &admission, |_| -> Result<(), ProofRefusal> { panic!("no key to prove") });
+    assert!(matches!(&r, Ok(a) if a.confirmation().is_none()), "{r:?}");
 }

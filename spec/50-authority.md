@@ -236,7 +236,7 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority*
 - `authoring-posture` — Every project load declares an authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.
   *A-authority*
-- `one-credential` — A served face admits a verified capability credential and nothing else: no static bearer, no gateway shared secret, no unauthenticated owner path.
+- `one-credential` — A served face admits a verified capability credential, presented as a bearer or bound to a holder key, and nothing else: no static bearer, no gateway shared secret, no unauthenticated owner path.
   *A-authority*
 - `missing-key` — A face configured with no issuer key raises `IssuerKeyMissing`, prints the command that fixes it, and binds no port.
   *P3*
@@ -288,7 +288,7 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority*
 - `expired` — A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.
   *A-authority*
-- `possession-binding` — A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce.
+- `possession-binding` — A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce; a credential carrying none requires no proof.
   *A-authority*
 - `possession-invalid` — A request whose proof does not verify against the confirmation thumbprint raises `PossessionProofInvalid`.
   *A-authority*
@@ -306,7 +306,9 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority*
 - `peer-mismatch` — A socket peer presenting a credential with no confirmation claim, whose kernel-reported uid differs from the checkpoint process's uid or which the platform cannot report, raises `TransportPeerMismatch` and admits nothing.
   *A-authority*
-- `network-needs-key` — A network checkpoint refuses a credential with no confirmation claim as {{authority.verify.possession-invalid}}, so a credential admitted by peer fallback admits nothing over a network.
+- `network-bearer` — A network checkpoint admits a credential with no confirmation claim as a bearer when it names the checkpoint's declared audience and meets {{authority.verify.bearer-lifetime}}; the peer fallback never applies over a network.
+  *A-authority*
+- `bearer-lifetime` — A bearer whose expiry falls more than 3600 s after its issue instant raises `BearerLifetimeExceeded` at a network checkpoint and admits nothing; its holder refreshes through {{authority.exchange.surface}}.
   *A-authority*
 - `connection-scoped` — A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.
   *A-authority*

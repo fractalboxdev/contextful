@@ -67,8 +67,9 @@ derivation and again over the whole chain ({{authority.attenuate.narrowing}}).
 
 A checkpoint holds public keys only and calls no service to admit
 ({{authority.verify.public-key-only}}). Each request under a key-bound credential proves possession of
-that key ({{authority.verify.possession-binding}}); a network checkpoint admits no other kind
-({{authority.verify.network-needs-key}}), and a local transport admits one binding no key only
+that key ({{authority.verify.possession-binding}}); a network checkpoint admits one binding no key
+as a short-lived bearer for its audience ({{authority.verify.network-bearer}},
+{{authority.verify.bearer-lifetime}}), and a local transport admits one binding no key only
 through its operating-system peer ({{authority.verify.local-peer-fallback}}). Verification yields the admitted-authority
 value every read and row-landing effect takes as an argument
 ({{authority.verify.admitted-authority}}), and no constructor fabricates one

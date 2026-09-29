@@ -74,6 +74,9 @@ pub enum AuthorityError {
     /// A subject declaring a wildcard inference zone at the mint. (`authority.issue.zone-wildcard`)
     #[error("IssuanceZoneWildcard: {0}")]
     IssuanceZoneWildcard(String),
+    /// A bearer living longer than a network checkpoint admits. (`authority.verify.bearer-lifetime`)
+    #[error("BearerLifetimeExceeded: {0}")]
+    BearerLifetimeExceeded(String),
     /// A face configured with no issuer key. (`authority.issue.missing-key`)
     #[error("IssuerKeyMissing: {0}")]
     IssuerKeyMissing(String),
