@@ -1,9 +1,14 @@
 //! `store.reserve`: the injected columns as a reader sees them, and batch validation.
 
-use crate::support::{decl, query, s, Fixture};
+use crate::support::{at, decl, query, s, Fixture};
+use contextful_context::land::{land, Batch, RunContext};
+use contextful_core::connector::infer::Provenance;
 use contextful_core::store::bound_time::Bounds;
+use contextful_core::store::lay_out::NodeId;
+use contextful_core::store::reserve::Injection;
 use contextful_core::store::StoreError;
-use serde_json::json;
+use serde_json::{json, Value};
+use std::collections::HashMap;
 
 /// The engine injects `_ingested_at` as a non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_batch_seq` as int32 where a batch scope exists, `_site_id`, and `_authored_by` where an authenticated subject authorized the write, replacing any producer value.
 // spec: store.reserve.injected@a7ade4f8
@@ -33,6 +38,27 @@ fn the_engine_injects_provenance_and_replaces_producer_values() {
 
     let row = f.query(&d, Bounds::default(), "SELECT _run_id, _site_id, _batch_seq, epoch_ns(_ingested_at) FROM t");
     assert_eq!(row, [[s("run-1"), s("site-a"), s("0"), s("1893456000123456000")]]);
+}
+
+/// The engine injects `_taint`, a label under {{connector.infer.provenance-order}}, on each row a model's output lands as, replacing any producer value; a row no model produced omits it.
+// spec: store.reserve.taint@bdb810ae
+#[test]
+fn a_model_output_row_carries_the_engine_taint_and_no_other_row_does() {
+    let f = Fixture::new();
+    let d = decl("name = \"claims\"");
+    let context = |run: &str, taint: Option<Provenance>| RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint },
+        committed_at: at("2030-01-01T00:00:00Z"),
+    };
+    let batch = |rows: Value| Batch { rows: rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect(), types: HashMap::new() };
+    land(&f.store, &d, &batch(json!([{"id": "a", "_taint": "operator"}])), &context("run-1", Some(Provenance::ThirdParty))).unwrap();
+    land(&f.store, &d, &batch(json!([{"id": "b", "_taint": "operator"}])), &context("run-2", None)).unwrap();
+    assert_eq!(
+        f.query(&d, Bounds::default(), "SELECT id, _taint FROM t ORDER BY id"),
+        [[s("a"), s("ingested:third-party")], [s("b"), None]],
+        "the engine's label replaces the producer's, and a row no model produced carries none"
+    );
 }
 
 /// A producer column inside the `_` namespace and outside the optional set raises `StoreReservedColumnName` at reconciliation, before any Parquet.

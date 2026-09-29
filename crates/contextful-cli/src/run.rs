@@ -224,7 +224,7 @@ impl Destination for StoreDestination {
         let batches: Vec<Batch> = commit.batches.into_iter().map(|rows| Batch { rows, types: types.clone() }).collect();
         let ctx = RunContext {
             node: self.node.clone(),
-            injection: Injection { run_id: commit.run_id.clone(), site_id: commit.site_id.clone(), batch_seq: None, authored_by: None },
+            injection: Injection { run_id: commit.run_id.clone(), site_id: commit.site_id.clone(), batch_seq: None, authored_by: None, taint: None },
             committed_at: commit.committed_at,
         };
         let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some() };

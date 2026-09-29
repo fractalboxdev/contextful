@@ -166,7 +166,7 @@ fn a_replica_refuses_a_write_verb_naming_the_canonical_store() {
         &contextful_context::land::Batch { rows: vec![json!({"id": 1}).as_object().unwrap().clone()], types: Default::default() },
         &contextful_context::land::RunContext {
             node: contextful_core::store::lay_out::NodeId::parse("replica-1").unwrap(),
-            injection: contextful_core::store::reserve::Injection { run_id: "run-x".into(), site_id: "s".into(), batch_seq: None, authored_by: None },
+            injection: contextful_core::store::reserve::Injection { run_id: "run-x".into(), site_id: "s".into(), batch_seq: None, authored_by: None, taint: None },
             committed_at: at(NOW),
         },
     )

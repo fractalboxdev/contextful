@@ -22,7 +22,7 @@ fn land_run(store: &Store, i: usize) {
         .collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: format!("run-{i:04}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        injection: Injection { run_id: format!("run-{i:04}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     land(store, &TableDecl::named(EVENTS), &Batch { rows, types: HashMap::new() }, &ctx).unwrap();
@@ -82,7 +82,7 @@ fn every_change_to_the_whole_key_misses_and_reads_the_new_state() {
     let decl = TableDecl::named(EVENTS);
     let ctx = |run: &str| RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     let wide = json!({ "event_id": "w1", "kind": "open", "body": "wide", "extra": "x" }).as_object().unwrap().clone();

@@ -2,7 +2,7 @@
 
 # Target ledger
 
-61 entries: 38 gated, 3 recorded, 1 scheduled, 19 open.
+61 entries: 39 gated, 3 recorded, 1 scheduled, 18 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -51,7 +51,7 @@
 | `no-sqlite-link` | `topology.package.store-sqlite-free` | `topology.libsqlite3_sys_links` | gate | test `contextful_ci::topology::this_repository_links_sqlite_only_through_its_adapter` | `== 0` | gated |
 | `one-arrow-tree` | `topology.package.crate-map` | `topology.arrow_versions.max` | gate | issue 32 | `== 1` | open (issue 32) |
 | `orphan-reap-spares-live` | `run.record.orphan-reap` | `reap.live_rows_reaped` | gate | test `contextful_core::run::record::only_an_in_flight_row_with_a_lapsed_lease_is_reaped` | `== 0` | gated |
-| `output-taint` | `connector.infer.output-taint` | `infer.over_trusted_rows` | gate | issue 48 | `== 0` | open (issue 48) |
+| `output-taint` | `connector.infer.output-taint` | `infer.over_trusted_rows` | gate | test `contextful_memory::synthesize::a_synthesized_claim_lands_under_the_label_of_its_inputs` | `== 0` | gated |
 | `policy-no-jwt` | `topology.package.exchange-optional` | `topology.exchange_stack_leaks` | gate | test `contextful_ci::topology::only_the_binary_of_this_workspace_reaches_the_exchange_stack` | `== 0` | gated |
 | `possession-replay` | `authority.verify.replayed-nonce` | `possession.adversarial.admitted` | gate | test `contextful_policy::possession::replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop` | `== 0` | gated |
 | `profile-footprint` | `assurance.gate.footprint` | `footprint.profiles_over_budget` | gate | issue 77 | `== 0` | open (issue 77) |

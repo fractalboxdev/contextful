@@ -200,7 +200,7 @@ clause = "connector.infer.output-taint"
 metric = "infer.over_trusted_rows"
 kind   = "test"
 tier   = "gate"
-method = { issue = 48 }
+method = { test = "contextful_memory::synthesize::a_synthesized_claim_lands_under_the_label_of_its_inputs" }
 target = { op = "==", value = 0 }
 
 [entry.guest-without-jit]

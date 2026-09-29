@@ -41,7 +41,7 @@ fn put(store: &Store, decl: &TableDecl, run: &str, now: &str, rows: Value, types
     let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None },
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: at(now),
     };
     let types = types.iter().map(|(c, t)| (c.to_string(), *t)).collect();

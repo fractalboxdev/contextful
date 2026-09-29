@@ -175,8 +175,7 @@ fn provenance_labels_order_by_trust() {
     assert_eq!(taint([]), Provenance::Operator);
 }
 
-/// Model output carries the least-trusted provenance label among its fenced inputs.
-// spec: connector.infer.output-taint@ad6fddaf
+/// `taint` returns the least-trusted label among a call's inputs, whatever their order.
 #[test]
 fn output_carries_the_least_trusted_input_label() {
     assert_eq!(taint([Provenance::Operator, Provenance::ThirdParty]), Provenance::ThirdParty);

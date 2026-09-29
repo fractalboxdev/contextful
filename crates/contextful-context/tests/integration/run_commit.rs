@@ -17,7 +17,7 @@ fn a_run_lands_each_batch_as_a_part_and_carries_its_position() {
     let d = decl("name = \"filings\"");
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-b".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None },
+        injection: Injection { run_id: "run-b".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p3")), fence: Some(4), logged: false };
@@ -39,7 +39,7 @@ fn a_refused_precommit_leaves_the_run_uncommitted() {
     let d = decl("name = \"filings\"");
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-f".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None },
+        injection: Injection { run_id: "run-f".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p3")), fence: Some(1), logged: false };
@@ -54,7 +54,7 @@ fn a_refused_precommit_leaves_the_run_uncommitted() {
 fn fenced_landing(f: &Fixture, run: &str, fence: u64) -> contextful_core::store::lay_out::RunManifest {
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: None, authored_by: None },
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!(run)), fence: Some(fence), logged: true };
@@ -123,7 +123,7 @@ fn a_fenced_manifest_written_before_the_commit_log_stays_readable() {
     // A store written before the commit-log protocol: a fenced manifest with no mark and no `cursors/`.
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-upgraded".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None },
+        injection: Injection { run_id: "run-upgraded".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p9")), fence: Some(7), logged: false };
@@ -155,7 +155,7 @@ fn a_store_on_exfat_commits_a_run_and_its_log_entry() {
     let store = contextful_context::Store::open(volume.path(), "research").unwrap();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-x".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None },
+        injection: Injection { run_id: "run-x".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: Some(1), logged: true };

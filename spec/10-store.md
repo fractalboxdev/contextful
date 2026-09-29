@@ -181,6 +181,8 @@ The column and table namespaces the engine holds, the provenance columns it inje
 - `row-seq` — The engine injects `_row_seq`, a non-null int64 numbering a run's rows from 0 in batch order, replacing any producer value.
   *because a run's rows share `_ingested_at` and `_run_id`, and keeping the last write per key needs an order among them*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
+- `taint` — The engine injects `_taint`, a label under {{connector.infer.provenance-order}}, on each row a model's output lands as, replacing any producer value; a row no model produced omits it.
+  *because a label a producer sets is one injected text can forge*
 - `optional` — A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 - `modality` — `_modality` takes one of text, image, audio, structured or mixed; another value fails validation of its batch.
 - `lang-and-provenance` — `_lang` carries a BCP-47 tag; `_provenance` carries the evidence rows the row derives from, addressed by the identity the source table keys on.

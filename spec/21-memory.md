@@ -73,6 +73,8 @@ Extract, Resolve and Consolidate; the dedup key, evidence support, the audit rec
   *because a silent cut hides that a conclusion rests on a partial row*
 - `attribution` — Every landed claim carries `grant_id`, the chain-final revocation identifier of the credential that wrote it, `agent`, that credential's agent member, and `_authored_by`, its on-behalf-of principal.
   *because a reader weighs a conclusion by which grant could have produced it*
+- `claim-taint` — A source row carries its own `_taint`, else `ingested:third-party`. Every row a batch commits lands under {{store.reserve.taint}} with the least-trusted label among the batch's rows.
+  *because a row no label vouches for is trusted least, and a claim re-synthesized from claims stays as low as its origin*
 
 One synthesis batch, from landed rows to a committed claim or the dead-letter table:
 
@@ -93,8 +95,6 @@ flowchart LR
 unsettled: What sets the synthesis cadence per shape, and does a shape default give way to a deployment override? owner: memory affects: read.synthesize
 
 unsettled: How is a model-emitted confidence rescaled into a comparable number, and what held-out set validates the rescaling? owner: memory affects: read.synthesize
-
-unsettled: Which provenance label does a source table's rows carry, and which column records the taint a claim lands under per {{connector.infer.output-taint}}? owner: memory affects: read.synthesize
 
 ## revise
 
