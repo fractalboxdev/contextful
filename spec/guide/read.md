@@ -10,7 +10,7 @@ This contract covers every door through which a caller asks **Contextful** a que
 
 ## How it works
 
-Each connection starts by registering one view per table the manifests name ({{read.register.connection-views}}). Each view already carries the caller's restriction, so a bare table name anywhere, in a statement, a template, a ranking arm or a file preview, means the caller's restricted relation ({{read.register.bare-name}}). The tool set is closed ({{read.register.tool-set}}).
+Each connection starts by registering one view per table the manifests name ({{read.register.connection-views}}). Each view carries the caller's restriction, so a bare table name anywhere means the caller's restricted relation ({{read.register.bare-name}}). The tool set is closed ({{read.register.tool-set}}). Reads under one key share a pooled connection ({{read.cache.session-pool}}).
 
 Caller-written SQL passes the guard. The guard reads the engine's own parse tree ({{read.guard.engine-own-parse}}), admits exactly one read-only SELECT ({{read.guard.single-read-only-statement}}), and walks the whole tree ({{read.guard.whole-tree-walk}}), checking every base relation against the registered set ({{read.guard.relation-allowlist}}). Authorship decides whether the guard runs at all: operator text runs raw, token-holder text is gated ({{read.guard.statement-provenance}}). Templates are checked once at startup ({{read.guard.startup-time-check}}) and bind arguments with no coercion ({{read.guard.template-binding}}).
 

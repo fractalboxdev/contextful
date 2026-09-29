@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 249 | 74 | 17 | 8 | 118 | 0 | 118 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
-| `read` | 2 | 14 | 120 | 21 | 17 | 17 | 86 | 0 | 86 |
+| `read` | 2 | 14 | 124 | 21 | 19 | 16 | 90 | 0 | 90 |
 | `run` | 3 | 24 | 303 | 82 | 34 | 27 | 169 | 0 | 169 |
 | `store` | 1 | 14 | 173 | 41 | 12 | 12 | 134 | 0 | 134 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 8 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 146 | 1556 | 493 | 175 | 113 | 830 | 0 | |
+| **total** | 19 | 146 | 1560 | 493 | 177 | 112 | 834 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ Decision records: 18.
 | 2 — The store | 8 | 132 | 98 | passing |
 | 3 — The run path | 11 | 184 | 109 | passing |
 | 4 — Ingest | 22 | 352 | 150 | passing |
-| 5 — The read face under enforcement | 16 | 208 | 130 | passing |
+| 5 — The read face under enforcement | 16 | 212 | 134 | passing |
 | 6 — Sync and replicas | 6 | 41 | 36 | passing |
 | 7 — Memory | 6 | 21 | 21 | passing |
 | 8 — Accountability | 5 | 39 | 19 | open |
@@ -466,6 +466,10 @@ Unscheduled operations: 10.
 | `disclosure.suppress.dominance-unverifiable` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::dominance_unverifiable` | performed |
 | `disclosure.suppress.empty-policy` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::empty_policy` | performed |
 | `disclosure.suppress.min-group-size` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::min_group_size` | performed |
+| `read.cache.change-misses` | `crates/contextful-context/tests/integration/read/pool.rs::every_change_to_the_whole_key_misses_and_reads_the_new_state` | performed |
+| `read.cache.pool-connections` | `crates/contextful-context/tests/integration/read/pool.rs::an_entry_keeps_at_most_four_idle_connections` | performed |
+| `read.cache.pool-entries` | `crates/contextful-context/tests/integration/read/pool.rs::the_pool_holds_sixteen_entries_and_evicts_the_oldest` | performed |
+| `read.cache.session-pool` | `crates/contextful-context/tests/integration/read/pool.rs::statements_under_one_key_share_one_resolved_session_and_one_engine` | performed |
 | `read.declare.canonical-column` | `crates/contextful-core/tests/integration/memory/declare.rs::a_shaped_table_omitting_a_canonical_column_is_refused` | performed |
 | `read.declare.undeclared-relation` | `crates/contextful-core/tests/integration/memory/declare.rs::an_edge_outside_the_relation_union_is_refused` | performed |
 | `read.embed.default-embedder` | `crates/contextful-core/tests/integration/read/embed.rs::the_default_embedder_is_deterministic_and_normalized` | performed |
@@ -500,7 +504,7 @@ Unscheduled operations: 10.
 | `read.recall.suppression-count` | `crates/contextful-memory/tests/integration/synthesize.rs::a_suppressed_claim_is_counted_and_never_named` | performed |
 | `read.register.advertised-is-enforced` | `crates/contextful-context/tests/integration/read/register.rs::the_published_limit_is_the_applied_one` | performed |
 | `read.register.bare-name` | `crates/contextful-context/tests/integration/read/register.rs::every_bare_name_resolves_to_the_callers_relation` | performed |
-| `read.register.connection-views` | `crates/contextful-context/tests/integration/read/register.rs::each_statement_registers_views_over_the_current_file_lists` | performed |
+| `read.register.connection-views` | `crates/contextful-context/tests/integration/read/register.rs::a_session_connection_registers_views_over_the_current_file_lists` | performed |
 | `read.register.engine` | `crates/contextful-context/tests/integration/read/register.rs::the_embedded_engine_reads_the_parquet_an_external_reader_opens` | performed |
 | `read.register.file-listing` | `crates/contextful-context/tests/integration/read/register.rs::file_listing_covers_the_callers_tables_alone` | performed |
 | `read.register.file-preview-target` | `crates/contextful-context/tests/integration/read/register.rs::a_preview_reads_a_run_file_through_its_relation` | performed |

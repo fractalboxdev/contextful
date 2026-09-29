@@ -3460,7 +3460,7 @@
       "operation": "register",
       "subject": "connection-views",
       "kind": "behavior",
-      "statement": "Ahead of a statement the engine opens a connection and issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}. No view directory exists on disk.",
+      "statement": "A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 61
@@ -4412,6 +4412,50 @@
       "line": 285
     },
     {
+      "id": "read.cache.session-pool",
+      "contract": "read",
+      "operation": "cache",
+      "subject": "session-pool",
+      "kind": "behavior",
+      "statement": "`Face` reuses a resolved session and its connections while the whole key holds: admitted authority with token id and revocation epoch, request zone, bounds, table set, and per granted table its schema digest, pointer, run set and ledger files.",
+      "why": "A-read",
+      "file": "spec/20-read.md",
+      "line": 286
+    },
+    {
+      "id": "read.cache.change-misses",
+      "contract": "read",
+      "operation": "cache",
+      "subject": "change-misses",
+      "kind": "behavior",
+      "statement": "A committed run, snapshot, schema edit, new table, request-ledger file or token under another id or epoch misses the pool, and the next statement reads the new state on a new connection.",
+      "why": "A-read",
+      "file": "spec/20-read.md",
+      "line": 288
+    },
+    {
+      "id": "read.cache.pool-entries",
+      "contract": "read",
+      "operation": "cache",
+      "subject": "pool-entries",
+      "kind": "limit",
+      "statement": "The pool holds at most 16 entries, oldest evicted first; a miss evicts the same principal's entries under an older store state.",
+      "why": "because connections hold memory per authority, and an entry under a superseded store state is never hit again",
+      "file": "spec/20-read.md",
+      "line": 290
+    },
+    {
+      "id": "read.cache.pool-connections",
+      "contract": "read",
+      "operation": "cache",
+      "subject": "pool-connections",
+      "kind": "limit",
+      "statement": "One pool entry keeps at most 4 connections idle; a concurrent statement past them opens its own and closes it afterwards.",
+      "why": "because concurrency on one session is bursty, and an idle connection holds its footer cache in memory",
+      "file": "spec/20-read.md",
+      "line": 292
+    },
+    {
       "id": "read.resolve-pin.pin-parameter",
       "contract": "read",
       "operation": "resolve-pin",
@@ -4420,7 +4464,7 @@
       "statement": "`pin` maps a table name to a build identifier and resolves that table to the state the build published. An unnamed table resolves to the latest published state.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 293
+      "line": 299
     },
     {
       "id": "read.resolve-pin.unknown-build",
@@ -4431,7 +4475,7 @@
       "statement": "An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.",
       "why": "because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states",
       "file": "spec/20-read.md",
-      "line": 294
+      "line": 300
     },
     {
       "id": "read.resolve-pin.earlier-bound-wins",
@@ -4442,7 +4486,7 @@
       "statement": "A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 296
+      "line": 302
     },
     {
       "id": "read.resolve-pin.resolved-echo",
@@ -4453,7 +4497,7 @@
       "statement": "A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 297
+      "line": 303
     },
     {
       "id": "read.resolve-pin.absent-watermark",
@@ -4464,7 +4508,7 @@
       "statement": "The watermark is null for a materialization carrying none, distinct from a watermark of zero.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 298
+      "line": 304
     },
     {
       "id": "read.resolve-pin.consumer-comparison",
@@ -4475,7 +4519,7 @@
       "statement": "A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 300
+      "line": 306
     },
     {
       "id": "read.embed.default-embedder",
@@ -4486,7 +4530,7 @@
       "statement": "The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 307
+      "line": 313
     },
     {
       "id": "read.embed.default-embedder-reach",
@@ -4497,7 +4541,7 @@
       "statement": "The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 308
+      "line": 314
     },
     {
       "id": "read.embed.model-identifier",
@@ -4508,7 +4552,7 @@
       "statement": "Every stored vector lands in a {{store.reconcile.binary-and-vector}} column beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 309
+      "line": 315
     },
     {
       "id": "read.embed.build-identity",
@@ -4519,7 +4563,7 @@
       "statement": "The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 310
+      "line": 316
     },
     {
       "id": "read.embed.required-face",
@@ -4530,7 +4574,7 @@
       "statement": "A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 312
+      "line": 318
     },
     {
       "id": "read.embed.absent-read-backend",
@@ -4541,7 +4585,7 @@
       "statement": "Without the embedded SQL engine linked, both read tools raise `ReadBackendAbsent` rather than answering from a narrower path.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 314
+      "line": 320
     },
     {
       "id": "read.declare.canonical-column",
@@ -17394,7 +17438,7 @@
     "disclosure.suppress": "The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves.",
     "disclosure.sweep": "Observation of one source's permission state: sweep kinds, the observation clock, the coverage watermark, tombstones and revocation.",
     "disclosure.template": "Query templates a releasing principal calls by name: the single-statement rule, the checks they pass, and the truncation flag a capped read carries.",
-    "read.cache": "Locality of the bytes a read touches, and reuse of a result across requests.",
+    "read.cache": "Locality of the bytes a read touches, reuse of a resolved session and its connections, and reuse of a result across requests.",
     "read.declare": "The five memory table shapes, their canonical columns, tier and scope, and the relation vocabulary with its cardinality.",
     "read.embed": "The embedding port and its default, the model identifier beside each vector, the linked-backend identity a handshake reports, and refusals on an absent backend.",
     "read.guard": "Admission of caller-written SQL: what parses, what a base relation names, whose text runs raw.",
@@ -17584,6 +17628,10 @@
     [
       "read.register.connection-views",
       "store.reconcile.explicit-file-list"
+    ],
+    [
+      "read.register.connection-views",
+      "read.cache.session-pool"
     ],
     [
       "read.register.quiet-table",
@@ -18061,6 +18109,10 @@
       },
       "chars": {
         "gloss": "characters",
+        "aliases": []
+      },
+      "connections": {
+        "gloss": "embedded engine connections",
         "aliases": []
       },
       "d": {
@@ -20820,6 +20872,20 @@
             "unit": "rows",
             "basis": "chosen",
             "gloss": "Rows fetched past the row ceiling, whose presence sets `truncated`."
+          },
+          "read-session-pool-connections": {
+            "clause": "read.cache.pool-connections",
+            "value": 4,
+            "unit": "connections",
+            "basis": "chosen",
+            "gloss": "Idle connections one pooled session keeps."
+          },
+          "read-session-pool-entries": {
+            "clause": "read.cache.pool-entries",
+            "value": 16,
+            "unit": "entries",
+            "basis": "chosen",
+            "gloss": "Resolved sessions one read face pools."
           },
           "read-sidecar-probe-factor": {
             "clause": "read.retrieve.sidecar-oversampling",

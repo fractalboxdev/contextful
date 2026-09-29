@@ -25,16 +25,16 @@ fn tree(root: &std::path::Path) -> Vec<String> {
     out
 }
 
-/// Ahead of a statement the engine opens a connection and issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}. No view directory exists on disk.
-// spec: read.register.connection-views@d8059ccb
+/// A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.
+// spec: read.register.connection-views@502d9fca
 #[test]
-fn each_statement_registers_views_over_the_current_file_lists() {
+fn a_session_connection_registers_views_over_the_current_file_lists() {
     let r = Reads::new();
     let before = tree(r.store.root());
     let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
     assert_eq!(column(&r.query(&s, r#"SELECT item_id FROM "research/vendor""#).unwrap(), "item_id"), [json!("v1")]);
     assert_eq!(tree(r.store.root()), before, "reading writes nothing under the store root");
-    // A run committed after the face opened joins the next statement's view.
+    // A run committed after the face opened joins the next session's views.
     super::land_rows(&r.store, "research/vendor", "run-0002", json!([{ "item_id": "v2", "title": "Second feed" }]));
     let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
     let ids = column(&r.query(&s, r#"SELECT item_id FROM "research/vendor" ORDER BY item_id"#).unwrap(), "item_id");

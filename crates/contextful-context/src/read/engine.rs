@@ -1,6 +1,6 @@
-//! The embedded SQL engine a read executes on: one in-memory connection per statement,
-//! the session's relations registered as views, the pepper-holding mask functions, and
-//! the statement serialization the guard walks.
+//! The embedded SQL engine a read executes on: in-memory connections a pooled session
+//! reuses across statements, the session's relations registered as views, the
+//! pepper-holding mask functions, and the statement serialization the guard walks.
 
 use super::fault::ReadFault;
 use contextful_core::read::respond::Cell;
@@ -130,10 +130,12 @@ impl SqlEngine {
     /// A connection for one session: the mask functions holding the pepper, the subject
     /// and tenant relations filled through parameters, and one create-or-replace view per
     /// registered relation. No view directory exists on disk
-    /// (`read.register.connection-views`).
+    /// (`read.register.connection-views`). Every file a view names is immutable under the
+    /// pool key the connection serves, so the connection keeps Parquet footers it read.
     pub fn open(session: &Session) -> Result<SqlEngine, ReadFault> {
         let engine = SqlEngine::connect()?;
         let conn = &engine.conn;
+        conn.execute_batch("SET parquet_metadata_cache = true").map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskHash>(HASH_FUNCTION, session.pepper()).map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskHashBytes>(HASH_BYTES_FUNCTION, session.pepper()).map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskToken>(TOKEN_FUNCTION, session.pepper()).map_err(fault)?;

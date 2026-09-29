@@ -6,6 +6,7 @@ mod enforce;
 mod fulltext;
 mod guard;
 mod latency;
+mod pool;
 mod register;
 mod retrieve;
 mod typed;
@@ -199,12 +200,17 @@ impl Reads {
 
     /// Admit a credential carrying `grants` for `subject`.
     pub fn authority(&self, subject: Subject, grants: Vec<Grant>) -> AdmittedAuthority {
+        self.authority_under(subject, grants, MintClaims::default())
+    }
+
+    /// Admit a credential carrying `grants` for `subject`, minted under `claims`.
+    pub fn authority_under(&self, subject: Subject, grants: Vec<Grant>, claims: MintClaims) -> AdmittedAuthority {
         let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
         let mut req = MintRequest::custody(subject, grants);
         req.lifetime = Lifetime::Requested(900);
         let clock = FixedClock(at("2030-01-01T00:00:00Z"));
         let plan = policy.check(&req, &MintContext { node: NodeRole::Primary, signer: &self.signer, clock: &clock }).unwrap();
-        let token = mint(&plan, &MintClaims::default(), &self.signer).unwrap();
+        let token = mint(&plan, &claims, &self.signer).unwrap();
         let keys = StaticPins::parse(&self.signer.public_key_text()).unwrap().keys().unwrap();
         let revocation = RevocationState::default();
         verify_local_bearer(&token, &keys, &Admission::new(at("2030-01-01T00:05:00Z"), &revocation).expecting(AUD)).unwrap()
