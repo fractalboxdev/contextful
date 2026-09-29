@@ -59,6 +59,11 @@ pub enum PipelineCmd {
     Validate {
         #[arg(long, default_value = "contextful.toml")]
         declaration: PathBuf,
+        /// The project whose directory a local component artifact resolves against, as
+        /// `pipeline run` resolves it; absent, the nearest `contextful.toml` upward names it,
+        /// and the working directory stands in when none does.
+        #[arg(long)]
+        project: Option<String>,
         /// The instruction set a component source compiles for.
         #[arg(long, value_enum, env = "CONTEXTFUL_COMPONENT_TARGET", default_value_t = ComponentTarget::Native)]
         component_target: ComponentTarget,
@@ -205,10 +210,22 @@ fn plan(spec: &PipelineSpec, table: &str, connector: ConnectorSpec) -> Result<Pl
     Ok(plan)
 }
 
+/// The directory `pipeline run` resolves a declaration's relative paths against
+/// (`store.init.declaration-base`): the located project's, or the working directory when
+/// discovery names no project.
+fn declaration_base(project: Option<&str>) -> Result<PathBuf> {
+    match crate::project::locate(project, None) {
+        Ok(l) => Ok(l.project.dir),
+        Err(_) if project.is_none() => Ok(std::env::current_dir()?),
+        Err(e) => Err(e),
+    }
+}
+
 pub fn run(cmd: PipelineCmd) -> Result<()> {
     match cmd {
-        PipelineCmd::Validate { declaration, component_target } => {
+        PipelineCmd::Validate { declaration, project, component_target } => {
             let files = manifests(&declaration)?;
+            let base = declaration_base(project.as_deref())?;
             // Store tables declared under `[pipeline]` answer to the same load checks the
             // store and the read face run.
             for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
@@ -219,7 +236,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
                 let mut discovered = String::new();
                 if let Checked::Component(decl) = &checked {
                     if component::is_local(decl) {
-                        let loaded = component::load(&d.spec.source.name, decl, component::base(&declaration), component_target)
+                        let loaded = component::load(&d.spec.source.name, decl, &base, component_target)
                             .with_context(|| format!("{}:{}", d.file, d.line))?;
                         let names = loaded.discover(decl).with_context(|| format!("{}:{}", d.file, d.line))?;
                         discovered = format!(" · discovers {}", names.join(", "));

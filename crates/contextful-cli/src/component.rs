@@ -6,7 +6,6 @@
 
 use anyhow::Result;
 use contextful_core::connector::component::ComponentSource;
-use std::path::Path;
 
 /// The instruction set components compile for (`connector.package.component-target`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
@@ -35,8 +34,10 @@ mod hosted {
     use contextful_core::run::Failure;
     use contextful_outbound::client::HeaderValue;
     use contextful_outbound::Resolver;
-    use contextful_wasm::{ComponentHost, Connector, Grant, GuestSource, Limits, Session, Target, WORLD};
+    use contextful_core::connector::reference::Template;
+    use contextful_wasm::{ComponentHost, Connector, Grant, GuestSource, Hydrate, Limits, Session, Target, WORLD};
     use std::path::Path;
+    use std::sync::Arc;
 
     fn failure(f: Failure) -> anyhow::Error {
         anyhow!("{f}")
@@ -57,6 +58,19 @@ mod hosted {
         match decl.memory_bytes {
             Some(bytes) => Limits::default().with_memory(bytes).map_err(failure),
             None => Ok(Limits::default()),
+        }
+    }
+
+    /// One `attach` template, rendered through the source's resolver on every request.
+    struct Rendered {
+        resolver: Arc<Resolver>,
+        template: Template,
+    }
+
+    impl Hydrate for Rendered {
+        fn hydrate(&self) -> Result<HeaderValue, Failure> {
+            let v = self.resolver.render(&self.template)?;
+            Ok(if self.template.has_reference() { HeaderValue::Sensitive(v) } else { HeaderValue::Plain(v.reveal().to_string()) })
         }
     }
 
@@ -112,20 +126,20 @@ mod hosted {
             }
         }
 
-        fn open(&self, decl: &ComponentSource, attach: Vec<(String, HeaderValue)>, run_id: Option<String>) -> Result<Session> {
-            let grant = Grant { allow: decl.allow.clone(), attach, gate: None, hook: None, class: None, run_id, transport: None };
+        fn open(&self, decl: &ComponentSource, hydrate: Vec<(String, Arc<dyn Hydrate>)>, run_id: Option<String>) -> Result<Session> {
+            let grant = Grant { allow: decl.allow.clone(), attach: Vec::new(), hydrate, gate: None, hook: None, class: None, run_id, transport: None };
             self.host.open(&self.connector, grant, &self.limits, decl.guest.as_ref()).map_err(failure)
         }
 
-        /// A session reading `table` for `run_id`, its `attach` headers hydrated now from `resolver`.
-        pub fn source(&self, decl: &ComponentSource, table: &str, resolver: &Resolver, run_id: &str) -> Result<Box<dyn Source>> {
-            let attach = decl
+        /// A session reading `table` for `run_id`, each `attach` header hydrated from
+        /// `resolver` per request, while the request is built.
+        pub fn source(&self, decl: &ComponentSource, table: &str, resolver: &Arc<Resolver>, run_id: &str) -> Result<Box<dyn Source>> {
+            let hydrate = decl
                 .attach
                 .iter()
-                .map(|(header, t)| Ok((header.clone(), HeaderValue::Sensitive(resolver.render(t)?))))
-                .collect::<Result<Vec<_>, Failure>>()
-                .map_err(failure)?;
-            Ok(Box::new(GuestSource::new(self.open(decl, attach, Some(run_id.to_string()))?, table)))
+                .map(|(header, t)| (header.clone(), Arc::new(Rendered { resolver: resolver.clone(), template: t.clone() }) as Arc<dyn Hydrate>))
+                .collect();
+            Ok(Box::new(GuestSource::new(self.open(decl, hydrate, Some(run_id.to_string()))?, table)))
         }
 
         /// The table names the guest's discovery answers, under a session attaching no credential.
@@ -176,7 +190,7 @@ mod absent {
             match *self {}
         }
 
-        pub fn source(&self, _decl: &ComponentSource, _table: &str, _resolver: &Resolver, _run_id: &str) -> Result<Box<dyn Source>> {
+        pub fn source(&self, _decl: &ComponentSource, _table: &str, _resolver: &std::sync::Arc<Resolver>, _run_id: &str) -> Result<Box<dyn Source>> {
             match *self {}
         }
 
@@ -200,9 +214,4 @@ pub fn check(name: &str, decl: &ComponentSource) -> Result<()> {
 /// Whether `decl`'s artifact sits in the project, so validation may load it without the network.
 pub fn is_local(decl: &ComponentSource) -> bool {
     matches!(decl.artifact.form, contextful_core::connector::package::Form::Local(_))
-}
-
-/// The directory a local artifact path resolves against.
-pub fn base(declaration: &Path) -> &Path {
-    declaration.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."))
 }

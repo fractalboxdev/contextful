@@ -152,9 +152,9 @@ fn an_unpinned_local_artifact_under_the_manifest_flag_is_refused_with_its_digest
     ok(&fire(dir.path(), "run-1", &[], &[]));
 }
 
-/// A component session's grant is its declared `allow` hosts and `attach` headers alone, hydrated at session open; a
-/// source declaring no `allow` reaches no host.
-// spec: connector.package.component-grant@89af0cf6
+/// A component session's grant is its declared `allow` hosts and `attach` headers alone, each header hydrated per
+/// request under {{connector.resolve.hydration-is-just-in-time}}; a source declaring no `allow` reaches no host.
+// spec: connector.package.component-grant@fd049d0f
 #[test]
 fn a_guest_reaches_only_its_allowlist_and_the_host_attaches_its_credential() {
     let vendor = Vendor::start();
@@ -182,9 +182,9 @@ fn a_guest_reaches_only_its_allowlist_and_the_host_attaches_its_credential() {
     assert_eq!(vendor.requests().len(), 1);
 }
 
-/// `pipeline validate` loads a local component artifact and runs discovery, so a missing export or a world mismatch
-/// fails before any run; a remote artifact is checked without I/O.
-// spec: connector.package.component-validate@b8f0d491
+/// `pipeline validate` loads a local component artifact from the directory `pipeline run` resolves it against and runs
+/// discovery, so a missing export or a world mismatch fails before any run; a remote artifact is checked without I/O.
+// spec: connector.package.component-validate@3132dafd
 #[test]
 fn validate_loads_a_local_component_and_runs_discovery() {
     let pin = digest(PROBE);
@@ -206,6 +206,21 @@ fn validate_loads_a_local_component_and_runs_discovery() {
     std::fs::write(dir.path().join("contextful.toml"), remote).unwrap();
     let out = ok(&cf(dir.path(), &["pipeline", "validate"], &[]));
     assert!(out.contains("probe: valid"), "{out}");
+
+    // A manifest below the project names its artifact against the project directory, as `pipeline run` reads it.
+    let dir = project("");
+    std::fs::create_dir_all(dir.path().join("conf")).unwrap();
+    std::fs::write(dir.path().join("conf/contextful.toml"), manifest("connectors/probe.wasm", &["items"], &format!("sha256 = \"{pin}\""))).unwrap();
+    let validate = ["pipeline", "validate", "--declaration", "conf/contextful.toml"];
+    assert!(ok(&cf(dir.path(), &validate, &[])).contains("discovers items"));
+    assert!(ok(&cf(dir.path(), &[&validate[..], &["--project", "research"]].concat(), &[])).contains("discovers items"));
+    let out = ok(&fire(dir.path(), "run-1", &["--declaration", "conf/contextful.toml"], &[]));
+    assert!(out.contains("3 rows in 2 batches"), "{out}");
+
+    // Bytes beside the manifest alone are found by neither command.
+    std::fs::rename(dir.path().join("connectors"), dir.path().join("conf/connectors")).unwrap();
+    refused(&cf(dir.path(), &validate, &[]), "reading component artifact `connectors/probe.wasm`");
+    refused(&fire(dir.path(), "run-2", &["--declaration", "conf/contextful.toml"], &[]), "reading component artifact `connectors/probe.wasm`");
 }
 
 /// `incremental` beside a component source raises `ConnectorPositionOwned` at validation; the guest's opaque cursor is

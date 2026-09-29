@@ -105,6 +105,12 @@ pub struct Cursor {
     pub bytes: Vec<u8>,
 }
 
+/// A header value hydrated per request: material exists in the process only while the
+/// request carrying it is built. A failure sends the request nowhere and fails the call.
+pub trait Hydrate: Send + Sync {
+    fn hydrate(&self) -> Result<HeaderValue, Failure>;
+}
+
 /// What a session grants its guest.
 #[derive(Clone)]
 pub struct Grant {
@@ -113,6 +119,9 @@ pub struct Grant {
     /// Headers the host attaches to every permitted request, overriding a guest header of
     /// the same name. A credential rides here and nowhere the guest reads.
     pub attach: Vec<(String, HeaderValue)>,
+    /// Headers the host hydrates afresh for each permitted request while building it,
+    /// attached as `attach` is (`connector.resolve.hydration-is-just-in-time`).
+    pub hydrate: Vec<(String, Arc<dyn Hydrate>)>,
     /// The reservation point, when the connector declares a limiter.
     pub gate: Option<Arc<dyn Reserve>>,
     /// The operator's pre-send hook, composed in front of the reservation.
@@ -365,7 +374,7 @@ impl ComponentHost {
     /// (`connector.import.forwarded-config`).
     pub fn open(&self, connector: &Connector, grant: Grant, limits: &Limits, config: Option<&serde_json::Value>) -> Result<Session, Failure> {
         let config = config.map(guest_config).transpose().map_err(refuse)?;
-        if !grant.attach.is_empty() {
+        if !grant.attach.is_empty() || !grant.hydrate.is_empty() {
             grant.allow.check_bound().map_err(refuse)?;
         }
         let slots = Mediator::slots();
@@ -548,6 +557,9 @@ impl Session {
         }
         if let Some(why) = after.refused.get(before.refused.len()) {
             return Err(Failure::deterministic(FailureTag::Config, why.clone()));
+        }
+        if let Some(failure) = after.unhydrated.get(before.unhydrated.len()) {
+            return Err(failure.clone());
         }
         if let Some(why) = after.held_back.get(before.held_back.len()) {
             return Err(Failure::new(FailureTag::Transient, ConnectorError::ConnectorUnmetered(format!("a request went unreserved: {why}")).to_string()));

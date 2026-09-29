@@ -9692,7 +9692,7 @@
       "operation": "package",
       "subject": "component-grant",
       "kind": "behavior",
-      "statement": "A component session's grant is its declared `allow` hosts and `attach` headers alone, hydrated at session open; a source declaring no `allow` reaches no host.",
+      "statement": "A component session's grant is its declared `allow` hosts and `attach` headers alone, each header hydrated per request under {{connector.resolve.hydration-is-just-in-time}}; a source declaring no `allow` reaches no host.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
       "line": 287
@@ -9703,7 +9703,7 @@
       "operation": "package",
       "subject": "component-validate",
       "kind": "behavior",
-      "statement": "`pipeline validate` loads a local component artifact and runs discovery, so a missing export or a world mismatch fails before any run; a remote artifact is checked without I/O.",
+      "statement": "`pipeline validate` loads a local component artifact from the directory `pipeline run` resolves it against and runs discovery, so a missing export or a world mismatch fails before any run; a remote artifact is checked without I/O.",
       "why": "P1",
       "file": "spec/40-connector.md",
       "line": 289
@@ -18683,6 +18683,10 @@
     [
       "connector.package.component-load",
       "connector.import.config-hashing"
+    ],
+    [
+      "connector.package.component-grant",
+      "connector.resolve.hydration-is-just-in-time"
     ],
     [
       "connector.source.http-headers",
