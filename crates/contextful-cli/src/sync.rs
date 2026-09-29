@@ -41,7 +41,15 @@ pub enum SyncCmd {
         #[command(flatten)]
         args: SyncArgs,
     },
-    /// Upload the store and commit the bucket manifest.
+    /// Print the bucket manifest a push of the store commits, reading no bucket object.
+    Manifest {
+        #[command(flatten)]
+        args: SyncArgs,
+        /// Emit the plan computed from the store's files.
+        #[arg(long, required = true)]
+        emit: bool,
+    },
+    /// Upload the store and commit the bucket manifest as the next generation.
     Push {
         #[command(flatten)]
         args: SyncArgs,
@@ -53,6 +61,9 @@ pub enum SyncCmd {
         /// Repeatable; absent pulls every table.
         #[arg(long = "table")]
         tables: Vec<String>,
+        /// Restore this generation's manifest and pointers in place of the bucket's current state.
+        #[arg(long)]
+        generation: Option<u64>,
     },
     /// Take or release a table's compaction lease in the bucket.
     #[command(subcommand)]
@@ -192,13 +203,27 @@ pub fn pull_before_run(l: &Located) -> Result<()> {
     }
     let (s, decls) = open_with(l, config)?;
     let replicate_off = decls.iter().filter(|d| d.replicate == Some(false)).map(|d| d.name.clone()).collect();
-    let r = s.pull(&PullScope { tables: Vec::new(), replicate_off }).context("`pull_before_run`")?;
+    let r = s.pull(&PullScope { tables: Vec::new(), replicate_off, generation: None }).context("`pull_before_run`")?;
     eprintln!("pull_before_run: pulled {} objects and {} pointers", r.downloaded.len(), r.pointers.len());
     Ok(())
 }
 
+/// The store, project and node a push plan reads: no `[sync]` and no bucket.
+fn open_local(args: &SyncArgs) -> Result<(Store, String, String)> {
+    let l = locate(args.project.as_deref(), args.declaration.clone())?;
+    let store = Store::open(&l.project.dir, &l.project.name)?;
+    let (node_id, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
+    Ok((store, l.project.name, node_id.to_string()))
+}
+
 pub fn run(cmd: SyncCmd) -> Result<()> {
     match cmd {
+        SyncCmd::Manifest { args, emit: _ } => {
+            let (store, project, node_id) = open_local(&args)?;
+            let plan = contextful_sync::plan_manifest(&store, &project, &node_id)?;
+            println!("{}", serde_json::to_string_pretty(&plan.manifest())?);
+            Ok(())
+        }
         SyncCmd::Probe { args } => {
             let (s, _) = open(&args)?;
             let (c, why) = s.probe_with_reason()?;
@@ -215,13 +240,13 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             for refusal in &r.refused {
                 eprintln!("warning: {refusal}");
             }
-            println!("pushed {} objects; the manifest lists {} entries after {} round(s)", r.uploaded.len(), r.entries, r.rounds);
+            println!("pushed {} objects; generation {} lists {} entries after {} round(s)", r.uploaded.len(), r.generation, r.entries, r.rounds);
             Ok(())
         }
-        SyncCmd::Pull { args, tables } => {
+        SyncCmd::Pull { args, tables, generation } => {
             let (s, decls) = open(&args)?;
             let replicate_off = decls.iter().filter(|d| d.replicate == Some(false)).map(|d| d.name.clone()).collect();
-            let r = s.pull(&PullScope { tables, replicate_off })?;
+            let r = s.pull(&PullScope { tables, replicate_off, generation })?;
             println!("pulled {} objects and {} pointers in {} attempt(s)", r.downloaded.len(), r.pointers.len(), r.attempts);
             Ok(())
         }
