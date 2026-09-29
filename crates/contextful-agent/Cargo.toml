@@ -6,16 +6,24 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-# The tool server: the read face over the tool protocol, one admitted credential per
-# process, line-delimited JSON-RPC over standard input and output.
+# The read face's transports: the tool protocol over standard input and output, one
+# admitted credential per process, and MCP Streamable HTTP, one admitted credential per
+# request.
 
 [dependencies]
 contextful-context = { path = "../contextful-context", features = ["read"] }
 contextful-core = { path = "../contextful-core" }
 contextful-policy = { path = "../contextful-policy" }
 serde_json = "1"
+httparse = { version = "1", optional = true }
+
+[features]
+default = ["http"]
+# The network transport; a build linking it reports `http` among its faces (`read.embed.build-identity`).
+http = ["dep:httparse"]
 
 [dev-dependencies]
+ed25519-dalek = "2"
 tempfile = "3"
 
 [[test]]

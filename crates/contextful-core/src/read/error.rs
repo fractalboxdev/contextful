@@ -42,6 +42,12 @@ pub enum ReadError {
     /// A template named a non-store relation or collided with a built-in tool prefix. (`read.guard.template-relation-shape`)
     #[error("TemplateNamesForeignRelation: {0}")]
     TemplateNamesForeignRelation(String),
+    /// The network transport started with no audience or no positive in-flight ceiling. (`read.register.serve-declaration`)
+    #[error("ServeDeclarationMissing: {0}")]
+    ServeDeclarationMissing(String),
+    /// A network transport request carried no credential. (`read.register.credential-missing`)
+    #[error("HttpCredentialMissing: {0}")]
+    HttpCredentialMissing(String),
 }
 
 impl ReadError {
@@ -59,6 +65,8 @@ impl ReadError {
             ReadError::TableFunctionRefused(_) => "TableFunctionRefused",
             ReadError::TemplateArgumentRejected(_) => "TemplateArgumentRejected",
             ReadError::TemplateNamesForeignRelation(_) => "TemplateNamesForeignRelation",
+            ReadError::ServeDeclarationMissing(_) => "ServeDeclarationMissing",
+            ReadError::HttpCredentialMissing(_) => "HttpCredentialMissing",
         }
     }
 }

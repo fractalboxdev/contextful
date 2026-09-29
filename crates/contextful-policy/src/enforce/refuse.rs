@@ -1,7 +1,7 @@
 //! `authority.refuse`: the payload a refusal carries on the wire.
 
 use contextful_core::enforce::EnforceError;
-use contextful_core::read::Refusal;
+use contextful_core::read::{ReadError, Refusal};
 use serde_json::{json, Value};
 
 /// Bytes one refusal payload carries (`authority.refuse.payload`).
@@ -12,6 +12,7 @@ fn code(r: &Refusal) -> (String, u16) {
     match r {
         Refusal::Enforce(EnforceError::ScopeDenied(_)) => ("scope_denied".into(), 403),
         Refusal::Enforce(EnforceError::UnknownRelation(_)) => ("unknown_relation".into(), 404),
+        Refusal::Read(ReadError::HttpCredentialMissing(_)) => ("http_credential_missing".into(), 401),
         other => {
             let id = other.identifier();
             let mut snake = String::new();

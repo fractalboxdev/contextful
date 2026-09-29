@@ -16,6 +16,10 @@ tempfile = "3"
 # A third-party reader: the store's Parquet opens with no engine code in the process.
 parquet = { version = "57", default-features = false, features = ["zstd"] }
 serde_json = "1"
+# A third-party network client: it signs each request's holder proof with no engine code.
+base64 = "0.22"
+ed25519-dalek = "2"
+sha2 = "0.10"
 
 [[test]]
 name = "integration"

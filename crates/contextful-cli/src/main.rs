@@ -11,6 +11,7 @@ mod pipeline;
 mod project;
 mod query;
 mod run;
+mod serve;
 mod sync;
 mod token;
 
@@ -52,6 +53,8 @@ enum Cmd {
     Query(query::QueryArgs),
     /// Serve the read face over the tool protocol on standard input and output.
     Mcp(mcp::McpArgs),
+    /// Serve the tool protocol over MCP Streamable HTTP, admitting each request on its own credential.
+    Serve(serve::ServeArgs),
     /// Elaborate and audit the Lean models under `formal/`.
     #[command(subcommand)]
     Formal(formal::FormalCmd),
@@ -68,6 +71,7 @@ fn main() {
         Cmd::Pipeline(c) => pipeline::run(c),
         Cmd::Query(c) => query::run(c),
         Cmd::Mcp(c) => mcp::run(c),
+        Cmd::Serve(c) => serve::run(c),
         Cmd::Derive(c) => derive::run(c),
         Cmd::Memory(c) => memory::run(c),
         Cmd::Formal(c) => formal::run(c),

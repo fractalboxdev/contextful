@@ -48,6 +48,25 @@ Consequences: `read.register.connection-views` rewords from per statement to per
 
 Consequences: an empty result carrying no block means no touched relation was withheld by zone.
 
+## The networked read transport is MCP Streamable HTTP, admitted per request
+
+**Status:** accepted
+
+Context: the stdio tool server answers only its spawning process, one statement at a time, under one startup credential.
+Decision: `read.register` serves the same tool server as MCP Streamable HTTP at `POST /mcp`, one JSON-RPC message per request, with no raw surface. Each request is admitted and revocation-checked on its own credential. The in-flight ceiling is required, with no default; past it a request answers `503`.
+Criteria: MCP-client compatibility, then one surface per guarantee, then revocation latency; the first decided it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| MCP Streamable HTTP around the tool server *(chosen)* | — | A tool result reaches a caller inside a JSON-RPC envelope; the face holds no session and no server stream. |
+| One HTTP route per read tool | MCP-client compatibility | An MCP client needs its own adapter, and the tool set gains a second envelope. |
+| A pool of stdio children per consumer | Reach | The consumer shares the store's host; each child pays admission. |
+| Admission once per connection or session | Revocation latency | A revoked credential reads until its connection closes. |
+| A default ceiling | Silence | A guessed number meets production load unreviewed. |
+
+Consequences: admission and a possession-proof check sit on every read, so an MCP client signs each request with its holder key.
+Revisit: a caller needs server-initiated messages or resumable streams.
+
 ## Memory writes validate or dead-letter, and outcomes settle under their source
 
 `read.synthesize` validates every candidate against the declared output schema, retries with the error up to 3 attempts per batch, then dead-letters the response, template hash and drop reason with the cursor held. The relation vocabulary is a reserved core plus declared types; an undeclared edge dead-letters while the batch lands. `read.resolve-entity` dead-letters ambiguous mentions and dangling endpoints. `read.settle` requires one resolution form and one source — `metric`, `adjudicator` or `manual`; metric comparators evaluate outside the engine, verdicts carry an `http`/`https` citation, self-rated outcomes carry a null verdict, and the scored and unresolved views partition the join.

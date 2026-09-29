@@ -67,6 +67,10 @@ pub enum TokenCmd {
         ttl: Option<u64>,
         #[arg(long)]
         audience: Option<String>,
+        /// The RFC 7638 thumbprint of the holder's Ed25519 public key, bound as the
+        /// credential's confirmation claim (`authority.verify.possession-binding`).
+        #[arg(long)]
+        holder: Option<String>,
         /// Issue instant (RFC 3339); absent reads the system clock.
         #[arg(long)]
         now: Option<String>,
@@ -130,6 +134,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             max_rows,
             ttl,
             audience,
+            holder,
             now,
         } => {
             let subject = Subject { on_behalf_of, agent, host, task, zone, incognito };
@@ -142,7 +147,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
                 max_rows,
             };
             let lifetime = ttl.map_or(Lifetime::Default, Lifetime::Requested);
-            let token = mint_one(issuer_key.as_deref(), subject, grant, lifetime, audience, now.as_deref())?;
+            let token = mint_one(issuer_key.as_deref(), subject, grant, lifetime, audience, holder, now.as_deref())?;
             println!("{token}");
             Ok(())
         }
@@ -222,6 +227,7 @@ fn mint_one(
     grant: Grant,
     lifetime: Lifetime,
     audience: Option<String>,
+    holder: Option<String>,
     now: Option<&str>,
 ) -> Result<String> {
     let signer = SeedSigner::resolve(issuer_key)?;
@@ -235,7 +241,13 @@ fn mint_one(
     let clock = FixedClock(instant_or_now(now)?);
     let ctx = MintContext { node: NodeRole::Primary, signer: &signer as &dyn SigningPort, clock: &clock as &dyn Clock };
     let plan = policy.check(&request, &ctx)?;
-    Ok(mint(&plan, &MintClaims::default(), &signer)?)
+    if let Some(jkt) = holder.as_deref() {
+        let alphabet = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+        if jkt.len() != 43 || !jkt.chars().all(alphabet) {
+            bail!("`--holder` is the 43-character base64url RFC 7638 thumbprint of an Ed25519 public key, not `{jkt}`");
+        }
+    }
+    Ok(mint(&plan, &MintClaims { confirmation: holder, ..MintClaims::default() }, &signer)?)
 }
 
 fn instant_or_now(text: Option<&str>) -> Result<Instant> {

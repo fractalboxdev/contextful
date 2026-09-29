@@ -31,6 +31,8 @@ FilterBudgetExceeded          = { clause = "read.retrieve.filter-budget-refusal"
 PinnedBuildUnavailable        = { clause = "read.resolve-pin.unknown-build", gloss = "A pinned build identifier is unknown or collected." }
 RequiredFaceAbsent            = { clause = "read.embed.required-face", gloss = "A client required a face this binary did not link." }
 ReadBackendAbsent             = { clause = "read.embed.absent-read-backend", gloss = "A read tool was called on a binary without the embedded SQL engine." }
+ServeDeclarationMissing       = { clause = "read.register.serve-declaration", gloss = "The network transport was started with no audience or no positive in-flight ceiling." }
+HttpCredentialMissing         = { clause = "read.register.credential-missing", gloss = "A network transport request carried no credential." }
 MemoryShapeColumnMissing      = { clause = "read.declare.canonical-column", gloss = "A table naming a memory shape omits a canonical column." }
 MemoryUndeclaredRelation      = { clause = "read.declare.undeclared-relation", gloss = "A candidate edge carries an undeclared relation type." }
 MemoryExtractExhausted        = { clause = "read.synthesize.dead-letter", gloss = "An extract batch exhausted its attempts and was dead-lettered." }
@@ -65,6 +67,8 @@ read-fusion-lexical-weight   = { clause = "read.rank.fusion", value = 40, unit =
 read-lexical-index-cache     = { clause = "read.rank.lexical-index-cache", value = 64, unit = "entries", basis = "chosen", gloss = "FIFO capacity of opened full-text sidecars." }
 read-session-pool-entries    = { clause = "read.cache.pool-entries", value = 16, unit = "entries", basis = "chosen", gloss = "Resolved sessions one read face pools." }
 read-session-pool-connections = { clause = "read.cache.pool-connections", value = 4, unit = "connections", basis = "chosen", gloss = "Idle connections one pooled session keeps." }
+read-http-retry-after        = { clause = "read.register.past-ceiling", value = 1, unit = "s", basis = "chosen", gloss = "The `Retry-After` a request shed past the in-flight ceiling carries." }
+read-http-request-body       = { clause = "read.register.request-body", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest request body the network transport reads." }
 memory-extract-attempts      = { clause = "read.synthesize.extract-attempts", value = 3, unit = "attempts", basis = "chosen", gloss = "Extract attempts per batch, feedback included." }
 memory-prompt-bytes          = { clause = "read.synthesize.prompt-bound", value = 32, unit = "KiB", basis = "chosen", gloss = "Fenced row bytes one extraction batch packs." }
 memory-row-chars             = { clause = "read.synthesize.row-cap", value = 16384, unit = "chars", basis = "chosen", gloss = "Characters of one fenced row before the truncation mark cuts it." }

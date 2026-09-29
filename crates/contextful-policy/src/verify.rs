@@ -322,7 +322,7 @@ pub fn verify_with_proof<E: From<AuthorityError>>(
 ) -> Result<AdmittedAuthority, E> {
     admit(credential, keys, admission, |cnf| match cnf {
         Some(jkt) => proof(jkt),
-        None => Err(AuthorityError::PossessionProofInvalid("the credential binds no holder key".into()).into()),
+        None => Err(AuthorityError::PossessionProofInvalid("the credential binds no holder key; a network checkpoint admits only a credential bound to one".into()).into()),
     })
 }
 

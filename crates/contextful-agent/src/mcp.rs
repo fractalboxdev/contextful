@@ -1,9 +1,11 @@
-//! The tool protocol over standard input and output: one JSON-RPC 2.0 message per line.
+//! The tool protocol: one JSON-RPC 2.0 message in, at most one answer out.
 //!
-//! The server holds one admitted authority for its lifetime and re-reads it at every tool
-//! call before any row is read. A refusal arrives in-band — a result flagged as an error
-//! under transport success — carrying the refusal's wire payload
-//! (`read.respond.in-band-error`).
+//! [`Tools`] answers a message for an admitted authority the transport hands it, and
+//! re-reads that authority at every tool call before any row is read. [`Server`] is the
+//! transport over standard input and output, one message per line, holding one admitted
+//! authority for its lifetime; the network transport admits one per request. A refusal
+//! arrives in-band — a result flagged as an error under transport success — carrying the
+//! refusal's wire payload (`read.respond.in-band-error`).
 
 use contextful_context::read::{Face, ReadFault, ReadOptions, RetrieveRequest};
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
@@ -28,20 +30,35 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 
 /// What this binary links, reported at the handshake (`read.embed.build-identity`): the
-/// embedded SQL engine and the lexical ranker. It links no vector index, no connector
-/// family behind a feature, and no other face.
+/// embedded SQL engine and the lexical ranker, and the `http` face where the `http`
+/// feature links the network transport. It links no vector index and no connector family
+/// behind a feature.
 pub fn build_identity() -> BuildIdentity {
-    BuildIdentity { backends: vec!["duckdb".into(), "fts".into()], connectors: Vec::new(), faces: Vec::new() }
+    let faces = if cfg!(feature = "http") { vec!["http".into()] } else { Vec::new() };
+    BuildIdentity { backends: vec!["duckdb".into(), "fts".into()], connectors: Vec::new(), faces }
 }
 
 /// The re-check an effect boundary runs against the carried authority.
 pub type Boundary<'a> = dyn Fn(&AdmittedAuthority) -> Result<(), AuthorityError> + 'a;
 
-pub struct Server<'a> {
+/// The authority one message is answered for, and the boundary re-reading it.
+#[derive(Clone, Copy)]
+pub struct Caller<'c> {
+    pub authority: &'c AdmittedAuthority,
+    pub boundary: &'c Boundary<'c>,
+}
+
+/// The closed read tool set over one read face, shared by every transport.
+pub struct Tools<'a> {
     face: &'a Face,
+    clock: &'a (dyn Clock + Sync),
+}
+
+/// The tool protocol over standard input and output for one admitted authority.
+pub struct Server<'a> {
+    tools: Tools<'a>,
     authority: AdmittedAuthority,
     boundary: &'a Boundary<'a>,
-    clock: &'a dyn Clock,
 }
 
 /// A protocol-level error: code and message.
@@ -125,13 +142,14 @@ fn refused(r: &Refusal) -> Value {
 }
 
 impl<'a> Server<'a> {
-    /// A server for one admitted authority. Every built-in tool registers as a read tool
-    /// (`authority.resist.read-only-face`).
-    pub fn new(face: &'a Face, authority: AdmittedAuthority, boundary: &'a Boundary<'a>, clock: &'a dyn Clock) -> Result<Server<'a>, String> {
-        for tool in TOOLS {
-            register_tool(FaceScope::Organization, tool, ToolKind::Read).map_err(|e| e.to_string())?;
-        }
-        Ok(Server { face, authority, boundary, clock })
+    /// A server for one admitted authority.
+    pub fn new(
+        face: &'a Face,
+        authority: AdmittedAuthority,
+        boundary: &'a Boundary<'a>,
+        clock: &'a (dyn Clock + Sync),
+    ) -> Result<Server<'a>, String> {
+        Ok(Server { tools: Tools::new(face, clock)?, authority, boundary })
     }
 
     /// Serve until the input closes.
@@ -151,18 +169,44 @@ impl<'a> Server<'a> {
 
     /// Answer one message; a notification has no answer.
     pub fn handle(&self, line: &str) -> Option<Value> {
-        let message: Value = match serde_json::from_str(line) {
-            Ok(v) => v,
-            Err(e) => return Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": PARSE_ERROR, "message": e.to_string() } })),
-        };
+        self.tools.handle_text(Caller { authority: &self.authority, boundary: self.boundary }, line)
+    }
+}
+
+impl<'a> Tools<'a> {
+    /// The tool set over `face`. Every built-in tool registers as a read tool
+    /// (`authority.resist.read-only-face`).
+    pub fn new(face: &'a Face, clock: &'a (dyn Clock + Sync)) -> Result<Tools<'a>, String> {
+        for tool in TOOLS {
+            register_tool(FaceScope::Organization, tool, ToolKind::Read).map_err(|e| e.to_string())?;
+        }
+        Ok(Tools { face, clock })
+    }
+
+    /// The clock tool calls read the present from.
+    pub fn clock(&self) -> &'a (dyn Clock + Sync) {
+        self.clock
+    }
+
+    /// Answer one message's text for `caller`; a notification has no answer, and text
+    /// that is not JSON answers a parse error.
+    pub fn handle_text(&self, caller: Caller<'_>, text: &str) -> Option<Value> {
+        match serde_json::from_str::<Value>(text) {
+            Ok(message) => self.handle(caller, &message),
+            Err(e) => Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": PARSE_ERROR, "message": e.to_string() } })),
+        }
+    }
+
+    /// Answer one message for `caller`; a notification has no answer.
+    pub fn handle(&self, caller: Caller<'_>, message: &Value) -> Option<Value> {
         let id = message.get("id").cloned()?;
         let method = message["method"].as_str().unwrap_or_default();
         let params = message.get("params").and_then(Value::as_object).cloned().unwrap_or_default();
         let answer = match method {
             "initialize" => self.initialize(&params),
             "ping" => Ok(json!({})),
-            "tools/list" => self.list(),
-            "tools/call" => self.call(&params),
+            "tools/list" => self.list(caller),
+            "tools/call" => self.call(caller, &params),
             other => Err(Protocol(METHOD_NOT_FOUND, format!("no method `{other}`"))),
         };
         Some(match answer {
@@ -192,26 +236,26 @@ impl<'a> Server<'a> {
         }))
     }
 
-    fn session(&self, zone: Option<&str>, bounds: Bounds) -> Result<contextful_policy::enforce::session::Session, ReadFault> {
-        (self.boundary)(&self.authority)?;
-        self.face.session(&self.authority, &Request { zone }, bounds)
+    fn session(&self, caller: Caller<'_>, zone: Option<&str>, bounds: Bounds) -> Result<contextful_policy::enforce::session::Session, ReadFault> {
+        (caller.boundary)(caller.authority)?;
+        self.face.session(caller.authority, &Request { zone }, bounds)
     }
 
-    fn list(&self) -> Result<Value, Protocol> {
-        match self.session(None, Bounds::default()) {
+    fn list(&self, caller: Caller<'_>) -> Result<Value, Protocol> {
+        match self.session(caller, None, Bounds::default()) {
             Ok(s) => Ok(json!({ "tools": self.face.tools(&s) })),
             Err(fault) => Err(Protocol(INVALID_PARAMS, fault.to_string())),
         }
     }
 
-    fn call(&self, params: &Map<String, Value>) -> Result<Value, Protocol> {
+    fn call(&self, caller: Caller<'_>, params: &Map<String, Value>) -> Result<Value, Protocol> {
         let name = params.get("name").and_then(Value::as_str).ok_or_else(|| invalid("`name` is required"))?;
         let args = match params.get("arguments") {
             None | Some(Value::Null) => Map::new(),
             Some(Value::Object(m)) => m.clone(),
             Some(_) => return Err(invalid("`arguments` is an object")),
         };
-        match self.dispatch(name, &args) {
+        match self.dispatch(caller, name, &args) {
             Ok(Ok(value)) => Ok(result(value)),
             Ok(Err(fault)) => match fault.refusal() {
                 Some(r) => Ok(refused(r)),
@@ -221,7 +265,7 @@ impl<'a> Server<'a> {
         }
     }
 
-    fn dispatch(&self, name: &str, args: &Map<String, Value>) -> Result<Result<Value, ReadFault>, Protocol> {
+    fn dispatch(&self, caller: Caller<'_>, name: &str, args: &Map<String, Value>) -> Result<Result<Value, ReadFault>, Protocol> {
         let zone = string(args, "zone")?;
         let zone = zone.as_deref();
         Ok(match name {
@@ -229,7 +273,7 @@ impl<'a> Server<'a> {
                 only(args, name, &["table"])?;
                 let table = string(args, "table")?;
                 let b = bounds(args)?;
-                self.session(zone, b).and_then(|s| self.face.describe(&s, table.as_deref(), b))
+                self.session(caller, zone, b).and_then(|s| self.face.describe(&s, table.as_deref(), b))
             }
             "context.query" => {
                 only(args, name, &["sql", "parameters", "limit", "internals"])?;
@@ -240,7 +284,7 @@ impl<'a> Server<'a> {
                     Some(_) => return Err(invalid("`parameters` is an object")),
                 };
                 let opts = options(args)?;
-                self.session(zone, opts.bounds)
+                self.session(caller, zone, opts.bounds)
                     .and_then(|s| self.face.query_with(&s, &sql, &parameters, opts))
                     .map(|r| r.to_json())
             }
@@ -253,20 +297,20 @@ impl<'a> Server<'a> {
                     Some(_) => return Err(invalid("`arguments` is an object")),
                 };
                 let opts = options(args)?;
-                self.session(zone, opts.bounds)
+                self.session(caller, zone, opts.bounds)
                     .and_then(|s| self.face.execute_template(&s, &id, &arguments, opts))
                     .map(|r| r.to_json())
             }
             "context.files" => {
                 only(args, name, &[])?;
                 let b = bounds(args)?;
-                self.session(zone, b).and_then(|s| self.face.files(&s, b)).map(|r| r.to_json())
+                self.session(caller, zone, b).and_then(|s| self.face.files(&s, b)).map(|r| r.to_json())
             }
             "context.file" => {
                 only(args, name, &["path", "limit", "internals"])?;
                 let path = required(args, "path")?;
                 let opts = options(args)?;
-                self.session(zone, opts.bounds).and_then(|s| self.face.file(&s, &path, opts)).map(|r| r.to_json())
+                self.session(caller, zone, opts.bounds).and_then(|s| self.face.file(&s, &path, opts)).map(|r| r.to_json())
             }
             "corpus.retrieve" => {
                 only(args, name, &["prefix", "query", "query_embedding", "limit", "since", "min_score", "internals"])?;
@@ -292,7 +336,7 @@ impl<'a> Server<'a> {
                         b.as_of.map_or_else(|| self.clock.now(), |a| a.at),
                     )
                 };
-                self.session(zone, b).and_then(|s| self.face.retrieve(&s, &request, b)).map(|r| r.to_json())
+                self.session(caller, zone, b).and_then(|s| self.face.retrieve(&s, &request, b)).map(|r| r.to_json())
             }
             template if self.face.templates().iter().any(|t| t.id == template) => {
                 // No template parameter takes a read argument's name (`read.guard.template-reserved-parameter`).
@@ -301,7 +345,7 @@ impl<'a> Server<'a> {
                     arguments.remove(key);
                 }
                 let opts = ReadOptions { bounds: bounds(args)?, ..ReadOptions::default() };
-                self.session(zone, opts.bounds)
+                self.session(caller, zone, opts.bounds)
                     .and_then(|s| self.face.execute_template(&s, template, &arguments, opts))
                     .map(|r| r.to_json())
             }

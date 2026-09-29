@@ -128,7 +128,7 @@ Over a network, holding a credential admits nothing without proof of its key, an
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Confirmation thumbprint, per-request signature, local nonce window *(chosen)* | — | Every client holds a key pair and signs each request; a capture replayed at another checkpoint meets only the credential's other bounds. |
-| Bearer bytes defended by short lifetimes | Theft yield | A copied credential acts as the original until expiry. |
+| Bearer bytes defended by short lifetimes and one audience, admitting MCP clients that sign nothing | Theft yield | A copied credential acts as the original against its audience until expiry. |
 | Mutual TLS instead of a credential-carried proof | Reach across hops | The engine behind the gateway receives an unbound credential. |
 | A monotonic counter per client | Concurrency | Parallel honest requests arrive out of order and refuse. |
 | A replay store shared across checkpoints | Locality | Admission calls a shared service per request. |
