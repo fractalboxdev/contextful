@@ -2,6 +2,8 @@
 //! prefix confinement, the bucket manifest, key ownership and the scoped-union merge.
 
 use super::StoreError;
+use crate::connector::attach::is_loopback_host;
+use crate::connector::reference::{SecretName, SCHEME};
 use crate::time::Instant;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -34,8 +36,63 @@ pub struct SyncConfig {
     pub coordination: Option<String>,
     #[serde(default)]
     pub push_retries: Option<u32>,
+    /// Pull the bucket before a run or the tool server first reads (`store.pull.before-run`).
     #[serde(default)]
     pub pull_before_run: Option<bool>,
+    /// The signing region of an `https://` or loopback `http://` endpoint; `us-east-1` when absent.
+    #[serde(default)]
+    pub region: Option<String>,
+    /// `secret://<name>` or `env://NAME`: the S3 access key id (`store.endpoint.credentials`).
+    #[serde(default)]
+    pub access_key_id: Option<String>,
+    /// `secret://<name>` or `env://NAME`: the S3 secret access key.
+    #[serde(default)]
+    pub secret_access_key: Option<String>,
+    /// `secret://<name>` or `env://NAME`: an S3 session token, for temporary credentials.
+    #[serde(default)]
+    pub session_token: Option<String>,
+}
+
+/// The signing region of a generic S3-compatible endpoint that declares none.
+pub const DEFAULT_REGION: &str = "us-east-1";
+
+/// Where a `[sync] endpoint` points (`store.endpoint.schemes`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Endpoint {
+    /// A filesystem bucket under this directory.
+    File(String),
+    /// An S3-compatible endpoint: its base URL, addressed path-style, and its signing region.
+    S3 { url: String, region: String },
+}
+
+/// Where a credential key's material comes from (`store.endpoint.credentials`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CredentialRef {
+    /// `secret://<name>`, hydrated through the provider chain.
+    Secret(SecretName),
+    /// `env://NAME`, read whole from the process environment.
+    Env(String),
+}
+
+/// The credential references an S3 or R2 bucket signs with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CredentialRefs {
+    pub access_key_id: CredentialRef,
+    pub secret_access_key: CredentialRef,
+    pub session_token: Option<CredentialRef>,
+}
+
+/// One `[a-z0-9-]+` host label of at most 63 chars: a region or an account id.
+fn label(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 63 && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// The host of `authority`: without its port, and an IPv6 literal without its brackets.
+fn host_of(authority: &str) -> &str {
+    match authority.strip_prefix('[') {
+        Some(rest) => rest.split_once(']').map_or(authority, |(h, _)| h),
+        None => authority.split(':').next().unwrap_or(authority),
+    }
 }
 
 impl SyncConfig {
@@ -60,6 +117,82 @@ impl SyncConfig {
 
     pub fn push_retries(&self) -> u32 {
         self.push_retries.unwrap_or(PUSH_RETRIES)
+    }
+
+    /// Resolve `endpoint` to a bucket adapter's address (`store.endpoint.schemes`): `file://`,
+    /// `s3://<region>`, `r2://<account-id>`, `https://` and loopback `http://`.
+    pub fn resolve_endpoint(&self) -> Result<Endpoint, StoreError> {
+        let e = self.endpoint.as_str();
+        let unsupported = |why: &str| {
+            StoreError::SyncEndpointUnsupported(format!(
+                "endpoint `{e}`: {why}; the schemes are `file://<directory>`, `s3://<region>`, `r2://<account-id>`, `https://<host>` and loopback `http://<host>`"
+            ))
+        };
+        let Some((scheme, rest)) = e.split_once("://") else { return Err(unsupported("no scheme")) };
+        match scheme {
+            "file" if !rest.is_empty() => Ok(Endpoint::File(rest.to_string())),
+            "s3" => {
+                let r = rest.trim_end_matches('/');
+                if !label(r) {
+                    return Err(unsupported("`s3://` takes one region, such as `s3://eu-west-1`"));
+                }
+                Ok(Endpoint::S3 { url: format!("https://s3.{r}.amazonaws.com"), region: r.to_string() })
+            }
+            "r2" => {
+                let account = rest.trim_end_matches('/');
+                if !label(account) {
+                    return Err(unsupported("`r2://` takes one account id"));
+                }
+                Ok(Endpoint::S3 { url: format!("https://{account}.r2.cloudflarestorage.com"), region: "auto".to_string() })
+            }
+            "https" | "http" => {
+                let authority = rest.split('/').next().unwrap_or_default();
+                if authority.is_empty() || authority.contains('@') {
+                    return Err(unsupported("the endpoint names no host, or carries user information"));
+                }
+                let host = host_of(authority);
+                if scheme == "http" && !is_loopback_host(host) {
+                    return Err(StoreError::SyncEndpointInsecure(format!(
+                        "endpoint `{e}`: plain `http://` reaches a loopback host only, and `{host}` is not one; use `https://`"
+                    )));
+                }
+                let region = self.region.clone().unwrap_or_else(|| DEFAULT_REGION.to_string());
+                Ok(Endpoint::S3 { url: e.trim_end_matches('/').to_string(), region })
+            }
+            _ => Err(unsupported("no bucket adapter answers this scheme")),
+        }
+    }
+
+    /// The credential references an S3 or R2 bucket signs with (`store.endpoint.credentials`):
+    /// each key binds `secret://<name>` or `env://NAME`, and a missing required key or any
+    /// other value refuses (`store.endpoint.credential-unbound`). A refusal names the key,
+    /// never its value, which may be material.
+    pub fn credential_refs(&self) -> Result<CredentialRefs, StoreError> {
+        let parse = |key: &str, value: &Option<String>| -> Result<Option<CredentialRef>, StoreError> {
+            let Some(v) = value else { return Ok(None) };
+            if let Some(name) = v.strip_prefix(SCHEME) {
+                return SecretName::parse(name)
+                    .map(|n| Some(CredentialRef::Secret(n)))
+                    .map_err(|_| StoreError::SyncCredentialUnbound(format!("`[sync] {key}` names no well-formed `secret://<name>`")));
+            }
+            if let Some(var) = v.strip_prefix("env://") {
+                let well_formed =
+                    var.bytes().next().is_some_and(|b| b.is_ascii_alphabetic() || b == b'_') && var.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+                if well_formed {
+                    return Ok(Some(CredentialRef::Env(var.to_string())));
+                }
+                return Err(StoreError::SyncCredentialUnbound(format!("`[sync] {key}` names no well-formed `env://NAME`")));
+            }
+            Err(StoreError::SyncCredentialUnbound(format!("`[sync] {key}` holds a literal; bind it as `secret://<name>` or `env://NAME`")))
+        };
+        let required = |key: &str, value: &Option<String>| -> Result<CredentialRef, StoreError> {
+            parse(key, value)?.ok_or_else(|| StoreError::SyncCredentialUnbound(format!("endpoint `{}` signs its requests and `[sync]` binds no `{key}`", self.endpoint)))
+        };
+        Ok(CredentialRefs {
+            access_key_id: required("access_key_id", &self.access_key_id)?,
+            secret_access_key: required("secret_access_key", &self.secret_access_key)?,
+            session_token: parse("session_token", &self.session_token)?,
+        })
     }
 
     /// Whether the push is declared to coordinate by compare-and-set.

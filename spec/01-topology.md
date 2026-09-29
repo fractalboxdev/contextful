@@ -120,6 +120,8 @@ The domain crate, dependency direction, and the three build profiles with what e
   *because an embedder admitting credentials with no identity provider then links no RSA code, and `rsa` carries a timing advisory with no patched release*
 - `sqlite-adapter` — `contextful-sqlite` alone declares the SQLite binding and enables no link feature itself; only `contextful-cli` turns on its `bundled` feature. Any other declaration or enablement raises `SqliteLinkForced`, naming the manifest line.
   *A-store*
+- `s3-sync-optional` — `contextful-sync` resolved without its `s3-sync` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `SyncStackLinked`, naming the path that pulled it.
+  *because a host syncing through a filesystem bucket, or embedding the sync package without a bucket, links no network stack*
 - `store-sqlite-free` — `contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, on any target, raises `StoreLinksSqlite`, naming the path that pulled it.
   *A-store*
 

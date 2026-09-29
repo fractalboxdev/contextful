@@ -280,6 +280,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
     match cmd {
         RunCmd::Start { project, plan, declaration, run_id, site_id, site_id_env } => {
             let l = project.locate(declaration)?;
+            crate::sync::pull_before_run(&l)?;
             let declaration = &l.declaration;
             let text = std::fs::read_to_string(declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
             let site_id = site_id_for(&text, declaration, site_id, site_id_env)?;

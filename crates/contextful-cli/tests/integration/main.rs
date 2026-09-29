@@ -11,4 +11,5 @@ mod pipeline;
 mod query;
 mod run;
 mod serve;
+mod sync;
 mod token;

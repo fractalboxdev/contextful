@@ -194,6 +194,7 @@ pub fn run(cmd: PipelineCmd) -> Result<()> {
         }
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env } => {
             let l = project.locate(declaration)?;
+            crate::sync::pull_before_run(&l)?;
             let declaration = l.declaration.clone();
             let text = if declaration.exists() { std::fs::read_to_string(&declaration)? } else { String::new() };
             let site_id = crate::run::site_id_for(&text, &declaration, site_id, site_id_env)?;

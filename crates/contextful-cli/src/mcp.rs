@@ -31,7 +31,9 @@ pub struct McpArgs {
 
 pub fn run(args: McpArgs) -> Result<()> {
     let (authority, revocation) = args.admit.admit("the tool server")?;
-    let face = face(&locate(args.project.as_deref(), args.declaration)?)?;
+    let located = locate(args.project.as_deref(), args.declaration)?;
+    crate::sync::pull_before_run(&located)?;
+    let face = face(&located)?;
     let clock = SystemClock;
     let boundary = |a: &AdmittedAuthority| -> Result<(), AuthorityError> { effect_boundary(a, &Admission::new(clock.now(), &revocation)) };
     let server = Server::new(&face, authority, &boundary, &clock).map_err(anyhow::Error::msg)?;

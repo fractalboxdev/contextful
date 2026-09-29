@@ -199,6 +199,33 @@ fn an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refu
     assert!(err.contains("through contextful-outbound -> httpkit -> rustls"), "{err}");
 }
 
+/// `contextful-sync` resolved without its `s3-sync` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl`
+/// through a normal dependency raises `SyncStackLinked`, naming the path that pulled it.
+// spec: topology.package.s3-sync-optional@58f37dde
+#[test]
+fn a_sync_crate_linking_an_http_stack_without_its_s3_feature_is_refused() {
+    let r = Repo::init();
+    stub(&r, "rustls", "", "");
+    stub(&r, "ureq", "rustls = { path = \"../rustls\" }\n", "");
+    stub(&r, "signer", "", "");
+    // The S3 adapter's client behind the non-default `s3-sync` feature leaves the crate stack-free with it off.
+    r.write(
+        "crates/contextful-sync/Cargo.toml",
+        &format!(
+            "{}\n[features]\ns3-sync = [\"dep:ureq\"]\n",
+            manifest("contextful-sync", "ureq = { path = \"../../stubs/ureq\", optional = true }\nsigner = { path = \"../../stubs/signer\" }\n")
+        ),
+    );
+    r.write("crates/contextful-sync/src/lib.rs", "");
+    r.write("crates/contextful-sync/tests/integration/main.rs", "");
+    passes(&r);
+
+    package(&r, "contextful-sync", "ureq = { path = \"../../stubs/ureq\" }\n");
+    let err = refused(&topology(&r.root), "SyncStackLinked");
+    assert!(err.contains("`contextful-sync` without `s3-sync` links `ureq` through contextful-sync -> ureq"), "{err}");
+    assert!(err.contains("links `rustls` through contextful-sync -> ureq -> rustls"), "{err}");
+}
+
 /// `contextful-decode` reaching `contextful-outbound`, `ureq`, `hyper`, `reqwest`, `rustls`, `curl` or `tokio` through a normal dependency raises `DecodeLinksNetwork`, naming the path that pulled it.
 // spec: topology.package.decode-network-free@c8772a6c
 #[test]
