@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 82 | 64 | 13 | 13 | 26 | 0 | 26 |
 | `read` | 2 | 14 | 127 | 21 | 19 | 16 | 93 | 0 | 93 |
 | `run` | 3 | 24 | 304 | 82 | 34 | 27 | 170 | 0 | 170 |
-| `store` | 1 | 14 | 173 | 41 | 12 | 12 | 134 | 0 | 134 |
+| `store` | 1 | 15 | 184 | 44 | 12 | 12 | 145 | 0 | 145 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 9 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 20 | 0 | 20 |
-| **total** | 19 | 147 | 1572 | 498 | 177 | 113 | 846 | 0 | |
+| **total** | 19 | 148 | 1583 | 501 | 177 | 113 | 857 | 0 | |
 
 Decision records: 18.
 
@@ -25,7 +25,7 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 196 | 140 | passing |
-| 2 — The store | 8 | 132 | 98 | passing |
+| 2 — The store | 9 | 143 | 109 | passing |
 | 3 — The run path | 11 | 184 | 109 | passing |
 | 4 — Ingest | 22 | 353 | 151 | passing |
 | 5 — The read face under enforcement | 16 | 215 | 137 | passing |
@@ -791,6 +791,17 @@ Unscheduled operations: 10.
 | `store.index.tenant-verbatim` | `crates/contextful-context/tests/integration/index.rs::a_tenant_value_is_kept_byte_for_byte` | performed |
 | `store.index.tokenizer` | `crates/contextful-core/tests/integration/store/index.rs::the_cjk_tokenizer_indexes_unspaced_stretches_as_bigrams` | performed |
 | `store.index.vector-by-fold` | `crates/contextful-context/tests/integration/index.rs::the_fold_builds_each_declared_sidecar_over_identified_nonzero_vectors_of_its_model` | performed |
+| `store.init.adopt` | `crates/contextful-context/tests/integration/init.rs::an_init_adopts_an_existing_declaration` | performed |
+| `store.init.declaration-base` | `crates/contextful-cli/tests/integration/init.rs::a_derive_pipeline_resolves_declared_paths_against_the_project_directory` | performed |
+| `store.init.declaration-file` | `crates/contextful-context/tests/integration/init.rs::an_init_writes_the_declaration_and_the_store_root` | performed |
+| `store.init.default-declaration` | `crates/contextful-cli/tests/integration/init.rs::a_command_without_project_discovers_it_from_a_subdirectory` | performed |
+| `store.init.discovery` | `crates/contextful-context/tests/integration/init.rs::discovery_takes_the_nearest_declaration_upward` | performed |
+| `store.init.explicit-project` | `crates/contextful-cli/tests/integration/init.rs::an_explicit_project_uses_the_working_directory` | performed |
+| `store.init.name-conflict` | `crates/contextful-context/tests/integration/init.rs::an_init_naming_another_project_refuses` | performed |
+| `store.init.name-shape` | `crates/contextful-context/tests/integration/init.rs::a_traversing_or_unsafe_name_refuses_before_any_write` | performed |
+| `store.init.project-paths` | `crates/contextful-context/tests/integration/init.rs::every_project_path_is_based_on_the_project_directory` | performed |
+| `store.init.repeat` | `crates/contextful-context/tests/integration/init.rs::a_repeated_init_rewrites_nothing` | performed |
+| `store.init.undiscovered` | `crates/contextful-context/tests/integration/init.rs::discovery_without_a_named_declaration_refuses` | performed |
 | `store.lay-out.catalog-ports` | `crates/contextful-sqlite/tests/integration/derived.rs::both_catalogs_are_reached_through_the_core_ports` | performed |
 | `store.lay-out.derived-catalog` | `crates/contextful-cli/tests/integration/context.rs::rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree` | performed |
 | `store.lay-out.immutable-files` | `crates/contextful-context/tests/integration/lay_out.rs::a_fold_writes_a_new_snapshot_and_edits_nothing_published` | performed |
