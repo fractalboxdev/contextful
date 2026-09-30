@@ -145,7 +145,13 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
     }
 
     fn drive_open(&self, x: &Execution<'_, J, B>, drive: &Drive<'_>, read: &mut ReadInput<'_>, land: &mut LandOutput<'_>) -> Result<(Landed, Tally), Close> {
-        let opened_at = self.catalog.now()?.to_string();
+        // The owner's open instant, not this attempt's: an attempt that dies before the input
+        // step records leaves its resume reading at the same instant (`run.journal.open-as-of`).
+        let opened_at = match x.opened_at() {
+            Some(at) => at,
+            None => self.catalog.now()?,
+        }
+        .to_string();
         let key = EntryKey::new(x.execution_id(), INPUT_STEP, drive.input.plan_ref().as_bytes());
         let recorded = x.step_keyed(&key, &|_| true, &mut |_| {
             let as_of = drive.input.as_of.clone().unwrap_or_else(|| opened_at.clone());

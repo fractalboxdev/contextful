@@ -231,6 +231,27 @@ fn an_undeclared_as_of_is_the_open_instant_and_a_resume_keeps_it() {
     let mut read = |_: &str| -> Result<InputSet, Failure> { panic!("a resume reads no input") };
     let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", None), &body, 1, "fire-2"), &mut read, &mut keep(&landed)).unwrap();
     assert_eq!(row.input.unwrap().as_of, "2030-01-01T00:00:00Z", "the resume reads the instant the first attempt resolved");
+
+    // An attempt that dies inside the read records no input step; the resume still reads
+    // at the instant the execution opened, not at its own.
+    let rig = Rig::new();
+    let body = Score::new(&endpoint);
+    let died = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let mut read = |_: &str| -> Result<InputSet, Failure> { panic!("the process dies inside the read") };
+        let _ = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", None), &body, 1, "fire-1"), &mut read, &mut |_| unreachable!());
+    }));
+    assert!(died.is_err());
+    rig.clock.advance(3600);
+    let asked = Mutex::new(Vec::new());
+    let mut read = |as_of: &str| {
+        asked.lock().unwrap().push(as_of.to_string());
+        Ok(set(as_of, docs(2)))
+    };
+    let landed = Mutex::new(Vec::new());
+    let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", None), &body, 1, "fire-2"), &mut read, &mut keep(&landed)).unwrap();
+    assert_eq!(row.status, RunStatus::Success, "{row:?}");
+    assert_eq!(*asked.lock().unwrap(), vec![T0.to_string()], "the resume reads at the instant the execution opened");
+    assert_eq!(row.input.unwrap().as_of, T0);
 }
 
 /// A store-driven run's plan reference hashes its body name, statement and declared `as_of`, so a resume under a
@@ -289,9 +310,7 @@ fn at_most_max_in_flight_rows_run_and_a_failed_row_admits_no_further_row() {
     assert!(rig.catalog().owner_at(&job_scope(JOB)).unwrap().is_some(), "a failure after recorded calls holds the owner");
 }
 
-/// The rows every body emits land after the last input row completes and before the owner retires, one run per
-/// declared output table through {{run.land.stage-order}}.
-// spec: run.journal.row-output@6b72f3ec
+/// A failed landing holds the owner, and its resume lands every emitted row without paying again.
 #[test]
 fn a_failed_landing_holds_the_owner_and_its_resume_lands_without_paying_again() {
     let rig = Rig::new();

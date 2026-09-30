@@ -1,6 +1,7 @@
 //! An embedding binary: the `contextful` command line with one compiled row body, `score`,
 //! registered before build. Each input row makes one paid call, `model`, and lands one
 //! `scores` row carrying the row's `doc_id` and the length of its `body`.
+//! With `SCORE_AUDIT` set, each row also lands one `audits` row carrying its `doc_id`.
 //! `SCORE_LEDGER` names a file each served call appends `<doc_id> <idempotency key>` to;
 //! `SCORE_DIE_AFTER` ends the process inside the call past that many served calls.
 
@@ -12,6 +13,7 @@ use std::sync::{Arc, Mutex};
 
 struct Score {
     ledger: Option<String>,
+    audit: bool,
     die_after: Option<usize>,
     served: Mutex<usize>,
 }
@@ -38,13 +40,18 @@ impl RowBody for Score {
         let score = calls.call("model", doc.as_bytes(), &mut |key| self.serve(&doc, key, &body))?;
         let score: i64 = String::from_utf8_lossy(&score).parse().unwrap_or_default();
         let row = json!({ "doc_id": doc, "score": score }).as_object().cloned().unwrap_or_default();
-        Ok(Emitted::from([("scores".to_string(), vec![row])]))
+        let mut out = Emitted::from([("scores".to_string(), vec![row])]);
+        if self.audit {
+            out.insert("audits".to_string(), vec![json!({ "doc_id": doc }).as_object().cloned().unwrap_or_default()]);
+        }
+        Ok(out)
     }
 }
 
 fn main() {
     let body = Score {
         ledger: std::env::var("SCORE_LEDGER").ok(),
+        audit: std::env::var_os("SCORE_AUDIT").is_some(),
         die_after: std::env::var("SCORE_DIE_AFTER").ok().and_then(|n| n.parse().ok()),
         served: Mutex::new(0),
     };

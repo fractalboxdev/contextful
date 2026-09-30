@@ -130,6 +130,55 @@ fn a_fire_reads_its_input_at_the_pinned_as_of_and_lands_its_output_table() {
     assert!(refused.contains("fire-2 failed"), "{refused}");
 }
 
+/// The rows every body emits land after the last input row completes and before the owner retires, one run per
+/// declared output table through {{run.land.stage-order}}.
+// spec: run.journal.row-output@6b72f3ec
+#[test]
+fn each_declared_output_table_lands_in_its_own_run_and_a_failed_landing_holds_the_owner() {
+    let declares = |tables: &str| job("max_in_flight = 2\n").replace("tables = [\"scores\"]", tables);
+    let (dir, public, token) = project(&declares("tables = [\"scores\"]"));
+    let p = dir.path();
+    let ledger = p.join("ledger.txt");
+    let ledger_env = ledger.to_str().unwrap();
+    let env = [("SCORE_LEDGER", ledger_env), ("SCORE_AUDIT", "1")];
+    let paid = || std::fs::read_to_string(&ledger).unwrap().lines().count();
+
+    // The body emits `audits`, which the job does not declare: every row runs, then the landing fails.
+    let refused = err(&fire(p, &public, &token, "fire-1", "2030-01-01T00:01:00Z", &env));
+    assert!(refused.contains("fire-1 failed") && refused.contains("does not declare in `tables`"), "{refused}");
+    assert_eq!(paid(), 3, "every row paid before the landing");
+
+    // Declaring the table, the next fire resumes the held owner: no call pays again, and each
+    // declared table lands in its own run, its id the fire's suffixed with the table.
+    std::fs::write(p.join("contextful.toml"), declares("tables = [\"scores\", \"audits\"]")).unwrap();
+    let out = ok(&fire(p, &public, &token, "fire-2", "2030-01-01T00:02:00Z", &env));
+    assert!(out.contains("score-documents: fire-2 success · 6 rows landed from 3 input rows"), "{out}");
+    assert_eq!(paid(), 3, "the resume replays every recorded call");
+    let history: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["run", "history", "--project", "research", "--pipeline", "score-documents"]))).unwrap();
+    let mut runs: Vec<(String, String, String, u64)> = history["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| (r["run_id"].as_str().unwrap().to_string(), r["table"].as_str().unwrap().to_string(), r["status"].as_str().unwrap().to_string(), r["rows"].as_u64().unwrap()))
+        .collect();
+    runs.sort();
+    assert_eq!(
+        runs,
+        vec![("fire-2.audits".to_string(), "audits".to_string(), "success".to_string(), 3), ("fire-2.scores".to_string(), "scores".to_string(), "success".to_string(), 3)],
+        "one run per declared output table, and none for the refused landing"
+    );
+    assert_eq!(select(p, "SELECT doc_id FROM audits ORDER BY doc_id"), vec![vec!["d1".to_string()], vec!["d2".to_string()], vec!["d3".to_string()]]);
+    let resumed: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["run", "show", "fire-2", "--project", "research"]))).unwrap();
+    let first: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["run", "show", "fire-1", "--project", "research"]))).unwrap();
+    assert_eq!(resumed["execution_id"], first["execution_id"], "the resume keys on the held execution");
+
+    // The landing retired the owner: the next fire opens a fresh execution and pays again.
+    ok(&fire(p, &public, &token, "fire-3", "2030-01-01T00:03:00Z", &env));
+    assert_eq!(paid(), 6);
+    let fresh: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["run", "show", "fire-3", "--project", "research"]))).unwrap();
+    assert_ne!(fresh["execution_id"], first["execution_id"]);
+}
+
 #[test]
 fn a_fire_killed_mid_input_resumes_paying_only_for_unrecorded_calls() {
     let (dir, public, token) = project(&job("max_in_flight = 1\n"));

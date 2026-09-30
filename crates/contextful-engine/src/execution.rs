@@ -16,6 +16,7 @@ use contextful_core::run::project::{Change, StepPatch, StepStatus};
 use contextful_core::run::record::{cap_error, Owner, Phase, RunRow, RunStatus};
 use contextful_core::run::retry::{decide, Decision, Schedule};
 use contextful_core::run::{Failure, FailureTag, RunError};
+use contextful_core::time::Instant;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -108,6 +109,8 @@ pub struct Execution<'e, J: JournalStore = FileJournalStore, B: BlobStore = File
     pins: OwnerPins,
     /// The scope's cursor row, read at claim.
     cursor: Option<CursorRow>,
+    /// When the claimed owner opened: the first attempt's claim, carried by every resume.
+    opened_at: Option<Instant>,
     schedule: Schedule,
     token: CancelToken,
     held: Arc<Mutex<Option<Lease>>>,
@@ -195,6 +198,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             pending,
             pins: open.pins.clone(),
             cursor: None,
+            opened_at: None,
             schedule: open.schedule.clone(),
             token: token.clone(),
             held: held.clone(),
@@ -240,6 +244,12 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     /// The id the execution's recorded work keys on.
     pub fn execution_id(&self) -> &str {
         &self.execution_id
+    }
+
+    /// The instant the execution opened: its owner's first claim, identical across resumes.
+    /// `None` before [`Execution::claim`].
+    pub fn opened_at(&self) -> Option<Instant> {
+        self.opened_at
     }
 
     /// Whether this attempt resumed a pending owner.
@@ -294,6 +304,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         owner.attempts.push(self.run_id.clone());
         self.engine.catalog.put_owner(&owner)?;
         self.pins = owner.pins;
+        self.opened_at = Some(owner.opened_at);
         self.owned = true;
         Ok(())
     }
