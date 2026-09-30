@@ -207,11 +207,13 @@ unsettled: Which translation toolchain reaches Lean from the engine's source, an
 The executable reference models, the case generators, the minimized counterexample corpus and the command running them.
 
 - `reference-model` — The reference model is an executable Lean rendering of the decision functions, built to a binary that reads one case on standard input and prints one decision.
-- `harness` — The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares the three decisions field by field.
+- `harness` — The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
   *A-assurance*
 - `builds` — The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.
   *A-assurance*
-- `decision-cases` — A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, or session-zone resolution; a placement decision also carries the zone it resolved.
+- `decision-cases` — A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, session-zone resolution, or credential admission; a placement decision also carries the zone it resolved.
+- `credential-cases` — A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.
+  *because the reference model carries no signature scheme, and a gateway admits the credential before it places the request*
 - `case-classes` — Each run generates malformed inputs, boundary values and well-formed requests, and its report names the classes it drew from.
   *because a green run is evidence over the generated classes, not an equivalence proof*
 - `malformed-bytes` — The malformed class draws case texts carrying invalid UTF-8 or an integer literal outside the unsigned 64-bit range, handed as bytes to every decider, and each decides such a text malformed.
@@ -249,8 +251,10 @@ sequenceDiagram
     end
     H->>K: replay every entry before fresh cases
     loop each generated case, from the recorded seed
-        H->>R: case on standard input
-        R-->>H: decision
+        opt not a credential case
+            H->>R: case on standard input
+            R-->>H: decision
+        end
         H->>E: the same case
         E-->>H: decision
         H->>W: the same case in linear memory

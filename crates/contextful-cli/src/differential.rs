@@ -1,18 +1,24 @@
 //! `contextful formal differential` — the decision module's native and WebAssembly builds
 //! against the Lean reference model, over seeded generated cases.
 //!
-//! Four decisions are under test: table-pattern coverage, grant narrowing legality, zone
-//! admission and session-zone resolution, all in `contextful_core::decide`. A case is one
-//! text, usually JSON; the native build decides it in process, the `wasm32-unknown-unknown`
-//! build decides it under the decision-module host, and the reference is the
-//! `formal/reference` binary reading it on standard input. The corpus replays first, then
-//! the generated cases run; the first case on which any two decisions differ shrinks,
-//! lands in the corpus and raises `ReferenceModelDrift`.
+//! Five decisions are under test: table-pattern coverage, grant narrowing legality, zone
+//! admission, session-zone resolution and credential admission, all in
+//! `contextful_policy::decide`. A case is one text, usually JSON; the native build decides
+//! it in process, the `wasm32-unknown-unknown` build decides it under the decision-module
+//! host, and the reference is the `formal/reference` binary reading it on standard input.
+//! A credential case skips the reference, which models no signature scheme. The corpus
+//! replays first, then the generated cases run; the first case on which any two decisions
+//! differ shrinks, lands in the corpus and raises `ReferenceModelDrift`.
 
 use anyhow::{bail, Context, Result};
 use clap::Args;
 pub use contextful_core::decide::{Decision, DECISION_FIELDS as COMPARED_FIELDS};
-use contextful_core::grant::TablePattern;
+use contextful_core::grant::{Action, Grant, TablePattern};
+use contextful_core::identify::Subject;
+use contextful_core::issue::{MintPlan, SignatureAlgorithm};
+use contextful_core::time::Instant as At;
+use contextful_policy::decide::VERIFY;
+use contextful_policy::issue::{mint_seeded, MintClaims, SeedSigner};
 use std::cell::RefCell;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -48,7 +54,7 @@ pub const WASM_TARGET_DIR: &str = "decision-wasm";
 
 /// The package holding the decision module.
 #[cfg(feature = "component-host")]
-pub const DECISION_PACKAGE: &str = "contextful-core";
+pub const DECISION_PACKAGE: &str = "contextful-policy";
 
 /// The refusals of `contextful formal differential`. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -95,7 +101,7 @@ pub fn run(args: DifferentialArgs) -> Result<()> {
     if args.decide {
         let mut input = Vec::new();
         std::io::stdin().read_to_end(&mut input)?;
-        println!("{}", serde_json::to_string(&contextful_core::decide::decide(&input))?);
+        println!("{}", serde_json::to_string(&contextful_policy::decide::decide(&input))?);
         return Ok(());
     }
     let budget = match args.budget_secs {
@@ -230,6 +236,13 @@ impl Case {
         }
     }
 
+    /// Whether the reference model decides the case: every text but one reading as a JSON
+    /// credential case, whatever its field values.
+    fn reaches_reference(&self) -> bool {
+        let text = self.text();
+        serde_json::from_slice::<Value>(&text).map_or(true, |v| v.get("op").and_then(Value::as_str) != Some(VERIFY))
+    }
+
     /// The operation a report counts the case under.
     fn op(&self) -> &str {
         match self {
@@ -248,8 +261,11 @@ impl std::fmt::Display for Case {
     }
 }
 
+/// The verdicts a credential case decides, in report order.
+pub const CREDENTIAL_VERDICTS: [&str; 3] = ["admitted", "not_covered", "refused"];
+
 /// The operations a case names.
-pub const OPERATIONS: [&str; 5] = ["covers_name", "covers_pattern", "narrow", "zone_admits", "session_zone"];
+pub const OPERATIONS: [&str; 6] = ["covers_name", "covers_pattern", "narrow", "zone_admits", "session_zone", VERIFY];
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -262,20 +278,22 @@ fn unhex(text: &str) -> Option<Vec<u8>> {
     (0..text.len()).step_by(2).map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok()).collect()
 }
 
-/// The three decisions on one case; `wasm` is absent where the binary carries no host.
+/// The decisions on one case; `wasm` is absent where the binary carries no host, and
+/// `reference` on a credential case.
 #[derive(Debug, Clone)]
 struct Decisions {
     native: Decision,
     wasm: Option<Decision>,
-    reference: Decision,
+    reference: Option<Decision>,
 }
 
 impl Decisions {
     /// Every field on which any two decisions differ, in [`COMPARED_FIELDS`] order.
     fn differing(&self) -> Vec<&'static str> {
-        let mut pairs = vec![(&self.native, &self.reference)];
-        if let Some(w) = &self.wasm {
-            pairs.extend([(&self.native, w), (w, &self.reference)]);
+        let others: Vec<&Decision> = self.wasm.iter().chain(&self.reference).collect();
+        let mut pairs: Vec<(&Decision, &Decision)> = others.iter().map(|o| (&self.native, *o)).collect();
+        if let (Some(w), Some(r)) = (&self.wasm, &self.reference) {
+            pairs.push((w, r));
         }
         COMPARED_FIELDS.iter().copied().filter(|f| pairs.iter().any(|(a, b)| a.differing(b).contains(f))).collect()
     }
@@ -349,6 +367,14 @@ struct Pools {
     aggregate_percent: u64,
     zones: &'static [&'static str],
     entries: &'static [&'static str],
+    /// Credential lifetimes, in seconds from issue.
+    lifetimes: &'static [u64],
+    /// Evaluation instants, in seconds from expiry.
+    expiry_offsets: &'static [i64],
+    /// The audiences a checkpoint declares; an empty one declares none.
+    audiences: &'static [&'static str],
+    /// How often a credential's text is damaged before the case carries it, in percent.
+    damage_percent: u64,
 }
 
 const ACTIONS: [&str; 4] = ["read", "write", "execute", "admin"];
@@ -383,6 +409,10 @@ const WELL_FORMED: Pools = Pools {
         "public-cloud:*",
         "public-cloud:us-east-1",
     ],
+    lifetimes: &[60, 900, 3600],
+    expiry_offsets: &[-3000, -600, -60],
+    audiences: &[AUDIENCE, AUDIENCE, AUDIENCE, OTHER_AUDIENCE],
+    damage_percent: 0,
 };
 
 const BOUNDARY: Pools = Pools {
@@ -438,7 +468,107 @@ const BOUNDARY: Pools = Pools {
         "on-prem:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "public-cloud:*",
     ],
+    lifetimes: &[0, 1, 3600, 3601, 86_400],
+    expiry_offsets: &[-1, 0, 1, -3601],
+    audiences: &[AUDIENCE, "", " contextful://acme-research", "CONTEXTFUL://ACME-RESEARCH", OTHER_AUDIENCE],
+    damage_percent: 40,
 };
+
+/// The audience every generated credential names.
+const AUDIENCE: &str = "contextful://acme-research";
+const OTHER_AUDIENCE: &str = "contextful://another-project";
+
+/// The instant every generated credential is issued at: 2030-01-01T00:00:00Z.
+const ISSUED_AT: i64 = 1_893_456_000;
+
+/// The issuer seeds a credential case signs under, each in the library's text form.
+const ISSUERS: [&str; 3] = [
+    "ed25519-private/1111111111111111111111111111111111111111111111111111111111111111",
+    "ed25519-private/2222222222222222222222222222222222222222222222222222222222222222",
+    "secp256r1-private/3333333333333333333333333333333333333333333333333333333333333333",
+];
+
+fn issuer(seed: &str) -> SeedSigner {
+    SeedSigner::from_seed(seed).expect("a fixed issuer seed decodes")
+}
+
+/// A credential case: a credential minted from the sequence, checked against pinned keys
+/// that include its issuer's or not, at an instant around its expiry, for a declared
+/// audience or none, optionally denylisted, holder-bound or damaged, and optionally asking
+/// whether an action over tables is covered.
+fn gen_verify(rng: &mut Rng, pools: &Pools) -> Value {
+    let issuer_at = rng.below(ISSUERS.len());
+    let signer = issuer(ISSUERS[issuer_at]);
+    let grants: Vec<Grant> = (0..rng.below(3) + 1)
+        .map(|_| {
+            let mut actions = rng.subset(&[Action::Read, Action::Write, Action::Execute], 50);
+            if actions.is_empty() {
+                actions.push(Action::Read);
+            }
+            let mut tables: Vec<TablePattern> =
+                (0..rng.below(2) + 1).filter_map(|_| TablePattern::parse(rng.pick(pools.patterns)).ok()).collect();
+            if tables.is_empty() {
+                tables.push(TablePattern::parse("research/*").expect("a fixed pattern parses"));
+            }
+            Grant { actions, tables, tenant: None, aggregate: None, templates: None, max_rows: None }
+        })
+        .collect();
+    let lifetime = *rng.pick(pools.lifetimes);
+    let expires = ISSUED_AT + lifetime as i64;
+    let plan = MintPlan {
+        subject: Subject {
+            on_behalf_of: rng.chance(90).then(|| "user://dana@acme.example".to_string()),
+            agent: rng.chance(60).then(|| "agent://research-loop".to_string()),
+            ..Subject::default()
+        },
+        grants,
+        audience: AUDIENCE.to_string(),
+        issuer: None,
+        algorithm: if issuer_at == 2 { SignatureAlgorithm::Es256 } else { SignatureAlgorithm::Ed25519 },
+        issued_at: At::from_unix_secs(ISSUED_AT).expect("a fixed instant"),
+        expires_at: At::from_unix_secs(expires).expect("a fixed instant"),
+        lifetime_secs: lifetime,
+    };
+    let claims = MintClaims { confirmation: rng.chance(10).then(|| "holder-thumbprint".to_string()), epoch: 0 };
+    let mut seed = [0u8; 32];
+    for chunk in seed.chunks_mut(8) {
+        chunk.copy_from_slice(&rng.next().to_le_bytes());
+    }
+    let credential = mint_seeded(&plan, &claims, &signer, &seed).expect("a generated plan mints");
+    let mut keys = Vec::new();
+    for (i, other) in ISSUERS.iter().enumerate() {
+        let pinned = if i == issuer_at { rng.chance(90) } else { rng.chance(30) };
+        if pinned {
+            keys.push(format!("k{i}={}", issuer(other).public_key_text()));
+        }
+    }
+    let at = expires + *rng.pick(pools.expiry_offsets);
+    let mut case = json!({"op": VERIFY, "credential": credential, "keys": keys, "at": at.max(0)});
+    let audience = *rng.pick(pools.audiences);
+    if !audience.is_empty() {
+        case["audience"] = json!(audience);
+    }
+    if rng.chance(15) {
+        let rev = contextful_policy::verify::introspect(&credential).map(|i| i.authority.rev.id).unwrap_or_default();
+        case["denylist"] = json!([rev]);
+    }
+    if rng.chance(50) {
+        let tables: Vec<&str> = (0..rng.below(2) + 1).map(|_| *rng.pick(pools.names)).collect();
+        case["action"] = json!(rng.pick(&ACTIONS));
+        case["tables"] = json!(tables);
+    }
+    if rng.chance(pools.damage_percent) {
+        let mut text = credential.into_bytes();
+        let at = rng.below(text.len());
+        match rng.below(3) {
+            0 => text[at] = if text[at] == b'A' { b'B' } else { b'A' },
+            1 => text.truncate(at),
+            _ => text.insert(at, b'='),
+        }
+        case["credential"] = json!(String::from_utf8_lossy(&text));
+    }
+    case
+}
 
 const MISPLACED_STARS: [&str; 5] = ["a*b", "**", "*x", "re*s*", "research/*/eu"];
 const UNKNOWN_ACTIONS: [&str; 5] = ["READ", "delete", " read", "", "reads"];
@@ -563,7 +693,8 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
 }
 
 fn gen_request(rng: &mut Rng, pools: &Pools) -> Value {
-    match rng.below(14) {
+    match rng.below(16) {
+        14..=15 => gen_verify(rng, pools),
         0..=2 => json!({"op": "covers_name", "pattern": gen_pattern(rng, pools), "name": rng.pick(pools.names)}),
         3..=5 => json!({"op": "covers_pattern", "pattern": gen_pattern(rng, pools), "other": gen_pattern(rng, pools)}),
         10..=11 => {
@@ -688,7 +819,7 @@ fn corrupt(rng: &mut Rng, mut case: Value) -> Value {
                 None => case = json!({"op": "narrow", "parent": [{"actions": ["read"], "tables": ["*"], "max_rows": replacement}], "child": []}),
             }
         }
-        4 => case["op"] = json!(rng.pick(&["cover", "", "NARROW", "covers_names", "ZONE_ADMITS", "session-zone"])),
+        4 => case["op"] = json!(rng.pick(&["cover", "", "NARROW", "covers_names", "ZONE_ADMITS", "session-zone", "VERIFY"])),
         _ => case = rng.pick(&[json!(null), json!([]), json!("narrow"), json!(3), json!({})]).clone(),
     }
     case
@@ -905,7 +1036,9 @@ pub struct Entry {
     /// The WebAssembly build's decision.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wasm: Option<Decision>,
-    pub reference: Decision,
+    /// The reference model's decision; absent on a credential case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<Decision>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -985,6 +1118,8 @@ struct Report {
     builds: &'static str,
     classes: BTreeMap<CaseClass, u64>,
     operations: BTreeMap<String, u64>,
+    /// The native build's verdict on each credential case, counted.
+    credential_verdicts: BTreeMap<String, u64>,
     digest: String,
     elapsed: Duration,
 }
@@ -999,6 +1134,11 @@ impl std::fmt::Display for Report {
         writeln!(f, "builds {}", self.builds)?;
         writeln!(f, "classes {}", classes.join(", "))?;
         writeln!(f, "operations {}", ops.join(", "))?;
+        let verdicts: Vec<String> = CREDENTIAL_VERDICTS
+            .iter()
+            .map(|v| format!("{v} {}", self.credential_verdicts.get(*v).copied().unwrap_or(0)))
+            .collect();
+        writeln!(f, "verify verdicts {}", verdicts.join(", "))?;
         writeln!(f, "compared fields {}", COMPARED_FIELDS.join(", "))?;
         writeln!(f, "cases sha256 {}", self.digest)?;
         writeln!(f, "disagreements 0")?;
@@ -1024,6 +1164,7 @@ impl Harness {
         let mut digest = Sha256::new();
         let mut classes = BTreeMap::new();
         let mut operations = BTreeMap::new();
+        let mut credential_verdicts = BTreeMap::new();
         for _ in 0..cases {
             self.within_budget()?;
             let g = generator.next_case();
@@ -1031,8 +1172,12 @@ impl Harness {
             digest.update(b"\n");
             *classes.entry(g.class).or_insert(0) += 1;
             *operations.entry(g.case.op().to_string()).or_insert(0) += 1;
-            if !self.decide(&g.case)?.agree() {
+            let decisions = self.decide(&g.case)?;
+            if !decisions.agree() {
                 return Err(self.record(seed, g)?);
+            }
+            if g.case.op() == VERIFY {
+                *credential_verdicts.entry(decisions.native.verdict).or_insert(0) += 1;
             }
         }
         Ok(Report {
@@ -1041,6 +1186,7 @@ impl Harness {
             builds: if self.wasm.is_some() { "native, wasm32-unknown-unknown" } else { "native" },
             classes,
             operations,
+            credential_verdicts,
             digest: format!("{:x}", digest.finalize()),
             elapsed: started.elapsed(),
         })
@@ -1088,9 +1234,10 @@ impl Harness {
     }
 
     fn decide(&self, case: &Case) -> Result<Decisions> {
-        let native = contextful_core::decide::decide(&case.text());
+        let native = contextful_policy::decide::decide(&case.text());
         let wasm = self.wasm_decide(case)?;
-        Ok(Decisions { native, wasm, reference: self.reference_decide(case)? })
+        let reference = if case.reaches_reference() { Some(self.reference_decide(case)?) } else { None };
+        Ok(Decisions { native, wasm, reference })
     }
 
     fn disagrees(&self, case: &Case) -> Result<bool> {
@@ -1189,11 +1336,12 @@ impl Harness {
 
     fn drift(&self, case: &Case, d: &Decisions, origin: &str) -> DifferentialError {
         let wasm = d.wasm.as_ref().map_or_else(|| "not built".to_string(), render);
+        let reference = d.reference.as_ref().map_or_else(|| "not consulted on a credential case".to_string(), render);
         DifferentialError::ReferenceModelDrift(format!(
             "the native build, the WebAssembly build and the reference model disagree on {}\n  minimized case  {case}\n  native build    {}\n  wasm build      {wasm}\n  reference       {}\n  origin          {origin}\n  corpus          {}",
             d.differing().join(", "),
             render(&d.native),
-            render(&d.reference),
+            reference,
             self.corpus.display()
         ))
     }

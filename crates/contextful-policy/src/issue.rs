@@ -16,6 +16,7 @@ use contextful_core::ports::SigningPort;
 use contextful_core::AuthorityError;
 use prost::Message;
 use rand::RngCore;
+use sha2::Digest;
 use std::path::Path;
 
 /// The command that writes a seed file, printed wherever an issuer key is missing.
@@ -122,6 +123,10 @@ pub struct MintClaims {
 pub fn authority_block(plan: &MintPlan, claims: &MintClaims) -> AuthorityBlock {
     let mut jti = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut jti);
+    block_with_jti(plan, claims, jti)
+}
+
+fn block_with_jti(plan: &MintPlan, claims: &MintClaims, jti: [u8; 16]) -> AuthorityBlock {
     let jti = hex::encode(jti);
     let subject = plan.subject.clone().normalize();
     AuthorityBlock {
@@ -248,6 +253,33 @@ pub fn sign_through(port: &dyn SigningPort, message: &[u8]) -> Result<Vec<u8>, A
 /// Mint a checked plan as a credential whose authority block `signer` signs. The plan's
 /// scheme must be the port's (`authority.issue.algorithm-mismatch`).
 pub fn mint(plan: &MintPlan, claims: &MintClaims, signer: &dyn SigningPort) -> Result<String, AuthorityError> {
+    check_algorithm(plan, signer)?;
+    let block = authority_block(plan, claims);
+    sign_root(authority_builder(&block)?, signer)
+}
+
+/// Mint as [`mint`] does, with the credential identifier and the library's ephemeral key
+/// derived from `seed`: one seed encodes one credential, byte for byte. Generated cases
+/// that must reproduce from a recorded seed mint through it.
+pub fn mint_seeded(plan: &MintPlan, claims: &MintClaims, signer: &dyn SigningPort, seed: &[u8; 32]) -> Result<String, AuthorityError> {
+    check_algorithm(plan, signer)?;
+    let digest = |label: &[u8]| -> [u8; 32] { sha2::Sha256::new_with_prefix(label).chain_update(seed).finalize().into() };
+    let jti: [u8; 16] = digest(b"jti")[..16].try_into().expect("16 of 32 bytes");
+    let ephemeral = |label: &[u8]| {
+        PrivateKey::from_bytes(&digest(label), Algorithm::Ed25519)
+            .map(|k| KeyPair::from(&k))
+            .map_err(|e| AuthorityError::IssuerKeyUnresolvable(format!("the seed derives no key: {e}")))
+    };
+    let block = block_with_jti(plan, claims, jti);
+    let builder = authority_builder(&block)?;
+    let bytes = builder
+        .build_with_key_pair(&ephemeral(b"root")?, biscuit_auth::datalog::SymbolTable::default(), &ephemeral(b"next")?)
+        .and_then(|token| token.to_vec())
+        .map_err(|e| AuthorityError::IssuerKeyUnresolvable(format!("the credential encodes to nothing: {e}")))?;
+    resign_root(&bytes, signer)
+}
+
+fn check_algorithm(plan: &MintPlan, signer: &dyn SigningPort) -> Result<(), AuthorityError> {
     let pinned = signer.algorithm();
     if plan.algorithm != pinned {
         return Err(AuthorityError::SignatureAlgorithmMismatch(format!(
@@ -255,12 +287,15 @@ pub fn mint(plan: &MintPlan, claims: &MintClaims, signer: &dyn SigningPort) -> R
             plan.algorithm
         )));
     }
-    let block = authority_block(plan, claims);
+    Ok(())
+}
+
+fn authority_builder(block: &AuthorityBlock) -> Result<BiscuitBuilder, AuthorityError> {
     let mut builder = BiscuitBuilder::new();
-    for f in authority_facts(&block)? {
+    for f in authority_facts(block)? {
         builder = builder.fact(f).map_err(|e| AuthorityError::ProfileElementUnrecognized(e.to_string()))?;
     }
-    sign_root(builder, signer)
+    Ok(builder)
 }
 
 /// Encode `builder` as a credential whose authority block `signer` signs. It checks
@@ -277,7 +312,13 @@ pub fn sign_root(builder: BiscuitBuilder, signer: &dyn SigningPort) -> Result<St
         .build(&KeyPair::new_with_algorithm(Algorithm::Ed25519))
         .and_then(|token| token.to_vec())
         .map_err(|e| unsigned(&e))?;
-    let mut proto = schema::Biscuit::decode(bytes.as_slice()).map_err(|e| unsigned(&e))?;
+    resign_root(&bytes, signer)
+}
+
+/// Replace the encoded credential's authority-block signature with `signer`'s.
+fn resign_root(bytes: &[u8], signer: &dyn SigningPort) -> Result<String, AuthorityError> {
+    let unsigned = |e: &dyn std::fmt::Display| AuthorityError::IssuerKeyUnresolvable(format!("the credential encodes to nothing: {e}"));
+    let mut proto = schema::Biscuit::decode(bytes).map_err(|e| unsigned(&e))?;
     let payload = authority_signature_payload(&proto.authority)?;
     proto.authority.signature = sign_through(signer, &payload)?;
     Ok(TOKEN_BASE64.encode(proto.encode_to_vec()))

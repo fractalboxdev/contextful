@@ -209,6 +209,7 @@ pub enum LocalTransport {
 impl LocalTransport {
     /// The accepted connection `stream`, numbered `connection` by the checkpoint, with the
     /// peer uid the kernel reports: `SO_PEERCRED` on Linux, `getpeereid` elsewhere.
+    #[cfg(unix)]
     pub fn socket(connection: u64, stream: &std::os::unix::net::UnixStream) -> LocalTransport {
         LocalTransport::Socket { connection, peer_uid: peer_uid(stream) }
     }
@@ -226,7 +227,7 @@ fn peer_uid(stream: &std::os::unix::net::UnixStream) -> Option<u32> {
     (rc == 0 && len as usize == std::mem::size_of::<libc::ucred>()).then_some(cred.uid)
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(unix, not(target_os = "linux")))]
 fn peer_uid(stream: &std::os::unix::net::UnixStream) -> Option<u32> {
     use std::os::fd::AsRawFd;
     let (mut uid, mut gid) = (0 as libc::uid_t, 0 as libc::gid_t);
@@ -237,6 +238,7 @@ fn peer_uid(stream: &std::os::unix::net::UnixStream) -> Option<u32> {
 
 /// The checkpoint process's effective uid, the one a socket peer's must equal
 /// (`authority.verify.local-peer-fallback`).
+#[cfg(unix)]
 pub fn checkpoint_uid() -> u32 {
     // SAFETY: `geteuid` reads process state and cannot fail.
     unsafe { libc::geteuid() }
@@ -300,6 +302,16 @@ pub fn verify_local<E: From<AuthorityError>>(
     Ok(LocalAdmission { authority, transport })
 }
 
+/// A target without Unix sockets accepts no socket peer.
+#[cfg(not(unix))]
+fn peer_fallback(transport: LocalTransport) -> Result<(), AuthorityError> {
+    match transport {
+        LocalTransport::InheritedPipe => Ok(()),
+        LocalTransport::Socket { .. } => Err(AuthorityError::TransportPeerMismatch("this target reports no socket peer uid".into())),
+    }
+}
+
+#[cfg(unix)]
 fn peer_fallback(transport: LocalTransport) -> Result<(), AuthorityError> {
     match transport {
         LocalTransport::InheritedPipe => Ok(()),

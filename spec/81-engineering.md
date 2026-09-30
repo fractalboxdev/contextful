@@ -61,8 +61,6 @@ One home per capability, the one enforcement decision module, adapters, mirror a
 
 unsettled: Does a derived artifact prove currency by a schema-hash comparison, by regeneration and diff, or by a build-time export? owner: build affects: assurance.structure-tree
 
-unsettled: Does credential signature verification join the decision module, given the credential format library's randomness dependency refuses `wasm32-unknown-unknown` without a JavaScript host? owner: build affects: assurance.structure-tree
-
 ## automate
 
 Typed subcommands over compiled binaries, and the boundary shell keeps.

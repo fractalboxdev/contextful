@@ -84,14 +84,14 @@ fn wasm_module() -> Option<PathBuf> {
                 .join("decision-wasm");
             let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
             let out = Command::new(cargo)
-                .args(["rustc", "-q", "-p", "contextful-core", "--lib", "--release", "--target", "wasm32-unknown-unknown"])
+                .args(["rustc", "-q", "-p", "contextful-policy", "--lib", "--release", "--target", "wasm32-unknown-unknown"])
                 .args(["--crate-type", "cdylib", "--target-dir"])
                 .arg(&target_dir)
                 .current_dir(repo())
                 .output()
                 .unwrap();
             assert!(out.status.success(), "building the WebAssembly module failed:\n{}", String::from_utf8_lossy(&out.stderr));
-            Some(target_dir.join("wasm32-unknown-unknown/release/contextful_core.wasm"))
+            Some(target_dir.join("wasm32-unknown-unknown/release/contextful_policy.wasm"))
         })
         .clone()
 }
@@ -338,8 +338,8 @@ fn the_reference_binary_reads_one_case_and_prints_one_decision() {
     assert_eq!(decide(&exe, &[], &json!([1]))["error"], "CaseMalformed");
 }
 
-/// The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares the three decisions field by field.
-// spec: assurance.differential-test.harness@7cacc6e8
+/// The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
+// spec: assurance.differential-test.harness@0f6edc10
 #[test]
 fn the_engine_and_the_lean_reference_agree_over_generated_cases() {
     let _ = lean_or_skip!();
@@ -404,7 +404,12 @@ fn corpus_cases_replay_before_generated_cases() {
     let report = passed(&s.run(&s.logging(&log), &["--seed", "11", "--cases", "10"]));
     assert_eq!(line_value(&report, "replayed"), "3");
     let seen = read_jsonl(&log);
-    assert!(seen.len() >= 13, "every replayed and generated case reaches the reference");
+    // Every replayed case and every generated case but a credential case reaches the reference.
+    let credential: usize = line_value(&report, "operations")
+        .split(", ")
+        .find_map(|part| part.strip_prefix("verify "))
+        .map_or(0, |n| n.parse().unwrap());
+    assert_eq!(seen.len(), 13 - credential, "every replayed and generated case reaches the reference");
     for (i, entry) in entries.iter().enumerate() {
         assert_eq!(seen[i], entry["case"], "case {i} reaching the reference is corpus entry {i}");
     }
@@ -509,15 +514,16 @@ fn a_disagreement_the_corpus_cannot_hold_is_discarded_loudly() {
 #[test]
 fn a_run_past_its_budget_stops() {
     let s = Scratch::new(wasm_args_or_skip!());
-    // Each reference call records itself, then takes at least 1 s.
+    // Each reference call records itself, then takes at least 11 s.
     let calls = s.path("calls");
-    let slow = s.script("slow.sh", &format!("echo call >> '{}'\nsleep 1\nexec '{BIN}' formal differential --decide", calls.display()));
+    let slow = s.script("slow.sh", &format!("echo call >> '{}'\nsleep 11\nexec '{BIN}' formal differential --decide", calls.display()));
     s.write_corpus(&[agreeing_entry(0), agreeing_entry(1), agreeing_entry(2)]);
-    let out = s.run(&slow, &["--seed", "1", "--cases", "50", "--budget-secs", "2"]);
+    let out = s.run(&slow, &["--seed", "1", "--cases", "50", "--budget-secs", "30"]);
     assert!(!out.status.success(), "a run past its budget fails");
     assert!(stderr(&out).contains("budget"), "{}", stderr(&out));
-    // Against a 2 s budget and calls of at least 1 s, the harness issues at most 3 of the
-    // 53 calls the run holds, however slowly the machine serves them.
+    // Against a 30 s budget, loading the builds included, and calls of at least 11 s, the
+    // harness issues at most 3 of the 53 calls the run holds, however slowly the machine
+    // serves them.
     let made = std::fs::read_to_string(&calls).unwrap_or_default().lines().count();
     assert!((1..=3).contains(&made), "the run stops at its budget after {made} reference calls");
     let help = Command::new(BIN).args(["formal", "differential", "--help"]).output().unwrap();
@@ -671,8 +677,8 @@ fn malformed_bytes_reach_every_decider_and_each_decides_them_malformed() {
     }
 }
 
-/// A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, or session-zone resolution; a placement decision also carries the zone it resolved.
-// spec: assurance.differential-test.decision-cases@c2db0d1b
+/// A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, session-zone resolution, or credential admission; a placement decision also carries the zone it resolved.
+// spec: assurance.differential-test.decision-cases@5bf84625
 #[test]
 fn placement_cases_resolve_zones_in_the_reference_and_the_native_build_alike() {
     let exe = lean_or_skip!();
@@ -699,4 +705,31 @@ fn placement_cases_resolve_zones_in_the_reference_and_the_native_build_alike() {
         assert_eq!(decide(&exe, &[], &case), want, "reference on {case}");
         assert_eq!(engine(&case), want, "native build on {case}");
     }
+}
+
+/// A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.
+// spec: assurance.differential-test.credential-cases@ca93477e
+#[test]
+fn credential_cases_run_through_both_builds_and_never_reach_the_reference() {
+    let exe = lean_or_skip!();
+    let s = Scratch::new(wasm_args_or_skip!());
+    let log = s.path("seen.jsonl");
+    let logging = s.script("lean-logging.sh", &format!("tee -a '{}' | '{}'", log.display(), exe.display()));
+    let report = passed(&s.run(&logging, &["--seed", "8", "--cases", "200"]));
+    assert_eq!(line_value(&report, "disagreements"), "0");
+    let operations = line_value(&report, "operations");
+    assert!(operations.contains("verify"), "no credential case ran: {operations}");
+    let verdicts = line_value(&report, "verify verdicts");
+    for verdict in ["admitted", "not_covered", "refused"] {
+        let count: u64 = verdicts
+            .split(", ")
+            .find_map(|part| part.strip_prefix(&format!("{verdict} ")))
+            .unwrap_or_else(|| panic!("no `{verdict}` count: {verdicts}"))
+            .parse()
+            .unwrap();
+        assert!(count > 0, "no credential case decided `{verdict}`: {verdicts}");
+    }
+    let seen = read_jsonl(&log);
+    assert!(!seen.is_empty(), "the reference decided nothing");
+    assert!(seen.iter().all(|case| case["op"] != "verify"), "a credential case reached the reference");
 }

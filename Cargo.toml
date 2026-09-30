@@ -28,3 +28,18 @@ debug = false
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# The component host compiles modules in test builds too; an unoptimized code generator
+# takes tens of seconds over the decision module's 2.7 MB WebAssembly build.
+[profile.dev.package.cranelift-codegen]
+opt-level = 3
+[profile.dev.package.cranelift-frontend]
+opt-level = 3
+[profile.dev.package.cranelift-entity]
+opt-level = 3
+[profile.dev.package.cranelift-bforest]
+opt-level = 3
+[profile.dev.package.regalloc2]
+opt-level = 3
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 3

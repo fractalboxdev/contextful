@@ -1,12 +1,11 @@
-//! The decision module's case vocabulary: one case text in, one decision out, over grant
+//! The decision module's domain cases: one case text in, one decision out, over grant
 //! coverage, grant narrowing, zone admission and session-zone resolution
 //! (`assurance.structure-tree.decision-module`).
 //!
 //! A case is UTF-8 JSON. It decodes through the domain parsers and reaches the domain
 //! functions; a case that does not decode is `CaseMalformed`, and a parser's refusal is
-//! that refusal. The same source builds native and, for `wasm32-unknown-unknown`, as a
-//! module exporting [`abi`]'s three functions, which a gateway and the differential
-//! harness call.
+//! that refusal. `contextful_policy::decide` adds the credential case and builds the
+//! module, native and for `wasm32-unknown-unknown`.
 
 use crate::attenuate::{attenuate, Authority, Proposal};
 use crate::enforce::EnforceError;
@@ -35,7 +34,8 @@ pub struct Decision {
 }
 
 impl Decision {
-    fn verdict(v: &str) -> Decision {
+    /// A decision carrying `v` alone.
+    pub fn verdict(v: &str) -> Decision {
         Decision { verdict: v.to_string(), error: None, dimension: None, zone: None }
     }
 
@@ -113,7 +113,9 @@ pub fn decide_value(case: &Value) -> Decision {
     }
 }
 
-fn refusal(e: &AuthorityError) -> Decision {
+/// The refusal an [`AuthorityError`] decides: its identifier, and the widened dimension
+/// where one applies.
+pub fn refusal(e: &AuthorityError) -> Decision {
     let id = identifier(e);
     let dimension = match e {
         // The widened dimension heads the message (`authority.attenuate.widens`).
@@ -222,41 +224,4 @@ fn grant(v: &Value) -> Decoded<Grant> {
     let actions = actions.iter().map(|a| Action::parse(a)).collect::<Result<Vec<_>, _>>()?;
     let tables = tables.iter().map(|t| TablePattern::parse(t)).collect::<Result<Vec<_>, _>>()?;
     Ok(Grant { actions, tables, tenant, aggregate, templates, max_rows })
-}
-
-/// The module's exports on `wasm32-unknown-unknown`. The host copies a case into memory
-/// from `contextful_alloc(len)`, calls `contextful_decide(ptr, len)`, which returns the
-/// decision JSON's address in the high 32 bits and its length in the low 32, reads it, and
-/// hands both regions back through `contextful_free(ptr, len)`.
-#[cfg(target_arch = "wasm32")]
-pub mod abi {
-    /// A region of `len` bytes the host fills with a case.
-    #[no_mangle]
-    pub extern "C" fn contextful_alloc(len: u32) -> u32 {
-        let region = vec![0u8; len as usize].into_boxed_slice();
-        Box::into_raw(region) as *mut u8 as u32
-    }
-
-    /// Release a region this module handed out, input or output.
-    ///
-    /// # Safety
-    /// `ptr` and `len` are one region `contextful_alloc` or `contextful_decide` returned.
-    #[no_mangle]
-    pub unsafe extern "C" fn contextful_free(ptr: u32, len: u32) {
-        let region = std::ptr::slice_from_raw_parts_mut(ptr as *mut u8, len as usize);
-        drop(Box::from_raw(region));
-    }
-
-    /// Decide the case at `ptr..ptr+len`.
-    ///
-    /// # Safety
-    /// `ptr` and `len` are a region `contextful_alloc` returned, filled by the host.
-    #[no_mangle]
-    pub unsafe extern "C" fn contextful_decide(ptr: u32, len: u32) -> u64 {
-        let case = std::slice::from_raw_parts(ptr as *const u8, len as usize);
-        let out = serde_json::to_vec(&super::decide(case)).unwrap_or_default().into_boxed_slice();
-        let len = out.len() as u64;
-        let at = Box::into_raw(out) as *mut u8 as u64;
-        (at << 32) | len
-    }
 }

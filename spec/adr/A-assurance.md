@@ -158,17 +158,16 @@ Consequences: a stage exceeding 30 min is a gate fact, not a flake to rerun. The
 
 **Status:** accepted
 
-Context: a gateway admits and places requests ahead of the engine; one verdict computed from two sources drifts. The grant and zone types live in `contextful-core`, which depends on no workspace package. Criteria: one source for every verdict the gateway and the engine share decided it; the domain crate's dependency direction; the gateway needs admission and placement, never SQL.
+Context: a gateway verifies a credential, then admits and places the request ahead of the engine; one verdict from two sources drifts. The credential adapter lives in `contextful-policy`. Criteria: one source for every verdict the gateway and the engine share decided it; the gateway needs verification, admission and placement, never SQL; the module runs under a host with no JavaScript.
 
-Decision: `assurance.structure-tree.decision-module` holds grant coverage, grant narrowing, zone admission and session-zone resolution in the domain crate, behind one case vocabulary, built native and as a `wasm32-unknown-unknown` `cdylib` exporting three functions. `assurance.differential-test` runs every case through both builds and the reference model.
+Decision: `assurance.structure-tree.decision-module` is `contextful_policy::decide`. A `verify` case admits one credential as a network checkpoint does; coverage, narrowing, zone admission and session-zone resolution delegate to the domain crate. It builds native and as a `wasm32-unknown-unknown` `cdylib` exporting three functions and importing the credential library's evaluator clock, which the host answers. `assurance.differential-test` compares both builds on every case, and the reference model on all but credential cases.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Decision functions in the domain crate, built with `std` for `wasm32-unknown-unknown` *(chosen)* | — | The module links `std`; each differential run compiles it once. |
-| A `no_std` package beneath the domain crate | Dependency direction | The domain crate depends on a workspace package holding its own types. |
-| Credential signature verification in the module too | Build target | The credential format library's randomness dependency refuses `wasm32-unknown-unknown` without a JavaScript host. |
-| Query rewriting in the module too | Gateway need | The gateway plans no SQL; the rewriter carries the SQL engine's types. |
+| The policy package, the credential library's clock as the one import *(chosen)* | — | A 2.7 MB module each differential run compiles once. |
+| The domain crate alone, verification outside the module | Gateway need | The gateway verifies signatures from a second source. |
+| The credential library's JavaScript bindings | Host | The differential host and a native embedder run no JavaScript. |
+| Query rewriting in the module too | Gateway need | The rewriter carries the SQL engine's types. |
 | A gateway reimplementation in TypeScript | One home | Two sources for one verdict. |
 
-Consequences: a divergence between builds, such as a float reader differing by feature, surfaces as a disagreement. The accepted cost: the gate provisions the `wasm32-unknown-unknown` target, and the gateway verifies credential signatures outside the module.
-Revisit: the credential format library builds for `wasm32-unknown-unknown` without a JavaScript host.
+Consequences: a divergence between builds surfaces as a disagreement. The accepted cost: the host links imports by the binding generator's names, which a credential-library release may rename, and no reference model checks a credential case.

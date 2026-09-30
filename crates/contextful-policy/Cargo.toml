@@ -36,8 +36,16 @@ jsonwebtoken = { version = "11", features = ["rust_crypto"], optional = true }
 hex = "0.4"
 prost = "0.10"
 rand = "0.8"
+
 # Local admission: the kernel-reported uid of a Unix socket peer.
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# The decision module's `wasm32-unknown-unknown` build: the credential library reads its
+# evaluator clock through one host import, and verification draws no randomness.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+biscuit-auth = { version = "6", features = ["wasm"] }
+getrandom = { version = "0.2", features = ["custom"] }
 
 [features]
 # The exchange suite runs under `--features exchange`; the gate's features stage tests
