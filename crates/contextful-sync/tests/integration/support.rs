@@ -38,7 +38,7 @@ pub fn node_in(project: &str, id: &str, bucket: Arc<dyn ObjectStore>, extra_conf
     std::fs::write(root.join("config.toml"), format!("[node]\nid = \"{id}\"\n{extra_config}")).unwrap();
     let store = Store::open(dir.path(), project).unwrap();
     let config = SyncConfig { endpoint: "file://bucket".into(), bucket: "context-team".into(), prefix: Some("team".into()), coordination: Some("cas".into()), ..SyncConfig::default() };
-    let syncer = Syncer { store, bucket, config, prefix: "team".into(), project: project.into(), node: id.into() };
+    let syncer = Syncer { store, bucket, config, prefix: "team".into(), project: project.into(), node: id.into(), residency: None };
     Node { _dir: dir, syncer }
 }
 

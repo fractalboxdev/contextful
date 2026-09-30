@@ -92,3 +92,56 @@ pub fn remove_file(path: &Path) -> Result<(), Failure> {
         Err(e) => Err(storage(path, e)),
     }
 }
+
+/// The kind of filesystem holding `path`, or its nearest existing ancestor: the mount's type
+/// name on macOS and the BSDs, the name of a known filesystem magic on Linux, `None` where
+/// neither reads.
+pub fn filesystem_kind(path: &Path) -> Option<String> {
+    let mut probe = path;
+    while !probe.exists() {
+        probe = probe.parent()?;
+    }
+    fs_kind(probe)
+}
+
+#[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd"))]
+fn fs_kind(path: &Path) -> Option<String> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    // SAFETY: an all-zero statfs is a valid value of the plain C struct.
+    let mut st: libc::statfs = unsafe { std::mem::zeroed() };
+    // SAFETY: `c` is a NUL-terminated path and `st` a writable statfs the call fills.
+    if unsafe { libc::statfs(c.as_ptr(), &mut st) } != 0 {
+        return None;
+    }
+    let name: Vec<u8> = st.f_fstypename.iter().take_while(|b| **b != 0).map(|b| *b as u8).collect();
+    String::from_utf8(name).ok()
+}
+
+#[cfg(target_os = "linux")]
+fn fs_kind(path: &Path) -> Option<String> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    // SAFETY: an all-zero statfs is a valid value of the plain C struct.
+    let mut st: libc::statfs = unsafe { std::mem::zeroed() };
+    // SAFETY: `c` is a NUL-terminated path and `st` a writable statfs the call fills.
+    if unsafe { libc::statfs(c.as_ptr(), &mut st) } != 0 {
+        return None;
+    }
+    #[allow(clippy::unnecessary_cast)]
+    let name = match st.f_type as i64 {
+        0x6969 => "nfs",
+        0x517B => "smbfs",
+        0xFF53_4D42 => "cifs",
+        0xFE53_4D42 => "smb2",
+        0x0102_1997 => "9p",
+        0x6573_5546 => "fuse",
+        _ => "local",
+    };
+    Some(name.to_string())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd", target_os = "linux")))]
+fn fs_kind(_path: &Path) -> Option<String> {
+    None
+}

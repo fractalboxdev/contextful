@@ -279,3 +279,32 @@ fn a_pipeline_file_keeps_a_replicate_off_table_off_the_pull() {
     ok(&cf(replica.path(), &["sync", "pull", "--project", "research"], &[]));
     refused(&cf(replica.path(), &["context", "files", "filings", "--project", "research"], &[]), "StoreUnknownTable");
 }
+
+/// A push records the pushing site's residency allow-set in the bucket manifest; a push finding a set another site
+/// recorded that differs from its own raises `ResidencySitesDiverge` and commits nothing.
+// spec: surface.reside.site-regions@64018045
+#[test]
+fn two_sites_declaring_different_residency_diverge_at_push() {
+    let bucket = tempfile::tempdir().unwrap();
+    let site = |node: &str, site: &str, residency: &str| {
+        let dir = project(node, &file_sync(bucket.path(), ""));
+        std::fs::write(dir.path().join("contextful.toml"), format!("site_id = \"{site}\"\n{residency}\n[[pipeline.tables]]\nname = \"filings\"\n")).unwrap();
+        dir
+    };
+    let eu = "\n[residency]\nregions = [\"eu-west-1\"]\n";
+    let a = site("ingest-a", "site-a", eu);
+    ok(&cf(a.path(), &["sync", "push", "--project", "research"], &[]));
+    let manifest = || -> Value { serde_json::from_str(&std::fs::read_to_string(bucket.path().join("context-team/team/manifest.json")).unwrap()).unwrap() };
+    assert_eq!(manifest()["residency"], json!({ "site_id": "site-a", "regions": ["eu-west-1"] }));
+
+    // The same set from another site pushes.
+    ok(&cf(site("ingest-b", "site-b", eu).path(), &["sync", "push", "--project", "research"], &[]));
+    // A differing set, or none, refuses and leaves the record as it stands.
+    for (node, residency) in [("ingest-c", "\n[residency]\nregions = [\"us-east-1\"]\n"), ("ingest-d", "")] {
+        let out = cf(site(node, "site-c", residency).path(), &["sync", "push", "--project", "research"], &[]);
+        refused(&out, "ResidencySitesDiverge");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains("site-c") && err.contains("eu-west-1"), "{err}");
+    }
+    assert_eq!(manifest()["residency"]["regions"], json!(["eu-west-1"]));
+}

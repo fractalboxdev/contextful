@@ -479,7 +479,7 @@ fn plan_diffs_apply_converges_and_serve_fires() {
     assert!(!dir.path().join(".contextful/control").exists(), "plan writes nothing");
     assert!(ok(&cf(dir.path(), &["pipeline", "plan", "--project", "research"])).contains("+ orders"));
 
-    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
     let plan = json(&cf(dir.path(), &["pipeline", "plan", "--json", "--project", "research"]));
     assert_eq!((plan["applied"].clone(), plan["pipelines"][0]["action"].clone()), (serde_json::json!(1), serde_json::json!("unchanged")));
 
@@ -511,8 +511,8 @@ fn plan_diffs_apply_converges_and_serve_fires() {
 fn apply_fires_nothing_and_a_second_apply_is_a_no_op() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
     let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", &vendor.url("/v1/orders"), "every 1h")));
-    let first = ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
-    assert!(first.contains("applied v1"), "{first}");
+    let first = ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    assert!(first.contains("imported v1"), "{first}");
     assert!(dir.path().join(CONTROL).join("manifest@v1.toml").exists());
     assert!(vendor.targets().is_empty(), "apply reached no source");
     assert!(history(dir.path()).is_empty(), "apply journaled no run");
@@ -530,19 +530,28 @@ fn apply_fires_nothing_and_a_second_apply_is_a_no_op() {
 // spec: surface.apply.validation@17970d8f
 #[test]
 fn an_invalid_document_claims_no_version() {
-    let dir = project(&format!(
-        "site_id = \"site-a\"\n\n{}\n{}",
-        scheduled("orders", "https://api.vendor.example/v1", "every 1h"),
-        pipeline("broken", "https://api.vendor.example/v1", "destination = { name = \"warehouse\" }", "tables = [\"a\"]")
-    ));
-    let out = cf(dir.path(), &["pipeline", "apply", "--project", "research"]);
+    let broken = pipeline("broken", "https://api.vendor.example/v1", "destination = { name = \"warehouse\" }", "tables = [\"a\"]");
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}\n{broken}", scheduled("orders", "https://api.vendor.example/v1", "every 1h")));
+    // The import validates every declared pipeline and claims nothing past a refusal.
+    let out = cf(dir.path(), &["pipeline", "import", "--project", "research"]);
     assert!(!out.status.success());
     let err = stderr(&out);
     assert!(err.contains("ApplyValidationRefused") && err.contains("broken") && err.contains("PipelineUnknownDestination"), "{err}");
     assert!(!dir.path().join(CONTROL).exists(), "no version claimed");
+    std::fs::write(dir.path().join("contextful.toml"), format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "every 1h"))).unwrap();
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        format!("site_id = \"site-a\"\n\n{}\n{broken}", scheduled("orders", "https://api.vendor.example/v1", "every 2h")),
+    )
+    .unwrap();
+    let out = cf(dir.path(), &["pipeline", "apply", "--project", "research"]);
+    let err = stderr(&out);
+    assert!(!out.status.success() && err.contains("ApplyValidationRefused") && err.contains("broken"), "{err}");
+    assert!(!dir.path().join(CONTROL).join("manifest@v2.toml").exists(), "no version claimed");
     // Applying the valid pipeline alone validates only the one it converges.
     ok(&cf(dir.path(), &["pipeline", "apply", "orders", "--project", "research"]));
-    assert!(dir.path().join(CONTROL).join("manifest@v1.toml").exists());
+    assert!(dir.path().join(CONTROL).join("manifest@v2.toml").exists());
 }
 
 /// A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory,
@@ -552,7 +561,7 @@ fn an_invalid_document_claims_no_version() {
 #[test]
 fn apply_claims_a_version_in_the_local_snapshot_directory() {
     let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "0 3 * * *")));
-    assert!(ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"])).contains("applied v1"));
+    assert!(ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"])).contains("imported v1"));
     let claimed = std::fs::read_to_string(dir.path().join(CONTROL).join("manifest@v1.toml")).unwrap();
     assert!(claimed.contains("[[pipeline]]") && claimed.contains("id = \"orders\"") && claimed.contains("0 3 * * *"), "{claimed}");
     // `[control] snapshot_dir` moves the directory.
@@ -560,7 +569,7 @@ fn apply_claims_a_version_in_the_local_snapshot_directory() {
         "site_id = \"site-a\"\n\n[control]\nsnapshot_dir = \"ops/control\"\n\n{}",
         scheduled("orders", "https://api.vendor.example/v1", "0 3 * * *")
     ));
-    assert!(ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"])).contains("applied v1"));
+    assert!(ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"])).contains("imported v1"));
     assert_eq!(std::fs::read_to_string(dir.path().join("ops/control/manifest@current")).unwrap(), "1\n");
     assert!(!dir.path().join(CONTROL).exists());
 }
@@ -577,7 +586,7 @@ fn a_cycle_fires_what_is_due_once_and_reports_the_next_instant() {
         scheduled("bad", &vendor.url("/v1/bad"), "every 1h"),
         scheduled("nightly", &vendor.url("/v1/nightly"), "0 3 * * *"),
     ));
-    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
     // A pool of one: the first due unit by id fires, the others stay pending.
     let a = serve_cycle(dir.path(), "2030-01-01T00:00:00Z");
     assert_eq!(a["fired"], serde_json::json!([]));
@@ -622,7 +631,7 @@ fn an_unreadable_schedule_holds_back_its_entry_alone() {
         scheduled("orders", &vendor.url("/v1/orders"), "every 1h"),
         scheduled("odd", &vendor.url("/v1/odd"), "0 0 L * *"),
     ));
-    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
     let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
     let answer: serde_json::Value = serde_json::from_str(&ok(&out)).unwrap();
     assert_eq!(answer["fired"], serde_json::json!(["orders"]));
@@ -682,7 +691,7 @@ fn a_cycle_with_a_failed_fire_exits_non_zero() {
 #[test]
 fn a_malformed_pointer_refuses_the_cycle() {
     let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "every 1h")));
-    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
     std::fs::write(dir.path().join(CONTROL).join("manifest@current"), "1; drop").unwrap();
     let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
     assert!(!out.status.success());
@@ -697,8 +706,13 @@ struct Daemon {
 
 impl Daemon {
     fn start(dir: &Path) -> Daemon {
+        Daemon::start_with(dir, &[])
+    }
+
+    fn start_with(dir: &Path, extra: &[&str]) -> Daemon {
         let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
             .args(["pipeline", "serve", "--project", "research"])
+            .args(extra)
             .current_dir(dir)
             .env_remove("CONTEXTFUL_NODE_ID")
             .env_remove("CONTEXTFUL_SECRETS_BACKEND")
@@ -769,8 +783,8 @@ fn serve_reconciles_continuously_and_rearms_each_applied_version() {
     let plan = json(&cf(dir.path(), &["pipeline", "plan", "--json", "--project", "research"]));
     assert_eq!((plan["applied"].clone(), plan["pipelines"][0]["action"].clone()), (serde_json::Value::Null, serde_json::json!("add")));
     assert!(!dir.path().join(".contextful/control").exists(), "plan writes nothing");
-    assert!(ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"])).contains("applied v1"));
-    assert!(vendor.targets().is_empty(), "apply fires nothing");
+    assert!(ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"])).contains("imported v1"));
+    assert!(vendor.targets().is_empty(), "import fires nothing");
     let daemon = Daemon::start(dir.path());
     let armed = daemon.wait_for("armed v1: 1 scheduled pipeline(s)", 0);
     // No run history: the entry fires on boot, then again one interval on.
@@ -806,7 +820,7 @@ fn serve_cycle_live(dir: &Path) -> serde_json::Value {
 fn a_cycle_under_a_running_daemon_arms_nothing_and_names_the_holder() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
     let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", &vendor.url("/v1/orders"), "every 1h")));
-    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
     let mut daemon = Daemon::start(dir.path());
     daemon.wait_for("fire orders: done", 0);
 
@@ -876,7 +890,7 @@ fn a_loopback_control_url_serves_the_applied_snapshot() {
     let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
     assert!(!out.status.success() && stderr(&out).contains("CycleControlSourceUnresolved"), "{}", stderr(&out));
 
-    ok(&cf(plane.path(), &["pipeline", "apply", "--project", "research"]));
+    ok(&cf(plane.path(), &["pipeline", "import", "--project", "research"]));
     let plan = json(&cf(dir.path(), &["pipeline", "plan", "--json", "--project", "research"]));
     assert_eq!((plan["applied"].clone(), plan["pipelines"][0]["action"].clone()), (serde_json::json!(1), serde_json::json!("change")));
     let answer = serve_cycle(dir.path(), "2030-01-01T00:00:00Z");
@@ -932,4 +946,274 @@ fn the_github_recipe_lands_one_row_per_key_across_polls() {
     assert_eq!(per_sha, serde_json::json!([["553c207", "1"], ["7629413", "1"], ["7fd1a60", "1"]]), "one row per sha");
     let per_issue = counts("SELECT number, count(*) FROM \"github_issues_octocat_hello_world\" GROUP BY number ORDER BY number");
     assert_eq!(per_issue, serde_json::json!([["7", "1"], ["12", "1"]]), "one row per issue");
+}
+
+/// `POST` to `url` on a loopback address, answering the status and the JSON body.
+fn post(url: &str) -> (u16, serde_json::Value) {
+    let rest = url.strip_prefix("http://").unwrap();
+    let (addr, path) = rest.split_once('/').unwrap();
+    let mut stream = std::net::TcpStream::connect(addr).unwrap();
+    write!(stream, "POST /{path} HTTP/1.1\r\nHost: {addr}\r\nContent-Length: 0\r\n\r\n").unwrap();
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut stream, &mut text).unwrap();
+    let status = text.split_whitespace().nth(1).unwrap().parse().unwrap();
+    let body = text.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or_default();
+    (status, serde_json::from_str(body).unwrap_or(serde_json::Value::Null))
+}
+
+/// A daemon under the external trigger, and the wake URL it printed.
+fn external(dir: &Path) -> (Daemon, String) {
+    let daemon = Daemon::start_with(dir, &["--http", "127.0.0.1:0"]);
+    let at = daemon.wait_for("wake on ", 0);
+    let url = daemon.lines()[at].split("wake on ").nth(1).unwrap().trim().to_string();
+    (daemon, url)
+}
+
+/// An unrecognized trigger value raises `TriggerAdapterUnknown` at startup and downgrades onto no adapter.
+// spec: surface.arm.unknown-trigger@2601faf6
+#[test]
+fn an_unknown_trigger_arms_nothing() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!("site_id = \"site-a\"\n\n[control]\ntrigger = \"externl\"\n\n{}", scheduled("orders", &vendor.url("/v1/orders"), "every 1h")));
+    for args in [&["pipeline", "serve", "--project", "research"][..], &["pipeline", "serve", "--project", "research", "--http", "127.0.0.1:0"][..]] {
+        let out = cf(dir.path(), args);
+        let err = stderr(&out);
+        assert!(!out.status.success() && err.contains("TriggerAdapterUnknown") && err.contains("externl"), "{err}");
+        assert!(!err.contains("armed v") && !err.contains("wake on"), "{err}");
+    }
+    assert!(vendor.targets().is_empty(), "no adapter fired anything");
+}
+
+/// `external` selected on a deployment serving no HTTP face raises `TriggerFaceMissing` at startup.
+// spec: surface.arm.trigger-face-missing@d3a5252e
+#[test]
+fn the_external_trigger_without_an_http_face_refuses_to_start() {
+    let dir = project(&format!("site_id = \"site-a\"\n\n[control]\ntrigger = \"external\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "every 1h")));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    let out = cf(dir.path(), &["pipeline", "serve", "--project", "research"]);
+    let err = stderr(&out);
+    assert!(!out.status.success() && err.contains("TriggerFaceMissing") && err.contains("--http"), "{err}");
+}
+
+/// `[control] trigger` selects `in-process`, the default, or `external`, under which `pipeline serve --http` answers
+/// `POST /wake` and runs no tick of its own.
+// spec: surface.arm.trigger-select@31728b75
+#[test]
+fn the_external_trigger_answers_wakes_and_runs_no_tick() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!("site_id = \"site-a\"\n\n[control]\ntrigger = \"external\"\n\n{}", scheduled("orders", &vendor.url("/v1/orders"), "every 2s")));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    let (daemon, url) = external(dir.path());
+    assert!(url.ends_with("/wake"), "{url}");
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    assert!(vendor.targets().is_empty(), "no tick fired a due entry between wakes");
+    let (status, answer) = post(&url);
+    assert_eq!((status, answer["fired"].clone()), (200, serde_json::json!(["orders"])), "{answer}");
+    let (status, _) = post(&url.replace("/wake", "/elsewhere"));
+    assert_eq!(status, 404);
+    daemon.wait_for("armed v1: 1 scheduled pipeline(s)", 0);
+    // In-process is the default, and it serves no wake route.
+    let plain = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "every 1h")));
+    let out = cf(plain.path(), &["pipeline", "serve", "--project", "research", "--http", "127.0.0.1:0"]);
+    assert!(!out.status.success() && stderr(&out).contains("trigger = \"external\""), "{}", stderr(&out));
+}
+
+/// A wake answers within 25 s with what fired, what failed, what stays armed and the next due instant, naming
+/// each fire still in flight as pending.
+// spec: surface.arm.wake-answer@324d39c8
+#[test]
+fn a_wake_answers_within_its_bound_naming_what_still_runs() {
+    let fast = Vendor::start(|t| if t.starts_with("/v1/bad") { (404, "{}".into()) } else { (200, "[{\"id\":\"a\"}]".into()) });
+    let slow = Vendor::start(|_| {
+        std::thread::sleep(std::time::Duration::from_secs(35));
+        (200, "[{\"id\":\"a\"}]".into())
+    });
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n[control]\ntrigger = \"external\"\n\n{}\n{}\n{}",
+        scheduled("orders", &fast.url("/v1/orders"), "every 1h"),
+        scheduled("bad", &fast.url("/v1/bad"), "every 1h"),
+        scheduled("backfill", &slow.url("/v1/backfill"), "every 1h"),
+    ));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    let (_daemon, url) = external(dir.path());
+    let started = std::time::Instant::now();
+    let (status, answer) = post(&url);
+    let took = started.elapsed();
+    assert_eq!(status, 200, "{answer}");
+    assert!(took >= std::time::Duration::from_secs(24) && took < std::time::Duration::from_secs(30), "{took:?}");
+    assert_eq!(answer["fired"], serde_json::json!(["orders"]), "{answer}");
+    assert_eq!(answer["failed"], serde_json::json!(["bad"]), "{answer}");
+    assert_eq!(answer["pending"], serde_json::json!(["backfill"]), "{answer}");
+    assert_eq!(answer["armed"], 3, "{answer}");
+    assert!(answer["next_due"].as_str().is_some_and(|t| t.ends_with('Z')), "{answer}");
+}
+
+/// An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises
+/// `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.
+// spec: surface.reconcile.fail-static@59ee4328
+#[test]
+fn an_unreadable_snapshot_leaves_the_armed_set_running() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n[control]\ntrigger = \"external\"\n\n{}\n{}",
+        scheduled("orders", &vendor.url("/v1/orders"), "every 1s"),
+        scheduled("filings", &vendor.url("/v1/filings"), "every 1s"),
+    ));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    let (daemon, url) = external(dir.path());
+    let (_, first) = post(&url);
+    assert_eq!((first["armed"].clone(), first["fired"].clone()), (serde_json::json!(2), serde_json::json!(["filings", "orders"])), "{first}");
+    // The pointer names a version whose document does not parse.
+    let control = dir.path().join(CONTROL);
+    std::fs::write(control.join("manifest@v2.toml"), "[[pipeline]\nid = ").unwrap();
+    std::fs::write(control.join("manifest@current"), "2\n").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let (status, after) = post(&url);
+    assert_eq!(status, 200, "{after}");
+    assert_eq!(after["armed"], 2, "{after}");
+    assert_eq!(after["fired"], serde_json::json!(["filings", "orders"]), "the armed set keeps firing: {after}");
+    let diagnostic = after["diagnostics"][0].as_str().unwrap_or_default();
+    assert!(diagnostic.contains("ControlSnapshotUnreadable") && diagnostic.contains("manifest@v2.toml"), "{after}");
+    let logged = daemon.wait_for("ControlSnapshotUnreadable", 0);
+    assert!(daemon.lines()[logged].contains("the armed set stays in place"), "{}", daemon.lines()[logged]);
+}
+
+/// A daemon learns of a new snapshot only by reading its control source, on each poll and on each wake; nothing
+/// pushes a snapshot to it.
+// spec: surface.reconcile.learns-by-reading@3ccae6ce
+#[test]
+fn a_wake_reads_the_applied_version_from_the_control_source() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n[control]\ntrigger = \"external\"\npoll = \"every 1d\"\n\n{}",
+        scheduled("orders", &vendor.url("/v1/orders"), "every 1s")
+    ));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    let (daemon, url) = external(dir.path());
+    post(&url);
+    let path = dir.path().join("contextful.toml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, text.replace(&vendor.url("/v1/orders"), &vendor.url("/v2/orders"))).unwrap();
+    assert!(ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"])).contains("applied v2"));
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let (_, answer) = post(&url);
+    assert_eq!(answer["fired"], serde_json::json!(["orders"]), "{answer}");
+    daemon.wait_for("armed v2", 0);
+    assert_eq!(vendor.targets(), ["/v1/orders", "/v2/orders"], "the wake read v2 though the poll is a day away");
+}
+
+/// `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no
+/// version; a second import claims nothing.
+// spec: surface.apply.guarded-import@a21a37ba
+#[test]
+fn the_import_claims_the_first_version_once() {
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "every 1h")));
+    let out = ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    assert!(out.contains("+ orders") && out.contains("imported v1"), "{out}");
+    let again = cf(dir.path(), &["pipeline", "import", "--project", "research"]);
+    assert!(!again.status.success() && stderr(&again).contains("v1"), "{}", stderr(&again));
+    assert!(!dir.path().join(CONTROL).join("manifest@v2.toml").exists());
+    // An empty declaration imports an empty document, and the directory counts as imported.
+    let empty = project("site_id = \"site-a\"\n");
+    assert!(ok(&cf(empty.path(), &["pipeline", "import", "--project", "research"])).contains("imported v1"));
+    assert!(ok(&cf(empty.path(), &["pipeline", "apply", "--project", "research"])).contains("unchanged at v1"));
+}
+
+/// An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises
+/// `StoreNotInitialized`, answered `409`.
+// spec: surface.apply.uninitialized-store@d6d5c26a
+#[test]
+fn an_apply_before_the_import_is_refused() {
+    use contextful_core::surface::SurfaceError;
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "every 1h")));
+    for args in [&["pipeline", "apply", "--project", "research"][..], &["pipeline", "apply", "orders", "--project", "research"][..]] {
+        let out = cf(dir.path(), args);
+        let err = stderr(&out);
+        assert!(!out.status.success() && err.contains("StoreNotInitialized") && err.contains("pipeline import"), "{err}");
+    }
+    assert!(!dir.path().join(CONTROL).exists(), "no version claimed");
+    // An empty directory is no import.
+    std::fs::create_dir_all(dir.path().join(CONTROL)).unwrap();
+    assert!(stderr(&cf(dir.path(), &["pipeline", "apply", "--project", "research"])).contains("StoreNotInitialized"));
+    assert_eq!(SurfaceError::StoreNotInitialized(String::new()).status(), 409);
+}
+
+/// An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local
+/// writer substitutes for the store-scoped API.
+// spec: surface.apply.owner-unconfigured@8a921fea
+#[test]
+fn an_owner_with_nothing_behind_it_is_refused() {
+    use contextful_core::surface::SurfaceError;
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n[control]\nurl = \"http://127.0.0.1:9/control\"\n\n{}",
+        scheduled("orders", "https://api.vendor.example/v1", "every 1h")
+    ));
+    for verb in ["import", "apply"] {
+        let out = cf(dir.path(), &["pipeline", verb, "--project", "research"]);
+        let err = stderr(&out);
+        assert!(!out.status.success() && err.contains("ConfigOwnerUnconfigured") && err.contains("127.0.0.1:9"), "{verb}: {err}");
+    }
+    assert!(!dir.path().join(".contextful/control").exists(), "no local writer substituted");
+    assert_eq!(SurfaceError::ConfigOwnerUnconfigured(String::new()).status(), 503);
+}
+
+/// A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds
+/// references and the backend holds material.
+// spec: surface.edit.secret-in-document@b8b6f23b
+#[test]
+fn a_credential_in_the_document_is_refused() {
+    let with = |value: &str| {
+        format!(
+            "site_id = \"site-a\"\n\n[[pipeline]]\nid = \"orders\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\n\
+             [pipeline.source.config]\nendpoint = \"https://api.vendor.example/v1\"\n[pipeline.source.config.headers]\nX-Api-Token = \"{value}\"\n"
+        )
+    };
+    let dir = project(&with("tok-9f8e7d6c5b4a"));
+    let out = cf(dir.path(), &["pipeline", "import", "--project", "research"]);
+    let err = stderr(&out);
+    assert!(!out.status.success() && err.contains("SecretMaterialInDocument") && err.contains("X-Api-Token"), "{err}");
+    assert!(!err.contains("tok-9f8e7d6c5b4a"), "{err}");
+    assert!(!dir.path().join(CONTROL).exists(), "no version claimed");
+    let dir = project(&with("${secret://vendor-token}"));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+}
+
+/// An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references
+/// registered connectors by id and version.
+// spec: surface.edit.connector-upload@e5761c5c
+#[test]
+fn an_artifact_in_the_document_is_refused() {
+    let dir = project(
+        "site_id = \"site-a\"\n\n[[pipeline]]\nid = \"metrics\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"vendor-metrics\"\n\
+         [pipeline.source.config]\nartifact = \"data:application/wasm;base64,AGFzbQEAAAA=\"\n",
+    );
+    let out = cf(dir.path(), &["pipeline", "import", "--project", "research"]);
+    let err = stderr(&out);
+    assert!(!out.status.success() && err.contains("ConnectorUploadRefused") && err.contains("registered connector"), "{err}");
+    assert!(!dir.path().join(CONTROL).exists(), "no version claimed");
+}
+
+/// A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the
+/// runtime serves nothing.
+// spec: surface.reside.region-mismatch@a11f32b8
+#[test]
+fn a_resource_outside_the_residency_allow_set_serves_nothing() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n[residency]\nregions = [\"eu-west-1\"]\n\n{}\n[[pipeline]]\nid = \"objects\"\ntables = [\"objects\"]\n\
+         [pipeline.source]\nname = \"s3\"\nconfig = {{ bucket = \"vendor-drop\", region = \"us-east-1\" }}\n",
+        scheduled("orders", &vendor.url("/v1/orders"), "every 1h"),
+    ));
+    std::fs::write(
+        dir.path().join(".contextful/context/research/config.toml"),
+        "[node]\nid = \"ingest-a\"\n\n[sync]\nendpoint = \"s3://eu-west-1\"\nbucket = \"team\"\nprefix = \"research\"\n",
+    )
+    .unwrap();
+    for args in [&["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"][..], &["pipeline", "serve", "--project", "research"][..]] {
+        let out = cf(dir.path(), args);
+        let err = stderr(&out);
+        assert!(!out.status.success() && err.contains("EnforceRegionMismatch") && err.contains("pipeline `objects` source resolves to `us-east-1`"), "{err}");
+        assert!(!err.contains("bucket` resolves"), "the bucket resolves inside the set: {err}");
+    }
+    assert!(vendor.targets().is_empty(), "nothing served");
 }

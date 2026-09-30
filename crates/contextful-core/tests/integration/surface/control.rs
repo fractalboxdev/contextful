@@ -40,3 +40,34 @@ fn a_control_url_admits_loopback_addresses_alone() {
         assert!(e.starts_with("ControlSourceNotLoopback"), "{bad}: {e}");
     }
 }
+
+/// `poll` takes a schedule string, and a `[control]` block declaring none polls every 30 s.
+// spec: surface.reconcile.poll-cadence@95f6740e
+#[test]
+fn a_poll_takes_a_schedule_and_defaults_to_thirty_seconds() {
+    use contextful_core::surface::arm::Schedule;
+    use contextful_core::surface::control::poll_schedule;
+    assert_eq!(poll_schedule(None).unwrap(), Schedule::Every(30));
+    assert_eq!(poll_schedule(Some("every 5m")).unwrap(), Schedule::Every(300));
+    assert!(matches!(poll_schedule(Some("*/10 * * * *")).unwrap(), Schedule::Cron(_)));
+    let e = poll_schedule(Some("every fortnight")).unwrap_err().to_string();
+    assert!(e.starts_with("ScheduleUnreadable"), "{e}");
+}
+
+/// A conditional-write owner on a filesystem whose exclusive create and lock are not linearizable raises
+/// `ConditionalWriteUnsupported`; a local filesystem, or one whose kind does not read, is admitted.
+// spec: surface.apply.weak-conditional-backend@925a004b
+#[test]
+fn a_conditional_write_owner_refuses_a_network_filesystem() {
+    use contextful_core::surface::control::admit_conditional;
+    for kind in ["apfs", "ext4", "xfs", "tmpfs", "local", "btrfs"] {
+        admit_conditional("the snapshot directory", "/srv/control", Some(kind)).unwrap();
+    }
+    admit_conditional("the catalog", "/srv/catalog.sqlite", None).unwrap();
+    for kind in ["nfs", "NFS", "smbfs", "cifs", "afpfs", "webdav", "9p", "fuse.sshfs"] {
+        let e = admit_conditional("the catalog", "/mnt/share/catalog.sqlite", Some(kind)).expect_err(kind);
+        assert_eq!(e.status(), 503);
+        let e = e.to_string();
+        assert!(e.starts_with("ConditionalWriteUnsupported") && e.contains(kind) && e.contains("the catalog"), "{e}");
+    }
+}

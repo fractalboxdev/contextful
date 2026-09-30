@@ -91,6 +91,10 @@ pub fn run(args: ServeArgs) -> Result<()> {
     revocation().map_err(anyhow::Error::msg)?;
     let admitting = Admitting { checkpoint: &checkpoint, audience, revocation: &revocation };
     let located = locate(args.project.as_deref(), args.declaration)?;
+    let text = std::fs::read_to_string(&located.declaration).unwrap_or_default();
+    // Every configured resource resolves inside the residency allow-set before the listener
+    // binds (`surface.reside.region-mismatch`).
+    crate::reside::enforce(&located, &text)?;
     // A cold node pulls the bucket before the face opens; a failed pull binds nothing
     // (`store.pull.before-run`).
     crate::sync::pull_before_run(&located)?;

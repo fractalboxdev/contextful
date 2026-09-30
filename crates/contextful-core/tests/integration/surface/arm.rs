@@ -92,3 +92,27 @@ fn a_long_gap_is_one_due_instant() {
 fn the_tick_is_500_ms() {
     assert_eq!(TICK_INTERVAL_MS, 500);
 }
+
+/// An unrecognized trigger value raises `TriggerAdapterUnknown` and selects no adapter.
+#[test]
+fn a_trigger_names_one_of_two_adapters() {
+    use contextful_core::surface::arm::Trigger;
+    assert_eq!(Trigger::parse(None).unwrap(), Trigger::InProcess);
+    assert_eq!(Trigger::parse(Some("in-process")).unwrap(), Trigger::InProcess);
+    assert_eq!(Trigger::parse(Some("external")).unwrap(), Trigger::External);
+    for bad in ["externl", "local", "cron", "", "External"] {
+        let e = Trigger::parse(Some(bad)).expect_err(bad).to_string();
+        assert!(e.starts_with("TriggerAdapterUnknown") && e.contains(bad), "{bad:?}: {e}");
+    }
+}
+
+/// `external` on a deployment serving no HTTP face raises `TriggerFaceMissing`; the in-process adapter needs none.
+#[test]
+fn the_external_trigger_needs_an_http_face() {
+    use contextful_core::surface::arm::{Trigger, WAKE_ANSWER_SECS};
+    Trigger::InProcess.require_face(false).unwrap();
+    Trigger::External.require_face(true).unwrap();
+    let e = Trigger::External.require_face(false).unwrap_err().to_string();
+    assert!(e.starts_with("TriggerFaceMissing") && e.contains("POST /wake"), "{e}");
+    assert_eq!(WAKE_ANSWER_SECS, 25);
+}

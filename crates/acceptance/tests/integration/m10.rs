@@ -40,8 +40,8 @@ fn m10_cadence() {
         serde_json::from_str(&ok(&p.run(&cf, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now]))).unwrap()
     };
 
-    // Applying claims a version and fires nothing.
-    assert!(ok(&p.run(&cf, &["pipeline", "apply", "--project", "research"])).contains("applied v1"));
+    // The guarded import claims the first version and fires nothing.
+    assert!(ok(&p.run(&cf, &["pipeline", "import", "--project", "research"])).contains("imported v1"));
     assert!(vendor.received("/v1/filings").is_empty());
 
     // Due work dispatches into a pool of two; the third due unit stays pending.

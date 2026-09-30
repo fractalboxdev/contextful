@@ -19,7 +19,7 @@ use contextful_core::run::cancel::Scope;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{AwakeableStore, Commit, Destination, Landed, Marker, Part, Stage};
-use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, resolve_site_id, select_history, RunStatus, SiteIdSources, Window};
+use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, select_history, RunStatus, Window};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::reserve::Injection;
@@ -167,7 +167,15 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     let root = project.run_dir();
     let clock = clock(now)?;
     let journal = Journal::open(&root);
-    let catalog = Arc::new(MachineCatalog::open(&project.store_root().join(MACHINE_CATALOG_FILE), clock.clone())?);
+    let catalog_path = project.store_root().join(MACHINE_CATALOG_FILE);
+    // The catalog's lease rows need a linearizable conditional write
+    // (`surface.apply.weak-conditional-backend`).
+    contextful_core::surface::control::admit_conditional(
+        "the catalog",
+        &catalog_path.display().to_string(),
+        contextful_engine::fsutil::filesystem_kind(&catalog_path).as_deref(),
+    )?;
+    let catalog = Arc::new(MachineCatalog::open(&catalog_path, clock.clone())?);
     let registry = Registry::open(&root, journal.clone());
     let awakeables = Some(Arc::new(FileAwakeableStore::open(&root)) as Arc<dyn AwakeableStore>);
     Ok(Wired { engine: Engine { catalog, journal, awakeables, keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
@@ -312,13 +320,7 @@ impl Destination for StoreDestination {
     }
 }
 
-/// The site id of one run: the command line's declaration when it makes one, else the
-/// manifest's (`run.record.site-id-unresolved`).
-pub(crate) fn site_id_for(manifest: &str, path: &Path, id: Option<String>, env: Option<String>) -> Result<String> {
-    let var = |k: &str| std::env::var(k).ok();
-    let declared = SiteIdSources::from_manifest(manifest, var).with_context(|| format!("`{}`", path.display()))?;
-    Ok(resolve_site_id(&SiteIdSources::declared(id, env, var).over(declared))?)
-}
+pub(crate) use crate::project::site_id_for;
 
 fn awake_error(e: AwakeError) -> anyhow::Error {
     match e {
