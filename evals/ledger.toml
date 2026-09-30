@@ -525,14 +525,16 @@ clause = "assurance.evaluate.policy-labels"
 metric = "retrieval.hybrid.forbidden_row_rate"
 kind   = "eval"
 tier   = "gate"
-method = { issue = 78 }
+method = { test = "contextful_cli::eval::the_native_golden_set_holds_its_floors_and_baseline" }
 target = { op = "==", value = 0 }
+seed   = 0x5eed_0078
 
 [entry.native-golden-floor]
 clause = "assurance.baseline.native-gate"
 metric = "retrieval.hybrid.r_precision"
 kind   = "eval"
 tier   = "gate"
-method = { issue = 78 }
+method = { test = "contextful_cli::eval::the_native_golden_set_holds_its_floors_and_baseline" }
 target = { op = ">=", value = 0.60 }
+seed   = 0x5eed_0078
 mirrors = "assurance.evaluate.precision-floor"

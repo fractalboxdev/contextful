@@ -123,7 +123,7 @@ impl Opened {
     }
 }
 
-fn read_rows(path: &Path) -> Result<Vec<serde_json::Map<String, serde_json::Value>>> {
+pub(crate) fn read_rows(path: &Path) -> Result<Vec<serde_json::Map<String, serde_json::Value>>> {
     let text = std::fs::read_to_string(path).with_context(|| format!("reading `{}`", path.display()))?;
     let mut rows = Vec::new();
     for (i, line) in text.lines().enumerate().filter(|(_, l)| !l.trim().is_empty()) {

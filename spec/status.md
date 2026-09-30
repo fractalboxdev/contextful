@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 205 | 56 | 22 | 16 | 87 | 0 | 87 |
+| `assurance` | 2 | 15 | 212 | 56 | 22 | 16 | 100 | 0 | 100 |
 | `authority` | 2 | 16 | 238 | 64 | 27 | 8 | 172 | 0 | 172 |
 | `connector` | 2 | 13 | 271 | 75 | 18 | 9 | 145 | 0 | 145 |
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 15 | 189 | 46 | 12 | 14 | 147 | 0 | 147 |
 | `surface` | 2 | 19 | 62 | 41 | 21 | 10 | 0 | 0 | 0 |
 | `topology` | 1 | 6 | 65 | 20 | 5 | 5 | 22 | 0 | 22 |
-| **total** | 19 | 149 | 1652 | 513 | 181 | 124 | 937 | 0 | |
+| **total** | 19 | 149 | 1659 | 513 | 181 | 124 | 950 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ Decision records: 18.
 | 11 — The derive tier | 7 | 78 | 55 | passing |
 | 12 — The console | 11 | 30 | 0 | absent |
 | 13 — Disclosure | 5 | 21 | 4 | open |
-| 14 — Assurance | 7 | 112 | 39 | open |
+| 14 — Assurance | 7 | 119 | 52 | open |
 
 Unscheduled operations: 10.
 
@@ -79,11 +79,24 @@ Unscheduled operations: 10.
 | `assurance.differential-test.run-budget` | `crates/contextful-cli/tests/integration/differential.rs::a_run_past_its_budget_stops` | performed |
 | `assurance.differential-test.seed` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_seed_reproduces_the_case_sequence` | performed |
 | `assurance.evaluate.absent-truth` | `tools/eval/tests/integration/metrics.rs::a_case_with_no_truth_is_nan_and_leaves_the_aggregate` | performed |
+| `assurance.evaluate.case-format` | `tools/eval/tests/integration/case.rs::a_case_line_carries_its_corpus_question_tags_and_expected_block` | performed |
+| `assurance.evaluate.corpus-layout` | `crates/contextful-cli/tests/integration/eval.rs::each_leg_calls_the_ranked_read_with_the_options_a_caller_passes` | performed |
+| `assurance.evaluate.deterministic-tier` | `tools/eval/tests/integration/report.rs::every_ranked_metric_reports_per_leg_and_per_slice` | performed |
 | `assurance.evaluate.distinct-top-k` | `tools/eval/tests/integration/metrics.rs::a_repeated_row_counts_once_in_the_top_k` | performed |
 | `assurance.evaluate.duplicate-row-rate` | `tools/eval/tests/integration/floors.rs::a_repeated_table_and_row_key_pair_breaches_the_floor` | performed |
 | `assurance.evaluate.forbidden-row-rate` | `tools/eval/tests/integration/floors.rs::one_forbidden_row_in_one_case_breaches_the_floor` | performed |
 | `assurance.evaluate.in-window-rate` | `tools/eval/tests/integration/floors.rs::a_bounded_case_under_ninety_five_percent_in_window_breaches_the_floor` | performed |
+| `assurance.evaluate.legs` | `crates/contextful-cli/tests/integration/eval.rs::each_leg_calls_the_ranked_read_with_the_options_a_caller_passes` | performed |
+| `assurance.evaluate.policy-labels` | `crates/contextful-cli/tests/integration/eval.rs::a_row_the_credential_may_not_read_never_scores` | performed |
 | `assurance.evaluate.precision-floor` | `tools/eval/tests/integration/floors.rs::a_leg_below_sixty_percent_r_precision_breaches_the_floor` | performed |
+| `assurance.evaluate.regression-case` | `tools/eval/tests/integration/report.rs::only_a_regression_case_scores_its_must_not_retrieve_set` | performed |
+| `assurance.evaluate.row-reference` | `tools/eval/tests/integration/case.rs::a_row_is_named_by_its_table_and_key_after_the_last_hash` | performed |
+| `assurance.evaluate.run-command` | `crates/contextful-cli/tests/integration/eval.rs::the_native_golden_set_holds_its_floors_and_baseline` | performed |
+| `assurance.evaluate.run-report` | `tools/eval/tests/integration/report.rs::a_report_carries_its_run_block_counts_and_tally` | performed |
+| `assurance.evaluate.run-verdict` | `crates/contextful-cli/tests/integration/eval.rs::a_red_run_exits_non_zero_and_only_a_green_one_raises_its_baseline` | performed |
+| `assurance.evaluate.stub-embedder` | `crates/contextful-cli/tests/integration/eval.rs::rows_and_questions_without_an_embedding_take_the_seeded_stub` | performed |
+| `assurance.evaluate.through-the-store` | `crates/contextful-cli/tests/integration/eval.rs::a_ranking_that_loses_its_sidecars_goes_red_against_the_baseline` | performed |
+| `assurance.evaluate.unlabeled-corpus` | `crates/contextful-cli/tests/integration/eval.rs::an_unlabeled_corpus_refuses_without_a_local_zone` | performed |
 | `assurance.gate.crate-graph` | `tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing` | performed |
 | `assurance.gate.fork-dispatch` | `tools/ci/tests/integration/workflow.rs::a_fork_pull_request_dispatches_no_stage` | performed |
 | `assurance.gate.free-disk` | `tools/ci/tests/integration/disk.rs::a_stage_starting_under_two_gib_free_refuses_with_exit_28_before_work` | performed |

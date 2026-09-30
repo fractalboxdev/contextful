@@ -1,0 +1,356 @@
+//! `contextful eval run` through the built binary: a case file lands its corpus into a
+//! scratch store, reads every case through the ranked call under one admitted credential,
+//! and holds the report to the floors and a baseline.
+
+use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+const AUD: &str = "contextful://eval";
+const READER: &str = "agent://eval-reader";
+
+/// The workspace root, where the native golden set lives.
+fn root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn run(dir: &Path, args: &[&str], token: Option<&str>) -> Output {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
+    cmd.args(args).current_dir(dir).env_remove("CONTEXTFUL_TOKEN");
+    if let Some(t) = token {
+        cmd.env("CONTEXTFUL_TOKEN", t);
+    }
+    cmd.output().unwrap()
+}
+
+fn stdout(out: &Output) -> String {
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+fn stderr(out: &Output) -> String {
+    String::from_utf8_lossy(&out.stderr).to_string()
+}
+
+/// A working directory holding an issuer: its public key, and a mint for credentials.
+struct Issuer {
+    dir: tempfile::TempDir,
+    public: String,
+}
+
+impl Issuer {
+    fn new() -> Issuer {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".contextful")).unwrap();
+        std::fs::write(dir.path().join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
+        let public = stdout(&run(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"], None));
+        Issuer { dir, public }
+    }
+
+    /// A credential for `agent`, signing `zone`, reading every table of the native corpus.
+    fn mint(&self, agent: &str, zone: &str) -> String {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://ops@example.org"];
+        args.extend(["--agent", agent, "--zone", zone, "--ttl", "600"]);
+        for t in ["kb/*", "news/*", "archive/*", "crm/*", "hr/*", "lab/*"] {
+            args.extend(["--table", t]);
+        }
+        stdout(&run(self.dir.path(), &args, None))
+    }
+
+    fn path(&self) -> &Path {
+        self.dir.path()
+    }
+
+    /// `eval run` over `goldens` at k = 5, the report written to `report.json` under the
+    /// issuer's directory.
+    fn eval(&self, goldens: &Path, token: &str, extra: &[&str]) -> (Output, Value) {
+        let report = self.path().join("report.json");
+        let _ = std::fs::remove_file(&report);
+        let goldens = goldens.to_str().unwrap();
+        let mut args = vec!["eval", "run", "--goldens", goldens, "--k", "5", "--public-key", &self.public, "--audience", AUD];
+        args.extend(["--report", report.to_str().unwrap()]);
+        args.extend(extra);
+        let out = run(self.path(), &args, Some(token));
+        let text = std::fs::read_to_string(&report).unwrap_or_else(|_| "null".into());
+        (out, serde_json::from_str(&text).unwrap())
+    }
+}
+
+/// Write a corpus and a case file under `dir`: `manifest` as the corpus's declaration,
+/// each table's rows under `rows/`, and `cases` pointing at the corpus.
+fn corpus(dir: &Path, manifest: &str, tables: &[(&str, Value)], cases: &[Value]) -> PathBuf {
+    let c = dir.join("corpus");
+    std::fs::create_dir_all(&c).unwrap();
+    std::fs::write(c.join("contextful.toml"), manifest).unwrap();
+    for (table, rows) in tables {
+        let p = c.join("rows").join(format!("{table}.jsonl"));
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let lines: Vec<String> = rows.as_array().unwrap().iter().map(Value::to_string).collect();
+        std::fs::write(p, lines.join("\n") + "\n").unwrap();
+    }
+    let goldens = dir.join("cases.jsonl");
+    let lines: Vec<String> = cases.iter().map(|c| c.to_string()).collect();
+    std::fs::write(&goldens, lines.join("\n") + "\n").unwrap();
+    goldens
+}
+
+fn mean(report: &Value, pointer: &str) -> f64 {
+    report.pointer(pointer).and_then(Value::as_f64).unwrap_or_else(|| panic!("{pointer} in {report}"))
+}
+
+/// A corpus of one labelled table, `lab/notes`, whose rows carry 3-dimensional embeddings.
+const LAB: &str = r#"
+[[pipeline.tables]]
+name = "lab/notes"
+primary_key = ["note_id"]
+
+[pipeline.tables.policy.rows]
+predicate = "owner = subject.agent"
+
+[[pipeline.tables]]
+name = "lab/plain"
+primary_key = ["shelf", "item"]
+"#;
+
+fn lab_rows() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "lab/notes",
+            json!([
+                { "note_id": "n1", "title": "solar battery storage", "owner": READER, "embedding": [0.0, 0.0, 1.0] },
+                { "note_id": "n2", "title": "wind turbine blades", "owner": READER, "embedding": [1.0, 0.0, 0.0] },
+                { "note_id": "n3", "title": "hydro dam survey", "owner": READER, "embedding": [0.0, 1.0, 0.0] },
+            ]),
+        ),
+        (
+            "lab/plain",
+            json!([
+                { "shelf": "a", "item": 1, "title": "pressure valve manual" },
+                { "shelf": "a", "item": 2, "title": "conveyor belt tension" },
+                { "shelf": "b", "item": 1, "title": "forklift battery charging" },
+            ]),
+        ),
+    ]
+}
+
+/// A corpus is a directory holding `contextful.toml`, its table declarations and policy labels, and one `rows/<table>.jsonl` per table.
+// spec: assurance.evaluate.corpus-layout@e4dfc247
+/// Each case calls {{read.retrieve.ranked-call}} three times at limit k: the lexical leg with the question alone, the vector leg with an embedding and an empty query, the hybrid leg with both.
+// spec: assurance.evaluate.legs@e21bd68b
+#[test]
+fn each_leg_calls_the_ranked_read_with_the_options_a_caller_passes() {
+    let issuer = Issuer::new();
+    let goldens = corpus(
+        issuer.path(),
+        LAB,
+        &lab_rows(),
+        &[json!({ "id": "solar", "corpus": "corpus", "question": "solar battery storage", "prefix": "lab/notes",
+                  "query_embedding": [1.0, 0.0, 0.0], "expected": { "artifacts": ["lab/notes#n1"] } })],
+    );
+    let (out, report) = issuer.eval(&goldens, &issuer.mint(READER, "on-prem:hq"), &[]);
+    // The embedding points away from the truth, so two legs miss it: the report is written,
+    // then the precision floor reds the run.
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("floor retrieval.vector.r_precision.mean"), "{}", stderr(&out));
+    let legs = &report["cases"][0]["legs"];
+    // The question alone: only the row whose text matches clears the relevance floor.
+    assert_eq!(legs["lexical"], json!(["lab/notes#n1"]));
+    // The embedding alone ranks by cosine and passes no query text.
+    assert_eq!(legs["vector"][0], json!("lab/notes#n2"));
+    assert_eq!(legs["vector"].as_array().unwrap().len(), 3);
+    // Both: the fused score puts the cosine match first and keeps the lexical match.
+    assert_eq!(legs["hybrid"], json!(["lab/notes#n2", "lab/notes#n1"]));
+    assert_eq!(mean(&report, "/retrieval/lexical/reciprocal_rank/mean"), 1.0);
+    assert_eq!(mean(&report, "/retrieval/hybrid/reciprocal_rank/mean"), 0.5);
+}
+
+/// The deterministic tier embeds every row and question with a seeded feature-hashing stub embedder; a corpus row or a case carrying its own embedding keeps it.
+// spec: assurance.evaluate.stub-embedder@57f9091d
+#[test]
+fn rows_and_questions_without_an_embedding_take_the_seeded_stub() {
+    let issuer = Issuer::new();
+    let goldens = corpus(
+        issuer.path(),
+        LAB,
+        &lab_rows(),
+        &[json!({ "id": "forklift", "corpus": "corpus", "question": "forklift battery", "prefix": "lab/plain",
+                  "expected": { "artifacts": ["lab/plain#b,1"] } })],
+    );
+    let token = issuer.mint(READER, "on-prem:hq");
+    let (out, report) = issuer.eval(&goldens, &token, &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    // A composite key joins its values with commas.
+    assert_eq!(report["cases"][0]["legs"]["vector"][0], json!("lab/plain#b,1"));
+    assert_eq!(report["seed"], json!(0x5eed_0078u64));
+    // Another seed embeds both sides alike, so the ranking holds and the report names it.
+    let (again, other) = issuer.eval(&goldens, &token, &["--seed", "7"]);
+    assert!(again.status.success(), "{}", stderr(&again));
+    assert_eq!(other["seed"], json!(7));
+    assert_eq!(other["cases"][0]["legs"]["vector"][0], json!("lab/plain#b,1"));
+}
+
+/// A run over a corpus whose tables declare no zone or row policy, with no `local:` zone passed as `--zone`, raises `EvalCorpusUnlabeled` before any row lands.
+// spec: assurance.evaluate.unlabeled-corpus@3e99725b
+#[test]
+fn an_unlabeled_corpus_refuses_without_a_local_zone() {
+    let issuer = Issuer::new();
+    let manifest = "[[pipeline.tables]]\nname = \"lab/plain\"\nprimary_key = [\"shelf\", \"item\"]\n";
+    let goldens = corpus(
+        issuer.path(),
+        manifest,
+        &lab_rows()[1..],
+        &[json!({ "id": "valve", "corpus": "corpus", "question": "pressure valve", "expected": { "artifacts": ["lab/plain#a,1"] } })],
+    );
+    // The refusal needs no credential: it lands nothing and admits nothing.
+    let (out, report) = issuer.eval(&goldens, "unused", &[]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("EvalCorpusUnlabeled"), "{}", stderr(&out));
+    assert_eq!(report, Value::Null, "a refused run writes no report");
+    let (out, _) = issuer.eval(&goldens, "unused", &["--zone", "on-prem:hq"]);
+    assert!(stderr(&out).contains("EvalCorpusUnlabeled"), "only a local zone admits an unlabeled corpus");
+
+    let (out, report) = issuer.eval(&goldens, &issuer.mint(READER, "local:device"), &["--zone", "local:device"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(report["cases"][0]["legs"]["lexical"], json!(["lab/plain#a,1"]));
+}
+
+/// An evaluation corpus carries zone and row-policy labels in its table declarations, and a run reads it through the access-control path under one admitted credential.
+// spec: assurance.evaluate.policy-labels@e45316b9
+#[test]
+fn a_row_the_credential_may_not_read_never_scores() {
+    let issuer = Issuer::new();
+    let goldens = root().join("evals/cases/native.jsonl");
+    let (out, report) = issuer.eval(&goldens, &issuer.mint(READER, "on-prem:hq"), &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    for leg in ["lexical", "vector", "hybrid"] {
+        assert_eq!(report["retrieval"][leg]["forbidden_row_rate"]["n"], json!(6), "{leg}");
+        assert_eq!(mean(&report, &format!("/retrieval/{leg}/forbidden_row_rate/max")), 0.0, "{leg}");
+    }
+    // The same cases under the other team's credential: its row policy admits the rows the
+    // reader's withholds, so the zero above is a fact of enforcement, not of ranking.
+    let (out, other) = issuer.eval(&goldens, &issuer.mint("agent://other-team", "on-prem:hq"), &[]);
+    assert!(!out.status.success(), "the other team's run reads the reader's must-not rows");
+    assert!(mean(&other, "/retrieval/hybrid/forbidden_row_rate/max") > 0.0);
+    assert!(stderr(&out).contains("retrieval.hybrid.forbidden_row_rate.max"), "{}", stderr(&out));
+    // A zone the payroll table admits reads its rows; the reader's zone reads none of them.
+    let (_, cloud) = issuer.eval(&goldens, &issuer.mint(READER, "public-cloud:eu"), &[]);
+    let payroll = |r: &Value| r["cases"].as_array().unwrap().iter().flat_map(|c| c["legs"]["hybrid"].as_array().unwrap().clone()).filter(|row| row.as_str().unwrap().starts_with("hr/payroll#")).count();
+    assert!(payroll(&cloud) > 0);
+    assert_eq!(payroll(&report), 0);
+}
+
+/// `contextful eval run --goldens <file>` loads the case file, lands and folds each referenced corpus into a scratch store at `--landed-at`, the Unix epoch by default, reads every case, and writes the run report.
+// spec: assurance.evaluate.run-command@5f634816
+#[test]
+fn the_native_golden_set_holds_its_floors_and_baseline() {
+    let issuer = Issuer::new();
+    let goldens = root().join("evals/cases/native.jsonl");
+    let baseline = root().join("evals/baselines/native.json");
+    let token = issuer.mint(READER, "on-prem:hq");
+    let (out, report) = issuer.eval(&goldens, &token, &["--baseline", baseline.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(report["n_cases"].as_u64().unwrap() >= 30);
+    for tag in ["substring-trap", "cjk", "temporal", "deep-recall", "regression"] {
+        assert!(report["slices"][tag]["n_cases"].as_u64().unwrap() > 0, "no `{tag}` case");
+    }
+    assert_eq!(report["tally"]["dropped"], json!(0), "every native case carries artifact truth");
+    let forbidden = mean(&report, "/retrieval/hybrid/forbidden_row_rate/max");
+    let precision = mean(&report, "/retrieval/hybrid/r_precision/mean");
+    let n = report["retrieval"]["hybrid"]["r_precision"]["n"].as_u64().unwrap();
+    let seed = report["seed"].as_u64().unwrap();
+    contextful_eval::record::emit("eval-through-enforcement", forbidden, report["retrieval"]["hybrid"]["forbidden_row_rate"]["n"].as_u64().unwrap(), seed);
+    contextful_eval::record::emit("native-golden-floor", precision, n, seed);
+
+    // The epoch landing makes a replay on any day score alike.
+    let (_, replay) = issuer.eval(&goldens, &token, &[]);
+    assert_eq!(replay["retrieval"], report["retrieval"]);
+}
+
+/// The corpus loads through the real store, and the retriever under test calls {{read.retrieve.ranked-call}} with the options a caller passes.
+// spec: assurance.evaluate.through-the-store@aaa02c86
+#[test]
+fn a_ranking_that_loses_its_sidecars_goes_red_against_the_baseline() {
+    let issuer = Issuer::new();
+    // The native set with its archive table's sidecars undeclared: only the recency window
+    // reads that table, and the oldest rows fall outside it.
+    let copy = issuer.path().join("evals");
+    for dir in ["cases", "baselines", "corpora/native/rows/archive", "corpora/native/rows/crm", "corpora/native/rows/hr", "corpora/native/rows/kb", "corpora/native/rows/news"] {
+        std::fs::create_dir_all(copy.join(dir)).unwrap();
+    }
+    for f in [
+        "cases/native.jsonl",
+        "baselines/native.json",
+        "corpora/native/rows/archive/incidents.jsonl",
+        "corpora/native/rows/crm/accounts.jsonl",
+        "corpora/native/rows/hr/payroll.jsonl",
+        "corpora/native/rows/kb/articles.jsonl",
+        "corpora/native/rows/kb/cjk.jsonl",
+        "corpora/native/rows/news/wire.jsonl",
+    ] {
+        std::fs::copy(root().join("evals").join(f), copy.join(f)).unwrap();
+    }
+    let manifest = std::fs::read_to_string(root().join("evals/corpora/native/contextful.toml")).unwrap();
+    let start = manifest.find("[[pipeline.tables.indexes]]").unwrap();
+    let end = manifest.find("[[pipeline.tables]]\nname = \"crm/accounts\"").unwrap();
+    std::fs::write(copy.join("corpora/native/contextful.toml"), format!("{}{}", &manifest[..start], &manifest[end..])).unwrap();
+
+    let baseline = copy.join("baselines/native.json");
+    let (out, report) = issuer.eval(&copy.join("cases/native.jsonl"), &issuer.mint(READER, "on-prem:hq"), &["--baseline", baseline.to_str().unwrap()]);
+    assert_eq!(mean(&report, "/slices/deep-recall/retrieval/hybrid/recall_at_k/mean"), 0.0);
+    assert!(!out.status.success(), "a recall slide under every floor still reds the baseline");
+    assert!(stderr(&out).contains("baseline retrieval.hybrid.recall_at_k"), "{}", stderr(&out));
+}
+
+/// A run holds its report to the floors and, given `--baseline`, to that file; either red verdict exits non-zero, and `--update-baseline` applies {{assurance.baseline.raise-only}} on green alone.
+// spec: assurance.evaluate.run-verdict@f4bc8e69
+#[test]
+fn a_red_run_exits_non_zero_and_only_a_green_one_raises_its_baseline() {
+    let issuer = Issuer::new();
+    let goldens = root().join("evals/cases/native.jsonl");
+    let token = issuer.mint(READER, "on-prem:hq");
+    let committed: Value = serde_json::from_str(&std::fs::read_to_string(root().join("evals/baselines/native.json")).unwrap()).unwrap();
+
+    // A baseline below the run: green, and the update raises the entry to the measured value.
+    let low = issuer.path().join("low.json");
+    let mut file = committed.clone();
+    file["retrieval.hybrid.ndcg_at_k"] = json!(0.5);
+    std::fs::write(&low, file.to_string()).unwrap();
+    let (out, report) = issuer.eval(&goldens, &token, &["--baseline", low.to_str().unwrap(), "--update-baseline"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let raised: Value = serde_json::from_str(&std::fs::read_to_string(&low).unwrap()).unwrap();
+    assert_eq!(raised["retrieval.hybrid.ndcg_at_k"], report["retrieval"]["hybrid"]["ndcg_at_k"]["mean"]);
+
+    // A baseline above the run: red, and the file stays as written.
+    let high = issuer.path().join("high.json");
+    let mut file = committed.clone();
+    file["retrieval.vector.r_precision"] = json!(1.0);
+    file["retrieval.hybrid.ndcg_at_k"] = json!(0.5);
+    let written = file.to_string();
+    std::fs::write(&high, &written).unwrap();
+    let (out, _) = issuer.eval(&goldens, &token, &["--baseline", high.to_str().unwrap(), "--update-baseline"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("baseline retrieval.vector.r_precision"), "{}", stderr(&out));
+    assert_eq!(std::fs::read_to_string(&high).unwrap(), written, "a red run raises nothing");
+
+    // A baseline recorded at another k refuses before any corpus lands.
+    let other_k = issuer.path().join("k10.json");
+    let mut file = committed;
+    file["_run"]["k"] = json!(10);
+    std::fs::write(&other_k, file.to_string()).unwrap();
+    let (out, report) = issuer.eval(&goldens, &token, &["--baseline", other_k.to_str().unwrap()]);
+    assert!(stderr(&out).contains("BaselineRunStampMismatch"), "{}", stderr(&out));
+    assert_eq!(report, Value::Null);
+
+    // With no baseline the floors still gate: a case set whose truth the ranking misses reds.
+    let wrong = issuer.path().join("wrong.jsonl");
+    let text = std::fs::read_to_string(&goldens).unwrap().replace("\"corpus\": \"../corpora/native\"", &format!("\"corpus\": {}", json!(root().join("evals/corpora/native"))));
+    let text = text.replace("kb/articles#art-0", "kb/articles#art-2").replace("kb/articles#cat-0", "kb/articles#cat-2");
+    let text = text.replace("kb/articles#log-0", "kb/articles#log-2").replace("kb/articles#car-0", "kb/articles#car-2");
+    let text = text.replace("kb/articles#pen-0", "kb/articles#pen-2").replace("kb/articles#sea-0", "kb/articles#sea-2");
+    let text = text.replace("kb/articles#ice-0", "kb/articles#ice-2").replace("kb/articles#ant-0", "kb/articles#ant-2");
+    let text = text.replace("kb/cjk#ja-", "kb/cjk#jx-").replace("news/wire#", "news/wirex#");
+    std::fs::write(&wrong, text).unwrap();
+    let (out, _) = issuer.eval(&wrong, &token, &[]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("floor retrieval.hybrid.r_precision.mean"), "{}", stderr(&out));
+}

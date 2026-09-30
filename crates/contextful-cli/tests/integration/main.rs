@@ -7,6 +7,7 @@ mod derive;
 mod differential;
 mod drive;
 mod drive_absent;
+mod eval;
 mod formal;
 mod init;
 mod mcp;

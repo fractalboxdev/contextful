@@ -81,9 +81,10 @@ Refinement reaches pure decision functions only ({{assurance.scope-claim.refinem
 Beneath the proofs sit the engineering rules: one implementation per capability
 ({{assurance.structure-tree.one-home}}), a failing test before a source change
 ({{assurance.test.test-first}}), and ordered gate stages
-({{assurance.gate.stage-sequence}}), each a remote check invoking the local subcommand
-({{assurance.gate.remote-check}}). The quality harness loads its corpus through the real
-store ({{assurance.evaluate.through-the-store}}) under policy labels
+({{assurance.gate.stage-sequence}}), each a remote check
+({{assurance.gate.remote-check}}). The quality harness
+({{assurance.evaluate.run-command}}) loads its corpus through the real store
+({{assurance.evaluate.through-the-store}}) under policy labels
 ({{assurance.evaluate.policy-labels}}), and baselines only ever rise
 ({{assurance.baseline.raise-only}}).
 
