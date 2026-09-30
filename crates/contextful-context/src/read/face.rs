@@ -20,7 +20,7 @@ use contextful_core::store::StoreError;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
 use contextful_core::store::reconcile::{Column, ColumnType};
 use contextful_core::store::relation::{ident, relation};
-use contextful_core::store::reserve::{INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
+use contextful_core::store::reserve::{COMMIT_SEQ, INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::policy::TablePolicy;
 use contextful_policy::enforce::scope;
@@ -62,6 +62,7 @@ fn injected_columns() -> Vec<Column> {
         Column::new(INGESTED_AT, ColumnType::Timestamp, false),
         Column::new(RUN_ID, ColumnType::Utf8, false),
         Column::new(ROW_SEQ, ColumnType::Int64, false),
+        Column::new(COMMIT_SEQ, ColumnType::Int64, false),
         Column::new(SITE_ID, ColumnType::Utf8, false),
     ]
 }

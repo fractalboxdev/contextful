@@ -189,6 +189,8 @@ The column and table namespaces the engine holds, the provenance columns it inje
   *because a run's rows share `_ingested_at` and `_run_id`, and keeping the last write per key needs an order among them*
 - `commit-seq` — The engine injects `_commit_seq`, a non-null int64 its commit assigns above every value the table holds; a run committing after a read carries a value above every row that read returned, whatever its `_ingested_at`.
   *A-topology*
+- `commit-order` — Commits of one table serialize from assigning `_commit_seq` to the step that makes the run readable, so the readable runs of a table always hold a prefix of its commit sequence.
+  *A-topology*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
 - `taint` — The engine injects `_taint`, a label under {{connector.infer.provenance-order}}, on each row a model's output lands as, replacing any producer value; a row no model produced omits it.
   *because a label a producer sets is one injected text can forge*
@@ -207,6 +209,8 @@ The column and table namespaces the engine holds, the provenance columns it inje
 - `ledger-fold` — Each fold pass merges a table's committed ledger files into `requests/folded-<snapshot-id>.parquet`, and a replica carries ledgers with their table.
   *because one ledger file per run per node per table grows listing and diff cost without bound*
 - `ledger-retention` — A ledger row is collected 365 d after its run committed.
+
+unsettled: Does a replica merging another node's runs renumber `_commit_seq`, or does an export cursor hold one position per writing node? owner: store affects: store.reserve
 
 ## reconcile
 

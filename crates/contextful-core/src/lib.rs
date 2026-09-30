@@ -8,6 +8,7 @@ pub mod disclosure;
 pub mod enforce;
 pub mod error;
 pub mod exchange;
+pub mod export;
 pub mod grant;
 pub mod identify;
 pub mod memory;

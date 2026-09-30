@@ -146,6 +146,33 @@ impl Store {
         FileLock::acquire(&dir.join(format!("{SCHEMA_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))
     }
 
+    /// Take the table's commit lock, which a landing holds from assigning `_commit_seq`
+    /// to the step that makes its run readable (`store.reserve.commit-order`).
+    pub fn lock_commit(&self, table: &str) -> Result<FileLock> {
+        let dir = self.table_dir(table)?;
+        fs::create_dir_all(&dir).at(&dir)?;
+        FileLock::acquire(&dir.join(COMMIT_LOCK_FILE), std::time::Duration::from_secs(LOCK_WAIT_SECS))
+    }
+
+    /// Assign the table's next commit sequence value, one above every value it assigned
+    /// before, and record it before any part carries it, so a failed landing leaves a gap
+    /// and never a repeat (`store.reserve.commit-seq`). The caller holds [`Store::lock_commit`].
+    pub fn assign_commit_seq(&self, table: &str) -> Result<i64> {
+        let data = self.table_dir(table)?.join("data");
+        let path = data.join(COMMIT_SEQ_FILE);
+        let held = match fs::read_to_string(&path) {
+            Ok(text) => text.trim().parse::<i64>().map_err(|e| {
+                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
+            })?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(e) => return Err(ContextError::Io { path, source: e }),
+        };
+        let next = held.checked_add(1).ok_or_else(|| ContextError::Invalid(format!("table `{table}` exhausted its commit sequence")))?;
+        fs::create_dir_all(&data).at(&data)?;
+        replace_file(&path, next.to_string().as_bytes())?;
+        Ok(next)
+    }
+
     /// Replace `schema.json` with the merged schema (`store.lay-out.schema-file`).
     pub fn write_schema(&self, table: &str, schema: &Schema) -> Result<()> {
         let dir = self.table_dir(table)?;
@@ -305,6 +332,13 @@ impl Store {
 }
 
 pub const ABSENT_ETAG: &str = "absent";
+
+/// The lock a table's commits serialize on, beside `schema.json`.
+const COMMIT_LOCK_FILE: &str = "commit.lock";
+
+/// The last commit sequence value a table assigned, under `data/`. The leading `.` keeps
+/// it node-local: a push uploads no dot file.
+const COMMIT_SEQ_FILE: &str = ".commit_seq";
 
 /// How long a landing waits for a lock another landing holds before refusing.
 pub const LOCK_WAIT_SECS: u64 = 30;

@@ -170,6 +170,7 @@ fn each_batch_merges_into_schema_json() {
             ("_ingested_at", "timestamp"),
             ("_run_id", "utf8"),
             ("_row_seq", "int"),
+            ("_commit_seq", "int"),
             ("_batch_seq", "int"),
             ("_site_id", "utf8"),
             ("title", "utf8"),
