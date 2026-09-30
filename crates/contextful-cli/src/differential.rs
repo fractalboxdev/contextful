@@ -10,12 +10,11 @@
 
 use anyhow::{bail, Context, Result};
 use clap::Args;
-use contextful_core::attenuate::{attenuate, Authority, Proposal};
-use contextful_core::grant::{Action, AggregateGrant, Grant, TablePattern, TenantScope};
-use contextful_core::identify::NormalizedSubject;
-use contextful_core::AuthorityError;
+pub use contextful_core::decide::{Decision, CASE_MALFORMED, DECISION_FIELDS as COMPARED_FIELDS};
+use contextful_core::decide::decide_value;
+use contextful_core::grant::TablePattern;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -37,12 +36,6 @@ pub const DEFAULT_CORPUS: &str = "corpus/counterexamples.jsonl";
 
 /// The reference binary `lake build` writes, relative to the reference package root.
 pub const REFERENCE_EXE: &str = ".lake/build/bin/contextful-reference";
-
-/// The decision fields the harness compares, in order.
-pub const COMPARED_FIELDS: [&str; 3] = ["verdict", "error", "dimension"];
-
-/// The identifier both sides give a case that does not decode as a case.
-pub const CASE_MALFORMED: &str = "CaseMalformed";
 
 /// The refusals of `contextful formal differential`. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -145,166 +138,14 @@ fn fresh_seed() -> u64 {
 
 // ---------------------------------------------------------------- decisions
 
-/// One decision: a verdict, an error identifier, and the dimension a widening names.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Decision {
-    pub verdict: String,
-    pub error: Option<String>,
-    pub dimension: Option<String>,
-}
-
-impl Decision {
-    fn verdict(v: &str) -> Decision {
-        Decision { verdict: v.to_string(), error: None, dimension: None }
-    }
-
-    fn refused(error: &str, dimension: Option<&str>) -> Decision {
-        Decision { verdict: "refused".into(), error: Some(error.into()), dimension: dimension.map(str::to_string) }
-    }
-
-    fn coverage(covered: bool) -> Decision {
-        Decision::verdict(if covered { "covered" } else { "not_covered" })
-    }
-
-    /// The fields on which two decisions differ, in [`COMPARED_FIELDS`] order.
-    pub fn differing(&self, other: &Decision) -> Vec<&'static str> {
-        let pairs = [
-            self.verdict == other.verdict,
-            self.error == other.error,
-            self.dimension == other.dimension,
-        ];
-        COMPARED_FIELDS.iter().zip(pairs).filter(|(_, same)| !same).map(|(f, _)| *f).collect()
-    }
-
-    /// The decision as the corpus prints it.
-    fn render(&self) -> String {
-        serde_json::to_value(self).map(|v| v.to_string()).unwrap_or_default()
-    }
-}
-
-/// A fault decoding a case: its shape, or a domain parser's refusal.
-enum Fault {
-    Malformed,
-    Refused(AuthorityError),
-}
-
-impl From<AuthorityError> for Fault {
-    fn from(e: AuthorityError) -> Fault {
-        Fault::Refused(e)
-    }
-}
-
-type Decoded<T> = std::result::Result<T, Fault>;
-
-/// The error identifier an [`AuthorityError`] carries at the head of its `Display`.
-fn identifier(e: &AuthorityError) -> String {
-    e.to_string().split(':').next().unwrap_or_default().to_string()
-}
-
-/// The engine's decision on one case.
+/// The engine's decision on one case: the decision module's native build.
 pub fn engine_decide(case: &Value) -> Decision {
-    match decide_case(case) {
-        Ok(d) => d,
-        Err(Fault::Malformed) => Decision::refused(CASE_MALFORMED, None),
-        Err(Fault::Refused(e)) => refusal(&e),
-    }
+    decide_value(case)
 }
 
-fn refusal(e: &AuthorityError) -> Decision {
-    let id = identifier(e);
-    let dimension = match e {
-        // The widened dimension heads the message (`authority.attenuate.widens`).
-        AuthorityError::AttenuationWidens(msg) => msg.split(':').next().map(str::trim),
-        _ => None,
-    };
-    Decision::refused(&id, dimension)
-}
-
-fn decide_case(case: &Value) -> Decoded<Decision> {
-    let obj = case.as_object().ok_or(Fault::Malformed)?;
-    match string(required(obj, "op")?)? {
-        "covers_name" => {
-            let pattern = string(required(obj, "pattern")?)?;
-            let name = string(required(obj, "name")?)?;
-            Ok(Decision::coverage(TablePattern::parse(pattern)?.covers_name(name)))
-        }
-        "covers_pattern" => {
-            let pattern = string(required(obj, "pattern")?)?;
-            let other = string(required(obj, "other")?)?;
-            let pattern = TablePattern::parse(pattern)?;
-            let other = TablePattern::parse(other)?;
-            Ok(Decision::coverage(pattern.covers(&other)))
-        }
-        "narrow" => {
-            let parent = required(obj, "parent")?.as_array().ok_or(Fault::Malformed)?;
-            let child = required(obj, "child")?.as_array().ok_or(Fault::Malformed)?;
-            let parent = parent.iter().map(grant).collect::<Decoded<Vec<_>>>()?;
-            let child = child.iter().map(grant).collect::<Decoded<Vec<_>>>()?;
-            let authority = Authority { grants: parent, exp: 0, subject: NormalizedSubject::default() };
-            let proposal = Proposal { grants: Some(child), ..Proposal::default() };
-            Ok(match attenuate(&authority, &proposal) {
-                Ok(_) => Decision::verdict("admitted"),
-                Err(e) => refusal(&e),
-            })
-        }
-        _ => Err(Fault::Malformed),
-    }
-}
-
-/// A present, non-null field.
-fn field<'a>(obj: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
-    obj.get(key).filter(|v| !v.is_null())
-}
-
-fn required<'a>(obj: &'a Map<String, Value>, key: &str) -> Decoded<&'a Value> {
-    field(obj, key).ok_or(Fault::Malformed)
-}
-
-fn string(v: &Value) -> Decoded<&str> {
-    v.as_str().ok_or(Fault::Malformed)
-}
-
-fn strings(v: &Value) -> Decoded<Vec<String>> {
-    v.as_array().ok_or(Fault::Malformed)?.iter().map(|s| string(s).map(str::to_string)).collect()
-}
-
-fn unsigned(v: &Value) -> Decoded<u64> {
-    v.as_u64().ok_or(Fault::Malformed)
-}
-
-fn optional<T>(obj: &Map<String, Value>, key: &str, f: impl Fn(&Value) -> Decoded<T>) -> Decoded<Option<T>> {
-    field(obj, key).map(f).transpose()
-}
-
-fn tenant(v: &Value) -> Decoded<TenantScope> {
-    let obj = v.as_object().ok_or(Fault::Malformed)?;
-    let table = string(required(obj, "table")?)?.to_string();
-    let value = string(required(obj, "value")?)?.to_string();
-    Ok(TenantScope { table, value })
-}
-
-fn aggregate(v: &Value) -> Decoded<AggregateGrant> {
-    let obj = v.as_object().ok_or(Fault::Malformed)?;
-    let min_group_size = unsigned(required(obj, "min_group_size")?)?;
-    let max_contributor_share = required(obj, "max_contributor_share")?.as_f64().ok_or(Fault::Malformed)?;
-    let functions = strings(required(obj, "functions")?)?;
-    let max_groups = unsigned(required(obj, "max_groups")?)?;
-    let max_rows = optional(obj, "max_rows", unsigned)?;
-    Ok(AggregateGrant { min_group_size, max_contributor_share, functions, max_groups, max_rows })
-}
-
-/// One grant: its shape first, then each action, then each table pattern.
-fn grant(v: &Value) -> Decoded<Grant> {
-    let obj = v.as_object().ok_or(Fault::Malformed)?;
-    let actions = strings(required(obj, "actions")?)?;
-    let tables = strings(required(obj, "tables")?)?;
-    let tenant = optional(obj, "tenant", tenant)?;
-    let templates = optional(obj, "templates", strings)?;
-    let aggregate = optional(obj, "aggregate", aggregate)?;
-    let max_rows = optional(obj, "max_rows", unsigned)?;
-    let actions = actions.iter().map(|a| Action::parse(a)).collect::<Result<Vec<_>, _>>()?;
-    let tables = tables.iter().map(|t| TablePattern::parse(t)).collect::<Result<Vec<_>, _>>()?;
-    Ok(Grant { actions, tables, tenant, aggregate, templates, max_rows })
+/// The decision as the corpus prints it.
+fn render(d: &Decision) -> String {
+    serde_json::to_value(d).map(|v| v.to_string()).unwrap_or_default()
 }
 
 // ---------------------------------------------------------------- generator
@@ -1019,8 +860,8 @@ impl Harness {
         DifferentialError::ReferenceModelDrift(format!(
             "the engine and the reference model disagree on {}\n  minimized case  {case}\n  engine          {}\n  reference       {}\n  origin          {origin}\n  corpus          {}",
             engine.differing(reference).join(", "),
-            engine.render(),
-            reference.render(),
+            render(engine),
+            render(reference),
             self.corpus.display()
         ))
     }

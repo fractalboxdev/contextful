@@ -230,7 +230,7 @@ fn an_allow_set_holds_at_most_32_entries() {
     let entries: Vec<String> = (0..32).map(|i| format!("on-prem:site-{i}")).collect();
     assert!(AllowSet::parse(&entries).is_ok());
     let over: Vec<String> = (0..33).map(|i| format!("on-prem:site-{i}")).collect();
-    assert!(matches!(AllowSet::parse(&over), Err(PolicyError::Malformed(_))));
+    assert!(matches!(AllowSet::parse(&over).map_err(PolicyError::from), Err(PolicyError::Malformed(_))));
 }
 
 /// A zone identifier holds at most 128 chars.
