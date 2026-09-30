@@ -1,0 +1,43 @@
+# The native evaluation corpus: its table declarations and policy labels. The cases in
+# evals/cases/native.jsonl read it through `contextful eval run`; nothing here lands in a
+# deployed store.
+
+[[pipeline.tables]]
+name = "kb/articles"
+primary_key = ["article_id"]
+
+[[pipeline.tables]]
+name = "kb/cjk"
+primary_key = ["doc_id"]
+
+[[pipeline.tables]]
+name = "news/wire"
+primary_key = ["story_id"]
+
+[[pipeline.tables]]
+name = "archive/incidents"
+primary_key = ["entry_id"]
+
+[[pipeline.tables.indexes]]
+kind = "fulltext"
+column = "title"
+
+[[pipeline.tables.indexes]]
+kind = "vector"
+column = "embedding"
+model = "stub"
+dim = 128
+
+[[pipeline.tables]]
+name = "crm/accounts"
+primary_key = ["account_id"]
+
+[pipeline.tables.policy.rows]
+predicate = "owner = subject.agent"
+
+[[pipeline.tables]]
+name = "hr/payroll"
+primary_key = ["payroll_id"]
+
+[pipeline.tables.policy.zone]
+allow = ["public-cloud:*"]

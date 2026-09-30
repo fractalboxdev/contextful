@@ -17480,10 +17480,13 @@
       "operation": "evaluate",
       "subject": "policy-labels",
       "kind": "behavior",
-      "statement": "An evaluation corpus carries zone and row-policy labels, and a run reads it through the access-control path.",
+      "statement": "An evaluation corpus carries zone and row-policy labels in its table declarations, and a run reads it through the access-control path under one admitted credential.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 238
+      "line": 238,
+      "scenarios": [
+        "WHEN a regression case names a row another agent owns under `owner = subject.agent`, THEN no leg returns it and the hybrid forbidden-row rate reads 0."
+      ]
     },
     {
       "id": "assurance.evaluate.unlabeled-corpus",
@@ -17491,10 +17494,13 @@
       "operation": "evaluate",
       "subject": "unlabeled-corpus",
       "kind": "refusal",
-      "statement": "A run over a corpus carrying neither labels nor an explicit local zone raises `EvalCorpusUnlabeled`.",
+      "statement": "A run over a corpus whose tables declare no zone or row policy, with no `local:` zone passed as `--zone`, raises `EvalCorpusUnlabeled` before any row lands.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 240
+      "line": 240,
+      "scenarios": [
+        "WHEN a corpus's tables declare no policy and the run passes no `--zone`, THEN the run raises `EvalCorpusUnlabeled` and lands no row."
+      ]
     },
     {
       "id": "assurance.evaluate.case-format",
@@ -17502,10 +17508,87 @@
       "operation": "evaluate",
       "subject": "case-format",
       "kind": "behavior",
-      "statement": "A case carries an id, a corpus reference, a question, tags, and an expected block of answer, artifacts, edges, entities, must-cite, must-abstain and time anchor.",
+      "statement": "A case carries an id, a corpus path relative to its case file, a question, tags, and an expected block of answer, artifacts, edges, entities, must-cite, must-abstain, must-not-retrieve, time anchor and recency bound.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 242
+    },
+    {
+      "id": "assurance.evaluate.row-reference",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "row-reference",
+      "kind": "behavior",
+      "statement": "A case names a row as `<table>#<key>`, the key joining the row's declared primary-key values with commas, and the runner keys each returned row the same way.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 243
+    },
+    {
+      "id": "assurance.evaluate.regression-case",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "regression-case",
+      "kind": "behavior",
+      "statement": "A case tagged `regression` is a regression case, and its must-not-retrieve set scores {{assurance.evaluate.forbidden-row-rate}}.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 244
+    },
+    {
+      "id": "assurance.evaluate.corpus-layout",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "corpus-layout",
+      "kind": "behavior",
+      "statement": "A corpus is a directory holding `contextful.toml`, its table declarations and policy labels, and one `rows/<table>.jsonl` per table.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 245
+    },
+    {
+      "id": "assurance.evaluate.run-command",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "run-command",
+      "kind": "behavior",
+      "statement": "`contextful eval run --goldens <file>` loads the case file, lands and folds each referenced corpus into a scratch store at `--landed-at`, the Unix epoch by default, reads every case, and writes the run report.",
+      "why": "because an undated row landed at the epoch predates every question's window, so a replay scores alike on any day",
+      "file": "spec/81-engineering.md",
+      "line": 246
+    },
+    {
+      "id": "assurance.evaluate.legs",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "legs",
+      "kind": "behavior",
+      "statement": "Each case calls {{read.retrieve.ranked-call}} three times at limit k: the lexical leg with the question alone, the vector leg with an embedding and an empty query, the hybrid leg with both.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 248
+    },
+    {
+      "id": "assurance.evaluate.stub-embedder",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "stub-embedder",
+      "kind": "behavior",
+      "statement": "The deterministic tier embeds every row and question with a seeded feature-hashing stub embedder; a corpus row or a case carrying its own embedding keeps it.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 249
+    },
+    {
+      "id": "assurance.evaluate.run-verdict",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "run-verdict",
+      "kind": "behavior",
+      "statement": "A run holds its report to the floors and, given `--baseline`, to that file; either red verdict exits non-zero, and `--update-baseline` applies {{assurance.baseline.raise-only}} on green alone.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 250
     },
     {
       "id": "assurance.evaluate.converter",
@@ -17516,7 +17599,7 @@
       "statement": "Each benchmark and application ground truth converts once into the case format through its own converter, and the runner reads nothing else.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 243
+      "line": 251
     },
     {
       "id": "assurance.evaluate.deterministic-tier",
@@ -17527,7 +17610,7 @@
       "statement": "Recall@k, R-precision, hit-rate@k, reciprocal rank and nDCG@k run with no model call, reported per leg — lexical, vector, hybrid — and per slice.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 244
+      "line": 252
     },
     {
       "id": "assurance.evaluate.distinct-top-k",
@@ -17538,7 +17621,7 @@
       "statement": "Membership in the top k is distinct, and a repeated id counts once.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 245
+      "line": 253
     },
     {
       "id": "assurance.evaluate.absent-truth",
@@ -17549,7 +17632,7 @@
       "statement": "A ranked metric over a case with no relevant set is NaN and drops out of every aggregate; an empty ranking against a non-empty relevant set scores zero.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 246
+      "line": 254
     },
     {
       "id": "assurance.evaluate.precision-floor",
@@ -17560,7 +17643,7 @@
       "statement": "Precision at rank min(k, R), R being the relevant-set size, holds at or above 60 percent.",
       "why": "because precision@k caps at R/k, below the floor whenever R is small",
       "file": "spec/81-engineering.md",
-      "line": 247
+      "line": 255
     },
     {
       "id": "assurance.evaluate.forbidden-row-rate",
@@ -17571,7 +17654,7 @@
       "statement": "A row named in a must-not-retrieve set holds at 0 percent of a regression case's returned rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 249
+      "line": 257
     },
     {
       "id": "assurance.evaluate.duplicate-row-rate",
@@ -17582,7 +17665,7 @@
       "statement": "A repeated table-and-row-key pair holds at 0 percent of the ranking.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 250
+      "line": 258
     },
     {
       "id": "assurance.evaluate.in-window-rate",
@@ -17593,7 +17676,7 @@
       "statement": "A case declaring a recency bound holds its in-window rate at or above 95 percent.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 251
+      "line": 259
     },
     {
       "id": "assurance.evaluate.abstention",
@@ -17604,7 +17687,7 @@
       "statement": "A must-abstain case returns zero rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 252
+      "line": 260
     },
     {
       "id": "assurance.evaluate.truth-per-surface",
@@ -17615,7 +17698,7 @@
       "statement": "Expected artifacts score the artifact retriever and expected edges score the edge retriever, reported apart; edge truth with no edge surface configured counts in an unscored tally.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 253
+      "line": 261
     },
     {
       "id": "assurance.evaluate.judged-dimensions",
@@ -17626,7 +17709,7 @@
       "statement": "The reading stage adds four judged dimensions: answer accuracy; abstention, as correct-refusal and hallucination-on-unknown rates; citation faithfulness; and temporal correctness against the bitemporal columns.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 254
+      "line": 262
     },
     {
       "id": "assurance.evaluate.grounded-reader",
@@ -17637,7 +17720,7 @@
       "statement": "The harness reader answers from retrieved rows alone, and the deterministic tier substitutes a stub reader.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 255
+      "line": 263
     },
     {
       "id": "assurance.evaluate.model-endpoint",
@@ -17648,7 +17731,7 @@
       "statement": "The judge and the reader reach a model through {{connector.infer.model-endpoint}}, and the harness holds no credential.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 256
+      "line": 264
     },
     {
       "id": "assurance.evaluate.judge",
@@ -17659,7 +17742,7 @@
       "statement": "The judge is one pinned open-weights instruct model, called once per judged item at temperature zero; a judge swap is a full re-baseline.",
       "why": "because a majority vote at temperature zero samples one mode and adds cost without reducing variance",
       "file": "spec/81-engineering.md",
-      "line": 257
+      "line": 265
     },
     {
       "id": "assurance.evaluate.systems-metrics",
@@ -17670,7 +17753,7 @@
       "statement": "Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 259
+      "line": 267
     },
     {
       "id": "assurance.evaluate.checkpoint",
@@ -17681,7 +17764,7 @@
       "statement": "A run appends each case's result as JSONL, and a crash re-runs the in-flight case.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 260
+      "line": 268
     },
     {
       "id": "assurance.evaluate.run-report",
@@ -17692,7 +17775,7 @@
       "statement": "A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 261
+      "line": 269
     },
     {
       "id": "assurance.baseline.file",
@@ -17703,7 +17786,7 @@
       "statement": "A baseline file carries a reserved run block `{k, tier, model, samples}` and one entry per gated metric: a bare number at the run's dead band, or an object overriding the band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 267
+      "line": 280
     },
     {
       "id": "assurance.baseline.default-dead-band",
@@ -17714,7 +17797,7 @@
       "statement": "A rate-valued entry with no override gates at a 2 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 268
+      "line": 281
     },
     {
       "id": "assurance.baseline.rank-quality-dead-band",
@@ -17725,7 +17808,7 @@
       "statement": "The ranked-quality entry gates at a 3 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 269
+      "line": 282
     },
     {
       "id": "assurance.baseline.band-units",
@@ -17736,7 +17819,7 @@
       "statement": "A band carries its metric's own units, and a count entry is pinned at zero with no band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 270
+      "line": 283
     },
     {
       "id": "assurance.baseline.metric-path",
@@ -17747,7 +17830,7 @@
       "statement": "An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `latency_ms`, `n_cases`, or `slices.<tag>.` before a bare `<metric>` or any of these but `latency_ms`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 271
+      "line": 284
     },
     {
       "id": "assurance.baseline.sample-count",
@@ -17758,7 +17841,7 @@
       "statement": "Every mean-valued path takes a `.n` suffix naming its sample count.",
       "why": "because blanking one case's truth lifts a NaN-filtered mean without moving the case count",
       "file": "spec/81-engineering.md",
-      "line": 272
+      "line": 285
     },
     {
       "id": "assurance.baseline.unresolvable-path",
@@ -17769,7 +17852,7 @@
       "statement": "A path resolving to nothing, a mean over fewer than 30 cases, a malformed entry or a non-finite band raises `BaselinePathUnresolved` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 274
+      "line": 287
     },
     {
       "id": "assurance.baseline.run-stamp-drift",
@@ -17780,7 +17863,7 @@
       "statement": "A run block differing from the run's own configuration raises `BaselineRunStampMismatch` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 276
+      "line": 289
     },
     {
       "id": "assurance.baseline.interval",
@@ -17791,7 +17874,7 @@
       "statement": "Each judged figure reports a 95 percent percentile-bootstrap interval over cases from 1000 resamples.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 278
+      "line": 291
     },
     {
       "id": "assurance.baseline.raise-only",
@@ -17802,7 +17885,7 @@
       "statement": "A baseline update runs after every gate and floor passes, moves each improved entry to its measured value, moves none in the worse direction, and adds no path.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 279
+      "line": 292
     },
     {
       "id": "assurance.baseline.floors-are-absolute",
@@ -17813,7 +17896,7 @@
       "statement": "An absolute floor gates independently of every committed value.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 280
+      "line": 293
     },
     {
       "id": "assurance.baseline.floor-coverage",
@@ -17824,7 +17907,7 @@
       "statement": "A report lacking a floor's figure on any leg of its `retrieval` surface breaches that floor; only a forbidden-row or in-window rate over no case holds.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 281
+      "line": 294
     },
     {
       "id": "assurance.baseline.offline",
@@ -17835,7 +17918,7 @@
       "statement": "The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 282
+      "line": 295
     },
     {
       "id": "assurance.baseline.trace-store",
@@ -17846,7 +17929,7 @@
       "statement": "A trace store records run history and curation staging, and decides no verdict.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 283
+      "line": 296
     },
     {
       "id": "assurance.baseline.golden-custody",
@@ -17857,7 +17940,7 @@
       "statement": "Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 284
+      "line": 297
     },
     {
       "id": "assurance.baseline.answer-key-in-the-store",
@@ -17868,7 +17951,7 @@
       "statement": "An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 286
+      "line": 299
     },
     {
       "id": "assurance.baseline.generated-redaction",
@@ -17879,7 +17962,7 @@
       "statement": "A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 288
+      "line": 301
     },
     {
       "id": "assurance.baseline.promotion-source",
@@ -17890,7 +17973,7 @@
       "statement": "Only an adjudicated outcome label promotes into a golden set; a self-rated row does not.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 290
+      "line": 303
     },
     {
       "id": "assurance.baseline.generators",
@@ -17901,7 +17984,7 @@
       "statement": "Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 291
+      "line": 304
     },
     {
       "id": "assurance.baseline.held-out",
@@ -17912,7 +17995,7 @@
       "statement": "Retrieval and synthesis are tuned on no gate input.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 292
+      "line": 305
     },
     {
       "id": "assurance.baseline.rotation",
@@ -17923,7 +18006,7 @@
       "statement": "The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 293
+      "line": 306
     },
     {
       "id": "assurance.baseline.native-gate",
@@ -17934,7 +18017,7 @@
       "statement": "A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 294
+      "line": 307
     },
     {
       "id": "assurance.baseline.trace-export",
@@ -17945,7 +18028,7 @@
       "statement": "A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 295
+      "line": 308
     },
     {
       "id": "assurance.measure.ledger",
@@ -17956,7 +18039,7 @@
       "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 304
+      "line": 317
     },
     {
       "id": "assurance.measure.unresolved-entry",
@@ -17967,7 +18050,7 @@
       "statement": "An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 305,
+      "line": 318,
       "scenarios": [
         "WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs."
       ]
@@ -17981,7 +18064,7 @@
       "statement": "An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 307,
+      "line": 320,
       "scenarios": [
         "WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it."
       ]
@@ -17995,7 +18078,7 @@
       "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry records on every run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 308
+      "line": 321
     },
     {
       "id": "assurance.measure.count-first",
@@ -18006,7 +18089,7 @@
       "statement": "A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.",
       "why": "because a shared container moves wall-clock figures past any band narrow enough to catch a regression",
       "file": "spec/81-engineering.md",
-      "line": 309
+      "line": 322
     },
     {
       "id": "assurance.measure.record",
@@ -18017,7 +18100,7 @@
       "statement": "A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 311
+      "line": 324
     },
     {
       "id": "assurance.measure.seeded",
@@ -18028,7 +18111,7 @@
       "statement": "Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.",
       "why": "because a failure that cannot replay cannot be fixed",
       "file": "spec/81-engineering.md",
-      "line": 313
+      "line": 326
     },
     {
       "id": "assurance.measure.seed-mismatch",
@@ -18039,7 +18122,7 @@
       "statement": "A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/81-engineering.md",
-      "line": 315
+      "line": 328
     },
     {
       "id": "assurance.measure.timing-iterations",
@@ -18050,7 +18133,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 317
+      "line": 330
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -18061,7 +18144,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 318
+      "line": 331
     },
     {
       "id": "assurance.measure.trend-band",
@@ -18072,7 +18155,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 319,
+      "line": 332,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -18086,7 +18169,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 320
+      "line": 333
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -18097,7 +18180,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 321
+      "line": 334
     },
     {
       "id": "assurance.measure.history",
@@ -18108,7 +18191,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 322
+      "line": 335
     },
     {
       "id": "assurance.measure.scheduled",
@@ -18119,7 +18202,7 @@
       "statement": "A nightly job runs every tier against the default-branch head and reports one check per run.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 324
+      "line": 337
     },
     {
       "id": "assurance.measure.measured-basis",
@@ -18130,7 +18213,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 325
+      "line": 338
     },
     {
       "id": "assurance.release.version",
@@ -18141,7 +18224,7 @@
       "statement": "A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones whose acceptance computes `passing` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 353,
+      "line": 366,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `passing` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -18155,7 +18238,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 355
+      "line": 368
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -18166,7 +18249,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/81-engineering.md",
-      "line": 357
+      "line": 370
     },
     {
       "id": "assurance.release.off-branch",
@@ -18177,7 +18260,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 359
+      "line": 372
     },
     {
       "id": "assurance.release.version-regressed",
@@ -18188,7 +18271,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 361,
+      "line": 374,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -18202,7 +18285,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 363
+      "line": 376
     },
     {
       "id": "assurance.release.gate-failed",
@@ -18213,7 +18296,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 365
+      "line": 378
     }
   ],
   "owns": {
@@ -19140,6 +19223,18 @@
     [
       "assurance.evaluate.through-the-store",
       "read.retrieve.ranked-call"
+    ],
+    [
+      "assurance.evaluate.regression-case",
+      "assurance.evaluate.forbidden-row-rate"
+    ],
+    [
+      "assurance.evaluate.legs",
+      "read.retrieve.ranked-call"
+    ],
+    [
+      "assurance.evaluate.run-verdict",
+      "assurance.baseline.raise-only"
     ],
     [
       "assurance.evaluate.model-endpoint",

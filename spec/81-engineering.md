@@ -235,11 +235,19 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `real-read-path` — An evaluation run ingests, indexes, retrieves, reads, judges and scores through the surfaces a caller uses, and the harness adds no storage or runtime primitive.
 - `through-the-store` — The corpus loads through the real store, and the retriever under test calls {{read.retrieve.ranked-call}} with the options a caller passes.
   *because an unordered full-scan retriever cannot go red when ranking breaks*
-- `policy-labels` — An evaluation corpus carries zone and row-policy labels, and a run reads it through the access-control path.
+- `policy-labels` — An evaluation corpus carries zone and row-policy labels in its table declarations, and a run reads it through the access-control path under one admitted credential.
   *A-assurance*
-- `unlabeled-corpus` — A run over a corpus carrying neither labels nor an explicit local zone raises `EvalCorpusUnlabeled`.
+- `unlabeled-corpus` — A run over a corpus whose tables declare no zone or row policy, with no `local:` zone passed as `--zone`, raises `EvalCorpusUnlabeled` before any row lands.
   *A-assurance*
-- `case-format` — A case carries an id, a corpus reference, a question, tags, and an expected block of answer, artifacts, edges, entities, must-cite, must-abstain and time anchor.
+- `case-format` — A case carries an id, a corpus path relative to its case file, a question, tags, and an expected block of answer, artifacts, edges, entities, must-cite, must-abstain, must-not-retrieve, time anchor and recency bound.
+- `row-reference` — A case names a row as `<table>#<key>`, the key joining the row's declared primary-key values with commas, and the runner keys each returned row the same way.
+- `regression-case` — A case tagged `regression` is a regression case, and its must-not-retrieve set scores {{assurance.evaluate.forbidden-row-rate}}.
+- `corpus-layout` — A corpus is a directory holding `contextful.toml`, its table declarations and policy labels, and one `rows/<table>.jsonl` per table.
+- `run-command` — `contextful eval run --goldens <file>` loads the case file, lands and folds each referenced corpus into a scratch store at `--landed-at`, the Unix epoch by default, reads every case, and writes the run report.
+  *because an undated row landed at the epoch predates every question's window, so a replay scores alike on any day*
+- `legs` — Each case calls {{read.retrieve.ranked-call}} three times at limit k: the lexical leg with the question alone, the vector leg with an embedding and an empty query, the hybrid leg with both.
+- `stub-embedder` — The deterministic tier embeds every row and question with a seeded feature-hashing stub embedder; a corpus row or a case carrying its own embedding keeps it.
+- `run-verdict` — A run holds its report to the floors and, given `--baseline`, to that file; either red verdict exits non-zero, and `--update-baseline` applies {{assurance.baseline.raise-only}} on green alone.
 - `converter` — Each benchmark and application ground truth converts once into the case format through its own converter, and the runner reads nothing else.
 - `deterministic-tier` — Recall@k, R-precision, hit-rate@k, reciprocal rank and nDCG@k run with no model call, reported per leg — lexical, vector, hybrid — and per slice.
 - `distinct-top-k` — Membership in the top k is distinct, and a repeated id counts once.
@@ -259,6 +267,11 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `systems-metrics` — Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.
 - `checkpoint` — A run appends each case's result as JSONL, and a crash re-runs the in-flight case.
 - `run-report` — A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.
+
+#### Scenarios
+
+- `assurance.evaluate.unlabeled-corpus`: WHEN a corpus's tables declare no policy and the run passes no `--zone`, THEN the run raises `EvalCorpusUnlabeled` and lands no row.
+- `assurance.evaluate.policy-labels`: WHEN a regression case names a row another agent owns under `owner = subject.agent`, THEN no leg returns it and the hybrid forbidden-row rate reads 0.
 
 ## baseline
 

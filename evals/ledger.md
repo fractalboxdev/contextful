@@ -2,7 +2,7 @@
 
 # Target ledger
 
-62 entries: 42 gated, 3 recorded, 1 scheduled, 16 open.
+62 entries: 44 gated, 3 recorded, 1 scheduled, 14 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -25,7 +25,7 @@
 | `encrypt-no-plaintext` | `store.encrypt.cipher` | `encrypt.canary_hits` | gate | issue 74 | `== 0` | open (issue 74) |
 | `engine-keeper-threads` | `run.cancel.engine-keeper` | `keeper.threads_per_engine` | gate | test `contextful_engine::execution::one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine` | `== 1` | gated |
 | `eval-absolute-floors` | `assurance.baseline.floors-are-absolute` | `floors.red_on_baseline_pass` | gate | test `contextful_eval::baseline::each_floor_reds_a_run_its_baseline_passes` | `== 4` | gated |
-| `eval-through-enforcement` | `assurance.evaluate.policy-labels` | `retrieval.hybrid.forbidden_row_rate` | gate | issue 78 | `== 0` | open (issue 78) |
+| `eval-through-enforcement` | `assurance.evaluate.policy-labels` | `retrieval.hybrid.forbidden_row_rate` | gate | test `contextful_cli::eval::the_native_golden_set_holds_its_floors_and_baseline` | `== 0` | gated |
 | `exclusive-create-no-hardlink` | `store.lease.commit-log` | `lease.race_winners.max` | gate | test `contextful_fs::create::racing_creates_land_exactly_one` | `== 1` | gated |
 | `execution-resume` | `run.journal.plan-pin` | `execution.replayed_effects` | gate | test `contextful_engine::execution::a_dropped_execution_resumes_under_its_scope_and_replays_its_steps` | `== 0` | gated |
 | `fold-single-publisher` | `store.fold.pointer-commit` | `fold.publishes_per_start_etag` | gate | test `contextful_context::fold::a_pass_losing_the_pointer_publishes_nothing` | `== 1` | gated |
@@ -44,7 +44,7 @@
 | `lexical-sidecar-cost` | `read.retrieve.fulltext-probe` | `lexical.postings_scored_per_query` | scheduled | test `contextful_context::index::one_row_set_lays_out_one_postings_file_a_probe_reads_by_term` | — | scheduled |
 | `memory-evidence-gate` | `read.recall.evidence-unresolved` | `recall.unresolved_admitted` | gate | test `contextful_core::memory::recall::unresolvable_evidence_suppresses_the_claim` | `== 0` | gated |
 | `memory-live-claims` | `read.recall.ranked-arm` | `recall.expired_returned` | gate | test `contextful_memory::synthesize::a_ranked_arm_over_claims_serves_live_claims_alone` | `== 0` | gated |
-| `native-golden-floor` | `assurance.baseline.native-gate` | `retrieval.hybrid.r_precision` | gate | issue 78 | `>= 0.6` | open (issue 78) |
+| `native-golden-floor` | `assurance.baseline.native-gate` | `retrieval.hybrid.r_precision` | gate | test `contextful_cli::eval::the_native_golden_set_holds_its_floors_and_baseline` | `>= 0.6` | gated |
 | `network-free-decoder` | `topology.package.decode-network-free` | `topology.decoder.network_packages` | gate | test `contextful_ci::topology::this_repository_decode_package_links_no_network_stack` | `== 0` | gated |
 | `network-free-runtime` | `topology.package.transport-optional` | `topology.runtime.network_packages` | gate | test `contextful_ci::topology::this_repository_outbound_crate_links_no_http_stack_without_its_transport` | `== 0` | gated |
 | `network-volume-refuses-cas` | `store.probe.unproven` | `probe.network_class_cas_pushes` | gate | issue 53 | `== 0` | open (issue 53) |

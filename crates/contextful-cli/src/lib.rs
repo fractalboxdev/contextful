@@ -7,6 +7,7 @@ mod component;
 mod context;
 mod derive;
 mod differential;
+mod eval;
 mod formal;
 mod mcp;
 mod memory;
@@ -59,6 +60,9 @@ enum Cmd {
     Mcp(mcp::McpArgs),
     /// Serve the tool protocol over MCP Streamable HTTP, admitting each request on its own credential.
     Serve(serve::ServeArgs),
+    /// Score a case file through the ranked read and hold it to the floors and a baseline.
+    #[command(subcommand)]
+    Eval(eval::EvalCmd),
     /// Elaborate and audit the Lean models under `formal/`.
     #[command(subcommand)]
     Formal(formal::FormalCmd),
@@ -89,6 +93,7 @@ pub fn main_with(tasks: Tasks) {
         Cmd::Serve(c) => serve::run(c),
         Cmd::Derive(c) => derive::run(c),
         Cmd::Memory(c) => memory::run(c),
+        Cmd::Eval(c) => eval::run(c),
         Cmd::Formal(c) => formal::run(c),
         #[cfg(feature = "drive")]
         Cmd::Decode { kind, input } => std::process::exit(contextful_connectors::boundary::worker(&kind, &input)),

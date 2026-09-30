@@ -859,6 +859,7 @@ dependencies = [
  "contextful-context",
  "contextful-core",
  "contextful-engine",
+ "contextful-eval",
  "contextful-memory",
  "contextful-outbound",
  "contextful-policy",

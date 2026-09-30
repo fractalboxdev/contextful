@@ -1,0 +1,20 @@
+{"account_id": "acme-mine-0", "name": "Acme renewal contract signed", "notes": "Account notes: acme renewal contract.", "owner": "agent://eval-reader"}
+{"account_id": "acme-mine-1", "name": "Acme contract renewal terms", "notes": "Account notes: acme renewal contract.", "owner": "agent://eval-reader"}
+{"account_id": "acme-theirs-0", "name": "Acme renewal contract draft", "notes": "Account notes: acme renewal contract.", "owner": "agent://other-team"}
+{"account_id": "acme-theirs-1", "name": "Acme renewal contract pricing", "notes": "Account notes: acme renewal contract.", "owner": "agent://other-team"}
+{"account_id": "globex-mine-0", "name": "Globex pricing dispute summary", "notes": "Account notes: globex pricing dispute.", "owner": "agent://eval-reader"}
+{"account_id": "globex-mine-1", "name": "Globex dispute over pricing", "notes": "Account notes: globex pricing dispute.", "owner": "agent://eval-reader"}
+{"account_id": "globex-theirs-0", "name": "Globex pricing dispute escalation", "notes": "Account notes: globex pricing dispute.", "owner": "agent://other-team"}
+{"account_id": "globex-theirs-1", "name": "Globex pricing dispute legal notes", "notes": "Account notes: globex pricing dispute.", "owner": "agent://other-team"}
+{"account_id": "initech-mine-0", "name": "Initech onboarding checklist", "notes": "Account notes: initech onboarding checklist.", "owner": "agent://eval-reader"}
+{"account_id": "initech-mine-1", "name": "Checklist for Initech onboarding", "notes": "Account notes: initech onboarding checklist.", "owner": "agent://eval-reader"}
+{"account_id": "initech-theirs-0", "name": "Initech onboarding checklist draft", "notes": "Account notes: initech onboarding checklist.", "owner": "agent://other-team"}
+{"account_id": "initech-theirs-1", "name": "Initech onboarding checklist owners", "notes": "Account notes: initech onboarding checklist.", "owner": "agent://other-team"}
+{"account_id": "umbrella-mine-0", "name": "Umbrella security review findings", "notes": "Account notes: umbrella security review.", "owner": "agent://eval-reader"}
+{"account_id": "umbrella-mine-1", "name": "Security review for Umbrella", "notes": "Account notes: umbrella security review.", "owner": "agent://eval-reader"}
+{"account_id": "umbrella-theirs-0", "name": "Umbrella security review raw notes", "notes": "Account notes: umbrella security review.", "owner": "agent://other-team"}
+{"account_id": "umbrella-theirs-1", "name": "Umbrella security review exceptions", "notes": "Account notes: umbrella security review.", "owner": "agent://other-team"}
+{"account_id": "bonus-mine-0", "name": "Quarterly bonus payout for account managers", "notes": "Account notes: quarterly bonus payout.", "owner": "agent://eval-reader"}
+{"account_id": "bonus-mine-1", "name": "Bonus payout approvals each quarter", "notes": "Account notes: quarterly bonus payout.", "owner": "agent://eval-reader"}
+{"account_id": "salary-mine-0", "name": "Executive salary bands benchmark", "notes": "Account notes: executive salary bands.", "owner": "agent://eval-reader"}
+{"account_id": "salary-mine-1", "name": "Salary bands for executive hires", "notes": "Account notes: executive salary bands.", "owner": "agent://eval-reader"}

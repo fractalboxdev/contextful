@@ -15,6 +15,9 @@ pub enum EvalError {
     MeasureEntryUnresolved { entry: String, reason: String },
     /// A gate-tier method finishing without writing its record (`assurance.measure.record`).
     MeasureRecordMissing { entry: String, reason: String },
+    /// A corpus whose tables declare no zone or row policy, read with no `local:` zone
+    /// (`assurance.evaluate.unlabeled-corpus`).
+    EvalCorpusUnlabeled { corpus: String },
 }
 
 impl EvalError {
@@ -25,6 +28,7 @@ impl EvalError {
             EvalError::BaselineRunStampMismatch { .. } => "BaselineRunStampMismatch",
             EvalError::MeasureEntryUnresolved { .. } => "MeasureEntryUnresolved",
             EvalError::MeasureRecordMissing { .. } => "MeasureRecordMissing",
+            EvalError::EvalCorpusUnlabeled { .. } => "EvalCorpusUnlabeled",
         }
     }
 
@@ -56,6 +60,10 @@ impl fmt::Display for EvalError {
             EvalError::MeasureRecordMissing { entry, reason } => {
                 write!(f, "MeasureRecordMissing: `{entry}`: {reason}")
             }
+            EvalError::EvalCorpusUnlabeled { corpus } => write!(
+                f,
+                "EvalCorpusUnlabeled: `{corpus}`: no table declares a zone or row policy; label the corpus or pass a `local:` zone as --zone"
+            ),
         }
     }
 }

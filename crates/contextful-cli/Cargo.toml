@@ -16,6 +16,8 @@ contextful-connectors = { path = "../contextful-connectors" }
 contextful-context = { path = "../contextful-context", features = ["read"] }
 contextful-core = { path = "../contextful-core" }
 contextful-engine = { path = "../contextful-engine" }
+# The harness core: case loader, stub embedder, metrics, report, floors and baseline gate.
+contextful-eval = { path = "../../tools/eval" }
 contextful-memory = { path = "../contextful-memory" }
 contextful-policy = { path = "../contextful-policy" }
 contextful-outbound = { path = "../contextful-outbound", default-features = false }

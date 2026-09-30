@@ -1,10 +1,13 @@
 //! The harness core's one integration binary.
 
 mod baseline;
+mod case;
+mod embed;
 mod floors;
 mod ledger;
 mod metrics;
 mod record;
+mod report;
 mod trend;
 
 use std::collections::HashSet;
