@@ -5,8 +5,8 @@
 
 use s3s::auth::SimpleAuth;
 use s3s::dto::{
-    DeleteObjectInput, DeleteObjectOutput, ETag, ETagCondition, GetObjectInput, GetObjectOutput, ListObjectsV2Input, ListObjectsV2Output, Object,
-    PutObjectInput, PutObjectOutput, StreamingBlob,
+    DeleteObjectInput, DeleteObjectOutput, ETag, ETagCondition, GetObjectInput, GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListObjectsV2Input,
+    ListObjectsV2Output, Object, PutObjectInput, PutObjectOutput, StreamingBlob,
 };
 use s3s::service::S3ServiceBuilder;
 use s3s::{s3_error, S3Error, S3ErrorCode, S3Request, S3Response, S3Result, S3};
@@ -24,6 +24,8 @@ struct State {
     /// Errors the next puts answer with, one each, ahead of any condition.
     scripted: VecDeque<S3ErrorCode>,
     puts: u64,
+    gets: u64,
+    heads: u64,
 }
 
 struct Backend {
@@ -80,13 +82,23 @@ impl S3 for Backend {
 
     async fn get_object(&self, req: S3Request<GetObjectInput>) -> S3Result<S3Response<GetObjectOutput>> {
         self.bucket(&req.input.bucket)?;
-        let Some((bytes, etag)) = self.state.lock().unwrap().objects.get(&req.input.key).cloned() else { return Err(s3_error!(NoSuchKey)) };
+        let mut state = self.state.lock().unwrap();
+        state.gets += 1;
+        let Some((bytes, etag)) = state.objects.get(&req.input.key).cloned() else { return Err(s3_error!(NoSuchKey)) };
         Ok(S3Response::new(GetObjectOutput {
             content_length: Some(bytes.len() as i64),
             e_tag: Some(ETag::Strong(etag)),
             body: Some(StreamingBlob::from(bytes::Bytes::from(bytes))),
             ..Default::default()
         }))
+    }
+
+    async fn head_object(&self, req: S3Request<HeadObjectInput>) -> S3Result<S3Response<HeadObjectOutput>> {
+        self.bucket(&req.input.bucket)?;
+        let mut state = self.state.lock().unwrap();
+        state.heads += 1;
+        let Some((bytes, etag)) = state.objects.get(&req.input.key).cloned() else { return Err(s3_error!(NoSuchKey)) };
+        Ok(S3Response::new(HeadObjectOutput { content_length: Some(bytes.len() as i64), e_tag: Some(ETag::Strong(etag)), ..Default::default() }))
     }
 
     async fn delete_object(&self, req: S3Request<DeleteObjectInput>) -> S3Result<S3Response<DeleteObjectOutput>> {
@@ -200,6 +212,16 @@ impl S3Server {
     /// Put requests the server has answered, signature failures excluded.
     pub fn puts(&self) -> u64 {
         self.state.lock().unwrap().puts
+    }
+
+    /// Get requests the server has answered, signature failures excluded.
+    pub fn gets(&self) -> u64 {
+        self.state.lock().unwrap().gets
+    }
+
+    /// Head requests the server has answered, signature failures excluded.
+    pub fn heads(&self) -> u64 {
+        self.state.lock().unwrap().heads
     }
 }
 

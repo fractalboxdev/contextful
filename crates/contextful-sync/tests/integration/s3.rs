@@ -114,6 +114,29 @@ fn a_list_follows_every_continuation_token() {
     assert!(b.list("none/").unwrap().is_empty());
 }
 
+/// A head request answers an object's ETag and a tagged listing answers each key's ETag, both
+/// without transferring an object's bytes.
+#[test]
+fn a_head_and_a_tagged_listing_answer_etags_without_bytes() {
+    let server = S3Server::start_paged(BUCKET, 2);
+    let b = open(&server);
+    let mut tags = Vec::new();
+    for k in ["feed/03.jsonl", "feed/01.jsonl", "feed/02.jsonl", "other/01.jsonl"] {
+        let Put::Applied(tag) = b.put(k, k.as_bytes(), Condition::IfNoneMatch).unwrap() else { panic!("{k}") };
+        tags.push((k, tag));
+    }
+    let tag = |k: &str| tags.iter().find(|(key, _)| *key == k).unwrap().1.clone();
+    let before = server.gets();
+    assert_eq!(b.head("feed/01.jsonl").unwrap(), Some(tag("feed/01.jsonl")));
+    assert_eq!(b.head("feed/absent.jsonl").unwrap(), None);
+    let listed = b.list_tagged("feed/").unwrap();
+    assert_eq!(listed, ["feed/01.jsonl", "feed/02.jsonl", "feed/03.jsonl"].map(|k| (k.to_string(), tag(k))));
+    assert_eq!(server.gets(), before, "neither transfers an object");
+
+    let missing = S3Bucket::open(&server.endpoint, "us-east-1", "context-typo", credentials(SECRET_KEY)).unwrap();
+    assert!(matches!(missing.list_tagged("feed/"), Err(ObjectError::Transport(m)) if m.contains("NoSuchBucket")));
+}
+
 /// Two nodes sharing one S3 bucket probe `cas`, push at once, and converge on each other's runs.
 #[test]
 fn two_nodes_converge_through_one_s3_bucket() {

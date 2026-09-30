@@ -1,7 +1,7 @@
 //! The `s3` object source over the object-store port: addressing, listing, gzip, the
 //! expansion ceiling, whole-read refusal, ETag skipping and credential references.
 
-use crate::support::{request, resolver, Never, Request, Response, Server};
+use crate::support::{request, Never};
 use contextful_connectors::http::ConfigError;
 use contextful_connectors::object::{ObjectConfig, ObjectSource, EXPANSION_CEILING};
 use contextful_core::connector::ConnectorError;
@@ -220,81 +220,21 @@ fn a_literal_credential_is_refused_and_a_reference_parses() {
     assert!(matches!(refusal(json!({"bucket": "b", "key": "k", "access_key_id": "secret://id"})), ConfigError::Run(_)), "a key pair binds both");
 }
 
-/// A loopback S3 endpoint serving `objects` under bucket `lake`: a list-type-2 listing with
-/// each key's ETag, object reads with an `ETag` header, and head requests.
-fn endpoint(objects: &'static [(&'static str, &'static str, &'static str)]) -> Server {
-    Server::start(move |r: &Request| {
-        let find = |key: &str| objects.iter().find(|(k, _, _)| *k == key);
-        match (r.method.as_str(), r.path()) {
-            ("GET", "/lake") | ("GET", "/lake/") => {
-                let prefix = r.query("prefix").unwrap_or_default().replace("%2F", "/");
-                let contents: String = objects
-                    .iter()
-                    .filter(|(k, _, _)| k.starts_with(&prefix))
-                    .map(|(k, _, e)| format!("<Contents><Key>{k}</Key><LastModified>2030-01-01T00:00:00.000Z</LastModified><ETag>&quot;{e}&quot;</ETag><Size>1</Size><StorageClass>STANDARD</StorageClass></Contents>"))
-                    .collect();
-                let xml = format!(r#"<?xml version="1.0" encoding="UTF-8"?><ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>lake</Name><Prefix>{prefix}</Prefix><KeyCount>{}</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated>{contents}</ListBucketResult>"#, objects.len());
-                Response { status: 200, headers: vec![("Content-Type".into(), "application/xml".into())], body: xml.into_bytes() }
-            }
-            (method, path) => match find(path.trim_start_matches("/lake/")) {
-                Some((_, body, etag)) => Response {
-                    status: 200,
-                    headers: vec![("ETag".into(), format!("\"{etag}\""))],
-                    body: if method == "HEAD" { vec![] } else { body.as_bytes().to_vec() },
-                },
-                None => Response { status: 404, headers: vec![], body: vec![] },
-            },
-        }
-    })
-}
-
-/// Each request carries a Signature Version 4 query signature, reaches the configured
-/// endpoint through the mediated client, and a signing source on cleartext off loopback refuses.
-// spec: connector.source.object-transport@c155252c
+/// A signing source never addresses a cleartext endpoint off loopback; an unsigned one may,
+/// carrying no capability to leak.
+// spec: connector.source.object-cleartext@31d9b13c
 #[test]
-fn a_signed_read_reaches_the_endpoint_alone_and_never_in_cleartext_off_loopback() {
-    static OBJECTS: [(&str, &str, &str); 2] = [("s/01.jsonl", "{\"n\":1}\n", "a1"), ("s/02.jsonl", "{\"n\":2}\n", "a2")];
-    let server = endpoint(&OBJECTS);
-    let secrets = vec![("lake-id", "AKIDLOOPBACKEXAMPLE"), ("lake-secret", "loopback-secret-key-material")];
-    let config = json!({
-        "bucket": "lake", "endpoint": server.url(""), "prefix": "s/", "format": "jsonl", "skip_unchanged": true,
+fn a_signing_source_refuses_a_cleartext_endpoint_off_loopback() {
+    let signed = json!({
+        "bucket": "lake", "endpoint": "http://objects.vendor.example", "key": "k.jsonl",
         "access_key_id": "secret://lake-id", "secret_access_key": "secret://lake-secret"
     });
-    let mut s = ObjectSource::signed(ObjectConfig::parse(&config).unwrap(), resolver(secrets));
-    let (rows, at) = read(&mut s, None);
-    assert_eq!(rows, vec![json!({"n": 1}), json!({"n": 2})]);
-    assert_eq!(at, Some(json!({"objects": {"s/01.jsonl": "\"a1\"", "s/02.jsonl": "\"a2\""}})));
-    let seen = server.requests.lock().unwrap().clone();
-    assert_eq!(seen.len(), 3, "one listing and two object reads: {seen:?}");
-    for r in &seen {
-        assert!(r.target.contains("X-Amz-Signature=") && r.target.contains("AKIDLOOPBACKEXAMPLE"), "{}", r.target);
-        assert!(!r.target.contains("loopback-secret-key-material") && r.header("authorization").is_none(), "{}", r.target);
-    }
-
-    // The listing's ETags answer the skip: a second read lists and downloads nothing.
-    let (rows, again) = read(&mut s, at.clone());
-    assert!(rows.is_empty());
-    assert_eq!(again, at);
-    assert_eq!(server.requests.lock().unwrap().len(), 4, "the skip costs one listing");
-
-    // A fixed key's skip costs one head request, never a download.
-    let key = json!({"bucket": "lake", "endpoint": server.url(""), "key": "s/01.jsonl", "format": "jsonl", "skip_unchanged": true});
-    let mut k = ObjectSource::signed(ObjectConfig::parse(&key).unwrap(), resolver(vec![]));
-    let (_, at) = read(&mut k, None);
-    let (rows, _) = read(&mut k, at);
-    assert!(rows.is_empty());
-    let methods: Vec<String> = server.requests.lock().unwrap()[4..].iter().map(|r| r.method.clone()).collect();
-    assert_eq!(methods, ["GET", "HEAD"]);
-    assert!(server.requests.lock().unwrap()[4..].iter().all(|r| !r.target.contains("X-Amz-Signature=")), "an unbound source sends unsigned");
-
-    // A signing source never addresses a cleartext endpoint off loopback.
-    let mut cleartext = config.clone();
-    cleartext["endpoint"] = json!("http://objects.vendor.example");
-    match refusal(cleartext) {
+    match refusal(signed.clone()) {
         ConfigError::Connector(ConnectorError::SecretCleartextEndpoint(m)) => assert!(m.contains("objects.vendor.example"), "{m}"),
         other => panic!("{other}"),
     }
-    let mut unsigned = json!({"bucket": "lake", "key": "k.jsonl"});
-    unsigned["endpoint"] = json!("http://objects.vendor.example");
-    assert!(ObjectConfig::parse(&unsigned).is_ok(), "an unsigned read carries no capability to leak");
+    let mut loopback = signed;
+    loopback["endpoint"] = json!("http://127.0.0.1:9000");
+    assert!(ObjectConfig::parse(&loopback).is_ok());
+    assert!(ObjectConfig::parse(&json!({"bucket": "lake", "key": "k.jsonl", "endpoint": "http://objects.vendor.example"})).is_ok());
 }

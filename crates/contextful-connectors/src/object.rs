@@ -2,9 +2,10 @@
 //! decompressed under a ceiling and decoded through the shared decoders
 //! (`connector.source.object-address`, `connector.source.prefix-listing`).
 //!
-//! Requests are signed with the S3 client the bucket adapter signs with, as Signature
-//! Version 4 query signatures, and sent through the mediated client, so the bucket is one
-//! more allowlisted vendor host (`connector.source.object-transport`).
+//! A signed read presigns each request through [`Presign`], which the binary implements over
+//! the store's S3 bucket adapter, and sends it through the mediated client, so one S3 client
+//! signs every bucket request and the bucket is one more allowlisted vendor host
+//! (`connector.source.object-transport`). This package links no S3 client.
 
 use crate::decode::{decode, gunzip, workbook, Format};
 use crate::http::ConfigError;
@@ -16,12 +17,9 @@ use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::object::{ObjectError, ObjectStore};
 use contextful_outbound::client::{classify, Client};
 use contextful_outbound::Resolver;
-use rusty_s3::actions::{ListObjectsV2, S3Action};
-use rusty_s3::{Bucket, Credentials, UrlStyle};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Duration;
 use url::Url;
 
 /// The source's registered name.
@@ -32,10 +30,6 @@ pub const EXPANSION_CEILING: u64 = 256 * 1024 * 1024;
 pub const DEFAULT_ENDPOINT: &str = "https://s3.amazonaws.com";
 /// The signing region a source declaring none signs for.
 pub const DEFAULT_REGION: &str = "us-east-1";
-/// Life of one signed URL; each request is signed immediately before it is sent.
-const SIGNATURE_TTL: Duration = Duration::from_secs(300);
-/// Keys one listing page asks for; a backend may answer fewer.
-const LIST_PAGE: usize = 1000;
 
 /// The configuration keys the object source reads (`run.declare.config-key`).
 pub const KEYS: [&str; 13] = [
@@ -207,7 +201,6 @@ impl ObjectConfig {
         if access_key_id.is_some() && endpoint.scheme() != "https" && !endpoint.host_str().is_some_and(is_loopback_host) {
             return Err(ConnectorError::SecretCleartextEndpoint(format!("the `{NAME}` source signs its requests and `{}` is cleartext", scrub(&endpoint))).into());
         }
-        Bucket::new(endpoint.clone(), UrlStyle::Path, bucket.clone(), DEFAULT_REGION).map_err(|e| invalid(format!("bucket `{bucket}` at `{}`: {e}", scrub(&endpoint))))?;
         Ok(ObjectConfig {
             bucket,
             address,
@@ -250,6 +243,16 @@ pub trait Objects: Send + Sync {
     fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, Failure>;
 }
 
+/// The failure an object-store error on `input` raises: a refused credential expires the
+/// read's authority, an unsupported request is permanent, and transport is transient.
+fn object_failure(input: &str, e: ObjectError) -> Failure {
+    match e {
+        ObjectError::Forbidden(m) => Failure::new(FailureTag::AuthExpired, format!("`{input}`: the bucket refused the credential: {m}")),
+        ObjectError::Unsupported(m) => Failure::deterministic(FailureTag::Permanent, format!("`{input}`: {m}")),
+        ObjectError::Transport(m) => Failure::new(FailureTag::Transient, format!("`{input}`: {m}")),
+    }
+}
+
 /// An [`ObjectStore`] read as [`Objects`]; its listing reports no ETag.
 struct Port {
     store: Arc<dyn ObjectStore>,
@@ -258,12 +261,7 @@ struct Port {
 
 impl Port {
     fn failure(&self, key: &str, e: ObjectError) -> Failure {
-        let input = format!("s3://{}/{key}", self.bucket);
-        match e {
-            ObjectError::Forbidden(m) => Failure::new(FailureTag::AuthExpired, format!("`{input}`: the bucket refused the credential: {m}")),
-            ObjectError::Unsupported(m) => Failure::deterministic(FailureTag::Permanent, format!("`{input}`: {m}")),
-            ObjectError::Transport(m) => Failure::new(FailureTag::Transient, format!("`{input}`: {m}")),
-        }
+        object_failure(&format!("s3://{}/{key}", self.bucket), e)
     }
 }
 
@@ -279,30 +277,40 @@ impl Objects for Port {
     }
 }
 
-/// A bucket on an S3-compatible endpoint, each request signed and sent through the mediated
-/// client. It reads; it never writes.
-pub struct SignedBucket {
-    bucket: Bucket,
-    credentials: Option<Credentials>,
-    client: Arc<Client>,
+/// The S3 protocol a signed read needs, performing no I/O: presigned request URLs and the
+/// listing parser.
+pub trait Presign: Send + Sync {
+    fn get(&self, key: &str) -> String;
+    fn head(&self, key: &str) -> String;
+    fn list(&self, prefix: &str, token: Option<&str>) -> String;
+    /// One listing page's keys with their ETags, and the token continuing it.
+    fn page(&self, body: &str) -> Result<(Vec<(String, String)>, Option<String>), String>;
+}
+
+/// Opens the presigner for a source's bucket, with the key pair hydrated for one read.
+pub type Presigner = Arc<dyn Fn(&ObjectConfig, Option<(Hydrated, Hydrated)>) -> Result<Box<dyn Presign>, Failure> + Send + Sync>;
+
+/// A bucket on an S3-compatible endpoint, each request presigned and sent through the
+/// mediated client, whose allowlist holds the endpoint host alone. It reads; it never writes.
+struct SignedBucket {
+    presign: Box<dyn Presign>,
+    bucket: String,
+    client: Client,
 }
 
 impl SignedBucket {
-    /// Open `config`'s bucket with `credentials`, hydrated for this read.
-    pub fn open(config: &ObjectConfig, credentials: Option<(Hydrated, Hydrated)>) -> Result<SignedBucket, Failure> {
-        let deny = |m: String| Failure::deterministic(FailureTag::Config, m);
-        let bucket = Bucket::new(config.endpoint.clone(), UrlStyle::Path, config.bucket.clone(), config.region.clone()).map_err(|e| deny(format!("`{}`: {e}", scrub(&config.endpoint))))?;
-        let allow = Allowlist::parse(&[config.endpoint.host_str().unwrap_or_default()]).map_err(|e| deny(e.to_string()))?;
-        let credentials = credentials.map(|(id, secret)| Credentials::new(id.reveal(), secret.reveal()));
-        Ok(SignedBucket { bucket, credentials, client: Arc::new(Client::new(allow, config.endpoint.clone())) })
+    fn open(config: &ObjectConfig, presign: Box<dyn Presign>) -> Result<SignedBucket, Failure> {
+        let allow = Allowlist::parse(&[config.endpoint.host_str().unwrap_or_default()]).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
+        Ok(SignedBucket { presign, bucket: config.bucket.clone(), client: Client::new(allow, config.endpoint.clone()) })
     }
 
     fn input(&self, key: &str) -> String {
-        format!("s3://{}/{key}", self.bucket.name())
+        format!("s3://{}/{key}", self.bucket)
     }
 
-    fn send(&self, method: &str, url: &Url, key: &str) -> Result<contextful_outbound::Response, Failure> {
-        let resp = self.client.send(method, url, &[], None)?;
+    fn send(&self, method: &str, url: &str, key: &str) -> Result<contextful_outbound::Response, Failure> {
+        let url = Url::parse(url).map_err(|e| Failure::deterministic(FailureTag::Config, format!("`{}`: {e}", self.input(key))))?;
+        let resp = self.client.send(method, &url, &[], None)?;
         match resp.status {
             200..=299 | 404 => Ok(resp),
             status => {
@@ -322,21 +330,14 @@ impl Objects for SignedBucket {
         let mut out = Vec::new();
         let mut token: Option<String> = None;
         for _ in 0..crate::http::PAGE_CAP {
-            let mut action = self.bucket.list_objects_v2(self.credentials.as_ref());
-            action.with_prefix(prefix.to_string());
-            action.with_max_keys(LIST_PAGE);
-            if let Some(t) = &token {
-                action.with_continuation_token(t.clone());
-            }
-            let resp = self.send("GET", &action.sign(SIGNATURE_TTL), prefix)?;
+            let resp = self.send("GET", &self.presign.list(prefix, token.as_deref()), prefix)?;
             if resp.status == 404 {
                 return Err(Failure::deterministic(FailureTag::Permanent, format!("`{}`: no bucket answers", self.input(prefix))));
             }
-            let text = String::from_utf8_lossy(&resp.body);
-            let page = ListObjectsV2::parse_response(&text).map_err(|e| Failure::new(FailureTag::Transient, format!("`{}`: the listing does not parse: {e}", self.input(prefix))))?;
-            out.extend(page.contents.into_iter().map(|c| (c.key, Some(c.etag))));
-            match page.next_continuation_token {
-                Some(next) if !next.is_empty() && token.as_ref() != Some(&next) => token = Some(next),
+            let (page, next) = self.presign.page(&String::from_utf8_lossy(&resp.body)).map_err(|e| Failure::new(FailureTag::Transient, format!("`{}`: {e}", self.input(prefix))))?;
+            out.extend(page.into_iter().map(|(k, t)| (k, Some(t))));
+            match next {
+                Some(next) if token.as_ref() != Some(&next) => token = Some(next),
                 _ => return Ok(out),
             }
         }
@@ -344,8 +345,7 @@ impl Objects for SignedBucket {
     }
 
     fn etag(&self, key: &str) -> Result<Option<String>, Failure> {
-        let url = self.bucket.head_object(self.credentials.as_ref(), key).sign(SIGNATURE_TTL);
-        let resp = self.send("HEAD", &url, key)?;
+        let resp = self.send("HEAD", &self.presign.head(key), key)?;
         if resp.status == 404 {
             return Ok(None);
         }
@@ -353,8 +353,7 @@ impl Objects for SignedBucket {
     }
 
     fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, Failure> {
-        let url = self.bucket.get_object(self.credentials.as_ref(), key).sign(SIGNATURE_TTL);
-        let resp = self.send("GET", &url, key)?;
+        let resp = self.send("GET", &self.presign.get(key), key)?;
         if resp.status == 404 {
             return Ok(None);
         }
@@ -379,16 +378,17 @@ impl ObjectSource {
         ObjectSource { config, open: Box::new(move || Ok(Box::new(Port { store: store.clone(), bucket: bucket.clone() }) as Box<dyn Objects>)) }
     }
 
-    /// A source reading its configured endpoint through the mediated client, its credential
-    /// references hydrated per read (`connector.source.object-credentials`).
-    pub fn signed(config: ObjectConfig, resolver: Arc<Resolver>) -> ObjectSource {
+    /// A source reading its configured endpoint through the mediated client, each request
+    /// presigned by `presigner` with the credential references hydrated per read
+    /// (`connector.source.object-credentials`).
+    pub fn signed(config: ObjectConfig, resolver: Arc<Resolver>, presigner: Presigner) -> ObjectSource {
         let c = config.clone();
         let open: Open = Box::new(move || {
             let credentials = match (&c.access_key_id, &c.secret_access_key) {
                 (Some(id), Some(secret)) => Some((resolver.render(id)?, resolver.render(secret)?)),
                 _ => None,
             };
-            Ok(Box::new(SignedBucket::open(&c, credentials)?) as Box<dyn Objects>)
+            Ok(Box::new(SignedBucket::open(&c, presigner(&c, credentials)?)?) as Box<dyn Objects>)
         });
         ObjectSource { config, open }
     }

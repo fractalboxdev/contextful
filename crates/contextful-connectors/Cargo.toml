@@ -13,9 +13,6 @@ publish = false
 contextful-core = { path = "../contextful-core" }
 contextful-decode = { path = "../contextful-decode" }
 contextful-outbound = { path = "../contextful-outbound", default-features = false }
-# The S3 client the bucket adapter signs with: sans-I/O, so requests send through the
-# mediated client.
-rusty-s3 = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -27,6 +24,9 @@ default = ["transport-ureq"]
 transport-ureq = ["contextful-outbound/transport-ureq"]
 # The Google Drive source and the PDF decoder its decode worker runs.
 drive = ["contextful-decode/pdf"]
+# Lists the `s3` object source as compiled in. The binary enables it beside the store's S3
+# bucket adapter, which it wires in as the source's `Objects` port.
+s3 = []
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

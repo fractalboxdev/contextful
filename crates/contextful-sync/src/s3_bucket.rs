@@ -1,7 +1,8 @@
 //! A bucket on an S3-compatible endpoint: AWS S3, R2, or any backend speaking the S3
 //! object API (`store.endpoint`). Objects are addressed path-style, every request carries
 //! a Signature Version 4 query signature, and conditional puts ride `If-None-Match: *` and
-//! `If-Match: <etag>`, so the backend itself arbitrates every compare-and-set.
+//! `If-Match: <etag>`, so the backend itself arbitrates every compare-and-set. The `s3`
+//! object source reads through the same adapter, anonymously where it binds no key pair.
 
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
@@ -29,7 +30,8 @@ pub struct S3Credentials {
 /// The bucket `<url>/<bucket>/` on an S3-compatible endpoint.
 pub struct S3Bucket {
     bucket: Bucket,
-    credentials: Credentials,
+    /// Absent for an anonymous reader, whose requests go unsigned.
+    credentials: Option<Credentials>,
     agent: ureq::Agent,
 }
 
@@ -64,6 +66,19 @@ fn absent_key(body: &str) -> bool {
 impl S3Bucket {
     /// Open `bucket` on the endpoint `url`, signing for `region` (`store.endpoint.addressing`).
     pub fn open(url: &str, region: &str, bucket: &str, credentials: S3Credentials) -> Result<S3Bucket, ObjectError> {
+        let credentials = match &credentials.session_token {
+            Some(token) => Credentials::new_with_token(credentials.access_key_id.reveal(), credentials.secret_access_key.reveal(), token.reveal()),
+            None => Credentials::new(credentials.access_key_id.reveal(), credentials.secret_access_key.reveal()),
+        };
+        S3Bucket::with(url, region, bucket, Some(credentials))
+    }
+
+    /// Open `bucket` for unsigned requests, as a public bucket answers them.
+    pub fn anonymous(url: &str, region: &str, bucket: &str) -> Result<S3Bucket, ObjectError> {
+        S3Bucket::with(url, region, bucket, None)
+    }
+
+    fn with(url: &str, region: &str, bucket: &str, credentials: Option<Credentials>) -> Result<S3Bucket, ObjectError> {
         if !bucket_name(bucket) {
             return Err(ObjectError::Unsupported(format!("`{bucket}` is not an S3 bucket name")));
         }
@@ -71,10 +86,6 @@ impl S3Bucket {
         let endpoint = base.parse().map_err(|e| ObjectError::Unsupported(format!("endpoint `{url}`: {e}")))?;
         let bucket = Bucket::new(endpoint, UrlStyle::Path, bucket.to_string(), region.to_string())
             .map_err(|e| ObjectError::Unsupported(format!("endpoint `{url}`: {e}")))?;
-        let credentials = match &credentials.session_token {
-            Some(token) => Credentials::new_with_token(credentials.access_key_id.reveal(), credentials.secret_access_key.reveal(), token.reveal()),
-            None => Credentials::new(credentials.access_key_id.reveal(), credentials.secret_access_key.reveal()),
-        };
         let agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
             .max_redirects(0)
@@ -98,6 +109,75 @@ impl S3Bucket {
     fn transport(what: &str, e: ureq::Error) -> ObjectError {
         ObjectError::Transport(format!("{what}: {e}"))
     }
+
+    /// A presigned `GET` of `key`, for a caller sending through its own client.
+    pub fn presign_get(&self, key: &str) -> String {
+        self.bucket.get_object(self.credentials.as_ref(), key).sign(SIGNATURE_TTL).into()
+    }
+
+    /// A presigned `HEAD` of `key`, for a caller sending through its own client.
+    pub fn presign_head(&self, key: &str) -> String {
+        self.bucket.head_object(self.credentials.as_ref(), key).sign(SIGNATURE_TTL).into()
+    }
+
+    /// A presigned list-type-2 page under `prefix`, continuing from `token`.
+    pub fn presign_list(&self, prefix: &str, token: Option<&str>) -> String {
+        let mut action: ListObjectsV2<'_> = self.bucket.list_objects_v2(self.credentials.as_ref());
+        action.with_prefix(prefix.to_string());
+        action.with_max_keys(LIST_PAGE);
+        if let Some(t) = token {
+            action.with_continuation_token(t.to_string());
+        }
+        action.sign(SIGNATURE_TTL).into()
+    }
+
+    /// One list page's keys, each with its ETag, and the token continuing the listing; `None`
+    /// where the backend reports the listing complete.
+    pub fn parse_list(body: &str) -> Result<(Vec<(String, String)>, Option<String>), ObjectError> {
+        let page = ListObjectsV2::parse_response(body).map_err(|e| ObjectError::Transport(format!("the listing does not parse: {e}")))?;
+        let keys = page.contents.into_iter().map(|c| (c.key, c.etag)).collect();
+        Ok((keys, page.next_continuation_token.filter(|t| !t.is_empty())))
+    }
+
+    /// The ETag of the object under `key`, read by a head request that transfers no bytes. A
+    /// head answer carries no error document, so every `404`, a missing bucket's among them,
+    /// answers `None`.
+    pub fn head(&self, key: &str) -> Result<Option<String>, ObjectError> {
+        let what = format!("HEAD `{key}`");
+        let mut response = self.agent.head(&self.presign_head(key)).call().map_err(|e| S3Bucket::transport(&what, e))?;
+        match response.status().as_u16() {
+            200 => etag(&response).map(Some).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag"))),
+            404 => Ok(None),
+            status => Err(S3Bucket::failure(&what, status, &read_text(&mut response))),
+        }
+    }
+
+    /// Every key under `prefix` with the ETag the listing reports, sorted by key, following each
+    /// continuation token (`store.endpoint.list-pages`).
+    pub fn list_tagged(&self, prefix: &str) -> Result<Vec<(String, String)>, ObjectError> {
+        let what = format!("LIST `{prefix}`");
+        let mut keys = Vec::new();
+        let mut token: Option<String> = None;
+        loop {
+            let url = self.presign_list(prefix, token.as_deref());
+            let mut response = self.agent.get(&url).call().map_err(|e| S3Bucket::transport(&what, e))?;
+            let status = response.status().as_u16();
+            let text = response.body_mut().with_config().limit(u64::MAX).read_to_string().map_err(|e| S3Bucket::transport(&what, e))?;
+            if status != 200 {
+                return Err(S3Bucket::failure(&what, status, &text));
+            }
+            let (page, next) = S3Bucket::parse_list(&text).map_err(|e| ObjectError::Transport(format!("{what}: {e}")))?;
+            keys.extend(page);
+            match next {
+                Some(next) => token = Some(next),
+                None => break,
+            }
+        }
+        keys.sort();
+        keys.dedup_by(|a, b| a.0 == b.0);
+        Ok(keys)
+    }
+
 }
 
 /// The response's `ETag`, as the backend spells it.
@@ -112,8 +192,7 @@ fn read_text(response: &mut ureq::http::Response<ureq::Body>) -> String {
 impl ObjectStore for S3Bucket {
     fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
         let what = format!("GET `{key}`");
-        let url = self.bucket.get_object(Some(&self.credentials), key).sign(SIGNATURE_TTL);
-        let mut response = self.agent.get(url.as_str()).call().map_err(|e| S3Bucket::transport(&what, e))?;
+        let mut response = self.agent.get(&self.presign_get(key)).call().map_err(|e| S3Bucket::transport(&what, e))?;
         match response.status().as_u16() {
             200 => {
                 let tag = etag(&response).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag")))?;
@@ -132,7 +211,7 @@ impl ObjectStore for S3Bucket {
 
     fn put(&self, key: &str, bytes: &[u8], condition: Condition) -> Result<Put, ObjectError> {
         let what = format!("PUT `{key}`");
-        let mut action = self.bucket.put_object(Some(&self.credentials), key);
+        let mut action = self.bucket.put_object(self.credentials.as_ref(), key);
         let header = match &condition {
             Condition::None => None,
             Condition::IfNoneMatch => Some(("if-none-match", "*".to_string())),
@@ -162,7 +241,7 @@ impl ObjectStore for S3Bucket {
 
     fn delete(&self, key: &str) -> Result<(), ObjectError> {
         let what = format!("DELETE `{key}`");
-        let url = self.bucket.delete_object(Some(&self.credentials), key).sign(SIGNATURE_TTL);
+        let url = self.bucket.delete_object(self.credentials.as_ref(), key).sign(SIGNATURE_TTL);
         let mut response = self.agent.delete(url.as_str()).call().map_err(|e| S3Bucket::transport(&what, e))?;
         match response.status().as_u16() {
             200 | 204 => Ok(()),
@@ -177,33 +256,7 @@ impl ObjectStore for S3Bucket {
     }
 
     fn list(&self, prefix: &str) -> Result<Vec<String>, ObjectError> {
-        let what = format!("LIST `{prefix}`");
-        let mut keys = Vec::new();
-        let mut token: Option<String> = None;
-        loop {
-            let mut action: ListObjectsV2<'_> = self.bucket.list_objects_v2(Some(&self.credentials));
-            action.with_prefix(prefix.to_string());
-            action.with_max_keys(LIST_PAGE);
-            if let Some(t) = &token {
-                action.with_continuation_token(t.clone());
-            }
-            let url = action.sign(SIGNATURE_TTL);
-            let mut response = self.agent.get(url.as_str()).call().map_err(|e| S3Bucket::transport(&what, e))?;
-            let status = response.status().as_u16();
-            let text = response.body_mut().with_config().limit(u64::MAX).read_to_string().map_err(|e| S3Bucket::transport(&what, e))?;
-            if status != 200 {
-                return Err(S3Bucket::failure(&what, status, &text));
-            }
-            let page = ListObjectsV2::parse_response(&text).map_err(|e| ObjectError::Transport(format!("{what}: {e}")))?;
-            keys.extend(page.contents.into_iter().map(|c| c.key));
-            match page.next_continuation_token {
-                Some(next) if !next.is_empty() => token = Some(next),
-                _ => break,
-            }
-        }
-        keys.sort();
-        keys.dedup();
-        Ok(keys)
+        Ok(self.list_tagged(prefix)?.into_iter().map(|(k, _)| k).collect())
     }
 
     fn cas_scope(&self) -> CasScope {

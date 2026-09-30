@@ -13,6 +13,8 @@ mod init;
 mod job;
 mod mcp;
 mod memory;
+mod object;
+mod object_absent;
 mod pipeline;
 mod query;
 mod run;
