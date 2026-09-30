@@ -1,6 +1,6 @@
 //! `assurance.test.test-first`, its scope, bound and unrunnable base, and `assurance.test.refactor-trailer`.
 
-use crate::{stderr, Repo};
+use crate::{manifest, stderr, Repo};
 
 const TRIPLE: &str = "pub fn double(x: i32) -> i32 {\n    x * 2\n}\n\npub fn triple(x: i32) -> i32 {\n    x * 3\n}\n";
 
@@ -110,9 +110,9 @@ fn a_new_package_counts_red_alone_and_leaves_the_base_workspace_loadable() {
     assert!(!err.contains("failed to load manifest"), "{err}");
 }
 
-/// The test-first stage builds each changed test file's target against the base source, then runs exactly the
-/// tests under that file's top-level module; a target failing to compile there counts as failing.
-// spec: assurance.test.test-first-scope@6055ef81
+/// The test-first stage builds each changed test file's target against the base source with every feature enabled,
+/// then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.
+// spec: assurance.test.test-first-scope@38d52656
 #[test]
 fn only_the_changes_test_modules_run_against_the_base() {
     let r = Repo::init();
@@ -127,6 +127,24 @@ fn only_the_changes_test_modules_run_against_the_base() {
     let o = r.gate(&["--stage", "test-first", "--base", &base]);
     assert!(!o.status.success(), "the base's unrelated failing suite read as the change's red test: {}", stderr(&o));
     assert!(stderr(&o).contains("TestNotFirst"), "{}", stderr(&o));
+}
+
+/// A changed test compiled in only under a non-default feature still runs against the base, so a
+/// source change behind that feature reads red there rather than as a suite with nothing in it.
+#[test]
+fn a_feature_gated_test_runs_against_the_base_with_every_feature() {
+    let r = Repo::init();
+    r.write("crates/gated/Cargo.toml", &format!("{}\n[features]\nextra = []\n", manifest("gated", "")));
+    r.write("crates/gated/src/lib.rs", "#[cfg(feature = \"extra\")]\npub fn level() -> u8 {\n    1\n}\n");
+    r.write("crates/gated/tests/integration/main.rs", "#![cfg(feature = \"extra\")]\nmod level;\n");
+    r.write("crates/gated/tests/integration/level.rs", "#[test]\nfn level() {\n    assert_eq!(gated::level(), 1);\n}\n");
+    r.commit("a package whose suite needs its extra feature");
+    let base = r.head();
+    r.write("crates/gated/src/lib.rs", "#[cfg(feature = \"extra\")]\npub fn level() -> u8 {\n    2\n}\n");
+    r.write("crates/gated/tests/integration/level.rs", "#[test]\nfn level() {\n    assert_eq!(gated::level(), 2);\n}\n");
+    r.commit("level two, test first");
+    let o = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(o.status.success(), "a feature-gated test failing at base read as green: {}", stderr(&o));
 }
 
 /// One test-first execution against the base, its build excluded, runs for at most 300 s; a run past the bound is
