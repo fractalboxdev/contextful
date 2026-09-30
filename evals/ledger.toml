@@ -489,9 +489,9 @@ target = { op = "==", value = 1 }
 [entry.row-key-dedup]
 clause = "read.retrieve.row-key-dedup"
 metric = "retrieval.hybrid.duplicate_row_rate"
-kind   = "eval"
+kind   = "test"
 tier   = "gate"
-method = { issue = 79 }
+method = { test = "contextful_context::read::retrieve::a_ranked_read_keeps_the_newest_row_per_content_hash" }
 target = { op = "==", value = 0 }
 
 [entry.memory-evidence-gate]

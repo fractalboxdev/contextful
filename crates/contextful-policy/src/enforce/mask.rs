@@ -313,6 +313,12 @@ impl Mask {
         }
     }
 
+    /// Whether distinct inputs keep distinct masked values: `hash` or `tokenize` with no
+    /// combine. `drop`, `truncate`, `bucket`, `range` and every combine merge values.
+    pub fn keeps_distinct(&self) -> bool {
+        matches!(self.primary, Strategy::Hash | Strategy::Tokenize) && self.combine.is_none()
+    }
+
     /// The mask's primary strategy, as a refusal names it.
     pub fn strategy_name(&self) -> &'static str {
         match self.primary {

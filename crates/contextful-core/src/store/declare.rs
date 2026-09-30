@@ -89,6 +89,10 @@ pub struct TableDecl {
     pub agent_hint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub example_queries: Option<Vec<String>>,
+    /// The column carrying each row's content hash, the row key a ranked read keeps one
+    /// row per (`read.retrieve.row-key-dedup`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_hash_column: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -157,6 +161,11 @@ impl TableDecl {
 
     pub fn primary_key(&self) -> &[String] {
         self.primary_key.as_deref().unwrap_or(&[])
+    }
+
+    /// The declared content-hash column, if any.
+    pub fn content_hash_column(&self) -> Option<&str> {
+        self.content_hash_column.as_deref()
     }
 
     pub fn is_keyed(&self) -> bool {

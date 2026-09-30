@@ -382,3 +382,158 @@ fn a_ranked_read_meets_the_face_ceiling() {
     let huge = r.face.retrieve(&s, &RetrieveRequest { limit: Some(u64::MAX), ..ask("research/vendor", "feed") }, Bounds::default()).unwrap();
     assert_eq!(huge.blocks["contextful.retrieval"]["window"], json!(8 * contextful_core::read::respond::FACE_ROW_CEILING));
 }
+
+/// `lab/hashed` declares its content-hash column; `lab/unhashed` holds the same rows and
+/// declares none. `lab/dropped`, `lab/truncated` and `lab/digested` hold them too, under a
+/// `drop`, a `truncate:1` and a `hash` mask on the content-hash column. `lab/revised` holds
+/// one passage whose newest copy is retitled under an unchanged hash.
+const DUPES: &str = r#"
+[[pipeline.tables]]
+name = "lab/hashed"
+content_hash_column = "body_hash"
+
+[[pipeline.tables]]
+name = "lab/unhashed"
+
+[[pipeline.tables]]
+name = "lab/revised"
+content_hash_column = "body_hash"
+"#;
+
+/// The masked tables' blocks, each with its column mask when `masked` holds.
+fn masked_dupes(masked: bool) -> String {
+    [("lab/dropped", "drop"), ("lab/truncated", "truncate:1"), ("lab/digested", "hash")]
+        .iter()
+        .map(|(table, strategy)| {
+            let mask =
+                if masked { format!("[pipeline.tables.policy.columns]\nbody_hash = {{ strategy = \"{strategy}\" }}\n") } else { String::new() };
+            format!("\n[[pipeline.tables]]\nname = \"{table}\"\ncontent_hash_column = \"body_hash\"\n{mask}")
+        })
+        .collect()
+}
+
+/// Five runs a day apart, each landing one copy of one battery passage under the content
+/// hash `h-a`, a passage under its own hash, and a passage with a null hash; `lab/revised`
+/// takes one copy of passage `r` under `h-r` per run, the fifth retitled off the battery
+/// query. Masks bind at query time alone.
+fn dupe_reads() -> Reads {
+    let landing = format!("{MANIFEST}{DUPES}{}", masked_dupes(false));
+    let mut r = Reads::with_manifest(MANIFEST);
+    for table in ["lab/hashed", "lab/unhashed", "lab/dropped", "lab/truncated", "lab/digested", "lab/revised"] {
+        let decl = TableDecl::parse_pipeline(&landing).unwrap().into_iter().find(|d| d.name == table).unwrap();
+        for run in 1..=5 {
+            let rows = if table == "lab/revised" {
+                let title = if run == 5 { "Grid maintenance notes" } else { "Battery storage cells" };
+                json!([{ "passage_id": format!("r{run}"), "title": title, "body_hash": "h-r" }])
+            } else {
+                json!([
+                    { "passage_id": format!("a{run}"), "title": "Battery storage cells", "body_hash": "h-a" },
+                    { "passage_id": format!("b{run}"), "title": "Battery storage grids", "body_hash": format!("h-b{run}") },
+                    { "passage_id": format!("c{run}"), "title": "Battery storage prices", "body_hash": null },
+                ])
+            };
+            let ctx = RunContext {
+                node: NodeId::parse("ingest-a").unwrap(),
+                injection: Injection { run_id: format!("run-000{run}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+                committed_at: at(&format!("2030-01-1{run}T00:00:00Z")),
+            };
+            let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
+            land(&r.store, &decl, &Batch { rows, types: HashMap::new() }, &ctx).unwrap();
+        }
+    }
+    r.face = Face::open(r.store.clone(), &format!("{MANIFEST}{DUPES}{}", masked_dupes(true)), pepper()).unwrap();
+    r
+}
+
+/// The share of returned rows repeating an earlier `(table, row key)` pair, the row key
+/// read from the declared content-hash column.
+fn duplicate_row_rate(ranked: &Response) -> f64 {
+    let mut seen = std::collections::HashSet::new();
+    let pairs: Vec<(Value, Value)> =
+        column(ranked, "_table").into_iter().zip(column(ranked, "_row").into_iter().map(|r| r["body_hash"].clone())).collect();
+    let repeats = pairs.iter().filter(|(_, key)| !key.is_null()).filter(|p| !seen.insert((*p).clone())).count();
+    if pairs.is_empty() {
+        0.0
+    } else {
+        repeats as f64 / pairs.len() as f64
+    }
+}
+
+/// A ranked read keeps per `(table, row key)` only the newest ingestion, and no older copy when the newest misses the relevance floor. The row key is the declared content-hash column, else null, never a digest over projected values.
+// spec: read.retrieve.row-key-dedup@77ce4ce8
+#[test]
+fn a_ranked_read_keeps_the_newest_row_per_content_hash() {
+    let r = dupe_reads();
+    let s = r.session(&["lab/*"], None, None);
+    let ranked = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), ..ask("lab/hashed", "battery storage") }, Bounds::default()).unwrap();
+    let mut kept = ids(&ranked, "passage_id");
+    kept.sort();
+    // One `h-a` copy survives, the fifth run's; every `h-b*` row and every null-key row stays.
+    assert_eq!(kept, ["a5", "b1", "b2", "b3", "b4", "b5", "c1", "c2", "c3", "c4", "c5"]);
+    let rate = duplicate_row_rate(&ranked);
+    contextful_eval::record::emit("row-key-dedup", rate, ranked.rows.len() as u64, 0);
+    assert_eq!(rate, 0.0);
+    assert_eq!(ranked.blocks["contextful.retrieval"]["deduped"], json!(4));
+    // Identical rows under no declared column stay whole: no digest stands in for the key.
+    let unhashed = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), ..ask("lab/unhashed", "battery storage") }, Bounds::default()).unwrap();
+    assert_eq!(unhashed.rows.len(), 15);
+    assert_eq!(unhashed.blocks["contextful.retrieval"]["deduped"], json!(0));
+    // `r5`, the newest `h-r` copy, misses the floor; no older copy stands in for it.
+    let revised = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), ..ask("lab/revised", "battery storage") }, Bounds::default()).unwrap();
+    assert_eq!(ids(&revised, "passage_id"), Vec::<String>::new());
+    assert_eq!(revised.blocks["contextful.retrieval"]["candidates_prefloor"], json!(5));
+    assert_eq!(revised.blocks["contextful.retrieval"]["deduped"], json!(4));
+    let grid = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), ..ask("lab/revised", "grid maintenance") }, Bounds::default()).unwrap();
+    assert_eq!(ids(&grid, "passage_id"), ["r5"]);
+}
+
+/// The row key is absent from the outer projection.
+// spec: read.retrieve.row-key-stays-internal@0987d291
+#[test]
+fn the_row_key_stays_out_of_the_projection() {
+    let r = dupe_reads();
+    let s = r.session(&["lab/*"], None, None);
+    let ranked = r.face.retrieve(&s, &ask("lab/hashed", "battery storage"), Bounds::default()).unwrap();
+    assert_eq!(ranked.blocks["contextful.retrieval"]["deduped"], json!(4));
+    // The deduplicating arm projects exactly what the same rows under no row key project.
+    let plain = r.face.retrieve(&s, &ask("lab/unhashed", "battery storage"), Bounds::default()).unwrap();
+    assert_eq!(plain.blocks["contextful.retrieval"]["deduped"], json!(0));
+    assert_eq!(ranked.columns, plain.columns);
+    let keys = |resp: &Response| -> std::collections::BTreeSet<Vec<String>> {
+        column(resp, "_row").iter().map(|row| row.as_object().unwrap().keys().cloned().collect()).collect()
+    };
+    assert_eq!(keys(&ranked), keys(&plain));
+    assert_eq!(keys(&ranked).into_iter().collect::<Vec<_>>(), [vec!["body_hash".to_string(), "passage_id".into(), "title".into()]]);
+}
+
+/// A content-hash column the session masks by `drop`, `truncate`, `bucket`, `range` or any combine keys every row null; one masked by `hash` or `tokenize` alone keys by its digest.
+// spec: read.retrieve.row-key-under-mask@47dfc71e
+#[test]
+fn a_lossy_mask_on_the_row_key_keeps_every_row() {
+    let r = dupe_reads();
+    let s = r.session(&["lab/*"], None, None);
+    let read = |table: &str| r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), ..ask(table, "battery storage") }, Bounds::default()).unwrap();
+    for table in ["lab/dropped", "lab/truncated"] {
+        let masked = read(table);
+        assert_eq!((masked.rows.len(), masked.blocks["contextful.retrieval"]["deduped"].clone()), (15, json!(0)), "{table}");
+    }
+    let digested = read("lab/digested");
+    assert_eq!((digested.rows.len(), digested.blocks["contextful.retrieval"]["deduped"].clone()), (11, json!(4)));
+    let mut kept = ids(&digested, "passage_id");
+    kept.sort();
+    assert_eq!(kept, ["a5", "b1", "b2", "b3", "b4", "b5", "c1", "c2", "c3", "c4", "c5"]);
+}
+
+/// The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.
+// spec: read.retrieve.dedup-is-gated@fd075b7a
+#[test]
+fn a_browse_shaped_read_skips_the_deduplicator() {
+    let r = dupe_reads();
+    let s = r.session(&["lab/*"], None, None);
+    let browse = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), ..ask("lab/hashed", "") }, Bounds::default()).unwrap();
+    assert_eq!(browse.blocks["contextful.retrieval"]["floor"], Value::Null);
+    assert_eq!((browse.rows.len(), browse.blocks["contextful.retrieval"]["deduped"].clone()), (15, json!(0)));
+    let ranked = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), ..ask("lab/hashed", "battery") }, Bounds::default()).unwrap();
+    assert_eq!(ranked.blocks["contextful.retrieval"]["floor"], json!(1));
+    assert_eq!((ranked.rows.len(), ranked.blocks["contextful.retrieval"]["deduped"].clone()), (11, json!(4)));
+}

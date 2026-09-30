@@ -1987,7 +1987,7 @@
       "operation": "declare",
       "subject": "table-block",
       "kind": "behavior",
-      "statement": "A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint` and `example_queries`; an unset key is absent from the canonical serialization.",
+      "statement": "A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `view`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries` and `content_hash_column`; an unset key is absent from the canonical serialization.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 154
@@ -4671,10 +4671,21 @@
       "operation": "retrieve",
       "subject": "row-key-dedup",
       "kind": "behavior",
-      "statement": "A ranked read keeps one row per `(table, row key)`, newest ingestion first. The row key is the declared content-hash column, else null, never a digest over projected values.",
+      "statement": "A ranked read keeps per `(table, row key)` only the newest ingestion, and no older copy when the newest misses the relevance floor. The row key is the declared content-hash column, else null, never a digest over projected values.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 251
+    },
+    {
+      "id": "read.retrieve.row-key-under-mask",
+      "contract": "read",
+      "operation": "retrieve",
+      "subject": "row-key-under-mask",
+      "kind": "behavior",
+      "statement": "A content-hash column the session masks by `drop`, `truncate`, `bucket`, `range` or any combine keys every row null; one masked by `hash` or `tokenize` alone keys by its digest.",
+      "why": "because a mask merging distinct hashes lets a reader's grants decide which rows a table holds",
+      "file": "spec/20-read.md",
+      "line": 252
     },
     {
       "id": "read.retrieve.row-key-stays-internal",
@@ -4685,7 +4696,7 @@
       "statement": "The row key is absent from the outer projection.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 252
+      "line": 254
     },
     {
       "id": "read.retrieve.dedup-is-gated",
@@ -4696,7 +4707,7 @@
       "statement": "The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 253
+      "line": 255
     },
     {
       "id": "read.retrieve.excluded-arm",
@@ -4707,7 +4718,7 @@
       "statement": "An arm whose table the session's zone excludes contributes no candidate, and the ranked response names that table in {{read.respond.restriction-block}}.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 254
+      "line": 256
     },
     {
       "id": "read.retrieve.snippet",
@@ -4718,7 +4729,7 @@
       "statement": "A snippet concatenates up to three text columns: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 256
+      "line": 258
     },
     {
       "id": "read.retrieve.identifiers-never-snippet",
@@ -4729,7 +4740,7 @@
       "statement": "Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 257
+      "line": 259
     },
     {
       "id": "read.retrieve.sidecar-generates-candidates",
@@ -4740,7 +4751,7 @@
       "statement": "Each sidecar arm, vector over a query embedding and full-text over the content tokens, adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.",
       "why": "P5",
       "file": "spec/20-read.md",
-      "line": 258
+      "line": 260
     },
     {
       "id": "read.retrieve.fulltext-probe",
@@ -4751,7 +4762,7 @@
       "statement": "A full-text probe ranks the whole snapshot by BM25 over one should-clause per content token; a token the sidecar's tokenizer splits into several terms matches them at consecutive positions, and an ASCII word token matches its plural as {{read.retrieve.script-split-matching}} does.",
       "why": "because a term outside the recency window is found only by a probe that reads every row's postings",
       "file": "spec/20-read.md",
-      "line": 260
+      "line": 262
     },
     {
       "id": "read.retrieve.sidecar-oversampling",
@@ -4762,7 +4773,7 @@
       "statement": "One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 262
+      "line": 264
     },
     {
       "id": "read.retrieve.sidecar-size-cap",
@@ -4773,7 +4784,7 @@
       "statement": "A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 263
+      "line": 265
     },
     {
       "id": "read.retrieve.fulltext-sealed-cap",
@@ -4784,7 +4795,7 @@
       "statement": "A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.",
       "why": "A-store",
       "file": "spec/20-read.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "read.retrieve.sidecar-falls-back",
@@ -4795,7 +4806,7 @@
       "statement": "Any sidecar precondition failure — no snapshot, no matching sidecar, a masked or zone-withheld identifier or indexed column, a classed text column, a dimension or manifest mismatch, an unreadable dump — falls back to the exact scan.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "read.retrieve.gain-never-loss",
@@ -4806,7 +4817,7 @@
       "statement": "For one reader the accelerated arm returns a superset of the exact path's rows. Two readers with one query on one snapshot can recall different rows.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "read.rank.three-legs",
@@ -4817,7 +4828,7 @@
       "statement": "Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 297
+      "line": 301
     },
     {
       "id": "read.rank.fusion",
@@ -4828,7 +4839,7 @@
       "statement": "Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 60 percent and 40 percent. A document absent from one leg scores zero there; ties break by identifier.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 298
+      "line": 302
     },
     {
       "id": "read.rank.lexical-leg-matches-only",
@@ -4839,7 +4850,7 @@
       "statement": "The BM25 leg ranks a disjunction of should-clauses; a document matching no term is absent. An empty query, candidate set or result yields an empty ranking that falls back to recency order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 299
+      "line": 303
     },
     {
       "id": "read.rank.flat-window-full-credit",
@@ -4850,7 +4861,7 @@
       "statement": "A lexical window with no score spread awards every present document full credit.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 300
+      "line": 304
     },
     {
       "id": "read.rank.question-window-is-a-tier",
@@ -4861,7 +4872,7 @@
       "statement": "A question's timeframe projects a per-row in-window flag against the resolved publication column, and the flag leads the ordering. An out-of-window row sorts down and stays.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 301
+      "line": 305
     },
     {
       "id": "read.rank.window-anchor-tolerance",
@@ -4872,7 +4883,7 @@
       "statement": "A publication instant more than 24 h past the question's anchor sets the in-window flag false. A null or uncastable value sets it false too, and a basis field names which case applied.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 303
+      "line": 307
     },
     {
       "id": "read.rank.ordering-casts-first",
@@ -4883,7 +4894,7 @@
       "statement": "Ordering compares publication values as `TIMESTAMPTZ` instants, casting a text value before any comparison.",
       "why": "because a text comparison of two date spellings orders strings, not instants",
       "file": "spec/20-read.md",
-      "line": 304
+      "line": 308
     },
     {
       "id": "read.rank.retrieval-block",
@@ -4894,7 +4905,7 @@
       "statement": "The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries an integer score bounded by the content-token count, the in-window flag and the basis label.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 306
+      "line": 310
     },
     {
       "id": "read.rank.internal-score-stays-internal",
@@ -4905,7 +4916,7 @@
       "statement": "The lexical engine's own float score never crosses to a caller.",
       "why": "because a corpus-relative number drifts under a consumer's threshold as the corpus changes",
       "file": "spec/20-read.md",
-      "line": 307
+      "line": 311
     },
     {
       "id": "read.rank.absent-block",
@@ -4916,7 +4927,7 @@
       "statement": "The retrieval block is omitted from every non-ranked statement and from a build with no ranker, and an absent block differs from one reporting zero matches.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 309
+      "line": 313
     },
     {
       "id": "read.rank.degradation-not-error",
@@ -4927,7 +4938,7 @@
       "statement": "Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the snippet, recency breaking ties. The result differs in order and still answers.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 311
+      "line": 315
     },
     {
       "id": "read.rank.fallback-counts-tokens",
@@ -4938,7 +4949,7 @@
       "statement": "Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 313
+      "line": 317
     },
     {
       "id": "read.rank.caller-embedding",
@@ -4949,7 +4960,7 @@
       "statement": "A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 314
+      "line": 318
     },
     {
       "id": "read.rank.lexical-index-cache",
@@ -4960,7 +4971,7 @@
       "statement": "An opened full-text sidecar is cached on a fingerprint of its table, snapshot, path and key version in a FIFO of 64 entries, so a repeated read opens nothing and a new snapshot opens afresh.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 316
+      "line": 320
     },
     {
       "id": "read.rank.widened-window-statistics",
@@ -4971,7 +4982,7 @@
       "statement": "Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 317
+      "line": 321
     },
     {
       "id": "read.cache.hot-local-parquet",
@@ -4982,7 +4993,7 @@
       "statement": "The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 339
+      "line": 343
     },
     {
       "id": "read.cache.cold-start",
@@ -4993,7 +5004,7 @@
       "statement": "A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 340
+      "line": 344
     },
     {
       "id": "read.cache.result-key",
@@ -5004,7 +5015,7 @@
       "statement": "A cached result keys on the policy subject (token scope, inference zone, incognito state), the token id and revocation epoch, the resolved snapshot ids, the bounds echo, the pin map and the statement hash.",
       "why": "because a hit crossing a restriction, snapshot, bound or revocation serves rows the caller is not owed",
       "file": "spec/20-read.md",
-      "line": 341
+      "line": 345
     },
     {
       "id": "read.cache.cache-is-opt-in",
@@ -5015,7 +5026,7 @@
       "statement": "The result cache is opt-in per table at a short time to live and off for a table tagged private.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 343
+      "line": 347
     },
     {
       "id": "read.cache.snapshot-invalidates",
@@ -5026,7 +5037,7 @@
       "statement": "A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}}.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 344
+      "line": 348
     },
     {
       "id": "read.cache.keep-warm-is-per-deployment",
@@ -5037,7 +5048,7 @@
       "statement": "A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 346
+      "line": 350
     },
     {
       "id": "read.cache.session-pool",
@@ -5048,7 +5059,7 @@
       "statement": "`Face` reuses a resolved session and its connections while the whole key holds: admitted authority with token id and revocation epoch, request zone, bounds, table set, and per granted table its schema digest, pointer, run set and ledger files.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 347
+      "line": 351
     },
     {
       "id": "read.cache.change-misses",
@@ -5059,7 +5070,7 @@
       "statement": "A committed run, snapshot, schema edit, new table, request-ledger file or token under another id or epoch misses the pool, and the next statement reads the new state on a new connection.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 349
+      "line": 353
     },
     {
       "id": "read.cache.pool-entries",
@@ -5070,7 +5081,7 @@
       "statement": "The pool holds at most 16 entries, oldest evicted first; a miss evicts the same principal's entries under an older store state.",
       "why": "because connections hold memory per authority, and an entry under a superseded store state is never hit again",
       "file": "spec/20-read.md",
-      "line": 351
+      "line": 355
     },
     {
       "id": "read.cache.pool-connections",
@@ -5081,7 +5092,7 @@
       "statement": "One pool entry keeps at most 4 connections idle; a concurrent statement past them opens its own and closes it afterwards.",
       "why": "because concurrency on one session is bursty, and an idle connection holds its footer cache in memory",
       "file": "spec/20-read.md",
-      "line": 353
+      "line": 357
     },
     {
       "id": "read.resolve-pin.pin-parameter",
@@ -5092,7 +5103,7 @@
       "statement": "`pin` maps a table name to a build identifier and resolves that table to the state the build published. An unnamed table resolves to the latest published state.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 360
+      "line": 364
     },
     {
       "id": "read.resolve-pin.unknown-build",
@@ -5103,7 +5114,7 @@
       "statement": "An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.",
       "why": "because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states",
       "file": "spec/20-read.md",
-      "line": 361
+      "line": 365
     },
     {
       "id": "read.resolve-pin.earlier-bound-wins",
@@ -5114,7 +5125,7 @@
       "statement": "A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 363
+      "line": 367
     },
     {
       "id": "read.resolve-pin.resolved-echo",
@@ -5125,7 +5136,7 @@
       "statement": "A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not; the watermark names, per input table, the snapshot id and the committed runs it omits.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 364
+      "line": 368
     },
     {
       "id": "read.resolve-pin.absent-watermark",
@@ -5136,7 +5147,7 @@
       "statement": "The watermark is null for a materialization carrying none, distinct from a watermark of zero.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 365
+      "line": 369
     },
     {
       "id": "read.resolve-pin.consumer-comparison",
@@ -5147,7 +5158,7 @@
       "statement": "A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 367
+      "line": 371
     },
     {
       "id": "read.embed.default-embedder",
@@ -5158,7 +5169,7 @@
       "statement": "The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 374
+      "line": 378
     },
     {
       "id": "read.embed.default-embedder-reach",
@@ -5169,7 +5180,7 @@
       "statement": "The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 375
+      "line": 379
     },
     {
       "id": "read.embed.model-identifier",
@@ -5180,7 +5191,7 @@
       "statement": "Every stored vector lands in a {{store.reconcile.binary-and-vector}} column beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 376
+      "line": 380
     },
     {
       "id": "read.embed.build-identity",
@@ -5191,7 +5202,7 @@
       "statement": "The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 377
+      "line": 381
     },
     {
       "id": "read.embed.required-face",
@@ -5202,7 +5213,7 @@
       "statement": "A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 379
+      "line": 383
     },
     {
       "id": "read.embed.absent-read-backend",
@@ -5213,7 +5224,7 @@
       "statement": "Without the embedded SQL engine linked, both read tools raise `ReadBackendAbsent` rather than answering from a narrower path.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 381
+      "line": 385
     },
     {
       "id": "read.declare.canonical-column",

@@ -50,6 +50,39 @@ const EMBEDDING_COLUMN: &str = "embedding";
 /// Identifiers one re-join statement binds.
 const REJOIN_CHUNK: usize = 256;
 
+/// The arm-internal alias carrying a row's newest-first position among the rows sharing its
+/// row key. The leading `_` keeps it out of the `_row` object, and the outer projection is a
+/// fixed column list (`read.retrieve.row-key-stays-internal`).
+const ROW_RANK: &str = "_row_rank";
+
+/// The relation an arm reads: the table itself, or, where the arm deduplicates, the table
+/// widened by a `ROW_NUMBER` over its row key, newest ingestion first, and null for a null
+/// key (`read.retrieve.row-key-dedup`). The window function spans the whole relation, so a
+/// row's position ignores the recency window's cut and the relevance floor.
+fn arm_source(table: &str, row_key: Option<&str>, live: &str) -> String {
+    match row_key {
+        None => format!("{}{live}", ident(table)),
+        Some(key) => format!(
+            "(SELECT *, CASE WHEN {k} IS NULL THEN NULL ELSE ROW_NUMBER() OVER (PARTITION BY {k} ORDER BY {} DESC, {} DESC, {} DESC) END AS {rr} FROM {}{live})",
+            ident(INGESTED_AT),
+            ident(RUN_ID),
+            ident(ROW_SEQ),
+            ident(table),
+            k = ident(key),
+            rr = ident(ROW_RANK),
+        ),
+    }
+}
+
+/// Drop every candidate that is not the newest copy under its `(table, row key)`, whether
+/// or not the newest copy is itself a candidate; a null key keeps every row. Returns how
+/// many rows it dropped (`read.retrieve.row-key-dedup`).
+fn dedup(rows: &mut Vec<Row>) -> u64 {
+    let before = rows.len();
+    rows.retain(|r| r.row_rank.is_none_or(|rank| rank == 1));
+    (before - rows.len()) as u64
+}
+
 /// What a ranked read asks for.
 #[derive(Debug, Clone)]
 pub struct RetrieveRequest {
@@ -115,6 +148,9 @@ struct Row {
     publication: Publication,
     basis_column: String,
     ingested: Option<Instant>,
+    /// The row's newest-first position under its row key, where the arm deduplicates and
+    /// the key is non-null.
+    row_rank: Option<i128>,
 }
 
 fn text_of(v: &Engine) -> Option<String> {
@@ -158,6 +194,9 @@ impl Face {
         let tokens = content_tokens(&request.query);
         let floor = relevance_floor(&tokens, request.min_score);
         let window = candidate_window(limit);
+        // Deduplication runs where the relevance floor does; a browse-shaped read, with no
+        // content token, skips it (`read.retrieve.dedup-is-gated`).
+        let deduplicating = floor.is_some();
         self.bind_valid_time(&touched, bounds)?;
         let engine = self.pool.engine(session)?;
         let anchor = request.anchor;
@@ -179,6 +218,14 @@ impl Face {
                 .find(|p| schema.iter().any(|c| c.name == **p && matches!(c.ty, ColumnType::Timestamp | ColumnType::Utf8)))
                 .map_or(INGESTED_AT, |p| *p)
                 .to_string();
+            // The row key is the declared content-hash column; a table declaring none, or
+            // lacking the column, keys every row null (`read.retrieve.row-key-dedup`), and so
+            // does a session mask that merges distinct hashes (`read.retrieve.row-key-under-mask`).
+            let row_key = decl
+                .content_hash_column()
+                .filter(|c| deduplicating && schema.iter().any(|s| s.name == *c))
+                .filter(|c| policy.and_then(|p| p.columns.get(*c)).and_then(|p| p.mask.as_ref()).is_none_or(|m| m.keeps_distinct()))
+                .map(str::to_string);
             let claims = self.memory().table(table).is_some_and(|t| t.shape == Shape::Facts);
             recalled |= claims;
             // A claims arm keeps only live claims in SQL, ahead of the window, so retired and
@@ -198,8 +245,8 @@ impl Face {
             let (mut kept, mut offset) = (0u64, 0u64);
             loop {
                 let sql = format!(
-                    "SELECT * FROM {}{live} ORDER BY {} DESC, {} DESC, {} DESC LIMIT {window} OFFSET {offset}",
-                    ident(table),
+                    "SELECT * FROM {} ORDER BY {} DESC, {} DESC, {} DESC LIMIT {window} OFFSET {offset}",
+                    arm_source(table, row_key.as_deref(), &live),
                     ident(INGESTED_AT),
                     ident(RUN_ID),
                     ident(ROW_SEQ)
@@ -258,7 +305,11 @@ impl Face {
                 let mut added = 0u64;
                 for chunk in ids.chunks(REJOIN_CHUNK) {
                     let marks = vec!["?"; chunk.len()].join(", ");
-                    let sql = format!("SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks})", ident(table), ident(&id_column));
+                    let sql = format!(
+                        "SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks})",
+                        arm_source(table, row_key.as_deref(), ""),
+                        ident(&id_column)
+                    );
                     let parameters = Bindings::positional(chunk.iter().map(|id| Bound::Text(id.clone())));
                     let (columns, values) = engine.run_values(&sql, &parameters, None)?;
                     self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut suppressed);
@@ -268,6 +319,7 @@ impl Face {
         }
         let prefloor = rows.len() as u64;
         rows.retain(|r| passes_floor(floor, r.lexical, r.vector));
+        let deduped = dedup(&mut rows);
         let candidates = rows.len() as u64;
 
         let index = LexicalIndex::build(&rows.iter().map(|r| r.snippet.as_deref()).collect::<Vec<_>>());
@@ -343,7 +395,7 @@ impl Face {
             matched,
             returned: response.rows.len() as u64,
             in_window,
-            deduped: 0,
+            deduped,
             padded: 0,
             floor,
             since: request.since.map(|s| s.to_rfc3339()),
@@ -545,6 +597,10 @@ impl Face {
                 get(RUN_ID).and_then(text_of).unwrap_or_default(),
                 get(ROW_SEQ).and_then(text_of).unwrap_or_default()
             );
+            let row_rank = get(ROW_RANK).and_then(|x| match cell(x.clone()) {
+                Cell::Integer { value, .. } => Some(value),
+                _ => None,
+            });
             let values = columns.iter().zip(&v).map(|(c, x)| (c.clone(), cell(x.clone()).to_json())).collect();
             *kept += 1;
             rows.push(Row {
@@ -557,6 +613,7 @@ impl Face {
                 basis_column: cx.basis.to_string(),
                 ingested,
                 values,
+                row_rank,
             });
         }
     }

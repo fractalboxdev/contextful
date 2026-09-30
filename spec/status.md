@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 282 | 76 | 19 | 9 | 156 | 0 | 156 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
-| `read` | 2 | 15 | 151 | 26 | 22 | 18 | 119 | 0 | 119 |
+| `read` | 2 | 15 | 152 | 26 | 22 | 19 | 123 | 0 | 123 |
 | `run` | 3 | 25 | 335 | 88 | 35 | 30 | 204 | 0 | 204 |
 | `store` | 1 | 16 | 201 | 49 | 12 | 17 | 160 | 0 | 160 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 151 | 1709 | 524 | 183 | 125 | 1002 | 0 | |
+| **total** | 19 | 151 | 1710 | 524 | 183 | 126 | 1006 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 150 | 114 | passing | closed |
 | 3 — The run path | 11 | 197 | 125 | passing | closed |
 | 4 — Ingest | 23 | 398 | 203 | passing | open |
-| 5 — The read face under enforcement | 17 | 239 | 163 | passing | open |
+| 5 — The read face under enforcement | 17 | 240 | 167 | passing | open |
 | 6 — Sync and replicas | 7 | 51 | 46 | passing | closed |
 | 7 — Memory | 6 | 22 | 22 | passing | closed |
 | 8 — Accountability | 5 | 40 | 20 | open | open |
@@ -627,6 +627,7 @@ Unscheduled operations: 10.
 | `read.respond.zero-rows-is-success` | `crates/contextful-core/tests/integration/read/respond.rs::zero_rows_is_an_ordinary_response` | performed |
 | `read.retrieve.candidate-window` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_candidate_window_is_the_larger_of_a_multiple_and_a_floor` | performed |
 | `read.retrieve.content-tokens` | `crates/contextful-core/tests/integration/read/retrieve.rs::content_tokens_are_lowercased_split_stopped_and_deduplicated` | performed |
+| `read.retrieve.dedup-is-gated` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_browse_shaped_read_skips_the_deduplicator` | performed |
 | `read.retrieve.engine-resolved-date` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_engine_resolves_the_publication_column` | performed |
 | `read.retrieve.excluded-arm` | `crates/contextful-context/tests/integration/read/respond.rs::a_ranked_read_names_its_excluded_arms` | performed |
 | `read.retrieve.fulltext-probe` | `crates/contextful-context/tests/integration/read/fulltext.rs::a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot` | performed |
@@ -636,6 +637,9 @@ Unscheduled operations: 10.
 | `read.retrieve.plural-suffix-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_short_token_takes_no_plural_suffix` | performed |
 | `read.retrieve.relevance-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_relevance_floor_admits_null_scores_and_positive_vectors` | performed |
 | `read.retrieve.reserved-columns-project-null` | `crates/contextful-context/tests/integration/read/retrieve.rs::reserved_columns_project_null_for_a_table_lacking_them` | performed |
+| `read.retrieve.row-key-dedup` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_ranked_read_keeps_the_newest_row_per_content_hash` | performed |
+| `read.retrieve.row-key-stays-internal` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_row_key_stays_out_of_the_projection` | performed |
+| `read.retrieve.row-key-under-mask` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_lossy_mask_on_the_row_key_keeps_every_row` | performed |
 | `read.retrieve.script-split-matching` | `crates/contextful-core/tests/integration/read/retrieve.rs::ascii_tokens_match_on_word_boundaries_and_others_by_containment` | performed |
 | `read.retrieve.sidecar-falls-back` | `crates/contextful-context/tests/integration/read/retrieve.rs::every_failed_precondition_falls_back_to_the_exact_scan` | performed |
 | `read.retrieve.sidecar-generates-candidates` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores` | performed |

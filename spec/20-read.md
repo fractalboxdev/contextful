@@ -248,7 +248,9 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `filter-budget` — A filter's membership list holds at most 256 entries, with its condition count and total byte size bounded alongside.
 - `filter-budget-refusal` — The budget is checked over the whole filter ahead of building any arm; an oversized or malformed condition raises `FilterBudgetExceeded` for the whole read.
   *A-read*
-- `row-key-dedup` — A ranked read keeps one row per `(table, row key)`, newest ingestion first. The row key is the declared content-hash column, else null, never a digest over projected values.
+- `row-key-dedup` — A ranked read keeps per `(table, row key)` only the newest ingestion, and no older copy when the newest misses the relevance floor. The row key is the declared content-hash column, else null, never a digest over projected values.
+- `row-key-under-mask` — A content-hash column the session masks by `drop`, `truncate`, `bucket`, `range` or any combine keys every row null; one masked by `hash` or `tokenize` alone keys by its digest.
+  *because a mask merging distinct hashes lets a reader's grants decide which rows a table holds*
 - `row-key-stays-internal` — The row key is absent from the outer projection.
 - `dedup-is-gated` — The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.
 - `excluded-arm` — An arm whose table the session's zone excludes contributes no candidate, and the ranked response names that table in {{read.respond.restriction-block}}.
@@ -287,6 +289,8 @@ flowchart LR
   WIN -->|"above relevance floor"| DEDUP["row-key deduplicator"]
   DEDUP -->|"unique candidates"| RANK["ranker"]
 ```
+
+unsettled: Does the row id {{run.normalize.identity-columns}} injects serve as the row key of a table declaring no content-hash column? owner: read-path affects: read.retrieve
 
 unsettled: What adaptive over-fetch policy holds where rows a reader cannot see cluster near a query point and the visibility estimate under-fills the requested top-K? owner: read-path affects: read.retrieve
 
