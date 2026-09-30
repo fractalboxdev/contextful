@@ -54,7 +54,7 @@ fn project(manifest: &str) -> (tempfile::TempDir, String, String) {
     std::fs::create_dir_all(&store).unwrap();
     std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
     std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
-    std::fs::write(p.join("contextful.toml"), manifest).unwrap();
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest)).unwrap();
     std::fs::write(p.join("early.jsonl"), "{\"doc_id\":\"d1\",\"body\":\"alpha\"}\n{\"doc_id\":\"d2\",\"body\":\"be\"}\n{\"doc_id\":\"d3\",\"body\":\"gamma ray\"}\n").unwrap();
     std::fs::write(p.join("late.jsonl"), "{\"doc_id\":\"d4\",\"body\":\"late\"}\n").unwrap();
     for (rows, run, now) in [("early.jsonl", "load-1", "2030-01-01T00:00:00Z"), ("late.jsonl", "load-2", "2030-01-01T00:00:20Z")] {
@@ -95,11 +95,11 @@ fn job_blocks_validate_against_the_union_the_concurrency_rule_and_the_registered
     let stock = err(&cf(p, &["job", "validate"]));
     assert!(stock.contains("JobBodyUnregistered") && stock.contains("`score`"), "{stock}");
 
-    std::fs::write(p.join("contextful.toml"), job("")).unwrap();
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", job(""))).unwrap();
     let unset = err(&host(p, &["job", "validate"], &[]));
     assert!(unset.contains("JobConcurrencyUnset"), "{unset}");
 
-    std::fs::write(p.join("contextful.toml"), "[[job]]\nname = \"clean\"\nkind = \"shell\"\ncommand = [\"rm\", \"-rf\", \"/\"]\n").unwrap();
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", "[[job]]\nname = \"clean\"\nkind = \"shell\"\ncommand = [\"rm\", \"-rf\", \"/\"]\n")).unwrap();
     let unknown = err(&host(p, &["job", "validate"], &[]));
     assert!(unknown.contains("JobKindUnknown"), "{unknown}");
 }
@@ -150,7 +150,7 @@ fn each_declared_output_table_lands_in_its_own_run_and_a_failed_landing_holds_th
 
     // Declaring the table, the next fire resumes the held owner: no call pays again, and each
     // declared table lands in its own run, its id the fire's suffixed with the table.
-    std::fs::write(p.join("contextful.toml"), declares("tables = [\"scores\", \"audits\"]")).unwrap();
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", declares("tables = [\"scores\", \"audits\"]"))).unwrap();
     let out = ok(&fire(p, &public, &token, "fire-2", "2030-01-01T00:02:00Z", &env));
     assert!(out.contains("score-documents: fire-2 success · 6 rows landed from 3 input rows"), "{out}");
     assert_eq!(paid(), 3, "the resume replays every recorded call");

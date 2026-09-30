@@ -35,7 +35,7 @@ fn project() -> (tempfile::TempDir, String) {
     let p = dir.path();
     std::fs::create_dir_all(p.join(".contextful")).unwrap();
     std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
-    std::fs::write(p.join("contextful.toml"), "[[pipeline.tables]]\nname = \"research/notes\"\n").unwrap();
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", "[[pipeline.tables]]\nname = \"research/notes\"\n")).unwrap();
     std::fs::write(p.join("notes.jsonl"), "{\"note_id\":\"n1\"}\n").unwrap();
     stdout(&run(p, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
     let public = stdout(&run(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
