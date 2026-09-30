@@ -4,8 +4,9 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 const AUD: &str = "contextful://acme-research";
 
@@ -22,6 +23,8 @@ struct Received {
 struct Collector {
     port: u16,
     status: Arc<AtomicU16>,
+    /// While set, a received request waits for its answer.
+    held: Arc<AtomicBool>,
     received: Arc<Mutex<Vec<Received>>>,
 }
 
@@ -30,8 +33,9 @@ impl Collector {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let status = Arc::new(AtomicU16::new(200));
+        let held = Arc::new(AtomicBool::new(false));
         let received: Arc<Mutex<Vec<Received>>> = Arc::default();
-        let (answer, seen) = (status.clone(), received.clone());
+        let (answer, seen, hold) = (status.clone(), received.clone(), held.clone());
         std::thread::spawn(move || {
             for mut stream in listener.incoming().flatten() {
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -57,10 +61,13 @@ impl Collector {
                 let body = serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
                 let status = answer.load(Ordering::SeqCst);
                 seen.lock().unwrap().push(Received { method, path, headers, body });
+                while hold.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
                 let _ = write!(stream, "HTTP/1.1 {status} X\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}");
             }
         });
-        Collector { port, status, received }
+        Collector { port, status, held, received }
     }
 
     fn endpoint(&self) -> String {
@@ -69,6 +76,19 @@ impl Collector {
 
     fn answer(&self, status: u16) {
         self.status.store(status, Ordering::SeqCst);
+    }
+
+    fn hold(&self, on: bool) {
+        self.held.store(on, Ordering::SeqCst);
+    }
+
+    /// Wait until the collector has received `n` requests.
+    fn await_requests(&self, n: usize) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while self.received().len() < n {
+            assert!(Instant::now() < deadline, "the collector received {} of {n} requests", self.received().len());
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     fn received(&self) -> Vec<Received> {
@@ -243,11 +263,52 @@ fn export_reads_through_the_face_under_the_admitted_credential() {
         assert!(!ids("a", 2).contains(&id), "the mask did not hold: `{id}` left unmasked");
     }
 
-    // A credential granting another table reads nothing of `spans`, and nothing leaves.
-    let (other, public, token) = project(&block(&collector.endpoint(), ""), "documents");
+    // A credential granting another table sees no relation `spans`, and nothing leaves.
+    let (other, other_public, other_token) = project(&block(&collector.endpoint(), ""), "documents");
     land(other.path(), "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
-    err(&export(other.path(), &public, &token, &[]));
+    let refused = err(&export(other.path(), &other_public, &other_token, &[]));
+    assert!(refused.contains("EnforceUnknownRelation: `spans`"), "{refused}");
     assert_eq!(collector.received().len(), 1);
+    assert!(!other.path().join(".contextful/exports/research/spans-mirror.json").exists());
+
+    // A landing commits while an export holds a batch in flight: no landing waits on an export.
+    land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 2));
+    collector.hold(true);
+    let (dir_in_flight, public_in_flight, token_in_flight) = (p.to_path_buf(), public.clone(), token.clone());
+    let in_flight = std::thread::spawn(move || export(&dir_in_flight, &public_in_flight, &token_in_flight, &[]));
+    collector.await_requests(2);
+    land(p, "load-3", "2030-01-01T00:02:00Z", &ids("c", 2));
+    assert!(!in_flight.is_finished(), "the export answered before its target did");
+    collector.hold(false);
+    ok(&in_flight.join().unwrap());
+    ok(&export(p, &public, &token, &[]));
+    assert_eq!(collector.received().len(), 3, "the run landed during the export leaves in the next run");
+}
+
+/// A table holding rows whose `_commit_seq` is null, from parts landed without the column, raises
+/// `ExportCommitSeqMissing` naming the export and the row count, before any batch leaves.
+// spec: run.export.commit-seq-missing@00000000
+#[test]
+fn rows_without_a_commit_sequence_refuse_the_export() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&block(&collector.endpoint(), ""), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 3));
+    land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 2));
+
+    // Rewrite load-1's part as a landing without the column writes it.
+    let node = p.join(".contextful/context/research/tables/spans/data/runs/load-1/ingest-a");
+    let part = std::fs::read_dir(&node).unwrap().flatten().map(|e| e.path()).find(|f| f.extension().is_some_and(|x| x == "parquet")).unwrap();
+    let mut batches = contextful_context::parquet_io::read(&part).unwrap();
+    let mut batch = batches.remove(0);
+    let at = batch.schema().index_of("_commit_seq").unwrap();
+    batch.remove_column(at);
+    contextful_context::parquet_io::write(&part, &batch).unwrap();
+
+    let refused = err(&export(p, &public, &token, &[]));
+    assert!(refused.contains("ExportCommitSeqMissing") && refused.contains("spans-mirror") && refused.contains("3 rows"), "{refused}");
+    assert!(collector.received().is_empty());
+    assert!(!p.join(".contextful/exports/research/spans-mirror.json").exists());
 }
 
 /// A batch leaves as one OTLP/HTTP JSON `POST` through the mediated client, its allowlist the endpoint's host alone,

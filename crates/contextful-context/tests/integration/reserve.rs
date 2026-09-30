@@ -1,6 +1,7 @@
 //! `store.reserve`: the injected columns as a reader sees them, and batch validation.
 
 use crate::support::{at, decl, query, s, Fixture};
+use contextful_context::fold::fold;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_core::connector::infer::Provenance;
 use contextful_core::store::bound_time::Bounds;
@@ -209,4 +210,35 @@ fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
     });
     assert!(prefixes >= 1);
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(DISTINCT _commit_seq), count(*) FROM t"), [[s("7"), s("301")]]);
+}
+
+/// A commit assigns one above the greatest of the node's counter, every run manifest's `commit_seq` and the current
+/// snapshot's, so a store restored by a pull, or holding no counter, never reissues a value.
+// spec: store.reserve.commit-seq-seed@00000000
+#[test]
+fn a_store_holding_no_counter_continues_above_the_values_its_manifests_record() {
+    let f = Fixture::new();
+    let d = decl("name = \"spans\"");
+    let counter = f.table_dir("spans").join("data/.commit_seq");
+    let seqs = |f: &Fixture| -> Vec<(Option<String>, i64)> {
+        f.query(&d, Bounds::default(), "SELECT DISTINCT _run_id, _commit_seq FROM t ORDER BY 2")
+            .into_iter()
+            .map(|r| (r[0].clone(), r[1].clone().unwrap().parse().unwrap()))
+            .collect()
+    };
+    f.land(&d, "run-1", json!([{"id": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+    f.land(&d, "run-2", json!([{"id": "b"}]), "2030-01-01T00:01:00Z").unwrap();
+
+    // A pull onto a fresh machine restores the runs and not the node-local counter.
+    std::fs::remove_file(&counter).unwrap();
+    let m = f.land(&d, "run-3", json!([{"id": "c"}]), "2030-01-01T00:02:00Z").unwrap();
+    assert_eq!(m.commit_seq, Some(3), "the run manifest records its commit sequence value");
+    assert_eq!(seqs(&f), [(s("run-1"), 1), (s("run-2"), 2), (s("run-3"), 3)]);
+
+    // Folded and collected: the current snapshot alone records the values its rows carry.
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    std::fs::remove_dir_all(f.table_dir("spans").join("data/runs")).unwrap();
+    std::fs::remove_file(&counter).unwrap();
+    f.land(&d, "run-4", json!([{"id": "d"}]), "2030-01-01T02:00:00Z").unwrap();
+    assert_eq!(seqs(&f), [(s("run-1"), 1), (s("run-2"), 2), (s("run-3"), 3), (s("run-4"), 4)]);
 }
