@@ -51,7 +51,7 @@ fn put(store: &Store, decl: &TableDecl, run: &str, now: &str, rows: Value, types
     land(store, decl, &Batch { rows, types }, &ctx).unwrap();
 }
 
-fn fixture() -> Fixture {
+pub(crate) fn fixture() -> Fixture {
     fixture_over(MANIFEST, |store| {
         let notes = json!([{ "note_id": "n1", "title": "Solar battery storage" }, { "note_id": "n2", "title": "Hiring plan" }]);
         put(store, &TableDecl::named("research/notes"), "run-0001", "2030-01-01T00:00:00Z", notes, &[]);

@@ -1,7 +1,7 @@
 //! What a read leaves behind on the tool protocol: each answered read tool call appends one
 //! audit entry, and its result leaves only after that entry's append group syncs.
 
-use crate::mcp::{ask, bounded, call, current, Fixture};
+use crate::mcp::{ask, bounded, call, current, fixture, Fixture};
 use contextful_agent::mcp::Server;
 use contextful_core::ports::FixedClock;
 use contextful_core::time::Instant;
@@ -99,7 +99,7 @@ fn each_answered_read_tool_call_appends_one_entry_synced_before_its_result() {
 }
 
 /// A read's entry carries `contextful.tool`, `contextful.credential`, each present subject member and its attestation, and `contextful.result.rows`.
-// spec: disclosure.record.read-attributes@f4a9a10f
+// spec: disclosure.record.read-attributes@2032a08c
 #[test]
 fn a_read_entry_names_tool_credential_subject_and_row_count() {
     let f = bounded();
@@ -121,6 +121,9 @@ fn a_read_entry_names_tool_credential_subject_and_row_count() {
             "contextful.subject.zone": "on-prem:hq",
             "contextful.subject.attestation.zone": "asserted",
             "contextful.result.rows": 2,
+            "contextful.read.at": "2030-01-01T04:00:00Z",
+            "contextful.read.outcome": "served",
+            "contextful.tables": ["research/rates"],
         })
     );
     let text = std::fs::read_to_string(f.dir.path().join("audit/segments/000001.jsonl")).unwrap();
@@ -168,4 +171,27 @@ fn a_read_whose_entry_does_not_sync_releases_no_rows() {
     let answer = call(&server, "context.query", json!({ "sql": r#"SELECT ccy FROM "research/rates" ORDER BY ccy"# }));
     assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["eur"], ["gbp"]]), "{answer}");
     assert_eq!(audit.tip().seq, base + 1);
+}
+
+/// A read enforcement refuses appends one entry with `outcome` `refused`, naming the relations the guard parsed, and releases no rows.
+// spec: disclosure.record.refused-read@49fe051c
+#[test]
+fn a_refused_read_appends_one_refused_entry_naming_its_relations() {
+    let f = fixture();
+    let clock = clock();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let answer = call(&server, "context.query", json!({ "sql": r#"SELECT employee, title FROM "hr/salaries""# }));
+    let result = &answer["result"];
+    assert_eq!(result["isError"], json!(true), "{answer}");
+    assert!(result["structuredContent"].get("rows").is_none(), "{answer}");
+    assert!(!answer.to_string().contains("Battery storage engineer"), "{answer}");
+
+    let lines = entries(&f.dir.path().join("audit"));
+    assert_eq!(lines.len(), 1, "one entry for the refused read");
+    let entry = &lines[0]["attributes"];
+    assert_eq!(entry["contextful.read.outcome"], json!("refused"));
+    assert_eq!(entry["contextful.tables"], json!(["hr/salaries"]));
+    assert_eq!(entry["contextful.result.rows"], json!(0));
+    assert_eq!(entry["contextful.read.refusal"], result["structuredContent"]["error"]["identifier"], "{answer}");
+    assert_eq!(entry["contextful.subject.on_behalf_of"], json!("user://dana@acme.example"));
 }

@@ -2,6 +2,8 @@
 //! the data plane runs on a build linking it; the rest run on every profile.
 
 #[cfg(feature = "data-plane")]
+mod audit;
+#[cfg(feature = "data-plane")]
 mod author;
 #[cfg(feature = "data-plane")]
 mod component;

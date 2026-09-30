@@ -79,7 +79,7 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *because a storage fault is the server's and passes, so a client retries it rather than rewording the read*
 - `read-entry` — Each read tool call the face answers with a result, over stdio or HTTP, appends one entry, and the result leaves only after that entry's append group syncs; `initialize`, `ping` and `tools/list` append none.
   *A-disclosure*
-- `read-attributes` — A read's entry carries `contextful.tool`, `contextful.credential`, `contextful.subject.<member>` and `contextful.subject.attestation.<member>` for each present subject member, and `contextful.result.rows`.
+- `read-attributes` — A read's entry carries `contextful.tool`, `contextful.credential`, `contextful.subject.<member>` and `contextful.subject.attestation.<member>` per present subject member, `contextful.result.rows`, `contextful.read.at`, `contextful.read.outcome` and `contextful.tables`, the relations the read names.
   *because the chain answers who read how much under which credential, and the attestation keeps an asserted member from reading as identity*
 - `read-chain` — `contextful serve` and `contextful mcp` open the project's chain at `.contextful/audit/` unanchored before answering a message; a chain that does not open stops the process before it reads a row.
   *A-disclosure*
@@ -94,6 +94,10 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
 - `held-under-append` — An unanchored handle's append group or tip write finding `chain.held` written since its open raises {{disclosure.record.unanchored-over-signed}} and writes nothing, so a held open never meets an unsigned tip or an unrooted segment.
   *because the lock is held per append group, so a held open can land between two groups of a running unanchored handle*
 - `unsigned-tip` — A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.
+  *A-disclosure*
+- `reads-view` — `audit query` runs one statement over `audit_reads`, one row per table a read entry names — `read_at`, `on_behalf_of`, `agent`, `table_name`, `policy`, `outcome`, `row_count` — computed from the chain's segments on each call.
+  *A-disclosure*
+- `refused-read` — A read enforcement refuses appends one entry with `outcome` `refused`, naming the relations the guard parsed, and releases no rows.
   *A-disclosure*
 - `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
 
@@ -115,10 +119,6 @@ sequenceDiagram
         C-->>R: AuditEntryUnpersisted, no rows
     end
 ```
-
-unsettled: At what read rate does the audit chain become the read path's bottleneck? owner: disclosure affects: disclosure.record
-
-unsettled: Does a read refused by enforcement append an entry, and what does that entry carry about the relations the caller named? owner: disclosure affects: disclosure.record
 
 ## explain
 
@@ -150,6 +150,11 @@ Chain verification, signed segment roots, lineage attestations, and the reach of
 - `proof-unavailable` — Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises `AuditProofUnavailable`.
   *because an open segment has no signed root yet, and a v0 root commits to no tree*
 - `root-replication` — Signed roots reach the replication bucket asynchronously every 10 min.
+- `verify-verb` — `audit verify` opens the chain read-only and prints its end when every check of {{disclosure.attest.broken-chain}} passes, each signature included under `--public-key`.
+- `anchor-verb` — `audit anchor --issuer-key <seed>` signs the chain's missing roots and its tip as {{disclosure.record.unsigned-tip}} anchors them, and prints the chain end.
+- `prove-verb` — `audit prove --seq <n>` prints the proof {{disclosure.attest.inclusion-proof}} returns, and `audit check-proof` verifies one under a public key, reading no store.
+- `owner-only` — An audit verb reading a chain, presented with a capability credential, raises `AuditRequiresOwner` before it reads an audit file.
+  *because the chain names every person's reads, and a credential scoped to some tables reaches no record of others*
 
 unsettled: Does a lineage attestation over evidence spanning a withheld table name that table or elide it? owner: disclosure affects: disclosure.attest
 

@@ -134,6 +134,20 @@ kind   = "bench"
 tier   = "trend"
 method = { test = "contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers" }
 
+[entry.audit-append-throughput]
+clause = "disclosure.record.group-commit"
+metric = "audit.append.per_s"
+kind   = "bench"
+tier   = "trend"
+method = { test = "contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers" }
+
+[entry.audit-projection-latency]
+clause = "disclosure.record.projection"
+metric = "audit.projection.window_24h_ms"
+kind   = "bench"
+tier   = "trend"
+method = { test = "contextful_context::read::audit::a_lookup_over_a_24_hour_window_answers_within_one_second" }
+
 [entry.audit-read-waits-on-entry]
 clause = "disclosure.record.unpersisted-entry"
 metric = "audit.read.rows_before_sync"

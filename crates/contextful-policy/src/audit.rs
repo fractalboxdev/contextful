@@ -93,6 +93,27 @@ pub const AUDIT_EXACT_INTEGER: u64 = (1 << 53) - 1;
 /// (`disclosure.record.tip-signing`).
 pub const AUDIT_TIP_IDLE: Duration = Duration::from_secs(1);
 
+/// The attribute keys a read entry carries and the `audit_reads` projection reads
+/// (`disclosure.record.projection`).
+pub mod attr {
+    /// The read's instant, RFC 3339 UTC.
+    pub const READ_AT: &str = "contextful.read.at";
+    /// `served`, or `refused` for a read enforcement refused (`disclosure.record.refused-read`).
+    pub const OUTCOME: &str = "contextful.read.outcome";
+    pub const ON_BEHALF_OF: &str = "contextful.subject.on_behalf_of";
+    pub const AGENT: &str = "contextful.subject.agent";
+    /// The relations the read named, an array of table names.
+    pub const TABLES: &str = "contextful.tables";
+    /// The credential the read was decided under, by its revocation identifier.
+    pub const POLICY: &str = "contextful.credential";
+    pub const ROWS: &str = "contextful.result.rows";
+    /// The typed refusal a refused read raised.
+    pub const REFUSAL: &str = "contextful.read.refusal";
+
+    pub const SERVED: &str = "served";
+    pub const REFUSED: &str = "refused";
+}
+
 /// A refusal of the audit chain.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AuditError {
@@ -131,6 +152,10 @@ pub enum AuditError {
     /// (`disclosure.record.unsigned-tip`)
     #[error("AuditLogUnanchored: {0}")]
     AuditLogUnanchored(String),
+    /// An audit verb presented with a capability credential; the verbs answer the local
+    /// store owner alone. (`disclosure.attest.owner-only`)
+    #[error("AuditRequiresOwner: {0}")]
+    AuditRequiresOwner(String),
     /// An audit file the process cannot read or parse.
     #[error("{0}")]
     Io(String),
@@ -821,6 +846,27 @@ pub fn verify(dir: &Path) -> Result<ChainTip, AuditError> {
 /// a held one.
 pub fn verify_signed(dir: &Path, key: &SignerKey) -> Result<ChainTip, AuditError> {
     walk(dir, Check::Signed(key)).map(|w| w.end)
+}
+
+/// Every entry of the chain in `seq` order, parsed from its segment files without
+/// recomputing a digest: [`verify`] is the integrity check, and a projection over the
+/// entries answers from what the segments hold. A line that does not parse, a sequence gap
+/// or an absent segment raises `AuditChainBroken`.
+pub fn entries(dir: &Path) -> Result<Vec<AuditEntry>, AuditError> {
+    let (segments, _) = listing(dir)?;
+    let Some(&last) = segments.last() else { return Ok(Vec::new()) };
+    let mut all: Vec<AuditEntry> = Vec::new();
+    for n in 1..=last {
+        let expected = all.len() as u64 + 1;
+        for entry in read_segment(dir, n, expected)? {
+            let index = all.len() as u64 + 1;
+            if entry.seq != index {
+                return Err(broken(index, format!("segment {n}: seq {} where {index} follows", entry.seq)));
+            }
+            all.push(entry);
+        }
+    }
+    Ok(all)
 }
 
 /// What a walk checks beyond digests, linkage, sequence and root counts.

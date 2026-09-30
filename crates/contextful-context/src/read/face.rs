@@ -551,7 +551,7 @@ pub fn operator_query(sql: &str, opts: ReadOptions) -> Result<Response, ReadFaul
 
 /// Refuse operator text holding other than exactly one statement before any statement
 /// runs (`read.query.one-statement`).
-fn one_statement(sql: &str) -> Result<(), ReadFault> {
+pub(crate) fn one_statement(sql: &str) -> Result<(), ReadFault> {
     match SqlEngine::statement_count(sql)? {
         1 => Ok(()),
         n => Err(ReadError::QueryNotOneStatement(format!("the text holds {n} statements; the verb runs exactly one")).into()),
@@ -560,7 +560,7 @@ fn one_statement(sql: &str) -> Result<(), ReadFault> {
 
 /// Execute `sql` under `ceiling` and serialize the one response projection
 /// (`read.respond.one-projection`), with the internals block under `opts.internals`.
-fn respond(engine: &SqlEngine, sql: &str, parameters: &Bindings, ceiling: Option<u64>, opts: ReadOptions) -> Result<Response, ReadFault> {
+pub(crate) fn respond(engine: &SqlEngine, sql: &str, parameters: &Bindings, ceiling: Option<u64>, opts: ReadOptions) -> Result<Response, ReadFault> {
     let started = std::time::Instant::now();
     let (columns, rows) = engine.run(sql, parameters, Response::fetch_count(ceiling))?;
     let rows: Vec<Vec<Value>> = rows.iter().map(|r| r.iter().map(Cell::to_json).collect()).collect();

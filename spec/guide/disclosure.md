@@ -8,7 +8,7 @@ contract: disclosure
 
 A **Contextful** workspace that indexes an organization's wiki, drive and chat answers
 everyone, so it inherits the question those sources already settled: who may see what.
-This contract gives three answers. Visibility mirrors each source's permission state and
+Three answers follow. Visibility mirrors each source's permission state and
 joins it into every read, so a reader sees what the source shows them and nothing more.
 Disclosure lets a derived figure cross from many contributors to one asker without
 carrying any contributor's rows. Accountability leaves a verifiable trace of every read
@@ -16,7 +16,7 @@ and removes a subject or a tenant on demand.
 
 One stance runs through all three: when the evidence behind a decision is missing, stale
 or unverifiable, the operation refuses with a typed error instead of returning fewer rows.
-An empty answer then always means an empty corpus, never a quiet failure.
+An empty answer then means an empty corpus, never a quiet failure.
 
 ## How it works
 
@@ -64,7 +64,7 @@ Fidelity states how closely a table follows its source. The source family caps t
 own sharing engine is queried live rather than mirrored
 ({{disclosure.declare-fidelity.computed-inputs}}).
 
-Disclosure acts at build time, so every read path inherits it from the staged bytes. A
+Disclosure acts at build time, so every read path inherits it. A
 release reserves each contributing unit's budget before computing
 ({{disclosure.release.budget-reservation}}), groups only on permitted keys
 ({{disclosure.release.group-key}}), then withholds small groups
@@ -75,12 +75,13 @@ narrows to one person ({{disclosure.bound-cohort.singleton-cohort}}).
 Accountability starts at the read: rows leave once the read's own entry is durable
 ({{disclosure.record.read-entry}}, {{disclosure.record.unpersisted-entry}}); entries hash-link into segments closed by signed
 roots ({{disclosure.record.segment}}), and verification reports the earliest break
-({{disclosure.attest.broken-chain}}). A chain header fixes the digest
-({{disclosure.record.chain-header}}), each root a Merkle tree hash
-({{disclosure.attest.merkle-root}}), so an entry's audit path proves membership under the
+({{disclosure.attest.broken-chain}}). A header fixes the digest
+({{disclosure.record.chain-header}}), each root a Merkle hash
+({{disclosure.attest.merkle-root}}), so an audit path proves membership under the
 public key alone ({{disclosure.attest.inclusion-proof}}). A keyless node appends unanchored
-until anchored ({{disclosure.record.unsigned-tip}}); a held chain stays held
-({{disclosure.record.unanchored-over-signed}}).
+until anchored ({{disclosure.attest.anchor-verb}}); a held chain stays held
+({{disclosure.record.unanchored-over-signed}}). `audit query` answers who read what
+({{disclosure.record.reads-view}}), refusals too ({{disclosure.record.refused-read}}).
 
 ## Worked example
 
