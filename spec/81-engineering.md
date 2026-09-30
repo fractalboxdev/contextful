@@ -363,7 +363,7 @@ unsettled: Which credential pushes `refs/notes/measures` from the scheduled disp
 
 The version a release tag carries, the refusals guarding it, and the signed annotated tag `contextful-ci tag` creates.
 
-- `version` — A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones whose acceptance computes `passing` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.
+- `version` — A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.
   *A-assurance*
 - `annotated` — `contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.
   *A-assurance*
@@ -380,7 +380,7 @@ The version a release tag carries, the refusals guarding it, and the signed anno
 
 #### Scenarios
 
-- `assurance.release.version`: WHEN milestones 0 to 7 and 11 compute `passing` and `v0.9.0` exists, THEN the computed version is `v0.9.1`.
+- `assurance.release.version`: WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`.
 - `assurance.release.version-regressed`: WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`.
 
 ## Shapes

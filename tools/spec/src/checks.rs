@@ -739,11 +739,12 @@ fn unfinished(def: &str) -> bool {
     def[open + 1..end].lines().any(|l| l.trim_start().starts_with("todo!"))
 }
 
-/// A milestone's acceptance test: `absent`, `open` when ignored, `passing` otherwise.
+/// A milestone's acceptance test: `absent`, `open` when ignored or holding `todo!`,
+/// `passing` otherwise.
 pub fn acceptance_verdict(c: &Corpus, path: Option<&str>) -> &'static str {
     match path.map(|p| resolve(c, "test", p, &[ACCEPTANCE_ROOT])) {
-        Some(Resolution::Defined | Resolution::Unfinished) => "passing",
-        Some(Resolution::Ignored) => "open",
+        Some(Resolution::Defined) => "passing",
+        Some(Resolution::Ignored | Resolution::Unfinished) => "open",
         _ => "absent",
     }
 }

@@ -6,24 +6,33 @@ use crate::{manifest, stderr, Repo};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-/// A milestone row: number, name, acceptance verdict.
+/// A milestone row: number, name, closed verdict. Every row's acceptance test computes
+/// `passing`, so only the `Closed` column separates a counted milestone from an open one.
 type Row = (u32, &'static str, &'static str);
 
 const THREE_OF_FOUR: [Row; 4] = [
-    (0, "The test-first gate", "passing"),
+    (0, "The test-first gate", "closed"),
     (1, "The authority core", "open"),
-    (2, "The store", "passing"),
-    (5, "The read face", "passing"),
+    (2, "The store", "closed"),
+    (5, "The read face", "closed"),
 ];
 
 fn status(rows: &[Row]) -> String {
     let mut s = String::from(
-        "# Status\n\n## Milestones\n\n| Milestone | Operations | Clauses | Performed | Acceptance |\n| --- | --- | --- | --- | --- |\n",
+        "# Status\n\n## Milestones\n\n| Milestone | Operations | Clauses | Performed | Acceptance | Closed |\n| --- | --- | --- | --- | --- | --- |\n",
     );
-    for (n, name, verdict) in rows {
-        s.push_str(&format!("| {n} — {name} | 1 | 4 | 2 | {verdict} |\n"));
+    for (n, name, closed) in rows {
+        s.push_str(&format!("| {n} — {name} | 1 | 4 | 2 | passing | {closed} |\n"));
     }
     s.push_str("\nUnscheduled operations: 0.\n");
+    s
+}
+
+/// A `spec/status.md` whose milestone table carries `header` and `rows` verbatim.
+fn status_table(header: &str, rows: &[&str]) -> String {
+    let columns = header.trim_matches('|').split('|').count();
+    let mut s = format!("# Status\n\n## Milestones\n\n{header}\n|{}\n", " --- |".repeat(columns));
+    rows.iter().for_each(|r| s.push_str(&format!("{r}\n")));
     s
 }
 
@@ -133,17 +142,18 @@ fn refused(o: &Output, code: &str) -> String {
     err
 }
 
-/// A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones whose acceptance computes `passing` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.
-// spec: assurance.release.version@787e8e2f
+/// A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.
+// spec: assurance.release.version@63e7cc56
 #[test]
-fn the_version_counts_passing_milestones_and_earlier_tags_of_that_count() {
-    // Milestones 0, 2 and 5 pass and 1 is open: a count, not the highest number.
+fn the_version_counts_closed_milestones_and_earlier_tags_of_that_count() {
+    // Milestones 0, 2 and 5 close and 1 is open though its acceptance test passes: a count,
+    // not the highest number.
     let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
     let o = r.tag(&[]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(r.tags(), "v0.3.0");
 
-    // A second tag with the same count of passing milestones raises the patch.
+    // A second tag with the same count of closed milestones raises the patch.
     r.bump(&THREE_OF_FOUR, "0.3.1");
     let o = r.tag(&[]);
     assert!(o.status.success(), "{}", stderr(&o));
@@ -151,11 +161,42 @@ fn the_version_counts_passing_milestones_and_earlier_tags_of_that_count() {
 
     // A milestone closing raises the minor and restarts the patch.
     let mut four = THREE_OF_FOUR;
-    four[1].2 = "passing";
+    four[1].2 = "closed";
     r.bump(&four, "0.4.0");
     let o = r.tag(&[]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(r.tags(), "v0.3.0\nv0.3.1\nv0.4.0");
+}
+
+/// The `Closed` column is found by its header name wherever it sits, and a table without one
+/// closes no milestone.
+#[test]
+fn the_closed_column_is_found_by_name_and_its_absence_closes_nothing() {
+    // `Closed` precedes a trailing column: the last cell of every row reads `closed`, yet
+    // only the rows whose `Closed` cell reads `closed` count.
+    let r = Release::new(&THREE_OF_FOUR, Some("0.2.0"));
+    r.repo.write(
+        "spec/status.md",
+        &status_table(
+            "| Milestone | Closed | Note |",
+            &["| 0 — The test-first gate | closed | closed |", "| 1 — The authority core | open | closed |", "| 2 — The store | closed | closed |"],
+        ),
+    );
+    r.repo.commit("closed column moved");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(r.tags(), "v0.2.0");
+
+    // No `Closed` column: a passing acceptance test closes nothing, so the minor is 0.
+    let r = Release::new(&THREE_OF_FOUR, Some("0.0.0"));
+    r.repo.write(
+        "spec/status.md",
+        &status_table("| Milestone | Acceptance |", &["| 0 — The test-first gate | passing |", "| 2 — The store | passing |"]),
+    );
+    r.repo.commit("no closed column");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(r.tags(), "v0.0.0");
 }
 
 /// `contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.

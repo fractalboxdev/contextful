@@ -89,7 +89,7 @@ the gate enforces it.
 4. **Refactor.** A behavior-preserving commit carries the commit trailer
    `Test-First: refactor` and answers to the existing suite alone.
 5. **Close the milestone** by removing the acceptance test's `#[ignore]`; status reports
-   it `passing`.
+   it `passing`, and `closed` once every operation it names holds a performed clause.
 
 ```sh
 cargo run --locked -q -p contextful-ci -- gate                 # every stage, against origin/HEAD
