@@ -2,12 +2,13 @@
 #![cfg(feature = "drive")]
 
 use crate::support::{request, resolver, Never, Request, Response, Server};
-use contextful_connectors::drive::{Drive, DriveConfig, DriveSource, PageDecoder};
+use contextful_connectors::drive::{BodyStore, Drive, DriveConfig, DriveSource, PageDecoder};
 use contextful_connectors::http::ConfigError;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Source;
 use contextful_core::run::{Failure, FailureTag, RunError};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -131,13 +132,37 @@ impl PageDecoder for Refusing {
     }
 }
 
+/// The bodies a drive lands, held in memory by digest, each put counted.
+#[derive(Default)]
+struct Held {
+    blobs: Mutex<BTreeMap<String, Vec<u8>>>,
+    puts: Mutex<usize>,
+}
+
+impl BodyStore for Held {
+    fn put(&self, sha256: &str, bytes: &[u8]) -> Result<(), Failure> {
+        *self.puts.lock().unwrap() += 1;
+        self.blobs.lock().unwrap().insert(sha256.to_string(), bytes.to_vec());
+        Ok(())
+    }
+}
+
 fn drive(config: Value) -> Arc<Drive> {
     drive_with(config, Arc::new(InProcess))
 }
 
 fn drive_with(config: Value, decoder: Arc<dyn PageDecoder>) -> Arc<Drive> {
+    drive_into(config, decoder, Arc::new(Held::default()))
+}
+
+fn drive_into(config: Value, decoder: Arc<dyn PageDecoder>, bodies: Arc<dyn BodyStore>) -> Arc<Drive> {
     let secrets = vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)];
-    Drive::new(DriveConfig::parse(&config).unwrap(), resolver(secrets), decoder).unwrap()
+    Drive::new(DriveConfig::parse(&config).unwrap(), resolver(secrets), decoder, bodies).unwrap()
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Pull `source` from `position`, answering its rows and the position after them.
@@ -473,4 +498,53 @@ fn each_pull_counts_the_files_it_skipped() {
     fake.overlay("second.json");
     let (_, _, files) = pull(&mut drive(fake.config(json!({}))).source("files").unwrap(), Some(at));
     assert_eq!(skipped(&files), 0);
+}
+
+/// Every body the drive source reads whole, exported or downloaded, lands as {{store.lay-out.landed-blob}}, and
+/// its file row's `sha256` names that blob.
+// spec: connector.source.drive-bytes@54a5b707
+#[test]
+fn every_body_read_lands_once_as_the_blob_its_row_names() {
+    let fake = Fake::start();
+    let held = Arc::new(Held::default());
+    let d = drive_into(fake.config(json!({})), Arc::new(Refusing), held.clone());
+    let (files, _, _) = pull(&mut d.source("files").unwrap(), None);
+    pull(&mut d.source("pages").unwrap(), None);
+    let blobs = held.blobs.lock().unwrap().clone();
+    for (id, fixture) in [("doc-plan", "plan.pdf"), ("sheet-budget", "budget.pdf"), ("slides-deck", "deck.pdf"), ("pdf-report", "report.pdf")] {
+        let bytes = std::fs::read(fixtures().join(fixture)).unwrap();
+        let named = by_id(&files, id)["sha256"].as_str().unwrap_or_else(|| panic!("{id} names no blob")).to_string();
+        assert_eq!(named, sha256(&bytes), "{id}");
+        assert_eq!(blobs.get(&named), Some(&bytes), "{id}: the row names a stored blob holding the bytes read");
+    }
+    assert_eq!(blobs.len(), 4, "the video over the cap, the form and the shortcut land no blob");
+    assert_eq!(*held.puts.lock().unwrap(), 4, "both tables of one fire share one put per body");
+}
+
+/// A Doc, Sheet or Slides deck whose export Drive answers `403 exportSizeLimitExceeded` lands its file row with
+/// a `skipped` reason naming Drive's export limit and no pages, and the read continues.
+// spec: connector.source.drive-export-limit@5926bd84
+#[test]
+fn an_export_over_drives_limit_is_skipped_by_name_and_the_read_succeeds() {
+    let fake = Fake::start();
+    fake.overlay("export-limit.json");
+    let d = drive(fake.config(json!({})));
+    let (files, at, _) = pull(&mut d.source("files").unwrap(), None);
+    assert_eq!(files.len(), 7, "every file lands its row");
+    let sheet = by_id(&files, "sheet-budget");
+    assert!(sheet["skipped"].as_str().unwrap().contains("exportSizeLimitExceeded"), "{sheet:?}");
+    assert_eq!((sheet["sha256"].clone(), sheet["pages"].clone(), sheet["export_mime_type"].clone()), (Value::Null, Value::Null, Value::Null));
+    let (pages, pat, _) = pull(&mut d.source("pages").unwrap(), None);
+    assert!(pages_of(&pages, "sheet-budget").is_empty());
+    assert_eq!(pages_of(&pages, "doc-plan"), [(1, json!("Quarterly plan")), (2, json!("Hiring targets"))]);
+    assert_eq!(serde_json::from_slice::<Value>(&d.source("files").unwrap().pull(&request(None), &Never).unwrap()).unwrap()["skipped"], json!(4));
+    // The position advances past the refused export: an unchanged tree lands nothing next.
+    let again = drive(fake.config(json!({})));
+    assert!(pull(&mut again.source("files").unwrap(), Some(at)).0.is_empty());
+    assert!(pull(&mut again.source("pages").unwrap(), Some(pat)).0.is_empty());
+    // A `403` for another reason still fails the read.
+    let denied = Fake::start();
+    denied.overlay("export-denied.json");
+    let f = drive(denied.config(json!({}))).source("files").unwrap().pull(&request(None), &Never).unwrap_err();
+    assert!(f.message.contains("sheet-budget/export") && f.message.contains("403"), "{f}");
 }

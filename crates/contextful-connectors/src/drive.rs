@@ -3,7 +3,8 @@
 //!
 //! Docs, Sheets and Slides land as their PDF export and other files as their bytes; a PDF
 //! body decodes behind the process boundary (`connector.source.drive-page-grain`). Bytes
-//! land in no column: a file row names them by digest. The position records each file's
+//! land in no column: each body read whole lands as a content-addressed blob that its file
+//! row names by digest (`connector.source.drive-bytes`). The position records each file's
 //! `modifiedTime`, path and page count, so a read re-lands a changed file alone and lands a
 //! tombstone for what left the tree (`connector.source.drive-incremental`). The access
 //! token is minted from `secret://` references once per fire, held in memory, and written
@@ -49,6 +50,8 @@ const PDF: &str = "application/pdf";
 const EXPORTED: [&str; 3] = ["application/vnd.google-apps.document", "application/vnd.google-apps.spreadsheet", "application/vnd.google-apps.presentation"];
 /// A token within this much of its expiry is minted again before a request.
 const EXPIRY_MARGIN: Duration = Duration::from_secs(60);
+/// The reason Drive answers, with `403`, an export over its size limit.
+const EXPORT_LIMIT: &str = "exportSizeLimitExceeded";
 const FILE_FIELDS: &str = "id,name,mimeType,modifiedTime,version,size,md5Checksum";
 
 /// The one-reference credentials the token exchange reads.
@@ -166,6 +169,12 @@ pub enum Table {
     Pages,
 }
 
+/// Where a body read whole lands, content-addressed by the SHA-256 of its bytes
+/// (`store.lay-out.landed-blob`).
+pub trait BodyStore: Send + Sync {
+    fn put(&self, sha256: &str, bytes: &[u8]) -> Result<(), Failure>;
+}
+
 /// Decodes a PDF body into its pages' text.
 pub trait PageDecoder: Send + Sync {
     fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure>;
@@ -233,6 +242,7 @@ pub struct Drive {
     config: DriveConfig,
     resolver: Arc<Resolver>,
     decoder: Arc<dyn PageDecoder>,
+    bodies: Arc<dyn BodyStore>,
     api: Client,
     download: Client,
     token: Client,
@@ -242,7 +252,7 @@ pub struct Drive {
 }
 
 impl Drive {
-    pub fn new(config: DriveConfig, resolver: Arc<Resolver>, decoder: Arc<dyn PageDecoder>) -> Result<Arc<Drive>, ConnectorError> {
+    pub fn new(config: DriveConfig, resolver: Arc<Resolver>, decoder: Arc<dyn PageDecoder>, bodies: Arc<dyn BodyStore>) -> Result<Arc<Drive>, ConnectorError> {
         let client = |url: &Url| -> Result<Client, ConnectorError> {
             let allow = Allowlist::parse(&[url.host_str().unwrap_or_default()])?;
             allow.check_bound()?;
@@ -253,7 +263,7 @@ impl Drive {
         let api = client(&config.api_base)?;
         let download = client(&config.api_base)?.with_body_limit(config.max_file_bytes);
         let token = client(&config.token_url)?;
-        Ok(Arc::new(Drive { config, resolver, decoder, api, download, token, minted: Mutex::default(), walked: Mutex::default(), fetched: Mutex::default() }))
+        Ok(Arc::new(Drive { config, resolver, decoder, bodies, api, download, token, minted: Mutex::default(), walked: Mutex::default(), fetched: Mutex::default() }))
     }
 
     /// The source landing `table` from this fire.
@@ -436,12 +446,20 @@ impl Drive {
                     // An export reports no size ahead; its body stops at the cap.
                     Err(f) if is_over_limit(&f) => Fetched { sha256: None, bytes: None, pages: None, skipped: Some(format!("more than {cap} bytes, over max_file_bytes")) },
                     Err(f) => return Err(f),
+                    // Drive refuses this export on every fire, so it skips that file alone
+                    // (`connector.source.drive-export-limit`).
+                    Ok(resp) if e.exported() && resp.status == 403 && export_limited(&resp.body) => {
+                        Fetched { sha256: None, bytes: None, pages: None, skipped: Some(format!("Drive refuses the PDF export as `{EXPORT_LIMIT}`, over its export size limit")) }
+                    }
                     Ok(resp) if !(200..300).contains(&resp.status) => {
                         let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
                         return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
                     }
                     Ok(resp) => {
-                        let (sha256, bytes) = (Some(hex(&Sha256::digest(&resp.body))), Some(resp.body.len() as u64));
+                        let digest = hex(&Sha256::digest(&resp.body));
+                        // The blob lands ahead of the row naming it (`connector.source.drive-bytes`).
+                        self.bodies.put(&digest, &resp.body)?;
+                        let (sha256, bytes) = (Some(digest), Some(resp.body.len() as u64));
                         if !(e.exported() || e.mime == PDF) {
                             Fetched { sha256, bytes, pages: None, skipped: None }
                         } else {
@@ -462,6 +480,12 @@ impl Drive {
         }
         Ok(fetched)
     }
+}
+
+/// Whether a Drive error body lists `exportSizeLimitExceeded` among its `error.errors` reasons.
+fn export_limited(body: &[u8]) -> bool {
+    let v: Value = serde_json::from_slice(body).unwrap_or_default();
+    v.pointer("/error/errors").and_then(Value::as_array).is_some_and(|errors| errors.iter().any(|e| e.get("reason").and_then(Value::as_str) == Some(EXPORT_LIMIT)))
 }
 
 fn hex(bytes: &[u8]) -> String {

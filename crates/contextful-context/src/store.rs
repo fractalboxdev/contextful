@@ -128,6 +128,36 @@ impl Store {
         self.require_connector_pin
     }
 
+    /// The file holding the landed body named `sha256` (`store.lay-out.landed-blob`).
+    pub fn blob_path(&self, sha256: &str) -> PathBuf {
+        self.root.join(BLOBS_DIR).join(sha256)
+    }
+
+    /// Land `bytes` whole as `blobs/<sha256>` through a rename (`store.lay-out.landed-blob`).
+    /// A body already landed under its digest stays as it stands; a `sha256` other than the
+    /// bytes' digest lands nothing.
+    pub fn land_blob(&self, sha256: &str, bytes: &[u8]) -> Result<()> {
+        let digest = etag(bytes);
+        if digest != sha256 {
+            return Err(ContextError::Invalid(format!("a body named `{sha256}` digests to `{digest}`")));
+        }
+        let path = self.blob_path(sha256);
+        let dir = self.root.join(BLOBS_DIR);
+        fs::create_dir_all(&dir).at(&dir)?;
+        contextful_fs::create_new(&path, bytes).at(&path)?;
+        Ok(())
+    }
+
+    /// The landed body named `sha256`; `None` when the store holds none.
+    pub fn blob(&self, sha256: &str) -> Result<Option<Vec<u8>>> {
+        let path = self.blob_path(sha256);
+        match fs::read(&path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(ContextError::Io { path, source: e }),
+        }
+    }
+
     /// `[node] id` from the store's configuration.
     pub fn configured_node_id(&self) -> Option<String> {
         self.config_node_id.clone()
@@ -486,6 +516,9 @@ fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
 fn same_file(_: &fs::Metadata, _: &fs::Metadata) -> bool {
     true
 }
+
+/// The store-root directory holding landed bodies (`store.lay-out.landed-blob`).
+pub const BLOBS_DIR: &str = "blobs";
 
 pub(crate) fn etag(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))

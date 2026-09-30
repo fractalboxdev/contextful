@@ -245,3 +245,26 @@ fn an_incremental_field_beside_the_drive_source_refuses_at_validation() {
     assert!(err.contains("ConnectorPositionOwned") && err.contains("drive"), "{err}");
     assert!(fake.paths.lock().unwrap().is_empty());
 }
+
+/// Through the binary, each body a drive fire reads lands under the store's `blobs/` by its digest before the run
+/// naming it commits.
+#[test]
+fn each_body_a_drive_fire_reads_lands_under_the_store_blobs_by_its_digest() {
+    use sha2::Digest;
+    let fake = Fake::start();
+    let dir = project(&fake);
+    fire(dir.path(), "run-1", "2031-03-01T00:00:00Z");
+    let named = query(dir.path(), "SELECT file_id, sha256 FROM team_files WHERE sha256 IS NOT NULL ORDER BY file_id");
+    let rows = named["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 4, "the plan, the budget, the deck and the report: {named}");
+    let blobs = dir.path().join(".contextful/context/research/blobs");
+    for row in rows {
+        let (id, sha) = (row[0].as_str().unwrap(), row[1].as_str().unwrap());
+        let bytes = std::fs::read(blobs.join(sha)).unwrap_or_else(|e| panic!("{id}: no blob `{sha}`: {e}"));
+        let digest: String = sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(digest, sha, "{id}");
+        assert!(bytes.starts_with(b"%PDF"), "{id}: the blob holds the PDF read");
+    }
+    let held: Vec<String> = std::fs::read_dir(&blobs).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(held.len(), 4, "no partial or temporary file survives beside the blobs: {held:?}");
+}

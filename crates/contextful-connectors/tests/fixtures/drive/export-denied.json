@@ -1,0 +1,26 @@
+{
+  "comment": "Drive refuses the `Budget` sheet's PDF export for want of permission.",
+  "exchanges": [
+    {
+      "method": "GET",
+      "path": "/drive/v3/files/sheet-budget/export",
+      "query": {
+        "mimeType": "application/pdf"
+      },
+      "status": 403,
+      "body": {
+        "error": {
+          "code": 403,
+          "message": "The user does not have sufficient permissions for this file.",
+          "errors": [
+            {
+              "domain": "global",
+              "reason": "insufficientFilePermissions",
+              "message": "The user does not have sufficient permissions for this file."
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

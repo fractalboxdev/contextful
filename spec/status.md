@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 220 | 56 | 22 | 15 | 111 | 0 | 111 |
 | `authority` | 2 | 16 | 263 | 77 | 27 | 10 | 200 | 0 | 200 |
-| `connector` | 2 | 13 | 297 | 78 | 19 | 14 | 171 | 0 | 171 |
+| `connector` | 2 | 13 | 299 | 78 | 19 | 14 | 173 | 0 | 173 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 165 | 28 | 22 | 20 | 140 | 0 | 140 |
 | `run` | 3 | 26 | 362 | 96 | 35 | 35 | 245 | 0 | 245 |
-| `store` | 1 | 17 | 215 | 53 | 12 | 17 | 175 | 0 | 175 |
+| `store` | 1 | 17 | 216 | 53 | 12 | 17 | 176 | 0 | 176 |
 | `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 153 | 1824 | 555 | 184 | 137 | 1157 | 0 | |
+| **total** | 19 | 153 | 1827 | 555 | 184 | 137 | 1160 | 0 | |
 
 Decision records: 18.
 
@@ -27,9 +27,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 232 | 180 | passing | closed |
-| 2 — The store | 9 | 152 | 117 | passing | closed |
+| 2 — The store | 9 | 153 | 118 | passing | closed |
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
-| 4 — Ingest | 24 | 440 | 259 | passing | open |
+| 4 — Ingest | 24 | 442 | 261 | passing | open |
 | 5 — The read face under enforcement | 17 | 243 | 174 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
@@ -479,7 +479,9 @@ Unscheduled operations: 10.
 | `connector.source.decompression-budget` | `crates/contextful-decode/tests/integration/workbook.rs::an_office_read_decompresses_at_most_64_mib_by_claim_and_by_arrival` | performed |
 | `connector.source.delimited-cell` | `crates/contextful-decode/tests/integration/decode.rs::delimited_cells_land_as_strings_and_empty_unquoted_fields_as_null` | performed |
 | `connector.source.document-unreadable` | `crates/contextful-decode/tests/integration/pdf.rs::an_encrypted_or_textless_document_refuses_whole_naming_it` | performed |
+| `connector.source.drive-bytes` | `crates/contextful-connectors/tests/integration/drive.rs::every_body_read_lands_once_as_the_blob_its_row_names` | performed |
 | `connector.source.drive-export` | `crates/contextful-connectors/tests/integration/drive.rs::docs_sheets_and_slides_export_as_pdf_and_other_files_download` | performed |
+| `connector.source.drive-export-limit` | `crates/contextful-connectors/tests/integration/drive.rs::an_export_over_drives_limit_is_skipped_by_name_and_the_read_succeeds` | performed |
 | `connector.source.drive-file-cap` | `crates/contextful-connectors/tests/integration/drive.rs::a_file_over_the_cap_is_skipped_by_name_and_the_read_succeeds` | performed |
 | `connector.source.drive-fire` | `crates/contextful-cli/tests/integration/drive.rs::a_drive_fire_lands_files_and_pages_then_only_what_changed` | performed |
 | `connector.source.drive-incremental` | `crates/contextful-connectors/tests/integration/drive.rs::a_second_read_relands_the_changed_file_alone_and_tombstones_what_left` | performed |
@@ -1062,6 +1064,7 @@ Unscheduled operations: 10.
 | `store.lay-out.catalog-ports` | `crates/contextful-sqlite/tests/integration/derived.rs::both_catalogs_are_reached_through_the_core_ports` | performed |
 | `store.lay-out.derived-catalog` | `crates/contextful-cli/tests/integration/context.rs::rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree` | performed |
 | `store.lay-out.immutable-files` | `crates/contextful-context/tests/integration/lay_out.rs::a_fold_writes_a_new_snapshot_and_edits_nothing_published` | performed |
+| `store.lay-out.landed-blob` | `crates/contextful-context/tests/integration/lay_out.rs::a_landed_body_is_one_file_under_blobs_named_by_its_digest` | performed |
 | `store.lay-out.manifest-default` | `crates/contextful-core/tests/integration/store/lay_out.rs::a_manifest_missing_later_fields_decodes_with_defaults` | performed |
 | `store.lay-out.manifest-unreadable` | `crates/contextful-context/tests/integration/lay_out.rs::an_unparseable_manifest_refuses_the_table_until_it_parses` | performed |
 | `store.lay-out.node-id-local` | `crates/contextful-core/tests/integration/store/lay_out.rs::no_writable_state_directory_takes_local` | performed |
