@@ -146,6 +146,68 @@ impl Store {
         FileLock::acquire(&dir.join(format!("{SCHEMA_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))
     }
 
+    /// Take the table's commit lock, which a landing holds from assigning `_commit_seq`
+    /// to the step that makes its run readable (`store.reserve.commit-order`).
+    pub fn lock_commit(&self, table: &str) -> Result<FileLock> {
+        let dir = self.table_dir(table)?;
+        fs::create_dir_all(&dir).at(&dir)?;
+        FileLock::acquire(&dir.join(COMMIT_LOCK_FILE), std::time::Duration::from_secs(LOCK_WAIT_SECS))
+    }
+
+    /// Assign the table's next commit sequence value, one above the greatest of the node's
+    /// counter, every run manifest on disk and the current snapshot's high-water mark, and
+    /// record it before any part carries it, so a failed landing leaves a gap and never a
+    /// repeat (`store.reserve.commit-seq`, `store.reserve.commit-seq-seed`). The counter
+    /// is node-local and a push carries no dot file; the manifests travel with the rows.
+    /// The caller holds [`Store::lock_commit`].
+    pub fn assign_commit_seq(&self, table: &str) -> Result<i64> {
+        let data = self.table_dir(table)?.join("data");
+        let path = data.join(COMMIT_SEQ_FILE);
+        let counter = match fs::read_to_string(&path) {
+            Ok(text) => text.trim().parse::<i64>().map_err(|e| {
+                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
+            })?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(e) => return Err(ContextError::Io { path, source: e }),
+        };
+        let held = counter.max(self.recorded_commit_seq(table)?);
+        let next = held.checked_add(1).ok_or_else(|| ContextError::Invalid(format!("table `{table}` exhausted its commit sequence")))?;
+        fs::create_dir_all(&data).at(&data)?;
+        replace_file(&path, next.to_string().as_bytes())?;
+        Ok(next)
+    }
+
+    /// The highest `commit_seq` a table's manifests record: every run manifest on disk,
+    /// readable or not, and the snapshot the pointer names. Zero when none records one.
+    fn recorded_commit_seq(&self, table: &str) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Recorded {
+            #[serde(default)]
+            commit_seq: Option<i64>,
+        }
+        let read = |path: PathBuf| -> Result<i64> {
+            let text = match fs::read_to_string(&path) {
+                Ok(t) => t,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+                Err(e) => return Err(ContextError::Io { path, source: e }),
+            };
+            let r: Recorded = serde_json::from_str(&text).map_err(|e| {
+                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
+            })?;
+            Ok(r.commit_seq.unwrap_or(0))
+        };
+        let mut high = match self.pointer(table)? {
+            Some((ptr, _)) => read(self.snapshot_dir(table, &ptr.snapshot_id)?.join(MANIFEST_FILE))?,
+            None => 0,
+        };
+        for run_dir in sorted_dirs(&self.table_dir(table)?.join("data").join("runs"))? {
+            for node_dir in sorted_dirs(&run_dir)? {
+                high = high.max(read(node_dir.join(MANIFEST_FILE))?);
+            }
+        }
+        Ok(high)
+    }
+
     /// Replace `schema.json` with the merged schema (`store.lay-out.schema-file`).
     pub fn write_schema(&self, table: &str, schema: &Schema) -> Result<()> {
         let dir = self.table_dir(table)?;
@@ -305,6 +367,13 @@ impl Store {
 }
 
 pub const ABSENT_ETAG: &str = "absent";
+
+/// The lock a table's commits serialize on, beside `schema.json`.
+const COMMIT_LOCK_FILE: &str = "commit.lock";
+
+/// The last commit sequence value a table assigned, under `data/`. The leading `.` keeps
+/// it node-local: a push uploads no dot file.
+const COMMIT_SEQ_FILE: &str = ".commit_seq";
 
 /// How long a landing waits for a lock another landing holds before refusing.
 pub const LOCK_WAIT_SECS: u64 = 30;

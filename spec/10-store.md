@@ -86,12 +86,12 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *because a wall clock that steps backwards breaks lexical order equalling commit order*
 - `part-name` — A data file is `part-<ordinal>.parquet`, the ordinal zero-padded to five digits and unique within its directory.
 - `staging` — A fold in flight writes under `data/snapshots/<id>.staging/`, and no file list resolves inside it.
-- `run-manifest` — A run commits by conditionally creating `_manifest.json` in its node directory, carrying `{run_id, table, node_id, parts, committed_at, pipeline_id?, cursor?, fence?}`, where `node_id` equals the enclosing segment.
+- `run-manifest` — A run commits by conditionally creating `_manifest.json` in its node directory, carrying `{run_id, table, node_id, parts, committed_at, pipeline_id?, cursor?, fence?, commit_seq?}`, where `node_id` equals the enclosing segment.
 - `uncommitted-run` — A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry.
   *P4*
 - `cursor-in-commit` — A pipeline's committed position is the cursor inside its newest commit: the newest commit-log entry for a leased pipeline, the highest run-manifest cursor otherwise. `machine.sqlite` caches it.
   *because a position committed apart from its rows re-lands the batch after a crash between the two writes*
-- `snapshot-manifest` — A snapshot's `_manifest.json` carries `{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence}`, and each entry of `parts` and `indexes` carries its `key_version`.
+- `snapshot-manifest` — A snapshot's `_manifest.json` carries `{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence, commit_seq?}`, and each entry of `parts` and `indexes` carries its `key_version`.
 - `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of `parent` links from it reaches it.
   *A-store*
 - `manifest-default` — A field added to a manifest carries a default value.
@@ -189,6 +189,10 @@ The column and table namespaces the engine holds, the provenance columns it inje
   *because a run's rows share `_ingested_at` and `_run_id`, and keeping the last write per key needs an order among them*
 - `commit-seq` — The engine injects `_commit_seq`, a non-null int64 its commit assigns above every value the table holds; a run committing after a read carries a value above every row that read returned, whatever its `_ingested_at`.
   *A-topology*
+- `commit-order` — Commits of one table serialize from assigning `_commit_seq`, through the part write, to the step that makes the run readable, so the readable runs of a table always hold a prefix of its commit sequence.
+  *A-topology*
+- `commit-seq-seed` — A commit assigns one above the greatest of the node's counter, every run manifest's `commit_seq` and the current snapshot's, so a store restored by a pull, or holding no counter, never reissues a value.
+  *A-topology*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
 - `taint` — The engine injects `_taint`, a label under {{connector.infer.provenance-order}}, on each row a model's output lands as, replacing any producer value; a row no model produced omits it.
   *because a label a producer sets is one injected text can forge*
@@ -207,6 +211,10 @@ The column and table namespaces the engine holds, the provenance columns it inje
 - `ledger-fold` — Each fold pass merges a table's committed ledger files into `requests/folded-<snapshot-id>.parquet`, and a replica carries ledgers with their table.
   *because one ledger file per run per node per table grows listing and diff cost without bound*
 - `ledger-retention` — A ledger row is collected 365 d after its run committed.
+
+unsettled: Does a replica merging another node's runs renumber `_commit_seq`, or does an export cursor hold one position per writing node? owner: store affects: store.reserve
+
+unsettled: Does a fold backfill `_commit_seq` onto parts landed without the column, and in which order among their runs? owner: store affects: store.reserve
 
 ## reconcile
 

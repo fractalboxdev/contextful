@@ -13,7 +13,7 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
 use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, VECTOR_ITEM};
 use contextful_core::store::reserve::{
-    optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, INGESTED_AT, ROW_SEQ, TAINT,
+    optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, COMMIT_SEQ, INGESTED_AT, ROW_SEQ, TAINT,
     RUN_ID, SITE_ID,
 };
 use contextful_core::store::StoreError;
@@ -258,6 +258,21 @@ pub fn land_batches(
     position: &Position,
     precommit: &dyn Fn() -> Result<()>,
 ) -> Result<RunManifest> {
+    commit_batches(store, decl, batches, ctx, position, precommit, &|_| Ok(()))
+}
+
+/// [`land_batches`], with `commit_point` run once the manifest exists: the step that makes
+/// a logged run readable. `precommit` and `commit_point` both run under the table's commit
+/// lock, taken before `_commit_seq` is assigned (`store.reserve.commit-order`).
+pub fn commit_batches(
+    store: &Store,
+    decl: &TableDecl,
+    batches: &[Batch],
+    ctx: &RunContext,
+    position: &Position,
+    precommit: &dyn Fn() -> Result<()>,
+    commit_point: &dyn Fn(&RunManifest) -> Result<()>,
+) -> Result<RunManifest> {
     store.check_writable("land")?;
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
     let all_rows = || batches.iter().flat_map(|b| b.rows.iter());
@@ -298,8 +313,7 @@ pub fn land_batches(
             }
         }
     }
-    // The schema lock spans the read-merge-replace of `schema.json` alone; the Parquet
-    // write runs outside it, so a large batch holds up no other landing on the table.
+    // The schema lock spans the read-merge-replace of `schema.json` alone.
     let schema_lock = store.lock_schema(table)?;
     let stored = store.try_schema(table)?.unwrap_or_default();
     let mut schema_injection = ctx.injection.clone();
@@ -332,12 +346,19 @@ pub fn land_batches(
     // The part carries the name the manifest names, so two landings of one run on one
     // node serialize from here to the manifest: without the lock the loser rewrites the part the winner's manifest
     // already describes, and the run reads rows no manifest accounts for.
+    // From here to the commit point the table's commits serialize, the Parquet write
+    // included, so the readable runs always hold a prefix of its commit sequence; a
+    // landing on the table waits for another's write, and refuses past LOCK_WAIT_SECS
+    // (`store.reserve.commit-order`).
+    let _commit_lock = store.lock_commit(table)?;
     std::fs::create_dir_all(&node_dir).at(&node_dir)?;
     let _run_lock =
         FileLock::acquire(&node_dir.join(format!("{MANIFEST_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
     if manifest_path.exists() {
         return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
     }
+
+    let commit_seq = store.assign_commit_seq(table)?;
 
     // Build the parts: the producer's columns in their arriving types, then the injected ones.
     let mut parts = Vec::new();
@@ -357,6 +378,7 @@ pub fn land_batches(
                 INGESTED_AT => Arc::new(arrow_array::TimestampNanosecondArray::from(vec![at; n]).with_timezone("UTC")),
                 RUN_ID => Arc::new(arrow_array::StringArray::from(vec![run_id; n])),
                 ROW_SEQ => Arc::new(arrow_array::Int64Array::from_iter_values(row_offset..row_offset + n as i64)),
+                COMMIT_SEQ => Arc::new(arrow_array::Int64Array::from(vec![commit_seq; n])),
                 BATCH_SEQ => Arc::new(arrow_array::Int32Array::from(vec![injection.batch_seq.unwrap_or_default(); n])),
                 SITE_ID => Arc::new(arrow_array::StringArray::from(vec![injection.site_id.as_str(); n])),
                 AUTHORED_BY => Arc::new(arrow_array::StringArray::from(vec![injection.authored_by.as_deref().unwrap_or_default(); n])),
@@ -389,6 +411,7 @@ pub fn land_batches(
         cursor: position.cursor.clone(),
         fence: position.fence,
         logged: position.logged,
+        commit_seq: Some(commit_seq),
     };
     std::fs::create_dir_all(&node_dir).at(&node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
@@ -396,5 +419,6 @@ pub fn land_batches(
     if !create_new_file(&manifest_path, &bytes)? {
         return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
     }
+    commit_point(&manifest)?;
     Ok(manifest)
 }

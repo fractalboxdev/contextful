@@ -8,6 +8,7 @@ mod differential;
 mod drive;
 mod drive_absent;
 mod eval;
+mod export;
 mod formal;
 mod init;
 mod job;

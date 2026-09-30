@@ -8,6 +8,7 @@ mod context;
 mod derive;
 mod differential;
 mod eval;
+mod export;
 mod formal;
 mod job;
 mod mcp;
@@ -50,6 +51,9 @@ enum Cmd {
     /// Push, pull, lease and compact against the store's bucket.
     #[command(subcommand)]
     Sync(sync::SyncCmd),
+    /// Deliver a landed table's rows to an operator-declared OTLP target.
+    #[command(subcommand)]
+    Export(export::ExportCmd),
     /// Validate job blocks and fire a store-driven job.
     #[command(subcommand)]
     Job(job::JobCmd),
@@ -107,6 +111,7 @@ pub fn main_host(host: Host) {
         Cmd::Context(c) => context::run(c),
         Cmd::Run(c) => run::run(c),
         Cmd::Job(c) => job::run(c, &bodies),
+        Cmd::Export(c) => export::run(c),
         Cmd::Sync(c) => sync::run(c),
         Cmd::Pipeline(c) => pipeline::run(c, &tasks),
         Cmd::Query(c) => query::run(c),

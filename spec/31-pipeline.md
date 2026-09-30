@@ -7,6 +7,7 @@ owns:
   - normalize
   - guard-secrets
   - land
+  - export
   - backfill
   - seed
   - publish
@@ -207,7 +208,36 @@ unsettled: Which process carries the parse boundary, a child per input or one lo
 
 unsettled: Does the engine read a source's declared schema at planning time, or only the observed batch at write time? owner: pipeline affects: run.land
 
-unsettled: Where does the OTLP export arm commit its cursor over `_commit_seq`, and what bounds one delivery batch (issue 101)? owner: pipeline affects: run.land
+## export
+
+The outbound copy of a landed table to an operator-declared OTLP target: the export block, the post-commit read, the delivery batch, the cursor and at-least-once delivery.
+
+- `export-block` — A manifest `[[export]]` block declares `name`, one landed `table`, an OTLP/HTTP `endpoint`, `signal` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
+  *A-topology*
+- `signal-unknown` — A `signal` other than `logs` raises `ExportSignalUnknown` before any row is read.
+  *because the one built-in arm maps a row onto a log record, and a span or metric needs a column mapping no block declares*
+- `post-commit-read` — Export reads committed runs only, through the read face under the admitted credential, so its grants, row policy and masks hold; no landing waits on an export.
+  *A-topology*
+- `commit-order` — Export reads the rows past its cursor in `_commit_seq`, then `_row_seq`, order and never by `_ingested_at`, so {{store.reserve.commit-seq}} keeps a run committing late from being skipped.
+  *A-topology*
+- `commit-seq-missing` — A table holding rows whose `_commit_seq` is null, from parts landed without the column, raises `ExportCommitSeqMissing` naming the export and the row count, before any batch leaves.
+  *because a null never passes a cursor, and a row an export skips in silence is a row its mirror loses*
+- `batch-rows` — One delivery batch holds at most 500 rows.
+  *because a batch that size sits below the face row ceiling and the request limits common collectors apply*
+- `log-record` — Each row becomes one OTLP log record: `timeUnixNano` from `_ingested_at`, each non-null column outside the `_` namespace an attribute, beside `contextful.table`, `contextful.run_id`, `contextful.commit_seq` and `contextful.row_seq`.
+  *because the attributes a target deduplicates on travel with the record, and the engine's own columns stay its own*
+- `delivery` — A batch leaves as one OTLP/HTTP JSON `POST` through the mediated client, its allowlist the endpoint's host alone, each header hydrated as {{connector.resolve.hydration-is-just-in-time}} states.
+  *A-topology*
+- `secret-preflight` — A header reference no adapter answers refuses at preflight as {{connector.resolve.unresolved-name}}, before any row is read.
+  *because a target the export cannot authenticate to is known before a batch is built*
+- `cursor-after-ack` — The cursor, the last delivered `_commit_seq` and `_row_seq`, commits to `.contextful/exports/<project>/<name>.json`, outside the synced store root, only after the target answers 2xx for the batch.
+  *because a cursor is one node's delivery state, and a synced copy moves another node's export past rows it never sent*
+- `at-least-once` — A run ending between a target's acknowledgement and the cursor commit resends that batch on the next run; a target deduplicates on `contextful.commit_seq` and `contextful.row_seq`.
+  *A-topology*
+- `delivery-refused` — A target answering other than 2xx, or unreachable, raises `ExportDeliveryRefused` naming the export and the answer, and the cursor stays where it stood.
+  *because an unacknowledged batch is resent from the cursor, never skipped*
+
+unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export
 
 ## backfill
 

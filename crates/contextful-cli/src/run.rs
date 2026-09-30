@@ -9,7 +9,7 @@ use crate::project::{locate, Located};
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use clap::Subcommand;
-use contextful_context::land::{land_batches, Batch, Position, RunContext};
+use contextful_context::land::{commit_batches, Batch, Position, RunContext};
 use contextful_context::{commit_log, node, ContextError, Store};
 use contextful_core::store::commit_log::{CommitEntry, Kind};
 use contextful_core::ports::{Clock, FixedClock};
@@ -229,13 +229,16 @@ impl Destination for StoreDestination {
         };
         let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some() };
         let precommit = || precommit().map_err(|f| ContextError::Invalid(f.to_string()));
-        let manifest = land_batches(&self.store, &decl, &batches, &ctx, &position, &precommit).map_err(store_failure)?;
         // Under a lease, the commit-log create is the commit point: the manifest stays
         // unreadable unless the log records this run under its fence.
-        if let Some(fence) = commit.fence {
-            let entry = CommitEntry { kind: Kind::Commit, table: commit.table.clone(), run_id: Some(commit.run_id.clone()), cursor: commit.cursor.clone(), fence };
-            commit_log::append(&self.store, &commit.pipeline_id, self.node.as_str(), &entry).map_err(store_failure)?;
-        }
+        let commit_point = |_: &contextful_core::store::lay_out::RunManifest| match commit.fence {
+            Some(fence) => {
+                let entry = CommitEntry { kind: Kind::Commit, table: commit.table.clone(), run_id: Some(commit.run_id.clone()), cursor: commit.cursor.clone(), fence };
+                commit_log::append(&self.store, &commit.pipeline_id, self.node.as_str(), &entry).map(|_| ())
+            }
+            None => Ok(()),
+        };
+        let manifest = commit_batches(&self.store, &decl, &batches, &ctx, &position, &precommit, &commit_point).map_err(store_failure)?;
         let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join("data").join("runs").join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;
         for p in &manifest.parts {

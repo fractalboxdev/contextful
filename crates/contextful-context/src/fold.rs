@@ -186,6 +186,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         parts,
         indexes,
         fence: None,
+        commit_seq: unfolded_runs.iter().map(|r| r.commit_seq).chain(state.chain.first().map(|s| s.commit_seq)).flatten().max(),
     };
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
     fs::write(staging.join(MANIFEST_FILE), bytes).at(staging.join(MANIFEST_FILE))?;

@@ -8,18 +8,19 @@ use crate::connector::infer::Provenance;
 pub const INGESTED_AT: &str = "_ingested_at";
 pub const RUN_ID: &str = "_run_id";
 pub const ROW_SEQ: &str = "_row_seq";
+pub const COMMIT_SEQ: &str = "_commit_seq";
 pub const BATCH_SEQ: &str = "_batch_seq";
 pub const SITE_ID: &str = "_site_id";
 pub const AUTHORED_BY: &str = "_authored_by";
 pub const TAINT: &str = "_taint";
 
 /// Columns the engine injects, replacing any producer value (`store.reserve.injected`,
-/// `store.reserve.taint`).
-pub const INJECTED: [&str; 7] = [INGESTED_AT, RUN_ID, ROW_SEQ, BATCH_SEQ, SITE_ID, AUTHORED_BY, TAINT];
+/// `store.reserve.commit-seq`, `store.reserve.taint`).
+pub const INJECTED: [&str; 8] = [INGESTED_AT, RUN_ID, ROW_SEQ, COMMIT_SEQ, BATCH_SEQ, SITE_ID, AUTHORED_BY, TAINT];
 
 /// Injected columns every write path carries, so no file lacks them and each is non-null
 /// in the merged schema whichever landing created it.
-pub const ALWAYS_INJECTED: [&str; 4] = [INGESTED_AT, RUN_ID, ROW_SEQ, SITE_ID];
+pub const ALWAYS_INJECTED: [&str; 5] = [INGESTED_AT, RUN_ID, ROW_SEQ, COMMIT_SEQ, SITE_ID];
 
 /// Columns a producer may set inside the `_` namespace (`store.reserve.optional`).
 pub const OPTIONAL: [&str; 4] = ["_modality", "_lang", "_provenance", "_prompt_hash"];
@@ -55,6 +56,7 @@ impl Injection {
             Column::new(INGESTED_AT, ColumnType::Timestamp, false),
             Column::new(RUN_ID, ColumnType::Utf8, false),
             Column::new(ROW_SEQ, ColumnType::Int64, false),
+            Column::new(COMMIT_SEQ, ColumnType::Int64, false),
         ];
         if self.batch_seq.is_some() {
             cols.push(Column::new(BATCH_SEQ, ColumnType::Int32, false));

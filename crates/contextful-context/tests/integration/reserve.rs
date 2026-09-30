@@ -1,6 +1,7 @@
 //! `store.reserve`: the injected columns as a reader sees them, and batch validation.
 
 use crate::support::{at, decl, query, s, Fixture};
+use contextful_context::fold::fold;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_core::connector::infer::Provenance;
 use contextful_core::store::bound_time::Bounds;
@@ -137,4 +138,107 @@ fn injected_columns_stay_non_null_in_the_merged_schema() {
     g.land(&d, "run-1", json!([]), "2030-01-01T00:00:00Z").unwrap();
     g.land(&d, "run-2", json!([{"id": "a"}]), "2030-01-01T00:01:00Z").unwrap();
     assert_eq!(nullability(&g), expected, "after an empty first run");
+}
+
+/// The engine injects `_commit_seq`, a non-null int64 its commit assigns above every value the table holds; a run
+/// committing after a read carries a value above every row that read returned, whatever its `_ingested_at`.
+// spec: store.reserve.commit-seq@4bd29584
+#[test]
+fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp() {
+    let f = Fixture::new();
+    let d = decl("name = \"spans\"");
+    f.land(&d, "run-late-stamp", json!([{"id": "a"}, {"id": "b"}]), "2030-01-01T00:10:00Z").unwrap();
+    let read = f.query(&d, Bounds::default(), "SELECT max(_commit_seq) FROM t");
+    let seen: i64 = read[0][0].clone().unwrap().parse().unwrap();
+
+    // A second writer commits later under an earlier transaction-time stamp.
+    f.land(&d, "run-early-stamp", json!([{"id": "c", "_commit_seq": 0}]), "2030-01-01T00:00:00Z").unwrap();
+    let rows = f.query(&d, Bounds::default(), "SELECT id, _commit_seq FROM t WHERE _commit_seq > (SELECT max(_commit_seq) FROM t WHERE _run_id = 'run-late-stamp') ORDER BY id");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0][0], s("c"));
+    let late: i64 = rows[0][1].clone().unwrap().parse().unwrap();
+    assert!(late > seen, "the later commit carries {late}, not above the {seen} the read returned");
+    let stamps = f.query(&d, Bounds::default(), "SELECT id FROM t ORDER BY _ingested_at, id");
+    assert_eq!(stamps[0][0], s("c"), "the later commit sorts first by `_ingested_at`");
+
+    // The column is a required int64 in every part, and one run's rows share one value.
+    for file in f.scan(&d, Bounds::default()).unwrap().files {
+        let described = query(&format!(
+            "SELECT type, repetition_type FROM parquet_schema('{}') WHERE name = '_commit_seq'",
+            f.store.root().join(&file).display()
+        ));
+        assert_eq!(described, [[s("INT64"), s("REQUIRED")]], "{file}");
+    }
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT count(DISTINCT _commit_seq) FROM t WHERE _run_id = 'run-late-stamp'"), [[s("1")]]);
+}
+
+/// Commits of one table serialize from assigning `_commit_seq`, through the part write, to the step that makes the
+/// run readable, so the readable runs of a table always hold a prefix of its commit sequence.
+// spec: store.reserve.commit-order@22d731cc
+#[test]
+fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
+    let f = Fixture::new();
+    let d = decl("name = \"spans\"");
+    f.land(&d, "run-0", json!([{"id": "seed"}]), "2030-01-01T00:00:00Z").unwrap();
+    let writers = 6;
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let prefixes = std::thread::scope(|scope| {
+        for w in 0..writers {
+            let (f, d, done) = (&f, &d, &done);
+            scope.spawn(move || {
+                let rows = json!((0..50).map(|i| json!({"id": format!("w{w}-{i}")})).collect::<Vec<_>>());
+                // Stamps descend as writers ascend, so no stamp order matches the commit order.
+                f.land(d, &format!("run-{}", w + 1), rows, &format!("2030-01-01T00:{:02}:00Z", 59 - w)).unwrap();
+                done.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+        let mut reads = 0;
+        loop {
+            let finished = done.load(std::sync::atomic::Ordering::SeqCst) == writers;
+            let seqs: Vec<i64> = f
+                .query(&d, Bounds::default(), "SELECT DISTINCT _commit_seq FROM t ORDER BY 1")
+                .into_iter()
+                .map(|r| r[0].clone().unwrap().parse().unwrap())
+                .collect();
+            let expected: Vec<i64> = (1..=seqs.len() as i64).collect();
+            assert_eq!(seqs, expected, "a read observed a gap in the commit sequence");
+            reads += 1;
+            if finished {
+                break reads;
+            }
+        }
+    });
+    assert!(prefixes >= 1);
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT count(DISTINCT _commit_seq), count(*) FROM t"), [[s("7"), s("301")]]);
+}
+
+/// A commit assigns one above the greatest of the node's counter, every run manifest's `commit_seq` and the current
+/// snapshot's, so a store restored by a pull, or holding no counter, never reissues a value.
+// spec: store.reserve.commit-seq-seed@2a3baa75
+#[test]
+fn a_store_holding_no_counter_continues_above_the_values_its_manifests_record() {
+    let f = Fixture::new();
+    let d = decl("name = \"spans\"");
+    let counter = f.table_dir("spans").join("data/.commit_seq");
+    let seqs = |f: &Fixture| -> Vec<(Option<String>, i64)> {
+        f.query(&d, Bounds::default(), "SELECT DISTINCT _run_id, _commit_seq FROM t ORDER BY 2")
+            .into_iter()
+            .map(|r| (r[0].clone(), r[1].clone().unwrap().parse().unwrap()))
+            .collect()
+    };
+    f.land(&d, "run-1", json!([{"id": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+    f.land(&d, "run-2", json!([{"id": "b"}]), "2030-01-01T00:01:00Z").unwrap();
+
+    // A pull onto a fresh machine restores the runs and not the node-local counter.
+    std::fs::remove_file(&counter).unwrap();
+    let m = f.land(&d, "run-3", json!([{"id": "c"}]), "2030-01-01T00:02:00Z").unwrap();
+    assert_eq!(m.commit_seq, Some(3), "the run manifest records its commit sequence value");
+    assert_eq!(seqs(&f), [(s("run-1"), 1), (s("run-2"), 2), (s("run-3"), 3)]);
+
+    // Folded and collected: the current snapshot alone records the values its rows carry.
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    std::fs::remove_dir_all(f.table_dir("spans").join("data/runs")).unwrap();
+    std::fs::remove_file(&counter).unwrap();
+    f.land(&d, "run-4", json!([{"id": "d"}]), "2030-01-01T02:00:00Z").unwrap();
+    assert_eq!(seqs(&f), [(s("run-1"), 1), (s("run-2"), 2), (s("run-3"), 3), (s("run-4"), 4)]);
 }

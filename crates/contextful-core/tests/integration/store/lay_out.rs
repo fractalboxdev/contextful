@@ -46,8 +46,8 @@ fn the_store_root_sits_under_the_project() {
     assert_eq!(store_root("research"), ".contextful/context/research");
 }
 
-/// A snapshot's `_manifest.json` carries `{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence}`, and each entry of `parts` and `indexes` carries its `key_version`.
-// spec: store.lay-out.snapshot-manifest@e1df897a
+/// A snapshot's `_manifest.json` carries `{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence, commit_seq?}`, and each entry of `parts` and `indexes` carries its `key_version`.
+// spec: store.lay-out.snapshot-manifest@96d83aac
 #[test]
 fn the_snapshot_manifest_and_pointer_decode_in_their_documented_shape() {
     let snap: SnapshotManifest = serde_json::from_str(
@@ -55,7 +55,7 @@ fn the_snapshot_manifest_and_pointer_decode_in_their_documented_shape() {
   "table": "filings", "created_at": "2025-03-15T16:00:00Z",
   "includes_runs": ["run-4812/ingest-a", "run-4813/ingest-a", "run-4814/ingest-b"],
   "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
-  "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,
+  "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12, "commit_seq": 41,
   "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
   "indexes": [{ "kind": "vector", "column": "embedding", "model": "e5-small", "dim": 384,
                 "metric": "cosine", "m": 16, "ef_construction": 200, "key_version": 3 }] }"#,
@@ -66,9 +66,10 @@ fn the_snapshot_manifest_and_pointer_decode_in_their_documented_shape() {
     assert_eq!(snap.indexes[0]["key_version"], 3);
     assert_eq!(snap.valid_time.as_ref().unwrap().to.as_deref(), Some("effective_to"));
     assert_eq!(snap.fence, Some(12));
+    assert_eq!(snap.commit_seq, Some(41));
 
     let written = serde_json::to_value(&snap).unwrap();
-    for key in ["snapshot_id", "parent", "table", "created_at", "includes_runs", "primary_key", "order_by", "row_count", "valid_time", "indexes", "fence", "parts"] {
+    for key in ["snapshot_id", "parent", "table", "created_at", "includes_runs", "primary_key", "order_by", "row_count", "valid_time", "indexes", "fence", "commit_seq", "parts"] {
         assert!(written.get(key).is_some(), "the manifest writes no `{key}`");
     }
 

@@ -89,7 +89,7 @@ fn a_zero_row_run_commits_no_parts_and_an_empty_table_registers() {
         "SELECT column_name FROM (DESCRIBE {}) ORDER BY column_name",
         f.scan(&d, Bounds::default()).unwrap().relation
     ));
-    assert_eq!(cols, [[s("_batch_seq")], [s("_ingested_at")], [s("_row_seq")], [s("_run_id")], [s("_site_id")]]);
+    assert_eq!(cols, [[s("_batch_seq")], [s("_commit_seq")], [s("_ingested_at")], [s("_row_seq")], [s("_run_id")], [s("_site_id")]]);
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("0")]]);
 
     // Under `replace`, a later zero-row run leaves the last non-empty state in place.
