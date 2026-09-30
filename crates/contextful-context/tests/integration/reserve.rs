@@ -172,9 +172,9 @@ fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp(
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(DISTINCT _commit_seq) FROM t WHERE _run_id = 'run-late-stamp'"), [[s("1")]]);
 }
 
-/// Commits of one table serialize from assigning `_commit_seq` to the step that makes the run readable, so the
-/// readable runs of a table always hold a prefix of its commit sequence.
-// spec: store.reserve.commit-order@0fa09147
+/// Commits of one table serialize from assigning `_commit_seq`, through the part write, to the step that makes the
+/// run readable, so the readable runs of a table always hold a prefix of its commit sequence.
+// spec: store.reserve.commit-order@22d731cc
 #[test]
 fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
     let f = Fixture::new();
@@ -214,7 +214,7 @@ fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
 
 /// A commit assigns one above the greatest of the node's counter, every run manifest's `commit_seq` and the current
 /// snapshot's, so a store restored by a pull, or holding no counter, never reissues a value.
-// spec: store.reserve.commit-seq-seed@00000000
+// spec: store.reserve.commit-seq-seed@2a3baa75
 #[test]
 fn a_store_holding_no_counter_continues_above_the_values_its_manifests_record() {
     let f = Fixture::new();

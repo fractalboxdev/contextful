@@ -89,17 +89,20 @@ Revisit: an adapter through the stack misses a stated throughput requirement; au
 
 ## Export reads committed runs and is no second destination
 
-**Status:** accepted; amends the one-destination decision above: an OTLP export arm reads landed rows after commit, and the destination set stays one.
+**Status:** accepted; amends the one-destination decision above, whose destination set stays one.
 
-Context: a deployment mirrors landed spans, logs and metrics to another OTLP backend, and `_ingested_at` is stamped per run, so two writers commit out of stamp order and a cursor over it skips the late run. Criteria: credential custody; delivery semantics the commit model honors; every row read through the enforcement stack.
+Context: a deployment mirrors landed rows to another OTLP backend; `_ingested_at` is stamped per run, so a cursor over it skips a run committing late under an earlier stamp.
 
-Decision: export is a post-commit reader of committed runs with one built-in OTLP arm. Target secrets resolve through `connector.resolve`, and delivery leaves through egress. A cursor over a new per-table commit sequence, committed after the target acknowledges, gives at-least-once delivery; `store.reserve.commit-seq` fixes commit order apart from `_ingested_at`.
+Criteria: credential custody; delivery semantics the commit model honors; every row read through the enforcement stack; a cursor that skips no committed row.
+
+Decision: export is a post-commit reader with one OTLP arm; target secrets resolve through `connector.resolve` and leave through egress. A cursor over a per-table commit sequence, committed after acknowledgement, gives at-least-once delivery. One lock per table spans assigning the value, the part write and the commit point; a node reseeds its unsynced counter from the manifests.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Post-commit reader, OTLP arm, commit-sequence cursor *(chosen)* | — | A target sees a batch again after a crash between acknowledgement and cursor commit; one more injected column. |
+| Commit-sequence cursor, commit lock over the part write *(chosen)* | — | Landings on one table write their parts one at a time. |
+| Lock released for the part write, commits ordered by ticket | Skipped rows | A landing dying with a ticket stalls every later commit. |
 | Export as a second land destination | Delivery semantics | A failing target fails the landing run. |
-| A consumer cursor over `_ingested_at` | Ordering | A run committing late under an earlier stamp is skipped. |
-| A sink plugin per backend | Attack surface | Loaded code holds target credentials. |
+| A consumer cursor over `_ingested_at` | Skipped rows | A late run under an earlier stamp is skipped. |
+| A sink plugin per backend | Credential custody | Loaded code holds target credentials. |
 
-Consequences: landing never waits on a target, and a mirror is at-least-once, never exactly-once. The accepted cost: duplicates reach the target on recovery, and the engine speaks a second wire format beside the store's layout.
+Consequences: landing never waits on a target; a mirror is at-least-once. Accepted cost: a landing waiting 30 s behind another's part write refuses, a target sees duplicates on recovery, and rows with a null `_commit_seq` refuse the export.

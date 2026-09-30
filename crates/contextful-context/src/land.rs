@@ -313,8 +313,7 @@ pub fn commit_batches(
             }
         }
     }
-    // The schema lock spans the read-merge-replace of `schema.json` alone; the Parquet
-    // write runs outside it, so a large batch holds up no other landing on the table.
+    // The schema lock spans the read-merge-replace of `schema.json` alone.
     let schema_lock = store.lock_schema(table)?;
     let stored = store.try_schema(table)?.unwrap_or_default();
     let mut schema_injection = ctx.injection.clone();
@@ -347,8 +346,10 @@ pub fn commit_batches(
     // The part carries the name the manifest names, so two landings of one run on one
     // node serialize from here to the manifest: without the lock the loser rewrites the part the winner's manifest
     // already describes, and the run reads rows no manifest accounts for.
-    // From here to the commit point the table's commits serialize, so the readable runs
-    // always hold a prefix of its commit sequence.
+    // From here to the commit point the table's commits serialize, the Parquet write
+    // included, so the readable runs always hold a prefix of its commit sequence; a
+    // landing on the table waits for another's write, and refuses past LOCK_WAIT_SECS
+    // (`store.reserve.commit-order`).
     let _commit_lock = store.lock_commit(table)?;
     std::fs::create_dir_all(&node_dir).at(&node_dir)?;
     let _run_lock =
@@ -410,6 +411,7 @@ pub fn commit_batches(
         cursor: position.cursor.clone(),
         fence: position.fence,
         logged: position.logged,
+        commit_seq: Some(commit_seq),
     };
     std::fs::create_dir_all(&node_dir).at(&node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");

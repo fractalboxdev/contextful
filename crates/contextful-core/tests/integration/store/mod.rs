@@ -27,6 +27,7 @@ pub fn run(id: &str, committed: &str, parts: usize) -> RunManifest {
         cursor: None,
         fence: None,
         logged: false,
+        commit_seq: None,
     }
 }
 
@@ -44,5 +45,6 @@ pub fn snapshot(created: &str, parent: Option<&SnapshotId>, includes: &[&str]) -
         parts: vec![PartEntry { name: "part-00000.parquet".into(), key_version: 0 }],
         indexes: vec![],
         fence: None,
+        commit_seq: None,
     }
 }

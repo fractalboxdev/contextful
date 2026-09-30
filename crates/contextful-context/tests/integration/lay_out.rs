@@ -31,8 +31,8 @@ fn a_landing_and_a_fold_write_the_table_directory() {
     assert!(f.store.root().ends_with(".contextful/context/research"));
 }
 
-/// A run commits by conditionally creating `_manifest.json` in its node directory, carrying `{run_id, table, node_id, parts, committed_at, pipeline_id?, cursor?, fence?}`, where `node_id` equals the enclosing segment.
-// spec: store.lay-out.run-manifest@69595222
+/// A run commits by conditionally creating `_manifest.json` in its node directory, carrying `{run_id, table, node_id, parts, committed_at, pipeline_id?, cursor?, fence?, commit_seq?}`, where `node_id` equals the enclosing segment.
+// spec: store.lay-out.run-manifest@e3aded41
 #[test]
 fn a_run_commits_by_creating_its_manifest_once() {
     let f = Fixture::new();
@@ -43,6 +43,7 @@ fn a_run_commits_by_creating_its_manifest_once() {
     assert_eq!(on_disk, m);
     assert_eq!((on_disk.run_id.as_str(), on_disk.node_id.as_str(), on_disk.table.as_str()), ("run-1", "ingest-a", "filings"));
     assert_eq!(on_disk.parts[0].name, "part-00000.parquet");
+    assert_eq!(on_disk.commit_seq, Some(1));
 
     // The create is conditional: a second commit of the run is refused and changes nothing.
     let before = fs::read(&path).unwrap();

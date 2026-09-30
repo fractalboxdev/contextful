@@ -82,6 +82,12 @@ pub fn run(cmd: ExportCmd) -> Result<()> {
 
             // Committed runs only, under the admitted credential (`run.export.post-commit-read`).
             let session = face.session(&authority, &Request { zone: None }, Bounds::default())?;
+            // A row without a commit sequence refuses before any batch leaves (`run.export.commit-seq-missing`).
+            let missing = face.query(&session, &export.missing_statement(), ReadOptions::default())?;
+            let count = missing.rows.first().and_then(|r| r.first()).and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0);
+            if let Some(refusal) = export.missing(count) {
+                return Err(refusal.into());
+            }
             let (mut rows, mut batches) = (0usize, 0usize);
             loop {
                 let opts = ReadOptions { limit: Some(EXPORT_BATCH_ROWS as u64), ..ReadOptions::default() };

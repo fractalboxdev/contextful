@@ -28,6 +28,9 @@ pub enum ExportError {
     /// A signal the built-in arm does not map. (`run.export.signal-unknown`)
     #[error("ExportSignalUnknown: {0}")]
     ExportSignalUnknown(String),
+    /// Rows whose `_commit_seq` is null, which no cursor passes. (`run.export.commit-seq-missing`)
+    #[error("ExportCommitSeqMissing: {0}")]
+    ExportCommitSeqMissing(String),
     /// A target answering other than 2xx, or unreachable. (`run.export.delivery-refused`)
     #[error("ExportDeliveryRefused: {0}")]
     ExportDeliveryRefused(String),
@@ -131,6 +134,22 @@ fn check(block: Block) -> Result<Export, ExportError> {
 }
 
 impl Export {
+    /// The statement counting the rows no cursor passes: those whose `_commit_seq` is
+    /// null, from parts landed without the column (`run.export.commit-seq-missing`).
+    pub fn missing_statement(&self) -> String {
+        format!("SELECT count(*) FROM {} WHERE {} IS NULL", ident(&self.table), ident(COMMIT_SEQ))
+    }
+
+    /// The refusal for `rows` rows without a commit sequence, or `None` when there are none.
+    pub fn missing(&self, rows: i64) -> Option<ExportError> {
+        (rows > 0).then(|| {
+            ExportError::ExportCommitSeqMissing(format!(
+                "export `{}`: table `{}` holds {rows} rows without `{COMMIT_SEQ}`, which no cursor passes; nothing was delivered",
+                self.name, self.table
+            ))
+        })
+    }
+
     /// The statement reading the next batch: the rows past `cursor` in commit order, at
     /// most [`EXPORT_BATCH_ROWS`] of them (`run.export.commit-order`).
     pub fn batch_statement(&self, cursor: &ExportCursor) -> String {

@@ -287,7 +287,7 @@ fn export_reads_through_the_face_under_the_admitted_credential() {
 
 /// A table holding rows whose `_commit_seq` is null, from parts landed without the column, raises
 /// `ExportCommitSeqMissing` naming the export and the row count, before any batch leaves.
-// spec: run.export.commit-seq-missing@00000000
+// spec: run.export.commit-seq-missing@fc1e7556
 #[test]
 fn rows_without_a_commit_sequence_refuse_the_export() {
     let collector = Collector::start();

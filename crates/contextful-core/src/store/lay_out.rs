@@ -121,6 +121,9 @@ pub struct RunManifest {
     /// records the run under `fence`. A manifest without it reads as committed.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub logged: bool,
+    /// The `_commit_seq` value the run's rows carry (`store.reserve.commit-seq-seed`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_seq: Option<i64>,
 }
 
 impl RunManifest {
@@ -155,6 +158,10 @@ pub struct SnapshotManifest {
     pub indexes: Vec<Value>,
     #[serde(default)]
     pub fence: Option<u64>,
+    /// The highest `_commit_seq` its included runs and its parent record
+    /// (`store.reserve.commit-seq-seed`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_seq: Option<i64>,
 }
 
 /// `tables/<t>/_pointer.json`: the current snapshot and the fence that published it

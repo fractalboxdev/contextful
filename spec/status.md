@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 76 | 37 | 7 | 0 | 37 | 0 | 37 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 151 | 26 | 22 | 18 | 119 | 0 | 119 |
-| `run` | 3 | 24 | 323 | 85 | 34 | 30 | 192 | 0 | 192 |
-| `store` | 1 | 16 | 199 | 49 | 12 | 15 | 157 | 0 | 157 |
+| `run` | 3 | 25 | 335 | 88 | 35 | 30 | 204 | 0 | 204 |
+| `store` | 1 | 16 | 201 | 49 | 12 | 17 | 160 | 0 | 160 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 150 | 1694 | 521 | 182 | 123 | 986 | 0 | |
+| **total** | 19 | 151 | 1708 | 524 | 183 | 125 | 1001 | 0 | |
 
 Decision records: 18.
 
@@ -25,9 +25,9 @@ Decision records: 18.
 | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing |
 | 1 — The authority core | 14 | 203 | 148 | passing |
-| 2 — The store | 9 | 148 | 111 | passing |
+| 2 — The store | 9 | 150 | 114 | passing |
 | 3 — The run path | 11 | 197 | 125 | passing |
-| 4 — Ingest | 22 | 386 | 191 | passing |
+| 4 — Ingest | 23 | 398 | 203 | passing |
 | 5 — The read face under enforcement | 17 | 239 | 163 | passing |
 | 6 — Sync and replicas | 7 | 51 | 46 | passing |
 | 7 — Memory | 6 | 22 | 22 | passing |
@@ -724,6 +724,18 @@ Unscheduled operations: 10.
 | `run.exec.step-error-excerpt` | `crates/contextful-core/tests/integration/run/derive.rs::a_failing_steps_error_carries_4_kib_of_its_stderr` | performed |
 | `run.exec.unpinned-path` | `crates/contextful-connectors/tests/integration/derive.rs::a_path_form_command_without_a_digest_refuses_quoting_it` | performed |
 | `run.exec.verified-spawn` | `crates/contextful-connectors/tests/integration/derive.rs::a_binary_replaced_after_resolution_never_runs` | performed |
+| `run.export.at-least-once` | `crates/contextful-cli/tests/integration/export.rs::a_batch_acknowledged_without_its_cursor_commit_is_resent` | performed |
+| `run.export.batch-rows` | `crates/contextful-cli/tests/integration/export.rs::a_delivery_batch_holds_at_most_five_hundred_rows` | performed |
+| `run.export.commit-order` | `crates/contextful-cli/tests/integration/export.rs::a_run_committing_after_the_cursor_under_an_earlier_stamp_is_delivered` | performed |
+| `run.export.commit-seq-missing` | `crates/contextful-cli/tests/integration/export.rs::rows_without_a_commit_sequence_refuse_the_export` | performed |
+| `run.export.cursor-after-ack` | `crates/contextful-cli/tests/integration/export.rs::the_cursor_commits_after_the_target_acknowledges` | performed |
+| `run.export.delivery` | `crates/contextful-cli/tests/integration/export.rs::a_batch_leaves_through_the_mediated_client_with_its_header_hydrated` | performed |
+| `run.export.delivery-refused` | `crates/contextful-cli/tests/integration/export.rs::a_refused_delivery_leaves_the_cursor_where_it_stood` | performed |
+| `run.export.export-block` | `crates/contextful-cli/tests/integration/export.rs::an_export_run_delivers_the_rows_its_cursor_has_not_passed` | performed |
+| `run.export.log-record` | `crates/contextful-core/tests/integration/pipeline/export.rs::each_row_becomes_one_log_record_carrying_its_commit_position` | performed |
+| `run.export.post-commit-read` | `crates/contextful-cli/tests/integration/export.rs::export_reads_through_the_face_under_the_admitted_credential` | performed |
+| `run.export.secret-preflight` | `crates/contextful-cli/tests/integration/export.rs::an_unresolved_header_reference_refuses_before_any_request` | performed |
+| `run.export.signal-unknown` | `crates/contextful-core/tests/integration/pipeline/export.rs::a_signal_other_than_logs_is_refused` | performed |
 | `run.guard-secrets.assignment-key` | `crates/contextful-core/tests/integration/pipeline/guard.rs::a_compound_key_assignment_is_masked_keeping_its_key` | performed |
 | `run.guard-secrets.coverage` | `crates/contextful-core/tests/integration/pipeline/guard.rs::encoded_or_split_credentials_pass_through` | performed |
 | `run.guard-secrets.mask-only` | `crates/contextful-engine/tests/integration/guard.rs::each_pull_reports_masked_cells_and_the_run_proceeds` | performed |
@@ -995,6 +1007,9 @@ Unscheduled operations: 10.
 | `store.replicate.sensitive-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_refresh_requesting_a_replicate_off_table_refuses` | performed |
 | `store.replicate.write-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_refuses_a_write_verb_naming_the_canonical_store` | performed |
 | `store.reserve.column-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_producer_column_in_the_namespace_is_refused` | performed |
+| `store.reserve.commit-order` | `crates/contextful-context/tests/integration/reserve.rs::concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read` | performed |
+| `store.reserve.commit-seq` | `crates/contextful-context/tests/integration/reserve.rs::a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp` | performed |
+| `store.reserve.commit-seq-seed` | `crates/contextful-context/tests/integration/reserve.rs::a_store_holding_no_counter_continues_above_the_values_its_manifests_record` | performed |
 | `store.reserve.injected` | `crates/contextful-context/tests/integration/reserve.rs::the_engine_injects_provenance_and_replaces_producer_values` | performed |
 | `store.reserve.ledger-append` | `crates/contextful-context/tests/integration/read/register.rs::concurrent_flushes_of_one_run_keep_every_row` | performed |
 | `store.reserve.ledger-path` | `crates/contextful-core/tests/integration/store/reserve.rs::the_ledger_path_is_disjoint_per_run_and_node` | performed |

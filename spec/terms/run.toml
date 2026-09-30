@@ -64,6 +64,7 @@ PipelinePartialParse           = { clause = "run.land.partial-parse", gloss = "A
 PipelineParseCrashed           = { clause = "run.land.parse-crashed", gloss = "A non-zero exit or fatal signal from the decode process." }
 PipelineTableFailed            = { clause = "run.land.table-failed", gloss = "One table's pull failing inside a fire." }
 ExportSignalUnknown            = { clause = "run.export.signal-unknown", gloss = "An export block naming a signal the built-in arm does not map." }
+ExportCommitSeqMissing         = { clause = "run.export.commit-seq-missing", gloss = "A table holding rows no cursor passes, their `_commit_seq` null." }
 ExportDeliveryRefused          = { clause = "run.export.delivery-refused", gloss = "An OTLP target answering other than 2xx, or unreachable." }
 PipelineChunkParallelism       = { clause = "run.backfill.chunk-parallelism", gloss = "A sequential chunk plan beside a parallelism above one." }
 PipelineRewindWindowInvalid    = { clause = "run.backfill.rewind-invalid", gloss = "An inverted, empty or scale-incomparable rewind window." }

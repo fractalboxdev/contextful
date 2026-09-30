@@ -220,6 +220,8 @@ The outbound copy of a landed table to an operator-declared OTLP target: the exp
   *A-topology*
 - `commit-order` — Export reads the rows past its cursor in `_commit_seq`, then `_row_seq`, order and never by `_ingested_at`, so {{store.reserve.commit-seq}} keeps a run committing late from being skipped.
   *A-topology*
+- `commit-seq-missing` — A table holding rows whose `_commit_seq` is null, from parts landed without the column, raises `ExportCommitSeqMissing` naming the export and the row count, before any batch leaves.
+  *because a null never passes a cursor, and a row an export skips in silence is a row its mirror loses*
 - `batch-rows` — One delivery batch holds at most 500 rows.
   *because a batch that size sits below the face row ceiling and the request limits common collectors apply*
 - `log-record` — Each row becomes one OTLP log record: `timeUnixNano` from `_ingested_at`, each non-null column outside the `_` namespace an attribute, beside `contextful.table`, `contextful.run_id`, `contextful.commit_seq` and `contextful.row_seq`.
