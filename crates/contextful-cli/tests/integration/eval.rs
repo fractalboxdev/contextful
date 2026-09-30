@@ -239,8 +239,79 @@ fn a_row_the_credential_may_not_read_never_scores() {
     assert_eq!(payroll(&report), 0);
 }
 
+/// A case over `lab/plain`, whose rows carry no publication column and so date by their
+/// landing instant, asked at `anchor` with the day before it as its recency bound.
+fn dated_case(id: &str, anchor: &str, since: &str) -> Value {
+    json!({ "id": id, "corpus": "corpus", "question": "pressure valve", "prefix": "lab/plain",
+            "expected": { "artifacts": ["lab/plain#a,1"], "time_anchor": anchor, "since": since } })
+}
+
 /// `contextful eval run --goldens <file>` loads the case file, lands and folds each referenced corpus into a scratch store at `--landed-at`, the Unix epoch by default, reads every case, and writes the run report.
 // spec: assurance.evaluate.run-command@5f634816
+#[test]
+fn each_corpus_lands_at_the_epoch_unless_landed_at_names_an_instant() {
+    let issuer = Issuer::new();
+    let token = issuer.mint(READER, "on-prem:hq");
+    let epoch = corpus(issuer.path(), LAB, &lab_rows(), &[dated_case("epoch", "1970-01-01T12:00:00Z", "1970-01-01T00:00:00Z")]);
+    // Undated rows landed at the epoch sit inside a window on the epoch's first day, and a
+    // landing at the wall clock would put them decades past it.
+    let (out, report) = issuer.eval(&epoch, &token, &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(mean(&report, "/retrieval/hybrid/in_window_rate/min"), 1.0);
+    assert_eq!(report["cases"][0]["legs"]["lexical"], json!(["lab/plain#a,1"]));
+    let (again, replay) = issuer.eval(&epoch, &token, &[]);
+    assert!(again.status.success(), "{}", stderr(&again));
+    assert_eq!(replay["retrieval"], report["retrieval"]);
+
+    // `--landed-at` moves every row: the epoch window loses them and the in-window floor reds.
+    let (out, moved) = issuer.eval(&epoch, &token, &["--landed-at", "2030-01-01T00:00:00Z"]);
+    assert!(!out.status.success());
+    assert_eq!(mean(&moved, "/retrieval/hybrid/in_window_rate/min"), 0.0);
+    assert!(stderr(&out).contains("floor retrieval.hybrid.in_window_rate.min"), "{}", stderr(&out));
+
+    // A window on the named day holds only when the run lands there.
+    let later = corpus(issuer.path(), LAB, &lab_rows(), &[dated_case("later", "2030-01-01T12:00:00Z", "2030-01-01T00:00:00Z")]);
+    let (out, _) = issuer.eval(&later, &token, &["--landed-at", "2030-01-01T00:00:00Z"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let (out, _) = issuer.eval(&later, &token, &[]);
+    assert!(!out.status.success(), "the default landing predates a 2030 window");
+
+    let (out, report) = issuer.eval(&later, &token, &["--landed-at", "new year 2030"]);
+    assert!(stderr(&out).contains("`--landed-at` is not an RFC 3339 instant"), "{}", stderr(&out));
+    assert_eq!(report, Value::Null);
+}
+
+/// The native case file with every recency bound removed, its corpus path made absolute:
+/// the ranked call reads no window, as a read path ignoring the bound does.
+fn unbounded_native(dir: &Path) -> PathBuf {
+    let corpus = root().join("evals/corpora/native");
+    let lines: Vec<String> = std::fs::read_to_string(root().join("evals/cases/native.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|l| {
+            let mut case: Value = serde_json::from_str(l).unwrap();
+            case["corpus"] = json!(corpus);
+            case["expected"].as_object_mut().unwrap().remove("since");
+            case.to_string()
+        })
+        .collect();
+    let path = dir.join("unbounded.jsonl");
+    std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+    path
+}
+
+#[test]
+fn a_read_that_drops_the_recency_bound_goes_red_against_the_baseline() {
+    let issuer = Issuer::new();
+    let baseline = root().join("evals/baselines/native.json");
+    let (out, report) = issuer.eval(&unbounded_native(issuer.path()), &issuer.mint(READER, "on-prem:hq"), &["--baseline", baseline.to_str().unwrap()]);
+    // Each temporal topic's archived stories outscore its recent ones, so only the window
+    // keeps the recent stories on top.
+    assert!(mean(&report, "/slices/temporal/retrieval/hybrid/recall_at_k/mean") <= 0.5, "{}", report["slices"]["temporal"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("baseline retrieval.hybrid.recall_at_k"), "{}", stderr(&out));
+}
+
 #[test]
 fn the_native_golden_set_holds_its_floors_and_baseline() {
     let issuer = Issuer::new();
@@ -260,10 +331,6 @@ fn the_native_golden_set_holds_its_floors_and_baseline() {
     let seed = report["seed"].as_u64().unwrap();
     contextful_eval::record::emit("eval-through-enforcement", forbidden, report["retrieval"]["hybrid"]["forbidden_row_rate"]["n"].as_u64().unwrap(), seed);
     contextful_eval::record::emit("native-golden-floor", precision, n, seed);
-
-    // The epoch landing makes a replay on any day score alike.
-    let (_, replay) = issuer.eval(&goldens, &token, &[]);
-    assert_eq!(replay["retrieval"], report["retrieval"]);
 }
 
 /// The corpus loads through the real store, and the retriever under test calls {{read.retrieve.ranked-call}} with the options a caller passes.
