@@ -12,6 +12,8 @@ use contextful_connectors::derive::{DeriveSource, HostDerive, Staged};
 use contextful_connectors::http::{HttpConfig, HttpSource};
 use contextful_core::connector::component::ComponentSource;
 use contextful_core::connector::ConnectorError;
+#[cfg(feature = "s3-sync")]
+use contextful_connectors::object::ObjectConfig;
 use contextful_core::run::derive::config::{bind, bindings, check_output_table, Binding, DeriveConfig};
 use contextful_core::run::derive::task::{check_host_tables, DeriveTask, Tasks};
 use contextful_core::run::ports::{Row, Source, TableReader};
@@ -95,6 +97,8 @@ enum Checked {
     Http(HttpConfig),
     #[cfg(feature = "drive")]
     Drive(contextful_connectors::drive::DriveConfig),
+    #[cfg(feature = "s3-sync")]
+    Object(ObjectConfig),
     Derive(Box<(DeriveConfig, Binding)>),
     Component(Box<ComponentSource>),
     Host(Box<HostChecked>),
@@ -128,6 +132,10 @@ fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> Result<Check
         contextful_connectors::DRIVE => {
             contextful_connectors::compiled_in(contextful_connectors::DRIVE).map_err(|why| anyhow::anyhow!("pipeline `{}`: {why}", spec.id))?;
             check_drive(spec)
+        }
+        contextful_connectors::object::NAME => {
+            contextful_connectors::compiled_in(contextful_connectors::object::NAME).map_err(|why| anyhow::anyhow!("pipeline `{}`: {why}", spec.id))?;
+            check_object(spec)
         }
         contextful_connectors::derive::NAME => {
             let config = DeriveConfig::parse_with(&spec.id, &spec.source.config, tasks)?;
@@ -193,6 +201,64 @@ fn check_drive(spec: &PipelineSpec) -> Result<Checked> {
 #[cfg(not(feature = "drive"))]
 fn check_drive(spec: &PipelineSpec) -> Result<Checked> {
     bail!("pipeline `{}`: source `drive` is compiled out of this build", spec.id)
+}
+
+/// An `s3` source's configuration, its position checked against the pipeline's.
+#[cfg(feature = "s3-sync")]
+fn check_object(spec: &PipelineSpec) -> Result<Checked> {
+    let config = ObjectConfig::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
+    if let (true, Some(field)) = (config.skip_unchanged, &spec.incremental) {
+        return Err(ConnectorError::ConnectorPositionOwned(format!(
+            "pipeline `{}` declares `incremental = \"{field}\"` beside the `s3` source's `skip_unchanged`, whose position records each object's ETag",
+            spec.id
+        ))
+        .into());
+    }
+    Ok(Checked::Object(config))
+}
+
+#[cfg(not(feature = "s3-sync"))]
+fn check_object(spec: &PipelineSpec) -> Result<Checked> {
+    bail!("pipeline `{}`: source `s3` is compiled out of this build", spec.id)
+}
+
+/// The `s3` source, each request presigned by the store's S3 bucket adapter and sent through
+/// the mediated client; an unbound source presigns anonymously
+/// (`connector.source.object-transport`).
+#[cfg(feature = "s3-sync")]
+fn object_source(config: ObjectConfig, resolver: Arc<contextful_outbound::Resolver>) -> contextful_connectors::object::ObjectSource {
+    use contextful_connectors::object::{ObjectSource, Presign, Presigner};
+    use contextful_core::run::{Failure, FailureTag};
+    use contextful_sync::{S3Bucket, S3Credentials};
+
+    struct Signer(S3Bucket);
+    impl Presign for Signer {
+        fn get(&self, key: &str) -> String {
+            self.0.presign_get(key)
+        }
+        fn head(&self, key: &str) -> String {
+            self.0.presign_head(key)
+        }
+        fn list(&self, prefix: &str, token: Option<&str>) -> String {
+            self.0.presign_list(prefix, token)
+        }
+        fn page(&self, body: &str) -> Result<(Vec<(String, String)>, Option<String>), String> {
+            S3Bucket::parse_list(body).map_err(|e| e.to_string())
+        }
+    }
+
+    let presigner: Presigner = Arc::new(|c: &ObjectConfig, credentials| {
+        let endpoint = c.endpoint.as_str();
+        let bucket = match credentials {
+            Some((access_key_id, secret_access_key)) => {
+                S3Bucket::open(endpoint, &c.region, &c.bucket, S3Credentials { access_key_id, secret_access_key, session_token: None })
+            }
+            None => S3Bucket::anonymous(endpoint, &c.region, &c.bucket),
+        }
+        .map_err(|e| Failure::deterministic(FailureTag::Config, format!("`s3://{}`: {e}", c.bucket)))?;
+        Ok(Box::new(Signer(bucket)) as Box<dyn Presign>)
+    });
+    ObjectSource::signed(config, resolver, presigner)
 }
 
 /// The store's landed tables, read for a derive source.
@@ -301,6 +367,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
         }
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target } => {
             let l = project.locate(declaration)?;
+            crate::sync::pull_before_run(&l)?;
             let declaration = l.declaration.clone();
             let text = if declaration.exists() { std::fs::read_to_string(&declaration)? } else { String::new() };
             let site_id = crate::run::site_id_for(&text, &declaration, site_id, site_id_env)?;
@@ -317,6 +384,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 #[cfg(feature = "drive")]
                 Checked::Drive(config) => resolver.preflight(config.templates())?,
                 Checked::Derive(_) | Checked::Host(_) => {}
+                #[cfg(feature = "s3-sync")]
+                Checked::Object(config) => resolver.preflight(config.credentials())?,
             }
 
             // A declaration's relative paths resolve against the project directory
@@ -394,6 +463,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                             Some(d) => Box::new(d.source(t.name())?),
                             None => bail!("pipeline `{}`: the drive source did not open", spec.id),
                         },
+                        #[cfg(feature = "s3-sync")]
+                        Checked::Object(config) => Box::new(object_source(config.clone(), resolver.clone())),
                         Checked::Derive(pair) => Box::new(DeriveSource {
                             pipeline_id: spec.id.clone(),
                             config: pair.0.clone(),

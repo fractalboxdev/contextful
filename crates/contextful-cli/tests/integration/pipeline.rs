@@ -47,7 +47,7 @@ impl Vendor {
     }
 }
 
-fn project(manifest: &str) -> tempfile::TempDir {
+pub(crate) fn project(manifest: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let store = dir.path().join(".contextful/context/research");
     std::fs::create_dir_all(&store).unwrap();
@@ -56,7 +56,7 @@ fn project(manifest: &str) -> tempfile::TempDir {
     dir
 }
 
-fn cf(dir: &Path, args: &[&str]) -> Output {
+pub(crate) fn cf(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(args)
         .current_dir(dir)
@@ -70,12 +70,12 @@ fn fire(dir: &Path, id: &str, run: &str, now: &str) -> Output {
     cf(dir, &["pipeline", "run", id, "--project", "research", "--run-id", run, "--site-id", "site-a", "--now", now])
 }
 
-fn ok(out: &Output) -> String {
+pub(crate) fn ok(out: &Output) -> String {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
-fn stderr(out: &Output) -> String {
+pub(crate) fn stderr(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).to_string()
 }
 

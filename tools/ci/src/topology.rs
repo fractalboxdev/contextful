@@ -2,7 +2,8 @@
 //! `cargo metadata`: the domain crate's purity and dependency direction, the model-vendor
 //! and script-runtime bans, and the run-path-to-read-path crate graph; and, per package
 //! off `cargo tree`, the store adapter's engine-free write half, its SQLite-free graph,
-//! the mediated-request crate's stack-free build without its transport feature, the
+//! the mediated-request crate's stack-free build without its transport feature, the sync
+//! package's stack-free build without its S3 feature, the
 //! record decoders' network-free graph and the external-assertion stack outside the
 //! binary; and off the manifests, the SQLite binding held to its one adapter package. The
 //! same walk holds every workspace package to `assurance.build.licence-field`, and every
@@ -85,6 +86,11 @@ const SQLITE_LINK_FEATURES: [&str; 4] = ["bundled*", "sqlcipher", "in_gecko", "l
 const RUNTIME: &str = "contextful-outbound";
 const RUNTIME_TRANSPORT_FEATURE: &str = "transport-ureq";
 const HTTP_STACK: [&str; 5] = ["ureq", "hyper", "reqwest", "rustls", "curl"];
+
+/// The sync package, whose S3 adapter and its HTTP stack sit behind the non-default
+/// `s3-sync` feature (`topology.package.s3-sync-optional`).
+const SYNC: &str = "contextful-sync";
+const SYNC_S3_FEATURE: &str = "s3-sync";
 
 /// The record-decoder package, and what it resolves through no normal dependency: the
 /// mediated-request crate and the network stack (`topology.package.decode-network-free`).
@@ -492,6 +498,12 @@ fn findings(root: &Path, g: &Graph) -> Result<Vec<(&'static str, String)>> {
         for path in tree_paths(root, RUNTIME, FEATURES_OFF, &HTTP_STACK)? {
             let name = path.rsplit(" -> ").next().unwrap_or_default();
             out.push(("TransportStackLinked", format!("`{RUNTIME}` without `{RUNTIME_TRANSPORT_FEATURE}` links `{name}` through {path}")));
+        }
+    }
+    if g.id_of(SYNC).is_some() {
+        for path in tree_paths(root, SYNC, FEATURES_OFF, &HTTP_STACK)? {
+            let name = path.rsplit(" -> ").next().unwrap_or_default();
+            out.push(("SyncStackLinked", format!("`{SYNC}` without `{SYNC_S3_FEATURE}` links `{name}` through {path}")));
         }
     }
     if g.id_of(DECODE).is_some() {

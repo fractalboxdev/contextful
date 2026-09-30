@@ -38,9 +38,11 @@ toml_edit = "0.22"
 
 [dev-dependencies]
 ed25519-dalek = "2"
+# The loopback S3 server the S3 sync suite pushes and pulls against.
+contextful-acceptance = { path = "../acceptance" }
 
 [features]
-default = ["transport-ureq", "component-host"]
+default = ["transport-ureq", "component-host", "s3-sync"]
 transport-ureq = ["contextful-outbound/transport-ureq", "contextful-connectors/transport-ureq", "contextful-wasm?/transport-ureq"]
 # Component sources run as guests under the component host; without it each refuses as
 # `ComponentHostMissing`.
@@ -49,6 +51,9 @@ component-host = ["dep:contextful-wasm"]
 pulley = ["component-host", "contextful-wasm/pulley"]
 # The Google Drive source and the PDF decode worker behind its process boundary.
 drive = ["contextful-connectors/drive"]
+# The S3 and R2 bucket adapter behind `s3://`, `r2://` and `https://` sync endpoints
+# (`topology.package.s3-sync-optional`) and the `s3` object source.
+s3-sync = ["contextful-sync/s3-sync", "contextful-connectors/s3"]
 
 [[test]]
 name = "integration"

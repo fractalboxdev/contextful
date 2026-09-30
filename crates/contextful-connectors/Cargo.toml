@@ -24,6 +24,9 @@ default = ["transport-ureq"]
 transport-ureq = ["contextful-outbound/transport-ureq"]
 # The Google Drive source and the PDF decoder its decode worker runs.
 drive = ["contextful-decode/pdf"]
+# Lists the `s3` object source as compiled in. The binary enables it beside the store's S3
+# bucket adapter, which it wires in as the source's `Objects` port.
+s3 = []
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -31,6 +34,7 @@ libc = "0.2"
 # The suite drives loopback servers over the ureq adapter, with or without the feature.
 [dev-dependencies]
 contextful-outbound = { path = "../contextful-outbound", features = ["transport-ureq"] }
+flate2 = "1"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 
 [[test]]

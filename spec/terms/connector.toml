@@ -65,6 +65,7 @@ ConnectorAuthTerminal           = { clause = "connector.source.report-auth", glo
 ConnectorImageHeaderUnreadable  = { clause = "connector.source.image-header", gloss = "An image file header that does not parse." }
 ConnectorQuotabilityMismatch    = { clause = "connector.source.marker-body-pairing", gloss = "An image body and its quotability marker not null together." }
 ConnectorProviderOriginRejected = { clause = "connector.source.provider-origin", gloss = "A search call to a non-TLS transport or a host other than the provider's." }
+ConnectorObjectAddressRejected  = { clause = "connector.source.object-address", gloss = "An object source declaring both or neither of a key and a prefix." }
 ConnectorTwinApiSource          = { clause = "connector.source.twin-api", gloss = "A source reading through an API licensed beyond any individual user's view." }
 ConnectorPrivateAddress         = { clause = "connector.attach.private-address", gloss = "A permitted host name resolving to a private, link-local, loopback or metadata address." }
 SecretForeignPlaceholder        = { clause = "connector.reference.foreign-placeholder", gloss = "A template carrying `${env://NAME}` or a bare `${NAME}`." }
@@ -111,6 +112,7 @@ connector-drive-file-bytes      = { clause = "connector.source.drive-file-cap", 
 connector-expansion-follow-ups  = { clause = "connector.source.expansion-budget", value = 200, unit = "requests", basis = "chosen", gloss = "Follow-up requests one expanding read issues." }
 connector-expansion-buffer      = { clause = "connector.source.expansion-budget", value = 256, unit = "MiB", basis = "chosen", gloss = "Buffered expansion document bytes in one read." }
 connector-expansion-elapsed     = { clause = "connector.source.expansion-budget", value = 600, unit = "s", basis = "chosen", gloss = "Elapsed time one expanding read takes." }
+connector-object-expansion      = { clause = "connector.source.object-expansion", value = 256, unit = "MiB", basis = "chosen", gloss = "Decompressed bytes of one object an object source reads." }
 connector-office-decompression  = { clause = "connector.source.decompression-budget", value = 64, unit = "MiB", basis = "chosen", gloss = "Decompressed bytes across one multi-part office read." }
 connector-worksheet-text        = { clause = "connector.source.worksheet-landing", value = 64, unit = "MiB", basis = "chosen", gloss = "Cell text, keys and entry charges one worksheet read holds." }
 connector-worksheet-entry       = { clause = "connector.source.worksheet-landing", value = 32, unit = "B", basis = "chosen", gloss = "Charge for each shared string and stored cell beside its text." }

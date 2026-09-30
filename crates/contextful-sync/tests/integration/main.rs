@@ -3,4 +3,5 @@
 mod converge;
 mod pull;
 mod push;
+mod s3;
 mod support;

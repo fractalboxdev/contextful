@@ -1,17 +1,19 @@
 //! `contextful sync` — the bucket surface of the command line.
 //!
 //! Each subcommand opens the store and its `[sync]` bucket and calls `contextful-sync`.
-//! This build links the filesystem bucket adapter: `endpoint = "file://<directory>"`.
+//! The endpoint's scheme selects the adapter: `file://` the filesystem bucket, and
+//! `s3://`, `r2://`, `https://` and loopback `http://` the S3 adapter under `s3-sync`.
 
-use crate::project::locate;
-use anyhow::{bail, Context, Result};
+use crate::project::{locate, Located};
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use contextful_context::fold::fold;
 use contextful_context::{node, Store};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
 use contextful_core::store::lay_out::{Pointer, POINTER_FILE};
-use contextful_core::store::sync::SyncConfig;
+use contextful_core::store::object::ObjectStore;
+use contextful_core::store::sync::{Endpoint, SyncConfig};
 use contextful_core::time::Instant;
 use contextful_sync::{FsBucket, PullScope, Syncer};
 use std::path::PathBuf;
@@ -98,23 +100,101 @@ struct ConfigFile {
 
 fn open(args: &SyncArgs) -> Result<(Syncer, Vec<TableDecl>)> {
     let l = locate(args.project.as_deref(), args.declaration.clone())?;
-    let store = Store::open(&l.project.dir, &l.project.name)?;
-    let config_path = store.root().join("config.toml");
-    let text = std::fs::read_to_string(&config_path).with_context(|| format!("reading `{}`", config_path.display()))?;
-    let file: ConfigFile = toml::from_str(&text).with_context(|| format!("`{}`", config_path.display()))?;
-    let config = file.sync.with_context(|| format!("`{}` declares no `[sync]`", config_path.display()))?;
-    let Some(dir) = config.endpoint.strip_prefix("file://") else {
-        bail!("endpoint `{}`: this build links the filesystem bucket adapter alone, `file://<directory>`", config.endpoint);
+    let (config, config_path) = sync_config(&l)?;
+    let config = config.with_context(|| format!("`{}` declares no `[sync]`", config_path.display()))?;
+    open_with(&l, config)
+}
+
+/// The store's `[sync]` block, absent when the store root holds no `config.toml` or the
+/// file declares none, and the path read.
+fn sync_config(l: &Located) -> Result<(Option<SyncConfig>, PathBuf)> {
+    let config_path = l.project.store_root().join("config.toml");
+    let text = match std::fs::read_to_string(&config_path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((None, config_path)),
+        Err(e) => return Err(e).with_context(|| format!("reading `{}`", config_path.display())),
     };
-    let bucket = FsBucket::open(std::path::Path::new(dir), &config.bucket).map_err(|e| anyhow::anyhow!("bucket: {e}"))?;
+    let file: ConfigFile = toml::from_str(&text).with_context(|| format!("`{}`", config_path.display()))?;
+    Ok((file.sync, config_path))
+}
+
+fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)> {
+    let store = Store::open(&l.project.dir, &l.project.name)?;
+    let bucket = bucket(&config)?;
     let prefix = config.resolve_prefix(|k| std::env::var(k).ok())?;
     let (node_id, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
     let decls = match std::fs::read_to_string(&l.declaration) {
         Ok(t) => TableDecl::parse_pipeline(&t)?,
         Err(_) => Vec::new(),
     };
-    let syncer = Syncer { store, bucket: Arc::new(bucket), config, prefix, project: l.project.name, node: node_id.to_string() };
+    let syncer = Syncer { store, bucket, config, prefix, project: l.project.name.clone(), node: node_id.to_string() };
     Ok((syncer, decls))
+}
+
+/// Open the bucket `[sync] endpoint` names through the adapter its scheme selects
+/// (`store.endpoint.schemes`).
+fn bucket(config: &SyncConfig) -> Result<Arc<dyn ObjectStore>> {
+    Ok(match config.resolve_endpoint()? {
+        Endpoint::File(dir) => Arc::new(FsBucket::open(std::path::Path::new(&dir), &config.bucket).map_err(|e| anyhow::anyhow!("bucket: {e}"))?),
+        Endpoint::S3 { url, region } => s3_bucket(config, &url, &region)?,
+    })
+}
+
+/// An S3 or R2 bucket, signing with the material its credential keys hydrate
+/// (`store.endpoint.credentials`, `connector.reference.whole-value-reference`).
+#[cfg(feature = "s3-sync")]
+fn s3_bucket(config: &SyncConfig, url: &str, region: &str) -> Result<Arc<dyn ObjectStore>> {
+    use contextful_core::connector::reference::Hydrated;
+    use contextful_core::store::sync::CredentialRef;
+    use contextful_core::store::StoreError;
+    let refs = config.credential_refs()?;
+    let vars: std::collections::BTreeMap<String, String> = std::env::vars().collect();
+    let mut resolver = None;
+    let mut hydrate = |key: &str, r: &CredentialRef| -> Result<Hydrated> {
+        match r {
+            CredentialRef::Env(var) => Ok(Hydrated::new(vars.get(var).filter(|v| !v.is_empty()).cloned().ok_or_else(|| {
+                StoreError::SyncCredentialUnbound(format!("`[sync] {key}` binds `env://{var}`, which is unset"))
+            })?)),
+            CredentialRef::Secret(name) => {
+                if resolver.is_none() {
+                    resolver = Some(contextful_outbound::assemble(&vars, Arc::new(crate::run::SystemClock))?);
+                }
+                // A credential key is a whole value, never a template: the chain's environment adapter serves it.
+                Ok(resolver.as_ref().expect("assembled above").resolve(name)?)
+            }
+        }
+    };
+    let credentials = contextful_sync::S3Credentials {
+        access_key_id: hydrate("access_key_id", &refs.access_key_id)?,
+        secret_access_key: hydrate("secret_access_key", &refs.secret_access_key)?,
+        session_token: refs.session_token.as_ref().map(|r| hydrate("session_token", r)).transpose()?,
+    };
+    Ok(Arc::new(contextful_sync::S3Bucket::open(url, region, &config.bucket, credentials).map_err(|e| anyhow::anyhow!("bucket: {e}"))?))
+}
+
+/// A build without the S3 adapter refuses an S3 or R2 endpoint (`store.endpoint.unsupported-scheme`).
+#[cfg(not(feature = "s3-sync"))]
+fn s3_bucket(config: &SyncConfig, _url: &str, _region: &str) -> Result<Arc<dyn ObjectStore>> {
+    Err(contextful_core::store::StoreError::SyncEndpointUnsupported(format!(
+        "endpoint `{}`: this build links no S3 adapter; build with the `s3-sync` feature",
+        config.endpoint
+    ))
+    .into())
+}
+
+/// Pull every table of the bucket into the store when `[sync] pull_before_run = true`, so
+/// a command starting on a cold disk reads what the other nodes pushed
+/// (`store.pull.before-run`). A store declaring no `[sync]` is left as it is.
+pub fn pull_before_run(l: &Located) -> Result<()> {
+    let (Some(config), _) = sync_config(l)? else { return Ok(()) };
+    if config.pull_before_run != Some(true) {
+        return Ok(());
+    }
+    let (s, decls) = open_with(l, config)?;
+    let replicate_off = decls.iter().filter(|d| d.replicate == Some(false)).map(|d| d.name.clone()).collect();
+    let r = s.pull(&PullScope { tables: Vec::new(), replicate_off }).context("`pull_before_run`")?;
+    eprintln!("pull_before_run: pulled {} objects and {} pointers", r.downloaded.len(), r.pointers.len());
+    Ok(())
 }
 
 pub fn run(cmd: SyncCmd) -> Result<()> {

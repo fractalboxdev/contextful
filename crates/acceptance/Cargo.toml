@@ -11,6 +11,13 @@ publish = false
 
 [dependencies]
 tempfile = "3"
+# The loopback S3 server (`s3`): the protocol and signature verification, and its runtime.
+async-trait = "0.1"
+bytes = "1"
+futures-util = { version = "0.3", default-features = false }
+hyper-util = { version = "0.1", features = ["server-auto", "http1", "tokio"] }
+s3s = "0.17"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"] }
 
 [dev-dependencies]
 # A third-party reader: the store's Parquet opens with no engine code in the process.

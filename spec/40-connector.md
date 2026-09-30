@@ -374,6 +374,19 @@ The declared behavior of each source compiled into the engine.
   *because a sorted walk over an unchanged tree reproduces across hosts*
 - `declined-tally` — A directory walk records on the run record what it declined, tallied by extension.
   *P4*
+- `object-address` — The `s3` source reads one `bucket` by exactly one of `key` or `prefix`; declaring both or neither raises `ConnectorObjectAddressRejected` at build.
+  *because a key beside a prefix leaves which objects land to a guess, and neither names no object*
+- `prefix-listing` — A prefix read lists every key under the prefix in key order, narrowed by an optional `suffix`, and lands each object through one decoder. `pick = "latest"` lands the greatest listed key alone.
+- `object-gzip` — `compression = "gzip"`, or a key ending `.gz` with `compression` undeclared, decompresses an object before decode; `compression = "none"` reads it as stored.
+- `object-expansion` — One object decompresses to at most 256 MiB, counted as the bytes arrive. Past it the read refuses whole, naming the object, and lands nothing.
+- `object-unreadable` — An object a decoder cannot read refuses the whole read under {{run.land.unreadable-input}}, naming it as `s3://<bucket>/<key>`, and no other object of the read lands.
+- `etag-skip` — With `skip_unchanged = true`, the object source's position maps each object key to its ETag in place of {{run.advance.skip-unchanged}}'s digest; an object whose ETag matches lands nothing, and a read matching every object closes a zero-row success.
+- `object-credentials` — The `s3` source's `access_key_id` and `secret_access_key` each hold one `secret://<name>` reference, declared together and hydrated per read; undeclared, requests go unsigned. A literal in either is refused under {{connector.reference.material-in-a-declaration}}.
+- `object-transport` — The `s3` source presigns each request through the S3 bucket adapter of {{store.endpoint.addressing}} and sends it through the mediated client, allowlisting the endpoint host alone; a skip compares listed or head-request ETags and downloads no object.
+  *because one S3 client then signs every bucket request while the mediated client stays the one attachment point for source egress*
+- `object-cleartext` — An `s3` source binding a key pair to a cleartext endpoint off loopback is refused at build under {{connector.attach.cleartext-endpoint}}.
+  *because a presigned URL is a bearer capability for its lifetime*
+- `object-position-owned` — `incremental` beside `skip_unchanged = true` on the `s3` source refuses as {{connector.package.component-position}} at validation.
 - `document-grain` — A document source lands one row per page, or one row per heading past a length threshold. With a base URL, each row links to its own page anchor.
 - `document-identity` — A document row's identity is a slug plus an ordinal, chunked or not.
   *because an identity then survives a document crossing the threshold*

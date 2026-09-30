@@ -110,9 +110,18 @@ pub enum StoreError {
     /// `cas` is declared against a backend the probe did not demonstrate. (`store.probe.unproven`)
     #[error("SyncCoordinationUnproven: {0}")]
     SyncCoordinationUnproven(String),
+    /// An S3 or R2 endpoint's `[sync]` binds a credential key to no reference, or to an unset variable. (`store.endpoint.credential-unbound`)
+    #[error("SyncCredentialUnbound: {0}")]
+    SyncCredentialUnbound(String),
     /// A cursor was resolved by recency instead of through its commit. (`store.merge.cursor-recency`)
     #[error("SyncCursorConflict: {0}")]
     SyncCursorConflict(String),
+    /// A plain `http://` endpoint names a host off loopback. (`store.endpoint.plaintext`)
+    #[error("SyncEndpointInsecure: {0}")]
+    SyncEndpointInsecure(String),
+    /// An endpoint's scheme names no bucket adapter this build links. (`store.endpoint.unsupported-scheme`)
+    #[error("SyncEndpointUnsupported: {0}")]
+    SyncEndpointUnsupported(String),
     /// The bucket manifest commit lost its race past the retry bound. (`store.merge.exhausted`)
     #[error("SyncManifestRebaseExhausted: {0}")]
     SyncManifestRebaseExhausted(String),
