@@ -19,6 +19,8 @@ sha2 = "0.10"
 toml = "0.8"
 # The footprint step compresses a profile artifact as the release archive does.
 zstd = { version = "0.13", default-features = false }
+# The posture probe's client (`topology.publish-hostname.posture-mismatch`).
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 tempfile = "3"

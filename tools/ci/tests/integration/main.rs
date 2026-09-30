@@ -12,6 +12,7 @@ mod image;
 mod lean;
 mod measure;
 mod mirrors;
+mod probe;
 mod release;
 mod secrets;
 mod target_dirs;

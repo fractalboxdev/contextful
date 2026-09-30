@@ -5,6 +5,7 @@ mod deny;
 mod allowlist;
 mod measure;
 mod release;
+mod probe;
 mod tag;
 mod footprint;
 mod topology;
@@ -155,6 +156,11 @@ enum Cmd {
         #[arg(long, requires = "status")]
         check: bool,
     },
+    /// Deploy-time checks.
+    Deploy {
+        #[command(subcommand)]
+        cmd: DeployCmd,
+    },
     /// Cut the signed annotated release tag `v0.<closed>.<patch>` on HEAD once the tree is
     /// clean, the default branch reaches it, the version rises and matches the workspace's,
     /// and every gate stage passes.
@@ -165,6 +171,21 @@ enum Cmd {
         /// The revision the gate's test-first stage measures HEAD against.
         #[arg(long, default_value = "HEAD~1")]
         base: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum DeployCmd {
+    /// Hold the probe table to the hostname descriptors, then send each published hostname
+    /// one anonymous `GET /` and judge its answer against the descriptor's gate.
+    Probe {
+        /// The directory holding `hostnames/*.toml` and `probe.toml`, relative to the
+        /// repository root.
+        #[arg(long, default_value = "deploy")]
+        dir: PathBuf,
+        /// `<hostname>=<base url>`: send that hostname's probe to the base URL; repeatable.
+        #[arg(long = "resolve")]
+        resolve: Vec<String>,
     },
 }
 
@@ -220,6 +241,7 @@ fn main() {
             release::formulae(&root, &dist, &base_url).map(|written| written.iter().for_each(|p| println!("formula: {}", p.display())))
         }),
         Cmd::Tag { branch, base } => tag::tag(&branch, &base),
+        Cmd::Deploy { cmd: DeployCmd::Probe { dir, resolve } } => repo_root().and_then(|root| probe::run(&root.join(dir), &resolve)),
         Cmd::Measure { tiers, status, check } => repo_root().and_then(|root| {
             if status {
                 return measure::status(&root, check);
