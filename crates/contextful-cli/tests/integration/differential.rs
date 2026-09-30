@@ -1,11 +1,13 @@
 //! `contextful formal differential` over the Lean reference binary and over stand-in
-//! reference executables.
+//! reference executables, beside the decision module's native and WebAssembly builds.
 //!
 //! A stand-in is a shell script around `contextful formal differential --decide`, which
-//! prints the engine's own decision for one case: it agrees with the engine everywhere,
+//! prints the native build's decision for one case: it agrees with the engine everywhere,
 //! and a `sed` over its output corrupts it into a reference that disagrees on a known
 //! class of case. Tests reaching the Lean reference skip when `lake` is absent, unless
-//! `CONTEXTFUL_REQUIRE_LEAN` is set, in which case they fail.
+//! `CONTEXTFUL_REQUIRE_LEAN` is set; tests reaching the WebAssembly build skip when the
+//! `wasm32-unknown-unknown` target is not installed, unless `CONTEXTFUL_REQUIRE_WASM` is
+//! set. Either variable set turns the skip into a failure.
 
 use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
@@ -58,14 +60,90 @@ macro_rules! lean_or_skip {
     };
 }
 
+/// Whether the toolchain holds the `wasm32-unknown-unknown` standard library.
+fn wasm_target_installed() -> bool {
+    let out = Command::new("rustc").args(["--print", "target-libdir", "--target", "wasm32-unknown-unknown"]).output();
+    out.ok()
+        .filter(|o| o.status.success())
+        .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()))
+        .is_some_and(|dir| std::fs::read_dir(dir).is_ok_and(|mut d| d.next().is_some()))
+}
+
+/// The decision module built for `wasm32-unknown-unknown` once per test process, with the
+/// command the harness runs; `None` when the target is not installed.
+fn wasm_module() -> Option<PathBuf> {
+    static BUILT: OnceLock<Option<PathBuf>> = OnceLock::new();
+    BUILT
+        .get_or_init(|| {
+            if !wasm_target_installed() {
+                return None;
+            }
+            let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| repo().join("target"))
+                .join("decision-wasm");
+            let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+            let out = Command::new(cargo)
+                .args(["rustc", "-q", "-p", "contextful-core", "--lib", "--release", "--target", "wasm32-unknown-unknown"])
+                .args(["--crate-type", "cdylib", "--target-dir"])
+                .arg(&target_dir)
+                .current_dir(repo())
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "building the WebAssembly module failed:\n{}", String::from_utf8_lossy(&out.stderr));
+            Some(target_dir.join("wasm32-unknown-unknown/release/contextful_core.wasm"))
+        })
+        .clone()
+}
+
+/// Fail where the gate requires the WebAssembly target, else report the skip.
+fn wasm_missing() {
+    assert!(
+        std::env::var_os("CONTEXTFUL_REQUIRE_WASM").is_none(),
+        "CONTEXTFUL_REQUIRE_WASM is set and the wasm32-unknown-unknown target is not installed"
+    );
+    eprintln!("skipped: no wasm32-unknown-unknown target");
+}
+
+macro_rules! wasm_or_skip {
+    () => {
+        match wasm_module() {
+            Some(module) => module,
+            None => {
+                wasm_missing();
+                return;
+            }
+        }
+    };
+}
+
+/// The arguments a stand-in run passes: the built module where the binary carries the
+/// component host, which then compares it, and none otherwise; a skip where the binary
+/// compares the module and none builds.
+macro_rules! wasm_args_or_skip {
+    () => {
+        if cfg!(feature = "component-host") {
+            vec![std::ffi::OsString::from("--wasm"), wasm_or_skip!().into_os_string()]
+        } else {
+            Vec::new()
+        }
+    };
+}
+
+/// The stand-in decision module deciding every case `covered`.
+fn stub_module() -> PathBuf {
+    repo().join("crates/contextful-wasm/tests/fixtures/decision-stub.wasm")
+}
+
 /// A scratch directory holding stand-in reference scripts and a corpus path.
 struct Scratch {
     dir: tempfile::TempDir,
+    wasm: Vec<std::ffi::OsString>,
 }
 
 impl Scratch {
-    fn new() -> Scratch {
-        Scratch { dir: tempfile::tempdir().unwrap() }
+    fn new(wasm: Vec<std::ffi::OsString>) -> Scratch {
+        Scratch { dir: tempfile::tempdir().unwrap(), wasm }
     }
 
     fn path(&self, rel: &str) -> PathBuf {
@@ -116,18 +194,24 @@ impl Scratch {
             .arg(reference)
             .arg("--corpus")
             .arg(self.corpus())
+            .args(&self.wasm)
             .args(args)
             .output()
             .unwrap()
     }
 }
 
+/// A JSON Lines file; a line that is not UTF-8 JSON reads as the string `bytes <hex>`, the
+/// form the harness prints such a case in.
 fn read_jsonl(path: &Path) -> Vec<Value> {
-    std::fs::read_to_string(path)
+    std::fs::read(path)
         .unwrap_or_default()
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).unwrap())
+        .split(|b| *b == b'\n')
+        .filter(|l| !l.iter().all(u8::is_ascii_whitespace))
+        .map(|l| {
+            serde_json::from_slice(l)
+                .unwrap_or_else(|_| Value::String(format!("bytes {}", l.iter().map(|b| format!("{b:02x}")).collect::<String>())))
+        })
         .collect()
 }
 
@@ -254,18 +338,19 @@ fn the_reference_binary_reads_one_case_and_prints_one_decision() {
     assert_eq!(decide(&exe, &[], &json!([1]))["error"], "CaseMalformed");
 }
 
-/// The harness drives the reference binary and the engine's decision function over each generated case and compares the two decisions field by field.
-// spec: assurance.differential-test.harness@c63ca77a
+/// The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares the three decisions field by field.
+// spec: assurance.differential-test.harness@7cacc6e8
 #[test]
 fn the_engine_and_the_lean_reference_agree_over_generated_cases() {
     let _ = lean_or_skip!();
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     std::fs::copy(reference_root().join("corpus/counterexamples.jsonl"), s.corpus()).unwrap();
     let out = Command::new(BIN)
         .args(["formal", "differential", "--seed", "20260922", "--cases", "400", "--root"])
         .arg(reference_root())
         .arg("--corpus")
         .arg(s.corpus())
+        .args(&s.wasm)
         .output()
         .unwrap();
     let report = passed(&out);
@@ -278,7 +363,7 @@ fn the_engine_and_the_lean_reference_agree_over_generated_cases() {
 // spec: assurance.differential-test.case-classes@f6578611
 #[test]
 fn the_report_names_the_three_case_classes() {
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     let report = passed(&s.run(&s.agreeing(), &["--seed", "3", "--cases", "120"]));
     let classes = line_value(&report, "classes");
     let mut total = 0;
@@ -297,7 +382,7 @@ fn the_report_names_the_three_case_classes() {
 // spec: assurance.differential-test.seed@4ee57136
 #[test]
 fn a_recorded_seed_reproduces_the_case_sequence() {
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     let unseeded = passed(&s.run(&s.agreeing(), &["--cases", "60"]));
     let seed = line_value(&unseeded, "seed").to_string();
     let digest = line_value(&unseeded, "cases sha256").to_string();
@@ -312,7 +397,7 @@ fn a_recorded_seed_reproduces_the_case_sequence() {
 // spec: assurance.differential-test.corpus-replay@c5aa3af1
 #[test]
 fn corpus_cases_replay_before_generated_cases() {
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     let entries: Vec<Value> = (0..3).map(agreeing_entry).collect();
     s.write_corpus(&entries);
     let log = s.path("seen.jsonl");
@@ -325,11 +410,11 @@ fn corpus_cases_replay_before_generated_cases() {
     }
 }
 
-/// A case on which the two decisions differ raises `ReferenceModelDrift`, printing the minimized case and both decisions.
-// spec: assurance.differential-test.disagreement@3dc0437e
+/// A case on which any two of the three decisions differ raises `ReferenceModelDrift`, printing the minimized case and every decision.
+// spec: assurance.differential-test.disagreement@fbc5083a
 #[test]
 fn a_disagreement_raises_reference_model_drift_with_both_decisions() {
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     let err = refused(&s.run(&s.corrupted(), &["--seed", "5", "--cases", "200"]), "ReferenceModelDrift");
     let recorded = s.read_corpus();
     assert_eq!(recorded.len(), 1, "the minimized case is recorded");
@@ -346,7 +431,7 @@ fn a_disagreement_raises_reference_model_drift_with_both_decisions() {
 // spec: assurance.differential-test.minimized@4408492b
 #[test]
 fn a_recorded_disagreement_is_minimal_under_field_removal() {
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     let corrupted = s.corrupted();
     for seed in ["8", "13", "34"] {
         s.write_corpus(&[]);
@@ -372,7 +457,7 @@ fn a_recorded_disagreement_is_minimal_under_field_removal() {
 // spec: assurance.differential-test.corpus-entries@d7ad49bf
 #[test]
 fn a_full_corpus_evicts_the_oldest_reproducible_case() {
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     let corrupted = s.corrupted();
     // Find a seed and index whose generated case disagrees under the corrupted reference.
     s.write_corpus(&[]);
@@ -405,13 +490,14 @@ fn a_full_corpus_evicts_the_oldest_reproducible_case() {
 // spec: assurance.differential-test.discarded-counterexample@1b10bb13
 #[test]
 fn a_disagreement_the_corpus_cannot_hold_is_discarded_loudly() {
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     std::fs::write(s.path("blocker"), "a file, not a directory").unwrap();
     let out = Command::new(BIN)
         .args(["formal", "differential", "--seed", "5", "--cases", "200", "--reference"])
         .arg(s.corrupted())
         .arg("--corpus")
         .arg(s.path("blocker/corpus.jsonl"))
+        .args(&s.wasm)
         .output()
         .unwrap();
     let err = refused(&out, "CounterexampleDiscarded");
@@ -422,7 +508,7 @@ fn a_disagreement_the_corpus_cannot_hold_is_discarded_loudly() {
 // spec: assurance.differential-test.run-budget@eaff528d
 #[test]
 fn a_run_past_its_budget_stops() {
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     // Each reference call records itself, then takes at least 1 s.
     let calls = s.path("calls");
     let slow = s.script("slow.sh", &format!("echo call >> '{}'\nsleep 1\nexec '{BIN}' formal differential --decide", calls.display()));
@@ -444,7 +530,7 @@ fn a_run_past_its_budget_stops() {
 // spec: assurance.differential-test.command@4809f915
 #[test]
 fn the_command_replays_then_generates_and_stops_at_the_first_disagreement() {
-    let s = Scratch::new();
+    let s = Scratch::new(wasm_args_or_skip!());
     s.write_corpus(&[agreeing_entry(0)]);
     let report = passed(&s.run(&s.agreeing(), &["--seed", "9", "--cases", "25"]));
     assert_eq!(line_value(&report, "replayed"), "1");
@@ -479,4 +565,138 @@ fn the_command_replays_then_generates_and_stops_at_the_first_disagreement() {
     let seen = read_jsonl(&log);
     assert_eq!(seen.first(), Some(&disagreeing["case"]));
     assert_eq!(s.read_corpus(), vec![disagreeing], "a replayed disagreement is already recorded");
+}
+
+/// One module owns the enforcement decision; a gateway and the engine reaching the same verdict execute it, compiled native and to WebAssembly from one pinned source.
+// spec: assurance.structure-tree.decision-module@793caa98
+#[test]
+fn the_native_and_webassembly_builds_agree_with_the_reference_over_the_seeded_budget() {
+    let _ = lean_or_skip!();
+    if cfg!(not(feature = "component-host")) {
+        eprintln!("skipped: the binary carries no component host");
+        return;
+    }
+    let _ = wasm_or_skip!();
+    let s = Scratch::new(Vec::new());
+    std::fs::copy(reference_root().join("corpus/counterexamples.jsonl"), s.corpus()).unwrap();
+    // No `--wasm`: the command compiles the module from this working tree.
+    let out = Command::new(BIN)
+        .args(["formal", "differential", "--seed", "20260930", "--root"])
+        .arg(reference_root())
+        .arg("--corpus")
+        .arg(s.corpus())
+        .current_dir(repo())
+        .output()
+        .unwrap();
+    let report = passed(&out);
+    assert_eq!(line_value(&report, "builds"), "native, wasm32-unknown-unknown");
+    assert_eq!(line_value(&report, "generated"), "1000", "the default case budget runs");
+    assert_eq!(line_value(&report, "disagreements"), "0");
+    let operations = line_value(&report, "operations");
+    for op in ["covers_name", "covers_pattern", "narrow", "zone_admits", "session_zone", "bytes"] {
+        assert!(operations.contains(op), "no `{op}` case ran: {operations}");
+    }
+}
+
+/// The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.
+// spec: assurance.differential-test.builds@50e61b90
+#[test]
+fn a_webassembly_build_deciding_apart_from_the_native_build_is_a_disagreement() {
+    if cfg!(not(feature = "component-host")) {
+        eprintln!("skipped: the binary carries no component host");
+        return;
+    }
+    let _ = wasm_or_skip!();
+    // The module compiled from the working tree agrees; the report names both builds.
+    let s = Scratch::new(Vec::new());
+    let out = Command::new(BIN)
+        .args(["formal", "differential", "--seed", "4", "--cases", "40", "--reference"])
+        .arg(s.agreeing())
+        .arg("--corpus")
+        .arg(s.corpus())
+        .current_dir(repo())
+        .output()
+        .unwrap();
+    assert_eq!(line_value(&passed(&out), "builds"), "native, wasm32-unknown-unknown");
+
+    // A module deciding every case `covered` parts from the native build and the reference,
+    // which agree with each other.
+    let stub = Scratch::new(vec!["--wasm".into(), stub_module().into_os_string()]);
+    let err = refused(&stub.run(&stub.agreeing(), &["--seed", "4", "--cases", "200"]), "ReferenceModelDrift");
+    let entry = stub.read_corpus().pop().expect("the disagreement is recorded");
+    assert_eq!(entry["wasm"]["verdict"], "covered", "{entry}");
+    assert_ne!(entry["engine"]["verdict"], "covered", "{entry}");
+    assert_eq!(entry["engine"], entry["reference"], "{entry}");
+    assert!(err.contains("wasm build"), "names the WebAssembly build's decision:\n{err}");
+    assert!(err.contains(&entry["wasm"].to_string()), "{err}");
+}
+
+/// The malformed class draws case texts carrying invalid UTF-8 or an integer literal outside the unsigned 64-bit range, handed as bytes to every decider, and each decides such a text malformed.
+// spec: assurance.differential-test.malformed-bytes@1ef6b509
+#[test]
+fn malformed_bytes_reach_every_decider_and_each_decides_them_malformed() {
+    let exe = lean_or_skip!();
+    let s = Scratch::new(wasm_args_or_skip!());
+    let log = s.path("seen.bin");
+    let logging = s.script("lean-logging.sh", &format!("tee -a '{}' | '{}'", log.display(), exe.display()));
+    let report = passed(&s.run(&logging, &["--seed", "17", "--cases", "600"]));
+    assert_eq!(line_value(&report, "disagreements"), "0");
+    let seen = std::fs::read(&log).unwrap();
+    let lines: Vec<&[u8]> = seen.split(|b| *b == b'\n').filter(|l| !l.is_empty()).collect();
+    let invalid: Vec<&&[u8]> = lines.iter().filter(|l| std::str::from_utf8(l).is_err()).collect();
+    let out_of_range: Vec<&&[u8]> = lines
+        .iter()
+        .filter(|l| {
+            let text = String::from_utf8_lossy(l);
+            ["18446744073709551616", "100000000000000000000", "-9223372036854775809"].iter().any(|n| text.contains(n))
+        })
+        .collect();
+    assert!(!invalid.is_empty(), "no case carried invalid UTF-8");
+    assert!(!out_of_range.is_empty(), "no case carried an integer past the unsigned 64-bit range");
+    for case in invalid.iter().chain(&out_of_range) {
+        let mut child = Command::new(&exe).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        use std::io::Write;
+        child.stdin.take().unwrap().write_all(case).unwrap();
+        let reference: Value = serde_json::from_slice(&child.wait_with_output().unwrap().stdout).unwrap();
+        assert_eq!(reference["error"], "CaseMalformed", "{}", String::from_utf8_lossy(case));
+        let mut child = Command::new(BIN)
+            .args(["formal", "differential", "--decide"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(case).unwrap();
+        let native: Value = serde_json::from_slice(&child.wait_with_output().unwrap().stdout).unwrap();
+        assert_eq!(native, reference, "{}", String::from_utf8_lossy(case));
+    }
+}
+
+/// A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, or session-zone resolution; a placement decision also carries the zone it resolved.
+// spec: assurance.differential-test.decision-cases@c2db0d1b
+#[test]
+fn placement_cases_resolve_zones_in_the_reference_and_the_native_build_alike() {
+    let exe = lean_or_skip!();
+    let placed = |verdict: &str, zone: &str| json!({"verdict": verdict, "error": null, "dimension": null, "zone": zone});
+    let refused = |error: &str| json!({"verdict": "refused", "error": error, "dimension": null});
+    let cases = [
+        (json!({"op": "zone_admits", "zone": " on-prem:hq ", "allow": ["on-prem:*"]}), placed("admitted", "on-prem:hq")),
+        (json!({"op": "zone_admits", "zone": "on-prem:hq", "allow": ["on-prem:ward-3", "local:device"]}), placed("excluded", "on-prem:hq")),
+        (json!({"op": "zone_admits", "zone": "cloud", "allow": ["on-prem:*", "public-cloud:*"]}), placed("excluded", "undeclared")),
+        (json!({"op": "zone_admits", "zone": "cloud", "allow": ["*"]}), placed("admitted", "undeclared")),
+        (json!({"op": "zone_admits", "zone": "\u{a0}local:device", "allow": ["local:device"]}), placed("admitted", "local:device")),
+        (json!({"op": "zone_admits", "zone": "local:device", "allow": ["on-prem:**"]}), refused("EnforceZonePatternUnparsed")),
+        (json!({"op": "session_zone", "signed": "on-prem:hq", "incognito": false}), placed("placed", "on-prem:hq")),
+        (json!({"op": "session_zone", "incognito": true}), placed("placed", "local:device")),
+        (json!({"op": "session_zone", "incognito": false}), placed("placed", "undeclared")),
+        (
+            json!({"op": "session_zone", "asserted": "public-cloud:x", "signed": "on-prem:hq", "incognito": false}),
+            refused("EnforceZoneAssertionWidens"),
+        ),
+        (json!({"op": "session_zone", "signed": "public-cloud:x", "incognito": true}), refused("EnforceIncognitoWidening")),
+        (json!({"op": "session_zone", "signed": "on-prem:hq"}), refused("CaseMalformed")),
+    ];
+    for (case, want) in cases {
+        assert_eq!(decide(&exe, &[], &case), want, "reference on {case}");
+        assert_eq!(engine(&case), want, "native build on {case}");
+    }
 }

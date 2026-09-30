@@ -153,3 +153,22 @@ Decision: the workspace first resolves a single arrow tree, then the gate contai
 | A higher stage timeout | Recorded bound | A growing cold build stays unseen until the next cap. |
 
 Consequences: a stage exceeding 30 min is a gate fact, not a flake to rerun. The accepted cost: stage time depends on cache warmth, so a dependency bump runs cold once.
+
+## One decision module compiles native and to WebAssembly
+
+**Status:** accepted
+
+Context: a gateway admits and places requests ahead of the engine; one verdict computed from two sources drifts. The grant and zone types live in `contextful-core`, which depends on no workspace package. Criteria: one source for every verdict the gateway and the engine share decided it; the domain crate's dependency direction; the gateway needs admission and placement, never SQL.
+
+Decision: `assurance.structure-tree.decision-module` holds grant coverage, grant narrowing, zone admission and session-zone resolution in the domain crate, behind one case vocabulary, built native and as a `wasm32-unknown-unknown` `cdylib` exporting three functions. `assurance.differential-test` runs every case through both builds and the reference model.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Decision functions in the domain crate, built with `std` for `wasm32-unknown-unknown` *(chosen)* | — | The module links `std`; each differential run compiles it once. |
+| A `no_std` package beneath the domain crate | Dependency direction | The domain crate depends on a workspace package holding its own types. |
+| Credential signature verification in the module too | Build target | The credential format library's randomness dependency refuses `wasm32-unknown-unknown` without a JavaScript host. |
+| Query rewriting in the module too | Gateway need | The gateway plans no SQL; the rewriter carries the SQL engine's types. |
+| A gateway reimplementation in TypeScript | One home | Two sources for one verdict. |
+
+Consequences: a divergence between builds, such as a float reader differing by feature, surfaces as a disagreement. The accepted cost: the gate provisions the `wasm32-unknown-unknown` target, and the gateway verifies credential signatures outside the module.
+Revisit: the credential format library builds for `wasm32-unknown-unknown` without a JavaScript host.

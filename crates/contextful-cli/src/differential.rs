@@ -1,18 +1,19 @@
-//! `contextful formal differential` — the engine's pure decision functions against the
-//! Lean reference model, over seeded generated cases.
+//! `contextful formal differential` — the decision module's native and WebAssembly builds
+//! against the Lean reference model, over seeded generated cases.
 //!
-//! Two decisions are under test: table-pattern coverage (`contextful_core::grant`) and
-//! grant narrowing legality (`contextful_core::attenuate`). A case is one JSON value; the
-//! engine side decodes it through the domain parsers and calls the domain functions, the
-//! reference side is the `formal/reference` binary reading the case on standard input.
-//! The corpus replays first, then the generated cases run; the first disagreement shrinks
-//! by field removal, lands in the corpus and raises `ReferenceModelDrift`.
+//! Four decisions are under test: table-pattern coverage, grant narrowing legality, zone
+//! admission and session-zone resolution, all in `contextful_core::decide`. A case is one
+//! text, usually JSON; the native build decides it in process, the `wasm32-unknown-unknown`
+//! build decides it under the decision-module host, and the reference is the
+//! `formal/reference` binary reading it on standard input. The corpus replays first, then
+//! the generated cases run; the first case on which any two decisions differ shrinks,
+//! lands in the corpus and raises `ReferenceModelDrift`.
 
 use anyhow::{bail, Context, Result};
 use clap::Args;
-pub use contextful_core::decide::{Decision, CASE_MALFORMED, DECISION_FIELDS as COMPARED_FIELDS};
-use contextful_core::decide::decide_value;
+pub use contextful_core::decide::{Decision, DECISION_FIELDS as COMPARED_FIELDS};
 use contextful_core::grant::TablePattern;
+use std::cell::RefCell;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -36,6 +37,18 @@ pub const DEFAULT_CORPUS: &str = "corpus/counterexamples.jsonl";
 
 /// The reference binary `lake build` writes, relative to the reference package root.
 pub const REFERENCE_EXE: &str = ".lake/build/bin/contextful-reference";
+
+/// The target the decision module's WebAssembly build compiles for.
+#[cfg(feature = "component-host")]
+pub const WASM_TARGET: &str = "wasm32-unknown-unknown";
+
+/// The target directory, under the cargo target directory, the WebAssembly build uses.
+#[cfg(feature = "component-host")]
+pub const WASM_TARGET_DIR: &str = "decision-wasm";
+
+/// The package holding the decision module.
+#[cfg(feature = "component-host")]
+pub const DECISION_PACKAGE: &str = "contextful-core";
 
 /// The refusals of `contextful formal differential`. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -69,20 +82,20 @@ pub struct DifferentialArgs {
     /// Lower the run budget below 300 s.
     #[arg(long, hide = true)]
     budget_secs: Option<u64>,
-    /// Read one case on standard input and print the engine's decision.
+    /// A prebuilt `wasm32-unknown-unknown` build of the decision module, used as is instead
+    /// of building one with cargo.
+    #[arg(long)]
+    wasm: Option<PathBuf>,
+    /// Read one case on standard input and print the native build's decision.
     #[arg(long)]
     decide: bool,
 }
 
 pub fn run(args: DifferentialArgs) -> Result<()> {
     if args.decide {
-        let mut input = String::new();
-        std::io::stdin().read_to_string(&mut input)?;
-        let decision = match serde_json::from_str::<Value>(&input) {
-            Ok(case) => engine_decide(&case),
-            Err(_) => Decision::refused(CASE_MALFORMED, None),
-        };
-        println!("{}", serde_json::to_string(&decision)?);
+        let mut input = Vec::new();
+        std::io::stdin().read_to_end(&mut input)?;
+        println!("{}", serde_json::to_string(&contextful_core::decide::decide(&input))?);
         return Ok(());
     }
     let budget = match args.budget_secs {
@@ -91,20 +104,17 @@ pub fn run(args: DifferentialArgs) -> Result<()> {
         Some(s) => bail!("a budget of {s} s exceeds the {} s one invocation has", DIFFERENTIAL_BUDGET.as_secs()),
     };
     let started = Instant::now();
-    let root = match &args.root {
-        Some(r) => r.clone(),
-        None => {
-            let cwd = std::env::current_dir()?;
-            toplevel(&cwd).unwrap_or(cwd).join("formal/reference")
-        }
-    };
+    let cwd = std::env::current_dir()?;
+    let repo = toplevel(&cwd).unwrap_or(cwd);
+    let root = args.root.clone().unwrap_or_else(|| repo.join("formal/reference"));
     let reference = match args.reference {
         Some(exe) => exe,
         None => build_reference(&root)?,
     };
     let corpus = args.corpus.unwrap_or_else(|| root.join(DEFAULT_CORPUS));
     let seed = args.seed.unwrap_or_else(fresh_seed);
-    let harness = Harness { reference, corpus, deadline: started + budget, budget };
+    let wasm = wasm_build(&repo, args.wasm)?;
+    let harness = Harness { reference, wasm, corpus, deadline: started + budget, budget };
     let report = harness.run(seed, args.cases)?;
     print!("{report}");
     Ok(())
@@ -131,6 +141,67 @@ fn build_reference(root: &Path) -> Result<PathBuf> {
     Ok(root.join(REFERENCE_EXE))
 }
 
+/// The decision module's WebAssembly build, loaded: the one `--wasm` names, or one cargo
+/// builds from the repository. A binary built without the component host compares the
+/// native build alone.
+#[cfg(feature = "component-host")]
+fn wasm_build(repo: &Path, prebuilt: Option<PathBuf>) -> Result<Option<RefCell<contextful_wasm::DecisionModule>>> {
+    let path = match prebuilt {
+        Some(p) => p,
+        None => build_wasm(repo)?,
+    };
+    let bytes = std::fs::read(&path).with_context(|| format!("reading the WebAssembly build {}", path.display()))?;
+    let module = contextful_wasm::DecisionModule::load(&bytes).with_context(|| format!("loading {}", path.display()))?;
+    Ok(Some(RefCell::new(module)))
+}
+
+#[cfg(not(feature = "component-host"))]
+fn wasm_build(_repo: &Path, prebuilt: Option<PathBuf>) -> Result<Option<RefCell<Never>>> {
+    match prebuilt {
+        Some(p) => bail!("this binary carries no component host to run {}", p.display()),
+        None => Ok(None),
+    }
+}
+
+/// The decision module's host where the binary carries none.
+#[cfg(not(feature = "component-host"))]
+enum Never {}
+
+#[cfg(not(feature = "component-host"))]
+impl Never {
+    fn decide(&mut self, _case: &[u8]) -> Result<Vec<u8>> {
+        match *self {}
+    }
+}
+
+/// Build the decision module for `wasm32-unknown-unknown` as a `cdylib`, into its own
+/// target directory, and return the module's path.
+#[cfg(feature = "component-host")]
+fn build_wasm(repo: &Path) -> Result<PathBuf> {
+    let base = match std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from) {
+        Some(d) if d.is_absolute() => d,
+        Some(d) => repo.join(d),
+        None => repo.join("target"),
+    };
+    let target_dir = base.join(WASM_TARGET_DIR);
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let out = Command::new(cargo)
+        .args(["rustc", "-q", "-p", DECISION_PACKAGE, "--lib", "--release", "--target", WASM_TARGET, "--crate-type", "cdylib"])
+        .arg("--target-dir")
+        .arg(&target_dir)
+        .current_dir(repo)
+        .output()
+        .context("running cargo")?;
+    if !out.status.success() {
+        bail!(
+            "building {DECISION_PACKAGE} for {WASM_TARGET} failed in {}:\n{}",
+            repo.display(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    Ok(target_dir.join(WASM_TARGET).join("release").join(format!("{}.wasm", DECISION_PACKAGE.replace('-', "_"))))
+}
+
 fn fresh_seed() -> u64 {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     (nanos as u64) ^ u64::from(std::process::id()).rotate_left(32)
@@ -138,14 +209,80 @@ fn fresh_seed() -> u64 {
 
 // ---------------------------------------------------------------- decisions
 
-/// The engine's decision on one case: the decision module's native build.
-pub fn engine_decide(case: &Value) -> Decision {
-    decide_value(case)
-}
-
 /// The decision as the corpus prints it.
 fn render(d: &Decision) -> String {
     serde_json::to_value(d).map(|v| v.to_string()).unwrap_or_default()
+}
+
+/// One case: a JSON value, or bytes no JSON value serializes to.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Case {
+    Json(Value),
+    Bytes(Vec<u8>),
+}
+
+impl Case {
+    /// The text every decider reads.
+    pub fn text(&self) -> Vec<u8> {
+        match self {
+            Case::Json(v) => v.to_string().into_bytes(),
+            Case::Bytes(b) => b.clone(),
+        }
+    }
+
+    /// The operation a report counts the case under.
+    fn op(&self) -> &str {
+        match self {
+            Case::Json(v) => v.get("op").and_then(Value::as_str).filter(|op| OPERATIONS.contains(op)).unwrap_or("unknown"),
+            Case::Bytes(_) => "bytes",
+        }
+    }
+}
+
+impl std::fmt::Display for Case {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Case::Json(v) => write!(f, "{v}"),
+            Case::Bytes(b) => write!(f, "bytes {}", hex(b)),
+        }
+    }
+}
+
+/// The operations a case names.
+pub const OPERATIONS: [&str; 5] = ["covers_name", "covers_pattern", "narrow", "zone_admits", "session_zone"];
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn unhex(text: &str) -> Option<Vec<u8>> {
+    if text.len() % 2 != 0 {
+        return None;
+    }
+    (0..text.len()).step_by(2).map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok()).collect()
+}
+
+/// The three decisions on one case; `wasm` is absent where the binary carries no host.
+#[derive(Debug, Clone)]
+struct Decisions {
+    native: Decision,
+    wasm: Option<Decision>,
+    reference: Decision,
+}
+
+impl Decisions {
+    /// Every field on which any two decisions differ, in [`COMPARED_FIELDS`] order.
+    fn differing(&self) -> Vec<&'static str> {
+        let mut pairs = vec![(&self.native, &self.reference)];
+        if let Some(w) = &self.wasm {
+            pairs.extend([(&self.native, w), (w, &self.reference)]);
+        }
+        COMPARED_FIELDS.iter().copied().filter(|f| pairs.iter().any(|(a, b)| a.differing(b).contains(f))).collect()
+    }
+
+    fn agree(&self) -> bool {
+        self.differing().is_empty()
+    }
 }
 
 // ---------------------------------------------------------------- generator
@@ -210,6 +347,8 @@ struct Pools {
     shares: &'static [f64],
     /// How often a grant carries aggregate constraints, in percent.
     aggregate_percent: u64,
+    zones: &'static [&'static str],
+    entries: &'static [&'static str],
 }
 
 const ACTIONS: [&str; 4] = ["read", "write", "execute", "admin"];
@@ -233,6 +372,17 @@ const WELL_FORMED: Pools = Pools {
     counts: &[2, 5, 10, 20, 100],
     shares: &[0.1, 0.25, 0.5, 0.75, 1.0],
     aggregate_percent: 30,
+    zones: &["local:device", "on-prem:hq", "on-prem:ward-3", "private-cloud:vpc-7", "public-cloud:us-east-1", "public-cloud:eu-west-1"],
+    entries: &[
+        "*",
+        "local:device",
+        "on-prem:*",
+        "on-prem:hq",
+        "private-cloud:*",
+        "private-cloud:vpc-7",
+        "public-cloud:*",
+        "public-cloud:us-east-1",
+    ],
 };
 
 const BOUNDARY: Pools = Pools {
@@ -251,6 +401,43 @@ const BOUNDARY: Pools = Pools {
     counts: &[0, 1, 2, u64::MAX - 1, u64::MAX],
     shares: &[0.0, 1.0, 0.5, 0.9999],
     aggregate_percent: 60,
+    // Whitespace Unicode lists, a zero-width space it does not, identifiers at and past
+    // 128 chars, a second colon, case and non-ASCII letters.
+    zones: &[
+        "",
+        " local:device ",
+        "\u{a0}on-prem:hq",
+        "on-prem:hq\u{3000}",
+        "\u{200b}on-prem:hq",
+        "\u{85}public-cloud:x\u{2029}",
+        "on-prem:",
+        "on-prem:*",
+        "Local:device",
+        "on-prem:a:b",
+        "on-prem:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "on-prem:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "on-prem:\u{e9}",
+        "public-cloud:us east",
+        "undeclared",
+    ],
+    entries: &[
+        "*",
+        " * ",
+        "",
+        "local:device",
+        "on-prem:*",
+        "on-prem:**",
+        "on-prem:",
+        "onprem:*",
+        "on-prem:hq",
+        "\u{a0}on-prem:*",
+        "*:*",
+        "local:*",
+        "on-prem:a:b",
+        "on-prem:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "on-prem:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "public-cloud:*",
+    ],
 };
 
 const MISPLACED_STARS: [&str; 5] = ["a*b", "**", "*x", "re*s*", "research/*/eu"];
@@ -376,9 +563,22 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
 }
 
 fn gen_request(rng: &mut Rng, pools: &Pools) -> Value {
-    match rng.below(10) {
+    match rng.below(14) {
         0..=2 => json!({"op": "covers_name", "pattern": gen_pattern(rng, pools), "name": rng.pick(pools.names)}),
         3..=5 => json!({"op": "covers_pattern", "pattern": gen_pattern(rng, pools), "other": gen_pattern(rng, pools)}),
+        10..=11 => {
+            let allow: Vec<&str> = (0..rng.below(4)).map(|_| *rng.pick(pools.entries)).collect();
+            json!({"op": "zone_admits", "zone": rng.pick(pools.zones), "allow": allow})
+        }
+        12..=13 => {
+            let mut case = json!({"op": "session_zone", "incognito": rng.chance(50)});
+            for key in ["asserted", "signed"] {
+                if rng.chance(60) {
+                    case[key] = json!(rng.pick(pools.zones));
+                }
+            }
+            case
+        }
         _ => {
             let parent: Vec<Value> = (0..rng.below(3) + usize::from(rng.chance(90))).map(|_| gen_grant(rng, pools)).collect();
             let child: Vec<Value> = (0..rng.below(3) + usize::from(rng.chance(80)))
@@ -488,17 +688,86 @@ fn corrupt(rng: &mut Rng, mut case: Value) -> Value {
                 None => case = json!({"op": "narrow", "parent": [{"actions": ["read"], "tables": ["*"], "max_rows": replacement}], "child": []}),
             }
         }
-        4 => case["op"] = json!(rng.pick(&["cover", "", "NARROW", "covers_names"])),
+        4 => case["op"] = json!(rng.pick(&["cover", "", "NARROW", "covers_names", "ZONE_ADMITS", "session-zone"])),
         _ => case = rng.pick(&[json!(null), json!([]), json!("narrow"), json!(3), json!({})]).clone(),
     }
     case
+}
+
+/// Byte sequences no UTF-8 decoder accepts: a stray byte, a truncated or overlong
+/// sequence, an encoded surrogate, a scalar past U+10FFFF, a lone continuation byte.
+const INVALID_UTF8: [&[u8]; 7] =
+    [b"\xff", b"\xc3\x28", b"\xc0\xaf", b"\xed\xa0\x80", b"\xe2\x82", b"\xf4\x90\x80\x80", b"\x80"];
+
+/// Integer literals outside the unsigned 64-bit range.
+const OUT_OF_RANGE: [&str; 6] = [
+    "18446744073709551616",
+    "18446744073709551617",
+    "100000000000000000000",
+    "340282366920938463463374607431768211456",
+    "-9223372036854775809",
+    "-1",
+];
+
+/// Stands in for a value until the case serializes; no pool value holds `@`.
+const MARKER: &str = "@@@";
+
+/// A well-formed request's text with invalid UTF-8 in one of its strings, or an
+/// out-of-range literal in one of its integer fields.
+fn malformed_bytes(rng: &mut Rng, pools: &Pools) -> Vec<u8> {
+    let mut case = gen_request(rng, pools);
+    if rng.chance(50) {
+        let bad = *rng.pick(&INVALID_UTF8);
+        let text = if mark(rng, &mut case, |_, v| v.is_string()) { case.to_string() } else { format!("{MARKER}{case}") };
+        splice_marker(text.as_bytes(), bad)
+    } else {
+        let literal = rng.pick(&OUT_OF_RANGE).as_bytes();
+        let integer = |p: &[Step], _: &Value| {
+            matches!(p.last(), Some(Step::Key(k)) if ["min_group_size", "max_groups", "max_rows"].contains(&k.as_str()))
+        };
+        if !mark(rng, &mut case, integer) {
+            case = json!({"op": "narrow", "parent": [{"actions": ["read"], "tables": ["*"], "max_rows": MARKER}], "child": []});
+        }
+        splice_marker(case.to_string().as_bytes(), &[b"\"", literal, b"\""].concat())
+    }
+}
+
+/// Replace one value `keep` admits, chosen at random, with the marker; false when `keep`
+/// admits none.
+fn mark(rng: &mut Rng, case: &mut Value, keep: impl Fn(&[Step], &Value) -> bool) -> bool {
+    let mut all = Vec::new();
+    paths(case, &mut Vec::new(), &mut all);
+    let candidates: Vec<Vec<Step>> = all.into_iter().filter(|p| at_mut(case, p).is_some_and(|v| keep(p, v))).collect();
+    if candidates.is_empty() {
+        return false;
+    }
+    let path = &candidates[rng.below(candidates.len())];
+    if let Some(v) = at_mut(case, path) {
+        *v = json!(MARKER);
+    }
+    true
+}
+
+/// The text with the first quoted or bare marker replaced by `with`: a quoted marker loses
+/// its quotes only where `with` supplies them.
+fn splice_marker(text: &[u8], with: &[u8]) -> Vec<u8> {
+    let needle = MARKER.as_bytes();
+    match text.windows(needle.len()).position(|w| w == needle) {
+        Some(at) => {
+            let quoted = with.first() == Some(&b'"') && at > 0 && text.get(at + needle.len()) == Some(&b'"');
+            let (from, to) = if quoted { (at - 1, at + needle.len() + 1) } else { (at, at + needle.len()) };
+            let body = if quoted { &with[1..with.len() - 1] } else { with };
+            [&text[..from], body, &text[to..]].concat()
+        }
+        None => [text, with].concat(),
+    }
 }
 
 /// The case at one position of a seeded sequence.
 struct Generated {
     index: u64,
     class: CaseClass,
-    case: Value,
+    case: Case,
 }
 
 struct Generator {
@@ -519,12 +788,16 @@ impl Generator {
             _ => CaseClass::WellFormed,
         };
         let case = match class {
-            CaseClass::WellFormed => gen_request(rng, &WELL_FORMED),
-            CaseClass::Boundary => gen_request(rng, &BOUNDARY),
+            CaseClass::WellFormed => Case::Json(gen_request(rng, &WELL_FORMED)),
+            CaseClass::Boundary => Case::Json(gen_request(rng, &BOUNDARY)),
             CaseClass::Malformed => {
                 let pools = if rng.chance(50) { &WELL_FORMED } else { &BOUNDARY };
-                let base = gen_request(rng, pools);
-                corrupt(rng, base)
+                if rng.chance(30) {
+                    Case::Bytes(malformed_bytes(rng, pools))
+                } else {
+                    let base = gen_request(rng, pools);
+                    Case::Json(corrupt(rng, base))
+                }
             }
         };
         let g = Generated { index: self.index, class, case };
@@ -619,11 +892,19 @@ fn shortenings(v: &Value) -> Vec<Value> {
 
 // ---------------------------------------------------------------- corpus
 
-/// One corpus line: the minimized case, both decisions on it, and where it came from.
+/// One corpus line: the minimized case, every decision on it, and where it came from. A
+/// case no JSON value serializes to sits in `bytes`, hex-encoded, with `case` absent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entry {
+    #[serde(default, skip_serializing_if = "Value::is_null")]
     pub case: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<String>,
+    /// The native build's decision.
     pub engine: Decision,
+    /// The WebAssembly build's decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wasm: Option<Decision>,
     pub reference: Decision,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
@@ -634,6 +915,25 @@ pub struct Entry {
     /// The generated case before shrinking.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub original: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_bytes: Option<String>,
+}
+
+impl Entry {
+    fn case(&self) -> Case {
+        match self.bytes.as_deref().and_then(unhex) {
+            Some(b) => Case::Bytes(b),
+            None => Case::Json(self.case.clone()),
+        }
+    }
+}
+
+/// A case split into the entry's JSON and hex-encoded forms.
+fn entry_forms(case: &Case) -> (Value, Option<String>) {
+    match case {
+        Case::Json(v) => (v.clone(), None),
+        Case::Bytes(b) => (Value::Null, Some(hex(b))),
+    }
 }
 
 fn load_corpus(path: &Path) -> Result<Vec<Entry>> {
@@ -665,8 +965,14 @@ fn store_corpus(path: &Path, entries: &[Entry]) -> Result<()> {
 
 // ---------------------------------------------------------------- harness
 
+#[cfg(feature = "component-host")]
+type WasmHost = contextful_wasm::DecisionModule;
+#[cfg(not(feature = "component-host"))]
+type WasmHost = Never;
+
 struct Harness {
     reference: PathBuf,
+    wasm: Option<RefCell<WasmHost>>,
     corpus: PathBuf,
     deadline: Instant,
     budget: Duration,
@@ -676,6 +982,7 @@ struct Harness {
 struct Report {
     replayed: usize,
     generated: u64,
+    builds: &'static str,
     classes: BTreeMap<CaseClass, u64>,
     operations: BTreeMap<String, u64>,
     digest: String,
@@ -689,6 +996,7 @@ impl std::fmt::Display for Report {
         let ops: Vec<String> = self.operations.iter().map(|(op, n)| format!("{op} {n}")).collect();
         writeln!(f, "replayed {}", self.replayed)?;
         writeln!(f, "generated {}", self.generated)?;
+        writeln!(f, "builds {}", self.builds)?;
         writeln!(f, "classes {}", classes.join(", "))?;
         writeln!(f, "operations {}", ops.join(", "))?;
         writeln!(f, "compared fields {}", COMPARED_FIELDS.join(", "))?;
@@ -705,10 +1013,11 @@ impl Harness {
         let corpus = load_corpus(&self.corpus)?;
         for entry in &corpus {
             self.within_budget()?;
-            let (engine, reference) = self.both(&entry.case)?;
-            if !engine.differing(&reference).is_empty() {
+            let case = entry.case();
+            let decisions = self.decide(&case)?;
+            if !decisions.agree() {
                 // The case is already recorded; its entry is the retained counterexample.
-                return Err(self.drift(&entry.case, &engine, &reference, "replayed from the corpus").into());
+                return Err(self.drift(&case, &decisions, "replayed from the corpus").into());
             }
         }
         let mut generator = Generator::new(seed);
@@ -718,24 +1027,18 @@ impl Harness {
         for _ in 0..cases {
             self.within_budget()?;
             let g = generator.next_case();
-            digest.update(g.case.to_string().as_bytes());
+            digest.update(g.case.text());
             digest.update(b"\n");
             *classes.entry(g.class).or_insert(0) += 1;
-            let op = g
-                .case
-                .get("op")
-                .and_then(Value::as_str)
-                .filter(|op| ["covers_name", "covers_pattern", "narrow"].contains(op))
-                .unwrap_or("unknown");
-            *operations.entry(op.to_string()).or_insert(0) += 1;
-            let (engine, reference) = self.both(&g.case)?;
-            if !engine.differing(&reference).is_empty() {
+            *operations.entry(g.case.op().to_string()).or_insert(0) += 1;
+            if !self.decide(&g.case)?.agree() {
                 return Err(self.record(seed, g)?);
             }
         }
         Ok(Report {
             replayed: corpus.len(),
             generated: cases,
+            builds: if self.wasm.is_some() { "native, wasm32-unknown-unknown" } else { "native" },
             classes,
             operations,
             digest: format!("{:x}", digest.finalize()),
@@ -750,7 +1053,7 @@ impl Harness {
         Ok(())
     }
 
-    fn reference_decide(&self, case: &Value) -> Result<Decision> {
+    fn reference_decide(&self, case: &Case) -> Result<Decision> {
         let mut child = Command::new(&self.reference)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -758,7 +1061,9 @@ impl Harness {
             .spawn()
             .with_context(|| format!("running the reference binary {}", self.reference.display()))?;
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(format!("{case}\n").as_bytes())?;
+            let mut text = case.text();
+            text.push(b'\n');
+            stdin.write_all(&text)?;
         }
         let out = child.wait_with_output()?;
         if !out.status.success() {
@@ -773,21 +1078,42 @@ impl Harness {
         })
     }
 
-    fn both(&self, case: &Value) -> Result<(Decision, Decision)> {
-        Ok((engine_decide(case), self.reference_decide(case)?))
+    fn wasm_decide(&self, case: &Case) -> Result<Option<Decision>> {
+        let Some(module) = &self.wasm else { return Ok(None) };
+        let out = module.borrow_mut().decide(&case.text())?;
+        let decision = serde_json::from_slice(&out).with_context(|| {
+            format!("the WebAssembly build printed no decision on {case}: {}", String::from_utf8_lossy(&out))
+        })?;
+        Ok(Some(decision))
     }
 
-    fn disagrees(&self, case: &Value) -> Result<bool> {
+    fn decide(&self, case: &Case) -> Result<Decisions> {
+        let native = contextful_core::decide::decide(&case.text());
+        let wasm = self.wasm_decide(case)?;
+        Ok(Decisions { native, wasm, reference: self.reference_decide(case)? })
+    }
+
+    fn disagrees(&self, case: &Case) -> Result<bool> {
         self.within_budget()?;
-        let (e, r) = self.both(case)?;
-        Ok(!e.differing(&r).is_empty())
+        Ok(!self.decide(case)?.agree())
     }
 
-    /// Shrink until no single field removal keeps the disagreement.
-    fn shrink(&self, mut case: Value) -> Result<Value> {
+    /// Shrink until no single field removal, string shortening or byte removal keeps the
+    /// disagreement.
+    fn shrink(&self, mut case: Case) -> Result<Case> {
         loop {
+            let candidates: Vec<Case> = match &case {
+                Case::Json(v) => removals(v).into_iter().chain(shortenings(v)).map(Case::Json).collect(),
+                Case::Bytes(b) => (0..b.len())
+                    .map(|i| {
+                        let mut c = b.clone();
+                        c.remove(i);
+                        Case::Bytes(c)
+                    })
+                    .collect(),
+            };
             let mut next = None;
-            for candidate in removals(&case).into_iter().chain(shortenings(&case)) {
+            for candidate in candidates {
                 if self.disagrees(&candidate)? {
                     next = Some(candidate);
                     break;
@@ -811,20 +1137,25 @@ impl Harness {
     /// Shrink a disagreement, record it, and return the refusal the run ends with.
     fn record(&self, seed: u64, g: Generated) -> Result<anyhow::Error> {
         let minimized = self.shrink(g.case.clone())?;
-        let (engine, reference) = self.both(&minimized)?;
-        let drift = self.drift(&minimized, &engine, &reference, &format!("seed {seed}, case {} ({})", g.index, g.class.as_str()));
+        let decisions = self.decide(&minimized)?;
+        let drift = self.drift(&minimized, &decisions, &format!("seed {seed}, case {} ({})", g.index, g.class.as_str()));
+        let (case, bytes) = entry_forms(&minimized);
+        let (original, original_bytes) = entry_forms(&g.case);
         let entry = Entry {
-            case: minimized.clone(),
-            engine,
-            reference,
+            case,
+            bytes,
+            engine: decisions.native,
+            wasm: decisions.wasm,
+            reference: decisions.reference,
             seed: Some(seed),
             index: Some(g.index),
             class: Some(g.class.as_str().to_string()),
-            original: Some(g.case),
+            original: (!original.is_null()).then_some(original),
+            original_bytes,
         };
         let written = self.append(entry).and_then(|()| load_corpus(&self.corpus));
         match written {
-            Ok(entries) if entries.iter().any(|e| e.case == minimized) => Ok(drift.into()),
+            Ok(entries) if entries.iter().any(|e| e.case() == minimized) => Ok(drift.into()),
             Ok(_) => Ok(DifferentialError::CounterexampleDiscarded(format!(
                 "{} holds no entry for the disagreement\n{drift}",
                 self.corpus.display()
@@ -856,12 +1187,13 @@ impl Harness {
         store_corpus(&self.corpus, &entries)
     }
 
-    fn drift(&self, case: &Value, engine: &Decision, reference: &Decision, origin: &str) -> DifferentialError {
+    fn drift(&self, case: &Case, d: &Decisions, origin: &str) -> DifferentialError {
+        let wasm = d.wasm.as_ref().map_or_else(|| "not built".to_string(), render);
         DifferentialError::ReferenceModelDrift(format!(
-            "the engine and the reference model disagree on {}\n  minimized case  {case}\n  engine          {}\n  reference       {}\n  origin          {origin}\n  corpus          {}",
-            engine.differing(reference).join(", "),
-            render(engine),
-            render(reference),
+            "the native build, the WebAssembly build and the reference model disagree on {}\n  minimized case  {case}\n  native build    {}\n  wasm build      {wasm}\n  reference       {}\n  origin          {origin}\n  corpus          {}",
+            d.differing().join(", "),
+            render(&d.native),
+            render(&d.reference),
             self.corpus.display()
         ))
     }

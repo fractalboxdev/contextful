@@ -2,6 +2,7 @@
 
 mod attenuate;
 mod connector;
+mod decide;
 mod disclosure;
 mod exchange;
 mod grant;

@@ -4,12 +4,14 @@
 //! mediated client — and hands batches over as Arrow IPC.
 
 pub mod batch;
+pub mod decision;
 pub mod host;
 pub mod limits;
 mod mediate;
 pub mod source;
 
 pub use host::{ComponentHost, Connector, Cursor, CursorKind, DataType, Field, Grant, Hydrate, LogLine, Schema, Session, Target, WORLD};
+pub use decision::{DecisionModule, DecisionModuleError};
 pub use limits::Limits;
 pub use mediate::{Reservation, Reserve, Traffic};
 pub use source::GuestSource;

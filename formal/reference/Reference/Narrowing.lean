@@ -129,11 +129,13 @@ def nearestDimension (c : Grant) (parent : List Grant) : Dimension :=
   | some (d :: _) => d
   | _ => .actions
 
-/-- A decision the reference prints: a verdict, an error identifier, a dimension. -/
+/-- A decision the reference prints: a verdict, an error identifier, a dimension, and
+the zone a placement case resolves. -/
 structure Decision where
   verdict : String
   error : Option String := none
   dimension : Option String := none
+  zone : Option String := none
 
 def Decision.refused (error : String) (dimension : Option String := none) : Decision :=
   { verdict := "refused", error := some error, dimension }

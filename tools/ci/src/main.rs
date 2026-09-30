@@ -46,6 +46,11 @@ const LEAN_PIN: &str = "formal/lean-toolchain";
 /// Set for every test process once Lean is provisioned, so a Lean-backed test fails
 /// instead of skipping.
 const REQUIRE_LEAN: &str = "CONTEXTFUL_REQUIRE_LEAN";
+
+/// The target the decision module's WebAssembly build compiles for
+/// (`assurance.structure-tree.decision-module`).
+const WASM_TARGET: &str = "wasm32-unknown-unknown";
+const REQUIRE_WASM: &str = "CONTEXTFUL_REQUIRE_WASM";
 const ELAN_INIT: &str = "https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh";
 
 #[derive(Parser)]
@@ -207,10 +212,12 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             }
             "test-first" => {
                 provision_lean(&root)?;
+                provision_wasm(&root)?;
                 test_first(&root, base, bound)?
             }
             "workspace" => {
                 provision_lean(&root)?;
+                provision_wasm(&root)?;
                 workspace(&root)?
             }
             "acceptance" => acceptance(&root)?,
@@ -368,6 +375,31 @@ fn provision_lean(root: &Path) -> Result<()> {
     std::env::set_var(REQUIRE_LEAN, "1");
     eprintln!("lean: {pin} provisioned; {REQUIRE_LEAN}=1");
     Ok(())
+}
+
+/// Install the `wasm32-unknown-unknown` standard library through rustup when the toolchain
+/// lacks it, and set `CONTEXTFUL_REQUIRE_WASM=1` for every test process this gate run
+/// starts, so a WebAssembly-backed test fails rather than skips.
+fn provision_wasm(root: &Path) -> Result<()> {
+    if !wasm_target_installed(root) {
+        eprintln!("wasm: installing {WASM_TARGET}");
+        run(root, "rustup", &["target", "add", WASM_TARGET])?;
+        if !wasm_target_installed(root) {
+            bail!("`rustup target add {WASM_TARGET}` left the toolchain without the target");
+        }
+    }
+    std::env::set_var(REQUIRE_WASM, "1");
+    eprintln!("wasm: {WASM_TARGET} provisioned; {REQUIRE_WASM}=1");
+    Ok(())
+}
+
+/// Whether the toolchain `rustc` resolves in `root` holds the target's standard library.
+fn wasm_target_installed(root: &Path) -> bool {
+    let out = Command::new("rustc").args(["--print", "target-libdir", "--target", WASM_TARGET]).current_dir(root).output();
+    out.ok()
+        .filter(|o| o.status.success())
+        .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()))
+        .is_some_and(|dir| std::fs::read_dir(dir).is_ok_and(|mut d| d.next().is_some()))
 }
 
 // ---------------------------------------------------------------- secrets

@@ -49,7 +49,7 @@ One home per capability, the one enforcement decision module, adapters, mirror a
 - `duplicated-capability` — A surface or crate carrying a second implementation of an engine capability, in any language, or a hand-written copy of an engine constant, raises `CapabilityDuplicated`, naming both sites.
   *P5*
 - `decision-module` — One module owns the enforcement decision; a gateway and the engine reaching the same verdict execute it, compiled native and to WebAssembly from one pinned source.
-  *P5*
+  *P5, A-assurance*
 - `adapter` — A surface with no engine process on its request path implements an adapter against the engine's ports.
   *P5*
 - `derivation-check` — A generated artifact declares the check that fails once its source moves, and the gate's schema stage runs that check.
@@ -60,6 +60,8 @@ One home per capability, the one enforcement decision module, adapters, mirror a
   *because an annotation naming nothing exempts a copy while tying it to no rule it could drift from*
 
 unsettled: Does a derived artifact prove currency by a schema-hash comparison, by regeneration and diff, or by a build-time export? owner: build affects: assurance.structure-tree
+
+unsettled: Does credential signature verification join the decision module, given the credential format library's randomness dependency refuses `wasm32-unknown-unknown` without a JavaScript host? owner: build affects: assurance.structure-tree
 
 ## automate
 
