@@ -59,6 +59,23 @@ Consequences: `assurance.gate` enforces these boundaries over the package graph 
 
 Consequences: a divergence names the target, the table and the first differing part.
 
+## The posture probe runs in build tooling; the routing hop caches nothing
+
+Context: `topology.publish-hostname` probes every published hostname before a deploy completes, and the routing hop sits in front of a retrieval container that enforces grants per request.
+
+Criteria: no profile links a deploy-only HTTP client; a cached answer stays keyed on the whole enforcement subject; profile footprint decided it.
+
+Decision: `contextful-ci deploy probe` reads `deploy/hostnames/*.toml` and `deploy/probe.toml` from the repository beside the deploy workflow and runs no engine code. The routing hop verifies and routes with no result cache; a cached answer comes from `read.cache` inside the retrieval container, after enforcement.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Probe in `contextful-ci`, no hop cache *(chosen)* | — | Every request crosses to the container; a deploy outside the repository's tooling skips the probe. |
+| Probe as an engine subcommand | Footprint | Every profile links a client only a deploy uses. |
+| Probe inside the routing hop at start | Timing | A hop answers traffic before its posture is judged. |
+| A short hop cache keyed on the enforcement subject | Mediation | A grant revoked inside the time to live still answers from the hop. |
+
+Consequences: descriptors change by pull request and the gate reviews them. Accepted cost: one extra hop to the container on a repeated read.
+
 ## The domain crate holds types and ports with no I/O, and every edge points toward it
 
 `topology.package` keeps `contextful-core`, the shared types, typed error enum and port traits linked into all three profiles, pure: it performs no I/O and declares no async runtime, component host, HTTP client or columnar-format implementation, and one raises `DomainCrateImpurity`, naming the dependency and the feature that pulled it. Every adapter crate depends on the centre and the centre on none; an outward edge raises `TopologyDependencyInversion` with its manifest line.

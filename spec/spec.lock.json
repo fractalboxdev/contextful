@@ -1450,7 +1450,7 @@
       "statement": "Coordination rests on one property: a linearizable conditional write. No component depends on a stronger one, and the tree ships no consensus implementation or external coordination service.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 272
+      "line": 270
     },
     {
       "id": "topology.coordinate.inventory",
@@ -1461,7 +1461,7 @@
       "statement": "The single-writer operations are the lease row, the cursor compare-and-swap, {{store.fold.pointer-commit}}, a lease acquisition, a leased pipeline's commit-log entry, the bucket manifest commit and a configuration apply's version claim. No other operation needs a single writer.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 274
+      "line": 272
     },
     {
       "id": "topology.coordinate.lease-row",
@@ -1472,7 +1472,7 @@
       "statement": "A lease row is keyed by a pipeline, a source partition, a table's compaction or a deployment's cadence, and carries a holder, an expiry instant and a fence taken by one conditional update.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 276
+      "line": 274
     },
     {
       "id": "topology.coordinate.catalog-clock",
@@ -1483,7 +1483,7 @@
       "statement": "The catalog evaluates a lease row's expiry against its own clock, never a caller-supplied instant.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 278
+      "line": 276
     },
     {
       "id": "topology.coordinate.fence-advances",
@@ -1494,7 +1494,7 @@
       "statement": "Each acquisition of a lease row increments its fence, and release keeps the fence, so the fence never repeats for a key.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 280
+      "line": 278
     },
     {
       "id": "topology.coordinate.fenced-commit",
@@ -1505,7 +1505,7 @@
       "statement": "A commit under a lease is a conditional write predicated on the holder's fence; a predicate matching nothing is {{store.lease.stale-fence}}.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 282
+      "line": 280
     },
     {
       "id": "topology.coordinate.cursor-cas",
@@ -1516,7 +1516,7 @@
       "statement": "A cursor compare-and-swap is one conditional update predicated on the stored version, read back by its affected-row count.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 284
+      "line": 282
     },
     {
       "id": "topology.coordinate.cadence-lease-ttl",
@@ -1527,7 +1527,7 @@
       "statement": "A cadence lease is granted for 90 s.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 286
+      "line": 284
     },
     {
       "id": "topology.coordinate.cadence-lease-renewal",
@@ -1538,7 +1538,7 @@
       "statement": "The reconciler renews a cadence lease every 30 s while its applied document schedules a dispatchable unit.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 288
+      "line": 286
     },
     {
       "id": "topology.coordinate.cadence-fallback",
@@ -1549,7 +1549,7 @@
       "statement": "A deployment's fallback cron fires only after taking the cadence lease itself, so one fire holds the current fence.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 290
+      "line": 288
     },
     {
       "id": "topology.coordinate.catalog-port",
@@ -1560,7 +1560,7 @@
       "statement": "Every catalog backend is reached through the `Catalog` port, and code above the port names no backend. Swapping a backend is a wiring change in `contextful-cli`.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 292
+      "line": 290
     },
     {
       "id": "topology.coordinate.backends",
@@ -1571,7 +1571,7 @@
       "statement": "Single-node self-hosting uses a local catalog file owned by one process; a self-hosted cluster uses Postgres via `pg-catalog`, linked into the full profile; a managed edge deployment uses per-object SQLite; a managed cloud deployment uses managed Postgres.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 294
+      "line": 292
     },
     {
       "id": "topology.coordinate.weak-backend",
@@ -1582,7 +1582,7 @@
       "statement": "A catalog backend whose conditional update is not linearizable refuses at open with {{surface.apply.weak-conditional-backend}}.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 296
+      "line": 294
     },
     {
       "id": "topology.coordinate.cluster-availability",
@@ -1593,7 +1593,7 @@
       "statement": "Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 298
+      "line": 296
     },
     {
       "id": "topology.coordinate.air-gap",
@@ -1604,7 +1604,7 @@
       "statement": "Single-node and edge deployments reach no process outside themselves for coordination, and run air-gapped with only their sources reachable.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 299
+      "line": 297
     },
     {
       "id": "store.lay-out.components",

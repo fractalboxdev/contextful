@@ -250,7 +250,7 @@ sequenceDiagram
   alt no store configuration
     H-->>C: 503 GatewayUnconfigured
   else configured
-    H->>H: verify credential, route, cache
+    H->>H: verify credential, route
     H->>R: same credential bytes, unchanged
     R->>R: re-verify, enforce grants, run query
     alt warming
@@ -262,8 +262,6 @@ sequenceDiagram
   Note over R: ready within 8 s of a cold start
   O-->>R: snapshot-set hydration completes after readiness
 ```
-
-unsettled: Does the routing hop hold a short result cache of its own, keyed on the whole enforcement subject? owner: topology affects: topology.publish-hostname
 
 ## coordinate
 
