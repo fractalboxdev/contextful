@@ -13,7 +13,8 @@ use contextful_core::memory::synthesize::CandidateClaim;
 use contextful_core::ports::Clock;
 use contextful_policy::verify::{effect_boundary, Admission};
 use contextful_memory::synthesize::Pass;
-use contextful_memory::write::write_claim;
+use contextful_core::time::Instant;
+use contextful_memory::write::{write_observed, Observation};
 use contextful_outbound::infer::Endpoint;
 use std::path::PathBuf;
 
@@ -58,6 +59,13 @@ pub enum MemoryCmd {
         into: String,
         #[arg(long)]
         claim: String,
+        /// The RFC 3339 instant the claim holds from; absent, the write's own instant.
+        #[arg(long)]
+        observed_at: Option<String>,
+        /// The key `claim_id` derives from; a claim the table already holds under it lands
+        /// nothing.
+        #[arg(long)]
+        dedup_key: Option<String>,
     },
 }
 
@@ -98,16 +106,20 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
             }
             Ok(())
         }
-        MemoryCmd::Write { project, into, claim } => {
+        MemoryCmd::Write { project, into, claim, observed_at, dedup_key } => {
             let candidate: CandidateClaim = serde_json::from_str(&claim).context("`--claim` is one claim as JSON")?;
+            let observed_at = observed_at
+                .map(|s| Instant::parse(&s).with_context(|| format!("`--observed-at {s}` is no RFC 3339 instant")))
+                .transpose()?;
+            let observation = Observation { observed_at, dedup_key };
             let (authority, revocation) = project.admit.admit("the direct write")?;
             let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
             let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
             let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
-            let written = write_claim(&face, &authority, &into, candidate, &node, SystemClock.now(), &boundary)?;
+            let written = write_observed(&face, &authority, &into, candidate, &observation, &node, SystemClock.now(), &boundary)?;
             match written.claim {
                 Some(c) => println!("{into}: landed {} ({}), retired {}", c.claim_id, c.tier.name(), written.retired.len()),
-                None => println!("{into}: restates a live claim; nothing landed"),
+                None => println!("{into}: restates a claim the table holds; nothing landed"),
             }
             Ok(())
         }

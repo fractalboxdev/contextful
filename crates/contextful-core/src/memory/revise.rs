@@ -22,6 +22,9 @@ pub enum Tier {
 }
 
 impl Tier {
+    /// Every tier, lowest standing first; a statement ranking tiers reads its order here.
+    pub const ALL: [Tier; 3] = [Tier::Researched, Tier::Derived, Tier::Curated];
+
     pub fn name(self) -> &'static str {
         match self {
             Tier::Researched => "researched",
@@ -100,6 +103,19 @@ pub fn claim_id(subject: &str, predicate: &str, object: &str, scope: Option<&str
     format!("c-{}", h.finalize().iter().take(12).map(|b| format!("{b:02x}")).collect::<String>())
 }
 
+/// The dedup key a writer supplies: one claim per key, subject, predicate, object and
+/// scope, so a retried observation restates and the same fact under two keys keeps two
+/// validity intervals (`read.revise.dedup-key`).
+pub fn keyed_claim_id(dedup_key: &str, subject: &str, predicate: &str, object: &str, scope: Option<&str>) -> String {
+    let mut h = Sha256::new();
+    h.update(b"dedup_key");
+    for part in [dedup_key, subject, predicate, object, scope.unwrap_or("")] {
+        h.update((part.len() as u64).to_be_bytes());
+        h.update(part.as_bytes());
+    }
+    format!("c-{}", h.finalize().iter().take(12).map(|b| format!("{b:02x}")).collect::<String>())
+}
+
 impl Claim {
     fn same_line(&self, other: &Claim) -> bool {
         self.subject == other.subject && self.predicate == other.predicate && self.scope == other.scope
@@ -108,6 +124,25 @@ impl Claim {
     /// Whether the claim is live at `at`: not superseded, and its validity not ended.
     pub fn live_at(&self, at: Instant) -> bool {
         self.superseded_by.is_none() && self.valid_to.is_none_or(|end| end > at)
+    }
+}
+
+/// A claim observed before a live, unsuperseded claim of its line with another object
+/// refuses: retiring that later prior at the earlier instant would invert its interval
+/// (`read.revise.observed-order`).
+pub fn observed_order(new: &Claim, stored: &[Claim]) -> Result<(), MemoryError> {
+    match stored.iter().find(|p| {
+        p.superseded_by.is_none() && p.same_line(new) && p.object != new.object && p.valid_from > new.valid_from
+    }) {
+        Some(later) => Err(MemoryError::ObservationOutOfOrder(format!(
+            "`{}` {} is observed at {}, before `{}` holds from {}",
+            new.subject,
+            new.predicate,
+            new.valid_from.to_rfc3339(),
+            later.object,
+            later.valid_from.to_rfc3339()
+        ))),
+        None => Ok(()),
     }
 }
 

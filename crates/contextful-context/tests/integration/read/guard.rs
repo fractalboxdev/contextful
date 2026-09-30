@@ -182,8 +182,8 @@ fn vendor_field_names_render_as_identifiers() {
     assert_eq!(column(&row, "a\"b"), [json!("quoted")]);
 }
 
-/// Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier collides with a built-in tool prefix, raising `TemplateNamesForeignRelation`.
-// spec: read.guard.template-relation-shape@2b311161
+/// Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier opens with a built-in tool prefix — `context.`, `corpus.` or `memory.` — raising `TemplateNamesForeignRelation`.
+// spec: read.guard.template-relation-shape@19814a81
 #[test]
 fn a_template_naming_a_foreign_relation_is_refused_at_startup() {
     for tail in [
@@ -192,6 +192,8 @@ fn a_template_naming_a_foreign_relation_is_refused_at_startup() {
         "[[query_templates]]\nid = \"elsewhere\"\nsql = \"SELECT * FROM payroll\"\n",
         "[[query_templates]]\nid = \"attached\"\nsql = \"SELECT * FROM other.main.notes\"\n",
         "[[query_templates]]\nid = \"context.leak\"\nsql = \"SELECT note_id FROM \\\"research/notes\\\"\"\n",
+        "[[query_templates]]\nid = \"corpus.leak\"\nsql = \"SELECT note_id FROM \\\"research/notes\\\"\"\n",
+        "[[query_templates]]\nid = \"memory.recall\"\nsql = \"SELECT note_id FROM \\\"research/notes\\\"\"\n",
     ] {
         let refused = refused_template(tail);
         assert!(refused.starts_with("TemplateNamesForeignRelation"), "{tail}: {refused}");

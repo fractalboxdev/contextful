@@ -105,8 +105,8 @@ fn call(server: &Server<'_>, tool: &str, arguments: Value) -> Value {
     ask(server, 7, "tools/call", json!({ "name": tool, "arguments": arguments }))
 }
 
-/// The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, and `corpus.retrieve` for ranked reads across a prefix.
-// spec: read.register.tool-set@6d72284d
+/// The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, `corpus.retrieve` for ranked reads across a prefix, and `memory.recall` for keyed claim reads.
+// spec: read.register.tool-set@8a963be6
 #[test]
 fn the_tool_list_is_the_closed_read_set() {
     let f = fixture();
@@ -114,7 +114,7 @@ fn the_tool_list_is_the_closed_read_set() {
     let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["context.describe", "context.query", "context.execute_query", "context.files", "context.file", "corpus.retrieve"]);
+    assert_eq!(names, ["context.describe", "context.query", "context.execute_query", "context.files", "context.file", "corpus.retrieve", "memory.recall"]);
     let unknown = call(&server, "memory.write", json!({}));
     assert_eq!(unknown["error"]["code"], json!(-32602), "{unknown}");
 }
@@ -280,8 +280,8 @@ fn as_of_on_every_read_tool_returns_the_pre_fold_row() {
     assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
 }
 
-/// Every read tool, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
-// spec: read.register.bound-arguments@db8ab82b
+/// Every read tool but `memory.recall`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
+// spec: read.register.bound-arguments@8d3edd37
 #[test]
 fn valid_as_of_wraps_only_the_tables_a_read_touches() {
     let f = bounded();
@@ -359,8 +359,86 @@ fn every_read_tool_declares_both_bounds() {
     assert!(tools.iter().any(|t| t["name"] == json!("filing")));
     for tool in tools {
         let properties = &tool["inputSchema"]["properties"];
-        for bound in ["as_of", "valid_as_of"] {
+        let (present, absent) = if tool["name"] == json!("memory.recall") {
+            (["observed_at", "as_of_ingest"], ["as_of", "valid_as_of"])
+        } else {
+            (["as_of", "valid_as_of"], ["observed_at", "as_of_ingest"])
+        };
+        for bound in present {
             assert_eq!(properties[bound]["type"], json!("string"), "{} lacks `{bound}`", tool["name"]);
         }
+        for bound in absent {
+            assert!(properties.get(bound).is_none(), "{} declares `{bound}`", tool["name"]);
+        }
     }
+}
+
+const CLAIMS: &str = r#"[[pipeline.tables]]
+name = "research/notes"
+
+[[table]]
+name = "research/facts"
+shape = "memory_facts"
+columns = ["claim_id", "subject", "predicate", "object", "scope", "tier", "confidence", "valid_from", "valid_to", "evidence", "superseded_by", "grant_id", "agent"]
+"#;
+
+/// Dana holds from 2030-01-01 until Lee's 2030-03-01 start retires her.
+fn claims() -> Fixture {
+    fixture_over(CLAIMS, |store| {
+        put(store, &TableDecl::named("research/notes"), "run-0001", "2030-01-01T00:00:00Z", json!([{ "note_id": "n1" }]), &[]);
+        let evidence = r#"[{"table":"research/notes","run":"run-0001","seq":0}]"#;
+        let claim = |id: &str, object: &str, from: &str, to: Option<&str>, by: Option<&str>| {
+            json!({ "claim_id": id, "subject": "acme", "predicate": "cfo", "object": object, "scope": null, "tier": "curated",
+                "confidence": 1.0, "valid_from": from, "valid_to": to, "evidence": evidence, "superseded_by": by,
+                "grant_id": "g", "agent": null })
+        };
+        let rows = json!([
+            claim("c-dana", "Dana", "2030-01-01T00:00:00Z", Some("2030-03-01T00:00:00Z"), Some("c-lee")),
+            claim("c-lee", "Lee", "2030-03-01T00:00:00Z", None, None),
+        ]);
+        let ts = [
+            ("valid_from", ColumnType::Timestamp),
+            ("valid_to", ColumnType::Timestamp),
+            ("confidence", ColumnType::Float64),
+            ("scope", ColumnType::Utf8),
+            ("superseded_by", ColumnType::Utf8),
+            ("agent", ColumnType::Utf8),
+        ];
+        let decl = TableDecl { primary_key: Some(vec!["claim_id".into()]), ..TableDecl::named("research/facts") };
+        put(store, &decl, "memory-1", "2030-01-02T00:00:00Z", rows, &ts);
+    })
+}
+
+/// `memory.recall` answers over the tool protocol with the subject's claims at `observed_at`,
+/// takes `as_of_ingest` for transaction time, and takes no `as_of` or `valid_as_of`.
+#[test]
+fn memory_recall_answers_keyed_over_the_tool_protocol() {
+    let f = claims();
+    let clock = FixedClock(at("2030-06-01T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let objects = |answer: &Value| -> Vec<Value> {
+        let content = &answer["result"]["structuredContent"];
+        let i = content["columns"].as_array().unwrap().iter().position(|c| c == "object").unwrap();
+        rows(answer).as_array().unwrap().iter().map(|r| r[i].clone()).collect()
+    };
+    let then = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", "observed_at": "2030-02-01T00:00:00Z" }));
+    assert_eq!(objects(&then), [json!("Dana")], "{then}");
+    assert_eq!(then["result"]["structuredContent"]["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"], json!(0));
+    let now = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", "limit": 5 }));
+    assert_eq!(objects(&now), [json!("Lee")], "{now}");
+    let unknown = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", "as_of_ingest": "2030-01-01T12:00:00Z" }));
+    assert_eq!(rows(&unknown), &json!([]), "{unknown}");
+    // The echo names the tool's own arguments, so a client passes it back unchanged.
+    let echo = json!({ "as_of_ingest": "2030-01-01T12:00:00.000000000Z", "inclusive": { "as_of_ingest": true } });
+    assert_eq!(echoed(&unknown), &echo);
+    let replayed = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", "as_of_ingest": echo["as_of_ingest"] }));
+    assert_eq!(echoed(&replayed), &echo, "{replayed}");
+    for bound in ["as_of", "valid_as_of"] {
+        let refused = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", bound: "2030-02-01" }));
+        assert_eq!(refused["error"]["code"], json!(-32602), "{refused}");
+    }
+    let missing = call(&server, "memory.recall", json!({ "table": "research/facts" }));
+    assert_eq!(missing["error"]["code"], json!(-32602), "{missing}");
+    let notes = call(&server, "memory.recall", json!({ "table": "research/notes", "subject": "acme" }));
+    assert_eq!(notes["result"]["structuredContent"]["error"]["identifier"], json!("MemoryRecallNotClaims"), "{notes}");
 }
