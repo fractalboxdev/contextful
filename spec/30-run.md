@@ -88,6 +88,19 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
 - `sqlite-stores` — `contextful-sqlite` serves the journal, blob and awakeable stores from one SQLite file in write-ahead-log mode over one connection, a blob as a row keyed by its sha256; an awakeable update commits with the journal writes inside it.
   *because a resolution recording its payload through a second connection waits on the write lock its own update holds*
 - `plan-pin` — A run resolves the plan reference it started against for its whole life.
+- `store-input` — A store-driven run reads its statement once, through the read face under the job's grant at its `as_of`, and records the resolved snapshot id per table and the ordered input rows as its first step.
+  *A-surface*
+- `input-replay` — A resume iterates the recorded input and never re-reads the statement, so a row landed after the pinned `as_of`, or folded since, never enters the input set.
+- `open-as-of` — A store-driven job declaring no `as_of` resolves it to the instant its execution opens, recorded in the input step, so every resume reads that instant.
+- `input-pin` — A store-driven run's plan reference hashes its body name, statement and declared `as_of`, so a resume under a changed one meets {{run.own.pinned-plan-changed}} before any step replays.
+  *A-surface*
+- `input-truncated` — An input statement whose response the face truncates at its row ceiling raises `RunInputTruncated` before any row runs.
+  *because a silently shortened input set closes `success` as though every row ran*
+- `row-step` — Each input row runs the registered body under a row key, its ordinal in the recorded input; every step the body records carries a label scoped to that key, and a paid call carries {{run.journal.idempotency-key}}.
+  *because two rows sharing one label under one execution resolve to one recorded value*
+- `row-concurrency` — A store-driven run holds at most `max_in_flight` rows inside the body at once; a failing row admits no further row, and the run closes after the rows in flight return.
+- `row-output` — The rows every body emits land after the last input row completes and before the owner retires, one run per declared output table through {{run.land.stage-order}}.
+  *because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again*
 - `unwired-capability` — Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work.
   *A-topology*
 - `machine-state` — Journal rows, execution owners and awakeables are machine-local state that a catalog rebuild leaves untouched and the file tree never reconstructs.
@@ -118,8 +131,6 @@ unsettled: Does the inline-versus-blob cutoff stay one number across every step 
 unsettled: Does a journal store apart from the catalog retire an owner's rows after the catalog commits, repeating the retire at the next open? owner: run-path affects: run.journal
 
 unsettled: How do fan-out bodies express an explicit join, and what does a partially-failed fan-out record? owner: run-path affects: run.journal
-
-unsettled: How does a store-driven run record its resolved snapshot ids and ordered input row keys as its first step, and scope each row's step labels to the row key (issue 96)? owner: run-path affects: run.journal
 
 ## advance
 
@@ -166,6 +177,9 @@ Durable suspension on an external callback, its deadline and its resumption.
 - `resume-route` — `POST /awake/:token` answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming. Both authenticate before touching the registry.
 - `payload-offload` — A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it.
 - `survives-restart` — The awakeable registry persists beside the journal; a restart drops no pending callback.
+- `row-parks` — A store-driven row awaiting an unresolved awakeable parks and frees its slot; the other rows run on, and the parked row re-enters its body once the awakeable resolves or its deadline passes.
+- `recorded-timeout` — A row's wait past its deadline records a timeout value as that wait's step output, so every re-entry of the body reads the identical value.
+  *because a body branching on the clock rather than on a recorded value replays differently after a crash*
 
 ```mermaid
 sequenceDiagram
@@ -364,6 +378,7 @@ The durable run record, its statuses, its owner lease and windowed history over 
 - `counts-at-destination` — Row and byte counts are measured at the destination, not at the source.
 - `skipped-count` — A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.
   *because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows*
+- `input-bounds` — A store-driven run's row carries its input: the resolved `as_of`, the snapshot id per table and the input row count.
 
 unsettled: What does a run-record manifest carry for a catalog rebuild to restore history instead of resetting it? owner: run-path affects: run.record
 

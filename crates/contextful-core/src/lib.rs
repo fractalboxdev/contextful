@@ -12,6 +12,7 @@ pub mod grant;
 pub mod identify;
 pub mod memory;
 pub mod issue;
+pub mod job;
 pub mod pipeline;
 pub mod ports;
 pub mod read;

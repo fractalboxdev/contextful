@@ -161,6 +161,18 @@ pub struct RunRow {
     /// pipeline and table name its scope (`run.own.host-scope`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_scope: Option<String>,
+    /// A store-driven run's input (`run.record.input-bounds`); `None` for every other run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<InputBounds>,
+}
+
+/// The input a store-driven run read: the resolved `as_of`, the snapshot id per table the
+/// statement touched, and the row count (`run.record.input-bounds`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputBounds {
+    pub as_of: String,
+    pub snapshots: std::collections::BTreeMap<String, String>,
+    pub rows: u64,
 }
 
 fn is_zero(n: &u64) -> bool {

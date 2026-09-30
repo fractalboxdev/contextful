@@ -462,7 +462,7 @@ impl Face {
 /// Admit a statement over the session's registered relations. A session that is no owner
 /// read naming the request ledger of a table it reads raises `LedgerNotTenantScoped`
 /// rather than an unknown relation (`read.register.scoped-ledger`).
-fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, ReadFault> {
+pub(crate) fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, ReadFault> {
     let closed = std::cell::RefCell::new(None);
     let admitted = admit(tree, |name| {
         if let Some((table, reason)) = session.closed_ledger(name) {

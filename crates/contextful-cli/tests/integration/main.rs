@@ -10,6 +10,7 @@ mod drive_absent;
 mod eval;
 mod formal;
 mod init;
+mod job;
 mod mcp;
 mod memory;
 mod pipeline;

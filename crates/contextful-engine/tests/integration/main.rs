@@ -3,6 +3,7 @@
 mod cancel;
 mod command;
 mod coordinate;
+mod drive;
 mod execution;
 mod guard;
 mod journal;
@@ -40,5 +41,6 @@ pub fn support_row(run_id: &str, status: RunStatus) -> RunRow {
         execution_id: "x-1".into(),
         stop: None,
         host_scope: None,
+        input: None,
     }
 }

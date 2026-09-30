@@ -28,6 +28,7 @@ test-engine   = {}
 
 [error]
 BlobMissing                    = { clause = "run.journal.missing-blob", gloss = "A journal row's blob reference resolves to no stored blob." }
+RunInputTruncated              = { clause = "run.journal.input-truncated", gloss = "A store-driven input statement the read face truncated at its row ceiling." }
 JournalRedactionConflict       = { clause = "run.journal.redacting-source", gloss = "Write-path redaction declared over a source whose pulls are journaled." }
 CapabilityUnwired              = { clause = "run.journal.unwired-capability", gloss = "A capability the running profile links no implementation for." }
 CursorFieldMismatch            = { clause = "run.advance.field-rename", gloss = "A stored position's field differs from the declared incremental field." }
