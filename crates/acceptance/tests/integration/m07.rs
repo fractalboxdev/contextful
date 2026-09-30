@@ -150,6 +150,7 @@ fn m07_keyed_recall() {
     p.write(
         "contextful.toml",
         r#"
+authoring_posture = "per_request"
 [[pipeline.tables]]
 name = "research/notes"
 

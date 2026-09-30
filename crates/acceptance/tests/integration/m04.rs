@@ -171,7 +171,7 @@ fn m04_component_guest() {
     std::fs::write(p.root.join("connectors/vendor.wasm"), &wasm).unwrap();
     let declaration = |pin: &str, tables: &str| {
         format!(
-            "[[pipeline]]\nid = \"vendor\"\ntables = [{tables}]\n\n[pipeline.source]\nname = \"connectors/vendor.wasm\"\n\n\
+            "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"vendor\"\ntables = [{tables}]\n\n[pipeline.source]\nname = \"connectors/vendor.wasm\"\n\n\
              [pipeline.source.config]\nsha256 = \"{pin}\"\nallow = [\"127.0.0.1\"]\n"
         )
     };
