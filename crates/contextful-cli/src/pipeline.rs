@@ -392,10 +392,16 @@ fn plan(spec: &PipelineSpec, table: &str, connector: ConnectorSpec) -> Result<Pl
 /// The directory `pipeline run` resolves a declaration's relative paths against
 /// (`store.init.declaration-base`): the located project's, or the working directory when
 /// discovery names no project.
-fn declaration_base(project: Option<&str>) -> Result<PathBuf> {
+/// The directory a local artifact resolves against, and the located store's pin switch
+/// (`connector.package.pin-requirement`); with no project located, the working directory
+/// and no store-wide switch.
+fn declaration_base(project: Option<&str>) -> Result<(PathBuf, bool)> {
     match crate::project::locate(project, None) {
-        Ok(l) => Ok(l.project.dir),
-        Err(_) if project.is_none() => Ok(std::env::current_dir()?),
+        Ok(l) => {
+            let store_pin = Store::open(&l.project.dir, &l.project.name)?.requires_connector_pin();
+            Ok((l.project.dir, store_pin))
+        }
+        Err(_) if project.is_none() => Ok((std::env::current_dir()?, false)),
         Err(e) => Err(e),
     }
 }
@@ -404,7 +410,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
     match cmd {
         PipelineCmd::Validate { declaration, project, component_target } => {
             let files = manifests(&declaration)?;
-            let base = declaration_base(project.as_deref())?;
+            let (base, store_pin) = declaration_base(project.as_deref())?;
             if files.is_empty() {
                 return Err(RunError::PipelineManifestMissing(format!(
                     "no manifest at `{}` and no `pipelines/*.toml` or `pipelines/*.json` beside it",
@@ -435,7 +441,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 let mut discovered = String::new();
                 if let Checked::Component(decl) = &checked {
                     if component::is_local(decl) {
-                        let loaded = component::load(&d.spec.source.name, decl, &base, component_target).with_context(at)?;
+                        let loaded = component::load(&d.spec.source.name, decl, &base, component_target, store_pin).with_context(at)?;
                         let names = loaded.discover(decl).with_context(at)?;
                         discovered = format!(" · discovers {}", names.join(", "));
                     }
@@ -497,9 +503,10 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             // A declaration's relative paths resolve against the project directory
             // (`store.init.declaration-base`), whichever subdirectory the command runs from.
             let base = l.project.dir.clone();
+            let store = Store::open(&l.project.dir, &l.project.name)?;
             // A component resolves, admits and compiles once per fire, before any run row.
             let loaded = match &checked {
-                Checked::Component(decl) => Some(component::load(&spec.source.name, decl, &base, component_target)?),
+                Checked::Component(decl) => Some(component::load(&spec.source.name, decl, &base, component_target, store.requires_connector_pin())?),
                 _ => None,
             };
             // One drive fire mints one token and walks the tree once for every table it lands.
@@ -512,7 +519,6 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 }
                 _ => None,
             };
-            let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let decls: Vec<TableDecl> = spec
                 .tables

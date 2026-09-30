@@ -10702,7 +10702,7 @@
       "operation": "package",
       "subject": "pin-requirement",
       "kind": "behavior",
-      "statement": "Two switches require a pin on a local artifact, composed by disjunction: a store-wide policy key and a per-connector manifest flag.",
+      "statement": "Two switches require a pin on a local artifact, composed by disjunction: the store-wide key `[connector] require_pin` in the store's `config.toml`, and a per-connector manifest flag.",
       "why": "",
       "file": "spec/40-connector.md",
       "line": 271

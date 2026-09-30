@@ -31,6 +31,18 @@ pub struct StoreConfig {
     /// Present on a consuming replica: the canonical store it reads from.
     #[serde(default)]
     pub replica: Option<ReplicaConfig>,
+    /// Store-wide connector policy.
+    #[serde(default)]
+    pub connector: Option<ConnectorPolicy>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorPolicy {
+    /// The store-wide switch of `connector.package.pin-requirement`: every local component
+    /// artifact this store lands from carries a pin.
+    #[serde(default)]
+    pub require_pin: bool,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -58,6 +70,7 @@ pub struct Store {
     root: PathBuf,
     config_node_id: Option<String>,
     replica_of: Option<String>,
+    require_connector_pin: bool,
 }
 
 impl Store {
@@ -78,7 +91,12 @@ impl Store {
         if let Some(enc) = &config.encryption {
             check_key_source(&enc.key_source)?;
         }
-        Ok(Store { root, config_node_id: config.node.and_then(|n| n.id), replica_of: config.replica.map(|r| r.of) })
+        Ok(Store {
+            root,
+            config_node_id: config.node.and_then(|n| n.id),
+            replica_of: config.replica.map(|r| r.of),
+            require_connector_pin: config.connector.is_some_and(|c| c.require_pin),
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -102,6 +120,12 @@ impl Store {
             Some(canonical) => Err(StoreError::ReplicaWriteRefused(format!("`{verb}` writes, and this store is a read-only replica of `{canonical}`")).into()),
             None => Ok(()),
         }
+    }
+
+    /// `[connector] require_pin` from the store's configuration, the store-wide switch of
+    /// `connector.package.pin-requirement`.
+    pub fn requires_connector_pin(&self) -> bool {
+        self.require_connector_pin
     }
 
     /// `[node] id` from the store's configuration.

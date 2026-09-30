@@ -144,10 +144,28 @@ fn bytes_off_their_pin_refuse_before_any_run_row() {
 /// the bytes found.
 // spec: connector.package.local-unpinned@c59e312a
 #[test]
-fn an_unpinned_local_artifact_under_the_manifest_flag_is_refused_with_its_digest() {
+fn an_unpinned_local_artifact_under_either_switch_is_refused_with_its_digest() {
+    // The per-connector manifest flag.
     let dir = project(&manifest("connectors/probe.wasm", &["items"], "require_pin = true"));
     let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorLocalUnpinned");
     assert!(stderr.contains(&digest(PROBE)), "{stderr}");
+
+    // The store-wide policy key, with the manifest flag unset.
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
+    let config = dir.path().join(".contextful/context/research/config.toml");
+    std::fs::write(&config, "[node]\nid = \"ingest-a\"\n\n[connector]\nrequire_pin = true\n").unwrap();
+    let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorLocalUnpinned");
+    assert!(stderr.contains(&digest(PROBE)), "{stderr}");
+    let show = cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]);
+    assert!(!show.status.success(), "no run row is written for an artifact refused its pin");
+    refused(&cf(dir.path(), &["pipeline", "validate", "--project", "research"], &[]), "ConnectorLocalUnpinned");
+
+    // The store key admits a pinned artifact.
+    let pin = digest(PROBE);
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest("connectors/probe.wasm", &["items"], &format!("sha256 = \"{pin}\"")))).unwrap();
+    ok(&fire(dir.path(), "run-1", &[], &[]));
+
+    // Neither switch set admits the unpinned artifact.
     let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
     ok(&fire(dir.path(), "run-1", &[], &[]));
 }
