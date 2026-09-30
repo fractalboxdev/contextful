@@ -11,7 +11,7 @@
 use crate::keyset::{KeySource, StaticPins};
 use crate::revoke::{parse_denylist, RevocationState};
 use crate::verify::{no_holder_proof, verify_network, Admission};
-use contextful_core::decide::{decide_value, refusal, Decision, CASE_MALFORMED};
+use contextful_core::decide::{decide_value, field, required, string, strings, unsigned, Decision, Decoded, Fault, CASE_MALFORMED};
 use contextful_core::grant::Action;
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
@@ -31,23 +31,8 @@ pub fn decide(case: &[u8]) -> Decision {
 /// The decision on one decoded case.
 pub fn decide_case(case: &Value) -> Decision {
     match case.get("op").and_then(Value::as_str) {
-        Some(VERIFY) => match case.as_object().ok_or(Fault::Malformed).and_then(verify) {
-            Ok(d) => d,
-            Err(Fault::Malformed) => Decision::refused(CASE_MALFORMED, None),
-            Err(Fault::Refused(e)) => refusal(&e),
-        },
+        Some(VERIFY) => case.as_object().ok_or(Fault::Malformed).and_then(verify).unwrap_or_else(Fault::decision),
         _ => decide_value(case),
-    }
-}
-
-enum Fault {
-    Malformed,
-    Refused(AuthorityError),
-}
-
-impl From<AuthorityError> for Fault {
-    fn from(e: AuthorityError) -> Fault {
-        Fault::Refused(e)
     }
 }
 
@@ -55,10 +40,10 @@ impl From<AuthorityError> for Fault {
 /// "action"?,"tables"?:[name…]}`: admission at a network checkpoint with no holder proof,
 /// then, where the case names an action, whether one admitted grant carries it over every
 /// named table.
-fn verify(obj: &Map<String, Value>) -> Result<Decision, Fault> {
+fn verify(obj: &Map<String, Value>) -> Decoded<Decision> {
     let credential = string(required(obj, "credential")?)?;
     let pins = strings(required(obj, "keys")?)?;
-    let at = required(obj, "at")?.as_u64().ok_or(Fault::Malformed)?;
+    let at = unsigned(required(obj, "at")?)?;
     let audience = field(obj, "audience").map(string).transpose()?;
     let denylist = field(obj, "denylist").map(strings).transpose()?.unwrap_or_default();
     let action = field(obj, "action").map(string).transpose()?;
@@ -84,23 +69,6 @@ fn verify(obj: &Map<String, Value>) -> Result<Decision, Fault> {
             Decision::verdict(if admitted.permits(action, &tables) { "admitted" } else { "not_covered" })
         }
     })
-}
-
-/// A present, non-null field.
-fn field<'a>(obj: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
-    obj.get(key).filter(|v| !v.is_null())
-}
-
-fn required<'a>(obj: &'a Map<String, Value>, key: &str) -> Result<&'a Value, Fault> {
-    field(obj, key).ok_or(Fault::Malformed)
-}
-
-fn string(v: &Value) -> Result<&str, Fault> {
-    v.as_str().ok_or(Fault::Malformed)
-}
-
-fn strings(v: &Value) -> Result<Vec<String>, Fault> {
-    v.as_array().ok_or(Fault::Malformed)?.iter().map(|s| string(s).map(str::to_string)).collect()
 }
 
 /// The module's exports on `wasm32-unknown-unknown`. The host copies a case into memory

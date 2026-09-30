@@ -250,6 +250,66 @@ fn engine(case: &Value) -> Value {
     decide(Path::new(BIN), &["formal", "differential", "--decide"], case)
 }
 
+/// Feed one case text, newline-terminated as the harness sends it, and read back the decision.
+fn decide_bytes(exe: &Path, bytes: &[u8]) -> Value {
+    use std::io::Write;
+    let mut child = Command::new(exe).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    child.stdin.take().unwrap().write_all(&[bytes, b"\n"].concat()).unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{} failed on {bytes:?}", exe.display());
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+fn engine_bytes(bytes: &[u8]) -> Value {
+    use std::io::Write;
+    let mut child = Command::new(BIN)
+        .args(["formal", "differential", "--decide"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(&[bytes, b"\n"].concat()).unwrap();
+    serde_json::from_slice(&child.wait_with_output().unwrap().stdout).unwrap()
+}
+
+fn unhex(text: &str) -> Vec<u8> {
+    (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap()).collect()
+}
+
+/// Every case with one character removed from one string, at any depth.
+fn shortenings(v: &Value) -> Vec<Value> {
+    match v {
+        Value::String(text) => {
+            let chars: Vec<char> = text.chars().collect();
+            (0..chars.len())
+                .map(|i| Value::String(chars.iter().enumerate().filter(|(j, _)| *j != i).map(|(_, c)| c).collect()))
+                .collect()
+        }
+        Value::Object(map) => map
+            .iter()
+            .flat_map(|(k, child)| {
+                shortenings(child).into_iter().map(move |short| {
+                    let mut m = map.clone();
+                    m.insert(k.clone(), short);
+                    Value::Object(m)
+                })
+            })
+            .collect(),
+        Value::Array(items) => items
+            .iter()
+            .enumerate()
+            .flat_map(|(i, child)| {
+                shortenings(child).into_iter().map(move |short| {
+                    let mut a = items.clone();
+                    a[i] = short;
+                    Value::Array(a)
+                })
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn line_value<'a>(report: &'a str, key: &str) -> &'a str {
     report
         .lines()
@@ -432,10 +492,10 @@ fn a_disagreement_raises_reference_model_drift_with_both_decisions() {
     assert!(err.contains("verdict"), "names the differing field:\n{err}");
 }
 
-/// A disagreement is shrunk until removing any further field makes the two agree, and the minimized case is recorded.
-// spec: assurance.differential-test.minimized@4408492b
+/// A disagreement is shrunk until no single field removal, string shortening or byte removal keeps any two of the three decisions apart, and the minimized case is recorded.
+// spec: assurance.differential-test.minimized@c4ca9d1e
 #[test]
-fn a_recorded_disagreement_is_minimal_under_field_removal() {
+fn a_recorded_disagreement_is_minimal_under_every_shrinking_step() {
     let s = Scratch::new(wasm_args_or_skip!());
     let corrupted = s.corrupted();
     for seed in ["8", "13", "34"] {
@@ -448,13 +508,34 @@ fn a_recorded_disagreement_is_minimal_under_field_removal() {
         assert!(err.contains(&case.to_string()), "{err}");
         assert_ne!(engine(case), decide(&corrupted, &[], case), "the recorded case still disagrees");
         assert_ne!(engine(original), decide(&corrupted, &[], original), "the generated case disagreed");
-        for smaller in removals(case) {
+        for smaller in removals(case).into_iter().chain(shortenings(case)) {
             assert_eq!(
                 engine(&smaller),
                 decide(&corrupted, &[], &smaller),
-                "removing a field from {case} leaves {smaller} disagreeing"
+                "shrinking {case} to {smaller} leaves it disagreeing"
             );
         }
+    }
+
+    // A byte case shrinks by single-byte removal, under a reference deciding every text
+    // that is not UTF-8 apart from the native build.
+    s.write_corpus(&[]);
+    let garbling = s.script(
+        "garbling.sh",
+        &format!(
+            "f=$(mktemp '{dir}/case.XXXXXX')\ncat > \"$f\"\nif iconv -f UTF-8 -t UTF-8 < \"$f\" > /dev/null 2>&1; then exec '{BIN}' formal differential --decide < \"$f\"; fi\necho '{{\"verdict\":\"refused\",\"error\":\"Garbled\",\"dimension\":null}}'",
+            dir = s.dir.path().display()
+        ),
+    );
+    let err = refused(&s.run(&garbling, &["--seed", "17", "--cases", "600"]), "ReferenceModelDrift");
+    let entry = s.read_corpus().pop().expect("the disagreement is recorded");
+    let bytes = unhex(entry["bytes"].as_str().unwrap_or_else(|| panic!("a byte case records its bytes: {entry}")));
+    assert!(err.contains("Garbled"), "{err}");
+    assert_ne!(engine_bytes(&bytes), decide_bytes(&garbling, &bytes), "the recorded bytes still disagree");
+    for i in 0..bytes.len() {
+        let mut smaller = bytes.clone();
+        smaller.remove(i);
+        assert_eq!(engine_bytes(&smaller), decide_bytes(&garbling, &smaller), "removing byte {i} of {bytes:?} leaves it disagreeing");
     }
 }
 

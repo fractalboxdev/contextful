@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 219 | 56 | 22 | 16 | 110 | 0 | 110 |
+| `assurance` | 2 | 15 | 220 | 56 | 22 | 15 | 111 | 0 | 111 |
 | `authority` | 2 | 16 | 263 | 77 | 27 | 10 | 200 | 0 | 200 |
 | `connector` | 2 | 13 | 297 | 78 | 19 | 14 | 171 | 0 | 171 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 215 | 53 | 12 | 17 | 175 | 0 | 175 |
 | `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 153 | 1822 | 555 | 184 | 138 | 1155 | 0 | |
+| **total** | 19 | 153 | 1823 | 555 | 184 | 137 | 1156 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
-| 1 — The authority core | 14 | 231 | 179 | passing | closed |
+| 1 — The authority core | 14 | 232 | 180 | passing | closed |
 | 2 — The store | 9 | 152 | 117 | passing | closed |
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
 | 4 — Ingest | 24 | 440 | 259 | passing | open |
@@ -77,12 +77,13 @@ Unscheduled operations: 10.
 | `assurance.differential-test.command` | `crates/contextful-cli/tests/integration/differential.rs::the_command_replays_then_generates_and_stops_at_the_first_disagreement` | performed |
 | `assurance.differential-test.corpus-entries` | `crates/contextful-cli/tests/integration/differential.rs::a_full_corpus_evicts_the_oldest_reproducible_case` | performed |
 | `assurance.differential-test.corpus-replay` | `crates/contextful-cli/tests/integration/differential.rs::corpus_cases_replay_before_generated_cases` | performed |
+| `assurance.differential-test.credential-cases` | `crates/contextful-cli/tests/integration/differential.rs::credential_cases_run_through_both_builds_and_never_reach_the_reference` | performed |
 | `assurance.differential-test.decision-cases` | `crates/contextful-cli/tests/integration/differential.rs::placement_cases_resolve_zones_in_the_reference_and_the_native_build_alike` | performed |
 | `assurance.differential-test.disagreement` | `crates/contextful-cli/tests/integration/differential.rs::a_disagreement_raises_reference_model_drift_with_both_decisions` | performed |
 | `assurance.differential-test.discarded-counterexample` | `crates/contextful-cli/tests/integration/differential.rs::a_disagreement_the_corpus_cannot_hold_is_discarded_loudly` | performed |
 | `assurance.differential-test.harness` | `crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases` | performed |
 | `assurance.differential-test.malformed-bytes` | `crates/contextful-cli/tests/integration/differential.rs::malformed_bytes_reach_every_decider_and_each_decides_them_malformed` | performed |
-| `assurance.differential-test.minimized` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_disagreement_is_minimal_under_field_removal` | performed |
+| `assurance.differential-test.minimized` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_disagreement_is_minimal_under_every_shrinking_step` | performed |
 | `assurance.differential-test.reference-model` | `crates/contextful-cli/tests/integration/differential.rs::the_reference_binary_reads_one_case_and_prints_one_decision` | performed |
 | `assurance.differential-test.run-budget` | `crates/contextful-cli/tests/integration/differential.rs::a_run_past_its_budget_stops` | performed |
 | `assurance.differential-test.seed` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_seed_reproduces_the_case_sequence` | performed |

@@ -52,7 +52,7 @@
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 110
+assurance = 111
 authority = 200
 connector = 171
 corpus = 38

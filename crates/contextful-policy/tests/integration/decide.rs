@@ -1,5 +1,6 @@
-//! The decision module's credential case: a network checkpoint's admission of one
-//! credential against pinned keys, decided from one case text.
+//! The decision module's one byte-level entry point: case texts that do not decode, and
+//! the credential case, a network checkpoint's admission of one credential against pinned
+//! keys.
 
 use crate::support::*;
 use contextful_core::decide::{Decision, CASE_MALFORMED};
@@ -158,4 +159,23 @@ fn a_seeded_mint_encodes_the_same_credential_for_the_same_seed() {
     assert_ne!(one, other);
     assert_eq!(decided(&case(&one, &signer)), verdict("admitted"));
     assert_eq!(decided(&case(&other, &signer)), verdict("admitted"));
+}
+
+#[test]
+fn text_that_is_not_utf8_is_malformed() {
+    for bad in [&b"\xff"[..], b"\xc0\xaf", b"\xed\xa0\x80", b"\xf4\x90\x80\x80", b"\x80"] {
+        let case = [&br#"{"op":"covers_name","pattern":""#[..], bad, br#"","name":"a"}"#].concat();
+        assert_eq!(decide(&case), refused(CASE_MALFORMED), "{case:?}");
+    }
+    assert_eq!(decide(b"not json"), refused(CASE_MALFORMED));
+}
+
+#[test]
+fn an_integer_past_the_unsigned_64_bit_range_is_malformed() {
+    for literal in ["18446744073709551616", "340282366920938463463374607431768211456", "-1", "1e2"] {
+        let case = format!(r#"{{"op":"narrow","parent":[{{"actions":["read"],"tables":["*"],"max_rows":{literal}}}],"child":[]}}"#);
+        assert_eq!(decide(case.as_bytes()), refused(CASE_MALFORMED), "{literal}");
+    }
+    let at_max = r#"{"op":"narrow","parent":[{"actions":["read"],"tables":["*"],"max_rows":18446744073709551615}],"child":[]}"#;
+    assert_eq!(decide(at_max.as_bytes()).verdict, "admitted");
 }

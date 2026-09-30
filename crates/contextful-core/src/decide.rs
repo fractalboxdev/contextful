@@ -2,10 +2,11 @@
 //! coverage, grant narrowing, zone admission and session-zone resolution
 //! (`assurance.structure-tree.decision-module`).
 //!
-//! A case is UTF-8 JSON. It decodes through the domain parsers and reaches the domain
-//! functions; a case that does not decode is `CaseMalformed`, and a parser's refusal is
-//! that refusal. `contextful_policy::decide` adds the credential case and builds the
-//! module, native and for `wasm32-unknown-unknown`.
+//! A case is a decoded JSON value. It decodes through the domain parsers and reaches the
+//! domain functions; a case that does not decode is `CaseMalformed`, and a parser's
+//! refusal is that refusal. `contextful_policy::decide` is the module's one byte-level
+//! entry point: it decodes UTF-8 JSON, adds the credential case on these field decoders,
+//! and builds native and for `wasm32-unknown-unknown`.
 
 use crate::attenuate::{attenuate, Authority, Proposal};
 use crate::enforce::EnforceError;
@@ -69,16 +70,8 @@ impl Decision {
     }
 }
 
-/// The decision on one case text: text that is not UTF-8 or not JSON is malformed.
-pub fn decide(case: &[u8]) -> Decision {
-    match std::str::from_utf8(case).ok().and_then(|text| serde_json::from_str::<Value>(text).ok()) {
-        Some(value) => decide_value(&value),
-        None => Decision::refused(CASE_MALFORMED, None),
-    }
-}
-
 /// A fault decoding a case: its shape, or a domain parser's refusal.
-enum Fault {
+pub enum Fault {
     Malformed,
     Refused(AuthorityError),
     Enforce(EnforceError),
@@ -96,7 +89,19 @@ impl From<AuthorityError> for Fault {
     }
 }
 
-type Decoded<T> = Result<T, Fault>;
+/// A decoded field, or the fault that stops the case.
+pub type Decoded<T> = Result<T, Fault>;
+
+impl Fault {
+    /// The decision a fault ends its case with.
+    pub fn decision(self) -> Decision {
+        match self {
+            Fault::Malformed => Decision::refused(CASE_MALFORMED, None),
+            Fault::Refused(e) => refusal(&e),
+            Fault::Enforce(e) => Decision::refused(e.identifier(), None),
+        }
+    }
+}
 
 /// The error identifier an [`AuthorityError`] carries at the head of its `Display`.
 fn identifier(e: &AuthorityError) -> String {
@@ -105,12 +110,7 @@ fn identifier(e: &AuthorityError) -> String {
 
 /// The decision on one decoded case.
 pub fn decide_value(case: &Value) -> Decision {
-    match decide_case(case) {
-        Ok(d) => d,
-        Err(Fault::Malformed) => Decision::refused(CASE_MALFORMED, None),
-        Err(Fault::Refused(e)) => refusal(&e),
-        Err(Fault::Enforce(e)) => Decision::refused(e.identifier(), None),
-    }
+    decide_case(case).unwrap_or_else(Fault::decision)
 }
 
 /// The refusal an [`AuthorityError`] decides: its identifier, and the widened dimension
@@ -171,27 +171,28 @@ fn decide_case(case: &Value) -> Decoded<Decision> {
 }
 
 /// A present, non-null field.
-fn field<'a>(obj: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
+pub fn field<'a>(obj: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
     obj.get(key).filter(|v| !v.is_null())
 }
 
-fn required<'a>(obj: &'a Map<String, Value>, key: &str) -> Decoded<&'a Value> {
+/// A present, non-null field, else a malformed case.
+pub fn required<'a>(obj: &'a Map<String, Value>, key: &str) -> Decoded<&'a Value> {
     field(obj, key).ok_or(Fault::Malformed)
 }
 
-fn string(v: &Value) -> Decoded<&str> {
+pub fn string(v: &Value) -> Decoded<&str> {
     v.as_str().ok_or(Fault::Malformed)
 }
 
-fn strings(v: &Value) -> Decoded<Vec<String>> {
+pub fn strings(v: &Value) -> Decoded<Vec<String>> {
     v.as_array().ok_or(Fault::Malformed)?.iter().map(|s| string(s).map(str::to_string)).collect()
 }
 
-fn unsigned(v: &Value) -> Decoded<u64> {
+pub fn unsigned(v: &Value) -> Decoded<u64> {
     v.as_u64().ok_or(Fault::Malformed)
 }
 
-fn optional<'a, T>(obj: &'a Map<String, Value>, key: &str, f: impl Fn(&'a Value) -> Decoded<T>) -> Decoded<Option<T>> {
+pub fn optional<'a, T>(obj: &'a Map<String, Value>, key: &str, f: impl Fn(&'a Value) -> Decoded<T>) -> Decoded<Option<T>> {
     field(obj, key).map(f).transpose()
 }
 

@@ -1,32 +1,13 @@
-//! The decision module's case vocabulary: one case text in, one decision out.
+//! The decision module's domain cases: one decoded case in, one decision out.
 
-use contextful_core::decide::{decide, Decision, CASE_MALFORMED};
+use contextful_core::decide::{decide_value, Decision, CASE_MALFORMED};
 
 fn decided(case: &[u8]) -> Decision {
-    decide(case)
+    decide_value(&serde_json::from_slice(case).unwrap())
 }
 
 fn malformed() -> Decision {
     Decision::refused(CASE_MALFORMED, None)
-}
-
-#[test]
-fn text_that_is_not_utf8_is_malformed() {
-    for bad in [&b"\xff"[..], b"\xc0\xaf", b"\xed\xa0\x80", b"\xf4\x90\x80\x80", b"\x80"] {
-        let case = [&br#"{"op":"covers_name","pattern":""#[..], bad, br#"","name":"a"}"#].concat();
-        assert_eq!(decided(&case), malformed(), "{case:?}");
-    }
-    assert_eq!(decided(b"not json"), malformed());
-}
-
-#[test]
-fn an_integer_past_the_unsigned_64_bit_range_is_malformed() {
-    for literal in ["18446744073709551616", "340282366920938463463374607431768211456", "-1", "1e2"] {
-        let case = format!(r#"{{"op":"narrow","parent":[{{"actions":["read"],"tables":["*"],"max_rows":{literal}}}],"child":[]}}"#);
-        assert_eq!(decided(case.as_bytes()), malformed(), "{literal}");
-    }
-    let at_max = r#"{"op":"narrow","parent":[{"actions":["read"],"tables":["*"],"max_rows":18446744073709551615}],"child":[]}"#;
-    assert_eq!(decided(at_max.as_bytes()).verdict, "admitted");
 }
 
 #[test]

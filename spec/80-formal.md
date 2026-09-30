@@ -218,7 +218,7 @@ The executable reference models, the case generators, the minimized counterexamp
   *because a green run is evidence over the generated classes, not an equivalence proof*
 - `malformed-bytes` — The malformed class draws case texts carrying invalid UTF-8 or an integer literal outside the unsigned 64-bit range, handed as bytes to every decider, and each decides such a text malformed.
   *because a 32-bit WebAssembly build and a 64-bit native build part ways first at byte decoding and integer width*
-- `minimized` — A disagreement is shrunk until removing any further field makes the two agree, and the minimized case is recorded.
+- `minimized` — A disagreement is shrunk until no single field removal, string shortening or byte removal keeps any two of the three decisions apart, and the minimized case is recorded.
 - `corpus-replay` — Every counterexample-corpus case replays before any freshly generated case.
 - `corpus-entries` — The counterexample corpus retains at most 256 entries, evicting the oldest case a fresh seed reproduces.
 - `run-budget` — One invocation, corpus replay included, completes within 300 s.
