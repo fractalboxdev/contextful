@@ -1082,6 +1082,7 @@ version = "0.5.0"
 dependencies = [
  "contextful-core",
  "contextful-eval",
+ "contextful-outbound",
  "serde_json",
  "tempfile",
  "ureq",

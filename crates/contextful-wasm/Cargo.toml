@@ -26,8 +26,9 @@ wasmtime = { version = "49", default-features = false, features = ["anyhow", "as
 wasmtime-wasi = { version = "49", default-features = false, features = ["p2"] }
 wasmtime-wasi-http = { version = "49", default-features = false, features = ["p2"] }
 
+# No `default` feature, as in `contextful-outbound`: every build selection resolves the
+# package under one feature set, and the binary names `transport-ureq` itself.
 [features]
-default = ["transport-ureq"]
 transport-ureq = ["contextful-outbound/transport-ureq"]
 # The interpreted target: components compile to Pulley bytecode and run without
 # executable memory, for processes under a hardened runtime that refuses JIT.
