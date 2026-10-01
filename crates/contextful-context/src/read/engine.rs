@@ -5,6 +5,7 @@
 use super::fault::ReadFault;
 use contextful_core::read::respond::Cell;
 use contextful_core::read::template::{Bindings, Bound};
+use contextful_core::read::ReadError;
 use contextful_core::time::Instant;
 use contextful_policy::enforce::mask::{Pepper, HASH_BYTES_FUNCTION, HASH_FUNCTION, TOKEN_FUNCTION};
 use contextful_policy::enforce::session::{Session, TENANT_RELATION};
@@ -128,8 +129,9 @@ impl SqlEngine {
     }
 
     /// An unlocked connection for operator text, which runs raw
-    /// (`read.guard.statement-provenance`): local files, table functions and explicit
-    /// `INSTALL`/`LOAD` stay reachable, and no extension autoinstalls or autoloads.
+    /// (`read.guard.statement-provenance`): local files and
+    /// table functions stay reachable, and no extension installs, loads or autoloads
+    /// (`assurance.build.runtime-extension-load`).
     pub fn raw() -> Result<SqlEngine, ReadFault> {
         SqlEngine::connect()
     }
@@ -138,38 +140,31 @@ impl SqlEngine {
     /// private connection that runs none of them. Preparing multi-statement text on a
     /// connection executes every statement but the last, so the count precedes any run.
     pub fn statement_count(sql: &str) -> Result<u64, ReadFault> {
+        Ok(parsed(sql)?.len() as u64)
+    }
+
+    /// Refuse text holding an extension statement — `LOAD`, `INSTALL` or `UPDATE
+    /// EXTENSIONS` — before any of it runs (`assurance.build.runtime-extension-load`).
+    fn refuse_extension_statement(sql: &str) -> Result<(), ReadFault> {
         use duckdb::ffi;
-        let text = std::ffi::CString::new(sql).map_err(|e| ReadFault::Engine(format!("the statement holds a NUL byte: {e}")))?;
-        let mut db: ffi::duckdb_database = std::ptr::null_mut();
-        let mut con: ffi::duckdb_connection = std::ptr::null_mut();
-        let mut extracted: ffi::duckdb_extracted_statements = std::ptr::null_mut();
-        // SAFETY: each handle is created here, checked before use, and released once below
-        // whether or not the calls that follow it succeed.
-        unsafe {
-            if ffi::duckdb_open(std::ptr::null(), &mut db) != ffi::DuckDBSuccess {
-                ffi::duckdb_close(&mut db);
-                return Err(ReadFault::Engine("opening the statement parser failed".into()));
-            }
-            if ffi::duckdb_connect(db, &mut con) != ffi::DuckDBSuccess {
-                ffi::duckdb_disconnect(&mut con);
-                ffi::duckdb_close(&mut db);
-                return Err(ReadFault::Engine("connecting the statement parser failed".into()));
-            }
-            let count = ffi::duckdb_extract_statements(con, text.as_ptr(), &mut extracted);
-            let error = if count == 0 {
-                let e = ffi::duckdb_extract_statements_error(extracted);
-                (!e.is_null()).then(|| std::ffi::CStr::from_ptr(e).to_string_lossy().into_owned())
-            } else {
-                None
-            };
-            ffi::duckdb_destroy_extracted(&mut extracted);
-            ffi::duckdb_disconnect(&mut con);
-            ffi::duckdb_close(&mut db);
-            match error {
-                Some(e) => Err(ReadFault::Engine(e)),
-                None => Ok(count),
-            }
+        let kinds = match parsed(sql) {
+            Ok(kinds) => kinds,
+            // Text the parser rejects runs nowhere; the engine reports it on the run.
+            Err(_) => return Ok(()),
+        };
+        let loads = kinds.iter().any(|k| {
+            matches!(
+                *k,
+                Some(ffi::duckdb_statement_type_DUCKDB_STATEMENT_TYPE_LOAD) | Some(ffi::duckdb_statement_type_DUCKDB_STATEMENT_TYPE_UPDATE_EXTENSIONS)
+            )
+        });
+        if loads {
+            return Err(extension_refused(format!(
+                "`{}` loads or installs an extension; the parquet and json functions link into this binary, and a read loads none",
+                sql.trim()
+            )));
         }
+        Ok(())
     }
 
     /// A connection for one session: the mask functions holding the pepper, the subject
@@ -230,7 +225,8 @@ impl SqlEngine {
     /// Execute operator text that returns no rows, such as the `COPY` a model build
     /// materializes through.
     pub(crate) fn execute(&self, sql: &str) -> Result<(), ReadFault> {
-        self.conn.execute_batch(sql).map_err(fault)
+        SqlEngine::refuse_extension_statement(sql)?;
+        self.conn.execute_batch(sql).map_err(engine_fault)
     }
 
     /// The engine's own serialization of `sql`, which the guard walks
@@ -249,14 +245,15 @@ impl SqlEngine {
     /// Run `sql`, reading at most `fetch` rows as the engine's own values. Each
     /// placeholder takes the value bound under the identifier the engine names it by.
     pub(crate) fn run_values(&self, sql: &str, parameters: &Bindings, fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Engine>>), ReadFault> {
-        let mut stmt = self.conn.prepare(sql).map_err(fault)?;
+        SqlEngine::refuse_extension_statement(sql)?;
+        let mut stmt = self.conn.prepare(sql).map_err(engine_fault)?;
         let values: Vec<Engine> = (1..=stmt.parameter_count())
             .map(|i| {
                 let name = stmt.parameter_name(i).map_err(fault)?;
                 parameters.get(&name).map(bound).ok_or_else(|| ReadFault::Engine(format!("placeholder `{name}` carries no bound value")))
             })
             .collect::<Result<_, _>>()?;
-        let mut rows = stmt.query(params_from_iter(values)).map_err(fault)?;
+        let mut rows = stmt.query(params_from_iter(values)).map_err(engine_fault)?;
         let mut out = Vec::new();
         let mut columns = Vec::new();
         while fetch.is_none_or(|f| (out.len() as u64) < f) {
@@ -272,6 +269,72 @@ impl SqlEngine {
             columns = rows.as_ref().map(|s| s.column_names()).unwrap_or_default();
         }
         Ok((columns, out))
+    }
+}
+
+/// The engine's message for a function or type an unloaded extension provides, which
+/// with autoloading off names the extension instead of loading it.
+const UNLOADED_EXTENSION: &str = "but it exists in the ";
+
+fn extension_refused(message: String) -> ReadFault {
+    ReadError::ExtensionAutoloadRefused(message).into()
+}
+
+/// An engine error, refused as [`ReadError::ExtensionAutoloadRefused`] where the statement
+/// reached for an extension this binary does not link.
+fn engine_fault(e: duckdb::Error) -> ReadFault {
+    let message = e.to_string();
+    if message.contains(UNLOADED_EXTENSION) && message.contains(" extension") {
+        let first = message.lines().next().unwrap_or_default().to_string();
+        return extension_refused(format!("{first} A read loads no extension at run time."));
+    }
+    ReadFault::Engine(message)
+}
+
+/// The statements the engine's parser extracts from `sql`, each with the kind preparing
+/// it on a private, empty connection reports, or `None` where it does not prepare there.
+/// Nothing runs.
+fn parsed(sql: &str) -> Result<Vec<Option<duckdb::ffi::duckdb_statement_type>>, ReadFault> {
+    use duckdb::ffi;
+    let text = std::ffi::CString::new(sql).map_err(|e| ReadFault::Engine(format!("the statement holds a NUL byte: {e}")))?;
+    let mut db: ffi::duckdb_database = std::ptr::null_mut();
+    let mut con: ffi::duckdb_connection = std::ptr::null_mut();
+    let mut extracted: ffi::duckdb_extracted_statements = std::ptr::null_mut();
+    // SAFETY: each handle is created here, checked before use, and released once below
+    // whether or not the calls that follow it succeed.
+    unsafe {
+        if ffi::duckdb_open(std::ptr::null(), &mut db) != ffi::DuckDBSuccess {
+            ffi::duckdb_close(&mut db);
+            return Err(ReadFault::Engine("opening the statement parser failed".into()));
+        }
+        if ffi::duckdb_connect(db, &mut con) != ffi::DuckDBSuccess {
+            ffi::duckdb_disconnect(&mut con);
+            ffi::duckdb_close(&mut db);
+            return Err(ReadFault::Engine("connecting the statement parser failed".into()));
+        }
+        let count = ffi::duckdb_extract_statements(con, text.as_ptr(), &mut extracted);
+        let result = if count == 0 {
+            let e = ffi::duckdb_extract_statements_error(extracted);
+            let e = (!e.is_null()).then(|| std::ffi::CStr::from_ptr(e).to_string_lossy().into_owned());
+            match e {
+                Some(e) => Err(ReadFault::Engine(e)),
+                None => Ok(Vec::new()),
+            }
+        } else {
+            Ok((0..count)
+                .map(|i| {
+                    let mut prepared: ffi::duckdb_prepared_statement = std::ptr::null_mut();
+                    let kind = (ffi::duckdb_prepare_extracted_statement(con, extracted, i, &mut prepared) == ffi::DuckDBSuccess)
+                        .then(|| ffi::duckdb_prepared_statement_type(prepared));
+                    ffi::duckdb_destroy_prepare(&mut prepared);
+                    kind
+                })
+                .collect())
+        };
+        ffi::duckdb_destroy_extracted(&mut extracted);
+        ffi::duckdb_disconnect(&mut con);
+        ffi::duckdb_close(&mut db);
+        result
     }
 }
 
