@@ -99,7 +99,7 @@ const DECODE: &str = "contextful-decode";
 const DECODE_BANNED: [&str; 7] = [RUNTIME, "ureq", "hyper", "reqwest", "rustls", "curl", "tokio"];
 
 /// Model-vendor SDKs no workspace crate declares (`topology.compose.vendor-sdk`).
-const VENDOR_SDKS: [&str; 12] = [
+pub(crate) const VENDOR_SDKS: [&str; 12] = [
     "async-openai",
     "openai",
     "openai-api-rs",
@@ -115,7 +115,7 @@ const VENDOR_SDKS: [&str; 12] = [
 ];
 
 /// JavaScript runtimes no profile links (`topology.compose.script-runtime`).
-const SCRIPT_RUNTIMES: [&str; 9] =
+pub(crate) const SCRIPT_RUNTIMES: [&str; 9] =
     ["deno_core", "deno_runtime", "v8", "rusty_v8", "boa_engine", "rquickjs", "quickjs*", "js-sandbox", "mozjs"];
 
 /// Run-path and read-path crates of the crate map. The tree holds no crossing crate, so
@@ -126,7 +126,7 @@ const READ_PATH: [&str; 5] = ["contextful-context", "contextful-memory", "contex
 
 /// The binary crate, the one package that may link the exchange, and only while its
 /// source reaches [`EXCHANGE_MODULE`] (`topology.package.exchange-optional`).
-const BINARY: &str = "contextful-cli";
+pub(crate) const BINARY: &str = "contextful-cli";
 
 /// The path through which the binary wires `authority.exchange.surface`.
 const EXCHANGE_MODULE: &str = "contextful_policy::exchange";

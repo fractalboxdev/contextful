@@ -1,0 +1,42 @@
+# The crate-graph stage's deny list (`assurance.gate.dependency-deny`): one entry per crate a
+# profile-wide dependency refusal names, its reason that refusal's clause id
+# (`assurance.gate.deny-list`). `contextful-ci deny` holds this file to the refusals and runs
+# `cargo deny --locked check bans` once per profile feature of the binary.
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"
+deny = [
+    # Model-vendor SDKs.
+    { crate = "async-openai", reason = "topology.compose.vendor-sdk" },
+    { crate = "openai", reason = "topology.compose.vendor-sdk" },
+    { crate = "openai-api-rs", reason = "topology.compose.vendor-sdk" },
+    { crate = "anthropic", reason = "topology.compose.vendor-sdk" },
+    { crate = "anthropic-sdk", reason = "topology.compose.vendor-sdk" },
+    { crate = "misanthropy", reason = "topology.compose.vendor-sdk" },
+    { crate = "clust", reason = "topology.compose.vendor-sdk" },
+    { crate = "google-generative-ai", reason = "topology.compose.vendor-sdk" },
+    { crate = "genai", reason = "topology.compose.vendor-sdk" },
+    { crate = "ollama-rs", reason = "topology.compose.vendor-sdk" },
+    { crate = "mistralai-client", reason = "topology.compose.vendor-sdk" },
+    { crate = "cohere-rust", reason = "topology.compose.vendor-sdk" },
+    # JavaScript runtimes; a `quickjs*` name stays with `contextful-ci topology`'s prefix match.
+    { crate = "deno_core", reason = "topology.compose.script-runtime" },
+    { crate = "deno_runtime", reason = "topology.compose.script-runtime" },
+    { crate = "v8", reason = "topology.compose.script-runtime" },
+    { crate = "rusty_v8", reason = "topology.compose.script-runtime" },
+    { crate = "boa_engine", reason = "topology.compose.script-runtime" },
+    { crate = "rquickjs", reason = "topology.compose.script-runtime" },
+    { crate = "js-sandbox", reason = "topology.compose.script-runtime" },
+    { crate = "mozjs", reason = "topology.compose.script-runtime" },
+    # The CRDT library, admitted in the control profile alone.
+    { crate = "loro", reason = "topology.package.crdt-leak" },
+    # Backtracking regular-expression engines.
+    { crate = "fancy-regex", reason = "assurance.build.dependency-allowlist" },
+    { crate = "pcre2", reason = "assurance.build.dependency-allowlist" },
+    { crate = "onig", reason = "assurance.build.dependency-allowlist" },
+]
+# A parser without its depth limit (`assurance.build.dependency-allowlist`).
+features = [
+    { crate = "serde_json", deny = ["unbounded_depth"] },
+]

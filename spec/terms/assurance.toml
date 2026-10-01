@@ -50,9 +50,11 @@ TestNotFirst                     = { clause = "assurance.test.test-first", gloss
 AcceptanceLinksEngine            = { clause = "assurance.test.acceptance-surface", gloss = "The acceptance package depending on a workspace package." }
 ExtensionAutoloadRefused         = { clause = "assurance.build.runtime-extension-load", gloss = "A read path loading a query-engine extension into a statically linked binary." }
 PackageLicenceMissing            = { clause = "assurance.build.licence-field", gloss = "A workspace package whose manifest declares no licence, or one other than Apache-2.0." }
+DependencyAllowlistViolation     = { clause = "assurance.build.dependency-allowlist", gloss = "A profile graph reaching a backtracking regular-expression engine or a parser with its depth limit off." }
 SecretPlaintext                  = { clause = "assurance.gate.secret-ciphertext", gloss = "A tracked dotenv key holding a value other than dotenvx ciphertext, or a tracked private-key file." }
 SecretScopeMissing               = { clause = "assurance.gate.secret-scope", gloss = "A tracked dotenv key with no comment above it stating what it grants." }
 CrateGraphViolation           = { clause = "assurance.gate.crate-graph", gloss = "A run-path crate reaching a read-path crate outside the three crossing crates." }
+DenyListDrift                    = { clause = "assurance.gate.deny-list", gloss = "A `deny.toml` entry missing for, or absent from, the profile-wide dependency refusals." }
 EnforceUnmediatedPath            = { clause = "assurance.gate.row-token", gloss = "A row-returning path reaching stored rows outside a registered relation." }
 UnconfiguredEgress               = { clause = "assurance.gate.unconfigured-egress", gloss = "An outbound call a default configuration reaches without operator configuration." }
 EnforceInterpolatedSubjectClaim  = { clause = "assurance.gate.interpolated-claim", gloss = "A subject claim formatted into SQL text in a runtime crate." }
