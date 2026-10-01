@@ -285,6 +285,8 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *because a scheduled rotation ahead of its cadence churns every verifier's pins with nothing withdrawn*
 - `unrecorded-key` — A rotation without `--compromise` of an issuer key the key-set ledger does not date raises `IssuerKeyUnrecorded`; `contextful token record --since` dates it.
   *because an undated key otherwise rotates at once, skipping the cadence the ledger enforces*
+- `bearer-cap-fixed` — No issuance policy, face or command setting raises the cap {{authority.verify.bearer-lifetime}} sets; a credential living longer admits over a network only bound to a holder key.
+  *A-authority*
 
 unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the posture bind table write verbs alone? owner: authority affects: authority.issue
 
@@ -404,8 +406,18 @@ unsettled: How does a bumped epoch reach a checkpoint on another node before the
 
 Trading a verified external assertion for a scoped credential under injected verifying material and a declared policy.
 
-- `surface` — `contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`.
+- `surface` — `contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`. The command reads the assertion from `--jwt` or standard input, and a holder proof from `--dpop`.
   *A-authority*
+- `wire` — An exchange request body is the JSON object `{"jwt": "<assertion>"}`, which the command line builds from its assertion; a body of any other shape raises `ExchangeRequestMalformed` and mints nothing. A served face answers a mint `{"token": "<credential>"}`.
+  *because the command line and every served face parse one body through one function, so a refusal reads the same on both*
+- `body-ceiling` — An exchange request body holds at most 64 KiB; a longer body raises `ExchangeBodyTooLarge`, mints nothing and is not parsed.
+  *because an assertion is a few KiB, and parsing an unbounded body is work an unauthenticated caller spends*
+- `unconfigured` — An exchange in a project declaring no exchange policy raises `ExchangeUnconfigured`, naming `.contextful/exchange/policy.toml`, before the body is read.
+  *because an unconfigured project exposes no exchange, whatever a caller sends*
+- `status-map` — Over HTTP, {{authority.exchange.unconfigured}} answers 404, {{authority.exchange.wire}} and {{authority.exchange.holder-proof-invalid}} 400, {{authority.exchange.body-ceiling}} 413, {{authority.exchange.material-missing}} 503, {{authority.exchange.assertion-invalid}} 401, and any other refusal 403; every refusal body is `{"error": {"http", "identifier", "message"}}`.
+  *because a caller repairs a 400 or 413, retries a 503, re-authenticates on a 401, and repairs nothing on a 403*
+- `signing-fault` — Over HTTP, {{authority.issue.missing-key}}, {{authority.issue.unresolvable-key}}, {{authority.issue.algorithm-mismatch}} or {{authority.issue.replica-mint}} during an exchange answers 500, the body naming the identifier and withholding the refusal's detail.
+  *because the face's operator repairs its configuration, and the detail describes the face's keys to an unauthenticated caller*
 - `policy` — An exchange policy declares `expected_iss`, optional `expected_aud`, `subject_map`, `tenant_claim`, `role_claim`, `role_grants`, `default_grants`, `ttl_secs`, `minted_iss` and `minted_aud`.
   *A-authority*
 - `injected-material` — Verifying material is operator-injected: a shared secret, an RS256 public key in PEM form, or a key-set document selected by the assertion's `kid`. The exchange makes no network call.
@@ -427,6 +439,16 @@ Trading a verified external assertion for a scoped credential under injected ver
 - `per-reader` — An embedding application holds no project-wide credential; per request it exchanges its signed-in reader's assertion for that reader's short-lived credential and reads as them.
   *A-authority*
 - `no-cross-reader` — An exchanged credential serves only the reader it was minted for.
+  *A-authority*
+- `holder-binding` — An exchange request carrying a `DPoP` proof over `POST /auth/exchange` and its body mints a credential whose `cnf.jkt` is the proof key's thumbprint, the proof checked as {{authority.verify.possession-binding}}.
+  *A-authority*
+- `bearer-mint` — An exchange request carrying no proof mints a credential with no confirmation claim, its lifetime clamped by {{authority.exchange.lifetime-ceiling}}, so a network face admits it under {{authority.verify.bearer-lifetime}}.
+  *A-authority*
+- `holder-proof-invalid` — An exchange request whose proof fails any check of {{authority.exchange.holder-binding}}, a replayed nonce included, raises `ExchangeHolderProofInvalid` and mints nothing.
+  *because a proof the face cannot verify proves no key, and a bearer minted in its place hands replayable bytes to a caller asking for a bound credential*
+- `refresh` — A holder renews a served-face credential by exchanging a fresh assertion for a new credential with its own identifier and a full lifetime from the exchange instant.
+  *A-authority*
+- `no-extension` — No surface extends a minted credential's expiry: a minted credential presented as the exchange assertion raises {{authority.exchange.assertion-invalid}}, and {{authority.attenuate.expiry-extended}} bounds every derived child.
   *A-authority*
 
 An embedding application reading as its signed-in reader:

@@ -13843,6 +13843,17 @@
       "line": 286
     },
     {
+      "id": "authority.issue.bearer-cap-fixed",
+      "contract": "authority",
+      "operation": "issue",
+      "subject": "bearer-cap-fixed",
+      "kind": "behavior",
+      "statement": "No issuance policy, face or command setting raises the cap {{authority.verify.bearer-lifetime}} sets; a credential living longer admits over a network only bound to a holder key.",
+      "why": "A-authority",
+      "file": "spec/50-authority.md",
+      "line": 288
+    },
+    {
       "id": "authority.verify.admitted-authority",
       "contract": "authority",
       "operation": "verify",
@@ -13851,7 +13862,7 @@
       "statement": "Verification yields an admitted-authority value carrying the normalized subject tuple and its grants. Every read surface and row-landing effect takes that value as an argument; nothing downstream re-parses a credential or reads ambient state.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 295
+      "line": 297
     },
     {
       "id": "authority.verify.write-verbs",
@@ -13862,7 +13873,7 @@
       "statement": "`context land`, `run start` and `pipeline run` are the table write verbs. Each admits its accompanying credential before its first effect and stamps that credential's `on_behalf_of` as every landed row's `_authored_by`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 297
+      "line": 299
     },
     {
       "id": "authority.verify.write-commit",
@@ -13873,7 +13884,7 @@
       "statement": "A credentialed table write reads its denylist afresh and checks expiry immediately before each commit; a credential revoked or lapsed since admission commits nothing, as {{authority.revoke.revoked}} and {{authority.verify.expired}}.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 299
+      "line": 301
     },
     {
       "id": "authority.verify.no-bypass-constructor",
@@ -13884,7 +13895,7 @@
       "statement": "The admitted-authority type has no constructor that produces a value without a verification.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 301
+      "line": 303
     },
     {
       "id": "authority.verify.effect-boundary",
@@ -13895,7 +13906,7 @@
       "statement": "A statement's start and each commit are effect boundaries. Each boundary re-reads expiry, revocation and policy version against the carried value; a lapse between boundaries stops the effect at the next one.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 303
+      "line": 305
     },
     {
       "id": "authority.verify.format-interface",
@@ -13906,7 +13917,7 @@
       "statement": "The credential format sits behind one interface of issue, attenuate, verify and introspect; no enforcement call site names a credential type.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 305
+      "line": 307
     },
     {
       "id": "authority.verify.bad-signature",
@@ -13917,7 +13928,7 @@
       "statement": "A credential with any block signature failing against a pinned key raises `SignatureInvalid` and admits nothing, no verified prefix included.",
       "why": "because a partially verified chain is an unauthenticated credential, and admitting its prefix hands out authority nobody signed as presented",
       "file": "spec/50-authority.md",
-      "line": 307
+      "line": 309
     },
     {
       "id": "authority.verify.audience-mismatch",
@@ -13928,7 +13939,7 @@
       "statement": "A checkpoint declaring an expected audience raises `AudienceMismatch` for a credential with a different audience or none; a checkpoint declaring none performs no audience check.",
       "why": "because a credential minted for one store is otherwise replayable against another; the undeclared case is local development",
       "file": "spec/50-authority.md",
-      "line": 309
+      "line": 311
     },
     {
       "id": "authority.verify.timestamps",
@@ -13939,7 +13950,7 @@
       "statement": "Every checkpoint decodes timestamps into UTC instants under one grammar and compares instants.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "authority.verify.malformed-timestamp",
@@ -13950,7 +13961,7 @@
       "statement": "A timestamp that does not decode under that grammar raises `TimestampMalformed` at every checkpoint alike.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 313
+      "line": 315
     },
     {
       "id": "authority.verify.expired",
@@ -13961,7 +13972,7 @@
       "statement": "A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 315
+      "line": 317
     },
     {
       "id": "authority.verify.possession-binding",
@@ -13972,7 +13983,7 @@
       "statement": "A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce; a credential carrying none requires no proof.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 317
+      "line": 319
     },
     {
       "id": "authority.verify.possession-invalid",
@@ -13983,7 +13994,7 @@
       "statement": "A request whose proof does not verify against the confirmation thumbprint raises `PossessionProofInvalid`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 319
+      "line": 321
     },
     {
       "id": "authority.verify.replay-window",
@@ -13994,7 +14005,7 @@
       "statement": "A proof issued more than 300 s before the checkpoint clock is refused as {{authority.verify.possession-invalid}}; the nonce cache retains each nonce for that window.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "authority.verify.clock-skew",
@@ -14005,7 +14016,7 @@
       "statement": "A proof issued more than 30 s after the checkpoint clock is refused as {{authority.verify.possession-invalid}}.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 323
+      "line": 325
     },
     {
       "id": "authority.verify.replayed-nonce",
@@ -14016,7 +14027,7 @@
       "statement": "A proof whose nonce repeats inside the replay window raises `PossessionProofReplayed`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 325
+      "line": 327
     },
     {
       "id": "authority.verify.local-transport",
@@ -14027,7 +14038,7 @@
       "statement": "A local transport is a stdio pipe the checkpoint inherited from the process that spawned it, or a Unix socket; every other transport is a network transport.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 327
+      "line": 329
     },
     {
       "id": "authority.verify.local-holder-proof",
@@ -14038,7 +14049,7 @@
       "statement": "On a local transport, a credential whose confirmation claim holds a thumbprint admits only with a proof as {{authority.verify.possession-binding}}; the peer fallback never applies to it, and a missing or failing proof is refused as {{authority.verify.possession-invalid}}.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 329
+      "line": 331
     },
     {
       "id": "authority.verify.local-peer-fallback",
@@ -14049,7 +14060,7 @@
       "statement": "On a local transport, a credential with no confirmation claim admits only through the operating system's peer authentication: an inherited stdio pipe, or a socket peer whose kernel-reported uid equals the checkpoint process's uid.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 331
+      "line": 333
     },
     {
       "id": "authority.verify.peer-mismatch",
@@ -14060,7 +14071,7 @@
       "statement": "A socket peer presenting a credential with no confirmation claim, whose kernel-reported uid differs from the checkpoint process's uid or which the platform cannot report, raises `TransportPeerMismatch` and admits nothing.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 333
+      "line": 335
     },
     {
       "id": "authority.verify.network-bearer",
@@ -14071,7 +14082,7 @@
       "statement": "A network checkpoint admits a credential with no confirmation claim as a bearer when it names the checkpoint's declared audience and meets {{authority.verify.bearer-lifetime}}; the peer fallback never applies over a network.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 335
+      "line": 337
     },
     {
       "id": "authority.verify.bearer-lifetime",
@@ -14082,7 +14093,7 @@
       "statement": "A bearer whose expiry falls more than 3600 s after its issue instant raises `BearerLifetimeExceeded` at a network checkpoint and admits nothing; its holder refreshes through {{authority.exchange.surface}}.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 337
+      "line": 339
     },
     {
       "id": "authority.verify.connection-scoped",
@@ -14093,7 +14104,7 @@
       "statement": "A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 339
+      "line": 341
     },
     {
       "id": "authority.verify.nonce-cache",
@@ -14104,7 +14115,7 @@
       "statement": "A checkpoint's nonce cache holds at most 100000 entries; a proof arriving while it is full answers `503` and admits nothing.",
       "why": "because a proof the cache cannot record is a replay it cannot detect",
       "file": "spec/50-authority.md",
-      "line": 341
+      "line": 343
     },
     {
       "id": "authority.verify.public-key-only",
@@ -14115,7 +14126,7 @@
       "statement": "A checkpoint holds public key material and no signing secret, and admits with no call to an issuer, identity provider or policy service.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 343
+      "line": 345
     },
     {
       "id": "authority.verify.key-set",
@@ -14126,7 +14137,7 @@
       "statement": "A checkpoint accepts a set of issuer keys: comma-separated static pins, or a project-published unauthenticated key route returning the current and non-retired versions, opted into per key.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 345
+      "line": 347
     },
     {
       "id": "authority.verify.pin-source",
@@ -14137,7 +14148,7 @@
       "statement": "A command-line checkpoint reads its pins from `--public-key`, else `CONTEXTFUL_ISSUER_PUBKEY`, and its audience from `--audience`, else `CONTEXTFUL_AUDIENCE`. A bare 64-hex pin reads as `ed25519/<hex>`; an unknown scheme prefix is refused as {{authority.verify.key-set-unavailable}}, naming the accepted forms.",
       "why": "because an operator exports the issuer key once per shell, and key tools commonly print a bare Ed25519 key with no scheme prefix",
       "file": "spec/50-authority.md",
-      "line": 347
+      "line": 349
     },
     {
       "id": "authority.verify.key-set-refresh",
@@ -14148,7 +14159,7 @@
       "statement": "A published key set refreshes every 300 s, single-flight, plus one refresh on a signature failure, with failure-forced refreshes throttled.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 349
+      "line": 351
     },
     {
       "id": "authority.verify.key-set-unavailable",
@@ -14159,7 +14170,7 @@
       "statement": "A checkpoint opted into a published key set that obtains none, or holding a malformed pin, raises `KeySetUnavailable`: the engine declines to start and a gateway answers `503`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 351
+      "line": 353
     },
     {
       "id": "authority.verify.key-set-stale",
@@ -14170,7 +14181,7 @@
       "statement": "After a failed fetch the last-known-good set serves while its age since the last successful fetch stays under 1 h; past that the checkpoint raises `KeySetStale`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 353
+      "line": 355
     },
     {
       "id": "authority.revoke.short-lifetime",
@@ -14181,7 +14192,7 @@
       "statement": "A short lifetime is the primary withdrawal: a credential's remaining lifetime bounds its exposure after a provider sign-out or before a denylist entry propagates.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 362
+      "line": 364
     },
     {
       "id": "authority.revoke.denylist",
@@ -14192,7 +14203,7 @@
       "statement": "A checkpoint reads a denylist keyed on credential identifier. An entry ages out once its identifier verifies under no live key version.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 364
+      "line": 366
     },
     {
       "id": "authority.revoke.revocation-id",
@@ -14203,7 +14214,7 @@
       "statement": "Every derivation carries its own revocation identifier, withdrawing one subtree without ending the root it descends from.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 366
+      "line": 368
     },
     {
       "id": "authority.revoke.epoch",
@@ -14214,7 +14225,7 @@
       "statement": "A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 368
+      "line": 370
     },
     {
       "id": "authority.revoke.epoch-store",
@@ -14225,7 +14236,7 @@
       "statement": "A project persists each scope's current epoch and each issuer key version's retirement in `.contextful/keyset.toml` beside the issuer seed; a mint stamps its scope's current epoch, and a checkpoint re-reads the file at each admission.",
       "why": "because a file the checkpoint reads locally keeps a policy service off the admission path, and the seed's directory already holds the issuer's custody",
       "file": "spec/50-authority.md",
-      "line": 370
+      "line": 372
     },
     {
       "id": "authority.revoke.ledger-unavailable",
@@ -14236,7 +14247,7 @@
       "statement": "A checkpoint pointed at a key-set ledger, or that has read one, raises `KeySetLedgerUnavailable` and admits nothing once the file is absent or malformed.",
       "why": "because a vanished ledger read as empty lifts every key retirement and epoch bump",
       "file": "spec/50-authority.md",
-      "line": 372
+      "line": 374
     },
     {
       "id": "authority.revoke.unknown-principal-class",
@@ -14247,7 +14258,7 @@
       "statement": "`contextful token revoke --principal-class` naming neither `delegated` nor `unattributed` raises `RevocationPrincipalClassUnknown` and bumps nothing.",
       "why": "because an epoch under a class no credential carries withdraws nothing while reporting success",
       "file": "spec/50-authority.md",
-      "line": 374
+      "line": 376
     },
     {
       "id": "authority.revoke.revoked",
@@ -14258,7 +14269,7 @@
       "statement": "A credential on the denylist, or carrying an epoch below the current scoped epoch, raises `AuthorityRevoked` at the next effect boundary.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 376
+      "line": 378
     },
     {
       "id": "authority.revoke.compromise",
@@ -14269,7 +14280,7 @@
       "statement": "Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 378
+      "line": 380
     },
     {
       "id": "authority.revoke.rotation-grace",
@@ -14280,7 +14291,7 @@
       "statement": "A rotation policy declares a cadence and a grace window, validated against the persisted issuance policy, during which the retiring key version still verifies.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 380
+      "line": 382
     },
     {
       "id": "authority.revoke.short-grace",
@@ -14291,7 +14302,7 @@
       "statement": "A declared or overridden grace window shorter than the effective issuance ceiling raises `RotationGraceTooShort`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 382
+      "line": 384
     },
     {
       "id": "authority.revoke.immediate-retire",
@@ -14302,7 +14313,7 @@
       "statement": "Immediate retirement removes a key version from the published set and every static pin; a checkpoint drops it at its next refresh.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 384
+      "line": 386
     },
     {
       "id": "authority.revoke.format-withdrawn",
@@ -14313,7 +14324,7 @@
       "statement": "From a declared cutover instant, every admission path raises `CredentialFormatWithdrawn` for a credential in a withdrawn format. Only an explicit declaration restores acceptance.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 386
+      "line": 388
     },
     {
       "id": "authority.exchange.surface",
@@ -14321,10 +14332,65 @@
       "operation": "exchange",
       "subject": "surface",
       "kind": "behavior",
-      "statement": "`contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`.",
+      "statement": "`contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`. The command reads the assertion from `--jwt` or standard input, and a holder proof from `--dpop`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 407
+      "line": 409
+    },
+    {
+      "id": "authority.exchange.wire",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "wire",
+      "kind": "refusal",
+      "statement": "An exchange request body is the JSON object `{\"jwt\": \"<assertion>\"}`, which the command line builds from its assertion; a body of any other shape raises `ExchangeRequestMalformed` and mints nothing. A served face answers a mint `{\"token\": \"<credential>\"}`.",
+      "why": "because the command line and every served face parse one body through one function, so a refusal reads the same on both",
+      "file": "spec/50-authority.md",
+      "line": 411
+    },
+    {
+      "id": "authority.exchange.body-ceiling",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "body-ceiling",
+      "kind": "refusal",
+      "statement": "An exchange request body holds at most 64 KiB; a longer body raises `ExchangeBodyTooLarge`, mints nothing and is not parsed.",
+      "why": "because an assertion is a few KiB, and parsing an unbounded body is work an unauthenticated caller spends",
+      "file": "spec/50-authority.md",
+      "line": 413
+    },
+    {
+      "id": "authority.exchange.unconfigured",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "unconfigured",
+      "kind": "refusal",
+      "statement": "An exchange in a project declaring no exchange policy raises `ExchangeUnconfigured`, naming `.contextful/exchange/policy.toml`, before the body is read.",
+      "why": "because an unconfigured project exposes no exchange, whatever a caller sends",
+      "file": "spec/50-authority.md",
+      "line": 415
+    },
+    {
+      "id": "authority.exchange.status-map",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "status-map",
+      "kind": "behavior",
+      "statement": "Over HTTP, {{authority.exchange.unconfigured}} answers 404, {{authority.exchange.wire}} and {{authority.exchange.holder-proof-invalid}} 400, {{authority.exchange.body-ceiling}} 413, {{authority.exchange.material-missing}} 503, {{authority.exchange.assertion-invalid}} 401, and any other refusal 403; every refusal body is `{\"error\": {\"http\", \"identifier\", \"message\"}}`.",
+      "why": "because a caller repairs a 400 or 413, retries a 503, re-authenticates on a 401, and repairs nothing on a 403",
+      "file": "spec/50-authority.md",
+      "line": 417
+    },
+    {
+      "id": "authority.exchange.signing-fault",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "signing-fault",
+      "kind": "behavior",
+      "statement": "Over HTTP, {{authority.issue.missing-key}}, {{authority.issue.unresolvable-key}}, {{authority.issue.algorithm-mismatch}} or {{authority.issue.replica-mint}} during an exchange answers 500, the body naming the identifier and withholding the refusal's detail.",
+      "why": "because the face's operator repairs its configuration, and the detail describes the face's keys to an unauthenticated caller",
+      "file": "spec/50-authority.md",
+      "line": 419
     },
     {
       "id": "authority.exchange.policy",
@@ -14335,7 +14401,7 @@
       "statement": "An exchange policy declares `expected_iss`, optional `expected_aud`, `subject_map`, `tenant_claim`, `role_claim`, `role_grants`, `default_grants`, `ttl_secs`, `minted_iss` and `minted_aud`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 409
+      "line": 421
     },
     {
       "id": "authority.exchange.injected-material",
@@ -14346,7 +14412,7 @@
       "statement": "Verifying material is operator-injected: a shared secret, an RS256 public key in PEM form, or a key-set document selected by the assertion's `kid`. The exchange makes no network call.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 411
+      "line": 423
     },
     {
       "id": "authority.exchange.minted-grants",
@@ -14357,7 +14423,7 @@
       "statement": "Minted grants come from `role_grants` and `default_grants` alone. A verified role matching no entry earns `default_grants`, which is empty unless declared.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 413
+      "line": 425
     },
     {
       "id": "authority.exchange.tenant",
@@ -14368,7 +14434,7 @@
       "statement": "The assertion claim `tenant_claim` names becomes the tenant scope of every minted grant; no subject member carries tenancy.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 415
+      "line": 427
     },
     {
       "id": "authority.exchange.lifetime-default",
@@ -14379,7 +14445,7 @@
       "statement": "A minted credential lives 900 s where the policy declares no `ttl_secs`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 417
+      "line": 429
     },
     {
       "id": "authority.exchange.lifetime-ceiling",
@@ -14390,7 +14456,7 @@
       "statement": "A configured `ttl_secs` clamps down to 3600 s and never extends.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 419
+      "line": 431
     },
     {
       "id": "authority.exchange.audience",
@@ -14401,7 +14467,7 @@
       "statement": "A minted credential carries `minted_aud`, falling back to the project's persisted default audience.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 421
+      "line": 433
     },
     {
       "id": "authority.exchange.assertion-invalid",
@@ -14412,7 +14478,7 @@
       "statement": "A bad signature, a lapsed assertion, an untrusted issuer or audience, or a mapped claim absent from the assertion raises `ExchangeAssertionInvalid` and mints nothing.",
       "why": "because no credential exists whose subject the assertion did not verify",
       "file": "spec/50-authority.md",
-      "line": 423
+      "line": 435
     },
     {
       "id": "authority.exchange.material-missing",
@@ -14423,7 +14489,7 @@
       "statement": "An exchange configured with no verifying material raises `ExchangeMaterialMissing` and mints nothing.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 425
+      "line": 437
     },
     {
       "id": "authority.exchange.per-reader",
@@ -14434,7 +14500,7 @@
       "statement": "An embedding application holds no project-wide credential; per request it exchanges its signed-in reader's assertion for that reader's short-lived credential and reads as them.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 427
+      "line": 439
     },
     {
       "id": "authority.exchange.no-cross-reader",
@@ -14445,7 +14511,62 @@
       "statement": "An exchanged credential serves only the reader it was minted for.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 429
+      "line": 441
+    },
+    {
+      "id": "authority.exchange.holder-binding",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "holder-binding",
+      "kind": "behavior",
+      "statement": "An exchange request carrying a `DPoP` proof over `POST /auth/exchange` and its body mints a credential whose `cnf.jkt` is the proof key's thumbprint, the proof checked as {{authority.verify.possession-binding}}.",
+      "why": "A-authority",
+      "file": "spec/50-authority.md",
+      "line": 443
+    },
+    {
+      "id": "authority.exchange.bearer-mint",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "bearer-mint",
+      "kind": "behavior",
+      "statement": "An exchange request carrying no proof mints a credential with no confirmation claim, its lifetime clamped by {{authority.exchange.lifetime-ceiling}}, so a network face admits it under {{authority.verify.bearer-lifetime}}.",
+      "why": "A-authority",
+      "file": "spec/50-authority.md",
+      "line": 445
+    },
+    {
+      "id": "authority.exchange.holder-proof-invalid",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "holder-proof-invalid",
+      "kind": "refusal",
+      "statement": "An exchange request whose proof fails any check of {{authority.exchange.holder-binding}}, a replayed nonce included, raises `ExchangeHolderProofInvalid` and mints nothing.",
+      "why": "because a proof the face cannot verify proves no key, and a bearer minted in its place hands replayable bytes to a caller asking for a bound credential",
+      "file": "spec/50-authority.md",
+      "line": 447
+    },
+    {
+      "id": "authority.exchange.refresh",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "refresh",
+      "kind": "behavior",
+      "statement": "A holder renews a served-face credential by exchanging a fresh assertion for a new credential with its own identifier and a full lifetime from the exchange instant.",
+      "why": "A-authority",
+      "file": "spec/50-authority.md",
+      "line": 449
+    },
+    {
+      "id": "authority.exchange.no-extension",
+      "contract": "authority",
+      "operation": "exchange",
+      "subject": "no-extension",
+      "kind": "behavior",
+      "statement": "No surface extends a minted credential's expiry: a minted credential presented as the exchange assertion raises {{authority.exchange.assertion-invalid}}, and {{authority.attenuate.expiry-extended}} bounds every derived child.",
+      "why": "A-authority",
+      "file": "spec/50-authority.md",
+      "line": 451
     },
     {
       "id": "authority.redact.write-time",
@@ -20626,6 +20747,10 @@
       "authority.issue.key-rotation"
     ],
     [
+      "authority.issue.bearer-cap-fixed",
+      "authority.verify.bearer-lifetime"
+    ],
+    [
       "authority.verify.write-commit",
       "authority.revoke.revoked"
     ],
@@ -20664,6 +20789,70 @@
     [
       "authority.verify.pin-source",
       "authority.verify.key-set-unavailable"
+    ],
+    [
+      "authority.exchange.status-map",
+      "authority.exchange.unconfigured"
+    ],
+    [
+      "authority.exchange.status-map",
+      "authority.exchange.wire"
+    ],
+    [
+      "authority.exchange.status-map",
+      "authority.exchange.holder-proof-invalid"
+    ],
+    [
+      "authority.exchange.status-map",
+      "authority.exchange.body-ceiling"
+    ],
+    [
+      "authority.exchange.status-map",
+      "authority.exchange.material-missing"
+    ],
+    [
+      "authority.exchange.status-map",
+      "authority.exchange.assertion-invalid"
+    ],
+    [
+      "authority.exchange.signing-fault",
+      "authority.issue.missing-key"
+    ],
+    [
+      "authority.exchange.signing-fault",
+      "authority.issue.unresolvable-key"
+    ],
+    [
+      "authority.exchange.signing-fault",
+      "authority.issue.algorithm-mismatch"
+    ],
+    [
+      "authority.exchange.signing-fault",
+      "authority.issue.replica-mint"
+    ],
+    [
+      "authority.exchange.holder-binding",
+      "authority.verify.possession-binding"
+    ],
+    [
+      "authority.exchange.bearer-mint",
+      "authority.exchange.lifetime-ceiling"
+    ],
+    [
+      "authority.exchange.bearer-mint",
+      "authority.verify.bearer-lifetime"
+    ],
+    [
+      "authority.exchange.holder-proof-invalid",
+      "authority.exchange.holder-binding"
+    ],
+    [
+      "authority.exchange.no-extension",
+      "authority.exchange.assertion-invalid"
+    ],
+    [
+      "authority.exchange.no-extension",
+      "authority.attenuate.expiry-extended"
     ],
     [
       "authority.redact.before-the-record",
@@ -21826,9 +22015,25 @@
             "clause": "authority.exchange.assertion-invalid",
             "gloss": "An external assertion failing any exchange check."
           },
+          "ExchangeBodyTooLarge": {
+            "clause": "authority.exchange.body-ceiling",
+            "gloss": "An exchange request body past the ceiling."
+          },
+          "ExchangeHolderProofInvalid": {
+            "clause": "authority.exchange.holder-proof-invalid",
+            "gloss": "An exchange request whose holder proof fails verification."
+          },
           "ExchangeMaterialMissing": {
             "clause": "authority.exchange.material-missing",
             "gloss": "An exchange configured with no verifying material."
+          },
+          "ExchangeRequestMalformed": {
+            "clause": "authority.exchange.wire",
+            "gloss": "An exchange request body of any shape but a lone `jwt` string member."
+          },
+          "ExchangeUnconfigured": {
+            "clause": "authority.exchange.unconfigured",
+            "gloss": "An exchange in a project declaring no exchange policy."
           },
           "GrantActionUnknown": {
             "clause": "authority.grant.unknown-action",
@@ -21999,6 +22204,13 @@
             "unit": "iterations",
             "basis": "chosen",
             "gloss": "Evaluator iterations per authorization."
+          },
+          "exchange-body-ceiling": {
+            "clause": "authority.exchange.body-ceiling",
+            "value": 64,
+            "unit": "KiB",
+            "basis": "chosen",
+            "gloss": "Largest exchange request body parsed."
           },
           "exchange-lifetime-ceiling": {
             "clause": "authority.exchange.lifetime-ceiling",

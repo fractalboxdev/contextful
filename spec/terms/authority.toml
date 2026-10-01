@@ -70,6 +70,10 @@ RevocationPrincipalClassUnknown      = { clause = "authority.revoke.unknown-prin
 CredentialFormatWithdrawn            = { clause = "authority.revoke.format-withdrawn", gloss = "A credential in a withdrawn format." }
 ExchangeAssertionInvalid             = { clause = "authority.exchange.assertion-invalid", gloss = "An external assertion failing any exchange check." }
 ExchangeMaterialMissing              = { clause = "authority.exchange.material-missing", gloss = "An exchange configured with no verifying material." }
+ExchangeHolderProofInvalid           = { clause = "authority.exchange.holder-proof-invalid", gloss = "An exchange request whose holder proof fails verification." }
+ExchangeRequestMalformed             = { clause = "authority.exchange.wire", gloss = "An exchange request body of any shape but a lone `jwt` string member." }
+ExchangeBodyTooLarge                 = { clause = "authority.exchange.body-ceiling", gloss = "An exchange request body past the ceiling." }
+ExchangeUnconfigured                 = { clause = "authority.exchange.unconfigured", gloss = "An exchange in a project declaring no exchange policy." }
 EnforcePredicateOutsideGrammar       = { clause = "authority.filter-rows.outside-grammar", gloss = "A row predicate node outside the typed subset." }
 EnforceUnknownClass                  = { clause = "authority.mask.unknown-class", gloss = "A column class outside the class registry." }
 EnforceDigestAloneOnExhaustibleClass = { clause = "authority.mask.digest-alone", gloss = "A keyed hash standing alone over an exhaustible class." }
@@ -109,6 +113,7 @@ key-set-refresh-interval       = { clause = "authority.verify.key-set-refresh", 
 key-set-stale-ceiling          = { clause = "authority.verify.key-set-stale", value = 1, unit = "h", basis = "chosen", gloss = "Age past which a last-known-good key set stops serving." }
 exchange-lifetime-default      = { clause = "authority.exchange.lifetime-default", value = 900, unit = "s", basis = "chosen", gloss = "Minted lifetime where the policy declares none." }
 exchange-lifetime-ceiling      = { clause = "authority.exchange.lifetime-ceiling", value = 3600, unit = "s", basis = "chosen", gloss = "Ceiling a configured minted lifetime clamps to." }
+exchange-body-ceiling          = { clause = "authority.exchange.body-ceiling", value = 64, unit = "KiB", basis = "chosen", gloss = "Largest exchange request body parsed." }
 redaction-rules-per-pipeline   = { clause = "authority.redact.rules-per-pipeline", value = 256, unit = "entries", basis = "chosen", gloss = "Removal rules one pipeline declares." }
 relations-per-session          = { clause = "authority.compose.relations-per-session", value = 1024, unit = "entries", basis = "chosen", gloss = "Registered relations one session holds." }
 row-predicate-size             = { clause = "authority.filter-rows.predicate-size", value = 4, unit = "KiB", basis = "chosen", gloss = "Source text of one row predicate." }

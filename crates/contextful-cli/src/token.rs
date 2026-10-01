@@ -14,12 +14,16 @@ use contextful_core::issue::{
 use contextful_core::revoke::{EpochScope, KeySetLedger, RotationPolicy};
 use contextful_core::ports::{Clock, FixedClock, SigningPort};
 use contextful_core::time::Instant;
+use contextful_core::exchange::ExchangePolicy;
 use contextful_policy::attenuate::{attenuate, Derivation};
+use contextful_policy::exchange::{redeem, Exchange};
 use contextful_policy::issue::{mint, MintClaims, SeedSigner, DEFAULT_SEED_PATH};
 use contextful_policy::keyset::KeySource;
+use contextful_policy::possession::ProofChecker;
 use crate::admit::LedgerFile;
 use contextful_policy::revoke::{mint_epoch, PRINCIPAL_CLASS_DELEGATED, PRINCIPAL_CLASS_UNATTRIBUTED};
 use contextful_policy::verify::{introspect, verify_inherited_pipe, Admission, BEARER_LIFETIME_SECS};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
@@ -158,6 +162,24 @@ pub enum TokenCmd {
         #[arg(long)]
         token: String,
     },
+    /// Trade a signed external assertion for a credential under the project's exchange
+    /// policy; the same exchange a served face answers at `POST /auth/exchange`.
+    Exchange {
+        /// The assertion; absent, read from standard input.
+        #[arg(long)]
+        jwt: Option<String>,
+        /// A holder possession proof over `POST /auth/exchange` and the body
+        /// `{"jwt":"<assertion>"}`; the credential binds the proof key. Absent, the
+        /// credential is a bearer.
+        #[arg(long)]
+        dpop: Option<String>,
+        /// Seed file holding the issuer key.
+        #[arg(long)]
+        issuer_key: Option<PathBuf>,
+        /// Mint instant (RFC 3339); absent reads the system clock.
+        #[arg(long)]
+        now: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -280,6 +302,32 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
         }
         TokenCmd::Introspect { token } => {
             println!("{}", introspect(&token)?.to_json());
+            Ok(())
+        }
+        TokenCmd::Exchange { jwt, dpop, issuer_key, now } => {
+            let assertion = match jwt {
+                Some(jwt) => jwt,
+                None => {
+                    let mut text = String::new();
+                    std::io::stdin().read_to_string(&mut text).context("reading the assertion from standard input")?;
+                    text
+                }
+            };
+            let assertion = assertion.trim();
+            if assertion.is_empty() {
+                bail!("no assertion: pass --jwt or write it to standard input");
+            }
+            let root = Root::find()?;
+            let exchange = configured_exchange(&root.dir)?;
+            let default = root.seed();
+            let signer = SeedSigner::resolve(issuer_key.as_deref().or_else(|| default.exists().then_some(default.as_path())))?;
+            let issuance = root.policy()?;
+            let clock = FixedClock(instant_or_now(now.as_deref())?);
+            let ctx = MintContext { node: NodeRole::Primary, signer: &signer as &dyn SigningPort, clock: &clock as &dyn Clock };
+            // The served faces' wire body, through the same ceiling, parse and proof check.
+            let body = serde_json::json!({ "jwt": assertion }).to_string();
+            let proofs = ProofChecker::new(clock);
+            println!("{}", redeem(exchange.as_ref(), body.as_bytes(), dpop.as_deref(), &proofs, &issuance, &ctx)?);
             Ok(())
         }
     }
@@ -441,6 +489,24 @@ fn rotate(root: &Root, compromise: bool, grace_secs: Option<u64>, now: Option<&s
     write_atomic(&seed, &new.seed(), true)?;
     println!("{new_key}");
     Ok(())
+}
+
+/// The project's configured exchange under `root`: `None` when it declares no policy at
+/// [`ExchangePolicy::PATH`]; an absent material file configures no material.
+pub(crate) fn configured_exchange(root: &Path) -> Result<Option<Exchange>> {
+    let path = root.join(ExchangePolicy::PATH);
+    let policy = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
+    };
+    let key = root.join(ExchangePolicy::VERIFY_KEY_PATH);
+    let material = match std::fs::read(&key) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", key.display())),
+    };
+    Ok(Some(Exchange::from_config(&policy, &material).map_err(|e| anyhow::anyhow!("{e:?}"))?))
 }
 
 fn keygen(root: &Root, out: Option<&Path>, algorithm: &str, now: Option<&str>) -> Result<()> {

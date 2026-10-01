@@ -191,6 +191,43 @@ pub fn verify_proof(
     nonces.record(&claims.jti, iat.plus_secs(PROOF_REPLAY_WINDOW_SECS), now)
 }
 
+/// The RFC 7638 thumbprint of the key a proof's header embeds; the proof is not verified.
+pub fn proof_thumbprint(proof: &str) -> Result<String, ProofRefusal> {
+    let header_b64 = proof.split('.').next().unwrap_or_default();
+    let header: Header = decode_json(header_b64, "header")?;
+    let x: [u8; 32] = B64
+        .decode(&header.jwk.x)
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(|| invalid("the proof key is not a 32-byte Ed25519 public key"))?;
+    Ok(jwk_thumbprint(&x))
+}
+
+/// Admits a request proof against a confirmation thumbprint under one clock and nonce cache.
+pub trait ProofVerifier {
+    fn verify_request(&self, cnf_jkt: &str, proof: &str, request: &ProofRequest<'_>) -> Result<(), ProofRefusal>;
+}
+
+/// A [`ProofVerifier`] owning its clock and nonce cache: the command line's one-shot
+/// verifier, and a served face's where no key checkpoint holds the cache.
+pub struct ProofChecker<C> {
+    clock: C,
+    nonces: std::sync::Mutex<NonceCache>,
+}
+
+impl<C: Clock> ProofChecker<C> {
+    pub fn new(clock: C) -> ProofChecker<C> {
+        ProofChecker { clock, nonces: std::sync::Mutex::new(NonceCache::new()) }
+    }
+}
+
+impl<C: Clock> ProofVerifier for ProofChecker<C> {
+    fn verify_request(&self, cnf_jkt: &str, proof: &str, request: &ProofRequest<'_>) -> Result<(), ProofRefusal> {
+        let mut nonces = self.nonces.lock().unwrap_or_else(|e| e.into_inner());
+        verify_proof(cnf_jkt, proof, request, &self.clock, &mut nonces)
+    }
+}
+
 /// A checkpoint's local nonce cache: each admitted proof's nonce, retained until its
 /// proof leaves the replay window, under the [`NONCE_CACHE_ENTRIES`] bound.
 #[derive(Debug, Clone)]
