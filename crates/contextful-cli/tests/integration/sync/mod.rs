@@ -1,5 +1,5 @@
 //! `contextful sync` through the built binary: the endpoint a `[sync]` block names, its
-//! credentials, and the pull a run, a pipeline or the tool server takes before it reads.
+//! credentials, and the pull a run, a pipeline or either tool server takes before it reads.
 
 mod s3;
 mod without_s3;
@@ -132,9 +132,9 @@ fn mcp_query(dir: &Path) -> Output {
     child.wait_with_output().unwrap()
 }
 
-/// With `[sync] pull_before_run = true`, `run start`, `pipeline run` and `mcp` pull every table of the bucket into
-/// the store before their first read, and a failed pull stops the command.
-// spec: store.pull.before-run@bc38232e
+/// With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the
+/// bucket into the store before their first read, and a failed pull stops the command.
+// spec: store.pull.before-run@e77004a1
 #[test]
 fn a_cold_node_pulls_the_bucket_before_its_run_reads() {
     let bucket = tempfile::tempdir().unwrap();
@@ -180,4 +180,84 @@ fn a_cold_node_pulls_the_bucket_before_its_run_reads() {
     let out = mcp_query(broken.path());
     refused(&out, "SyncEndpointUnsupported");
     assert!(out.stdout.is_empty(), "a server whose pull fails writes no framing");
+
+    a_cold_http_server_pulls_before_it_listens(bucket.path());
+}
+
+/// Start `contextful serve --http` on `dir`; its address once it listens, or its exit
+/// output when it stops before binding.
+fn serve(dir: &Path, public: &str) -> Result<(std::process::Child, String), Output> {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["serve", "--http", "127.0.0.1:0", "--project", "research", "--public-key", public, "--audience", AUD, "--max-in-flight", "4"])
+        .current_dir(dir)
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
+        .env_remove("CONTEXTFUL_AUDIENCE")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut err = BufReader::new(child.stderr.take().unwrap());
+    let mut seen = String::new();
+    let mut line = String::new();
+    while err.read_line(&mut line).unwrap() > 0 {
+        if let Some(addr) = line.trim().strip_prefix("listening on http://").and_then(|a| a.strip_suffix("/mcp")) {
+            return Ok((child, addr.to_string()));
+        }
+        seen.push_str(&line);
+        line.clear();
+    }
+    let mut out = child.wait_with_output().unwrap();
+    out.stderr = seen.into_bytes();
+    Err(out)
+}
+
+/// The issuer key a project serves under and a bearer reading `filings` minted by it.
+fn issue(dir: &Path) -> (String, String) {
+    std::fs::create_dir_all(dir.join(".contextful")).unwrap();
+    std::fs::write(dir.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
+    let public = ok(&cf(dir, &["token", "keygen", "--out", ".contextful/issuer.seed"], &[]));
+    let token = ok(&cf(
+        dir,
+        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "filings", "--ttl", "600"],
+        &[],
+    ));
+    (public, token)
+}
+
+/// `POST /mcp` carrying one `context.query` over `filings` under a bare bearer.
+fn http_query(addr: &str, token: &str) -> Value {
+    use std::io::Read;
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT id FROM filings" } } }).to_string();
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    write!(s, "POST /mcp HTTP/1.1\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).unwrap();
+    serde_json::from_str(raw.split_once("\r\n\r\n").unwrap().1).unwrap()
+}
+
+/// A cold `serve --http` declaring `pull_before_run` answers from the bucket's rows, and
+/// one whose pull fails binds no listener.
+fn a_cold_http_server_pulls_before_it_listens(bucket: &Path) {
+    // A cold network face answers its first query from the bucket's rows.
+    let cold = project("ingest-h", &file_sync(bucket, "pull_before_run = true\n"));
+    let (public, token) = issue(cold.path());
+    let (mut child, addr) = serve(cold.path(), &public).unwrap_or_else(|out| panic!("{}", String::from_utf8_lossy(&out.stderr)));
+    let answer = http_query(&addr, &token);
+    let _ = child.kill();
+    let _ = child.wait();
+    assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["1"]]), "{answer:?}");
+    assert_eq!(files(cold.path()), [LANDED]);
+
+    // A pull that fails refuses the start before the listener binds.
+    let broken = project("ingest-x", "endpoint = \"ftp://objects.example.org\"\nbucket = \"context-team\"\nprefix = \"team\"\npull_before_run = true\n");
+    let (public, _) = issue(broken.path());
+    match serve(broken.path(), &public) {
+        Ok((mut child, addr)) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("a server whose pull fails listened on {addr}");
+        }
+        Err(out) => refused(&out, "SyncEndpointUnsupported"),
+    }
 }

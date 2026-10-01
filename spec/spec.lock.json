@@ -3651,7 +3651,7 @@
       "operation": "pull",
       "subject": "before-run",
       "kind": "behavior",
-      "statement": "With `[sync] pull_before_run = true`, `run start`, `pipeline run` and `mcp` pull every table of the bucket into the store before their first read, and a failed pull stops the command.",
+      "statement": "With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the bucket into the store before their first read, and a failed pull stops the command.",
       "why": "because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs",
       "file": "spec/10-store.md",
       "line": 512
