@@ -44,8 +44,8 @@ fn sbom_names(path: &Path) -> Vec<String> {
     v["components"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect()
 }
 
-/// All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`; no profile ships a release for `wasm32-wasip2`.
-// spec: assurance.build.targets
+/// All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
+// spec: assurance.build.targets@6f74a943
 #[test]
 fn the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin() {
     let out = ci(&["release", "--plan"], None);
@@ -70,8 +70,8 @@ fn the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin() {
     assert!(!wasi.status.success(), "a wasm32-wasip2 release target is accepted");
 }
 
-/// Each profile ships a release archive with a SHA-256 checksum and an SBOM and a package-manager formula; the bare formula name and the install script resolve to the full profile.
-// spec: assurance.build.release-artifact
+/// Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
+// spec: assurance.build.release-artifact@54ae343d
 #[test]
 fn a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae() {
     let bin = tempfile::tempdir().unwrap();
@@ -133,7 +133,6 @@ fn a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae()
 
 /// The release workflow builds every target of the matrix and an image per profile, and a
 /// dry run publishes nothing.
-// spec: assurance.build.release-artifact
 #[test]
 fn the_release_workflow_builds_every_matrix_target_and_publishes_only_off_a_dry_run() {
     let out = ci(&["release", "--plan"], None);
@@ -159,4 +158,41 @@ fn the_release_workflow_builds_every_matrix_target_and_publishes_only_off_a_dry_
         let before = &yml[..at];
         assert!(publish.starts_with("push") || before.rfind("if: env.DRY_RUN != 'true'") > before.rfind("- uses:").max(before.rfind("- run:")), "`{publish}` runs on a dry run");
     }
+}
+
+/// No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.
+///
+/// Under `contextful-ci measure --tier scheduled` the probe builds the edge profile for
+/// `wasm32-wasip2` and records its zstd-compressed size; elsewhere it checks the ledger
+/// schedules it and the release matrix leaves the target out.
+// spec: assurance.build.wasi-probe@67a91a2c
+#[test]
+fn the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget() {
+    let root = repo_root();
+    let text = std::fs::read_to_string(root.join("evals/ledger.toml")).unwrap();
+    let ledger: toml::Value = toml::from_str(&text).unwrap();
+    let entry = &ledger["entry"]["edge-wasip2-footprint"];
+    assert_eq!(entry["tier"].as_str(), Some("scheduled"));
+    assert_eq!(entry["clause"].as_str(), Some("assurance.build.wasi-probe"));
+    let plan = ci(&["release", "--plan"], None);
+    assert!(!String::from_utf8_lossy(&plan.stdout).contains("wasm32"), "a release ships for wasm32");
+
+    if std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_none() {
+        return;
+    }
+    let target = root.join("target/wasi-probe");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let built = Command::new(cargo)
+        .args(["build", "--release", "--locked", "-p", "contextful-cli", "--bin", "contextful"])
+        .args(["--no-default-features", "--features", "contextful-edge", "--target", "wasm32-wasip2"])
+        .env("CARGO_TARGET_DIR", &target)
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert!(built.status.success(), "the edge profile does not build for wasm32-wasip2: {}", String::from_utf8_lossy(&built.stderr));
+    let artifact = std::fs::read(target.join("wasm32-wasip2/release/contextful.wasm")).unwrap();
+    let compressed = zstd::bulk::compress(&artifact, 19).unwrap();
+    let mib = compressed.len() as f64 / (1024.0 * 1024.0);
+    contextful_eval::record::emit("edge-wasip2-footprint", mib, 1, 0);
+    let _ = std::fs::remove_dir_all(&target);
 }

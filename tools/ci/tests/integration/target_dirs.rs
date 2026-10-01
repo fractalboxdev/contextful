@@ -24,7 +24,7 @@ fn with_acceptance(r: &Repo) {
 }
 
 /// Each cargo stage builds into a target directory of its own, reclaimed once the stage passes.
-// spec: assurance.build.target-dir-per-stage
+// spec: assurance.build.target-dir-per-stage@e2f83b4f
 #[test]
 fn each_cargo_stage_builds_in_its_own_target_directory_reclaimed_on_pass() {
     let r = Repo::init();
@@ -53,8 +53,8 @@ fn each_cargo_stage_builds_in_its_own_target_directory_reclaimed_on_pass() {
     assert!(r.root.join("target/workspace/built").exists(), "a failing stage reclaimed its directory");
 }
 
-/// The engine-linked packages build in one cargo invocation over the union of their features, and the store adapter resolved without its read face links no SQL engine, its suites included.
-// spec: assurance.build.one-engine-build
+/// The workspace stage builds every engine-linked package in one cargo invocation over the union of their features, and the store adapter's suites resolved without `read` link no SQL engine, so the features stage compiles one copy.
+// spec: assurance.build.one-engine-build@b60a26c3
 #[test]
 fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_without_read() {
     let r = Repo::init();
@@ -80,7 +80,7 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
 }
 
 /// Development and test profiles carry line-tables-only debug information for workspace code and none for dependencies.
-// spec: assurance.build.debug-info
+// spec: assurance.build.debug-info@94fc28bf
 #[test]
 fn development_and_test_builds_carry_line_tables_only() {
     let text = std::fs::read_to_string(repo_root().join("Cargo.toml")).unwrap();

@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 222 | 58 | 22 | 15 | 115 | 0 | 115 |
+| `assurance` | 2 | 15 | 224 | 58 | 22 | 13 | 123 | 0 | 123 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `run` | 3 | 26 | 368 | 98 | 35 | 36 | 252 | 0 | 252 |
 | `store` | 1 | 17 | 229 | 54 | 13 | 19 | 189 | 0 | 189 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
-| `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1887 | 561 | 187 | 142 | 1230 | 0 | |
+| `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 33 | 0 | 33 |
+| **total** | 19 | 154 | 1889 | 561 | 187 | 140 | 1240 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 157 | 122 | passing | closed |
-| 3 — The run path | 11 | 205 | 139 | passing | closed |
+| 3 — The run path | 11 | 205 | 141 | passing | closed |
 | 4 — Ingest | 25 | 465 | 284 | passing | open |
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
 | 6 — Sync and replicas | 8 | 72 | 67 | passing | closed |
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
-| 14 — Assurance | 7 | 125 | 63 | open | open |
+| 14 — Assurance | 7 | 127 | 71 | open | open |
 
 Unscheduled operations: 10.
 
@@ -68,11 +68,19 @@ Unscheduled operations: 10.
 | `assurance.baseline.run-stamp-drift` | `tools/eval/tests/integration/baseline.rs::a_run_configured_unlike_the_baseline_is_refused_from_its_configuration_alone` | performed |
 | `assurance.baseline.sample-count` | `tools/eval/tests/integration/baseline.rs::a_mean_carries_its_sample_count_and_shrinking_it_regresses` | performed |
 | `assurance.build.container-image` | `tools/ci/tests/integration/image.rs::the_container_recipe_builds_one_static_profile_into_a_shell_free_non_root_image` | performed |
+| `assurance.build.debug-info` | `tools/ci/tests/integration/target_dirs.rs::development_and_test_builds_carry_line_tables_only` | performed |
 | `assurance.build.dependency-allowlist` | `tools/ci/tests/integration/deny.rs::a_backtracking_matcher_or_unbounded_parser_in_a_profile_is_refused` | performed |
 | `assurance.build.licence-field` | `tools/ci/tests/integration/topology.rs::a_workspace_package_without_the_apache_licence_is_refused` | performed |
+| `assurance.build.linked-query-functions` | `crates/contextful-context/tests/integration/read/extension.rs::columnar_reading_and_statement_serialization_are_statically_linked_and_loaded` | performed |
+| `assurance.build.one-engine-build` | `tools/ci/tests/integration/target_dirs.rs::the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_without_read` | performed |
 | `assurance.build.profile-build` | `tools/ci/tests/integration/features.rs::the_features_stage_builds_each_profile_bundle_alone_and_tests_each_listed_run` | performed |
+| `assurance.build.release-artifact` | `tools/ci/tests/integration/artifact.rs::a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae` | performed |
 | `assurance.build.release-profile` | `tools/ci/tests/integration/image.rs::the_release_profile_optimizes_across_crates_strips_and_unwinds` | performed |
+| `assurance.build.runtime-extension-load` | `crates/contextful-context/tests/integration/read/extension.rs::an_explicit_load_or_install_refuses` | performed |
 | `assurance.build.staged-feature-runs` | `tools/ci/tests/integration/features.rs::the_features_stage_runs_the_store_adapter_with_read_off` | performed |
+| `assurance.build.target-dir-per-stage` | `tools/ci/tests/integration/target_dirs.rs::each_cargo_stage_builds_in_its_own_target_directory_reclaimed_on_pass` | performed |
+| `assurance.build.targets` | `tools/ci/tests/integration/artifact.rs::the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin` | performed |
+| `assurance.build.wasi-probe` | `tools/ci/tests/integration/artifact.rs::the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget` | performed |
 | `assurance.differential-test.builds` | `crates/contextful-cli/tests/integration/differential.rs::a_webassembly_build_deciding_apart_from_the_native_build_is_a_disagreement` | performed |
 | `assurance.differential-test.case-classes` | `crates/contextful-cli/tests/integration/differential.rs::the_report_names_the_three_case_classes` | performed |
 | `assurance.differential-test.command` | `crates/contextful-cli/tests/integration/differential.rs::the_command_replays_then_generates_and_stops_at_the_first_disagreement` | performed |
@@ -1264,7 +1272,9 @@ Unscheduled operations: 10.
 | `topology.package.crdt-leak` | `tools/ci/tests/integration/topology.rs::a_crdt_library_outside_the_control_profile_is_refused` | performed |
 | `topology.package.decode-network-free` | `tools/ci/tests/integration/topology.rs::a_decode_package_linking_the_network_stack_is_refused` | performed |
 | `topology.package.dependency-direction` | `tools/ci/tests/integration/topology.rs::a_domain_crate_depending_on_an_adapter_is_refused` | performed |
+| `topology.package.domain-crate` | `tools/ci/tests/integration/domain.rs::the_domain_crate_performs_no_io_and_links_into_every_profile` | performed |
 | `topology.package.domain-impurity` | `tools/ci/tests/integration/topology.rs::a_domain_crate_reaching_an_async_runtime_is_refused` | performed |
+| `topology.package.edge-eligibility` | `spec/pins.toml` | performed |
 | `topology.package.edge-profile` | `tools/ci/tests/integration/topology.rs::this_repository_edge_profile_serves_reads_and_links_no_component_host` | performed |
 | `topology.package.exchange-optional` | `tools/ci/tests/integration/topology.rs::a_library_reaching_the_exchange_stack_is_refused` | performed |
 | `topology.package.fixed-at-build` | `tools/ci/tests/integration/topology.rs::a_profile_linking_build_tooling_is_refused` | performed |

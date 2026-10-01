@@ -413,6 +413,16 @@ tier   = "trend"
 method = { test = "contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets" }
 target = { op = "==", value = 0 }
 
+# ---------------------------------------------------------------- assurance.build
+
+[entry.edge-wasip2-footprint]
+clause = "assurance.build.wasi-probe"
+metric = "footprint.edge_wasip2_compressed_mib"
+kind   = "size"
+tier   = "scheduled"
+method = { test = "contextful_ci::artifact::the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget" }
+target = { op = "<=", value = 50 }
+
 # ---------------------------------------------------------------- read
 
 [entry.read-session-one-engine]

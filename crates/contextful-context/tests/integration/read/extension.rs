@@ -10,7 +10,8 @@ fn refusal(sql: &str) -> String {
     }
 }
 
-// spec: assurance.build.linked-query-functions
+/// Columnar file reading and statement serialization link into every build linking the SQL engine, and the read path loads no extension while serving.
+// spec: assurance.build.linked-query-functions@101ad59b
 #[test]
 fn columnar_reading_and_statement_serialization_are_statically_linked_and_loaded() {
     let r = operator_query(
@@ -24,7 +25,8 @@ fn columnar_reading_and_statement_serialization_are_statically_linked_and_loaded
     assert!(serialized.rows[0][0].as_str().is_some_and(|t| t.contains("\"error\":false")), "{:?}", serialized.rows);
 }
 
-// spec: assurance.build.runtime-extension-load
+/// A read path loading an extension into a binary that statically links the SQL engine raises `ExtensionAutoloadRefused`.
+// spec: assurance.build.runtime-extension-load@23e4b04d
 #[test]
 fn an_explicit_load_or_install_refuses() {
     for sql in ["LOAD parquet", "LOAD 'httpfs'", "INSTALL httpfs", "FORCE INSTALL spatial", "UPDATE EXTENSIONS"] {
@@ -32,7 +34,6 @@ fn an_explicit_load_or_install_refuses() {
     }
 }
 
-// spec: assurance.build.runtime-extension-load
 #[test]
 fn a_function_an_unlinked_extension_provides_refuses_rather_than_autoloading() {
     assert_eq!(refusal("SELECT * FROM sqlite_scan('x.db', 't')"), "ExtensionAutoloadRefused");

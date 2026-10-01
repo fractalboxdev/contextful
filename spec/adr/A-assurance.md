@@ -188,3 +188,35 @@ Decision: the crate-graph stage provisions cargo-deny at a pinned release, verif
 | `cargo install` from source | Stage time | Minutes of compilation per cold sandbox. |
 
 Consequences: `licenses` stays out because `assurance.build.licence-field` holds every workspace manifest. The accepted cost: an advisory against a locked crate reds no pull request, and the gate never reports it.
+
+## The edge profile ships no WASI release, and a scheduled probe measures it
+
+**Status:** accepted.
+
+Context: the edge profile links the SQL engine, C++ relying on threads, file locks and a statically linked extension set that `wasm32-wasip2` does not provide. Criteria: every released artifact builds from the release matrix; a target's viability is a measured figure, not an assumption.
+
+Decision: releases ship Linux on musl for every profile and macOS for edge and full. `assurance.build.wasi-probe` builds the edge profile for `wasm32-wasip2` on the scheduled tier and records its compressed size against the edge budget; a failed build records nothing and gates nothing.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| No WASI release, a scheduled probe *(chosen)* | — | A function-class host runs the musl edge build or none; the probe's verdict waits for the nightly run. |
+| Ship `wasm32-wasip2` for edge | Buildability | The engine's threads and file locks have no WASI preview-2 equivalent; every release blocks on a port. |
+| Drop the target with no probe | Measured viability | Nobody learns when the engine's WASI support reaches the budget. |
+
+Consequences: the accepted cost is that a WASI host stays unserved until the probe records a figure inside the budget and the matrix gains the target.
+
+## The store adapter's write suites assert without the SQL engine
+
+**Status:** accepted.
+
+Context: a store-adapter suite asserting through SQL links the bundled engine as a dev-dependency, so the no-`read` run in the features stage compiles a second copy, about 282 MB of rlib, beside the read-enabled one. Criteria: the no-`read` graph, tests included, holds to `topology.package.store-write-engine-free`; the features stage compiles the engine once.
+
+Decision: a suite asserting through SQL runs on the adapter's own read engine and compiles only under `read`; the write suites assert on files, manifests and returned values, and the package declares no engine dev-dependency.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Write suites without the engine *(chosen)* | — | The no-`read` run covers fewer tests; a fold's SQL relation is asserted only with `read` on. |
+| Keep the engine dev-dependency | One engine copy | A second engine build per features stage, in disk and wall clock. |
+| A second Parquet reader for every assertion | One home | A parallel evaluator of the scan relation drifts from the one reads execute. |
+
+Consequences: the accepted cost is that a defect in the relation a scan resolves surfaces only in the read-enabled runs.

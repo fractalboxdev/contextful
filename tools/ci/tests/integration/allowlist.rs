@@ -47,7 +47,6 @@ fn connectors(list: &[&str], deps: &[(&str, &str)]) -> Repo {
 }
 
 /// The connector authoring dependency allowlist carries a linear-time regular-expression engine and bounded-depth deserialization, and admits no backtracking regex engine and no unbounded recursive parser.
-// spec: assurance.build.dependency-allowlist
 #[test]
 fn the_allowlist_carries_regex_and_serde_json_and_admits_no_backtracking_engine() {
     let ok = connectors(&["regex", "serde_json"], &[("regex", ""), ("serde_json", "")]);

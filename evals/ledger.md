@@ -2,7 +2,7 @@
 
 # Target ledger
 
-62 entries: 46 gated, 4 recorded, 1 scheduled, 11 open.
+63 entries: 46 gated, 4 recorded, 2 scheduled, 11 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -18,6 +18,7 @@
 | `bearer-transport-bound` | `authority.issue.one-credential` | `authority.off_transport_admissions` | gate | test `contextful_policy::verify::a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_seeded_loop` | `== 0` | gated |
 | `cjk-subrun` | `read.retrieve.script-split-matching` | `retrieve.cjk.reciprocal_rank` | gate | test `contextful_core::read::retrieve::a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg` | `== 1` | gated |
 | `derivation-freshness` | `run.emit.stale-supersedes` | `derive.empty_reads` | gate | test `contextful_core::run::derive::a_changed_engine_rederives_every_unit_and_no_read_between_ticks_is_empty` | `== 0` | gated |
+| `edge-wasip2-footprint` | `assurance.build.wasi-probe` | `footprint.edge_wasip2_compressed_mib` | scheduled | test `contextful_ci::artifact::the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget` | `<= 50` | scheduled |
 | `egress-internal-address` | `connector.attach.private-address` | `egress.internal.admitted` | gate | test `contextful_core::connector::attach::a_permitted_name_resolving_inward_is_refused` | `== 0` | gated |
 | `egress-internal-address-resolved` | `connector.attach.private-address` | `egress.resolved_internal.admitted` | gate | test `contextful_outbound::egress::a_name_resolving_inward_never_reaches_the_send_half` | `== 0` | gated |
 | `egress-refusal-before-dns` | `connector.meter.hook-refusal` | `egress.refused.lookups` | gate | test `contextful_outbound::egress::a_refused_intent_resolves_no_name_and_is_never_retried` | `== 0` | gated |

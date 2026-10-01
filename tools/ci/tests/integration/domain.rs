@@ -35,7 +35,7 @@ fn sources(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
 }
 
 /// `contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.
-// spec: topology.package.domain-crate
+// spec: topology.package.domain-crate@929f7deb
 #[test]
 fn the_domain_crate_performs_no_io_and_links_into_every_profile() {
     let mut files = Vec::new();
