@@ -238,6 +238,98 @@ fn check_run_id(run_id: &str) -> Result<()> {
     }
 }
 
+/// One record batch per non-empty batch of the run: the producer's `arriving` columns,
+/// then the injected ones carrying `commit_seq` and the instant `at`.
+fn run_parts(arriving: &Schema, batches: &[Batch], ctx: &RunContext, per_batch: bool, commit_seq: i64, at: Instant) -> Result<Vec<RecordBatch>> {
+    let run_id = ctx.injection.run_id.as_str();
+    let at = i64::try_from(at.unix_nanos()).map_err(|_| ContextError::Invalid(format!("{at} is outside the nanosecond timestamp range")))?;
+    let mut parts = Vec::new();
+    let mut row_offset: i64 = 0;
+    for (ordinal, b) in batches.iter().enumerate().filter(|(_, b)| !b.rows.is_empty()) {
+        let n = b.rows.len();
+        let mut injection = ctx.injection.clone();
+        if per_batch {
+            injection.batch_seq = Some(i32::try_from(ordinal).map_err(|_| ContextError::Invalid(format!("batch ordinal {ordinal} exceeds the `_batch_seq` range")))?);
+        }
+        let mut cols: Vec<Column> = arriving.columns.clone();
+        let mut arrays: Vec<ArrayRef> = arriving.columns.iter().map(|c| column_array(c, &b.rows)).collect::<Result<_>>()?;
+        for c in injection.columns() {
+            let array: ArrayRef = match c.name.as_str() {
+                INGESTED_AT => Arc::new(arrow_array::TimestampNanosecondArray::from(vec![at; n]).with_timezone("UTC")),
+                RUN_ID => Arc::new(arrow_array::StringArray::from(vec![run_id; n])),
+                ROW_SEQ => Arc::new(arrow_array::Int64Array::from_iter_values(row_offset..row_offset + n as i64)),
+                COMMIT_SEQ => Arc::new(arrow_array::Int64Array::from(vec![commit_seq; n])),
+                BATCH_SEQ => Arc::new(arrow_array::Int32Array::from(vec![injection.batch_seq.unwrap_or_default(); n])),
+                SITE_ID => Arc::new(arrow_array::StringArray::from(vec![injection.site_id.as_str(); n])),
+                AUTHORED_BY => Arc::new(arrow_array::StringArray::from(vec![injection.authored_by.as_deref().unwrap_or_default(); n])),
+                TAINT => Arc::new(arrow_array::StringArray::from(vec![injection.taint.map(|p| p.as_str()).unwrap_or_default(); n])),
+                other => unreachable!("no injected column `{other}`"),
+            };
+            cols.push(c);
+            arrays.push(array);
+        }
+        row_offset += n as i64;
+        parts.push(RecordBatch::try_new(parquet_io::arrow_schema(&Schema { columns: cols }), arrays).map_err(|e| ContextError::Invalid(e.to_string()))?);
+    }
+    Ok(parts)
+}
+
+/// The answer to a landing of a run its node already committed: the committed manifest
+/// when the run is unlogged and the landing carries its position and rebuilds its parts
+/// column for column (`store.lay-out.run-replay`), `StoreRunConflict` otherwise
+/// (`store.lay-out.run-conflict`).
+fn replay(
+    manifest_path: &std::path::Path,
+    types: &HashMap<String, ColumnType>,
+    batches: &[Batch],
+    ctx: &RunContext,
+    position: &Position,
+    per_batch: bool,
+) -> Result<Landing> {
+    let run_id = ctx.injection.run_id.as_str();
+    let conflict = |why: &str| -> ContextError {
+        StoreError::StoreRunConflict(format!("run `{run_id}` is already committed on node `{}` {why}", ctx.node)).into()
+    };
+    let bytes = std::fs::read(manifest_path).at(manifest_path)?;
+    let committed: RunManifest = serde_json::from_slice(&bytes)
+        .map_err(|e| StoreError::StoreManifestUnreadable(format!("{}: {e}", manifest_path.display())))?;
+    if committed.logged {
+        return Err(conflict("as a logged run, which commits through its commit-log entry"));
+    }
+    let held = Position { pipeline_id: committed.pipeline_id.clone(), cursor: committed.cursor.clone(), fence: committed.fence, logged: committed.logged };
+    if &held != position {
+        return Err(conflict("at another position"));
+    }
+    let other_rows = || conflict("with other rows");
+    let arriving = rows_schema(batches.iter().flat_map(|b| b.rows.iter()), types)
+        .and_then(|s| Ok(producer_columns(&s)?))
+        .map_err(|_| other_rows())?;
+    let rebuilt = run_parts(&arriving, batches, ctx, per_batch, committed.commit_seq.unwrap_or_default(), committed.committed_at)
+        .map_err(|_| other_rows())?;
+    if rebuilt.len() != committed.parts.len() {
+        return Err(other_rows());
+    }
+    let dir = manifest_path.parent().expect("a manifest sits in its node directory");
+    for (part, entry) in rebuilt.iter().zip(&committed.parts) {
+        if !same_columns(part, &parquet_io::read(&dir.join(&entry.name))?) {
+            return Err(other_rows());
+        }
+    }
+    Ok(Landing { manifest: committed, replay: true })
+}
+
+/// `part` and the batches `stored` holds carry the same named columns, each with the same
+/// type and values, field metadata and column order aside.
+fn same_columns(part: &RecordBatch, stored: &[RecordBatch]) -> bool {
+    let Some(first) = stored.first() else { return part.num_rows() == 0 };
+    let Ok(stored) = arrow_select::concat::concat_batches(&first.schema(), stored) else { return false };
+    part.num_rows() == stored.num_rows()
+        && part.num_columns() == stored.num_columns()
+        && part.schema().fields().iter().zip(part.columns()).all(|(f, a)| {
+            stored.column_by_name(f.name()).is_some_and(|b| a.data_type() == b.data_type() && a.to_data() == b.to_data())
+        })
+}
+
 /// Land `batch` into `decl`'s table as run `ctx.injection.run_id`. Every refusal — a
 /// reserved name, an incompatible or widened type, an unknown ordering column —
 /// fires before any Parquet is written; the run is visible once its manifest exists.
@@ -258,7 +350,28 @@ pub fn land_batches(
     position: &Position,
     precommit: &dyn Fn() -> Result<()>,
 ) -> Result<RunManifest> {
-    commit_batches(store, decl, batches, ctx, position, precommit, &|_| Ok(()))
+    land_run(store, decl, batches, ctx, position, precommit).map(|l| l.manifest)
+}
+
+/// [`land_batches`], answering whether the landing replayed a run already committed
+/// (`store.lay-out.run-replay`).
+pub fn land_run(
+    store: &Store,
+    decl: &TableDecl,
+    batches: &[Batch],
+    ctx: &RunContext,
+    position: &Position,
+    precommit: &dyn Fn() -> Result<()>,
+) -> Result<Landing> {
+    commit_run(store, decl, batches, ctx, position, precommit, &|_| Ok(()))
+}
+
+/// A run's landing: the committed manifest, and whether this landing replayed it
+/// rather than committing it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Landing {
+    pub manifest: RunManifest,
+    pub replay: bool,
 }
 
 /// [`land_batches`], with `commit_point` run once the manifest exists: the step that makes
@@ -273,6 +386,18 @@ pub fn commit_batches(
     precommit: &dyn Fn() -> Result<()>,
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
 ) -> Result<RunManifest> {
+    commit_run(store, decl, batches, ctx, position, precommit, commit_point).map(|l| l.manifest)
+}
+
+fn commit_run(
+    store: &Store,
+    decl: &TableDecl,
+    batches: &[Batch],
+    ctx: &RunContext,
+    position: &Position,
+    precommit: &dyn Fn() -> Result<()>,
+    commit_point: &dyn Fn(&RunManifest) -> Result<()>,
+) -> Result<Landing> {
     store.check_writable("land")?;
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
     let all_rows = || batches.iter().flat_map(|b| b.rows.iter());
@@ -294,7 +419,7 @@ pub fn commit_batches(
     let node_dir = store.table_dir(table)?.join("data").join("runs").join(run_id).join(ctx.node.as_str());
     let manifest_path = node_dir.join(MANIFEST_FILE);
     if manifest_path.exists() {
-        return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
+        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
     }
 
     // Reconcile: the producer's columns, held to the namespace, merged into the stored shape.
@@ -355,43 +480,15 @@ pub fn commit_batches(
     let _run_lock =
         FileLock::acquire(&node_dir.join(format!("{MANIFEST_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
     if manifest_path.exists() {
-        return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
+        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
     }
 
     let commit_seq = store.assign_commit_seq(table)?;
 
-    // Build the parts: the producer's columns in their arriving types, then the injected ones.
+    // The parts: the producer's columns in their arriving types, then the injected ones.
     let mut parts = Vec::new();
-    let mut row_offset: i64 = 0;
-    let at = i64::try_from(ctx.committed_at.unix_nanos())
-        .map_err(|_| ContextError::Invalid(format!("{} is outside the nanosecond timestamp range", ctx.committed_at)))?;
-    for (ordinal, b) in batches.iter().enumerate().filter(|(_, b)| !b.rows.is_empty()) {
-        let n = b.rows.len();
-        let mut injection = ctx.injection.clone();
-        if per_batch {
-            injection.batch_seq = Some(i32::try_from(ordinal).map_err(|_| ContextError::Invalid(format!("batch ordinal {ordinal} exceeds the `_batch_seq` range")))?);
-        }
-        let mut cols: Vec<Column> = arriving.columns.clone();
-        let mut arrays: Vec<ArrayRef> = arriving.columns.iter().map(|c| column_array(c, &b.rows)).collect::<Result<_>>()?;
-        for c in injection.columns() {
-            let array: ArrayRef = match c.name.as_str() {
-                INGESTED_AT => Arc::new(arrow_array::TimestampNanosecondArray::from(vec![at; n]).with_timezone("UTC")),
-                RUN_ID => Arc::new(arrow_array::StringArray::from(vec![run_id; n])),
-                ROW_SEQ => Arc::new(arrow_array::Int64Array::from_iter_values(row_offset..row_offset + n as i64)),
-                COMMIT_SEQ => Arc::new(arrow_array::Int64Array::from(vec![commit_seq; n])),
-                BATCH_SEQ => Arc::new(arrow_array::Int32Array::from(vec![injection.batch_seq.unwrap_or_default(); n])),
-                SITE_ID => Arc::new(arrow_array::StringArray::from(vec![injection.site_id.as_str(); n])),
-                AUTHORED_BY => Arc::new(arrow_array::StringArray::from(vec![injection.authored_by.as_deref().unwrap_or_default(); n])),
-                TAINT => Arc::new(arrow_array::StringArray::from(vec![injection.taint.map(|p| p.as_str()).unwrap_or_default(); n])),
-                other => unreachable!("no injected column `{other}`"),
-            };
-            cols.push(c);
-            arrays.push(array);
-        }
-        row_offset += n as i64;
-        let rb = RecordBatch::try_new(parquet_io::arrow_schema(&Schema { columns: cols }), arrays)
-            .map_err(|e| ContextError::Invalid(e.to_string()))?;
-        let name = part_name(u32::try_from(parts.len()).map_err(|_| ContextError::Invalid("a run holds more parts than a part name numbers".into()))?);
+    for (ordinal, rb) in run_parts(&arriving, batches, ctx, per_batch, commit_seq, ctx.committed_at)?.into_iter().enumerate() {
+        let name = part_name(u32::try_from(ordinal).map_err(|_| ContextError::Invalid("a run holds more parts than a part name numbers".into()))?);
         let path = node_dir.join(&name);
         if path.exists() {
             std::fs::remove_file(&path).at(&path)?;
@@ -417,8 +514,8 @@ pub fn commit_batches(
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
     precommit()?;
     if !create_new_file(&manifest_path, &bytes)? {
-        return Err(ContextError::Invalid(format!("run `{run_id}` is already committed on node `{}`", ctx.node)));
+        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
     }
     commit_point(&manifest)?;
-    Ok(manifest)
+    Ok(Landing { manifest, replay: false })
 }

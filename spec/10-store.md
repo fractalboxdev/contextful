@@ -88,6 +88,10 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
 - `part-name` — A data file is `part-<ordinal>.parquet`, the ordinal zero-padded to five digits and unique within its directory.
 - `staging` — A fold in flight writes under `data/snapshots/<id>.staging/`, and no file list resolves inside it.
 - `run-manifest` — A run commits by conditionally creating `_manifest.json` in its node directory, carrying `{run_id, table, node_id, parts, committed_at, pipeline_id?, cursor?, fence?, commit_seq?}`, where `node_id` equals the enclosing segment.
+- `run-replay` — A landing of an unlogged run already committed on its node, with the position its manifest holds and rows rebuilding its parts column for column, writes nothing and answers the committed manifest as a replay.
+  *because a retry after a lost acknowledgement cannot tell whether its first landing committed*
+- `run-conflict` — Any other landing of a run id already committed on its node raises `StoreRunConflict` and changes nothing.
+  *because a logged run's readability rides a commit-log entry a replay cannot vouch for, and other rows under one id are another run*
 - `uncommitted-run` — A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry.
   *P4*
 - `cursor-in-commit` — A pipeline's committed position is the cursor inside its newest commit: the newest commit-log entry for a leased pipeline, the highest run-manifest cursor otherwise. `machine.sqlite` caches it.

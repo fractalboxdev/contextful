@@ -71,6 +71,9 @@ pub enum StoreError {
     /// A declared table collides with a reserved table namespace. (`store.reserve.table-name`)
     #[error("StoreReservedTableName: {0}")]
     StoreReservedTableName(String),
+    /// A run id already committed on its node lands again, as other than its replay. (`store.lay-out.run-conflict`)
+    #[error("StoreRunConflict: {0}")]
+    StoreRunConflict(String),
     /// Two observed types for one column have no supertype in the lattice. (`store.reconcile.incompatible`)
     #[error("StoreSchemaIncompatible: {0}")]
     StoreSchemaIncompatible(String),

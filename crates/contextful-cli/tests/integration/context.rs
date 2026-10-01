@@ -38,6 +38,25 @@ fn land(dir: &Path, table: &str, run_id: &str, now: &str) -> String {
     ))
 }
 
+/// `context land` retried with a committed run id exits 0 naming the replay when the rows
+/// match, and exits non-zero with `StoreRunConflict` when they differ.
+#[test]
+fn a_retried_land_acknowledges_the_replay_and_refuses_other_rows() {
+    let p = project();
+    let first = land(p.path(), "filings", "run-1", "2030-01-01T00:00:00Z");
+    assert!(first.contains("committed run-1"), "{first}");
+    let again = land(p.path(), "filings", "run-1", "2030-01-01T00:05:00Z");
+    assert!(again.contains("replayed run-1"), "{again}");
+
+    std::fs::write(p.path().join("rows.jsonl"), "{\"doc\":\"b\",\"e\":2}\n").unwrap();
+    let out = run(
+        p.path(),
+        &["context", "land", "filings", "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "s", "--now", "2030-01-01T00:06:00Z"],
+    );
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("StoreRunConflict"), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
 /// A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass.
 // spec: store.fold.result@e2b72226
 #[test]
