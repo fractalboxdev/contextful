@@ -14,6 +14,7 @@ mod measure;
 mod mirrors;
 mod release;
 mod secrets;
+mod target_dirs;
 mod test_first;
 mod topology;
 mod wasm;

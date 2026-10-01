@@ -255,7 +255,7 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
                 secrets(&root)?;
                 mirrors(&root)?;
                 measure::status(&root, true)?;
-                run(&root, "cargo", &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
+                run_staged(&root, stage, &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
             }
             "test-first" => {
                 provision_lean(&root)?;
@@ -289,6 +289,25 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             }
             _ => unreachable!(),
         }
+        // A passing stage leaves no build behind (`assurance.build.target-dir-per-stage`); a
+        // failing one keeps its directory for diagnosis.
+        let _ = std::fs::remove_dir_all(stage_target(&root, stage));
+    }
+    Ok(())
+}
+
+/// The target directory `stage` builds into, under the workspace root and apart from every
+/// other stage's (`assurance.build.target-dir-per-stage`): stages under different feature
+/// unification share no artifacts, so peak disk is one stage's.
+fn stage_target(root: &Path, stage: &str) -> PathBuf {
+    root.join("target").join(stage)
+}
+
+/// Run `cargo args` in `stage`'s own target directory.
+fn run_staged(root: &Path, stage: &str, args: &[&str]) -> Result<()> {
+    let status = Command::new("cargo").args(args).env("CARGO_TARGET_DIR", stage_target(root, stage)).current_dir(root).status()?;
+    if !status.success() {
+        bail!("`cargo {}` exited {}", args.join(" "), status.code().unwrap_or(-1));
     }
     Ok(())
 }
@@ -339,12 +358,15 @@ fn free_disk(root: &Path, stage: &str) -> Result<()> {
     Ok(())
 }
 
+/// Every workspace package's suite in one cargo invocation over the union of their
+/// features, so the bundled SQL engine compiles once in the stage
+/// (`assurance.build.one-engine-build`).
 fn workspace(root: &Path) -> Result<()> {
     let mut args = vec!["test", "--workspace"];
     if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
         args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
     }
-    run(root, "cargo", &args)
+    run_staged(root, "workspace", &args)
 }
 
 /// The feature combinations the workspace stage's unified build does not reach
@@ -607,7 +629,7 @@ fn acceptance(root: &Path) -> Result<()> {
             }
         }
     }
-    run(root, "cargo", &["test", "-p", ACCEPTANCE_PACKAGE])
+    run_staged(root, "acceptance", &["test", "-p", ACCEPTANCE_PACKAGE])
 }
 
 /// A workspace member declaring a feature other than `default`.
