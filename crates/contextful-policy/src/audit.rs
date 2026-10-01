@@ -36,6 +36,9 @@
 //! several processes and handles append to one directory. A group finding the last segment
 //! grown since this handle's last write reads the new tail entry and links after it
 //! (`disclosure.record.foreign-tail`), with no sync beyond the group's own.
+//! An unanchored handle checks for `chain.held` under the lock before each group and tip
+//! write, so a held open landing between two of its groups is never overwritten unsigned
+//! (`disclosure.record.held-under-append`).
 //!
 //! Roots and the tip sign through the signing port a mint signs through
 //! (`authority.issue.signing-port`), under either scheme and stored as 64 raw Ed25519
@@ -1220,9 +1223,9 @@ struct Member {
 /// when it closed a segment.
 type Committed = (Vec<AuditEntry>, ChainTip, Option<ChainTip>);
 
-/// A group's outcome — its entries, or the failure reason and the reason the log is
-/// poisoned when the reversal failed — with the chain end and position the handle now knows.
-type Grouped = (Result<Committed, (String, Option<String>)>, ChainTip, Seen);
+/// A group's outcome — its entries, or the refusal and the reason the log is poisoned
+/// when the reversal failed — with the chain end and position the handle now knows.
+type Grouped = (Result<Committed, (AuditError, Option<String>)>, ChainTip, Seen);
 
 struct State {
     /// The last durable entry this handle knows of.
@@ -1467,7 +1470,10 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
         let sizes: Vec<(u64, usize)> = group.iter().map(|m| (m.ticket, m.batch.len())).collect();
         let values: Vec<Value> = group.into_iter().flat_map(|m| m.batch).collect();
         let (outcome, tip, seen) = match poisoned {
-            Some(reason) => (Err((format!("an earlier append could not be reversed ({reason}); reopen the log"), None)), tip, seen),
+            Some(reason) => {
+                let reason = format!("an earlier append could not be reversed ({reason}); reopen the log");
+                (Err((AuditError::AuditEntryUnpersisted(reason), None)), tip, seen)
+            }
             None => inner.group(tip, seen, values),
         };
         let mut st = inner.lock();
@@ -1482,12 +1488,12 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
                     st.done.insert(t, Ok(entries.by_ref().take(len).collect()));
                 }
             }
-            Err((reason, poison)) => {
+            Err((refusal, poison)) => {
                 if let Some(poison) = poison {
                     st.poisoned = Some(poison);
                 }
                 for (t, _) in sizes {
-                    st.done.insert(t, Err(AuditError::AuditEntryUnpersisted(reason.clone())));
+                    st.done.insert(t, Err(refusal.clone()));
                 }
             }
         }
@@ -1559,17 +1565,34 @@ impl<S: SigningPort> Inner<S> {
         }
     }
 
+    /// Refuse a write through an unanchored handle once a held open has written
+    /// `chain.held` since it opened (`disclosure.record.held-under-append`). Called under
+    /// the directory lock, which a held open writes `chain.held` under.
+    fn still_unanchored(&self) -> Result<(), AuditError> {
+        match self.custody {
+            Custody::Unanchored if held_path(&self.dir).exists() => Err(AuditError::AuditLogAnchored(format!(
+                "{}: chain.held records the chain held since this handle opened; open it with the issuer's signing port",
+                self.dir.display()
+            ))),
+            _ => Ok(()),
+        }
+    }
+
     /// Run one append group under the directory lock: link `values` after the chain end,
     /// read afresh when the last segment changed since `seen`, and sync. Returns the
     /// outcome with the chain end and segment position this handle now knows.
     fn group(&self, tip: ChainTip, seen: Seen, values: Vec<Value>) -> Grouped {
+        let unpersisted = |e: String| (AuditError::AuditEntryUnpersisted(e), None);
         let _held = match self.take() {
             Ok(held) => held,
-            Err(e) => return (Err((e, None)), tip, seen),
+            Err(e) => return (Err(unpersisted(e)), tip, seen),
         };
+        if let Err(e) = self.still_unanchored() {
+            return (Err((e, None)), tip, seen);
+        }
         let (tip, seen) = match self.refresh(tip.clone(), seen) {
             Ok(fresh) => fresh,
-            Err(e) => return (Err((e, None)), tip, seen),
+            Err(e) => return (Err(unpersisted(e)), tip, seen),
         };
         match self.commit(&tip, values) {
             Ok(committed) if committed.0.is_empty() => (Ok(committed), tip, seen),
@@ -1578,7 +1601,7 @@ impl<S: SigningPort> Inner<S> {
                 let now = seen_from(&self.dir, segment_of(end.seq, self.chain.segment_entries())).unwrap_or_default();
                 (Ok(committed), end, now)
             }
-            Err(e) => (Err(e), tip, seen),
+            Err((e, poison)) => (Err((AuditError::AuditEntryUnpersisted(e), poison)), tip, seen),
         }
     }
 
@@ -1588,6 +1611,9 @@ impl<S: SigningPort> Inner<S> {
             Ok(held) => held,
             Err(e) => return (Err(e), tip, seen),
         };
+        if let Err(e) = self.still_unanchored() {
+            return (Err(e.to_string()), tip, seen);
+        }
         match self.refresh(tip.clone(), seen) {
             Ok((tip, seen)) => (self.write_tip(&tip), tip, seen),
             Err(e) => (Err(e), tip, seen),

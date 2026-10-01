@@ -342,6 +342,43 @@ fn an_unanchored_handle_links_under_an_unsigned_tip_and_refuses_a_signed_chain()
     assert_eq!(verify(signed.path()).unwrap().seq, 2, "a refused open leaves the chain as it was");
 }
 
+/// An unanchored handle's append group or tip write finding `chain.held` written since its open raises `AuditLogAnchored` and writes nothing, so a held open never meets an unsigned tip or an unrooted segment.
+// spec: disclosure.record.held-under-append@bd383fa1
+#[test]
+fn an_unanchored_handle_running_under_a_held_open_refuses_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let options = AuditOptions { idle: Duration::from_millis(20), ..AuditOptions::default() };
+    let running = AuditLog::unanchored_with(dir.path(), options).unwrap();
+    assert_eq!(running.append(attrs("agent://u", 1)).unwrap().seq, 1);
+
+    // The issuer anchors the directory while the unanchored handle stays open.
+    let held = AuditLog::anchor(dir.path(), key()).unwrap();
+    assert_eq!(held.append(attrs("agent://a", 2)).unwrap().seq, 2);
+    drop(held);
+    let signer = SignerKey::of(&key());
+    assert_eq!(verify_signed(dir.path(), &signer).unwrap().seq, 2);
+    let before = fs::read(segment(dir.path(), 1)).unwrap();
+
+    let anchored = |r: Result<Vec<AuditEntry>, AuditError>| match r {
+        Err(AuditError::AuditLogAnchored(m)) => assert!(m.contains("chain.held"), "{m}"),
+        other => panic!("expected AuditLogAnchored, got {other:?}"),
+    };
+    anchored(running.append_all(vec![attrs("agent://u", 3)]));
+    // A group that would fill the segment closes nothing under no key.
+    anchored(running.append_all((0..AUDIT_SEGMENT_ENTRIES).map(|i| attrs("agent://u", i)).collect()));
+    // The idle signer and the close write no unsigned tip over the held chain.
+    std::thread::sleep(Duration::from_millis(200));
+    drop(running);
+
+    assert_eq!(fs::read(segment(dir.path(), 1)).unwrap(), before, "the segment stays as the held handle left it");
+    assert!(!root_file(dir.path(), 1).exists() && !segment(dir.path(), 2).exists());
+    let tip = tip_of(dir.path());
+    assert_eq!(tip.seq, 2);
+    assert!(tip.verify(&signer), "chain.tip stays signed");
+    assert_eq!(verify(dir.path()).unwrap().seq, 2);
+    assert_eq!(verify_signed(dir.path(), &signer).unwrap().seq, 2);
+}
+
 /// A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.
 // spec: disclosure.record.unsigned-tip@713acc68
 #[test]

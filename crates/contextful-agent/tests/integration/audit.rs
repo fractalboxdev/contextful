@@ -130,6 +130,7 @@ fn a_read_entry_names_tool_credential_subject_and_row_count() {
 }
 
 /// A read whose entry fails to reach local durable storage raises `AuditEntryUnpersisted` and returns no rows; the face answers it in-band with code `audit_entry_unpersisted` and HTTP 503.
+// spec: disclosure.record.unpersisted-entry@0038925d
 // spec: disclosure.record.unpersisted-wire@3b8f8217
 #[test]
 fn a_read_whose_entry_does_not_sync_releases_no_rows() {

@@ -16681,6 +16681,17 @@
       "line": 92
     },
     {
+      "id": "disclosure.record.held-under-append",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "held-under-append",
+      "kind": "behavior",
+      "statement": "An unanchored handle's append group or tip write finding `chain.held` written since its open raises {{disclosure.record.unanchored-over-signed}} and writes nothing, so a held open never meets an unsigned tip or an unrooted segment.",
+      "why": "because the lock is held per append group, so a held open can land between two groups of a running unanchored handle",
+      "file": "spec/62-accountability.md",
+      "line": 94
+    },
+    {
       "id": "disclosure.record.unsigned-tip",
       "contract": "disclosure",
       "operation": "record",
@@ -16689,7 +16700,7 @@
       "statement": "A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 94
+      "line": 96
     },
     {
       "id": "disclosure.record.projection",
@@ -16700,7 +16711,7 @@
       "statement": "The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 96
+      "line": 98
     },
     {
       "id": "disclosure.explain.no-row",
@@ -16711,7 +16722,7 @@
       "statement": "An explanation returning a row, field value or excerpt from the resource it decides about raises `VisibilityDiagnosticRow`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 125
+      "line": 127
     },
     {
       "id": "disclosure.explain.empty-window",
@@ -16722,7 +16733,7 @@
       "statement": "A window holding no observations raises `VisibilityNoObservations` and states that no claim is available.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 127
+      "line": 129
     },
     {
       "id": "disclosure.explain.unqualified-assurance",
@@ -16733,7 +16744,7 @@
       "statement": "A negative assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 129
+      "line": 131
     },
     {
       "id": "disclosure.explain.groups-not-members",
@@ -16744,7 +16755,7 @@
       "statement": "A reader-facing explanation rendering the member identities of a group on the path raises `VisibilityIndividualNamed`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 131
+      "line": 133
     },
     {
       "id": "disclosure.attest.broken-chain",
@@ -16755,7 +16766,7 @@
       "statement": "A disagreeing digest, entry format or Merkle root, a sequence gap, a failing signature, or, beside `chain.tip`, `chain.held` or a signed root, an absent chain or a missing or unsigned tip raises `AuditChainBroken` at the earliest failing index.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 138
+      "line": 140
     },
     {
       "id": "disclosure.attest.merkle-root",
@@ -16766,7 +16777,7 @@
       "statement": "A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry digests in `seq` order.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 140
+      "line": 142
     },
     {
       "id": "disclosure.attest.root-tag",
@@ -16777,7 +16788,7 @@
       "statement": "A v1 signed root carries its signing algorithm, `Ed25519` or `ES256`, and signs it with the header digest, segment number, entry count and root.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 142
+      "line": 144
     },
     {
       "id": "disclosure.attest.inclusion-proof",
@@ -16788,7 +16799,7 @@
       "statement": "`prove` returns one entry, its chain header, its RFC 6962 audit path and its segment's signed root; the proof verifies offline under the signer's public key alone.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 144
+      "line": 146
     },
     {
       "id": "disclosure.attest.proof-invalid",
@@ -16799,7 +16810,7 @@
       "statement": "A proof whose entry, audit path, header, root or root signature disagrees raises `AuditProofInvalid`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 146
+      "line": 148
     },
     {
       "id": "disclosure.attest.proof-unavailable",
@@ -16810,7 +16821,7 @@
       "statement": "Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises `AuditProofUnavailable`.",
       "why": "because an open segment has no signed root yet, and a v0 root commits to no tree",
       "file": "spec/62-accountability.md",
-      "line": 148
+      "line": 150
     },
     {
       "id": "disclosure.attest.root-replication",
@@ -16821,7 +16832,7 @@
       "statement": "Signed roots reach the replication bucket asynchronously every 10 min.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 150
+      "line": 152
     },
     {
       "id": "disclosure.erase.privilege",
@@ -16832,7 +16843,7 @@
       "statement": "Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.",
       "why": "A-read",
       "file": "spec/62-accountability.md",
-      "line": 158
+      "line": 160
     },
     {
       "id": "disclosure.erase.subject-column",
@@ -16843,7 +16854,7 @@
       "statement": "A table names its subject column as `subject_id = \"<column>\"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 160
+      "line": 162
     },
     {
       "id": "disclosure.erase.cascade",
@@ -16854,7 +16865,7 @@
       "statement": "In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 162
+      "line": 164
     },
     {
       "id": "disclosure.erase.cascade-unbounded",
@@ -16865,7 +16876,7 @@
       "statement": "A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 164
+      "line": 166
     },
     {
       "id": "disclosure.erase.physical-removal",
@@ -16876,7 +16887,7 @@
       "statement": "Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 166
+      "line": 168
     },
     {
       "id": "disclosure.erase.restaging-gate",
@@ -16887,7 +16898,7 @@
       "statement": "`--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 168
+      "line": 170
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -16898,7 +16909,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 170
+      "line": 172
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -16909,7 +16920,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 172
+      "line": 174
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -16920,7 +16931,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 174
+      "line": 176
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -16931,7 +16942,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 203
+      "line": 205
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -16942,7 +16953,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 205
+      "line": 207
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -16953,7 +16964,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 207
+      "line": 209
     },
     {
       "id": "disclosure.receipt.no-rewrite-engine",
@@ -16964,7 +16975,7 @@
       "statement": "A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.",
       "why": "because a receipt over a rewrite that did not run states a false claim",
       "file": "spec/62-accountability.md",
-      "line": 209
+      "line": 211
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -21363,6 +21374,10 @@
     [
       "disclosure.record.foreign-tail",
       "disclosure.record.group-commit"
+    ],
+    [
+      "disclosure.record.held-under-append",
+      "disclosure.record.unanchored-over-signed"
     ],
     [
       "disclosure.erase.physical-removal",
