@@ -142,7 +142,7 @@ fn a_nested_replicate_off_table_stays_off_the_replica() {
     a.land("run-1", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
     a.syncer.push(at(NOW)).unwrap();
     let r = node("replica-1", b, "\n[replica]\nof = \"team/research\"\n");
-    r.syncer.pull(&PullScope { tables: vec![], replicate_off: vec!["pii/users".into()] }).unwrap();
+    r.syncer.pull(&PullScope { tables: vec![], replicate_off: vec!["pii/users".into()], ..PullScope::default() }).unwrap();
     assert!(!r.root().join("tables/pii").exists(), "the nested sensitive table never lands");
     assert!(r.root().join("tables/filings/schema.json").exists());
     assert_eq!(contextful_sync::sync::table_of("research/tables/pii/users/data/runs/run-1/ingest-a/part-00000.parquet").as_deref(), Some("pii/users"));

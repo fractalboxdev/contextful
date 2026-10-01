@@ -101,6 +101,7 @@ fn a_tombstone_naming_another_owners_entry_refuses_and_the_entry_stays() {
     let remote = BucketManifest {
         entries: [(RUN_B.to_string(), entry("b", "ingest-b"))].into(),
         tombstones: [(RUN_B.to_string(), Tombstone { owner: "ingest-c".into(), deleted_at: now })].into(),
+        ..Default::default()
     };
     let m = merge(&remote, &BTreeMap::new(), "ingest-a", now).unwrap();
     assert!(m.manifest.entries.contains_key(RUN_B));

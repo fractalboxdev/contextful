@@ -1,4 +1,4 @@
-//! Push, pull, the probe, bucket leases and fenced pointer publication for one store.
+//! The push plan, push, pull, the probe, bucket leases and fenced pointer publication for one store.
 
 use contextful_context::{ContextError, Store};
 use contextful_core::run::journal::sha256_hex;
@@ -7,8 +7,8 @@ use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer};
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
-    confine, is_commit_log, is_pointer, merge, owner_of, BucketManifest, Coordination, Entry, SyncConfig, MANIFEST_KEY, PROBE_PREFIX,
-    PULL_CONVERGENCE,
+    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, BucketManifest, Coordination, Entry, SyncConfig,
+    GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
 };
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -115,11 +115,95 @@ pub fn table_of(key: &str) -> Option<String> {
     (end > 2).then(|| segs[2..end].join("/"))
 }
 
+/// Every syncable file of `store`, keyed under `project`, with its entry and path.
+pub fn local_entries(store: &Store, project: &str) -> Result<BTreeMap<String, (Entry, PathBuf)>> {
+    let root = store.root().to_path_buf();
+    let mut out = BTreeMap::new();
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(io(&dir, e)),
+        };
+        for entry in entries {
+            let path = entry.map_err(|e| io(&dir, e))?.path();
+            let rel = path.strip_prefix(&root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            if path.is_dir() {
+                if syncable(&format!("{rel}/x")) {
+                    stack.push(path);
+                }
+                continue;
+            }
+            if !syncable(&rel) {
+                continue;
+            }
+            let bytes = std::fs::read(&path).map_err(|e| io(&path, e))?;
+            let key = format!("{project}/{rel}");
+            let owner = owner_of(&key).unwrap_or_default();
+            out.insert(key, (Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner }, path));
+        }
+    }
+    Ok(out)
+}
+
+/// What a push of one store commits, computed from its files alone (`store.emit`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ManifestPlan {
+    /// Keys the push commits at their local digests: this node's own and immutable unowned ones.
+    pub mine: BTreeMap<String, Entry>,
+    /// Unowned mergeable keys, a table's `schema.json`: the push commits the bucket's merged copy.
+    pub shared: BTreeMap<String, Entry>,
+    paths: BTreeMap<String, PathBuf>,
+}
+
+impl ManifestPlan {
+    /// The plan as a bucket manifest: every planned key at its local digest, no tombstone,
+    /// no generation (`store.emit.plan`).
+    pub fn manifest(&self) -> BucketManifest {
+        let mut entries = self.mine.clone();
+        entries.extend(self.shared.iter().map(|(k, e)| (k.clone(), e.clone())));
+        BucketManifest { entries, ..BucketManifest::default() }
+    }
+
+    fn read(&self, key: &str) -> Result<Vec<u8>> {
+        let path = &self.paths[key];
+        std::fs::read(path).map_err(|e| io(path, e))
+    }
+}
+
+/// Plan a push of `store` as `node` would make it under `project`, reading no bucket
+/// object: a key another node owns stays out (`store.emit.plan-scope`).
+pub fn plan_manifest(store: &Store, project: &str, node: &str) -> Result<ManifestPlan> {
+    let mut plan = ManifestPlan::default();
+    for (key, (entry, path)) in local_entries(store, project)? {
+        match class(&key, node) {
+            KeyClass::Foreign => continue,
+            KeyClass::Mergeable => plan.shared.insert(key.clone(), entry),
+            KeyClass::Owned | KeyClass::Immutable => plan.mine.insert(key.clone(), entry),
+        };
+        plan.paths.insert(key, path);
+    }
+    Ok(plan)
+}
+
+/// A bucket or generation manifest read off `key`, its `format` held to the newest this
+/// build parses before any other field is read (`store.push.format-unsupported`).
+fn parse_manifest(key: &str, bytes: &[u8]) -> Result<BucketManifest> {
+    let invalid = |e: serde_json::Error| SyncError::Context(ContextError::Invalid(format!("`{key}`: {e}")));
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(invalid)?;
+    let format = value.get("format").and_then(serde_json::Value::as_u64).unwrap_or(1);
+    admit_format(key, u32::try_from(format).unwrap_or(u32::MAX))?;
+    serde_json::from_value(value).map_err(invalid)
+}
+
 /// What a push did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PushReport {
     pub uploaded: Vec<String>,
     pub entries: usize,
+    /// The generation the push committed.
+    pub generation: u64,
     /// Rounds the manifest commit took.
     pub rounds: u32,
     /// Refusals the merge answered by keeping an entry.
@@ -143,6 +227,8 @@ pub struct PullScope {
     pub tables: Vec<String>,
     /// Tables declaring `replicate = false`.
     pub replicate_off: Vec<String>,
+    /// The generation to restore; absent pulls the bucket manifest (`store.pull.generation`).
+    pub generation: Option<u64>,
 }
 
 /// A lease this node holds.
@@ -169,50 +255,76 @@ impl Syncer {
         Ok(confine(&self.prefix, rel)?)
     }
 
-    fn project_rel(&self, rel: &str) -> String {
-        format!("{}/{rel}", self.project)
-    }
-
     /// Every syncable file of the store, keyed under the project, with its entry and path.
     pub fn local_entries(&self) -> Result<BTreeMap<String, (Entry, PathBuf)>> {
-        let root = self.store.root().to_path_buf();
-        let mut out = BTreeMap::new();
-        let mut stack = vec![root.clone()];
-        while let Some(dir) = stack.pop() {
-            let entries = match std::fs::read_dir(&dir) {
-                Ok(e) => e,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(e) => return Err(io(&dir, e)),
-            };
-            for entry in entries {
-                let path = entry.map_err(|e| io(&dir, e))?.path();
-                let rel = path.strip_prefix(&root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-                if path.is_dir() {
-                    if syncable(&format!("{rel}/x")) {
-                        stack.push(path);
-                    }
-                    continue;
-                }
-                if !syncable(&rel) {
-                    continue;
-                }
-                let bytes = std::fs::read(&path).map_err(|e| io(&path, e))?;
-                let key = self.project_rel(&rel);
-                let owner = owner_of(&key).unwrap_or_default();
-                out.insert(key, (Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner }, path));
-            }
-        }
-        Ok(out)
+        local_entries(&self.store, &self.project)
+    }
+
+    /// What a push of this store commits, reading no bucket object (`store.emit`).
+    pub fn plan_manifest(&self) -> Result<ManifestPlan> {
+        plan_manifest(&self.store, &self.project, &self.node)
     }
 
     fn manifest(&self) -> Result<(BucketManifest, Option<String>)> {
+        Ok(self.manifest_bytes()?.map_or((BucketManifest::default(), None), |(m, _, etag)| (m, Some(etag))))
+    }
+
+    /// The bucket manifest with the bytes and ETag it was read at.
+    fn manifest_bytes(&self) -> Result<Option<(BucketManifest, Vec<u8>, String)>> {
         match self.bucket.get(&self.key(MANIFEST_KEY)?)? {
-            Some((bytes, etag)) => Ok((
-                serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("the bucket manifest: {e}"))))?,
-                Some(etag),
-            )),
-            None => Ok((BucketManifest::default(), None)),
+            Some((bytes, etag)) => Ok(Some((parse_manifest(MANIFEST_KEY, &bytes)?, bytes, etag))),
+            None => Ok(None),
         }
+    }
+
+    /// Generation `n`'s manifest; a generation the bucket lacks refuses, naming the newest
+    /// (`store.pull.generation-absent`).
+    fn generation_manifest(&self, n: u64) -> Result<BucketManifest> {
+        let key = generation_key(n);
+        match self.bucket.get(&self.key(&key)?)? {
+            Some((bytes, _)) => parse_manifest(&key, &bytes),
+            None => {
+                let newest = self.generations()?.last().copied().unwrap_or(0).max(self.manifest()?.0.generation);
+                Err(StoreError::SyncGenerationAbsent(format!("the bucket holds no `{key}`; its newest generation is {newest}")).into())
+            }
+        }
+    }
+
+    /// Every generation the bucket holds a generation manifest for, ascending.
+    fn generations(&self) -> Result<Vec<u64>> {
+        let root = self.key(GENERATION_PREFIX)?;
+        let under = root.strip_suffix(GENERATION_PREFIX).unwrap_or_default().to_string();
+        let mut out: Vec<u64> = self.bucket.list(&root)?.iter().filter_map(|k| generation_of(k.strip_prefix(&under)?)).collect();
+        out.sort_unstable();
+        Ok(out)
+    }
+
+    /// Create generation `n`'s immutable copy holding `bytes`; a copy already there holds
+    /// the same commit, or the push refuses after its commit (`store.push.generation-conflict`).
+    fn put_generation(&self, n: u64, bytes: &[u8]) -> Result<()> {
+        let key = generation_key(n);
+        match self.bucket.put(&self.key(&key)?, bytes, Condition::IfNoneMatch)? {
+            Put::Applied(_) => Ok(()),
+            Put::ConditionFailed => match self.bucket.get(&self.key(&key)?)? {
+                Some((existing, _)) if existing == bytes => Ok(()),
+                _ => Err(StoreError::SyncGenerationConflict(format!(
+                    "generation {n} committed to the bucket manifest, and `{key}` already holds another commit; `pull --generation {n}` restores that one, and the next push numbers past it"
+                ))
+                .into()),
+            },
+        }
+    }
+
+    /// Every table pointer of this project the bucket holds, keyed under the project.
+    fn project_pointers(&self) -> Result<BTreeMap<String, BucketPointer>> {
+        let mut out = BTreeMap::new();
+        for bucket_key in self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?.into_iter().filter(|k| is_pointer(k)) {
+            let rel_key = bucket_key.strip_prefix(&format!("{}/", self.prefix)).unwrap_or(&bucket_key).to_string();
+            let Some((bytes, _)) = self.bucket.get(&bucket_key)? else { continue };
+            let pointer: BucketPointer = serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
+            out.insert(rel_key, pointer);
+        }
+        Ok(out)
     }
 
     /// Demonstrate conditional writes with a live sentinel inside the prefix (`store.probe`).
@@ -251,7 +363,8 @@ impl Syncer {
     }
 
     /// Push the store: upload each file whose digest the bucket lacks, then commit the
-    /// bucket manifest by merge and compare-and-set within the retry bound.
+    /// bucket manifest as the next generation by merge and compare-and-set within the retry
+    /// bound, and write that generation's immutable copy.
     pub fn push(&self, now: Instant) -> Result<PushReport> {
         let _guard = PushGuard::take(self.store.root())?;
         let coordination = match self.probe() {
@@ -264,56 +377,71 @@ impl Syncer {
             (StoreError::SyncCoordinationUnproven(m), CasScope::Machine(why)) => StoreError::SyncCoordinationUnproven(format!("{m}: {why}")),
             (e, _) => e,
         })?;
-        let local = self.local_entries()?;
-        let (remote, _) = self.manifest()?;
+        let plan = self.plan_manifest()?;
+        let remote = self.manifest()?.0;
         let mut report = PushReport::default();
-        // The entries this node commits: keys it owns and immutable unowned keys. A copy of
-        // a key another node owns is never pushed; a shared mergeable key commits by its merge.
-        let mut mine: BTreeMap<String, Entry> = BTreeMap::new();
-        let mut shared: Vec<String> = Vec::new();
-        for (key, (entry, path)) in &local {
-            let bytes = || std::fs::read(path).map_err(|e| io(path, e));
-            match class(key, &self.node) {
-                KeyClass::Foreign => continue,
-                KeyClass::Mergeable => {
-                    if self.put_merged(key, &bytes()?)? {
-                        report.uploaded.push(key.clone());
-                    }
-                    shared.push(key.clone());
-                }
+        // A copy of a key another node owns is never pushed; a shared mergeable key commits by its merge.
+        for (key, entry) in &plan.mine {
+            if remote.entries.get(key).is_some_and(|e| e.sha256 == entry.sha256) {
+                continue;
+            }
+            let uploaded = match class(key, &self.node) {
                 KeyClass::Owned => {
-                    if remote.entries.get(key).is_none_or(|e| e.sha256 != entry.sha256) {
-                        self.put_owned(key, &bytes()?)?;
-                        report.uploaded.push(key.clone());
-                    }
-                    mine.insert(key.clone(), entry.clone());
+                    self.put_owned(key, &plan.read(key)?)?;
+                    true
                 }
-                KeyClass::Immutable => {
-                    if remote.entries.get(key).is_none_or(|e| e.sha256 != entry.sha256) && self.put_immutable(key, &bytes()?, &entry.sha256)? {
-                        report.uploaded.push(key.clone());
-                    }
-                    mine.insert(key.clone(), entry.clone());
-                }
+                _ => self.put_immutable(key, &plan.read(key)?, &entry.sha256)?,
+            };
+            if uploaded {
+                report.uploaded.push(key.clone());
+            }
+        }
+        for key in plan.shared.keys() {
+            if self.put_merged(key, &plan.read(key)?)? {
+                report.uploaded.push(key.clone());
             }
         }
         let retries = self.config.push_retries().max(1);
+        let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
         for round in 1..=retries {
-            let (remote, etag) = self.manifest()?;
-            let mut entries = mine.clone();
+            let (remote, etag) = match self.manifest_bytes()? {
+                Some((remote, bytes, etag)) => (Some((remote, bytes)), Some(etag)),
+                None => (None, None),
+            };
+            let generations = self.generations()?;
+            let newest = generations.last().copied().unwrap_or(0);
+            // No commit lands past a generation whose copy is absent (`store.push.generation-heal`).
+            if let Some((remote, bytes)) = &remote {
+                if remote.generation > 0 && generations.binary_search(&remote.generation).is_err() {
+                    // A copy a concurrent writer created between the listing and this put already stands.
+                    self.bucket.put(&self.key(&generation_key(remote.generation))?, bytes, Condition::IfNoneMatch)?;
+                }
+            }
+            let remote = remote.map(|(m, _)| m).unwrap_or_default();
+            // Pointers read before the commit name snapshots whose files earlier commits listed.
+            let pointers = self.project_pointers()?;
+            let mut entries = plan.mine.clone();
             // A shared key lists the object the bucket holds now, whoever merged it last.
-            for key in &shared {
+            for key in plan.shared.keys() {
                 if let Some((bytes, _)) = self.bucket.get(&self.key(key)?)? {
                     entries.insert(key.clone(), Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() });
                 }
             }
             // Entries of other projects in the bucket pass through untouched.
-            let others = remote.entries.iter().filter(|(k, _)| !k.starts_with(&format!("{}/", self.project))).map(|(k, e)| (k.clone(), e.clone()));
+            let others = remote.entries.iter().filter(|(k, _)| !in_project(k)).map(|(k, e)| (k.clone(), e.clone()));
             entries.extend(others);
             let merged = merge(&remote, &entries, &self.node, now)?;
-            let bytes = serde_json::to_vec_pretty(&merged.manifest).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let mut committed = merged.manifest;
+            // A manifest rewritten by a writer predating `generation` reads 0; the files keep the count (`store.push.generation-floor`).
+            committed.generation = remote.generation.max(newest) + 1;
+            committed.pointers = remote.pointers.iter().filter(|(k, _)| !in_project(k)).map(|(k, p)| (k.clone(), p.clone())).collect();
+            committed.pointers.extend(pointers);
+            let bytes = serde_json::to_vec_pretty(&committed).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&self.key(MANIFEST_KEY)?, &bytes, condition)? {
-                report.entries = merged.manifest.entries.len();
+                self.put_generation(committed.generation, &bytes)?;
+                report.entries = committed.entries.len();
+                report.generation = committed.generation;
                 report.rounds = round;
                 report.refused = merged.refused.iter().map(ToString::to_string).collect();
                 return Ok(report);
@@ -383,6 +511,8 @@ impl Syncer {
     /// Pull the bucket into the store: download each entry whose digest differs, re-fetching
     /// the manifest when a key moves beneath the download, apply each tombstone, then write
     /// every table pointer the bucket advances, all after every object they reach has landed.
+    /// Under `scope.generation`, restore that generation's entries and pointers instead
+    /// (`store.pull.generation`).
     pub fn pull(&self, scope: &PullScope) -> Result<PullReport> {
         let replica = self.store.replica_of().is_some();
         if replica {
@@ -401,21 +531,42 @@ impl Syncer {
             }
         };
         let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
+        // A generation is immutable: read once, and held against every local file in scope.
+        let generation = match scope.generation {
+            Some(n) => {
+                let listed = self.generation_manifest(n)?;
+                let local = self.local_entries()?;
+                if let Some(extra) = local.keys().find(|k| in_project(k) && reaches(k) && !listed.entries.contains_key(*k)) {
+                    return Err(StoreError::SyncGenerationDiverged(format!(
+                        "`{extra}` is in this store and generation {n} does not list it; restore generation {n} into a store holding none of its files"
+                    ))
+                    .into());
+                }
+                Some((listed, local.keys().filter_map(|k| table_of(k)).collect::<BTreeSet<String>>()))
+            }
+            None => None,
+        };
         let mut report = PullReport::default();
         let mut shortfall: Option<String> = None;
         let mut manifest = BucketManifest::default();
         for attempt in 1..=PULL_CONVERGENCE {
             report.attempts = attempt;
             shortfall = None;
-            manifest = self.manifest()?.0;
+            manifest = match &generation {
+                Some((listed, _)) => listed.clone(),
+                None => self.manifest()?.0,
+            };
             for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k)) {
-                // This node's own keys are authoritative here.
-                if owner_of(key).as_deref() == Some(self.node.as_str()) {
+                // This node's own keys are authoritative here, except in a restore.
+                if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) {
                     continue;
                 }
                 let Some(path) = self.local_path(key) else { continue };
                 let local = std::fs::read(&path).ok();
-                if local.as_deref().map(sha256_hex).as_deref() == Some(entry.sha256.as_str()) {
+                let schema = key.ends_with("/schema.json");
+                // A restore takes a schema as the bucket holds it now (`store.pull.generation-schema`).
+                let current_schema = generation.is_some() && schema;
+                if !current_schema && local.as_deref().map(sha256_hex).as_deref() == Some(entry.sha256.as_str()) {
                     continue;
                 }
                 if local.is_some() && is_commit_log(key) {
@@ -428,13 +579,16 @@ impl Syncer {
                     shortfall = Some(key.clone());
                     continue;
                 };
-                if sha256_hex(&bytes) != entry.sha256 {
+                if !current_schema && sha256_hex(&bytes) != entry.sha256 {
                     return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")).into());
                 }
-                let merged = match (&local, key.ends_with("/schema.json")) {
+                let merged = match (&local, schema) {
                     (Some(mine), true) => merge_schema(mine, &bytes)?,
                     _ => bytes,
                 };
+                if local.as_deref() == Some(merged.as_slice()) {
+                    continue;
+                }
                 write(&path, &merged)?;
                 report.downloaded.push(key.clone());
             }
@@ -445,32 +599,37 @@ impl Syncer {
         if let Some(key) = shortfall {
             return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` kept moving across {PULL_CONVERGENCE} attempts; no pointer is written")).into());
         }
-        // A tombstone deletes the local copy of the key it names.
-        for key in manifest.tombstones.keys().filter(|k| in_project(k) && reaches(k) && !manifest.entries.contains_key(*k)) {
-            if let Some(path) = self.local_path(key) {
-                match std::fs::remove_file(&path) {
-                    Ok(()) => report.removed.push(key.clone()),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(e) => return Err(io(&path, e)),
+        // A tombstone deletes the local copy of the key it names; a restore lists its set whole.
+        if generation.is_none() {
+            for key in manifest.tombstones.keys().filter(|k| in_project(k) && reaches(k) && !manifest.entries.contains_key(*k)) {
+                if let Some(path) = self.local_path(key) {
+                    match std::fs::remove_file(&path) {
+                        Ok(()) => report.removed.push(key.clone()),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(e) => return Err(io(&path, e)),
+                    }
                 }
             }
         }
-        // Pointers last: every advancing pointer is verified before any is written.
+        // Pointers last: every pointer to write is verified before any is written.
+        let candidates: Vec<(String, BucketPointer)> = match &generation {
+            Some((listed, _)) => listed.pointers.iter().map(|(k, p)| (k.clone(), p.clone())).collect(),
+            None => self.project_pointers()?.into_iter().collect(),
+        };
         let mut advancing: Vec<(String, PathBuf, Pointer)> = Vec::new();
-        for bucket_key in self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?.into_iter().filter(|k| is_pointer(k)) {
-            let rel_key = bucket_key.strip_prefix(&format!("{}/", self.prefix)).unwrap_or(&bucket_key).to_string();
-            if !reaches(&rel_key) {
+        for (rel_key, pointer) in candidates {
+            if !in_project(&rel_key) || !reaches(&rel_key) {
                 continue;
             }
-            let Some((bytes, _)) = self.bucket.get(&bucket_key)? else { continue };
-            let pointer: BucketPointer = serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
             let Some(snapshot) = pointer.snapshot_id else { continue };
             let Some(pointer_path) = self.local_path(&rel_key) else { continue };
             let snapshot_id: SnapshotId = serde_json::from_value(serde_json::Value::String(snapshot.clone())).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
             let held: Option<Pointer> = std::fs::read(&pointer_path).ok().and_then(|b| serde_json::from_slice(&b).ok());
-            // The bucket's pointer advances a local one only when its fence, then its snapshot, is newer.
+            // The bucket's pointer advances a local one only when its fence, then its snapshot,
+            // is newer; a restore writes the generation's pointer whatever its fence.
             if let Some(h) = &held {
-                if (h.fence.unwrap_or(0), &h.snapshot_id) >= (pointer.fence, &snapshot_id) {
+                let ahead = (h.fence.unwrap_or(0), &h.snapshot_id) >= (pointer.fence, &snapshot_id);
+                if (generation.is_none() && ahead) || (h.fence == Some(pointer.fence) && h.snapshot_id == snapshot_id) {
                     continue;
                 }
             }
@@ -485,6 +644,21 @@ impl Syncer {
                 return Err(StoreError::SyncPullDidNotConverge(format!("snapshot `{snapshot}` lacks `{missing}`; no pointer is written")).into());
             }
             advancing.push((rel_key, pointer_path, Pointer { snapshot_id, fence: Some(pointer.fence) }));
+        }
+        // A restored table the generation publishes no snapshot for keeps no local pointer.
+        if let Some((listed, tables)) = &generation {
+            for table in tables.iter().filter(|t| reaches(&format!("{}/tables/{t}/schema.json", self.project))) {
+                let key = format!("{}/tables/{table}/{POINTER_FILE}", self.project);
+                if listed.pointers.get(&key).is_none_or(|p| p.snapshot_id.is_none()) {
+                    if let Some(path) = self.local_path(&key) {
+                        match std::fs::remove_file(&path) {
+                            Ok(()) => report.removed.push(key),
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                            Err(e) => return Err(io(&path, e)),
+                        }
+                    }
+                }
+            }
         }
         for (rel_key, path, pointer) in advancing {
             write(&path, &serde_json::to_vec_pretty(&pointer).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?)?;

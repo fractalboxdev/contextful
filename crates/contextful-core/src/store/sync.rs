@@ -1,6 +1,7 @@
 //! `store.push`, `store.pull`, `store.probe` and `store.merge`: the sync configuration,
 //! prefix confinement, the bucket manifest, key ownership and the scoped-union merge.
 
+use super::lease::BucketPointer;
 use super::StoreError;
 use crate::connector::attach::is_loopback_host;
 use crate::connector::reference::{SecretName, SCHEME};
@@ -17,6 +18,32 @@ pub const TOMBSTONE_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 
 /// The bucket manifest's key under the prefix.
 pub const MANIFEST_KEY: &str = "manifest.json";
+/// The bucket manifest format this build writes and the newest it parses (`store.push.manifest-format`).
+pub const MANIFEST_FORMAT: u32 = 1;
+
+/// The immutable copy of generation `n`'s committed manifest, under the prefix (`store.push.generation`).
+pub fn generation_key(n: u64) -> String {
+    format!("{GENERATION_PREFIX}gen-{n}.json")
+}
+
+/// Where the generation manifests live under the prefix.
+pub const GENERATION_PREFIX: &str = "manifests/";
+
+/// The generation a key under the prefix names, when it is a generation manifest's key.
+pub fn generation_of(key: &str) -> Option<u64> {
+    key.strip_prefix(GENERATION_PREFIX)?.strip_prefix("gen-")?.strip_suffix(".json")?.parse().ok()
+}
+
+/// Hold a manifest's `format` to the newest this build parses (`store.push.format-unsupported`).
+pub fn admit_format(key: &str, format: u32) -> Result<(), StoreError> {
+    if format > MANIFEST_FORMAT {
+        return Err(StoreError::SyncManifestFormatUnsupported(format!(
+            "`{key}` carries format {format}; this build parses format {MANIFEST_FORMAT} and older"
+        )));
+    }
+    Ok(())
+}
+
 /// Where a probe writes its sentinel under the prefix.
 pub const PROBE_PREFIX: &str = "_contextful/cas-probe/";
 
@@ -228,13 +255,37 @@ pub struct Tombstone {
     pub deleted_at: Instant,
 }
 
-/// The bucket manifest: key (relative to the prefix) to entry, and tombstones.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// The bucket manifest: its format and generation, key (relative to the prefix) to entry,
+/// tombstones, and each table pointer as read before the commit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BucketManifest {
+    /// Absent reads as 1, the format of a manifest written before the field existed.
+    #[serde(default = "format_one")]
+    pub format: u32,
+    /// The commit's generation, one past the copy it replaced; 0 on a plan or an unnumbered manifest.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub generation: u64,
     #[serde(default)]
     pub entries: BTreeMap<String, Entry>,
     #[serde(default)]
     pub tombstones: BTreeMap<String, Tombstone>,
+    /// Pointer key to the pointer the bucket held as the commit was made.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pointers: BTreeMap<String, BucketPointer>,
+}
+
+fn format_one() -> u32 {
+    1
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+impl Default for BucketManifest {
+    fn default() -> BucketManifest {
+        BucketManifest { format: MANIFEST_FORMAT, generation: 0, entries: BTreeMap::new(), tombstones: BTreeMap::new(), pointers: BTreeMap::new() }
+    }
 }
 
 /// The node owning a key, read off the key itself: a run directory's node segment, or a

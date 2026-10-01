@@ -209,13 +209,13 @@ fn a_replica_missing_a_snapshot_part_refuses_and_leaves_it_unpublished() {
 fn a_refresh_requesting_a_replicate_off_table_refuses() {
     let (_dir, b, _a) = pushed();
     let r = node("replica-1", b, "\n[replica]\nof = \"team/research\"\n");
-    let scope = PullScope { tables: vec!["filings".into()], replicate_off: vec!["filings".into()] };
+    let scope = PullScope { tables: vec!["filings".into()], replicate_off: vec!["filings".into()], ..PullScope::default() };
     match r.syncer.pull(&scope) {
         Err(SyncError::Store(StoreError::ReplicaSensitiveTable(m))) => assert!(m.contains("filings") && m.contains("proxying face"), "{m}"),
         other => panic!("{other:?}"),
     }
     // An unscoped refresh takes every other table and leaves the replicate-off one behind.
-    r.syncer.pull(&PullScope { tables: vec![], replicate_off: vec!["filings".into()] }).unwrap();
+    r.syncer.pull(&PullScope { tables: vec![], replicate_off: vec!["filings".into()], ..PullScope::default() }).unwrap();
     assert!(!r.root().join("tables/filings").exists());
 }
 

@@ -11,6 +11,7 @@ owns:
   - bound-time
   - encrypt
   - endpoint
+  - emit
   - push
   - pull
   - probe
@@ -117,7 +118,7 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *because a control-plane snapshot applies to every machine reconciling it, making one id many holders*
 - `node-id-local` — A machine with no writable state directory takes the reserved node id `local`.
 
-unsettled: How does a consumer discover the manifest format version a store or bucket carries, and what does it do with a version newer than it parses? owner: store affects: store.lay-out
+unsettled: How does a consumer discover the format version of a run or snapshot manifest, and what does it do with a version newer than it parses? owner: store affects: store.lay-out
 
 ## init
 
@@ -419,6 +420,14 @@ Opening a store's bucket: the endpoint schemes, the transport, request addressin
 
 unsettled: Does an S3 bucket whose `[sync]` binds no key sign with the instance or container role's credentials? owner: store affects: store.endpoint
 
+## emit
+
+Planning a push from the store alone: the manifest a push commits, computed from local files without reading or writing the bucket.
+
+- `plan` — `contextful sync manifest --emit` prints, as a bucket manifest in JSON, each key a push of the store commits with its sha256, size and owner, and reads and writes no bucket object.
+  *because a pre-push check and a dry run need the commit's content without a credential or a network*
+- `plan-scope` — The plan lists every key {{store.push.wire-format}} uploads and each `schema.json` at its local digest; a key another node owns stays out.
+
 ## push
 
 Uploading the store to a bucket: the wire format, the bucket manifest, prefix confinement and the manifest write that commits it.
@@ -436,6 +445,17 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *because two nodes landing different columns into one table both keep them*
 - `manifest-commit` — A push commits when the bucket manifest, `<prefix>/manifest.json` listing each key's sha256, size and owner, replaces the copy it read under `If-Match` on that copy's ETag.
   *A-store*
+- `manifest-format` — The bucket manifest and every generation manifest carry `format`, `1` for this layout; a manifest without `format` reads as `1`.
+- `format-unsupported` — A bucket or generation manifest whose `format` exceeds 1 raises `SyncManifestFormatUnsupported`, naming the key and its format, before the push commits or the pull writes a file.
+  *because a reader rewriting a manifest it parses only in part drops the fields a newer writer added*
+- `generation` — Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.
+  *because a restore or a pre-push gate names one committed state, and the live manifest and pointers move on*
+- `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
+  *because a format-1 writer predating the field drops `generation`, and reusing a taken number collides with its immutable copy*
+- `generation-heal` — Before each manifest commit, a push finding no `gen-<N>.json` for the generation of the manifest it read creates it from the bytes it read.
+  *because a commit of N+1 landing while `gen-<N>.json` is absent leaves a gap no later push sees*
+- `generation-conflict` — A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.
+  *because the immutable copy keeps the first commit, and a push reporting success names a state `pull --generation` does not restore*
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 
@@ -483,6 +503,13 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *because rows landed locally carry columns the bucket's copy may lack*
 - `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run` and `mcp` pull every table of the bucket into the store before their first read, and a failed pull stops the command.
   *because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs*
+- `generation` — `contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.
+- `generation-absent` — A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.
+  *because a restore falling back to another generation reads a state nobody named*
+- `generation-diverged` — A generation pull into a store holding a syncable file in scope that the generation does not list raises `SyncGenerationDiverged`, naming the file, and writes nothing.
+  *because a kept unlisted run adds rows the generation never held, and deleting it loses unpushed work*
+- `generation-schema` — A generation pull takes each `schema.json` as the bucket holds it, merged per {{store.pull.schema-merge}}, never refusing on its generation digest.
+  *because the lattice keeps every column an earlier generation carried, and the merged copy replaces the old one in the bucket*
 
 A pull converges on the bucket manifest and writes each table pointer last.
 

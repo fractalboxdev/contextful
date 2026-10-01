@@ -11,6 +11,7 @@ index      = {}
 bound-time = {}
 encrypt    = {}
 endpoint   = {}
+emit       = {}
 push       = {}
 pull       = {}
 probe      = {}
@@ -53,6 +54,10 @@ SyncPrefixEscape             = { clause = "store.push.prefix-escape", gloss = "A
 SyncPrefixUnbound            = { clause = "store.push.prefix-unbound", gloss = "The variable named by `prefix_from` is unset at startup." }
 SyncPrefixOverspecified      = { clause = "store.push.prefix-overspecified", gloss = "`prefix` and `prefix_from` are declared together." }
 SyncPushInFlight             = { clause = "store.push.in-flight", gloss = "A second push of one store started on a machine already pushing it." }
+SyncManifestFormatUnsupported = { clause = "store.push.format-unsupported", gloss = "A bucket or generation manifest carries a format newer than the reader parses." }
+SyncGenerationConflict       = { clause = "store.push.generation-conflict", gloss = "A generation manifest already holds another commit's bytes under the number a push committed." }
+SyncGenerationAbsent         = { clause = "store.pull.generation-absent", gloss = "A pull names a generation the bucket holds no generation manifest for." }
+SyncGenerationDiverged       = { clause = "store.pull.generation-diverged", gloss = "A generation pull meets a local file the generation does not list." }
 SyncObjectDigestMismatch     = { clause = "store.pull.digest-mismatch", gloss = "A downloaded object's digest differs from its entry." }
 SyncPullDidNotConverge       = { clause = "store.pull.unconverged", gloss = "A pull exhausted its retries against keys moving beneath it." }
 SyncProbeInconclusive        = { clause = "store.probe.inconclusive", gloss = "The conditional-write probe met an unsupported method, a forbidden response or a transport error." }

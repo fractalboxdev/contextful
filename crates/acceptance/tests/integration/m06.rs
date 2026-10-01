@@ -25,6 +25,15 @@ fn refused(out: &Output, error: &str) {
 struct Bucket {
     sync: String,
     env: Vec<(&'static str, &'static str)>,
+    /// The directory a filesystem bucket lives in; an S3 bucket has none.
+    root: Option<PathBuf>,
+}
+
+impl Bucket {
+    fn manifest(&self) -> Option<serde_json::Value> {
+        let path = self.root.as_ref()?.join("context-team/team/manifest.json");
+        path.exists().then(|| serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap())
+    }
 }
 
 /// One node: its own project directory and node id, and the shared bucket.
@@ -80,6 +89,10 @@ fn converge(cf: &Path, bucket: &Bucket) {
     // The backend demonstrates the conditional write the declared `cas` coordination rests on.
     assert!(ok(&a.sync(&["probe"])).contains("cas"));
 
+    // A plan emitted before the push names what the push commits, and the bucket holds nothing yet.
+    let plan: serde_json::Value = serde_json::from_str(&ok(&a.sync(&["manifest", "--emit"]))).unwrap();
+    assert!(bucket.manifest().is_none());
+
     // Both push at once: the bucket manifest commits by compare-and-set, and neither loses the other's entries.
     let (pa, pb) = std::thread::scope(|s| {
         let ha = s.spawn(|| a.sync(&["push"]));
@@ -88,6 +101,21 @@ fn converge(cf: &Path, bucket: &Bucket) {
     });
     ok(&pa);
     ok(&pb);
+    if let Some(committed) = bucket.manifest() {
+        for (key, entry) in plan["entries"].as_object().unwrap().iter().filter(|(k, _)| k.contains("/ingest-a/")) {
+            assert_eq!(committed["entries"][key], *entry, "{key}");
+        }
+        assert_eq!(committed["generation"], 2);
+    }
+
+    // Generation 2 holds both pushes; a fresh node restores exactly it.
+    let c = node(cf, bucket, "restore-c", "");
+    ok(&c.sync(&["pull", "--generation", "2"]));
+    refused(&c.sync(&["pull", "--generation", "9"]), "SyncGenerationAbsent");
+    assert_eq!(
+        c.files(),
+        ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet", "tables/filings/data/runs/run-1/ingest-b/part-00000.parquet"]
+    );
 
     // Each pulls the other's runs; one run id on two nodes stays two runs.
     ok(&a.sync(&["pull"]));
@@ -138,6 +166,7 @@ fn m06_sync() {
     let bucket = Bucket {
         sync: format!("endpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"cas\"\n", dir.path().display()),
         env: Vec::new(),
+        root: Some(dir.path().to_path_buf()),
     };
     converge(&cf, &bucket);
 }
@@ -152,6 +181,7 @@ fn m06_sync_over_s3() {
             server.endpoint
         ),
         env: vec![("CONTEXTFUL_SYNC_ACCESS_KEY_ID", ACCESS_KEY), ("CONTEXTFUL_SYNC_SECRET_ACCESS_KEY", SECRET_KEY)],
+        root: None,
     };
     converge(&cf, &bucket);
     assert!(server.keys().iter().any(|k| k == "team/manifest.json"), "the bucket manifest sits under the prefix");
