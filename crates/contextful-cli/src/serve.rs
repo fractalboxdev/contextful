@@ -6,18 +6,16 @@
 //! credential. Every value is resolved before the listener binds, so a process that
 //! cannot serve binds nothing.
 
-use crate::admit::{face, AUDIENCE_VAR, PUBKEY_VAR};
-use crate::project::locate;
+use crate::admit::{face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
+use crate::project::{locate, root as project_root};
 use crate::run::SystemClock;
 use anyhow::Result;
 use contextful_agent::http::{audience, ceiling, Admitting, HttpFace};
 use contextful_policy::keyset::{KeyCheckpoint, StaticPins};
-use contextful_policy::revoke::{parse_denylist, RevocationState};
+use contextful_policy::revoke::RevocationState;
 use std::net::TcpListener;
 use std::path::PathBuf;
-
-/// The key version a denylist entry records for credentials verified under static pins.
-const STATIC_KEY_VERSION: &str = "static";
+use std::sync::Arc;
 
 /// The refusals of starting the network transport. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -53,6 +51,10 @@ pub struct ServeArgs {
     /// A file of revocation identifiers, one per line, re-read on every request.
     #[arg(long)]
     denylist: Option<PathBuf>,
+    /// The key-set ledger holding retired keys and scoped epochs, its epochs re-read on
+    /// every request; absent, `.contextful/keyset.toml` under the project root.
+    #[arg(long)]
+    keyset: Option<PathBuf>,
 }
 
 /// The issuer key pins, resolved and parsed before the listener binds; no generated key
@@ -69,16 +71,18 @@ pub fn run(args: ServeArgs) -> Result<()> {
     // The declarations are checked before anything opens (`read.register.serve-declaration`).
     let audience = audience(args.audience.as_deref()).map_err(anyhow::Error::msg)?;
     let ceiling = ceiling(args.max_in_flight).map_err(anyhow::Error::msg)?;
+    let root = project_root(args.project.as_deref())?;
+    let ledger = Arc::new(LedgerFile::at(&root, args.keyset.as_deref()));
+    // Every admission filters the pins through the ledger it reads then, so a key retired
+    // while the face runs verifies nothing from the next request; a start with every
+    // pinned key retired, or an unreadable ledger, binds nothing.
     let pins = issuer_pins(args.public_key.as_deref())?;
-    let checkpoint = KeyCheckpoint::start(Box::new(pins), SystemClock).map_err(|e| ServeError::IssuerKeyUnusable(e.to_string()))?;
+    let live = LivePins::new(pins, ledger.clone(), SystemClock);
+    let checkpoint = KeyCheckpoint::start(Box::new(live), SystemClock).map_err(|e| ServeError::IssuerKeyUnusable(e.to_string()))?;
     let denylist = args.denylist.clone();
     let revocation = move || -> Result<RevocationState, String> {
-        let mut state = RevocationState::default();
-        if let Some(path) = &denylist {
-            let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            state.denylist = parse_denylist(&text, STATIC_KEY_VERSION);
-        }
-        Ok(state)
+        let ledger = ledger.read().map_err(|e| e.to_string())?;
+        revocation_state(denylist.as_deref(), &ledger).map_err(|e| format!("{e:#}"))
     };
     // The denylist reads once before binding, so a missing file refuses the start.
     revocation().map_err(anyhow::Error::msg)?;

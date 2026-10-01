@@ -275,7 +275,7 @@ pub fn run(cmd: EvalCmd) -> Result<()> {
         opened.push((corpus, idx));
     }
 
-    let (authority, revocation) = a.admit.admit("the evaluation run")?;
+    let (authority, revocation) = a.admit.admit(None, "the evaluation run")?;
     let landed_at = instant("--landed-at", a.landed_at.as_deref(), Instant::from_unix_nanos(0)?)?;
     let embedder = StubEmbedder::new(a.seed);
     let pepper = Pepper::resolve(|k| std::env::var(k).ok());

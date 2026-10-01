@@ -30,7 +30,7 @@ pub struct McpArgs {
 }
 
 pub fn run(args: McpArgs) -> Result<()> {
-    let (authority, revocation) = args.admit.admit("the tool server")?;
+    let (authority, revocation) = args.admit.admit(args.project.as_deref(), "the tool server")?;
     let located = locate(args.project.as_deref(), args.declaration)?;
     crate::sync::pull_before_run(&located)?;
     let face = face(&located)?;

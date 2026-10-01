@@ -72,7 +72,7 @@ pub enum MemoryCmd {
 pub fn run(cmd: MemoryCmd) -> Result<()> {
     match cmd {
         MemoryCmd::Synthesize { project, source, into, endpoint, model } => {
-            let (authority, revocation) = project.admit.admit("a synthesis pass")?;
+            let (authority, revocation) = project.admit.admit(project.project.as_deref(), "a synthesis pass")?;
             let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
             let located = locate(project.project.as_deref(), project.declaration.clone())?;
             let face = face(&located)?;
@@ -112,7 +112,7 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
                 .map(|s| Instant::parse(&s).with_context(|| format!("`--observed-at {s}` is no RFC 3339 instant")))
                 .transpose()?;
             let observation = Observation { observed_at, dedup_key };
-            let (authority, revocation) = project.admit.admit("the direct write")?;
+            let (authority, revocation) = project.admit.admit(project.project.as_deref(), "the direct write")?;
             let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
             let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
             let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;

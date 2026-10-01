@@ -69,7 +69,7 @@ pub fn run(cmd: ExportCmd) -> Result<()> {
             }
             let client = Client::new(allow, export.endpoint.clone()).with_body_limit(64 * 1024);
 
-            let (authority, _) = admit.admit("an export")?;
+            let (authority, _) = admit.admit(project.project.as_deref(), "an export")?;
             let face = face(&l)?;
             let types = face.store().try_schema(&export.table)?.map(|s| s.columns.into_iter().map(|c| (c.name, c.ty)).collect()).unwrap_or_default();
 

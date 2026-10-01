@@ -150,6 +150,16 @@ impl StaticPins {
             .collect::<Result<Vec<_>, _>>()?;
         KeySet::new(keys).map(|s| StaticPins(Arc::new(s))).map_err(malformed)
     }
+
+    /// The pins whose key text, `<algorithm>/<hex>`, `keep` admits; a retired key drops
+    /// from the set (`authority.revoke.immediate-retire`), and none left raises
+    /// `KeySetUnavailable`.
+    pub fn retaining(&self, keep: impl Fn(&str) -> bool) -> Result<StaticPins, AuthorityError> {
+        let keys = self.0.keys().filter(|k| keep(&k.public_key.to_string())).cloned().collect();
+        KeySet::new(keys)
+            .map(|s| StaticPins(Arc::new(s)))
+            .map_err(|why| AuthorityError::KeySetUnavailable(format!("static pins: every pinned key is retired: {why}")))
+    }
 }
 
 impl KeySource for StaticPins {

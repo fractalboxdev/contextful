@@ -186,3 +186,87 @@ fn serve_admits_a_holder_bound_credential_under_proof_and_a_short_lived_bearer()
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("PossessionProofInvalid"), "{err}");
 }
+
+/// A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.
+// spec: authority.revoke.epoch@a8e2dbfc
+#[test]
+fn a_running_face_refuses_a_credential_below_the_scoped_epoch_from_the_next_request() {
+    let (dir, public) = project();
+    let p = dir.path();
+    let mint = |on_behalf_of: Option<&str>| {
+        let mut args = vec!["token", "mint", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "900"];
+        if let Some(who) = on_behalf_of {
+            args.extend(["--on-behalf-of", who]);
+        }
+        stdout(&run(p, &args))
+    };
+    let (delegated, unattributed) = (mint(Some("user://dana@acme.example")), mint(None));
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    for token in [&delegated, &unattributed] {
+        assert_eq!(post(&addr, &query(), token, None).0, 200);
+    }
+    assert_eq!(stdout(&run(p, &["token", "revoke", "--principal-class", "delegated"])), "epoch 1");
+    let (status, answer) = post(&addr, &query(), &delegated, None);
+    assert_eq!((status, answer["error"]["identifier"].clone()), (401, json!("AuthorityRevoked")), "{answer}");
+    // The bump reaches its principal class alone, and a credential minted after it admits.
+    assert_eq!(post(&addr, &query(), &unattributed, None).0, 200);
+    let (status, answer) = post(&addr, &query(), &mint(Some("user://dana@acme.example")), None);
+    assert_eq!(status, 200, "{answer}");
+}
+
+/// Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.
+// spec: authority.revoke.compromise@c14a17b8
+#[test]
+fn a_running_face_drops_a_key_retired_by_compromise_from_the_next_request() {
+    let (dir, public) = project();
+    let p = dir.path();
+    // A spare pin published ahead of rotation keeps the face serving.
+    let spare = stdout(&run(p, &["token", "keygen", "--out", "spare.seed"]));
+    let mint = |key: &str| {
+        stdout(&run(p, &["token", "mint", "--issuer-key", key, "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "900"]))
+    };
+    let before = mint(".contextful/issuer.seed");
+    std::fs::copy(p.join(".contextful/issuer.seed"), p.join("stolen.seed")).unwrap();
+    let pins = format!("{public},{spare}");
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &pins]);
+    assert_eq!(post(&addr, &query(), &before, None).0, 200);
+
+    stdout(&run(p, &["token", "rotate", "--compromise"]));
+    // The stolen seed signs under the bumped epoch, and its retired key verifies nothing.
+    for token in [&mint("stolen.seed"), &before] {
+        let (status, answer) = post(&addr, &query(), token, None);
+        assert_eq!(status, 401, "{answer}");
+    }
+    assert_eq!(post(&addr, &query(), &mint("spare.seed"), None).0, 200);
+}
+
+/// A checkpoint pointed at a key-set ledger, or that has read one, raises `KeySetLedgerUnavailable` and admits nothing once the file is absent or malformed.
+// spec: authority.revoke.ledger-unavailable@a63dfc3b
+#[test]
+fn a_face_below_the_project_root_reads_the_root_ledger_and_refuses_once_it_vanishes() {
+    let (dir, public) = project();
+    let p = dir.path();
+    std::fs::write(p.join("contextful.toml"), "[project]\nname = \"research\"\n\n[[pipeline.tables]]\nname = \"research/notes\"\n").unwrap();
+    let sub = p.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    let mint = || stdout(&run(&sub, &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "900"]));
+    let before = mint();
+    assert_eq!(stdout(&run(&sub, &["token", "revoke"])), "epoch 1");
+    assert!(p.join(".contextful/keyset.toml").is_file() && !sub.join(".contextful").exists(), "the bump lands at the project root");
+
+    let (_listener, addr) = serve(&sub, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--public-key", &public]);
+    let (status, answer) = post(&addr, &query(), &before, None);
+    assert_eq!((status, answer["error"]["identifier"].clone()), (401, json!("AuthorityRevoked")), "{answer}");
+    let after = mint();
+    assert_eq!(post(&addr, &query(), &after, None).0, 200);
+
+    // A ledger the face has read and that then vanishes lifts no revocation.
+    std::fs::remove_file(p.join(".contextful/keyset.toml")).unwrap();
+    for token in [&before, &after] {
+        let (status, answer) = post(&addr, &query(), token, None);
+        assert_ne!(status, 200, "{answer}");
+        assert!(answer.to_string().contains("KeySetLedgerUnavailable"), "{answer}");
+    }
+    let out = run(p, &["token", "verify", "--public-key", &public, "--keyset", "absent.toml", "--token", &after]);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("KeySetLedgerUnavailable"), "{out:?}");
+}

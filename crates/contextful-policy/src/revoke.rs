@@ -7,6 +7,8 @@
 //! identifier leaves its parent admitted.
 
 use crate::verify::AdmittedAuthority;
+use contextful_core::grant::Grant;
+use contextful_core::issue::MintPlan;
 use contextful_core::revoke::{check_revoked, Denylist, Epochs, FormatWithdrawals, RevocationClaims};
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
@@ -48,21 +50,22 @@ pub fn parse_denylist(text: &str, key_version: &str) -> Denylist {
 /// tenant is the one tenant every grant shares, if any; the identifiers are the
 /// credential's `rev.id` followed by each derivation's, root first.
 pub fn revocation_claims(admitted: &AdmittedAuthority) -> RevocationClaims {
-    let mut tenants = admitted.grants().iter().map(|g| g.tenant.as_ref().map(|t| t.value.clone()));
-    let first = tenants.next().flatten();
-    let tenant = if tenants.all(|t| t == first) { first } else { None };
-    let principal_class = if admitted.subject().on_behalf_of().is_some() {
-        PRINCIPAL_CLASS_DELEGATED
-    } else {
-        PRINCIPAL_CLASS_UNATTRIBUTED
-    };
     let mut revocation_ids = vec![admitted.credential_id().to_string()];
     revocation_ids.extend(admitted.revocation_ids().iter().cloned());
-    RevocationClaims {
-        project: admitted.audience().to_string(),
-        tenant,
-        principal_class: principal_class.to_string(),
-        revocation_ids,
-        epoch: admitted.epoch(),
-    }
+    claims(admitted.audience(), admitted.grants(), admitted.subject().on_behalf_of().is_some(), revocation_ids, admitted.epoch())
+}
+
+/// The epoch a checked plan mints under: the current epoch of every scope covering the
+/// credential it encodes, read from the same view a checkpoint takes (`authority.revoke.epoch-store`).
+pub fn mint_epoch(plan: &MintPlan, epochs: &Epochs) -> u64 {
+    let delegated = plan.subject.on_behalf_of.as_deref().is_some_and(|p| !p.trim().is_empty());
+    epochs.current_for(&claims(&plan.audience, &plan.grants, delegated, Vec::new(), 0))
+}
+
+fn claims(audience: &str, grants: &[Grant], delegated: bool, revocation_ids: Vec<String>, epoch: u64) -> RevocationClaims {
+    let mut tenants = grants.iter().map(|g| g.tenant.as_ref().map(|t| t.value.clone()));
+    let first = tenants.next().flatten();
+    let tenant = if tenants.all(|t| t == first) { first } else { None };
+    let principal_class = if delegated { PRINCIPAL_CLASS_DELEGATED } else { PRINCIPAL_CLASS_UNATTRIBUTED };
+    RevocationClaims { project: audience.to_string(), tenant, principal_class: principal_class.to_string(), revocation_ids, epoch }
 }

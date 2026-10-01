@@ -45,6 +45,18 @@ pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Loc
     Ok(Located { project, declaration: declaration.unwrap_or(default) })
 }
 
+/// The directory the issuance policy, the default issuer seed and the key-set ledger sit
+/// under (`authority.issue.project-root`): the working directory under `--project`, else
+/// the nearest directory upward holding `contextful.toml`, else the working directory.
+pub fn root(project: Option<&str>) -> Result<PathBuf> {
+    let cwd = std::env::current_dir()?;
+    if project.is_some() {
+        return Ok(cwd);
+    }
+    let found = cwd.ancestors().find(|d| d.join(contextful_context::project::DECLARATION_FILE).is_file()).map(PathBuf::from);
+    Ok(found.unwrap_or(cwd))
+}
+
 pub fn run(args: InitArgs) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let what = match init(&cwd, &args.name)? {

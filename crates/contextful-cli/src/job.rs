@@ -108,7 +108,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             };
             let body = bodies.get(&driven.input.body).context("a validated body is registered")?;
             let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
-            let (authority, _) = admit.admit("a store-driven job")?;
+            let (authority, _) = admit.admit(project.project.as_deref(), "a store-driven job")?;
             let face = face(&l)?;
             let w = wire_at(&l.project, &project.now)?;
             for reaped in w.engine.reap_orphans()? {

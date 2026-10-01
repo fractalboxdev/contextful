@@ -110,7 +110,6 @@ fn an_explicit_lifetime_above_the_ceiling_refuses_and_an_exchange_lifetime_clamp
 }
 
 /// Lowering the ceiling records the previous value and its instant; rotation-grace validation uses the recorded value until the last credential minted under it lapses.
-// spec: authority.issue.ceiling-lowering@776caba7
 #[test]
 fn lowering_the_ceiling_records_the_previous_value_until_its_credentials_lapse() {
     let lowered_at = at(NOW);
@@ -259,7 +258,6 @@ fn a_subject_declaring_a_wildcard_zone_refuses() {
 }
 
 /// The issuer signing key rotates every 90 d, and at once on suspected compromise.
-// spec: authority.issue.key-rotation@1080980b
 #[test]
 fn the_issuer_key_rotates_every_90_days_and_at_once_on_compromise() {
     assert_eq!(ISSUER_KEY_ROTATION_CADENCE_SECS, 90 * 24 * 60 * 60);

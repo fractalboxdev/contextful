@@ -269,3 +269,79 @@ fn a_run_takes_its_site_id_from_the_manifest_unless_the_flag_names_one() {
     std::fs::write(&manifest, format!("site_id = \"site-m\"\nsite_id_env = \"CONTEXTFUL_TEST_SITE\"\n\n{tables}")).unwrap();
     refused(&bare("b1", &[]), "SiteIdUnresolved");
 }
+
+const AUD: &str = "contextful://research";
+
+/// An issuer for the scratch project at the default seed path; its public key pin.
+fn issuer(dir: &Path) -> String {
+    let public = ok(&cf(dir, &["token", "keygen"]));
+    ok(&cf(dir, &["token", "policy", "init", "--audience", AUD]));
+    public
+}
+
+/// A credential reading `pattern`, minted now under the default issuer key.
+fn reader(dir: &Path, pattern: &str) -> String {
+    ok(&cf(dir, &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--table", pattern]))
+}
+
+/// A run surface under the credential in `CONTEXTFUL_TOKEN`.
+fn credentialed(dir: &Path, token: &str, public: &str, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(args)
+        .args(["--project", "research", "--public-key", public, "--audience", AUD])
+        .current_dir(dir)
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env("CONTEXTFUL_TOKEN", token)
+        .output()
+        .unwrap()
+}
+
+/// Tracing a run gates on the pipeline resolved from the run record and raises `GrantRunTraceDenied` without naming that pipeline.
+// spec: authority.grant.run-trace-denied@3e65cef9
+#[test]
+fn run_show_gates_on_the_pipeline_its_run_record_names() {
+    let dir = project();
+    let public = issuer(dir.path());
+    ok(&start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z"));
+    ok(&start(dir.path(), "feed-b.toml", "b1", "2030-01-01T00:01:00Z"));
+    let token = reader(dir.path(), "feed-a");
+    let shown: serde_json::Value = serde_json::from_str(&ok(&credentialed(dir.path(), &token, &public, &["run", "show", "a1"]))).unwrap();
+    assert_eq!(shown["pipeline_id"], "feed-a");
+    let out = credentialed(dir.path(), &token, &public, &["run", "show", "b1"]);
+    refused(&out, "GrantRunTraceDenied");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("feed-b"), "the refusal names no pipeline: {stderr}");
+    // An absent run refuses alike, so a credential cannot tell it from an uncovered one.
+    let absent = credentialed(dir.path(), &token, &public, &["run", "show", "zz"]);
+    refused(&absent, "GrantRunTraceDenied");
+    assert_eq!(String::from_utf8_lossy(&absent.stderr), stderr);
+    // A grant over the landed table confers no trace.
+    refused(&credentialed(dir.path(), &reader(dir.path(), "filings"), &public, &["run", "show", "a1"]), "GrantRunTraceDenied");
+}
+
+/// Describing an uncovered pipeline raises `GrantPipelineNotCovered`, naming it. Listing filters to covered identifiers and raises it when none is covered; a project declaring no pipelines lists empty.
+// spec: authority.grant.pipeline-not-covered@a7aff20e
+#[test]
+fn run_history_lists_covered_pipelines_and_refuses_an_uncovered_one() {
+    let dir = project();
+    let public = issuer(dir.path());
+    let token = reader(dir.path(), "feed-a");
+    // No run recorded: the listing is empty, not refused.
+    let empty: serde_json::Value = serde_json::from_str(&ok(&credentialed(dir.path(), &token, &public, &["run", "history"]))).unwrap();
+    assert_eq!(empty["runs"], serde_json::json!([]));
+    ok(&start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z"));
+    ok(&start(dir.path(), "feed-b.toml", "b1", "2030-01-01T00:01:00Z"));
+
+    let listing: serde_json::Value = serde_json::from_str(&ok(&credentialed(dir.path(), &token, &public, &["run", "history"]))).unwrap();
+    let ids: Vec<&str> = listing["runs"].as_array().unwrap().iter().map(|r| r["run_id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["a1"]);
+
+    let out = credentialed(dir.path(), &token, &public, &["run", "history", "--pipeline", "feed-b"]);
+    refused(&out, "GrantPipelineNotCovered");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("feed-b"));
+
+    let none = reader(dir.path(), "research/*");
+    let out = credentialed(dir.path(), &none, &public, &["run", "history"]);
+    refused(&out, "GrantPipelineNotCovered");
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("feed-"), "the empty listing names no pipeline");
+}

@@ -21,6 +21,9 @@ use std::path::Path;
 /// The command that writes a seed file, printed wherever an issuer key is missing.
 pub const KEYGEN_COMMAND: &str = "contextful token keygen --out .contextful/issuer.seed";
 
+/// The seed file a mint naming no issuer key reads (`authority.issue.default-key`).
+pub const DEFAULT_SEED_PATH: &str = ".contextful/issuer.seed";
+
 /// An issuer key held in-process, loaded from a seed file or generated. It signs only
 /// through [`SigningPort`]; no accessor hands out the key pair
 /// (`authority.issue.signing-port`):
