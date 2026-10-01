@@ -229,7 +229,7 @@ unsettled: Does the verb carry a text rendering beside `--json`, or does the JSO
 
 Candidate generation for a ranked read: content tokens, the relevance floor, per-table arms, dedup, snippet.
 
-- `ranked-call` — `corpus.retrieve({prefix, query, query_embedding?, kinds, limit, as_of})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall and stores nothing of its own.
+- `ranked-call` — `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
 - `relevance-floor` — A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.
 - `content-tokens` — The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters stay, and survivors deduplicate in order.
 - `token-length-floor` — An ASCII run shorter than 2 chars leaves the content-token set.
@@ -242,10 +242,12 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `candidate-window` — The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.
   *P4*
 - `reserved-columns-project-null` — Reserved projected columns — modality, language, prompt hash, kind — render null for a table lacking them, and its rows stay in the union.
-- `unsatisfiable-arm-drops` — `filter` binds caller-named columns. A table lacking a named column drops its arm, never emitting it unfiltered.
+- `unsatisfiable-arm-drops` — `filter` maps each caller-named column to a value, an equality, or a value list, a membership, and a row matches every condition. A table lacking a named column drops its arm, never emitting it unfiltered.
   *P4*
+- `filter-values` — A filter value is a string, a number or a boolean, and a membership list is non-empty; a null, a nested object or list, or an empty list is a malformed condition.
+- `kinds` — `kinds` lists artifact kind strings and joins the filter as one membership condition on the `kind` column, so a table without that column drops its arm by {{read.retrieve.unsatisfiable-arm-drops}}.
 - `engine-resolved-date` — The engine resolves each table's publication column itself, outside the caller's filter.
-- `filter-budget` — A filter's membership list holds at most 256 entries, with its condition count and total byte size bounded alongside.
+- `filter-budget` — A filter holds at most 32 conditions, each membership list at most 256 entries, and its serialized JSON, `kinds` included, at most 16 KiB.
 - `filter-budget-refusal` — The budget is checked over the whole filter ahead of building any arm; an oversized or malformed condition raises `FilterBudgetExceeded` for the whole read.
   *A-read*
 - `row-key-dedup` — A ranked read keeps per `(table, row key)` only the newest ingestion, and no older copy when the newest misses the relevance floor. The row key is the declared content-hash column, else null, never a digest over projected values.

@@ -373,6 +373,102 @@ fn a_sidecar_past_64_mib_of_vectors_stays_unloaded() {
     assert_eq!(ids(&r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()).unwrap(), "passage_id"), exact);
 }
 
+fn filtered(prefix: &str, query: &str, filter: Value) -> RetrieveRequest {
+    RetrieveRequest { filter: Some(filter), min_score: Some(0), ..ask(prefix, query) }
+}
+
+fn tables(r: &Response) -> std::collections::BTreeSet<String> {
+    column(r, "_table").iter().map(|t| t.as_str().unwrap().to_string()).collect()
+}
+
+fn sorted(mut v: Vec<String>) -> Vec<String> {
+    v.sort();
+    v
+}
+
+/// `filter` maps each caller-named column to a value, an equality, or a value list, a membership, and a row matches every condition. A table lacking a named column drops its arm, never emitting it unfiltered.
+// spec: read.retrieve.unsatisfiable-arm-drops@b3c9aa26
+#[test]
+fn a_filter_binds_named_columns_and_a_table_lacking_one_drops_its_arm() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], Some(("research/notes", "acme")), None);
+    let all = r.face.retrieve(&s, &RetrieveRequest { min_score: Some(0), ..ask("research/", "solar battery storage") }, Bounds::default()).unwrap();
+    assert!(tables(&all).contains("research/contacts") && tables(&all).contains("research/notes"), "{:?}", all.rows);
+    let member = r.face.retrieve(&s, &filtered("research/", "solar battery storage", json!({ "note_id": ["n1", "n3"] })), Bounds::default()).unwrap();
+    assert_eq!(tables(&member).into_iter().collect::<Vec<_>>(), ["research/notes"]);
+    assert_eq!(sorted(ids(&member, "note_id")), ["n1", "n3"]);
+    let equal = r.face.retrieve(&s, &filtered("research/", "solar battery storage", json!({ "note_id": "n2", "tenant": "acme" })), Bounds::default()).unwrap();
+    assert_eq!(ids(&equal, "note_id"), ["n2"]);
+    let contact = r.face.retrieve(&s, &filtered("research/", "", json!({ "contact_id": "c2" })), Bounds::default()).unwrap();
+    assert_eq!(ids(&contact, "contact_id"), ["c2"]);
+    // A number matches a column holding that integral value.
+    let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
+    let priced = r.face.retrieve(&s, &filtered("research/", "feed", json!({ "Unit Price (USD)": 12 })), Bounds::default()).unwrap();
+    assert_eq!(ids(&priced, "item_id"), ["v1"]);
+    let mispriced = r.face.retrieve(&s, &filtered("research/", "feed", json!({ "Unit Price (USD)": [13, "x"] })), Bounds::default()).unwrap();
+    assert!(mispriced.rows.is_empty(), "{:?}", mispriced.rows);
+    let nowhere = r.face.retrieve(&s, &filtered("research/", "solar", json!({ "absent": "x" })), Bounds::default()).unwrap();
+    assert!(nowhere.rows.is_empty(), "{:?}", nowhere.rows);
+
+    // A row a sidecar recalls meets the filter on its re-join.
+    let r = sidecar_reads("");
+    let s = r.session(&["lab/*"], None, None);
+    let request = RetrieveRequest { filter: Some(json!({ "passage_id": ["p001", "p299"] })), min_score: Some(0), ..battery("lab/indexed") };
+    let recalled = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
+    assert_eq!(sorted(ids(&recalled, "passage_id")), ["p001", "p299"]);
+    let request = RetrieveRequest { filter: Some(json!({ "passage_id": ["p000", "p001"] })), min_score: Some(0), ..battery("lab/indexed") };
+    assert_eq!(ids(&r.face.retrieve(&s, &request, Bounds::default()).unwrap(), "passage_id")[0], "p000");
+}
+
+/// `kinds` lists artifact kind strings and joins the filter as one membership condition on the `kind` column, so a table without that column drops its arm by {{read.retrieve.unsatisfiable-arm-drops}}.
+// spec: read.retrieve.kinds@4b91a583
+#[test]
+fn kinds_keep_listed_artifact_kinds_and_drop_tables_without_one() {
+    let manifest = format!("{MANIFEST}\n[[pipeline.tables]]\nname = \"research/briefs\"\n");
+    let mut r = Reads::with_manifest(&manifest);
+    land_rows(
+        &r.store,
+        "research/briefs",
+        "run-0001",
+        json!([
+            { "brief_id": "b1", "kind": "memo", "title": "Solar battery storage memo" },
+            { "brief_id": "b2", "kind": "digest", "title": "Solar battery storage digest" },
+            { "brief_id": "b3", "kind": "memo", "title": "Hiring memo" },
+        ]),
+    );
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    let s = r.session(&["research/*"], Some(("research/notes", "acme")), None);
+    let memos = r.face.retrieve(&s, &RetrieveRequest { kinds: Some(vec!["memo".into()]), ..ask("research/", "solar battery storage") }, Bounds::default()).unwrap();
+    assert_eq!(ids(&memos, "brief_id"), ["b1"]);
+    assert_eq!(column(&memos, "_kind"), [json!("memo")]);
+    let both = RetrieveRequest {
+        kinds: Some(vec!["memo".into(), "digest".into()]),
+        filter: Some(json!({ "brief_id": ["b2", "b3"] })),
+        min_score: Some(0),
+        ..ask("research/", "solar battery storage")
+    };
+    let both = r.face.retrieve(&s, &both, Bounds::default()).unwrap();
+    assert_eq!(tables(&both).into_iter().collect::<Vec<_>>(), ["research/briefs"]);
+    assert_eq!(sorted(ids(&both, "brief_id")), ["b2", "b3"]);
+}
+
+/// The budget is checked over the whole filter ahead of building any arm; an oversized or malformed condition raises `FilterBudgetExceeded` for the whole read.
+// spec: read.retrieve.filter-budget-refusal@89916c4f
+#[test]
+fn an_oversized_or_malformed_filter_refuses_the_whole_read() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], Some(("research/notes", "acme")), None);
+    let wide = json!({ "note_id": (0..257).map(|i| format!("n{i}")).collect::<Vec<_>>() });
+    refused_with(r.face.retrieve(&s, &filtered("research/", "solar", wide.clone()), Bounds::default()), "FilterBudgetExceeded");
+    // One malformed condition refuses the read though another is satisfiable.
+    let mixed = json!({ "note_id": "n1", "tenant": null });
+    refused_with(r.face.retrieve(&s, &filtered("research/", "solar", mixed), Bounds::default()), "FilterBudgetExceeded");
+    // The check precedes every arm: a prefix naming no table still refuses.
+    refused_with(r.face.retrieve(&s, &filtered("nowhere/", "solar", wide), Bounds::default()), "FilterBudgetExceeded");
+    let empty = RetrieveRequest { kinds: Some(Vec::new()), ..ask("research/", "solar") };
+    refused_with(r.face.retrieve(&s, &empty, Bounds::default()), "FilterBudgetExceeded");
+}
+
 /// Regression: a ranked read over tables publishing no ceiling clamps its limit to the
 /// face ceiling, and its candidate window follows the clamped limit.
 #[test]

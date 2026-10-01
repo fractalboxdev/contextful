@@ -313,7 +313,16 @@ impl<'a> Tools<'a> {
                 self.session(caller, zone, opts.bounds).and_then(|s| self.face.file(&s, &path, opts)).map(|r| r.to_json())
             }
             "corpus.retrieve" => {
-                only(args, name, &["prefix", "query", "query_embedding", "limit", "since", "min_score", "internals"])?;
+                only(args, name, &["prefix", "query", "query_embedding", "filter", "kinds", "limit", "since", "min_score", "internals"])?;
+                let kinds = match arg(args, "kinds") {
+                    None => None,
+                    Some(Value::Array(xs)) => Some(
+                        xs.iter()
+                            .map(|x| x.as_str().map(str::to_string).ok_or_else(|| invalid("`kinds` lists strings")))
+                            .collect::<Result<Vec<String>, _>>()?,
+                    ),
+                    Some(_) => return Err(invalid("`kinds` is a list of strings")),
+                };
                 let query_embedding = match arg(args, "query_embedding") {
                     None => None,
                     Some(Value::Array(xs)) => Some(
@@ -326,6 +335,10 @@ impl<'a> Tools<'a> {
                 let b = bounds(args)?;
                 let request = RetrieveRequest {
                     query_embedding,
+                    // The face checks the filter's shape and budget in-band
+                    // (`read.retrieve.filter-budget-refusal`).
+                    filter: arg(args, "filter").cloned(),
+                    kinds,
                     limit: integer(args, "limit")?,
                     since: instant(args, "since")?,
                     min_score: integer(args, "min_score")?.map(|m| u32::try_from(m).unwrap_or(u32::MAX)),

@@ -7,6 +7,7 @@ pub mod cache;
 pub mod embed;
 pub mod error;
 pub mod face;
+pub mod filter;
 pub mod guard;
 pub mod rank;
 pub mod respond;

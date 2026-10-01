@@ -9,6 +9,7 @@ use contextful_core::memory::declare::Shape;
 use contextful_core::memory::recall::{gate, EvidenceRead};
 use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::read::embed::cosine;
+use contextful_core::read::filter::{Filter, Scalar};
 use contextful_core::read::template::{Bindings, Bound};
 use crate::fulltext::{self, FulltextSidecar, SidecarCache};
 use crate::vector::{self, Fallback, VectorSidecar};
@@ -89,6 +90,10 @@ pub struct RetrieveRequest {
     pub prefix: String,
     pub query: String,
     pub query_embedding: Option<Vec<f32>>,
+    /// The caller's filter object: each column to a value or a value list.
+    pub filter: Option<Value>,
+    /// Artifact kinds the read keeps.
+    pub kinds: Option<Vec<String>>,
     pub limit: Option<u64>,
     /// The question's lower bound on publication.
     pub since: Option<Instant>,
@@ -106,6 +111,8 @@ impl RetrieveRequest {
             prefix: prefix.into(),
             query: query.into(),
             query_embedding: None,
+            filter: None,
+            kinds: None,
             limit: None,
             since: None,
             anchor,
@@ -178,11 +185,59 @@ fn vector_of(v: &Engine) -> Option<Vec<f32>> {
     }
 }
 
+/// The SQL predicate a filter binds against one arm's relation, and its values in
+/// placeholder order; `None` for an empty filter. A text value compares against the
+/// column's text, an integer against an integral numeric value, a float against its
+/// numeric value and a boolean against its truth value (`read.retrieve.unsatisfiable-arm-drops`).
+fn filter_predicate(filter: &Filter) -> Option<(String, Vec<Bound>)> {
+    if filter.is_empty() {
+        return None;
+    }
+    let mut binds = Vec::new();
+    let mut conditions = Vec::with_capacity(filter.conditions.len());
+    for c in &filter.conditions {
+        let col = ident(&c.column);
+        let (mut text, mut integers, mut floats, mut booleans) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for v in &c.values {
+            match v {
+                Scalar::Text(t) => text.push(Bound::Text(t.clone())),
+                Scalar::Integer(i) => integers.push(Bound::Integer(*i)),
+                Scalar::Float(f) => floats.push(Bound::Float(*f)),
+                Scalar::Boolean(b) => booleans.push(Bound::Boolean(*b)),
+            }
+        }
+        let marks = |values: &[Bound]| vec!["?"; values.len()].join(", ");
+        let mut arms = Vec::new();
+        if !text.is_empty() {
+            arms.push(format!("CAST({col} AS VARCHAR) IN ({})", marks(&text)));
+        }
+        if !integers.is_empty() {
+            arms.push(format!(
+                "(TRY_CAST({col} AS HUGEINT) IN ({}) AND floor(TRY_CAST({col} AS DOUBLE)) = TRY_CAST({col} AS DOUBLE))",
+                marks(&integers)
+            ));
+        }
+        if !floats.is_empty() {
+            arms.push(format!("TRY_CAST({col} AS DOUBLE) IN ({})", marks(&floats)));
+        }
+        if !booleans.is_empty() {
+            arms.push(format!("TRY_CAST({col} AS BOOLEAN) IN ({})", marks(&booleans)));
+        }
+        binds.extend(text.into_iter().chain(integers).chain(floats).chain(booleans));
+        conditions.push(format!("({})", arms.join(" OR ")));
+    }
+    Some((conditions.join(" AND "), binds))
+}
+
 impl Face {
     /// A ranked read across the tables under a prefix. Each arm reads its table's
     /// registered relation, so restriction completes before the cut
     /// (`authority.compose.before-the-cut`).
     pub fn retrieve(&self, session: &Session, request: &RetrieveRequest, bounds: Bounds) -> Result<Response, ReadFault> {
+        // The whole filter meets its budget before any arm is built
+        // (`read.retrieve.filter-budget-refusal`).
+        let filter = Filter::parse(request.filter.as_ref(), request.kinds.as_deref())?;
+        let predicate = filter_predicate(&filter);
         let arms: Vec<String> =
             session.relations().map(|r| r.name().to_string()).filter(|n| n.starts_with(&request.prefix)).collect();
         // The same least row ceiling a statement meets: grants, the request, every arm's
@@ -205,6 +260,14 @@ impl Face {
         let mut recalled = false;
         let mut rows: Vec<Row> = Vec::new();
         for table in &arms {
+            // An arm whose relation lacks a filter column drops rather than run unfiltered
+            // (`read.retrieve.unsatisfiable-arm-drops`).
+            if predicate.is_some() {
+                let (columns, _) = engine.run_values(&format!("SELECT * FROM {} LIMIT 0", ident(table)), &Bindings::default(), None)?;
+                if filter.columns().any(|c| !columns.iter().any(|have| have == c)) {
+                    continue;
+                }
+            }
             let schema = self.store.try_schema(table)?.map(|s| s.columns).unwrap_or_default();
             let policy = session.policy(table);
             let text: Vec<&str> = schema.iter().filter(|c| c.ty == ColumnType::Utf8).map(|c| c.name.as_str()).collect();
@@ -231,17 +294,22 @@ impl Face {
             // A claims arm keeps only live claims in SQL, ahead of the window, so retired and
             // expired claims never take a live claim's place; the evidence gate runs on each
             // page read, and pages continue until the window fills with served claims.
-            let (live, parameters) = if claims {
-                let live = format!(
-                    " WHERE {} IS NULL AND ({} IS NULL OR TRY_CAST({} AS TIMESTAMPTZ) > ?)",
+            let (mut clauses, mut binds): (Vec<String>, Vec<Bound>) = (Vec::new(), Vec::new());
+            if claims {
+                clauses.push(format!(
+                    "{} IS NULL AND ({} IS NULL OR TRY_CAST({} AS TIMESTAMPTZ) > ?)",
                     ident("superseded_by"),
                     ident("valid_to"),
                     ident("valid_to")
-                );
-                (live, Bindings::positional([Bound::Timestamp(anchor)]))
-            } else {
-                (String::new(), Bindings::default())
-            };
+                ));
+                binds.push(Bound::Timestamp(anchor));
+            }
+            if let Some((sql, values)) = &predicate {
+                clauses.push(sql.clone());
+                binds.extend(values.iter().cloned());
+            }
+            let live = if clauses.is_empty() { String::new() } else { format!(" WHERE {}", clauses.join(" AND ")) };
+            let parameters = Bindings::positional(binds);
             let (mut kept, mut offset) = (0u64, 0u64);
             loop {
                 let sql = format!(
@@ -305,12 +373,16 @@ impl Face {
                 let mut added = 0u64;
                 for chunk in ids.chunks(REJOIN_CHUNK) {
                     let marks = vec!["?"; chunk.len()].join(", ");
+                    // A recalled row meets the filter on its re-join
+                    // (`read.retrieve.unsatisfiable-arm-drops`).
+                    let (filtered, values) =
+                        predicate.as_ref().map_or((String::new(), Vec::new()), |(sql, v)| (format!(" AND {sql}"), v.clone()));
                     let sql = format!(
-                        "SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks})",
+                        "SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks}){filtered}",
                         arm_source(table, row_key.as_deref(), ""),
                         ident(&id_column)
                     );
-                    let parameters = Bindings::positional(chunk.iter().map(|id| Bound::Text(id.clone())));
+                    let parameters = Bindings::positional(chunk.iter().map(|id| Bound::Text(id.clone())).chain(values));
                     let (columns, values) = engine.run_values(&sql, &parameters, None)?;
                     self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut suppressed);
                 }
