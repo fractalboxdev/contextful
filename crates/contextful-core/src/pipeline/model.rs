@@ -17,11 +17,11 @@ use std::collections::BTreeMap;
 
 /// The engine's injected-column semantics a published build carries; it advances when
 /// the engine adds an injected column (`run.publish.semantics-version`).
-pub const SEMANTICS_VERSION: u32 = 1;
+pub const SEMANTICS_VERSION: u32 = 2;
 
 /// The inputs of a schema fingerprint (`run.publish.semantics-version`).
 pub const FINGERPRINT_RECIPE: &str =
-    "sha256(jcs({columns: [{name, type, nullable}], grain, injected: [_ingested_at, _run_id, _row_seq, _site_id]}))";
+    "sha256(jcs({columns: [{name, type, nullable}], grain, injected: [_ingested_at, _run_id, _row_seq, _commit_seq, _site_id]}))";
 
 /// The history logs a published model's table directory holds (`run.publish.history-logs`).
 pub const BUILDS_LOG: &str = "builds.jsonl";
@@ -498,8 +498,9 @@ pub fn regenerate<T: Clone>(existing: &[T], derived: &[T], key: impl Fn(&T) -> S
 }
 
 /// The top-level keys a manifest file holds (`run.model.top-level-block`).
-pub const MANIFEST_BLOCKS: [&str; 19] = [
+pub const MANIFEST_BLOCKS: [&str; 20] = [
     "acl_sweep",
+    "authoring_posture",
     "capabilities",
     "connector",
     "control",

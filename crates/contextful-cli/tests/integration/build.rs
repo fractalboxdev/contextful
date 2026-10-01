@@ -5,7 +5,9 @@ use serde_json::Value;
 use std::path::Path;
 use std::process::{Command, Output};
 
-const DECLARATION: &str = r#"[project]
+const DECLARATION: &str = r#"authoring_posture = "per_request"
+
+[project]
 name = "research"
 
 [[pipeline.tables]]

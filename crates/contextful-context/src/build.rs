@@ -172,7 +172,7 @@ mod materialize {
     use contextful_core::store::lay_out::{part_name, PartEntry, SnapshotId};
     use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema};
     use contextful_core::store::relation::{ident, literal};
-    use contextful_core::store::reserve::{is_injected, INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
+    use contextful_core::store::reserve::{is_injected, COMMIT_SEQ, INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
     use duckdb::types::Value as Engine;
     use std::sync::Arc;
 
@@ -248,6 +248,7 @@ mod materialize {
             Column::new(INGESTED_AT, ColumnType::Timestamp, false),
             Column::new(RUN_ID, ColumnType::Utf8, false),
             Column::new(ROW_SEQ, ColumnType::Int64, false),
+            Column::new(COMMIT_SEQ, ColumnType::Int64, false),
             Column::new(SITE_ID, ColumnType::Utf8, false),
         ]
     }
@@ -431,6 +432,10 @@ mod materialize {
         let (chain, _) = store.chain(&spec.id)?;
         let parent = chain.first().map(|s| s.snapshot_id.clone());
         let etag = store.pointer_etag(&spec.id)?;
+        // The build commits like a landing: its table's commits serialize from the sequence
+        // value to the pointer (`store.reserve.commit-order`).
+        let _commit_lock = store.lock_commit(&spec.id)?;
+        let commit_seq = store.assign_commit_seq(&spec.id)?;
         let (snapshot_id, staging, in_flight) = claim(store, &spec.id, SnapshotId::next(req.started_at, parent.as_ref()), req.started_at)?;
         let build_id = snapshot_id.to_string();
         let staged = (|| -> std::result::Result<(SnapshotManifest, Schema, u64), ReadFault> {
@@ -458,6 +463,7 @@ mod materialize {
             arrays.push(Arc::new(TimestampNanosecondArray::from(vec![nanos; n]).with_timezone("UTC")));
             arrays.push(Arc::new(StringArray::from(vec![build_id.as_str(); n])));
             arrays.push(Arc::new(Int64Array::from_iter_values(0..n as i64)));
+            arrays.push(Arc::new(Int64Array::from(vec![commit_seq; n])));
             arrays.push(Arc::new(StringArray::from(vec![req.site_id; n])));
             let batch = RecordBatch::try_new(parquet_io::arrow_schema(&schema), arrays).map_err(|e| invalid(format!("model `{}`: {e}", spec.id)))?;
             let part = part_name(0);
@@ -514,7 +520,7 @@ mod materialize {
                 parts: vec![PartEntry { name: part, key_version: 0 }],
                 indexes: Vec::new(),
                 fence: None,
-                commit_seq: None,
+                commit_seq: Some(commit_seq),
                 publish: section,
             };
             let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");

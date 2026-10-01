@@ -317,7 +317,7 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
   *because a published table without a declared contract has no identity a reader can pin against*
 - `unpublished` — A model declaring `publish = false` commits its rows with no manifest section, so no build entry, hold or contract history names it.
 - `contract-major` — A build whose schema fingerprint differs from the last published build's under an unchanged major version refuses as {{run.publish.contract-mismatch}}, naming the version to bump.
-- `injected-columns` — A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position and `_site_id` on every row, replacing any injected column the SQL selects; `semantics_version` counts from 1 over those four.
+- `injected-columns` — A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.
 - `freshness-block` — `[model.freshness]` declares `max_lag` as an integer followed by `s`, `m`, `h` or `d`; a model declaring none publishes a null `max_lag` and never computes stale.
 - `test-block` — A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.
 - `test-failed` — A failing test raises `ModelTestFailed`, naming the test and its row count; the build publishes nothing.

@@ -252,10 +252,10 @@ fn a_fingerprint_moving_under_one_major_is_refused_until_the_major_moves() {
     assert_eq!(p.log::<ContractHistoryEntry>(CONTRACT_HISTORY_LOG).len(), 3, "a version change is a new identity entry");
 }
 
-/// A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position and `_site_id` on every row, replacing any injected column the SQL selects; `semantics_version` counts from 1 over those four.
-// spec: run.model.injected-columns@a5aed04b
+/// A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.
+// spec: run.model.injected-columns@e92dca85
 #[test]
-fn a_build_injects_the_four_columns_over_any_the_sql_selects() {
+fn a_build_injects_the_five_columns_over_any_the_sql_selects() {
     let p = Project::new();
     let m = "[[model]]\nid = \"daily\"\nsql = \"SELECT * FROM events\"\npublish = false\n";
     let built = p.build(m, "2030-01-01T01:00:00Z").unwrap();
@@ -265,8 +265,9 @@ fn a_build_injects_the_four_columns_over_any_the_sql_selects() {
     assert_eq!(rows[0][1], json!(built.build_id));
     assert_eq!(rows[0][2], json!("site-a"));
     assert_eq!(p.rows("SELECT list(_row_seq ORDER BY _row_seq) FROM daily"), [[json!("[0, 1, 2]")]]);
+    assert_eq!(p.rows("SELECT DISTINCT _commit_seq FROM daily"), [[json!("1")]]);
     let section = p.build(MODEL, "2030-01-01T02:00:00Z").unwrap().section.unwrap();
-    assert_eq!(section.semantics_version, Some(1));
+    assert_eq!(section.semantics_version, Some(2));
 }
 
 /// A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.

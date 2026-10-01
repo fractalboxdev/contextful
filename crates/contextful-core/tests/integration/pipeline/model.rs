@@ -244,7 +244,7 @@ fn staleness_is_derived_from_the_watermark_and_max_lag() {
     assert!(s.freshness().stale(at("2030-01-01T05:00:00Z")));
 }
 
-/// The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build, an absent optional key omitted.
+/// The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.
 // spec: run.publish.manifest-section@d25cb29d
 #[test]
 fn the_manifest_section_carries_its_keys_and_omits_an_absent_optional_one() {
@@ -291,7 +291,7 @@ fn the_manifest_section_carries_its_keys_and_omits_an_absent_optional_one() {
 // spec: run.publish.semantics-version@a952eb95
 #[test]
 fn the_recipe_names_every_injected_column_the_semantics_version_counts() {
-    assert_eq!(SEMANTICS_VERSION, 1);
+    assert_eq!(SEMANTICS_VERSION, 2);
     for injected in contextful_core::store::reserve::ALWAYS_INJECTED {
         assert!(FINGERPRINT_RECIPE.contains(injected), "{injected}");
     }
