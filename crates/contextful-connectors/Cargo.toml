@@ -42,3 +42,23 @@ zip = { version = "6", default-features = false, features = ["deflate"] }
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
+
+# The third-party crates a connector package depends on directly
+# (`assurance.build.dependency-allowlist`): `regex` matches in linear time and `serde_json`
+# stops at a fixed nesting depth; no backtracking regex engine and no parser lifting its
+# recursion bound is admitted. `contextful-ci allowlist` holds this package and
+# `contextful-decode` to it.
+[package.metadata.contextful]
+authoring-allowlist = [
+    "flate2",
+    "libc",
+    "pdf-extract",
+    "quick-xml",
+    "regex",
+    "serde",
+    "serde_json",
+    "sha2",
+    "tempfile",
+    "url",
+    "zip",
+]

@@ -3,6 +3,8 @@
 
 mod acceptance_surface;
 mod deny;
+mod allowlist;
+mod artifact;
 mod disk;
 mod features;
 mod image;

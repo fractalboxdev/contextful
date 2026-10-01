@@ -2,7 +2,9 @@
 //! pull-request workflow invoke the identical command.
 
 mod deny;
+mod allowlist;
 mod measure;
+mod release;
 mod tag;
 mod footprint;
 mod topology;
@@ -104,6 +106,36 @@ enum Cmd {
     /// Hold `deny.toml` to the profile-wide dependency refusals and run cargo-deny's bans
     /// over each profile's graph.
     Deny,
+    /// Hold the connector authoring dependency allowlist to its required and banned
+    /// entries, and the connector packages' direct dependencies to it.
+    Allowlist,
+    /// Build each profile for a release target and package its archive, checksum and SBOM.
+    Release {
+        /// A profile to build; repeatable. Defaults to every profile shipping for the target.
+        #[arg(long = "profile")]
+        profiles: Vec<String>,
+        /// A release target; repeatable. Defaults to the one this host builds natively.
+        #[arg(long = "target")]
+        targets: Vec<String>,
+        /// The directory the builds compile into.
+        #[arg(long, default_value = release::TARGET_DIR)]
+        target_dir: PathBuf,
+        /// The directory receiving archives, checksums and SBOMs.
+        #[arg(long, default_value = "dist")]
+        out: PathBuf,
+        /// Print every (profile, target) cell of the release matrix and build nothing.
+        #[arg(long)]
+        plan: bool,
+    },
+    /// Write the package-manager formulae and `SHA256SUMS` over a directory of release archives.
+    Formula {
+        /// The directory `contextful-ci release` packaged every target into.
+        #[arg(long, default_value = "dist")]
+        dist: PathBuf,
+        /// The URL the archives download from.
+        #[arg(long)]
+        base_url: String,
+    },
     /// Resolve the target ledger and run its entries, or render their status.
     Measure {
         /// The tier to run; repeatable. Defaults to the gate tier.
@@ -169,6 +201,16 @@ fn main() {
             None => bail!("pass an artifact, or `--build`"),
         }),
         Cmd::Deny => repo_root().and_then(|root| deny::check(&root)),
+        Cmd::Allowlist => repo_root().and_then(|root| allowlist::check(&root)),
+        Cmd::Release { profiles, targets, target_dir, out, plan } => repo_root().and_then(|root| {
+            if plan {
+                return release::plan(&profiles, &targets);
+            }
+            release::release(&root, &profiles, &targets, &root.join(target_dir), &out)
+        }),
+        Cmd::Formula { dist, base_url } => repo_root().and_then(|root| {
+            release::formulae(&root, &dist, &base_url).map(|written| written.iter().for_each(|p| println!("formula: {}", p.display())))
+        }),
         Cmd::Tag { branch, base } => tag::tag(&branch, &base),
         Cmd::Measure { tiers, status, check } => repo_root().and_then(|root| {
             if status {
@@ -231,7 +273,8 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             "crate-graph" => {
                 committed_lock(&root)?;
                 topology::check(&root)?;
-                deny::check(&root)?
+                deny::check(&root)?;
+                allowlist::check(&root)?
             }
             "budget" => {
                 // The footprint builds run here, apart from the evaluate stage
