@@ -5,7 +5,8 @@
 //! target through the mediated client, and commits the cursor after each acknowledgement.
 
 use crate::admit::{face, AdmitArgs};
-use crate::run::{ProjectArgs, SystemClock};
+use crate::clock::SystemClock;
+use crate::run::ProjectArgs;
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use contextful_context::read::face::ReadOptions;

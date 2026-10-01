@@ -2,7 +2,7 @@
 
 # Target ledger
 
-62 entries: 45 gated, 3 recorded, 1 scheduled, 13 open.
+62 entries: 46 gated, 3 recorded, 1 scheduled, 12 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -54,7 +54,7 @@
 | `output-taint` | `connector.infer.output-taint` | `infer.over_trusted_rows` | gate | test `contextful_memory::synthesize::a_synthesized_claim_lands_under_the_label_of_its_inputs` | `== 0` | gated |
 | `policy-no-jwt` | `topology.package.exchange-optional` | `topology.exchange_stack_leaks` | gate | test `contextful_ci::topology::only_the_binary_of_this_workspace_reaches_the_exchange_stack` | `== 0` | gated |
 | `possession-replay` | `authority.verify.replayed-nonce` | `possession.adversarial.admitted` | gate | test `contextful_policy::possession::replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop` | `== 0` | gated |
-| `profile-footprint` | `assurance.gate.footprint` | `footprint.profiles_over_budget` | gate | issue 77 | `== 0` | open (issue 77) |
+| `profile-footprint` | `assurance.gate.footprint` | `footprint.profiles_over_budget` | gate | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | `== 0` | gated |
 | `pull-no-torn-snapshot` | `store.pull.pointer-last` | `pull.torn_reads` | gate | test `contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot` | `== 0` | gated |
 | `read-session-latency` | `read.cache.session-pool` | `session.warm_p95_ms` | trend | test `contextful_context::read::latency::session_and_statement_latency_at_one_fifty_and_five_hundred_runs` | — | recorded |
 | `read-session-one-engine` | `read.cache.session-pool` | `session.engine_opens` | gate | test `contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine` | `== 1` | gated |

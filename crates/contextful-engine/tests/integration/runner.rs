@@ -312,8 +312,8 @@ fn a_component_connector_is_refused_on_a_build_without_a_component_host() {
 }
 
 /// A component connector runs where a component host is linked: the full profile and the container or worker shapes
-/// built from it. The edge profile runs native connectors.
-// spec: topology.package.component-host@0fa605a1
+/// built from it.
+// spec: topology.package.component-host@ea74ba9e
 #[test]
 fn a_component_connector_runs_on_an_engine_wiring_its_world() {
     let mut rig = Rig::new();

@@ -99,12 +99,17 @@ The domain crate, dependency direction, and the three build profiles with what e
   *A-topology*
 - `fixed-at-build` — No run-time detection widens a running binary into another profile's feature set. Build, release and automation tooling links into no profile.
   *A-topology*
-- `edge-profile` — `contextful-edge` is the read replica: it pulls native connectors, syncs parts and manifests from a bucket, and serves a read-only SQL replica. It links no scheduler, script runtime or component host.
+- `profile-leak` — A profile resolving a package outside its role raises `ProfileRoleLeak`, naming the profile and the path: a component host, the run path or the evaluation runner in `contextful-edge` or `contextful-control`; the SQL engine in `contextful-control`; build tooling anywhere.
+  *A-topology*
+- `capability-absent` — A subcommand reaching a capability its build's profile does not link raises `ProfileCapabilityAbsent`, naming the subcommand and the profile, and acts on nothing; a name no profile defines is a usage error.
+  *A-topology*
+- `version-profile` — `contextful --version` prints the workspace version and the profile bundle the build selected, `development` for a build selecting none.
+- `edge-profile` — `contextful-edge` is the read replica: it syncs parts and manifests from a bucket and serves a read-only SQL replica. It links no scheduler, run path, script runtime or component host.
 - `edge-eligibility` — The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.
 - `full-profile` — `contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars, the tool server, and `pg-catalog`.
 - `control-profile` — `contextful-control` is the self-hosted control plane: team state, the edit-time configuration document and identity. It materializes canonical TOML on apply and is the one profile linking the CRDT library.
   *A-topology*
-- `component-host` — A component connector runs where a component host is linked: the full profile and the container or worker shapes built from it. The edge profile runs native connectors.
+- `component-host` — A component connector runs where a component host is linked: the full profile and the container or worker shapes built from it.
   *A-topology*
 - `host-missing` — Dispatching a component connector on a profile with no component host raises `ComponentHostMissing`, naming the connector and the profile, with no fallback to a similarly named native source.
   *A-topology*
@@ -135,8 +140,8 @@ flowchart TD
   COMP["component connector"]
 
   subgraph EDGE["contextful-edge read replica"]
-    NATIVE["native connectors"]
     SYNC["bucket sync"]
+    READ["read face"]
   end
   subgraph FULL["contextful-full daemon"]
     ENGINE["engine"]
@@ -152,11 +157,13 @@ flowchart TD
   CORE -. "TopologyDependencyInversion" .-x ADAPT
   EDGE -. "ProfileDependencyLeak" .-x CRDT
   FULL -. "ProfileDependencyLeak" .-x CRDT
-  EDGE -. "ComponentHostMissing" .-x COMP
+  EDGE -. "ProfileCapabilityAbsent" .-x COMP
   HOST -- "runs" --> COMP
 ```
 
 unsettled: Does the columnar interchange crate stay whole in the edge profile or ship slimmed? owner: topology affects: topology.package
+
+unsettled: Does the edge profile pull native connectors through an execution core that links no scheduler? owner: topology affects: topology.package
 
 ## deploy
 
@@ -367,10 +374,9 @@ The three profiles as feature bundles:
 
 ```toml
 [features]
-edge    = ["duckdb-readonly", "s3-sync", "native-connectors"]
-full    = ["engine", "scheduler", "duckdb", "polars", "wasmtime", "tantivy", "hnsw",
-           "fastembed", "mcp-server", "native-connectors", "s3-sync", "pg-catalog"]
-control = ["team-plane", "crdt-config", "identity", "oauth"]
+contextful-edge    = ["read-plane", "transport-ureq", "s3-sync"]
+contextful-full    = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host"]
+contextful-control = []
 ```
 
 A published-hostname descriptor:

@@ -1,11 +1,17 @@
 //! `contextful init`, and the project a command acts on: `--project` under the working
 //! directory, or the nearest `contextful.toml` upward (`store.init.discovery`).
 
-use anyhow::{anyhow, Result};
-use contextful_context::project::{check_name, declare_posture, declared_posture, discover, init, Initialized, Project, DECLARATION_FILE};
+use anyhow::Result;
+use contextful_context::project::{check_name, discover, Project};
+#[cfg(feature = "data-plane")]
+use anyhow::anyhow;
+#[cfg(feature = "data-plane")]
+use contextful_context::project::{declare_posture, declared_posture, init, Initialized, DECLARATION_FILE};
+#[cfg(feature = "data-plane")]
 use contextful_core::issue::AuthoringPosture;
 use std::path::PathBuf;
 
+#[cfg(feature = "data-plane")]
 #[derive(clap::Args)]
 pub struct InitArgs {
     /// The project name; its store root is `.contextful/context/<name>/`.
@@ -17,6 +23,7 @@ pub struct InitArgs {
     authoring_posture: Option<AuthoringPosture>,
 }
 
+#[cfg(feature = "data-plane")]
 fn posture(value: &str) -> Result<AuthoringPosture> {
     AuthoringPosture::parse(value).ok_or_else(|| anyhow!("`{value}` is neither `session` nor `per_request`"))
 }
@@ -45,18 +52,7 @@ pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Loc
     Ok(Located { project, declaration: declaration.unwrap_or(default) })
 }
 
-/// The directory the issuance policy, the default issuer seed and the key-set ledger sit
-/// under (`authority.issue.project-root`): the working directory under `--project`, else
-/// the nearest directory upward holding `contextful.toml`, else the working directory.
-pub fn root(project: Option<&str>) -> Result<PathBuf> {
-    let cwd = std::env::current_dir()?;
-    if project.is_some() {
-        return Ok(cwd);
-    }
-    let found = cwd.ancestors().find(|d| d.join(contextful_context::project::DECLARATION_FILE).is_file()).map(PathBuf::from);
-    Ok(found.unwrap_or(cwd))
-}
-
+#[cfg(feature = "data-plane")]
 pub fn run(args: InitArgs) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let what = match init(&cwd, &args.name)? {

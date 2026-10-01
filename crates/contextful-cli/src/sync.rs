@@ -168,7 +168,7 @@ fn s3_bucket(config: &SyncConfig, url: &str, region: &str) -> Result<Arc<dyn Obj
             })?)),
             CredentialRef::Secret(name) => {
                 if resolver.is_none() {
-                    resolver = Some(contextful_outbound::assemble(&vars, Arc::new(crate::run::SystemClock))?);
+                    resolver = Some(contextful_outbound::assemble(&vars, Arc::new(crate::clock::SystemClock))?);
                 }
                 // A credential key is a whole value, never a template: the chain's environment adapter serves it.
                 Ok(resolver.as_ref().expect("assembled above").resolve(name)?)

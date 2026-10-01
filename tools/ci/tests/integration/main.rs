@@ -4,6 +4,7 @@
 mod acceptance_surface;
 mod disk;
 mod features;
+mod image;
 mod lean;
 mod measure;
 mod mirrors;

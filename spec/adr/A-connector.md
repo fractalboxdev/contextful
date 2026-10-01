@@ -23,7 +23,7 @@ An input lands whole and faithful or refuses by name, and no input ends the serv
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Process boundary, permanent whole-input refusal per table *(chosen)* | — | Every input pays a boundary crossing; one damaged page discards a readable document; non-UTF-8 publications are unreadable. |
-| In-process unwind guard or watchdog thread | Effectiveness | The release build aborts on panic; native code is neither interruptible nor memory-bounded. |
+| In-process unwind guard or watchdog thread | Effectiveness | A crash or runaway allocation in a native decoder ends the process; native code is neither interruptible nor memory-bounded. |
 | Land the parsed parts with a truncation flag | Distinguishability | No reader consults the flag, so a fragment is quoted as the document. |
 | Skip the item and tally it | Answerability | A collection missing documents reads like one that has none. |
 | Lossy or statistical decoding | Honesty of landed values | Replacement characters land as publisher text. |

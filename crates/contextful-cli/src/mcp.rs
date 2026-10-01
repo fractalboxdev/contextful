@@ -7,7 +7,7 @@
 
 use crate::admit::{face, AdmitArgs};
 use crate::project::locate;
-use crate::run::SystemClock;
+use crate::clock::SystemClock;
 use anyhow::Result;
 use contextful_agent::mcp::Server;
 use contextful_core::ports::Clock;

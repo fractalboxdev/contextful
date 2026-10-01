@@ -1,0 +1,13 @@
+# The image builds from the workspace manifests, `crates/`, `tools/` and the assurance
+# fragment the footprint step reads; nothing else enters the build context.
+target/
+.git/
+.claude/
+.tmp/
+node_modules/
+apps/
+formal/
+references/
+evals/
+.env
+.env.*
