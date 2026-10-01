@@ -147,7 +147,7 @@ fn validate_builds_the_seed_source_like_the_live_one() {
     let seeded = |seed_source: &str| {
         let tables = "[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\norder_by = \"updated_at\"\n";
         let seed = format!("[pipeline.seed]\nbelow = \"2030-01-01T00:00:00Z\"\n[pipeline.seed.source]\n{seed_source}\n");
-        project(&format!("{}{seed}", pipeline("orders", "https://api.vendor.example/v1", "", tables)))
+        project(&format!("{}{seed}{FOLD_ITEMS}", pipeline("orders", "https://api.vendor.example/v1", "", tables)))
     };
     ok(&cf(seeded("name = \"http\"\nconfig = { endpoint = \"https://exports.vendor.example/v1\" }").path(), &["pipeline", "validate"]));
     for (source, refusal) in [
@@ -284,4 +284,96 @@ fn a_fire_takes_its_site_id_from_the_manifest_unless_the_flag_names_one() {
     assert_eq!(site("m1"), "site-m");
     ok(&fire(dir.path(), "shop", "f1", "2030-01-01T00:01:00Z"));
     assert_eq!(site("f1"), "site-a");
+}
+
+/// A scheduled fold of the seeded `orders_items` table.
+const FOLD_ITEMS: &str = "\n[[job]]\nname = \"fold-items\"\nschedule = \"0 3 * * *\"\nkind = \"fold\"\ntarget = \"orders_items\"\n";
+
+const KEYED_ITEMS: &str = "[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\norder_by = \"updated_at\"\n";
+
+/// `pipeline validate` warns on stderr, naming the table, where a table declares `primary_key` and no job
+/// meeting {{store.declare.fold-job}} covers it; the warning alone fails nothing.
+// spec: store.declare.fold-coverage@99fcbb4e
+#[test]
+fn a_keyed_table_no_fold_job_covers_warns_and_validates() {
+    let keyed = pipeline("orders", "https://api.vendor.example/v1", "", KEYED_ITEMS);
+    let warned = |manifest: &str| -> Vec<String> {
+        let out = cf(project(manifest).path(), &["pipeline", "validate"]);
+        ok(&out);
+        stderr(&out).lines().filter(|l| l.contains("warning")).map(str::to_string).collect()
+    };
+    let uncovered = warned(&keyed);
+    assert_eq!(uncovered.len(), 1, "{uncovered:?}");
+    assert!(uncovered[0].contains("`orders_items`") && uncovered[0].contains("fold"), "{uncovered:?}");
+
+    assert!(warned(&format!("{keyed}{FOLD_ITEMS}")).is_empty());
+    assert!(warned(&format!("{keyed}\n[[job]]\nname = \"all\"\nschedule = \"every 6h\"\nkind = \"fold\"\n")).is_empty());
+    assert_eq!(warned(&format!("{keyed}{FOLD_ITEMS}enabled = false\n")).len(), 1, "a disabled job covers nothing");
+    assert_eq!(warned(&format!("{keyed}{}", FOLD_ITEMS.replace("orders_items", "orders_other"))).len(), 1);
+
+    // A keyless table reads as a union and needs no fold; a store table keyed under `[pipeline]` does.
+    assert!(warned(&pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"items\"]")).is_empty());
+    let store_table = warned("[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"id\"]\n");
+    assert!(store_table.len() == 1 && store_table[0].contains("`filings`"), "{store_table:?}");
+
+    // A `[[table]]` memory table is keyed on its shape's key.
+    let memory = "[[table]]\nname = \"ents\"\nshape = \"memory_entities\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n";
+    let uncovered = warned(memory);
+    assert!(uncovered.len() == 1 && uncovered[0].contains("`ents`"), "{uncovered:?}");
+    assert!(warned(&format!("{memory}{}", FOLD_ITEMS.replace("orders_items", "ents"))).is_empty());
+}
+
+/// A seeded table that no job meeting {{store.declare.fold-job}} covers raises `PipelineSeedCompactionMissing`
+/// at validate and before a fire, naming the table.
+// spec: run.seed.compaction-cadence@1c29dc12
+#[test]
+fn a_seeded_table_no_fold_job_covers_is_refused() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\",\"updated_at\":\"2029-01-01T00:00:00Z\"}]".into()));
+    let seed = format!(
+        "[pipeline.seed]\nbelow = \"2030-01-01T00:00:00Z\"\n[pipeline.seed.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n",
+        vendor.url("/export")
+    );
+    let manifest = format!("{}{seed}", pipeline("orders", &vendor.url("/v1"), "", KEYED_ITEMS));
+    let dir = project(&manifest);
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(err.contains("PipelineSeedCompactionMissing") && err.contains("`orders_items`"), "{err}");
+
+    let out = fire(dir.path(), "orders", "r1", "2030-01-01T00:00:00Z");
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("PipelineSeedCompactionMissing"), "{}", stderr(&out));
+    assert!(vendor.targets().is_empty(), "the fire refuses before any request: {:?}", vendor.targets());
+
+    ok(&cf(project(&format!("{manifest}{FOLD_ITEMS}")).path(), &["pipeline", "validate"]));
+    let disabled = cf(project(&format!("{manifest}{FOLD_ITEMS}enabled = false\n")).path(), &["pipeline", "validate"]);
+    assert!(stderr(&disabled).contains("PipelineSeedCompactionMissing"), "{}", stderr(&disabled));
+}
+
+/// `pipeline validate` reading no manifest file raises `PipelineManifestMissing`, naming the declaration path.
+// spec: run.declare.manifest-missing@0f5308ec
+#[test]
+fn validate_over_no_manifest_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let err = stderr(&out);
+    assert!(err.contains("PipelineManifestMissing") && err.contains("contextful.toml"), "{err}");
+
+    let out = cf(dir.path(), &["pipeline", "validate", "--declaration", "conf/typo.toml"]);
+    assert!(stderr(&out).contains("PipelineManifestMissing") && stderr(&out).contains("conf/typo.toml"), "{}", stderr(&out));
+
+    // A directory is no manifest file.
+    std::fs::create_dir_all(dir.path().join("conf")).unwrap();
+    let out = cf(dir.path(), &["pipeline", "validate", "--declaration", "conf"]);
+    assert!(stderr(&out).contains("PipelineManifestMissing") && stderr(&out).contains("`conf`"), "{}", stderr(&out));
+
+    // A pipelines directory alone is a manifest.
+    std::fs::create_dir_all(dir.path().join("pipelines")).unwrap();
+    std::fs::write(
+        dir.path().join("pipelines/a.toml"),
+        "id = \"a\"\ntables = [\"t\"]\n[source]\nname = \"http\"\nconfig = { endpoint = \"https://api.vendor.example/v1\" }\n",
+    )
+    .unwrap();
+    ok(&cf(dir.path(), &["pipeline", "validate"]));
 }

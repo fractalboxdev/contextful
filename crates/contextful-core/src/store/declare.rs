@@ -5,7 +5,7 @@ use super::reserve::{check_table_name, is_injected, INGESTED_AT};
 use super::StoreError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn spelled_types<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<BTreeMap<String, String>>, D::Error> {
     let map = BTreeMap::<String, String>::deserialize(d)?;
@@ -109,6 +109,54 @@ struct PipelineTables {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("declaration malformed: {0}")]
 pub struct DeclarationMalformed(pub String);
+
+/// The tables the declaration's scheduled folds cover (`store.declare.fold-job`): a
+/// `[[job]]` block of kind `fold` carrying a `schedule`, not disabled, covers its `target`,
+/// or every table when it names none. The job union's own checks belong to `surface.fire`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FoldCoverage {
+    every: bool,
+    tables: BTreeSet<String>,
+}
+
+impl FoldCoverage {
+    /// Read the `[[job]]` blocks of one manifest file. A job key of the wrong type refuses.
+    pub fn parse(toml_text: &str) -> Result<FoldCoverage, DeclarationMalformed> {
+        let value: toml::Value = toml::from_str(toml_text).map_err(|e| DeclarationMalformed(e.to_string()))?;
+        let mut coverage = FoldCoverage::default();
+        let Some(jobs) = value.get("job") else { return Ok(coverage) };
+        let jobs = jobs.as_array().ok_or_else(|| DeclarationMalformed("`job` is declared as `[[job]]`, an array of tables".into()))?;
+        for (i, job) in jobs.iter().enumerate() {
+            let key = |k: &str| job.get(k);
+            let malformed = |k: &str, ty: &str| DeclarationMalformed(format!("job[{i}]: `{k}` is not {ty}"));
+            let kind = key("kind").map(|v| v.as_str().ok_or_else(|| malformed("kind", "a string"))).transpose()?;
+            let schedule = key("schedule").map(|v| v.as_str().ok_or_else(|| malformed("schedule", "a string"))).transpose()?;
+            let enabled = key("enabled").map(|v| v.as_bool().ok_or_else(|| malformed("enabled", "a boolean"))).transpose()?;
+            let target = key("target").map(|v| v.as_str().ok_or_else(|| malformed("target", "a string"))).transpose()?;
+            if kind != Some("fold") || schedule.is_none() || enabled == Some(false) {
+                continue;
+            }
+            match target {
+                Some(t) => {
+                    coverage.tables.insert(t.to_string());
+                }
+                None => coverage.every = true,
+            }
+        }
+        Ok(coverage)
+    }
+
+    /// Add the coverage another manifest file declares.
+    pub fn extend(&mut self, other: FoldCoverage) {
+        self.every |= other.every;
+        self.tables.extend(other.tables);
+    }
+
+    /// Whether a scheduled, enabled fold covers the table named by its destination name.
+    pub fn covers(&self, table: &str) -> bool {
+        self.every || self.tables.contains(table)
+    }
+}
 
 impl TableDecl {
     /// A table with every key unset.

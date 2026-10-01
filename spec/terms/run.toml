@@ -46,6 +46,7 @@ SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", glo
 HistoryBoundSpelling           = { clause = "run.record.bound-spelling", gloss = "A history window bound outside the two accepted spellings." }
 RunMetadataTooLarge            = { clause = "run.project.metadata-too-large", gloss = "A snapshot metadata write past its serialized bound." }
 RunStreamUnauthorized          = { clause = "run.project.unauthenticated-upgrade", gloss = "A run-stream request with no valid credential before the upgrade." }
+PipelineManifestMissing        = { clause = "run.declare.manifest-missing", gloss = "A validation that read no manifest file." }
 PipelineDuplicateId            = { clause = "run.declare.duplicate-id", gloss = "One pipeline id declared twice." }
 PipelineSpecInvalid            = { clause = "run.declare.spec-invalid", gloss = "A manifest file the canonical type cannot deserialize." }
 PipelineTableNameCollision     = { clause = "run.declare.table-name-collision", gloss = "Two tables whose destination names fold to one spelling." }
@@ -70,6 +71,7 @@ ExportDeliveryRefused          = { clause = "run.export.delivery-refused", gloss
 PipelineChunkParallelism       = { clause = "run.backfill.chunk-parallelism", gloss = "A sequential chunk plan beside a parallelism above one." }
 PipelineRewindWindowInvalid    = { clause = "run.backfill.rewind-invalid", gloss = "An inverted, empty or scale-incomparable rewind window." }
 PipelineSeedDeclarationMissing = { clause = "run.seed.declaration-missing", gloss = "A seeded table lacking a key or an event-time ordering." }
+PipelineSeedCompactionMissing  = { clause = "run.seed.compaction-cadence", gloss = "A seeded table no scheduled, enabled fold covers." }
 PipelineSeedCeilingBreached    = { clause = "run.seed.ceiling-breached", gloss = "A seeded row stamped at or past the ceiling." }
 PipelineSeedCeilingUnevaluable = { clause = "run.seed.ceiling-unevaluable", gloss = "A batch whose stamp cannot be compared with the ceiling." }
 PipelineSeedSourceChanged      = { clause = "run.seed.source-changed", gloss = "A seed source whose fingerprint differs from the committed one." }

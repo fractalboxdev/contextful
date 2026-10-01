@@ -29,7 +29,9 @@ use contextful_core::run::plan::{ConnectorSpec, CursorSpec, Plan, PlanSpec, NATI
 use contextful_core::run::record::RunStatus;
 use contextful_core::run::retry::Schedule;
 use contextful_core::run::RunError;
-use contextful_core::store::declare::TableDecl;
+use contextful_core::memory::declare::MemoryDeclarations;
+use contextful_core::pipeline::seed::check_compaction;
+use contextful_core::store::declare::{FoldCoverage, TableDecl};
 use contextful_engine::RunSpec;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -79,7 +81,7 @@ pub enum PipelineCmd {
 /// The manifest files, in reading order: the project manifest, then `pipelines/` sorted.
 pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
     let mut files = Vec::new();
-    if declaration.exists() {
+    if declaration.is_file() {
         files.push(ManifestFile { path: declaration.display().to_string(), text: std::fs::read_to_string(declaration)? });
     }
     let dir = declaration.parent().map(|p| p.join("pipelines")).unwrap_or_else(|| PathBuf::from("pipelines"));
@@ -93,6 +95,15 @@ pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
         }
     }
     Ok(files)
+}
+
+/// The tables the manifests' scheduled, enabled folds cover (`store.declare.fold-job`).
+fn fold_coverage(files: &[ManifestFile]) -> Result<FoldCoverage> {
+    let mut coverage = FoldCoverage::default();
+    for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
+        coverage.extend(FoldCoverage::parse(&f.text).with_context(|| f.path.clone())?);
+    }
+    Ok(coverage)
 }
 
 /// A pipeline's source, checked and ready to build.
@@ -348,28 +359,56 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
         PipelineCmd::Validate { declaration, project, component_target } => {
             let files = manifests(&declaration)?;
             let base = declaration_base(project.as_deref())?;
+            if files.is_empty() {
+                return Err(RunError::PipelineManifestMissing(format!(
+                    "no manifest at `{}` and no `pipelines/*.toml` or `pipelines/*.json` beside it",
+                    declaration.display()
+                ))
+                .into());
+            }
             // Store tables declared under `[pipeline]` answer to the same load checks the
             // store and the read face run.
+            let mut tables: BTreeMap<String, TableDecl> = BTreeMap::new();
             for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
-                TableDecl::parse_pipeline(&f.text).with_context(|| f.path.clone())?;
+                for t in TableDecl::parse_pipeline(&f.text).with_context(|| f.path.clone())? {
+                    tables.insert(t.name.clone(), t);
+                }
             }
+            // A `[[table]]` memory table is keyed on its shape's key.
+            for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
+                for t in MemoryDeclarations::parse(&f.text).with_context(|| f.path.clone())?.tables {
+                    tables.entry(t.name.clone()).or_insert_with(|| t.table_decl());
+                }
+            }
+            let coverage = fold_coverage(&files)?;
             let declared = collect(&files)?;
             for d in &declared {
-                let checked = check(&d.spec, &declaration, tasks).with_context(|| format!("{}:{}", d.file, d.line))?;
+                let at = || format!("{}:{}", d.file, d.line);
+                let checked = check(&d.spec, &declaration, tasks).with_context(at)?;
+                check_compaction(&d.spec, &coverage).with_context(at)?;
                 let mut discovered = String::new();
                 if let Checked::Component(decl) = &checked {
                     if component::is_local(decl) {
-                        let loaded = component::load(&d.spec.source.name, decl, &base, component_target)
-                            .with_context(|| format!("{}:{}", d.file, d.line))?;
-                        let names = loaded.discover(decl).with_context(|| format!("{}:{}", d.file, d.line))?;
+                        let loaded = component::load(&d.spec.source.name, decl, &base, component_target).with_context(at)?;
+                        let names = loaded.discover(decl).with_context(at)?;
                         discovered = format!(" · discovers {}", names.join(", "));
                     }
                 }
                 println!("{}: valid ({} tables, content hash {}){discovered}", d.spec.id, d.spec.tables.len(), &d.spec.content_hash()[..16]);
+                for t in &d.spec.tables {
+                    let name = d.spec.table_name(t.name());
+                    tables.entry(name.clone()).or_insert_with(|| TableDecl { name, ..t.decl() });
+                }
             }
             for m in contextful_core::pipeline::model::collect_models(&files, &declared)? {
                 m.spec.validate().with_context(|| format!("{}:{}", m.file, m.line))?;
                 println!("{}: valid model ({} tests)", m.spec.id, m.spec.tests.len());
+            }
+            for t in tables.values().filter(|t| t.is_keyed() && !coverage.covers(&t.name)) {
+                eprintln!(
+                    "warning: table `{}` declares a primary key and no enabled `[[job]]` of kind `fold` with a `schedule` covers it",
+                    t.name
+                );
             }
             Ok(())
         }
@@ -385,6 +424,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             let checked = check(&spec, &declaration, tasks)?;
             let destinations: Vec<String> = spec.tables.iter().map(|t| spec.table_name(t.name())).collect();
             let author = admit.author(&text, &destinations.iter().map(String::as_str).collect::<Vec<_>>(), "`pipeline run`")?;
+            check_compaction(&spec, &fold_coverage(&manifests(&declaration)?)?)?;
             let w = wire_at(&l.project, &project.now)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
             let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
