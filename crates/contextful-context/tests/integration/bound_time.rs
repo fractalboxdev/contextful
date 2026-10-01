@@ -14,6 +14,7 @@ fn valid_as_of(v: &str) -> Bounds {
     Bounds { as_of: None, valid_as_of: Some(Bound::parse(v).unwrap()) }
 }
 
+#[cfg(feature = "read")]
 /// `as_of` resolves each table to the newest reachable snapshot created at or before it, plus the committed runs at or before it that snapshot omits, inside the table's FROM-source.
 #[test]
 fn as_of_returns_the_same_rows_before_and_after_a_fold() {
@@ -29,6 +30,7 @@ fn as_of_returns_the_same_rows_before_and_after_a_fold() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT v FROM t"), [[s("2")]]);
 }
 
+#[cfg(feature = "read")]
 /// `valid_as_of` wraps the same inner source with `from <= valid_as_of AND (to IS NULL OR to > valid_as_of)` over the declared pair.
 // spec: store.bound-time.valid-as-of@79fe2747
 #[test]
@@ -50,6 +52,7 @@ fn valid_as_of_selects_the_rows_valid_at_the_instant() {
     assert_eq!(f.scan(&d, valid_as_of("2030-01-15T00:00:00Z")).unwrap().bounds.unwrap()["valid_as_of"], "2030-01-15T00:00:00.000000000Z");
 }
 
+#[cfg(feature = "read")]
 /// Over an unkeyed table a valid-time bound returns every version whose interval covers the instant.
 // spec: store.bound-time.covering-versions@a39e0fdc
 #[test]
@@ -67,6 +70,7 @@ fn an_unkeyed_table_returns_every_covering_version() {
     assert_eq!(roles, [[s("analyst")], [s("reviewer")]]);
 }
 
+#[cfg(feature = "read")]
 /// A keyed table declaring `valid_time` keeps one row per key and line, so a valid-time read reaches a key's past version.
 #[test]
 fn a_keyed_valid_time_read_reaches_the_version_valid_then() {
@@ -84,6 +88,7 @@ fn a_keyed_valid_time_read_reaches_the_version_valid_then() {
     assert_eq!(rates("2030-03-15T00:00:00Z"), [[s("1")], [s("2")]]);
 }
 
+#[cfg(feature = "read")]
 /// A date-only valid-time bound covers the whole day: a row ending at the next midnight is valid on it.
 #[test]
 fn a_date_only_valid_bound_covers_rows_ending_at_the_next_midnight() {

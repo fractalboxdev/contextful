@@ -12,6 +12,7 @@ fn batch(rows: serde_json::Value) -> Batch {
     Batch { rows: rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect(), types: Default::default() }
 }
 
+#[cfg(feature = "read")]
 #[test]
 fn a_run_lands_each_batch_as_a_part_and_carries_its_position() {
     let f = Fixture::new();

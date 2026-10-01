@@ -1,6 +1,8 @@
 //! `store.reconcile`: schema evolution across a table's files, as a scan resolves it.
 
-use crate::support::{at, decl, query, s, Fixture};
+use crate::support::{at, decl, s, Fixture};
+#[cfg(feature = "read")]
+use crate::support::query;
 use contextful_context::fold::fold;
 use contextful_context::parquet_io;
 use contextful_core::store::bound_time::Bounds;
@@ -9,6 +11,7 @@ use contextful_core::store::StoreError;
 use serde_json::json;
 use std::fs;
 
+#[cfg(feature = "read")]
 /// Every read hands `read_parquet` an explicit sorted file list resolved from the pointer and the manifests, never a glob; a stray file joins nothing.
 // spec: store.reconcile.explicit-file-list@74dc3f17
 #[test]
@@ -31,6 +34,7 @@ fn a_read_hands_read_parquet_an_explicit_sorted_list() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("2")]]);
 }
 
+#[cfg(feature = "read")]
 /// Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation casts no column but a vector, per {{store.reconcile.half-width}}.
 // spec: store.reconcile.union-by-name@804d751e
 #[test]
@@ -62,6 +66,7 @@ fn a_column_resolves_to_the_supertype_of_its_files_with_no_cast() {
     );
 }
 
+#[cfg(feature = "read")]
 /// An `Int64` value above 9007199254740992 loses precision once a `Float64` batch lands on its column.
 // spec: store.reconcile.float-loss@126210d3
 #[test]
@@ -109,6 +114,7 @@ fn a_widening_key_refuses_at_the_write_and_at_the_fold() {
     assert!(g.store.pointer("accounts").unwrap().is_none());
 }
 
+#[cfg(feature = "read")]
 /// A scan invents no column: an ordering column absent from every file enters through a zero-row branch, and a column added after a table's first rows projects as a literal null.
 // spec: store.reconcile.no-invented-column@8176f0e9
 #[test]
@@ -142,6 +148,7 @@ fn the_first_batch_creates_the_table() {
     assert_eq!(f.store.tables().unwrap(), ["research/filings"]);
 }
 
+#[cfg(feature = "read")]
 /// A fold backfills nulls and widens types; it narrows no type and drops no column.
 // spec: store.reconcile.fold-never-narrows@856e48d3
 #[test]
@@ -286,6 +293,7 @@ fn a_typed_batch_lands_bytes_from_base64_and_vectors_from_arrays() {
     }
 }
 
+#[cfg(feature = "read")]
 /// A column `schema.json` holds as a binary or vector type lands a later undeclared JSON value in that type, so a run after the first needs no declaration.
 // spec: store.reconcile.stored-type@baad8450
 #[test]
@@ -333,6 +341,7 @@ fn a_declared_column_type_types_a_landing_that_declares_none() {
     assert!(matches!(err.store(), Some(StoreError::StoreSchemaIncompatible(_))), "{err}");
 }
 
+#[cfg(feature = "read")]
 /// A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.
 // spec: store.reconcile.half-width@b93ac02d
 #[test]

@@ -1,12 +1,15 @@
 //! `store.declare`: what a read returns for a keyed, unkeyed, replacing and empty table.
 
-use crate::support::{at, decl, query, s, Fixture};
+use crate::support::{at, decl, s, Fixture};
+#[cfg(feature = "read")]
+use crate::support::query;
 use contextful_context::fold::fold;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::StoreError;
 use serde_json::json;
 use std::fs;
 
+#[cfg(feature = "read")]
 /// A table declaring no `primary_key` reads as the byte-identical union of its committed runs.
 // spec: store.declare.unkeyed-union@65214f13
 #[test]
@@ -25,6 +28,7 @@ fn an_unkeyed_table_reads_as_the_union_of_its_runs() {
     assert_eq!(from_view, direct);
 }
 
+#[cfg(feature = "read")]
 /// A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
 // spec: store.declare.dedup-view@3304b346
 #[test]
@@ -53,6 +57,7 @@ fn a_keyed_table_reads_one_row_per_key_before_and_after_a_fold() {
     assert_eq!(tie, [[s("final, relanded")]]);
 }
 
+#[cfg(feature = "read")]
 /// The engine injects `_row_seq`, a non-null int64 numbering a run's rows from 0 in batch order, replacing any producer value.
 // spec: store.reserve.row-seq@36ae3e0e
 #[test]
@@ -76,6 +81,7 @@ fn the_last_write_per_key_wins_within_a_run_and_across_runs_at_one_instant() {
     assert_eq!(seq, [[s("2")]]);
 }
 
+#[cfg(feature = "read")]
 /// A run landing zero rows commits a manifest with no parts and replaces nothing; a table with no rows registers as a zero-row relation over its declared and injected columns.
 // spec: store.declare.empty-run@c261166b
 #[test]
@@ -98,6 +104,7 @@ fn a_zero_row_run_commits_no_parts_and_an_empty_table_registers() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t"), [[s("a")]]);
 }
 
+#[cfg(feature = "read")]
 /// A declaration key changes what a read returns and rewrites no committed part; a key added after rows land applies from the next read.
 // spec: store.declare.read-side-keys@71b2bfcf
 #[test]
@@ -127,6 +134,7 @@ fn a_key_added_after_rows_land_applies_at_the_next_read() {
     assert_eq!(parts, after, "declaring a key rewrote a committed part");
 }
 
+#[cfg(feature = "read")]
 /// A replacing run leaves the runs it displaced on disk until `retain_runs` passes, writes no erasure receipt and walks no lineage.
 // spec: store.declare.replace-retains@3ffbc5fd
 #[test]
@@ -161,6 +169,7 @@ fn an_unknown_order_by_refuses_the_first_batch_before_any_parquet() {
     assert!(!f.table_dir("filings").join("schema.json").exists());
 }
 
+#[cfg(feature = "read")]
 /// A read holds the declaration to the table's schema exactly as a landing and a fold do:
 /// an `order_by` edited to a column the table does not carry raises
 /// `StoreOrderByUnknownColumn`, not a binder error from the relation it would emit.

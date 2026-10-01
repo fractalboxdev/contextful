@@ -75,6 +75,7 @@ fn tree(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
 
 /// A landing of an unlogged run already committed on its node, carrying equal rows and position, writes nothing and answers the committed manifest as a replay.
 // spec: store.lay-out.run-replay@be05ec54
+#[cfg(feature = "read")]
 #[test]
 fn a_relanded_run_with_equal_rows_answers_the_committed_manifest() {
     let f = Fixture::new();
@@ -129,6 +130,7 @@ fn a_relanded_run_with_other_rows_or_a_logged_position_conflicts() {
     assert!(matches!(store_err(e), StoreError::StoreRunConflict(_)));
 }
 
+#[cfg(feature = "read")]
 /// A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry.
 // spec: store.lay-out.uncommitted-run@4dc939ec
 #[test]
@@ -292,6 +294,7 @@ fn a_table_no_schema_declares_is_unknown() {
     assert_eq!(f.store.tables().unwrap(), ["filings"]);
 }
 
+#[cfg(feature = "read")]
 /// The `<node-id>` run-path segment and the node id in a ledger filename keep two machines writing one logical run id in disjoint files.
 // spec: store.lay-out.node-segment@8cdda228
 #[test]
@@ -338,6 +341,7 @@ fn a_generated_node_id_persists_in_the_state_directory() {
     assert!(!f.store.root().join("state").exists());
 }
 
+#[cfg(feature = "read")]
 /// A run is its run id on one node: a second node committing a folded run id lands a run no snapshot holds.
 #[test]
 fn a_run_id_folded_on_one_node_leaves_the_other_nodes_run_unfolded() {
@@ -396,6 +400,7 @@ fn a_table_nested_under_another_table_is_still_listed() {
     assert_eq!(f.store.tables().unwrap(), ["a", "a/b", "a/b/c", "plain"]);
 }
 
+#[cfg(feature = "read")]
 /// Two landings of one run id on one node leave a run whose part holds exactly the rows
 /// its manifest accounts for: one commits, the other is refused, and neither rewrites
 /// the part the committed manifest names.
