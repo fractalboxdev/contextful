@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 282 | 76 | 19 | 9 | 156 | 0 | 156 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
-| `read` | 2 | 15 | 162 | 28 | 22 | 20 | 133 | 0 | 133 |
+| `read` | 2 | 15 | 164 | 28 | 22 | 20 | 139 | 0 | 139 |
 | `run` | 3 | 26 | 358 | 94 | 35 | 35 | 238 | 0 | 238 |
 | `store` | 1 | 17 | 214 | 53 | 12 | 17 | 173 | 0 | 173 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 153 | 1761 | 539 | 183 | 134 | 1069 | 0 | |
+| **total** | 19 | 153 | 1763 | 539 | 183 | 134 | 1075 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 151 | 115 | passing | closed |
 | 3 — The run path | 11 | 197 | 125 | passing | closed |
 | 4 — Ingest | 24 | 421 | 237 | passing | open |
-| 5 — The read face under enforcement | 17 | 240 | 167 | passing | open |
+| 5 — The read face under enforcement | 17 | 242 | 173 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
 | 8 — Accountability | 5 | 40 | 20 | open | open |
@@ -643,11 +643,16 @@ Unscheduled operations: 10.
 | `read.retrieve.dedup-is-gated` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_browse_shaped_read_skips_the_deduplicator` | performed |
 | `read.retrieve.engine-resolved-date` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_engine_resolves_the_publication_column` | performed |
 | `read.retrieve.excluded-arm` | `crates/contextful-context/tests/integration/read/respond.rs::a_ranked_read_names_its_excluded_arms` | performed |
+| `read.retrieve.filter-budget` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_filter_is_bounded_in_conditions_entries_and_bytes` | performed |
+| `read.retrieve.filter-budget-refusal` | `crates/contextful-context/tests/integration/read/retrieve.rs::an_oversized_or_malformed_filter_refuses_the_whole_read` | performed |
+| `read.retrieve.filter-values` | `crates/contextful-core/tests/integration/read/retrieve.rs::filter_values_are_scalars_and_lists_are_non_empty` | performed |
 | `read.retrieve.fulltext-probe` | `crates/contextful-context/tests/integration/read/fulltext.rs::a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot` | performed |
 | `read.retrieve.fulltext-sealed-cap` | `crates/contextful-context/tests/integration/encrypt.rs::a_sealed_full_text_sidecar_past_256_mib_stays_unopened` | performed |
 | `read.retrieve.gain-never-loss` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_accelerated_arm_returns_every_exact_row_and_readers_can_differ` | performed |
 | `read.retrieve.identifiers-never-snippet` | `crates/contextful-context/tests/integration/read/retrieve.rs::identifier_columns_never_enter_a_snippet` | performed |
+| `read.retrieve.kinds` | `crates/contextful-context/tests/integration/read/retrieve.rs::kinds_keep_listed_artifact_kinds_and_drop_tables_without_one` | performed |
 | `read.retrieve.plural-suffix-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_short_token_takes_no_plural_suffix` | performed |
+| `read.retrieve.ranked-call` | `crates/contextful-agent/tests/integration/mcp.rs::corpus_retrieve_takes_a_filter_and_kinds` | performed |
 | `read.retrieve.relevance-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_relevance_floor_admits_null_scores_and_positive_vectors` | performed |
 | `read.retrieve.reserved-columns-project-null` | `crates/contextful-context/tests/integration/read/retrieve.rs::reserved_columns_project_null_for_a_table_lacking_them` | performed |
 | `read.retrieve.row-key-dedup` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_ranked_read_keeps_the_newest_row_per_content_hash` | performed |
@@ -662,6 +667,7 @@ Unscheduled operations: 10.
 | `read.retrieve.text-free-table-scores-null` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_row_with_no_snippet_scores_null_and_passes_the_floor` | performed |
 | `read.retrieve.token-cap` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_token_set_is_capped_and_an_empty_set_omits_the_floor` | performed |
 | `read.retrieve.token-length-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::an_ascii_run_below_the_length_floor_leaves` | performed |
+| `read.retrieve.unsatisfiable-arm-drops` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_filter_binds_named_columns_and_a_table_lacking_one_drops_its_arm` | performed |
 | `read.revise.dedup-key` | `crates/contextful-memory/tests/integration/write.rs::a_dedup_key_seeds_the_claim_id_and_a_retry_lands_nothing` | performed |
 | `read.revise.direct-write` | `crates/contextful-core/tests/integration/memory/revise.rs::the_direct_write_accepts_claims_alone` | performed |
 | `read.revise.observed-at` | `crates/contextful-memory/tests/integration/write.rs::an_observed_write_lands_valid_from_its_observed_instant` | performed |
