@@ -4421,7 +4421,7 @@
       "operation": "guard",
       "subject": "template-reserved-parameter",
       "kind": "behavior",
-      "statement": "A template parameter named `as_of`, `valid_as_of` or `zone` refuses the manifest; those names carry the read's bounds and zone on every template tool.",
+      "statement": "A template parameter named `as_of`, `valid_as_of`, `zone` or `pin` refuses the manifest; those names carry the read's bounds, zone and pin map on every template tool.",
       "why": "because a parameter sharing a read argument's name hides that bound from the template tool",
       "file": "spec/20-read.md",
       "line": 141
@@ -5290,7 +5290,7 @@
       "operation": "cache",
       "subject": "session-pool",
       "kind": "behavior",
-      "statement": "`Face` reuses a resolved session and its connections while the whole key holds: admitted authority with token id and revocation epoch, request zone, bounds, table set, and per granted table its schema digest, pointer, run set and ledger files.",
+      "statement": "`Face` reuses a resolved session and its connections while the whole key holds: admitted authority, token id, revocation epoch, request zone, bounds, pin map, table set, and per granted table its schema digest, pointer, run set and ledger files.",
       "why": "A-read",
       "file": "spec/20-read.md",
       "line": 355
@@ -5334,10 +5334,32 @@
       "operation": "resolve-pin",
       "subject": "pin-parameter",
       "kind": "behavior",
-      "statement": "`pin` maps a table name to a build identifier and resolves that table to the state the build published. An unnamed table resolves to the latest published state.",
+      "statement": "Every read tool admits `pin`, mapping a table name to a build identifier, and resolves that table to the files its build's committed manifest names. An unnamed table resolves to the latest published state.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 368
+    },
+    {
+      "id": "read.resolve-pin.pinned-schema",
+      "contract": "read",
+      "operation": "resolve-pin",
+      "subject": "pinned-schema",
+      "kind": "behavior",
+      "statement": "A pinned table registers under the columns its build's parts carry, so a later build's contract neither adds, drops nor retypes a column of the pinned read or its description.",
+      "why": "",
+      "file": "spec/20-read.md",
+      "line": 369
+    },
+    {
+      "id": "read.resolve-pin.null-pin",
+      "contract": "read",
+      "operation": "resolve-pin",
+      "subject": "null-pin",
+      "kind": "behavior",
+      "statement": "A table `pin` maps to `null` resolves as an unnamed table, and a pin map differing from another only by such entries is the same map.",
+      "why": "",
+      "file": "spec/20-read.md",
+      "line": 370
     },
     {
       "id": "read.resolve-pin.unknown-build",
@@ -5348,7 +5370,18 @@
       "statement": "An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.",
       "why": "because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states",
       "file": "spec/20-read.md",
-      "line": 369
+      "line": 371
+    },
+    {
+      "id": "read.resolve-pin.unregistered-pin",
+      "contract": "read",
+      "operation": "resolve-pin",
+      "subject": "unregistered-pin",
+      "kind": "behavior",
+      "statement": "A pin on a table the session registers no relation for, absent or outside the grants, refuses as {{read.resolve-pin.unknown-build}} on a table publishing no build, in one text for both.",
+      "why": "because an answer differing between an absent and an ungranted table discloses the ungranted table's existence",
+      "file": "spec/20-read.md",
+      "line": 373
     },
     {
       "id": "read.resolve-pin.earlier-bound-wins",
@@ -5359,7 +5392,7 @@
       "statement": "A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 371
+      "line": 375
     },
     {
       "id": "read.resolve-pin.resolved-echo",
@@ -5367,10 +5400,10 @@
       "operation": "resolve-pin",
       "subject": "resolved-echo",
       "kind": "behavior",
-      "statement": "A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not; the watermark names, per input table, the snapshot id and the committed runs it omits.",
+      "statement": "A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not and zero rows included; the watermark names, per input table, the snapshot id and the committed runs it omits.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 372
+      "line": 376
     },
     {
       "id": "read.resolve-pin.absent-watermark",
@@ -5381,7 +5414,7 @@
       "statement": "The watermark is null for a materialization carrying none, distinct from a watermark of zero.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 373
+      "line": 377
     },
     {
       "id": "read.resolve-pin.consumer-comparison",
@@ -5392,7 +5425,7 @@
       "statement": "A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 375
+      "line": 379
     },
     {
       "id": "read.embed.default-embedder",
@@ -5403,7 +5436,7 @@
       "statement": "The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 382
+      "line": 386
     },
     {
       "id": "read.embed.default-embedder-reach",
@@ -5414,7 +5447,7 @@
       "statement": "The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 383
+      "line": 387
     },
     {
       "id": "read.embed.model-identifier",
@@ -5425,7 +5458,7 @@
       "statement": "Every stored vector lands in a {{store.reconcile.binary-and-vector}} column beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 384
+      "line": 388
     },
     {
       "id": "read.embed.build-identity",
@@ -5436,7 +5469,7 @@
       "statement": "The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 385
+      "line": 389
     },
     {
       "id": "read.embed.required-face",
@@ -5447,7 +5480,7 @@
       "statement": "A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 387
+      "line": 391
     },
     {
       "id": "read.embed.absent-read-backend",
@@ -5458,7 +5491,7 @@
       "statement": "Without the embedded SQL engine linked, both read tools raise `ReadBackendAbsent` rather than answering from a narrower path.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 389
+      "line": 393
     },
     {
       "id": "read.declare.canonical-column",
@@ -20958,6 +20991,10 @@
     [
       "read.cache.snapshot-invalidates",
       "store.fold.non-blocking"
+    ],
+    [
+      "read.resolve-pin.unregistered-pin",
+      "read.resolve-pin.unknown-build"
     ],
     [
       "read.embed.model-identifier",

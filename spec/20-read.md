@@ -366,9 +366,12 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
 Resolution of a named published-model build at read time, and the state each response echoes.
 
 - `pin-parameter` — Every read tool admits `pin`, mapping a table name to a build identifier, and resolves that table to the files its build's committed manifest names. An unnamed table resolves to the latest published state.
+- `pinned-schema` — A pinned table registers under the columns its build's parts carry, so a later build's contract neither adds, drops nor retypes a column of the pinned read or its description.
 - `null-pin` — A table `pin` maps to `null` resolves as an unnamed table, and a pin map differing from another only by such entries is the same map.
 - `unknown-build` — An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.
   *because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states*
+- `unregistered-pin` — A pin on a table the session registers no relation for, absent or outside the grants, refuses as {{read.resolve-pin.unknown-build}} on a table publishing no build, in one text for both.
+  *because an answer differing between an absent and an ungranted table discloses the ungranted table's existence*
 - `earlier-bound-wins` — A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.
 - `resolved-echo` — A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not and zero rows included; the watermark names, per input table, the snapshot id and the committed runs it omits.
 - `absent-watermark` — The watermark is null for a materialization carrying none, distinct from a watermark of zero.

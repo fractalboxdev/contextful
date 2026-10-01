@@ -1,11 +1,9 @@
 //! `read.resolve-pin`: a table pinned to a published build reads that build's committed
 //! files, and every response touching a published model echoes the build it read.
 
-use super::{at, column, land_rows, loop_subject, read, refused_with, Reads, MANIFEST};
-use contextful_context::build::{build, BuildRequest, Built};
+use super::{build_model, column, land_rows, loop_subject, read, refused_with, Reads, MANIFEST};
+use contextful_context::build::Built;
 use contextful_context::read::ReadOptions;
-use contextful_core::pipeline::declare::{collect, ManifestFile};
-use contextful_core::pipeline::model::{collect_models, ModelSpec};
 use contextful_core::read::pin::{compare, Pins};
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_policy::enforce::session::{Request, Session};
@@ -50,14 +48,8 @@ impl Pinned {
         Pinned { r, authority }
     }
 
-    fn model(id: &str) -> ModelSpec {
-        let files = [ManifestFile { path: "contextful.toml".into(), text: MODELS.to_string() }];
-        collect_models(&files, &collect(&files).unwrap()).unwrap().into_iter().find(|m| m.spec.id == id).unwrap().spec
-    }
-
     fn build(&self, id: &str, now: &str) -> Built {
-        let spec = Pinned::model(id);
-        build(&self.r.face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) }).unwrap()
+        build_model(&self.r.face, MODELS, id, now)
     }
 
     fn session(&self, bounds: Bounds, pins: &Pins) -> Session {
@@ -240,4 +232,76 @@ fn a_derivation_spanning_two_builds_fails_and_a_pinned_one_holds() {
     let held = p.query(&s, r#"SELECT count(*) AS days FROM "lab/daily""#);
     assert_eq!(held["rows"], json!([["2"]]));
     assert_eq!(compare([&before, &held]), Ok(()));
+}
+
+/// `lab/daily` under contract 2.0.0: `n` retyped to text and a `label` column added.
+const DAILY_V2: &str = r#"
+[[model]]
+id = "lab/daily"
+sql = "SELECT day, CAST(count(*) AS VARCHAR) AS n, 'v2' AS label FROM \"lab/events\" GROUP BY day"
+unique_key = ["day"]
+
+[model.contract]
+version = "2.0.0"
+columns = [{ name = "day", type = "utf8", nullable = false }, { name = "n", type = "utf8", nullable = false }, { name = "label", type = "utf8", nullable = false }]
+"#;
+
+/// A pinned table registers under the columns its build's parts carry, so a later build's contract neither adds, drops nor retypes a column of the pinned read or its description.
+// spec: read.resolve-pin.pinned-schema@b2d5b4e5
+#[test]
+fn a_pinned_build_reads_under_its_own_schema() {
+    let p = Pinned::new();
+    let first = p.build(DAILY, "2030-01-11T00:00:00Z");
+    let second = build_model(&p.r.face, DAILY_V2, DAILY, "2030-01-11T01:00:00Z");
+    let s = p.session(Bounds::default(), &Pins::default().with(DAILY, &first.build_id));
+
+    let all = p.r.face.query(&s, r#"SELECT * FROM "lab/daily" ORDER BY day"#, ReadOptions::default()).unwrap();
+    assert!(!all.columns.iter().any(|c| c == "label"), "{:?}", all.columns);
+    assert_eq!(column(&all, "n"), vec![json!("2"), json!("1")]);
+    assert_eq!(resolved_build(&all.to_json(), DAILY), first.build_id);
+
+    let types = |described: &Value| -> Vec<(String, String)> {
+        let columns = described["columns"].as_array().unwrap();
+        columns.iter().map(|c| (c["name"].as_str().unwrap().to_string(), c["type"].as_str().unwrap().to_string())).collect()
+    };
+    let old = p.r.face.describe(&s, Some(DAILY), Bounds::default()).unwrap();
+    assert!(types(&old).contains(&("n".into(), "Int64".into())), "{old}");
+    assert!(!types(&old).iter().any(|(c, _)| c == "label"), "{old}");
+
+    let s = p.session(Bounds::default(), &Pins::default());
+    let new = p.r.face.describe(&s, Some(DAILY), Bounds::default()).unwrap();
+    assert!(types(&new).contains(&("n".into(), "Utf8".into())), "{new}");
+    assert_eq!(resolved_build(&new, DAILY), second.build_id);
+    assert_ne!(old["schema_fingerprint"], new["schema_fingerprint"]);
+}
+
+/// A pin on a table the session registers no relation for, absent or outside the grants, refuses as {{read.resolve-pin.unknown-build}} on a table publishing no build, in one text for both.
+// spec: read.resolve-pin.unregistered-pin@57efc6bb
+#[test]
+fn a_pin_on_a_table_outside_the_session_refuses() {
+    let p = Pinned::new();
+    let first = p.build(DAILY, "2030-01-11T00:00:00Z");
+    p.build(DAILY, "2030-01-11T01:00:00Z");
+    let narrow = p.r.authority(loop_subject("agent://research-loop"), vec![read(&[DAILY], None)]);
+    let session = |pins: &Pins| p.r.face.session_pinned(&narrow, &Request::default(), Bounds::default(), pins);
+
+    let misspelled = refused_with(session(&Pins::default().with("lab/dailyz", &first.build_id)), "PinnedBuildUnavailable");
+    let ungranted = refused_with(session(&Pins::default().with(EVENTS, &first.build_id)), "PinnedBuildUnavailable");
+    assert_eq!(misspelled.replace("lab/dailyz", "<t>"), ungranted.replace(EVENTS, "<t>"));
+}
+
+/// The echo names the build the session registered, though a later build collects that
+/// build before the response is cut.
+#[test]
+fn the_echo_names_the_registered_build_after_its_collection() {
+    let p = Pinned::new();
+    let first = p.build(DAILY, "2030-01-11T00:00:00Z");
+    p.build(DAILY, "2030-01-11T01:00:00Z");
+    let s = p.session(Bounds::default(), &Pins::default().with(DAILY, &first.build_id));
+    p.build(DAILY, "2030-01-20T00:00:00Z");
+    let again = p.r.face.session_pinned(&p.authority, &Request::default(), Bounds::default(), &Pins::default().with(DAILY, &first.build_id));
+    refused_with(again, "PinnedBuildUnavailable");
+
+    let listed = p.r.face.files(&s, Bounds::default()).unwrap().to_json();
+    assert_eq!(resolved_build(&listed, DAILY), first.build_id);
 }

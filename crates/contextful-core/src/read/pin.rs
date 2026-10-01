@@ -56,6 +56,11 @@ impl Pins {
         self.0.get(table).map(String::as_str)
     }
 
+    /// Each pinned table and its build, in table order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.0.iter().map(|(t, b)| (t.as_str(), b.as_str()))
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -68,15 +73,28 @@ impl Pins {
 }
 
 /// One published model's entry in `contextful.resolved`: the build a read resolved to and
-/// its watermark (`read.resolve-pin.resolved-echo`).
+/// its watermark (`read.resolve-pin.resolved-echo`). [`Resolved::of`] is its only
+/// constructor:
+///
+/// ```compile_fail
+/// let forged = contextful_core::read::pin::Resolved { build_id: String::new(), watermark: None };
+/// ```
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Resolved {
-    pub build_id: String,
+    build_id: String,
     /// `None` for a materialization carrying no watermark (`read.resolve-pin.absent-watermark`).
-    pub watermark: Option<Watermark>,
+    watermark: Option<Watermark>,
 }
 
 impl Resolved {
+    pub fn build_id(&self) -> &str {
+        &self.build_id
+    }
+
+    pub fn watermark(&self) -> Option<&Watermark> {
+        self.watermark.as_ref()
+    }
+
     /// The one constructor of an entry: every face builds its echo here, from the publish
     /// section of the snapshot the read resolved to.
     pub fn of(section: &PublishSection) -> Resolved {

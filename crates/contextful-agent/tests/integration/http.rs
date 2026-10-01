@@ -59,10 +59,14 @@ fn at(s: &str) -> Instant {
 }
 
 fn put(store: &Store, table: &str, rows: Vec<Value>) {
+    put_run(store, table, "run-0001", rows);
+}
+
+fn put_run(store: &Store, table: &str, run: &str, rows: Vec<Value>) {
     let rows = rows.iter().map(|r| r.as_object().unwrap().clone()).collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:00:00Z"),
     };
     land(store, &TableDecl::named(table), &Batch { rows, types: Default::default() }, &ctx).unwrap();
@@ -537,4 +541,59 @@ fn health_answers_the_build_identity_without_a_credential() {
     let (status, _, answer) = send(addr, &HttpRequest { method: "GET".into(), target: "/health".into(), headers: vec![], body: vec![] });
     assert_eq!(status, 200);
     assert_eq!(body(&answer)["contextful.build"]["faces"], json!(["http"]));
+}
+
+const PINNED: &str = r#"[[pipeline.tables]]
+name = "research/notes"
+
+[[model]]
+id = "research/titles"
+sql = "SELECT note_id, title FROM \"research/notes\""
+unique_key = ["note_id"]
+
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "note_id", type = "utf8", nullable = false }, { name = "title", type = "utf8" }]
+"#;
+
+/// Build `research/titles` over `face`'s store at `now`; its build id.
+fn build_titles(face: &Face, now: &str) -> String {
+    use contextful_context::build::{build, BuildRequest};
+    use contextful_core::pipeline::declare::{collect, ManifestFile};
+    use contextful_core::pipeline::model::collect_models;
+    let files = [ManifestFile { path: "contextful.toml".into(), text: PINNED.to_string() }];
+    let spec = collect_models(&files, &collect(&files).unwrap()).unwrap().remove(0).spec;
+    build(face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) }).unwrap().build_id
+}
+
+/// `POST /mcp` carries `pin` to the read tools: a pinned query answers the pinned build's
+/// rows and names that build in `contextful.resolved`, an unpinned one the latest.
+#[test]
+fn post_mcp_reads_a_pinned_build_and_echoes_it() {
+    let key = holder(1);
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path(), "research").unwrap();
+    let face = Face::open(store.clone(), PINNED, Pepper::resolve(|_| None)).unwrap();
+    put_run(&store, "research/notes", "run-0001", vec![json!({ "note_id": "n1", "title": "Solar" })]);
+    let first = build_titles(&face, "2030-01-01T00:01:00Z");
+    put_run(&store, "research/notes", "run-0002", vec![json!({ "note_id": "n2", "title": "Hiring" })]);
+    let latest = build_titles(&face, "2030-01-01T00:02:00Z");
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let checkpoint = KeyCheckpoint::start(Box::new(StaticPins::parse(&signer.public_key_text()).unwrap()), FixedClock(at(NOW))).unwrap();
+    let token = credential(&signer, "research/*", 900, Some(&key));
+    let audit = AuditLog::unanchored(dir.path().join("audit")).unwrap();
+    let (_f, addr) = listen(Fixture { audit, face, signer, checkpoint, dir }, 4, &no_revocation);
+
+    let sql = r#"SELECT note_id FROM "research/titles" ORDER BY note_id"#;
+    let answer = |arguments: Value| {
+        let (status, head, answer) = send(addr, &signed(&call("context.query", arguments), &token, &key));
+        assert_eq!(status, 200, "{head}");
+        result(&answer)
+    };
+    let pinned = answer(json!({ "sql": sql, "pin": { "research/titles": first } }));
+    assert_eq!(pinned["rows"], json!([["n1"]]), "{pinned}");
+    assert_eq!(pinned["contextful.resolved"]["research/titles"]["build_id"], json!(first), "{pinned}");
+    let unpinned = answer(json!({ "sql": sql }));
+    assert_eq!(unpinned["rows"], json!([["n1"], ["n2"]]), "{unpinned}");
+    assert_eq!(unpinned["contextful.resolved"]["research/titles"]["build_id"], json!(latest), "{unpinned}");
 }

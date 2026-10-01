@@ -87,6 +87,47 @@ pub fn columns(path: &Path) -> Result<Vec<String>> {
     Ok(b.schema().fields().iter().map(|f| f.name().clone()).collect())
 }
 
+/// The store columns a Parquet file carries, read from the Arrow schema in its footer:
+/// the inverse of [`field`] over every type a store column lands as.
+pub fn schema(path: &Path) -> Result<Vec<Column>> {
+    let unreadable = |m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
+    let file = File::open(path).at(path)?;
+    let b = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| unreadable(e.to_string()))?;
+    b.schema()
+        .fields()
+        .iter()
+        .map(|f| {
+            let ty = column_type(f).ok_or_else(|| unreadable(format!("column `{}` is typed {}, no store type", f.name(), f.data_type())))?;
+            Ok(Column::new(f.name(), ty, f.is_nullable()))
+        })
+        .collect()
+}
+
+/// The store type an Arrow field carries, or `None` for a type no store column lands as.
+fn column_type(f: &Field) -> Option<ColumnType> {
+    Some(match f.data_type() {
+        DataType::Null => ColumnType::Null,
+        DataType::Boolean => ColumnType::Boolean,
+        DataType::Int32 => ColumnType::Int32,
+        DataType::Int64 => ColumnType::Int64,
+        DataType::Float64 => ColumnType::Float64,
+        DataType::Utf8 if is_json(f) => ColumnType::Json,
+        DataType::Utf8 => ColumnType::Utf8,
+        DataType::Timestamp(TimeUnit::Nanosecond, _) => ColumnType::Timestamp,
+        DataType::Binary => ColumnType::Binary,
+        DataType::FixedSizeBinary(n) => ColumnType::FixedSizeBinary(u32::try_from(*n).ok()?),
+        DataType::FixedSizeList(item, n) => {
+            let item = match item.data_type() {
+                DataType::Float32 => FloatItem::Float32,
+                DataType::Float16 => FloatItem::Float16,
+                _ => return None,
+            };
+            ColumnType::FixedSizeList(item, u32::try_from(*n).ok()?)
+        }
+        _ => return None,
+    })
+}
+
 fn is_json(f: &Field) -> bool {
     f.metadata().get(EXTENSION_NAME).is_some_and(|v| v == JSON_EXTENSION)
 }

@@ -10,7 +10,7 @@ use crate::store::Store;
 use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers};
 use contextful_core::read::face::TOOLS;
 use contextful_core::read::guard::{admit, Admitted};
-use contextful_core::read::pin::{Pins, PIN_ARGUMENT, RESOLVED_BLOCK};
+use contextful_core::read::pin::{Pins, Resolved, PIN_ARGUMENT, RESOLVED_BLOCK};
 use contextful_core::read::respond::{Cell, Internals, Response};
 use contextful_core::read::template::{bind_query, parse_templates, Bindings, Bound, ParamType, QueryTemplate};
 use contextful_core::read::ReadError;
@@ -159,14 +159,15 @@ impl Face {
         };
         let ledger = crate::ledger::files(&self.store, table)?.iter().map(|p| p.to_string_lossy().into_owned()).collect();
         Ok(match self.store.try_schema(table)? {
-            Some(schema) => {
+            Some(_) => {
                 let pinned = match pin {
                     Some(build) => super::pin::pinned(&self.store, table, build, bounds.as_of)?,
                     None => None,
                 };
                 let s = scan_at(&self.store, &decl, bounds, pinned.as_ref())?;
                 let files = s.files.iter().map(|f| self.absolute(f)).collect();
-                TableSource { decl, policy, base: s.relation, files, columns: schema.columns, landed: true, ledger }
+                let resolved = s.publish.as_ref().map(Resolved::of);
+                TableSource { decl, policy, base: s.relation, files, columns: s.columns, landed: true, ledger, resolved }
             }
             None => {
                 // A pin on a table holding no build names no committed manifest.
@@ -175,7 +176,7 @@ impl Face {
                 }
                 let columns = injected_columns();
                 let base = relation(&TableDecl::named(table), &[], &columns, &[], None)?;
-                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger }
+                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger, resolved: None }
             }
         })
     }
@@ -199,10 +200,16 @@ impl Face {
     /// [`Face::session`] with each table `pins` names resolved to its pinned build
     /// (`read.resolve-pin.pin-parameter`); an unnamed table resolves to the latest
     /// published state. The pin map joins the pool key (`read.cache.session-pool`). A pin
-    /// naming a table outside the grants resolves nothing, as the table registers nothing.
+    /// on a table the session registers no relation for — absent or outside the grants —
+    /// refuses as a table publishing no build, so the refusal names no table the
+    /// credential cannot read, and the pin never widens to the latest state
+    /// (`read.resolve-pin.unknown-build`).
     pub fn session_pinned(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, pins: &Pins) -> Result<Session, ReadFault> {
         let tables = self.tables()?;
         let granted: Vec<String> = tables.iter().filter(|t| raw_read_covers(authority.grants(), t)).cloned().collect();
+        if let Some((table, build)) = pins.iter().find(|(t, _)| !granted.iter().any(|g| g == t)) {
+            return Err(super::pin::unavailable(table, build, None));
+        }
         let principal = pool::principal(authority, request, bounds, pins);
         let state = pool::store_state(&self.store, &tables, &granted)?;
         let transaction = Bounds { valid_as_of: None, ..bounds };
@@ -378,7 +385,7 @@ impl Face {
         let row_count = count.first().and_then(|r| r.first()).map(Cell::to_json).unwrap_or(Value::Null);
         let decl = self.decl(table);
         let policy = session.policy(table).expect("a registered table carries its policy");
-        let schema = self.store.try_schema(table)?.map(|s| s.columns).unwrap_or_else(injected_columns);
+        let schema = session.columns(table).expect("a registered table carries its columns");
         let columns: Vec<Value> = schema.iter().map(|c| json!({ "name": c.name, "type": c.ty.name() })).collect();
         let fingerprint: String = {
             let text: Vec<String> = schema.iter().map(|c| format!("{}:{}", c.name, c.ty.name())).collect();
@@ -402,7 +409,7 @@ impl Face {
         if let Some(max) = policy.max_rows {
             out["limits"] = json!({ "max_rows": max });
         }
-        if let Some(resolved) = super::pin::resolved(&self.store, session, [table])? {
+        if let Some(resolved) = super::pin::resolved(session, [table]) {
             out[format!("contextful.{RESOLVED_BLOCK}")] = resolved;
         }
         Ok(echo(out, bounds))
@@ -426,7 +433,7 @@ impl Face {
             response = response.with_block("bounds", b);
         }
         let names: Vec<String> = session.relations().map(|r| r.name().to_string()).collect();
-        Ok(match super::pin::resolved(&self.store, session, names.iter().map(String::as_str))? {
+        Ok(match super::pin::resolved(session, names.iter().map(String::as_str)) {
             Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
             None => response,
         })
@@ -472,7 +479,7 @@ impl Face {
         response: Response,
     ) -> Result<Response, ReadFault> {
         let touched: BTreeSet<&str> = touched.into_iter().collect();
-        let response = match super::pin::resolved(&self.store, session, touched.iter().copied())? {
+        let response = match super::pin::resolved(session, touched.iter().copied()) {
             Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
             None => response,
         };

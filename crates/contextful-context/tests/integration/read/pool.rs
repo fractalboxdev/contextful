@@ -16,6 +16,18 @@ use contextful_core::store::reserve::Injection;
 const EVENTS: &str = "bench/events";
 const COUNT: &str = r#"SELECT count(*) AS n FROM "bench/events""#;
 
+/// A published model over the events, whose build a pin names.
+const KINDS: &str = r#"
+[[model]]
+id = "bench/kinds"
+sql = "SELECT kind, CAST(count(*) AS BIGINT) AS n FROM \"bench/events\" GROUP BY kind"
+unique_key = ["kind"]
+
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "kind", type = "utf8", nullable = false }, { name = "n", type = "int64", nullable = false }]
+"#;
+
 fn land_run(store: &Store, i: usize) {
     let rows = (0..4)
         .map(|k| json!({ "event_id": format!("e{i}-{k}"), "kind": "open", "body": format!("event {k} of run {i}") }))
@@ -43,9 +55,10 @@ fn counts(r: &Reads) -> (u64, u64, u64) {
 // spec: read.cache.session-pool@945a082b
 #[test]
 fn statements_under_one_key_share_one_resolved_session_and_one_engine() {
-    let r = Reads::new();
+    let r = Reads::with_manifest(&format!("{MANIFEST}{KINDS}"));
     land_run(&r.store, 0);
-    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&[EVENTS], None)]);
+    let kinds = build_model(&r.face, KINDS, "bench/kinds", "2030-01-11T00:00:00Z");
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&[EVENTS, "bench/kinds"], None)]);
     let s = r.face.session(&authority, &Request::default(), Bounds::default()).unwrap();
     r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
     r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
@@ -65,7 +78,7 @@ fn statements_under_one_key_share_one_resolved_session_and_one_engine() {
     let nulled = Pins::parse(Some(&serde_json::json!({ EVENTS: null }))).unwrap();
     r.face.session_pinned(&authority, &Request::default(), Bounds::default(), &nulled).unwrap();
     assert_eq!(counts(&r), (2, 3, 3));
-    let pinned = Pins::default().with("bench/other", "snapshot-01773100800000000000");
+    let pinned = Pins::default().with("bench/kinds", &kinds.build_id);
     let s = r.face.session_pinned(&authority, &Request::default(), Bounds::default(), &pinned).unwrap();
     r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
     assert_eq!(counts(&r), (2, 4, 4));

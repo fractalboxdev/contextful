@@ -531,7 +531,7 @@ fn every_read_tool_admits_a_pin_map() {
         build_titles(store, "2030-01-01T03:00:00Z");
     });
     let clock = FixedClock(at("2030-01-01T04:00:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     for tool in tools["result"]["tools"].as_array().unwrap() {
         assert_eq!(tool["inputSchema"]["properties"]["pin"]["type"], json!("object"), "{} lacks `pin`", tool["name"]);

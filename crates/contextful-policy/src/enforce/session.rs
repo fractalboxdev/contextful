@@ -17,6 +17,7 @@ use super::PolicyError;
 use crate::verify::AdmittedAuthority;
 use contextful_core::grant::{raw_read_covers, Action, Grant};
 use contextful_core::identify::Member;
+use contextful_core::read::pin::Resolved;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
 use contextful_core::store::ledger::{ledger_relation, ledger_sql, ledger_table};
 use contextful_core::store::reconcile::Column;
@@ -45,6 +46,9 @@ pub struct TableSource {
     pub landed: bool,
     /// Absolute paths of the table's request-ledger files.
     pub ledger: Vec<String>,
+    /// The published build `base` reads, where it reads one build and nothing beside it
+    /// (`read.resolve-pin.resolved-echo`).
+    pub resolved: Option<Resolved>,
 }
 
 /// The relation one granted table registers as, bound to the table's bare name
@@ -276,6 +280,18 @@ impl Session {
         let columns_masked: Vec<String> =
             t.columns.iter().filter(|c| !t.policy.column_set(&c.name).admits(&self.zone)).map(|c| c.name.clone()).collect();
         (!columns_masked.is_empty()).then(|| ZoneWithheld { relation: name.to_string(), excluded: false, columns_masked, dropped_sql: None })
+    }
+
+    /// The published build the table `name`'s relation reads, as the session registered
+    /// it; `None` for a table outside the session or one reading no single build.
+    pub fn resolved(&self, name: &str) -> Option<&Resolved> {
+        self.sources.get(name)?.resolved.as_ref()
+    }
+
+    /// The columns the table `name` registered under, which a pinned build's own
+    /// publication fixes; `None` for a table outside the session.
+    pub fn columns(&self, name: &str) -> Option<&[Column]> {
+        self.sources.get(name).map(|t| t.columns.as_slice())
     }
 
     /// Whether the session zone admits the table `name`, which the session reads

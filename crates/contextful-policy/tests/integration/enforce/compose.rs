@@ -20,6 +20,7 @@ fn source(name: &str) -> TableSource {
         columns: vec![Column::new("x", ColumnType::Int32, false)],
         landed: true,
         ledger: Vec::new(),
+        resolved: None,
     }
 }
 
