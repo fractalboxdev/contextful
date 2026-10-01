@@ -84,8 +84,11 @@ transport-ureq = ["read-plane", "contextful-outbound/transport-ureq", "contextfu
 component-host = ["data-plane", "dep:contextful-wasm"]
 # The interpreted target a component source selects with `--component-target pulley`.
 pulley = ["component-host", "contextful-wasm/pulley"]
-# The Google Drive source and the PDF decode worker behind its process boundary.
-drive = ["data-plane", "contextful-connectors/drive"]
+# The PDF decode worker behind the process boundary, which the `file` source's PDF pages
+# decode through.
+pdf = ["data-plane", "contextful-connectors/pdf"]
+# The Google Drive source, decoding its PDF pages through the same worker.
+drive = ["pdf", "contextful-connectors/drive"]
 # The S3 and R2 bucket adapter behind `s3://`, `r2://` and `https://` sync endpoints
 # (`topology.package.s3-sync-optional`) and the `s3` object source.
 s3-sync = ["read-plane", "contextful-sync/s3-sync", "contextful-connectors?/s3"]

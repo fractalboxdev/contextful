@@ -407,3 +407,34 @@ fn the_run_row_sums_the_skipped_count_of_every_pull() {
     let row = plain.run(&opaque(), "1.0.0", "run-1", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
     assert_eq!(row.skipped, 0);
 }
+
+/// A walk serving its declined inputs by extension over two pulls.
+struct Declining {
+    declined: Vec<Value>,
+}
+
+impl Source for Declining {
+    fn pull(&mut self, request: &PullRequest, _cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        let n = request.position.as_ref().and_then(Value::as_u64).unwrap_or(0) as usize;
+        let tally = &self.declined[n];
+        let skipped: u64 = tally.as_object().map_or(0, |m| m.values().filter_map(Value::as_u64).sum());
+        let body = json!({ "rows": [{"id": format!("d{n}")}], "cursor": n + 1, "more": n + 1 < self.declined.len(), "skipped": skipped, "declined": tally });
+        Ok(serde_json::to_vec(&body).unwrap())
+    }
+}
+
+/// A directory walk records on the run record what it declined, tallied by extension.
+// spec: connector.source.declined-tally@85761d5b
+#[test]
+fn the_run_row_holds_every_pulls_declined_tally_by_extension() {
+    let rig = Rig::new();
+    let mut source = Declining { declined: vec![json!({"docx": 2, "png": 1}), json!({"docx": 1, "": 1})] };
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut Sink::default()).unwrap();
+    let want: std::collections::BTreeMap<String, u64> = [("".to_string(), 1), ("docx".to_string(), 3), ("png".to_string(), 1)].into();
+    assert_eq!((row.status, row.skipped, &row.declined), (RunStatus::Success, 5, &want));
+    assert_eq!(rig.row("run-1").declined, want, "the catalog holds the tally");
+
+    let plain = Rig::new();
+    let row = plain.run(&opaque(), "1.0.0", "run-1", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
+    assert!(row.declined.is_empty(), "a source declaring no tally leaves the row without one");
+}

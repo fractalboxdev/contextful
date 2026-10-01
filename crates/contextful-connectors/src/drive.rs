@@ -175,20 +175,7 @@ pub trait BodyStore: Send + Sync {
     fn put(&self, sha256: &str, bytes: &[u8]) -> Result<(), Failure>;
 }
 
-/// Decodes a PDF body into its pages' text.
-pub trait PageDecoder: Send + Sync {
-    fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure>;
-}
-
-/// The decode process boundary answers a PDF as a JSON array of page texts.
-impl PageDecoder for crate::boundary::Boundary {
-    fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure> {
-        let out = self.run(body, input)?;
-        serde_json::from_slice(&out).map_err(|e| {
-            Failure::deterministic(FailureTag::Permanent, RunError::PipelineParseCrashed(format!("decoding `{input}`: the decode process answered no page list: {e}")).to_string())
-        })
-    }
-}
+pub use crate::boundary::PageDecoder;
 
 /// One file the walk found under the root.
 #[derive(Debug, Clone)]

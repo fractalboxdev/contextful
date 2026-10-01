@@ -1,10 +1,12 @@
 //! The one decoder set every source shares (`connector.source.body-format`): JSON, JSON
-//! Lines, delimited text, an RSS or Atom feed and a workbook. Input a decoder cannot read
-//! refuses whole, naming the input and the position inside it.
+//! Lines, delimited text, an RSS or Atom feed and a workbook, beside the markdown, plain-text
+//! and PDF documents a directory walk lands. Input a decoder cannot read refuses whole,
+//! naming the input and the position inside it.
 //!
 //! The package reaches no mediated-request crate and no network stack, so an offline or
 //! sandboxed host links the decoders alone (`topology.package.decode-network-free`).
 
+pub mod document;
 pub mod feed;
 mod ooxml;
 #[cfg(feature = "pdf")]

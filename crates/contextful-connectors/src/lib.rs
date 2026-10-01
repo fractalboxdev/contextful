@@ -6,6 +6,7 @@ pub mod boundary;
 pub mod derive;
 #[cfg(feature = "drive")]
 pub mod drive;
+pub mod file;
 pub mod http;
 pub mod object;
 
@@ -17,7 +18,7 @@ pub const DRIVE_FEATURE: &str = "drive";
 pub const OBJECT_FEATURE: &str = "s3-sync";
 
 /// The names resolving to compiled-in sources.
-pub const BUILT_IN: [&str; 4] = [http::NAME, derive::NAME, DRIVE, object::NAME];
+pub const BUILT_IN: [&str; 5] = [http::NAME, derive::NAME, DRIVE, object::NAME, file::NAME];
 
 /// Whether a listed source is compiled into this build; a feature-gated one that is not
 /// answers with the feature to rebuild with.

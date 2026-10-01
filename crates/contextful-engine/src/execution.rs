@@ -22,11 +22,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// What a successful run counted beside its destination counts.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct Tally {
     pub batches: u64,
     /// The sum of every pull's `skipped` count (`run.record.skipped-count`).
     pub skipped: u64,
+    /// Every pull's declined tally, summed by extension (`connector.source.declined-tally`).
+    pub declined: std::collections::BTreeMap<String, u64>,
 }
 
 /// A failure an execution closes on.
@@ -175,6 +177,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             bytes: 0,
             batches: 0,
             skipped: 0,
+            declined: Default::default(),
             error_kind: None,
             error_message: None,
             connector_id: connector.id,
@@ -426,6 +429,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                     r.bytes = landed.bytes;
                     r.batches = tally.batches;
                     r.skipped = tally.skipped;
+                    r.declined = tally.declined.clone();
                 }
                 Err(close) => {
                     let (tag, message) = close.recorded();
@@ -549,7 +553,7 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> ExecutionPort for Execution<
 
     fn close(self, outcome: Outcome) -> Result<RunRow, EngineError> {
         let outcome = match outcome {
-            Outcome::Success { rows, bytes, batches } => Ok((Landed { rows, bytes }, Tally { batches, skipped: 0 })),
+            Outcome::Success { rows, bytes, batches } => Ok((Landed { rows, bytes }, Tally { batches, ..Tally::default() })),
             Outcome::Failed(f) => Err(Close::Failed(f)),
         };
         self.close_with(outcome)

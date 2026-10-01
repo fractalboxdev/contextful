@@ -14,6 +14,7 @@ use crate::run::{boot_id, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_connectors::derive::{DeriveSource, HostDerive, Staged};
+use contextful_connectors::file::{FileConfig, FileSource};
 use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
 use contextful_core::connector::component::ComponentSource;
 use contextful_core::connector::meter::{manifest_bindings, require_binding, LimiterBinding};
@@ -151,6 +152,7 @@ pub(crate) enum Checked {
     Drive(contextful_connectors::drive::DriveConfig),
     #[cfg(feature = "s3-sync")]
     Object(ObjectConfig),
+    File(FileConfig),
     Derive(Box<(DeriveConfig, Binding)>),
     Component(Box<ComponentSource>),
     Host(Box<HostChecked>),
@@ -197,6 +199,7 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
             contextful_connectors::compiled_in(contextful_connectors::object::NAME).map_err(|why| anyhow::anyhow!("pipeline `{}`: {why}", spec.id))?;
             check_object(spec)
         }
+        contextful_connectors::file::NAME => check_file(spec),
         contextful_connectors::derive::NAME => {
             let config = DeriveConfig::parse_with(&spec.id, &spec.source.config, tasks)?;
             if let Some(task) = tasks.get(config.task.name()).filter(|_| config.task.is_host()) {
@@ -237,6 +240,36 @@ struct Uncanceled;
 impl contextful_core::run::ports::Cancellation for Uncanceled {
     fn requested(&self) -> bool {
         false
+    }
+}
+
+/// A `file` source's configuration, its table and position checked before the walk.
+fn check_file(spec: &PipelineSpec) -> Result<Checked> {
+    let config = FileConfig::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
+    for t in &spec.tables {
+        config.table(t.name()).with_context(|| format!("pipeline `{}`", spec.id))?;
+    }
+    if let Some(field) = &spec.incremental {
+        return Err(ConnectorError::ConnectorPositionOwned(format!(
+            "pipeline `{}` declares `incremental = \"{field}\"` beside the `file` source, whose position records each file's digest",
+            spec.id
+        ))
+        .into());
+    }
+    Ok(Checked::File(config))
+}
+
+/// The PDF decoder a `file` source reads pages through: this binary's worker behind the
+/// process boundary, or none when the build links no PDF decoder.
+fn pdf_decoder() -> Result<Option<Arc<dyn contextful_connectors::boundary::PageDecoder>>> {
+    #[cfg(feature = "pdf")]
+    {
+        let worker = contextful_connectors::boundary::Boundary::new(std::env::current_exe()?, &["decode", "pdf"]);
+        Ok(Some(Arc::new(worker)))
+    }
+    #[cfg(not(feature = "pdf"))]
+    {
+        Ok(None)
     }
 }
 
@@ -506,7 +539,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 Checked::Component(decl) => resolver.preflight(decl.attach.iter().map(|(_, t)| t))?,
                 #[cfg(feature = "drive")]
                 Checked::Drive(config) => resolver.preflight(config.templates())?,
-                Checked::Derive(_) | Checked::Host(_) => {}
+                Checked::Derive(_) | Checked::Host(_) | Checked::File(_) => {}
                 #[cfg(feature = "s3-sync")]
                 Checked::Object(config) => resolver.preflight(config.credentials())?,
             }
@@ -597,6 +630,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                         },
                         #[cfg(feature = "s3-sync")]
                         Checked::Object(config) => Box::new(object_source(config.clone(), resolver.clone())),
+                        Checked::File(config) => Box::new(FileSource::new(config.clone(), &base, pdf_decoder()?)),
                         Checked::Derive(pair) => Box::new(DeriveSource {
                             pipeline_id: spec.id.clone(),
                             config: pair.0.clone(),
@@ -634,7 +668,11 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     }
                 };
                 if row.status == RunStatus::Success {
-                    let skipped = if row.skipped > 0 { format!(" · {} skipped", row.skipped) } else { String::new() };
+                    let mut skipped = if row.skipped > 0 { format!(" · {} skipped", row.skipped) } else { String::new() };
+                    if !row.declined.is_empty() {
+                        let by: Vec<String> = row.declined.iter().map(|(ext, n)| if ext.is_empty() { format!("{n} without extension") } else { format!("{n} .{ext}") }).collect();
+                        skipped.push_str(&format!(" ({})", by.join(", ")));
+                    }
                     println!("{table}: {} success · {} rows in {} batches{skipped}", row.run_id, row.rows, row.batches);
                     continue;
                 }

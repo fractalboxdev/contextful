@@ -22,8 +22,10 @@ url = "2"
 [features]
 default = ["transport-ureq"]
 transport-ureq = ["contextful-outbound/transport-ureq"]
-# The Google Drive source and the PDF decoder its decode worker runs.
-drive = ["contextful-decode/pdf"]
+# The PDF decoder the decode worker runs, for the `file` and drive sources.
+pdf = ["contextful-decode/pdf"]
+# The Google Drive source.
+drive = ["pdf"]
 # Lists the `s3` object source as compiled in. The binary enables it beside the store's S3
 # bucket adapter, which it wires in as the source's `Objects` port.
 s3 = []

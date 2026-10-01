@@ -5,6 +5,7 @@ mod boundary;
 mod conditional;
 mod derive;
 mod drive;
+mod file;
 mod github;
 mod http;
 mod object;
