@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 212 | 56 | 22 | 16 | 100 | 0 | 100 |
-| `authority` | 2 | 16 | 238 | 64 | 27 | 8 | 172 | 0 | 172 |
+| `authority` | 2 | 16 | 243 | 67 | 27 | 10 | 178 | 0 | 178 |
 | `connector` | 2 | 13 | 282 | 76 | 19 | 9 | 156 | 0 | 156 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 162 | 28 | 22 | 20 | 133 | 0 | 133 |
 | `run` | 3 | 25 | 335 | 88 | 35 | 30 | 204 | 0 | 204 |
-| `store` | 1 | 17 | 213 | 53 | 12 | 17 | 172 | 0 | 172 |
+| `store` | 1 | 17 | 214 | 53 | 12 | 17 | 173 | 0 | 173 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 152 | 1732 | 530 | 183 | 127 | 1028 | 0 | |
+| **total** | 19 | 152 | 1738 | 533 | 183 | 129 | 1035 | 0 | |
 
 Decision records: 18.
 
@@ -26,8 +26,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
-| 1 — The authority core | 14 | 203 | 148 | passing | closed |
-| 2 — The store | 9 | 150 | 114 | passing | closed |
+| 1 — The authority core | 14 | 208 | 154 | passing | closed |
+| 2 — The store | 9 | 151 | 115 | passing | closed |
 | 3 — The run path | 11 | 197 | 125 | passing | closed |
 | 4 — Ingest | 23 | 398 | 203 | passing | open |
 | 5 — The read face under enforcement | 17 | 240 | 167 | passing | open |
@@ -194,6 +194,7 @@ Unscheduled operations: 10.
 | `authority.grant.tenant-child-lifetime` | `crates/contextful-core/tests/integration/grant.rs::tenant_child_lifetime` | performed |
 | `authority.grant.tenant-unbindable` | `crates/contextful-core/tests/integration/grant.rs::tenant_unbindable` | performed |
 | `authority.grant.unknown-action` | `crates/contextful-core/tests/integration/grant.rs::unknown_action` | performed |
+| `authority.grant.write-not-covered` | `crates/contextful-cli/tests/integration/author.rs::a_credential_without_a_write_grant_lands_nothing` | performed |
 | `authority.identify.attestation` | `crates/contextful-core/tests/integration/identify.rs::attestation` | performed |
 | `authority.identify.incognito` | `crates/contextful-core/tests/integration/identify.rs::incognito` | performed |
 | `authority.identify.malformed-value` | `crates/contextful-core/tests/integration/identify.rs::malformed_value` | performed |
@@ -205,6 +206,7 @@ Unscheduled operations: 10.
 | `authority.issue.above-ceiling` | `crates/contextful-core/tests/integration/issue.rs::an_explicit_lifetime_above_the_ceiling_refuses_and_an_exchange_lifetime_clamps` | performed |
 | `authority.issue.algorithm` | `crates/contextful-core/tests/integration/issue.rs::a_credential_names_the_pinned_keys_scheme_ed25519_by_default` | performed |
 | `authority.issue.algorithm-mismatch` | `crates/contextful-core/tests/integration/issue.rs::a_named_scheme_other_than_the_pinned_keys_refuses` | performed |
+| `authority.issue.authoring-posture` | `crates/contextful-cli/tests/integration/author.rs::per_request_leaves_an_unaccompanied_write_unauthored_and_session_authors_every_write` | performed |
 | `authority.issue.ceiling` | `crates/contextful-core/tests/integration/issue.rs::the_persisted_ceiling_holds_at_most_24_hours` | performed |
 | `authority.issue.ceiling-lowering` | `crates/contextful-core/tests/integration/issue.rs::lowering_the_ceiling_records_the_previous_value_until_its_credentials_lapse` | performed |
 | `authority.issue.default-read` | `crates/contextful-core/tests/integration/issue.rs::a_grant_naming_no_action_mints_read_alone` | performed |
@@ -213,9 +215,11 @@ Unscheduled operations: 10.
 | `authority.issue.key-rotation` | `crates/contextful-core/tests/integration/issue.rs::the_issuer_key_rotates_every_90_days_and_at_once_on_compromise` | performed |
 | `authority.issue.one-credential` | `crates/contextful-agent/tests/integration/http.rs::a_static_secret_or_a_foreign_credential_admits_nothing` | performed |
 | `authority.issue.oracle-custody` | `crates/contextful-policy/tests/integration/issue.rs::the_custodian_records_one_signing_call_per_mint` | performed |
+| `authority.issue.posture-key` | `crates/contextful-cli/tests/integration/author.rs::an_undeclared_posture_refuses_every_write_verb` | performed |
 | `authority.issue.principal-required` | `crates/contextful-core/tests/integration/issue.rs::a_write_or_execute_mint_without_a_principal_refuses` | performed |
 | `authority.issue.public-key-text` | `crates/contextful-policy/tests/integration/issue.rs::a_public_key_prints_under_its_scheme_tag_and_parses_back` | performed |
 | `authority.issue.replica-mint` | `crates/contextful-core/tests/integration/issue.rs::a_mint_on_a_replica_refuses` | performed |
+| `authority.issue.session-credential` | `crates/contextful-cli/tests/integration/author.rs::a_session_write_without_a_credential_is_refused` | performed |
 | `authority.issue.signature-encoding` | `crates/contextful-policy/tests/integration/issue.rs::a_port_names_its_encoding_and_every_tag_mints_a_credential_that_admits` | performed |
 | `authority.issue.signing-port` | `crates/contextful-policy/tests/integration/issue.rs::a_mint_signs_through_the_port_and_admits_under_the_ports_public_key` | performed |
 | `authority.issue.unauthorized-mint` | `crates/contextful-core/tests/integration/issue.rs::a_mint_request_presenting_no_admin_grant_refuses` | performed |
@@ -319,6 +323,8 @@ Unscheduled operations: 10.
 | `authority.verify.replay-window` | `crates/contextful-policy/tests/integration/possession.rs::a_proof_older_than_the_replay_window_refuses_and_nonces_live_for_that_window` | performed |
 | `authority.verify.replayed-nonce` | `crates/contextful-policy/tests/integration/possession.rs::a_nonce_repeating_inside_the_window_raises_possession_proof_replayed` | performed |
 | `authority.verify.timestamps` | `crates/contextful-core/tests/integration/time.rs::timestamps_decode_into_utc_instants_and_compare_as_instants` | performed |
+| `authority.verify.write-commit` | `crates/contextful-cli/tests/integration/author.rs::a_land_whose_credential_lapses_before_its_commit_commits_nothing` | performed |
+| `authority.verify.write-verbs` | `crates/contextful-cli/tests/integration/author.rs::a_per_request_write_accompanied_by_a_credential_is_authored_by_it` | performed |
 | `connector.attach.bound-host` | `crates/contextful-connectors/tests/integration/http.rs::a_credentialed_endpoint_host_is_never_bound_from_a_table_name` | performed |
 | `connector.attach.cleartext-endpoint` | `crates/contextful-outbound/tests/integration/attach.rs::a_credential_never_travels_in_cleartext_outside_loopback` | performed |
 | `connector.attach.credential-in-a-url` | `crates/contextful-core/tests/integration/connector/attach.rs::an_endpoint_carrying_userinfo_is_refused` | performed |
@@ -951,6 +957,7 @@ Unscheduled operations: 10.
 | `store.init.explicit-project` | `crates/contextful-cli/tests/integration/init.rs::an_explicit_project_uses_the_working_directory` | performed |
 | `store.init.name-conflict` | `crates/contextful-context/tests/integration/init.rs::an_init_naming_another_project_refuses` | performed |
 | `store.init.name-shape` | `crates/contextful-context/tests/integration/init.rs::a_traversing_or_unsafe_name_refuses_before_any_write` | performed |
+| `store.init.posture` | `crates/contextful-cli/tests/integration/init.rs::an_init_with_a_posture_lands_its_first_write_unedited` | performed |
 | `store.init.project-paths` | `crates/contextful-context/tests/integration/init.rs::every_project_path_is_based_on_the_project_directory` | performed |
 | `store.init.repeat` | `crates/contextful-context/tests/integration/init.rs::a_repeated_init_rewrites_nothing` | performed |
 | `store.init.undiscovered` | `crates/contextful-context/tests/integration/init.rs::discovery_without_a_named_declaration_refuses` | performed |
