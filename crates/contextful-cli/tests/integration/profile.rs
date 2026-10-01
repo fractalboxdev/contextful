@@ -36,10 +36,16 @@ fn the_version_names_the_workspace_version_and_the_profile() {
 /// without the read path, and the run path's names on the read replica.
 #[cfg(not(feature = "data-plane"))]
 fn unlinked() -> &'static [&'static [&'static str]] {
-    const RUN: [&[&str]; 4] =
-        [&["init", "research"], &["pipeline", "validate"], &["export", "run", "spans-mirror"], &["eval", "run", "--goldens", "cases.jsonl"]];
-    const ALL: [&[&str]; 8] = [
+    const RUN: [&[&str]; 5] = [
         &["init", "research"],
+        &["build", "orders_daily"],
+        &["pipeline", "validate"],
+        &["export", "run", "spans-mirror"],
+        &["eval", "run", "--goldens", "cases.jsonl"],
+    ];
+    const ALL: [&[&str]; 9] = [
+        &["init", "research"],
+        &["build", "orders_daily"],
         &["query", "SELECT 1"],
         &["pipeline", "validate"],
         &["sync", "probe", "file:///nowhere"],
