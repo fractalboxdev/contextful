@@ -23,6 +23,7 @@ default = ["http"]
 http = ["dep:httparse"]
 
 [dev-dependencies]
+contextful-eval = { path = "../../tools/eval" }
 ed25519-dalek = "2"
 tempfile = "3"
 

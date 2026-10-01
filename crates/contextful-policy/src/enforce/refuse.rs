@@ -31,9 +31,20 @@ fn code(r: &Refusal) -> (String, u16) {
 /// 512 B serialized. A longer message is cut at a character boundary.
 pub fn payload(r: &Refusal) -> Value {
     let (code, http) = code(r);
-    let mut message = r.to_string();
+    wire(&code, http, r.identifier(), r.to_string())
+}
+
+/// A read whose audit entry did not persist, as its wire payload: code
+/// `audit_entry_unpersisted`, HTTP 503 and identifier `AuditEntryUnpersisted`
+/// (`disclosure.record.unpersisted-wire`). `why` is the reason the append failed.
+pub fn unpersisted(why: &str) -> Value {
+    wire("audit_entry_unpersisted", 503, "AuditEntryUnpersisted", format!("AuditEntryUnpersisted: {why}; no rows are released"))
+}
+
+/// One wire payload, its message cut at a character boundary to fit 512 B.
+fn wire(code: &str, http: u16, identifier: &str, mut message: String) -> Value {
     loop {
-        let v = json!({ "error": { "code": code, "http": http, "identifier": r.identifier(), "message": message } });
+        let v = json!({ "error": { "code": code, "http": http, "identifier": identifier, "message": message } });
         if v.to_string().len() <= REFUSAL_PAYLOAD || message.is_empty() {
             return v;
         }

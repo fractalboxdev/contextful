@@ -126,6 +126,23 @@ Decision: a log opens held, unanchored or read-only. Held signs roots and tip th
 Criteria: tamper evidence decided it; availability of reads without custody; no fabricated keys.
 Consequences: an unanchored interval is evident until anchored; a verifier runs beside the writer; deleting every root and `chain.held` along with the tip leaves a chain only a replicated root tells from an unanchored one.
 
+## One append group holds the log at a time
+
+**Status:** accepted
+
+Context: `serve --http` and `mcp` run as separate processes on one project, and each answered read appends to the project's chain before its rows leave. A lock held for a process's lifetime admits one of them.
+Decision: `disclosure.record.single-writer` holds `audit.lock` per append group. A group takes the lock, re-reads the last segment's tail when it grew since this handle's last write (`disclosure.record.foreign-tail`), links, syncs, then releases. The open, the idle signer and an export take the lock the same way.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Directory lock per append group *(chosen)* | — | A group waits while another process's group syncs; a tail re-read follows each interleaving. |
+| Directory lock for a process's lifetime | Concurrent read processes | A second read process on one project cannot start. |
+| One chain per process | Truncation detectability | A deleted chain leaves no gap in any other, so it goes undetected. |
+| A daemon owning the log, appends forwarded over a socket | Scope | A third long-lived process, its lifecycle and its transport to build and operate. |
+
+Criteria: one linear chain per project, fixed; several read processes per project decided it; one sync per group, kept.
+Consequences: the lock serializes groups across processes, so throughput across processes is bounded by one sync at a time; a read-only handle still verifies without the lock.
+
 ## Erasure is a forced rewrite, a bounded cascade and a measured receipt
 
 `disclosure.erase` rewrites columnar files under the complement of the tenant grant filter; an undeclared subject column raises `ErasureSubjectUndeclared`. The cascade walks provenance to 16 hops, else `ErasureCascadeUnbounded` commits nothing; fact reads refuse with `ErasureRestagingRequired` until re-synthesis. Files holding erased rows are rewritten or collected within 24 h. A token-presented purge raises `PurgeRequiresOwner`. `disclosure.receipt` attests rewrite-and-exclude over the canonical store, names exclusions in `coverage`, and widens only with `receipt_version`.

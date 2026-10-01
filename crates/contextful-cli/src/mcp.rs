@@ -1,8 +1,8 @@
 //! `contextful mcp` — the tool server over standard input and output.
 //!
 //! A thin adapter: it admits the one credential the process serves, resolves the pepper,
-//! opens the read face over the project's store and manifest, and hands both to the tool
-//! server. Every value is resolved before the first protocol line is written, so a
+//! opens the read face over the project's store and manifest and the project's audit chain
+//! unanchored (`disclosure.record.read-chain`), and hands them to the tool server. Every value is resolved before the first protocol line is written, so a
 //! process that cannot serve exits with nothing on standard output.
 
 use crate::admit::{face, AdmitArgs};
@@ -12,6 +12,7 @@ use anyhow::Result;
 use contextful_agent::mcp::Server;
 use contextful_core::ports::Clock;
 use contextful_core::AuthorityError;
+use contextful_policy::audit::AuditLog;
 use contextful_policy::verify::{effect_boundary, Admission, AdmittedAuthority};
 use std::path::PathBuf;
 
@@ -34,9 +35,10 @@ pub fn run(args: McpArgs) -> Result<()> {
     let located = locate(args.project.as_deref(), args.declaration)?;
     crate::sync::pull_before_run(&located)?;
     let face = face(&located)?;
+    let audit = AuditLog::unanchored(located.project.audit_dir())?;
     let clock = SystemClock;
     let boundary = |a: &AdmittedAuthority| -> Result<(), AuthorityError> { effect_boundary(a, &Admission::new(clock.now(), &revocation)) };
-    let server = Server::new(&face, authority, &boundary, &clock).map_err(anyhow::Error::msg)?;
+    let server = Server::new(&face, authority, &boundary, &clock, &audit).map_err(anyhow::Error::msg)?;
     server.serve(std::io::stdin().lock(), std::io::stdout().lock())?;
     Ok(())
 }

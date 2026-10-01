@@ -1,7 +1,8 @@
 //! `contextful serve --http` — the tool server over MCP Streamable HTTP.
 //!
 //! A thin adapter: it checks the declared audience and in-flight ceiling and the issuer
-//! key, opens the read face over the project's store and manifest, binds the listener,
+//! key, opens the read face over the project's store and manifest and the project's audit
+//! chain unanchored (`disclosure.record.read-chain`), binds the listener,
 //! and hands every request to the network transport, which admits each one on its own
 //! credential. Every value is resolved before the listener binds, so a process that
 //! cannot serve binds nothing.
@@ -12,6 +13,7 @@ use crate::root::root as project_root;
 use crate::clock::SystemClock;
 use anyhow::Result;
 use contextful_agent::http::{audience, ceiling, Admitting, HttpFace};
+use contextful_policy::audit::AuditLog;
 use contextful_policy::keyset::{KeyCheckpoint, StaticPins};
 use contextful_policy::revoke::RevocationState;
 use std::net::TcpListener;
@@ -88,8 +90,10 @@ pub fn run(args: ServeArgs) -> Result<()> {
     // The denylist reads once before binding, so a missing file refuses the start.
     revocation().map_err(anyhow::Error::msg)?;
     let admitting = Admitting { checkpoint: &checkpoint, audience, revocation: &revocation };
-    let face = face(&locate(args.project.as_deref(), args.declaration)?)?;
-    let http = HttpFace::new(&face, &clock, admitting, Some(ceiling)).map_err(anyhow::Error::msg)?;
+    let located = locate(args.project.as_deref(), args.declaration)?;
+    let face = face(&located)?;
+    let audit = AuditLog::unanchored(located.project.audit_dir())?;
+    let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling)).map_err(anyhow::Error::msg)?;
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
     http.serve(listener)?;

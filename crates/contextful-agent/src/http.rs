@@ -8,11 +8,11 @@
 //! lives at most an hour (`authority.verify.network-bearer`). Admission, the
 //! revocation read and the proof check run per request, so one listener
 //! serves many credentials; the message is answered by the same [`Tools`] the stdio
-//! transport runs, as `application/json` (`read.respond.one-projection`). The face holds
+//! transport runs, audit entry included, as `application/json` (`read.respond.one-projection`). The face holds
 //! no protocol session, opens no server stream and serves no raw statement
 //! (`read.guard.statement-provenance`).
 
-use crate::mcp::{build_identity, Caller, Tools};
+use crate::mcp::{build_identity, Caller, ReadRecord, Tools};
 use contextful_context::read::Face;
 use contextful_core::ports::Clock;
 use contextful_core::read::{ReadError, Refusal};
@@ -229,17 +229,18 @@ pub fn audience(declared: Option<&str>) -> Result<&str, String> {
 }
 
 impl<'a, C: Clock + Sync> HttpFace<'a, C> {
-    /// The face over `face`, admitting through `admitting`, with at most `max_in_flight`
-    /// requests in flight.
+    /// The face over `face`, recording each answered read through `record`, admitting
+    /// through `admitting`, with at most `max_in_flight` requests in flight.
     pub fn new(
         face: &'a Face,
         clock: &'a (dyn Clock + Sync),
+        record: &'a dyn ReadRecord,
         admitting: Admitting<'a, C>,
         max_in_flight: Option<usize>,
     ) -> Result<HttpFace<'a, C>, String> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
-        let tools = Tools::new(face, clock)?;
+        let tools = Tools::new(face, clock, record)?;
         Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0) })
     }
 

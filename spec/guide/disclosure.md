@@ -72,8 +72,8 @@ release reserves each contributing unit's budget before computing
 ({{disclosure.suppress.contributor-share}}) behind one sentinel row. A cohort table never
 narrows to one person ({{disclosure.bound-cohort.singleton-cohort}}).
 
-Accountability starts at the read. Rows leave only after the audit entry is durable
-({{disclosure.record.unpersisted-entry}}); entries hash-link into segments closed by signed
+Accountability starts at the read: rows leave once the read's own entry is durable
+({{disclosure.record.read-entry}}, {{disclosure.record.unpersisted-entry}}); entries hash-link into segments closed by signed
 roots ({{disclosure.record.segment}}), and verification reports the earliest break
 ({{disclosure.attest.broken-chain}}). A chain header fixes the digest
 ({{disclosure.record.chain-header}}), each root a Merkle tree hash

@@ -219,21 +219,64 @@ fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     assert_eq!(broken_at(AuditLog::open(dir.path(), key())), AUDIT_SEGMENT_ENTRIES);
 }
 
-/// One process holds a directory's audit log at a time; opening a log another holds raises `AuditLogHeld`.
-// spec: disclosure.record.single-writer@f85b6bac
+/// One append group holds a directory's audit log at a time: a group takes the directory lock, links after the chain end, syncs, then releases it.
+// spec: disclosure.record.single-writer@307084b5
 #[test]
-fn a_second_writer_on_one_directory_is_refused() {
+fn two_writers_on_one_directory_append_into_one_linear_chain() {
+    const THREADS: u64 = 4;
+    const EACH: u64 = 25;
     let dir = log_of(2);
-    let first = AuditLog::open(dir.path(), key()).unwrap();
-    match AuditLog::open(dir.path(), key()) {
-        Err(AuditError::AuditLogHeld(m)) => assert!(m.contains("audit.lock"), "{m}"),
-        other => panic!("expected AuditLogHeld, got {other:?}"),
+    // Each handle opens its own `audit.lock` description, as a second process does.
+    let a = AuditLog::open(dir.path(), key()).unwrap();
+    let b = AuditLog::open(dir.path(), key()).unwrap();
+    assert_eq!(a.append(attrs("agent://a", 3)).unwrap().seq, 3);
+    assert_eq!(b.append(attrs("agent://b", 4)).unwrap().seq, 4);
+    assert_eq!(a.append(attrs("agent://a", 5)).unwrap().seq, 5);
+
+    std::thread::scope(|s| {
+        for log in [&a, &b] {
+            for t in 0..THREADS {
+                s.spawn(move || {
+                    for i in 0..EACH {
+                        log.append(attrs("agent://w", t * EACH + i)).unwrap();
+                    }
+                });
+            }
+        }
+    });
+    let end = 5 + 2 * THREADS * EACH;
+    let entries = lines(&segment(dir.path(), 1));
+    assert_eq!(entries.iter().map(|e| e.seq).collect::<Vec<_>>(), (1..=end).collect::<Vec<_>>(), "one seq per entry, no gap and no repeat");
+    assert!(entries.windows(2).all(|w| w[1].prev_hash == w[0].entry_hash), "every entry links to the one before it");
+    drop((a, b));
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, end);
+}
+
+/// An append group finding the chain grown past its own last append reads the new tail entry before linking, and issues no extra sync.
+// spec: disclosure.record.foreign-tail@56ab2f50
+#[test]
+fn a_group_after_another_writer_rereads_the_tail_and_syncs_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (pa, pb) = (Arc::new(Probe::default()), Arc::new(Probe::default()));
+    let a = AuditLog::open_with(dir.path(), key(), quiet(&pa)).unwrap();
+    let b = AuditLog::open_with(dir.path(), key(), quiet(&pb)).unwrap();
+    assert_eq!(a.append(attrs("agent://a", 1)).unwrap().seq, 1);
+
+    for (log, probe, seq) in [(&b, &pb, 2), (&a, &pa, 3), (&a, &pa, 4), (&b, &pb, 5)] {
+        let before = probe.calls.lock().unwrap().len();
+        assert_eq!(log.append(attrs("agent://x", seq)).unwrap().seq, seq);
+        assert_eq!(&probe.calls.lock().unwrap()[before..], [Fsync::Segment(1)], "one segment sync for the group at seq {seq}");
+        assert_eq!(log.tip().seq, seq);
     }
-    first.append(attrs("agent://a", 3)).unwrap();
-    drop(first);
-    let second = AuditLog::open(dir.path(), key()).unwrap();
-    assert_eq!(second.append(attrs("agent://b", 4)).unwrap().seq, 4);
-    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 4);
+    // A segment another writer opened is found as the new tail too.
+    let batch: Vec<Value> = (0..AUDIT_SEGMENT_ENTRIES - 5).map(|i| attrs("agent://a", i)).collect();
+    a.append_all(batch).unwrap();
+    assert_eq!(a.append(attrs("agent://a", 0)).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 1);
+    let before = pb.calls.lock().unwrap().len();
+    assert_eq!(b.append(attrs("agent://b", 0)).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 2);
+    assert_eq!(&pb.calls.lock().unwrap()[before..], [Fsync::Segment(2)]);
+    drop((a, b));
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 2);
 }
 
 /// A read-only audit handle verifies the chain without the writer lock; an append through it raises `AuditLogReadOnly`.

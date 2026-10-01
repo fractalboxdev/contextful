@@ -6,16 +6,24 @@
 //! authority for its lifetime; the network transport admits one per request. A refusal
 //! arrives in-band — a result flagged as an error under transport success — carrying the
 //! refusal's wire payload (`read.respond.in-band-error`).
+//!
+//! Every read tool call [`Tools`] answers with a result appends one audit entry through its
+//! [`ReadRecord`] before the result leaves (`disclosure.record.read-entry`); an entry that
+//! does not persist answers `AuditEntryUnpersisted` in-band with no rows
+//! (`disclosure.record.unpersisted-wire`).
 
 use contextful_context::read::{Face, ReadFault, ReadOptions, RecallRequest, RetrieveRequest};
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
 use contextful_core::read::template::READ_ARGUMENTS;
+use contextful_core::read::respond::Response;
 use contextful_core::read::Refusal;
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::ports::Clock;
 use contextful_core::time::Instant;
+use contextful_core::ports::SigningPort;
 use contextful_core::AuthorityError;
-use contextful_policy::enforce::refuse::payload;
+use contextful_policy::audit::{AuditError, AuditLog};
+use contextful_policy::enforce::refuse::{payload, unpersisted};
 use contextful_policy::enforce::session::Request;
 use contextful_policy::verify::AdmittedAuthority;
 use serde_json::{json, Map, Value};
@@ -48,10 +56,41 @@ pub struct Caller<'c> {
     pub boundary: &'c Boundary<'c>,
 }
 
+/// Where a read's audit entry goes: the read path appends through it and releases the
+/// result only once the call returns.
+pub trait ReadRecord: Send + Sync {
+    /// Append one read's entry, returning once it is durable.
+    fn record(&self, attributes: Value) -> Result<(), AuditError>;
+}
+
+/// The audit chain records a read as one entry of an append group.
+impl<S: SigningPort + Send + Sync + 'static> ReadRecord for AuditLog<S> {
+    fn record(&self, attributes: Value) -> Result<(), AuditError> {
+        self.append(attributes).map(|_| ())
+    }
+}
+
+/// A read's entry attributes (`disclosure.record.read-attributes`): the tool, the
+/// credential, each present subject member and its attestation, and the rows returned.
+pub fn read_attributes(tool: &str, authority: &AdmittedAuthority, rows: u64) -> Value {
+    let mut attributes = Map::new();
+    attributes.insert("contextful.tool".into(), json!(tool));
+    attributes.insert("contextful.credential".into(), json!(authority.credential_id()));
+    let subject = authority.subject();
+    for (member, attestation) in subject.attestations() {
+        let name = member.as_str();
+        attributes.insert(format!("contextful.subject.{name}"), json!(subject.get(member)));
+        attributes.insert(format!("contextful.subject.attestation.{name}"), json!(attestation));
+    }
+    attributes.insert("contextful.result.rows".into(), json!(rows));
+    Value::Object(attributes)
+}
+
 /// The closed read tool set over one read face, shared by every transport.
 pub struct Tools<'a> {
     face: &'a Face,
     clock: &'a (dyn Clock + Sync),
+    record: &'a dyn ReadRecord,
 }
 
 /// The tool protocol over standard input and output for one admitted authority.
@@ -130,6 +169,12 @@ fn options(args: &Map<String, Value>) -> Result<ReadOptions, Protocol> {
     Ok(ReadOptions { limit: integer(args, "limit")?, internals: boolean(args, "internals")?, bounds: bounds(args)? })
 }
 
+/// A row-bearing response and the count of rows it returns.
+fn answered(r: Response) -> (Value, u64) {
+    let rows = r.rows.len() as u64;
+    (r.to_json(), rows)
+}
+
 /// A tool result: the structured value and its text rendering.
 fn result(value: Value) -> Value {
     json!({ "content": [{ "type": "text", "text": value.to_string() }], "structuredContent": value })
@@ -148,8 +193,9 @@ impl<'a> Server<'a> {
         authority: AdmittedAuthority,
         boundary: &'a Boundary<'a>,
         clock: &'a (dyn Clock + Sync),
+        record: &'a dyn ReadRecord,
     ) -> Result<Server<'a>, String> {
-        Ok(Server { tools: Tools::new(face, clock)?, authority, boundary })
+        Ok(Server { tools: Tools::new(face, clock, record)?, authority, boundary })
     }
 
     /// Serve until the input closes.
@@ -174,13 +220,13 @@ impl<'a> Server<'a> {
 }
 
 impl<'a> Tools<'a> {
-    /// The tool set over `face`. Every built-in tool registers as a read tool
-    /// (`authority.resist.read-only-face`).
-    pub fn new(face: &'a Face, clock: &'a (dyn Clock + Sync)) -> Result<Tools<'a>, String> {
+    /// The tool set over `face`, recording each answered read through `record`. Every
+    /// built-in tool registers as a read tool (`authority.resist.read-only-face`).
+    pub fn new(face: &'a Face, clock: &'a (dyn Clock + Sync), record: &'a dyn ReadRecord) -> Result<Tools<'a>, String> {
         for tool in TOOLS {
             register_tool(FaceScope::Organization, tool, ToolKind::Read).map_err(|e| e.to_string())?;
         }
-        Ok(Tools { face, clock })
+        Ok(Tools { face, clock, record })
     }
 
     /// The clock tool calls read the present from.
@@ -256,7 +302,14 @@ impl<'a> Tools<'a> {
             Some(_) => return Err(invalid("`arguments` is an object")),
         };
         match self.dispatch(caller, name, &args) {
-            Ok(Ok(value)) => Ok(result(value)),
+            // The result leaves only once its entry is durable; otherwise no row does.
+            Ok(Ok((value, rows))) => match self.record.record(read_attributes(name, caller.authority, rows)) {
+                Ok(()) => Ok(result(value)),
+                Err(e) => {
+                    let p = unpersisted(&e.to_string());
+                    Ok(json!({ "content": [{ "type": "text", "text": p.to_string() }], "structuredContent": p, "isError": true }))
+                }
+            },
             Ok(Err(fault)) => match fault.refusal() {
                 Some(r) => Ok(refused(r)),
                 None => Ok(json!({ "content": [{ "type": "text", "text": fault.to_string() }], "isError": true })),
@@ -265,7 +318,8 @@ impl<'a> Tools<'a> {
         }
     }
 
-    fn dispatch(&self, caller: Caller<'_>, name: &str, args: &Map<String, Value>) -> Result<Result<Value, ReadFault>, Protocol> {
+    /// Run one tool: its structured result and the rows it returns.
+    fn dispatch(&self, caller: Caller<'_>, name: &str, args: &Map<String, Value>) -> Result<Result<(Value, u64), ReadFault>, Protocol> {
         let zone = string(args, "zone")?;
         let zone = zone.as_deref();
         Ok(match name {
@@ -273,7 +327,7 @@ impl<'a> Tools<'a> {
                 only(args, name, &["table"])?;
                 let table = string(args, "table")?;
                 let b = bounds(args)?;
-                self.session(caller, zone, b).and_then(|s| self.face.describe(&s, table.as_deref(), b))
+                self.session(caller, zone, b).and_then(|s| self.face.describe(&s, table.as_deref(), b)).map(|v| (v, 0))
             }
             "context.query" => {
                 only(args, name, &["sql", "parameters", "limit", "internals"])?;
@@ -286,7 +340,7 @@ impl<'a> Tools<'a> {
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds)
                     .and_then(|s| self.face.query_with(&s, &sql, &parameters, opts))
-                    .map(|r| r.to_json())
+                    .map(answered)
             }
             "context.execute_query" => {
                 only(args, name, &["id", "arguments", "limit", "internals"])?;
@@ -299,18 +353,18 @@ impl<'a> Tools<'a> {
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds)
                     .and_then(|s| self.face.execute_template(&s, &id, &arguments, opts))
-                    .map(|r| r.to_json())
+                    .map(answered)
             }
             "context.files" => {
                 only(args, name, &[])?;
                 let b = bounds(args)?;
-                self.session(caller, zone, b).and_then(|s| self.face.files(&s, b)).map(|r| r.to_json())
+                self.session(caller, zone, b).and_then(|s| self.face.files(&s, b)).map(answered)
             }
             "context.file" => {
                 only(args, name, &["path", "limit", "internals"])?;
                 let path = required(args, "path")?;
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds).and_then(|s| self.face.file(&s, &path, opts)).map(|r| r.to_json())
+                self.session(caller, zone, opts.bounds).and_then(|s| self.face.file(&s, &path, opts)).map(answered)
             }
             "corpus.retrieve" => {
                 only(args, name, &["prefix", "query", "query_embedding", "filter", "kinds", "limit", "since", "min_score", "internals"])?;
@@ -349,7 +403,7 @@ impl<'a> Tools<'a> {
                         b.as_of.map_or_else(|| self.clock.now(), |a| a.at),
                     )
                 };
-                self.session(caller, zone, b).and_then(|s| self.face.retrieve(&s, &request, b)).map(|r| r.to_json())
+                self.session(caller, zone, b).and_then(|s| self.face.retrieve(&s, &request, b)).map(answered)
             }
             "memory.recall" => {
                 only(args, name, &["table", "subject", "observed_at", "as_of_ingest", "limit"])?;
@@ -363,7 +417,7 @@ impl<'a> Tools<'a> {
                     limit: integer(args, "limit")?,
                     ..RecallRequest::new(required(args, "table")?, required(args, "subject")?, self.clock.now())
                 };
-                self.session(caller, zone, request.bounds()).and_then(|s| self.face.recall(&s, &request)).map(|r| r.to_json())
+                self.session(caller, zone, request.bounds()).and_then(|s| self.face.recall(&s, &request)).map(answered)
             }
             template if self.face.templates().iter().any(|t| t.id == template) => {
                 // No template parameter takes a read argument's name (`read.guard.template-reserved-parameter`).
@@ -374,7 +428,7 @@ impl<'a> Tools<'a> {
                 let opts = ReadOptions { bounds: bounds(args)?, ..ReadOptions::default() };
                 self.session(caller, zone, opts.bounds)
                     .and_then(|s| self.face.execute_template(&s, template, &arguments, opts))
-                    .map(|r| r.to_json())
+                    .map(answered)
             }
             other => return Err(invalid(format!("no tool `{other}`"))),
         })

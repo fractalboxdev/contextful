@@ -34,6 +34,12 @@ impl Project {
         self.dir.join(".contextful/run").join(&self.name)
     }
 
+    /// The read audit chain `.contextful/audit/`, outside the synced store root
+    /// (`disclosure.record.read-chain`).
+    pub fn audit_dir(&self) -> PathBuf {
+        self.dir.join(".contextful/audit")
+    }
+
     /// The memory pass state `.contextful/memory/<project>/`.
     pub fn memory_dir(&self) -> PathBuf {
         self.dir.join(".contextful/memory").join(&self.name)

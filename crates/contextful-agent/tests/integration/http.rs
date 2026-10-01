@@ -17,6 +17,7 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::NodeId;
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
+use contextful_policy::audit::{AuditLog, NoIssuerKey};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::issue::{mint, MintClaims, SeedSigner};
 use contextful_policy::keyset::{KeyCheckpoint, KeySource, StaticPins};
@@ -68,11 +69,13 @@ fn put(store: &Store, table: &str, rows: Vec<Value>) {
 }
 
 /// A store and its issuer.
+/// The audit log is declared first so it closes before the directory goes.
 struct Fixture {
-    _dir: tempfile::TempDir,
+    audit: AuditLog<NoIssuerKey>,
     face: Face,
     signer: SeedSigner,
     checkpoint: KeyCheckpoint<FixedClock>,
+    dir: tempfile::TempDir,
 }
 
 fn fixture() -> Fixture {
@@ -84,7 +87,8 @@ fn fixture() -> Fixture {
     let face = Face::open(store, MANIFEST, Pepper::resolve(|_| None)).unwrap();
     let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
     let checkpoint = KeyCheckpoint::start(Box::new(StaticPins::parse(&signer.public_key_text()).unwrap()), FixedClock(at(NOW))).unwrap();
-    Fixture { _dir: dir, face, signer, checkpoint }
+    let audit = AuditLog::unanchored(dir.path().join("audit")).unwrap();
+    Fixture { audit, face, signer, checkpoint, dir }
 }
 
 fn holder(n: u8) -> SigningKey {
@@ -192,7 +196,7 @@ fn listen(f: Fixture, ceiling: usize, revocation: &'static Revocation<'static>) 
     let f: &'static Fixture = Box::leak(Box::new(f));
     let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
     let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation };
-    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, admitting, Some(ceiling)).unwrap()));
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(ceiling)).unwrap()));
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     std::thread::spawn(move || face.serve(listener));
@@ -208,7 +212,7 @@ fn stdio_answer(f: &Fixture, token: &str, message: &Value) -> Value {
     let authority = verify_network(token, &keys, &admission, |_| Ok::<(), AuthorityError>(())).unwrap();
     let current = |_: &AdmittedAuthority| Ok(());
     let clock = FixedClock(at(NOW));
-    let server = Server::new(&f.face, authority, &current, &clock).unwrap();
+    let server = Server::new(&f.face, authority, &current, &clock, &f.audit).unwrap();
     server.handle(&message.to_string()).unwrap()
 }
 
@@ -241,6 +245,29 @@ fn post_mcp_answers_each_message_as_the_stdio_tool_server_does() {
     // A read refusal arrives in-band, under transport success.
     assert_eq!(stdio[4]["result"]["isError"], json!(true));
     assert_eq!(stdio[0]["result"]["contextful.build"]["faces"], json!(["http"]));
+}
+
+/// Over HTTP, each answered read tool call appends one entry before its answer leaves, under
+/// the credential the request presented; the handshake and the tool listing append none.
+#[test]
+fn a_served_read_appends_its_entry_before_the_answer() {
+    let key = holder(1);
+    let f = fixture();
+    let token = credential(&f.signer, "research/*", 900, Some(&key));
+    let (f, addr) = listen(f, 4, &no_revocation);
+    let chain = f.dir.path().join("audit/segments/000001.jsonl");
+
+    for message in [json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize" }), json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })] {
+        assert_eq!(send(addr, &signed(&message, &token, &key)).0, 200);
+    }
+    assert_eq!(f.audit.tip().seq, 0);
+    let (status, _, answer) = send(addr, &signed(&query(FAST), &token, &key));
+    assert_eq!((status, result(&answer)["rows"].clone()), (200, json!([["n1"], ["n2"]])));
+    assert_eq!(f.audit.tip().seq, 1, "the entry is durable once the answer arrives");
+    let entry: Value = serde_json::from_str(std::fs::read_to_string(&chain).unwrap().lines().last().unwrap()).unwrap();
+    let attributes = &entry["attributes"];
+    assert_eq!((attributes["contextful.tool"].clone(), attributes["contextful.result.rows"].clone()), (json!("context.query"), json!(2)));
+    assert!(attributes["contextful.credential"].as_str().is_some_and(|c| !c.is_empty()), "{entry}");
 }
 
 /// A notification answers `202` with no body. The face holds no protocol session and opens no server stream: a `GET` or `DELETE` on `/mcp` answers `405`, any other path `404`.
@@ -488,7 +515,7 @@ fn a_missing_audience_or_ceiling_refuses_the_face() {
     let f = fixture();
     let clock = FixedClock(at(NOW));
     let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
-    assert!(HttpFace::new(&f.face, &clock, admitting, None).is_err());
+    assert!(HttpFace::new(&f.face, &clock, &f.audit, admitting, None).is_err());
 }
 
 /// A request body over 1 MiB answers `413` and is read no further.
