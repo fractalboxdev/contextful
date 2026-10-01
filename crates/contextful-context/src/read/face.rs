@@ -251,6 +251,17 @@ impl Face {
         respond(&engine, sql, &Bindings::default(), opts.limit, opts)
     }
 
+    /// Register every table on `engine` under its bare name as its unrestricted base
+    /// relation at the latest committed state, as [`Face::operator_query`] does, and return
+    /// the registered names.
+    pub(crate) fn register_operator(&self, engine: &SqlEngine) -> Result<Vec<String>, ReadFault> {
+        let tables = self.tables()?;
+        for t in &tables {
+            engine.register(t, &self.source(t, Bounds::default())?.base)?;
+        }
+        Ok(tables)
+    }
+
     /// Admit and run caller-written SQL carrying no parameter.
     pub fn query(&self, session: &Session, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
         self.query_with(session, sql, &Map::new(), opts)

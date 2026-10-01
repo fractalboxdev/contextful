@@ -10,6 +10,7 @@ owns:
   - export
   - backfill
   - seed
+  - model
   - publish
 ---
 
@@ -297,6 +298,56 @@ The bulk-load source mode, its ceiling, its scope and the parity it guarantees.
 - `compaction-cadence` — A seeded pipeline declares a scheduled fold covering each seeded table.
   *because without a snapshot the seeded and live rows for one key both survive the union read*
 
+## model
+
+The `[[model]]` block: a table defined by SQL over store tables, its contract, freshness and tests, and the `build` verbs that materialize, publish and hold it.
+
+- `model-block` — A `[[model]]` block carries `id` and `sql`, plus the optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]` and `[[model.test]]`; an unknown key refuses as {{run.declare.spec-invalid}}.
+  *A-run*
+- `top-level-block` — A manifest's top-level key outside the set the engine enumerates raises `PipelineUnknownBlock`, naming the key, the file and the accepted set.
+  *because a misspelled block parses as nothing, and its declaration silently never runs*
+- `model-id` — A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.
+- `sql` — `sql` is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through the table its last build published.
+- `restricted-input` — A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
+  *because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader*
+- `materialized` — `materialized` is `table`, the default: each build replaces the model's rows whole.
+- `unique-key` — `unique_key` is the model's grain; a build whose rows repeat one grain value, or hold a null in a grain column, refuses as {{run.publish.contract-mismatch}}.
+- `contract-block` — `[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a `name`, a `type` spelled as {{store.reconcile.typed-landing}} reads it, and `nullable`, default true.
+- `contract-required` — A model whose `publish` is true, the default, and which declares no `[model.contract]` raises `ModelContractUndeclared` at validation.
+  *because a published table without a declared contract has no identity a reader can pin against*
+- `unpublished` — A model declaring `publish = false` commits its rows with no manifest section, so no build entry, hold or contract history names it.
+- `contract-major` — A build whose schema fingerprint differs from the last published build's under an unchanged major version refuses as {{run.publish.contract-mismatch}}, naming the version to bump.
+- `injected-columns` — A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.
+- `freshness-block` — `[model.freshness]` declares `max_lag` as an integer followed by `s`, `m`, `h` or `d`; a model declaring none publishes a null `max_lag` and never computes stale.
+- `test-block` — A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.
+- `test-failed` — A failing test raises `ModelTestFailed`, naming the test and its row count; the build publishes nothing.
+  *because a test exists to stop a build before readers trust it*
+- `build-verb` — `contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.
+- `unknown-model` — `build` naming no declared model raises `ModelUndeclared`, naming the declared models.
+  *because a build of a misspelled id otherwise reports nothing to do*
+- `build-id` — A build's id is the snapshot id it publishes.
+  *A-run*
+- `watermark` — A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.
+- `hold-verb` — `build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.
+- `hold-unknown-build` — A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.
+  *because a hold on a build that does not exist protects nothing and reads as protection*
+- `hold-manifest` — A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.
+  *A-run*
+- `log-regeneration` — The history logs sit in the model's table directory; each build and hold rewrites them, replacing an entry a manifest disagrees with and keeping entries of collected builds.
+
+unsettled: Does a model materialize incrementally, merging each build into its prior one on `unique_key`? owner: pipeline affects: run.model
+
+unsettled: Does `build` run the pipelines feeding a model's inputs first? owner: pipeline affects: run.model
+
+unsettled: Does a model over a restricted table declare its own policy, or inherit the strictest policy among its inputs? owner: pipeline affects: run.model
+
+unsettled: Does a validation verb refuse a cycle among models before any build reaches one? owner: pipeline affects: run.model
+
+#### Scenarios
+
+- `run.model.test-failed`: WHEN a test `SELECT * FROM daily WHERE n < 0` returns 2 rows, THEN the build raises `ModelTestFailed` naming the test and 2, and `daily` reads its prior build.
+- `run.model.hold-verb`: WHEN `build hold --for 7d daily <build>` runs twice, THEN the first prints `Held` and the second `Renewed`, each with the new expiry.
+
 ## publish
 
 A published table's contract identity, build, freshness and holds, committed with its snapshot manifest.
@@ -312,9 +363,11 @@ A published table's contract identity, build, freshness and holds, committed wit
 - `build-entry` — A build entry carries build id, start and completion instants, a status of published, refused or partial, the contract identity, and the partition values it left unfilled.
 - `freshness` — Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness is derived from watermark against `max_lag` and never stored.
 - `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
-- `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, last_built_at, watermark, max_lag, last_build_status, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build, `watermark` mapping each input table to its snapshot id and the committed runs it omits, an absent optional key omitted.
+- `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
-- `disclosure-digest` — A build records a digest over its declared disclosure policy, set-valued fields sorted, in the manifest and in the build log.
+- `disclosure-digest` — A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.
+
+unsettled: Where does a refused or partial build's entry land, given the history logs derive from committed manifests and a refused build commits none? owner: pipeline affects: run.publish
 
 ```mermaid
 flowchart LR
@@ -366,4 +419,32 @@ chunk_size = "7d"
 [pipeline.seed]
 below = "2025-06-01T00:00:00Z"
 source = { name = "file", config = { root = "exports/meta-ads", format = "jsonl" } }
+```
+
+A model over a landed table, and the verbs that build and hold it:
+
+```toml
+[[model]]
+id = "daily_filings"
+sql = "SELECT CAST(date_trunc('day', updated_at) AS VARCHAR) AS day, count(*) AS n FROM filings_records GROUP BY 1"
+unique_key = ["day"]
+
+[model.contract]
+version = "1.0.0"
+columns = [
+  { name = "day", type = "utf8", nullable = false },
+  { name = "n", type = "int64", nullable = false },
+]
+
+[model.freshness]
+max_lag = "1d"
+
+[[model.test]]
+name = "counts-positive"
+sql = "SELECT * FROM daily_filings WHERE n <= 0"
+```
+
+```sh
+contextful build daily_filings --json
+contextful build hold --for 7d daily_filings <build id> --json
 ```

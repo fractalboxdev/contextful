@@ -135,6 +135,27 @@ pub enum RunError {
     /// An input outside a shape the contract bounds without naming a refusal.
     #[error("invalid: {0}")]
     Invalid(String),
+    /// A published model declaring no contract. (`run.model.contract-required`)
+    #[error("ModelContractUndeclared: {0}")]
+    ModelContractUndeclared(String),
+    /// A hold naming a build no committed manifest records. (`run.model.hold-unknown-build`)
+    #[error("ModelBuildUnknown: {0}")]
+    ModelBuildUnknown(String),
+    /// A build reading a table that declares a disclosure key. (`run.model.restricted-input`)
+    #[error("ModelInputRestricted: {0}")]
+    ModelInputRestricted(String),
+    /// A model test returning a row. (`run.model.test-failed`)
+    #[error("ModelTestFailed: {0}")]
+    ModelTestFailed(String),
+    /// A build naming no declared model. (`run.model.unknown-model`)
+    #[error("ModelUndeclared: {0}")]
+    ModelUndeclared(String),
+    /// A materialization failing its declared contract. (`run.publish.contract-mismatch`)
+    #[error("PipelineContractMismatch: {0}")]
+    PipelineContractMismatch(String),
+    /// A manifest top-level key outside the enumerated blocks. (`run.model.top-level-block`)
+    #[error("PipelineUnknownBlock: {0}")]
+    PipelineUnknownBlock(String),
     /// Write-path redaction declared over a source whose pulls are journaled. (`run.journal.redacting-source`)
     #[error("JournalRedactionConflict: {0}")]
     JournalRedactionConflict(String),

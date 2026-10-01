@@ -79,10 +79,10 @@ Acceptance: `contextful_acceptance::m03::m03_run_path`
 
 | Operations | Intent |
 | --- | --- |
-| `run.declare`, `run.compile`, `run.transform`, `run.normalize`, `run.guard-secrets`, `run.land`, `run.export`, `run.backfill`, `run.seed`, `run.publish` | The pipeline declaration and landing sequence, the connector world, and outbound credentials. |
+| `run.declare`, `run.compile`, `run.transform`, `run.normalize`, `run.guard-secrets`, `run.land`, `run.export`, `run.backfill`, `run.seed`, `run.model`, `run.publish` | The pipeline declaration and landing sequence, the connector world, and outbound credentials. |
 | `connector.*` | — |
 
-Reach: A declared pipeline pulls from a real source, lands rows under a cursor, and never holds a credential in plaintext.
+Reach: A declared pipeline pulls from a real source, lands rows under a cursor and never holds a credential in plaintext, and a model over those rows publishes a build a hold keeps.
 
 Acceptance: `contextful_acceptance::m04::m04_ingest`
 

@@ -3,6 +3,7 @@
 //! registers before build (`run.bind.host-task`, `surface.fire.store-driven-body`).
 
 mod admit;
+mod build;
 mod component;
 mod context;
 mod derive;
@@ -45,6 +46,8 @@ enum Cmd {
     /// Run one derive engine outside a pipeline.
     #[command(subcommand)]
     Derive(derive::DeriveCmd),
+    /// Build a declared model into a published table, or hold one of its builds.
+    Build(build::BuildArgs),
     /// Validate and fire declared pipelines.
     #[command(subcommand)]
     Pipeline(pipeline::PipelineCmd),
@@ -114,6 +117,7 @@ pub fn main_host(host: Host) {
         Cmd::Export(c) => export::run(c),
         Cmd::Sync(c) => sync::run(c),
         Cmd::Pipeline(c) => pipeline::run(c, &tasks),
+        Cmd::Build(c) => build::run(c),
         Cmd::Query(c) => query::run(c),
         Cmd::Mcp(c) => mcp::run(c),
         Cmd::Serve(c) => serve::run(c),

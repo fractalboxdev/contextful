@@ -46,5 +46,6 @@ pub fn snapshot(created: &str, parent: Option<&SnapshotId>, includes: &[&str]) -
         indexes: vec![],
         fence: None,
         commit_seq: None,
+        publish: None,
     }
 }

@@ -187,6 +187,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         indexes,
         fence: None,
         commit_seq: unfolded_runs.iter().map(|r| r.commit_seq).chain(state.chain.first().map(|s| s.commit_seq)).flatten().max(),
+        publish: None,
     };
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
     fs::write(staging.join(MANIFEST_FILE), bytes).at(staging.join(MANIFEST_FILE))?;
@@ -207,7 +208,7 @@ pub const CLAIM_ATTEMPTS: usize = 64;
 /// directories are both absent, its staging directory created and its in-flight lock held.
 /// A pass removes no directory it did not create, so two passes computing one id each
 /// stage under their own, and the pointer decides which publishes.
-fn claim(store: &Store, table: &str, first: SnapshotId, now: Instant) -> Result<(SnapshotId, PathBuf, FileLock)> {
+pub(crate) fn claim(store: &Store, table: &str, first: SnapshotId, now: Instant) -> Result<(SnapshotId, PathBuf, FileLock)> {
     let snapshots = store.table_dir(table)?.join("data").join("snapshots");
     fs::create_dir_all(&snapshots).at(&snapshots)?;
     let mut id = first.clone();
@@ -295,13 +296,13 @@ pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
 /// reaches whose id precedes the current snapshot's (`store.fold.staging-collected`).
 /// A staging directory whose pass still holds its lock is in flight, whatever id it
 /// carries, and survives until that pass ends.
-fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest]) -> Result<()> {
+fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest], held: &BTreeSet<String>) -> Result<()> {
     let Some(current) = chain.first() else { return Ok(()) };
     let reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
     let snapshots = store.table_dir(table)?.join("data").join("snapshots");
     for dir in crate::store::sorted_dirs(&snapshots)? {
         let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        if reachable.contains(&name) {
+        if reachable.contains(&name) || held.contains(&name) {
             continue;
         }
         let id = SnapshotId::try_from(name.trim_end_matches(STAGING_SUFFIX).to_string()).ok();
@@ -325,17 +326,21 @@ fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest]) -
 /// superseded longer ago than the window, with its sidecars, and a run folded longer
 /// ago than the window. Both age from the same fold, so a bounded read never meets a
 /// snapshot whose omitted runs are gone.
+///
+/// A snapshot an unexpired hold names stays on disk whatever the window and whatever
+/// collection took around it (`run.publish.hold`).
 pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
     let table = decl.name.as_str();
+    let held = &crate::build::held(store, table, now)?;
     let window = decl.retain_runs_secs().map_err(|e| ContextError::Invalid(e.to_string()))?;
     let cutoff = now.minus_secs(window);
     let (chain, _) = store.chain(table)?;
-    collect_unreachable(store, table, &chain)?;
+    collect_unreachable(store, table, &chain, held)?;
     let runs: BTreeMap<String, RunManifest> = store.committed_runs(table)?.into_iter().map(|r| (r.key(), r)).collect();
     let runs_dir = store.table_dir(table)?.join("data").join("runs");
     for pair in chain.windows(2) {
         let (successor, superseded) = (&pair[0], &pair[1]);
-        if successor.created_at <= cutoff {
+        if successor.created_at <= cutoff && !held.contains(&superseded.snapshot_id.to_string()) {
             let dir = store.snapshot_dir(table, &superseded.snapshot_id)?;
             if dir.exists() {
                 fs::remove_dir_all(&dir).at(&dir)?;

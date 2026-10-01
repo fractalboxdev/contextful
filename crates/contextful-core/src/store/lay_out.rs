@@ -162,6 +162,11 @@ pub struct SnapshotManifest {
     /// (`store.reserve.commit-seq-seed`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_seq: Option<i64>,
+
+    /// A published build's contract identity, freshness and build, committed with the
+    /// data it publishes (`run.publish.manifest-commit`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publish: Option<crate::pipeline::model::PublishSection>,
 }
 
 /// `tables/<t>/_pointer.json`: the current snapshot and the fence that published it

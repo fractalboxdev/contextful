@@ -18,6 +18,7 @@ land          = {}
 export        = {}
 backfill      = {}
 seed          = {}
+model         = {}
 publish       = {}
 select        = {}
 bind          = {}
@@ -73,6 +74,12 @@ PipelineSeedCeilingBreached    = { clause = "run.seed.ceiling-breached", gloss =
 PipelineSeedCeilingUnevaluable = { clause = "run.seed.ceiling-unevaluable", gloss = "A batch whose stamp cannot be compared with the ceiling." }
 PipelineSeedSourceChanged      = { clause = "run.seed.source-changed", gloss = "A seed source whose fingerprint differs from the committed one." }
 PipelineContractMismatch       = { clause = "run.publish.contract-mismatch", gloss = "A materialization failing its declared contract." }
+PipelineUnknownBlock           = { clause = "run.model.top-level-block", gloss = "A manifest top-level key outside the enumerated blocks." }
+ModelContractUndeclared        = { clause = "run.model.contract-required", gloss = "A published model declaring no contract." }
+ModelInputRestricted           = { clause = "run.model.restricted-input", gloss = "A build reading a table that declares a disclosure key." }
+ModelTestFailed                = { clause = "run.model.test-failed", gloss = "A model test returning a row." }
+ModelUndeclared                = { clause = "run.model.unknown-model", gloss = "A build naming no declared model." }
+ModelBuildUnknown              = { clause = "run.model.hold-unknown-build", gloss = "A hold naming a build no committed manifest records." }
 DeriveConfigKeyMissing         = { clause = "run.select.required-key", gloss = "A required derive config key absent or blank." }
 DeriveNoStoreRoot              = { clause = "run.select.no-store-root", gloss = "A derive source built without a store root or pipeline id." }
 DeriveForeignOutputTable       = { clause = "run.select.foreign-output-table", gloss = "Configuration naming another pipeline's output table." }

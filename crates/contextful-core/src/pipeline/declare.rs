@@ -251,6 +251,9 @@ pub fn read_manifest(f: &ManifestFile) -> Result<Vec<Declared>, RunError> {
         return Ok(vec![Declared { spec, file: f.path.clone(), line: 1 }]);
     }
     let value: toml::Value = toml::from_str(&f.text).map_err(|e| invalid(&f.path, "", e.message()))?;
+    if value.get("id").is_none() {
+        super::model::check_blocks(&f.path, &value)?;
+    }
     let blocks: Blocks = value.clone().try_into().map_err(|e: toml::de::Error| invalid(&f.path, "", e.message()))?;
     match blocks.pipeline {
         Some(toml::Value::Array(items)) => {

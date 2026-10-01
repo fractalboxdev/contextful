@@ -8,6 +8,9 @@ use std::path::PathBuf;
 pub enum ContextError {
     #[error(transparent)]
     Store(#[from] StoreError),
+    /// A registered `run` refusal: a model build's or hold's.
+    #[error(transparent)]
+    Run(#[from] contextful_core::run::RunError),
     #[error("{}: {source}", path.display())]
     Io { path: PathBuf, source: std::io::Error },
     #[error("{}: parquet: {message}", path.display())]
