@@ -41,7 +41,7 @@ flowchart LR
     MC["bounded invariant check"]
   end
   REPORT["audit report"]
-  SPEC -->|"Layer, Placement, Authority"| LEAN
+  SPEC -->|"Layer, Placement, Authority, Allowlist"| LEAN
   SPEC -->|"lease, compare-and-swap, fence"| PROT
   LEAN -->|"lake build"| ENV
   INV -->|"required constants"| AUD
@@ -71,7 +71,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `build-cost` — A cold elaboration of the package completes within 60 s and writes at most 512 KiB of artifacts.
   *because the check runs on every change*
 - `build-command` — `lake build` at the package root elaborates every declaration and writes the environment the audit reads.
-- `module-layout` — Three modules carry the package — the layer algebra, placement with the floor, and the authority mapping — and the library root re-exports all three.
+- `module-layout` — Four modules carry the package — the layer algebra, placement with the floor, the authority mapping and connector host containment — and the library root re-exports all four.
 - `layer` — A layer is a total function from a row identifier to `Bool`; `composed` folds a list of layers by conjunction, admitting a row when every member admits it.
 - `floor` — An allow-set is a decidable predicate over a placement value; `floor` intersects a list of allow-sets pointwise, and `floor []` admits every caller as the unit of that fold.
 - `placement-inductive` — The declared placement is an inductive type carrying its identifier inside the constructor, with one case per category the manifest admits and one case for an absent declaration.

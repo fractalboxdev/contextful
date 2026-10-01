@@ -2,7 +2,7 @@
 
 # Target ledger
 
-62 entries: 45 gated, 4 recorded, 1 scheduled, 12 open.
+62 entries: 46 gated, 4 recorded, 1 scheduled, 11 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -12,7 +12,7 @@
 | `audit-inclusion-proof` | `disclosure.attest.inclusion-proof` | `audit.proof.hashes` | gate | test `contextful_policy::audit::an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment` | `<= 12` | gated |
 | `audit-open-bounded-heap` | `disclosure.record.single-writer` | `audit.open.retained_heap_delta_kib` | gate | issue 81 | `< 64` | open (issue 81) |
 | `audit-query-digest-keyed` | `disclosure.record.segment` | `audit.digest.dictionary_matches` | gate | issue 81 | `== 0` | open (issue 81) |
-| `audit-read-waits-on-entry` | `disclosure.record.unpersisted-entry` | `audit.read.rows_before_sync` | gate | issue 75 | `== 0` | open (issue 75) |
+| `audit-read-waits-on-entry` | `disclosure.record.unpersisted-entry` | `audit.read.rows_before_sync` | gate | test `contextful_agent::audit::a_read_whose_entry_does_not_sync_releases_no_rows` | `== 0` | gated |
 | `audit-sync-per-group` | `disclosure.record.group-commit` | `audit.syncs_per_group.max` | gate | test `contextful_policy::audit::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together` | `<= 1` | gated |
 | `audit-truncation-detected` | `disclosure.attest.broken-chain` | `audit.truncation.undetected` | gate | test `contextful_policy::audit::every_trailing_truncation_under_a_rewritten_tip_is_detected` | `== 0` | gated |
 | `bearer-transport-bound` | `authority.issue.one-credential` | `authority.off_transport_admissions` | gate | test `contextful_policy::verify::a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_seeded_loop` | `== 0` | gated |

@@ -2,7 +2,7 @@
 # pretty-printed type, matched by `contextful formal check`.
 
 [claim]
-targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent", "Allowlist.allowlist_includedIn_sound", "Allowlist.widen_witness_admitted"]
+targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent"]
 trusted  = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser", "translator"]
 rests_on = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser"]
 
