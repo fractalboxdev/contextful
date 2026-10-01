@@ -6,6 +6,7 @@ mod deny;
 mod allowlist;
 mod artifact;
 mod disk;
+mod domain;
 mod features;
 mod image;
 mod lean;
