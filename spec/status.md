@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 212 | 56 | 22 | 16 | 100 | 0 | 100 |
+| `assurance` | 2 | 15 | 216 | 56 | 22 | 16 | 106 | 0 | 106 |
 | `authority` | 2 | 16 | 263 | 77 | 27 | 10 | 200 | 0 | 200 |
 | `connector` | 2 | 13 | 287 | 76 | 19 | 12 | 161 | 0 | 161 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `run` | 3 | 26 | 359 | 96 | 35 | 35 | 242 | 0 | 242 |
 | `store` | 1 | 17 | 215 | 53 | 12 | 17 | 175 | 0 | 175 |
 | `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
-| `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 24 | 0 | 24 |
-| **total** | 19 | 153 | 1799 | 551 | 184 | 135 | 1125 | 0 | |
+| `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
+| **total** | 19 | 153 | 1806 | 553 | 184 | 136 | 1138 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 228 | 176 | passing | closed |
 | 2 — The store | 9 | 152 | 117 | passing | closed |
-| 3 — The run path | 11 | 197 | 126 | passing | closed |
+| 3 — The run path | 11 | 200 | 133 | passing | closed |
 | 4 — Ingest | 24 | 427 | 246 | passing | open |
 | 5 — The read face under enforcement | 17 | 242 | 173 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
-| 14 — Assurance | 7 | 119 | 52 | open | open |
+| 14 — Assurance | 7 | 123 | 58 | open | open |
 
 Unscheduled operations: 10.
 
@@ -67,7 +67,10 @@ Unscheduled operations: 10.
 | `assurance.baseline.rank-quality-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_ndcg_entry_gates_at_three_percent` | performed |
 | `assurance.baseline.run-stamp-drift` | `tools/eval/tests/integration/baseline.rs::a_run_configured_unlike_the_baseline_is_refused_from_its_configuration_alone` | performed |
 | `assurance.baseline.sample-count` | `tools/eval/tests/integration/baseline.rs::a_mean_carries_its_sample_count_and_shrinking_it_regresses` | performed |
+| `assurance.build.container-image` | `tools/ci/tests/integration/image.rs::the_container_recipe_builds_one_static_profile_into_a_shell_free_non_root_image` | performed |
 | `assurance.build.licence-field` | `tools/ci/tests/integration/topology.rs::a_workspace_package_without_the_apache_licence_is_refused` | performed |
+| `assurance.build.profile-build` | `tools/ci/tests/integration/features.rs::the_features_stage_builds_each_profile_bundle_alone_and_tests_each_listed_run` | performed |
+| `assurance.build.release-profile` | `tools/ci/tests/integration/image.rs::the_release_profile_optimizes_across_crates_strips_and_unwinds` | performed |
 | `assurance.build.staged-feature-runs` | `tools/ci/tests/integration/features.rs::the_features_stage_runs_the_store_adapter_with_read_off` | performed |
 | `assurance.differential-test.case-classes` | `crates/contextful-cli/tests/integration/differential.rs::the_report_names_the_three_case_classes` | performed |
 | `assurance.differential-test.command` | `crates/contextful-cli/tests/integration/differential.rs::the_command_replays_then_generates_and_stops_at_the_first_disagreement` | performed |
@@ -99,7 +102,10 @@ Unscheduled operations: 10.
 | `assurance.evaluate.stub-embedder` | `crates/contextful-cli/tests/integration/eval.rs::rows_and_questions_without_an_embedding_take_the_seeded_stub` | performed |
 | `assurance.evaluate.through-the-store` | `crates/contextful-cli/tests/integration/eval.rs::a_ranking_that_loses_its_sidecars_goes_red_against_the_baseline` | performed |
 | `assurance.evaluate.unlabeled-corpus` | `crates/contextful-cli/tests/integration/eval.rs::an_unlabeled_corpus_refuses_without_a_local_zone` | performed |
+| `assurance.gate.budget-stage` | `tools/ci/tests/integration/image.rs::the_budget_stage_builds_every_profile_and_the_evaluate_stage_none` | performed |
 | `assurance.gate.crate-graph` | `tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing` | performed |
+| `assurance.gate.footprint` | `tools/ci/tests/integration/image.rs::this_repository_profiles_hold_to_their_footprint_budgets` | performed |
+| `assurance.gate.footprint-exceeded` | `tools/ci/tests/integration/image.rs::an_artifact_over_budget_or_linking_beyond_the_c_library_is_refused` | performed |
 | `assurance.gate.fork-dispatch` | `tools/ci/tests/integration/workflow.rs::a_fork_pull_request_dispatches_no_stage` | performed |
 | `assurance.gate.free-disk` | `tools/ci/tests/integration/disk.rs::a_stage_starting_under_two_gib_free_refuses_with_exit_28_before_work` | performed |
 | `assurance.gate.locked-resolve` | `tools/ci/tests/integration/topology.rs::a_lock_file_behind_its_manifests_stops_the_crate_graph` | performed |
@@ -1159,16 +1165,23 @@ Unscheduled operations: 10.
 | `topology.coordinate.fence-advances` | `crates/contextful-engine/tests/integration/coordinate.rs::every_acquisition_takes_a_new_fence` | performed |
 | `topology.coordinate.fenced-commit` | `crates/contextful-engine/tests/integration/coordinate.rs::a_commit_carrying_a_superseded_fence_is_refused` | performed |
 | `topology.coordinate.lease-row` | `crates/contextful-engine/tests/integration/coordinate.rs::a_lease_row_carries_holder_expiry_and_fence_per_key` | performed |
+| `topology.package.capability-absent` | `crates/contextful-cli/tests/integration/profile.rs::a_data_plane_subcommand_on_a_build_without_it_is_refused_by_name` | performed |
 | `topology.package.component-host` | `crates/contextful-engine/tests/integration/runner.rs::a_component_connector_runs_on_an_engine_wiring_its_world` | performed |
 | `topology.package.crate-map` | `tools/ci/tests/integration/topology.rs::this_repository_crate_map_names_every_crate` | performed |
 | `topology.package.crate-map-drift` | `tools/ci/tests/integration/topology.rs::a_crate_missing_from_the_crate_map_is_refused` | performed |
+| `topology.package.crdt-leak` | `tools/ci/tests/integration/topology.rs::a_crdt_library_outside_the_control_profile_is_refused` | performed |
 | `topology.package.decode-network-free` | `tools/ci/tests/integration/topology.rs::a_decode_package_linking_the_network_stack_is_refused` | performed |
 | `topology.package.dependency-direction` | `tools/ci/tests/integration/topology.rs::a_domain_crate_depending_on_an_adapter_is_refused` | performed |
 | `topology.package.domain-impurity` | `tools/ci/tests/integration/topology.rs::a_domain_crate_reaching_an_async_runtime_is_refused` | performed |
+| `topology.package.edge-profile` | `tools/ci/tests/integration/topology.rs::this_repository_edge_profile_serves_reads_and_links_no_component_host` | performed |
 | `topology.package.exchange-optional` | `tools/ci/tests/integration/topology.rs::a_library_reaching_the_exchange_stack_is_refused` | performed |
+| `topology.package.fixed-at-build` | `tools/ci/tests/integration/topology.rs::a_profile_linking_build_tooling_is_refused` | performed |
 | `topology.package.host-missing` | `crates/contextful-cli/tests/integration/component_absent.rs::a_component_source_is_refused_by_name_on_a_build_without_the_host` | performed |
+| `topology.package.profile` | `tools/ci/tests/integration/topology.rs::this_repository_binary_declares_the_three_profiles_each_linking_its_role` | performed |
+| `topology.package.profile-leak` | `tools/ci/tests/integration/topology.rs::a_profile_linking_a_dependency_outside_its_role_is_refused` | performed |
 | `topology.package.s3-sync-optional` | `tools/ci/tests/integration/topology.rs::a_sync_crate_linking_an_http_stack_without_its_s3_feature_is_refused` | performed |
 | `topology.package.sqlite-adapter` | `tools/ci/tests/integration/topology.rs::a_sqlite_link_forced_outside_the_binary_is_refused` | performed |
 | `topology.package.store-sqlite-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_reaching_the_sqlite_link_package_is_refused` | performed |
 | `topology.package.store-write-engine-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_linking_the_sql_engine_without_read_is_refused` | performed |
 | `topology.package.transport-optional` | `tools/ci/tests/integration/topology.rs::an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refused` | performed |
+| `topology.package.version-profile` | `crates/contextful-cli/tests/integration/profile.rs::the_version_names_the_workspace_version_and_the_profile` | performed |
