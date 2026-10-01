@@ -33,8 +33,9 @@ flowchart LR
   TEL(["telemetry collector"])
   BKT[("replication bucket")]
   VER(["offline verifier"])
-  ACC[("access tables")]
+  ACC[("exchange policy")]
   EXPLAINER["decision explainer"]
+  OPS(["operator"])
   ERASER["erasure cascade"]
   LEDGER[("forget_requests ledger")]
   RD -->|"span, hash-linked"| ENTRY
@@ -43,7 +44,8 @@ flowchart LR
   SEG -->|"every 10 min"| BKT
   SEG -->|"chain to verify"| VER
   ACC -->|"grants behind a decision"| EXPLAINER
-  EXPLAINER -->|"VISIBLE or DENIED"| ENTRY
+  SEG -->|"window replay"| EXPLAINER
+  EXPLAINER -->|"admit or deny, with coverage"| OPS
   ERASER -->|"forget request"| LEDGER
   ERASER -->|"tombstones"| SNAP
   ERASER -->|"erasure entry"| ENTRY
@@ -124,7 +126,17 @@ sequenceDiagram
 
 The access decision and its path, replay over a window with its coverage, and the audience report.
 
-- `no-row` — An explanation returning a row, field value or excerpt from the resource it decides about raises `VisibilityDiagnosticRow`.
+- `decision` — `audit explain --table <t> --subject <principal>` answers `admit` when a grant the exchange policy issues for the `--role` names, else its `default_grants`, carries `read` over a pattern covering the table, and `deny` otherwise.
+  *A-disclosure*
+- `path` — A decision's path names the role or default set, the covering grant, then each step the table declares in {{authority.compose.relation-order}}; a deny's path ends at {{authority.filter-rows.default-deny}}.
+  *A-disclosure*
+- `replay` — `--window <from>..<to>` replays each chain entry naming the subject and the table whose read instant falls in the window: its seq, instant, outcome, agent and recorded `contextful.*` attributes.
+  *A-disclosure*
+- `coverage` — An explanation carries a coverage block: segments and entries verified, entries carrying no read instant, window spans the chain does not reach, and each visibility binding's source with its sweep watermark.
+  *A-disclosure*
+- `audience` — `audit explain --audience <t>` lists by name the roles whose grants read the table, whether `default_grants` do, and per `on_behalf_of` scheme the count of principals and served reads.
+  *A-disclosure*
+- `no-row` — An explanation returning a row, field value or excerpt from the resource it decides about, a replayed `contextful.result.*` attribute beyond `contextful.result.rows` included, raises `VisibilityDiagnosticRow`.
   *P2*
 - `empty-window` — A window holding no observations raises `VisibilityNoObservations` and states that no claim is available.
   *P2*

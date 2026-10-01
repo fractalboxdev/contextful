@@ -18,6 +18,22 @@ pub enum VisibilityError {
     /// (`disclosure.declare-fidelity.family-undeclared`)
     #[error("VisibilityFamilyUndeclared: table `{table}` names no family")]
     FamilyUndeclared { table: String },
+    /// An explanation returned content from the resource it decides about.
+    /// (`disclosure.explain.no-row`)
+    #[error("VisibilityDiagnosticRow: {0}")]
+    DiagnosticRow(String),
+    /// A replay window holds no observations; no claim is available.
+    /// (`disclosure.explain.empty-window`)
+    #[error("VisibilityNoObservations: {0}")]
+    NoObservations(String),
+    /// A negative assurance answer lacks its coverage block.
+    /// (`disclosure.explain.unqualified-assurance`)
+    #[error("VisibilityUnqualifiedAssurance: {0}")]
+    UnqualifiedAssurance(String),
+    /// An explanation rendered the members of a group on the path.
+    /// (`disclosure.explain.groups-not-members`)
+    #[error("VisibilityIndividualNamed: {0}")]
+    IndividualNamed(String),
 }
 
 impl VisibilityError {
@@ -27,6 +43,10 @@ impl VisibilityError {
             VisibilityError::BudgetMalformed { .. } => "VisibilityBudgetMalformed",
             VisibilityError::FamilyBound { .. } => "VisibilityFamilyBound",
             VisibilityError::FamilyUndeclared { .. } => "VisibilityFamilyUndeclared",
+            VisibilityError::DiagnosticRow(_) => "VisibilityDiagnosticRow",
+            VisibilityError::NoObservations(_) => "VisibilityNoObservations",
+            VisibilityError::UnqualifiedAssurance(_) => "VisibilityUnqualifiedAssurance",
+            VisibilityError::IndividualNamed(_) => "VisibilityIndividualNamed",
         }
     }
 }

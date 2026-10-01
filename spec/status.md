@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
-| `disclosure` | 3 | 16 | 95 | 64 | 13 | 11 | 41 | 0 | 41 |
+| `disclosure` | 3 | 16 | 100 | 64 | 13 | 11 | 50 | 0 | 50 |
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
 | `run` | 3 | 26 | 369 | 98 | 35 | 37 | 254 | 0 | 254 |
 | `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
 | `surface` | 2 | 19 | 81 | 44 | 22 | 5 | 40 | 0 | 40 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1912 | 566 | 187 | 137 | 1291 | 0 | |
+| **total** | 19 | 154 | 1917 | 566 | 187 | 137 | 1300 | 0 | |
 
 Decision records: 18.
 
@@ -33,7 +33,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
-| 8 — Accountability | 5 | 52 | 34 | passing | open |
+| 8 — Accountability | 5 | 57 | 43 | passing | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 62 | 45 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
@@ -631,6 +631,15 @@ Unscheduled operations: 10.
 | `disclosure.bound-staleness.budget-grammar` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_budget_outside_the_grammar_is_refused_naming_table_and_text` | performed |
 | `disclosure.declare-fidelity.family-bound` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_level_the_family_does_not_permit_is_refused` | performed |
 | `disclosure.declare-fidelity.family-undeclared` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_block_naming_no_family_is_refused` | performed |
+| `disclosure.explain.audience` | `crates/contextful-cli/tests/integration/explain.rs::the_audience_names_roles_and_counts_principal_classes_without_naming_one` | performed |
+| `disclosure.explain.coverage` | `crates/contextful-cli/tests/integration/explain.rs::coverage_counts_the_chain_and_names_unreached_spans_and_the_binding` | performed |
+| `disclosure.explain.decision` | `crates/contextful-policy/tests/integration/explain.rs::a_role_grant_reading_the_table_admits_and_a_write_grant_or_the_default_set_does_not` | performed |
+| `disclosure.explain.empty-window` | `crates/contextful-cli/tests/integration/explain.rs::a_window_the_chain_holds_no_entry_in_refuses_with_no_claim` | performed |
+| `disclosure.explain.groups-not-members` | `crates/contextful-policy/tests/integration/explain.rs::a_rendering_carrying_a_member_of_a_role_on_the_path_is_refused` | performed |
+| `disclosure.explain.no-row` | `crates/contextful-cli/tests/integration/explain.rs::a_replayed_entry_carrying_result_content_is_refused_without_echoing_it` | performed |
+| `disclosure.explain.path` | `crates/contextful-policy/tests/integration/explain.rs::an_admitting_path_runs_role_grant_then_the_declared_steps_and_a_denial_ends_at_default_deny` | performed |
+| `disclosure.explain.replay` | `crates/contextful-cli/tests/integration/explain.rs::a_window_replays_the_subjects_reads_of_the_table_inside_it` | performed |
+| `disclosure.explain.unqualified-assurance` | `crates/contextful-policy/tests/integration/explain.rs::a_denial_without_coverage_is_refused_and_with_coverage_releases` | performed |
 | `disclosure.record.chain-header` | `crates/contextful-policy/tests/integration/audit.rs::a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link` | performed |
 | `disclosure.record.entry-fields` | `crates/contextful-policy/tests/integration/audit.rs::an_entry_carrying_a_field_outside_its_digest_breaks_the_chain_at_that_entry` | performed |
 | `disclosure.record.entry-format` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_entry_digests_the_rfc_8785_form_of_its_whole_entry` | performed |

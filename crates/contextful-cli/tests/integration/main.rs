@@ -25,6 +25,8 @@ mod drive_absent;
 #[cfg(feature = "data-plane")]
 mod eval;
 #[cfg(feature = "data-plane")]
+mod explain;
+#[cfg(feature = "data-plane")]
 mod export;
 mod formal;
 #[cfg(feature = "data-plane")]

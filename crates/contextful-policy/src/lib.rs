@@ -6,6 +6,7 @@ pub mod decide;
 pub mod enforce;
 #[cfg(feature = "exchange")]
 pub mod exchange;
+pub mod explain;
 pub mod issue;
 pub mod keyset;
 pub mod possession;

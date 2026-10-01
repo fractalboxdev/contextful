@@ -8,7 +8,7 @@ contract: disclosure
 
 A **Contextful** workspace that indexes an organization's wiki, drive and chat answers
 everyone, so it inherits the question those sources already settled: who may see what.
-Three answers follow. Visibility mirrors each source's permission state and
+Visibility mirrors each source's permission state and
 joins it into every read, so a reader sees what the source shows them and nothing more.
 Disclosure lets a derived figure cross from many contributors to one asker without
 carrying any contributor's rows. Accountability leaves a verifiable trace of every read
@@ -99,20 +99,22 @@ The source lag sits inside the budget, so the semi-join admits the page and the 
 reports fidelity and lag. The read appends a chain entry carrying a keyed digest of the
 statement, and rows return after the fsync.
 
-An editor then removes `planning` from the page. The budget bounds how long the old grant
-keeps answering. If the sweep stalls past it, Ada's next read refuses instead of serving a
+An editor removes `planning` from the page; the budget bounds how long the old grant
+answers. If the sweep stalls past it, Ada's next read refuses instead of serving a
 revoked grant, and nothing produced in that state is retained
 ({{disclosure.reach.degraded-uncached}}).
 
-Ada asks why Bo cannot see the page. Explain answers with the decision and its path, names
-groups without their members ({{disclosure.explain.groups-not-members}}), and returns
-nothing from the page itself ({{disclosure.explain.no-row}}).
+Asked why Bo cannot see it, explain decides from current grants
+({{disclosure.explain.decision}}) along a path naming groups without members
+({{disclosure.explain.path}}, {{disclosure.explain.groups-not-members}}), replays a window
+({{disclosure.explain.replay}}) under coverage ({{disclosure.explain.coverage}}), lists its
+audience ({{disclosure.explain.audience}}), and returns no page content
+({{disclosure.explain.no-row}}).
 
 Ada leaves and is erased. The caller holds the forget grant ({{disclosure.erase.privilege}});
 the cascade invalidates facts derived from her rows ({{disclosure.erase.cascade}}) or
 commits nothing ({{disclosure.erase.cascade-unbounded}}); files holding her rows are
-rewritten or collected ({{disclosure.erase.physical-removal}}). A tenant purge goes further
-and returns a signed receipt naming a salted pseudonym ({{disclosure.receipt.pseudonym}})
+rewritten or collected ({{disclosure.erase.physical-removal}}). A tenant purge returns a signed receipt naming a salted pseudonym ({{disclosure.receipt.pseudonym}})
 and claiming no more than its version covers ({{disclosure.receipt.widened-claim}}).
 
 ## Where to look
