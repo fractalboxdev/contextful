@@ -2,7 +2,7 @@
 # pretty-printed type, matched by `contextful formal check`.
 
 [claim]
-targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent"]
+targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent", "Allowlist.allowlist_includedIn_sound", "Allowlist.widen_witness_admitted"]
 trusted  = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser", "translator"]
 rests_on = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser"]
 
@@ -79,3 +79,17 @@ binding   = "crates/contextful-core/src/attenuate.rs::attenuate; test crates/con
 negative  = """
 Leaves open: credential bytes, signatures and block chaining, which the delegation library owns; a change of the trusted environment between the two decisions; that every block the library verified reaches the decision; facts, checks and restrictions beyond grants, expiry and audience.
 """
+
+[constant."Allowlist.allowlist_includedIn_sound"]
+module = "Contextful.Allowlist"
+statement = "∀ (candidate predecessor : List Allowlist.Entry), Allowlist.includedIn candidate predecessor = true → ∀ (host : Allowlist.Name), Allowlist.permits candidate host = true → Allowlist.permits predecessor host = true"
+assumptions = ["propext", "Quot.sound"]
+binding = "crates/contextful-core/src/connector/attach.rs::Allowlist::included_in; test crates/contextful-core/tests/integration/connector/widen.rs::generated_hosts_agree_with_the_proved_model"
+negative = "Leaves open: manifest parsing and host normalization, environment names, credential scopes, clock access, DNS and transport mediation, operator authorization and atomic reload publication; inclusion completeness for unreachable entries."
+
+[constant."Allowlist.widen_witness_admitted"]
+module = "Contextful.Allowlist"
+statement = "∀ (candidate predecessor : List Allowlist.Entry) (probes : List Allowlist.Name) (host : Allowlist.Name), Allowlist.witness candidate predecessor probes = some host → Allowlist.permits candidate host = true ∧ Allowlist.permits predecessor host = false"
+assumptions = ["propext", "Quot.sound"]
+binding = "crates/contextful-core/src/connector/attach.rs::Allowlist::widening_witness; test crates/contextful-core/tests/integration/connector/widen.rs::generated_hosts_agree_with_the_proved_model"
+negative = "Leaves open: completeness of probe generation, DNS resolution and transport reachability, parsing and normalization, non-host grant dimensions and enforcement of approval at reload. An absent witness proves no inclusion."

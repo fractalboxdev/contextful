@@ -4,6 +4,7 @@ owns:
   - export
   - import
   - declare-capability
+  - widen
   - meter
   - infer
   - package
@@ -146,6 +147,36 @@ flowchart LR
 ```
 
 unsettled: Does a community-distributed connector need a signing and transparency layer above the content pin, and who runs the log? owner: connector affects: connector.declare-capability
+
+## widen
+
+Comparison of a candidate connector manifest with its admitted predecessor, and operator approval of additional host access.
+
+- `comparison` — Reload compares the candidate's complete declared grant with the admitted manifest for the same connector identity before publishing the candidate; validation under {{connector.declare-capability.allowlist-shape}} precedes comparison.
+  *A-connector*
+- `dimensions` — The comparison covers outbound hosts, environment names, expected credential scopes and wall-clock access; names and scopes compare byte for byte, and enabling the clock widens its Boolean grant.
+  *A-connector*
+- `host-inclusion` — Host inclusion succeeds when each candidate entry is covered by a predecessor entry under {{connector.declare-capability.host-allowlist}}; success admits no host the predecessor refuses.
+  *A-connector*
+- `host-witness` — Every reported host witness passes the candidate's outbound matcher and fails the predecessor's outbound matcher.
+  *A-connector*
+- `unresolved` — A comparison establishing neither inclusion nor a replayed witness raises `ConnectorWidenUnresolved`, naming the dimension and reason; reload retains the admitted manifest.
+  *A-connector*
+- `approval-required` — Additional access without a matching operator approval raises `ConnectorWidenApprovalRequired`, carrying a witness for each widened dimension; reload retains the admitted manifest.
+  *A-connector*
+- `approval-binding` — An approval records the authenticated operator, connector identity and both complete manifest digests; publication atomically checks the admitted digest and applies only that candidate, preserving {{run.own.admission-pin}}.
+  *A-connector*
+- `narrowing` — A candidate included in the admitted grant needs no widening approval; comparison grants no exemption from other load checks.
+  *A-connector*
+
+unsettled: Which operator authorization action and durable approval store serve local reload and control-plane apply? owner: connector affects: connector.widen
+
+#### Scenarios
+
+- `connector.widen.host-inclusion`: WHEN `*.eu.example.com` replaces `*.example.com`, THEN host inclusion succeeds.
+- `connector.widen.host-witness`: WHEN `*.example.com` replaces `x.example.com`, THEN a host witness differs from the already admitted exact host.
+- `connector.widen.approval-required`: WHEN a candidate adds environment name `REPORT_TOKEN` without operator approval, THEN reload retains the admitted manifest and names that environment access.
+- `connector.widen.approval-binding`: WHEN the admitted digest changes after review, THEN the approval does not match the new comparison.
 
 ## meter
 

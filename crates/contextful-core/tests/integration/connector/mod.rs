@@ -9,3 +9,4 @@ mod meter;
 mod package;
 mod probe;
 mod reference;
+mod widen;

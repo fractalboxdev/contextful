@@ -6,11 +6,9 @@ contract: connector
 
 ## What it is for
 
-A connector is the one way data from outside reaches the run path of **Contextful**. It
-knows a vendor's paging, authentication and cursor; the host knows everything else. The
-host sits between every connector and the network like a customs desk: each request states
-where it goes, the desk checks the declaration, reserves quota, attaches the credential and
-vets the destination, and the connector never holds the credential itself.
+A connector knows a vendor's paging, authentication and cursor. The host checks each
+request against its declaration, reserves quota, attaches the credential and vets the
+destination; the connector never holds credential bytes.
 
 ## How it works
 
@@ -30,6 +28,12 @@ clock, and the host decides the grant at load ({{connector.declare-capability.de
 code reaching past it fails to load ({{connector.declare-capability.undeclared-access}}). An
 optional scope probe checks the bound credential's grant before the first read
 ({{connector.declare-capability.scope-probe}}).
+
+A reload compares complete declarations ({{connector.widen.comparison}}). Narrowing needs no
+widening review ({{connector.widen.narrowing}}); additional access reaches operator approval
+({{connector.widen.approval-required}}), bound to both manifests
+({{connector.widen.approval-binding}}). A host witness is a request both matchers can replay
+({{connector.widen.host-witness}}).
 
 The host implements outbound HTTP itself ({{connector.attach.host-mediation}}), and a guest,
 a built-in source, a model call, a limiter call and an exec step all pass the same point
@@ -93,6 +97,7 @@ step's schedule.
 | Question | Operation |
 | --- | --- |
 | What may a connector reach? | `connector.declare-capability` |
+| Does a manifest change need review? | `connector.widen` |
 | Why did a request never leave? | `connector.attach`, `connector.meter` |
 | Which adapter answered a name? | `connector.resolve`, `connector.record` |
 | How does a pin fail? | `connector.package` |
