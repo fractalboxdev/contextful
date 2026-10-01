@@ -117,7 +117,7 @@ fn project(fake: &Fake) -> tempfile::TempDir {
     std::fs::create_dir_all(&store).unwrap();
     std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
     let manifest = format!(
-        "[[pipeline]]\nid = \"team\"\n\n[[pipeline.tables]]\nname = \"files\"\nprimary_key = [\"file_id\"]\n\n[[pipeline.tables]]\nname = \"pages\"\nprimary_key = [\"file_id\", \"page\"]\n\n\
+        "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"team\"\n\n[[pipeline.tables]]\nname = \"files\"\nprimary_key = [\"file_id\"]\n\n[[pipeline.tables]]\nname = \"pages\"\nprimary_key = [\"file_id\", \"page\"]\n\n\
          [pipeline.source]\nname = \"drive\"\n\n[pipeline.source.config]\nfolder_id = \"root-f\"\napi_base = \"{}\"\ntoken_url = \"{}\"\n\n\
          [pipeline.source.config.oauth]\nrefresh_token = \"${{secret://drive-refresh}}\"\nclient_id = \"${{secret://drive-client-id}}\"\nclient_secret = \"${{secret://drive-client-secret}}\"\n",
         fake.url(""),
