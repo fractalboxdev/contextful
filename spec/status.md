@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 212 | 56 | 22 | 16 | 100 | 0 | 100 |
 | `authority` | 2 | 16 | 243 | 67 | 27 | 10 | 178 | 0 | 178 |
-| `connector` | 2 | 13 | 286 | 76 | 19 | 11 | 161 | 0 | 161 |
+| `connector` | 2 | 13 | 287 | 76 | 19 | 12 | 161 | 0 | 161 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 164 | 28 | 22 | 20 | 139 | 0 | 139 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 215 | 53 | 12 | 17 | 175 | 0 | 175 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 153 | 1769 | 541 | 183 | 136 | 1084 | 0 | |
+| **total** | 19 | 153 | 1770 | 541 | 183 | 137 | 1084 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 208 | 154 | passing | closed |
 | 2 — The store | 9 | 152 | 117 | passing | closed |
 | 3 — The run path | 11 | 197 | 125 | passing | closed |
-| 4 — Ingest | 24 | 426 | 244 | passing | open |
+| 4 — Ingest | 24 | 427 | 244 | passing | open |
 | 5 — The read face under enforcement | 17 | 242 | 173 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
@@ -350,7 +350,6 @@ Unscheduled operations: 10.
 | `connector.export.arrow-types` | `crates/contextful-wasm/tests/integration/export.rs::arrow_bytes_and_float_vectors_cross_in_their_own_types` | performed |
 | `connector.export.attribution-budget` | `crates/contextful-wasm/tests/integration/export.rs::attribution_keeps_512_values_of_at_most_512_bytes` | performed |
 | `connector.export.batch-encoding` | `crates/contextful-wasm/tests/integration/export.rs::a_batch_is_arrow_ipc_and_a_position_is_bytes_beside_a_kind` | performed |
-| `connector.export.native-read` | `crates/contextful-connectors/tests/integration/http.rs::one_pull_reads_one_page_and_carries_the_next_as_its_position` | performed |
 | `connector.export.optional-world` | `crates/contextful-wasm/tests/integration/export.rs::optional_interfaces_are_probed_and_a_base_guest_instantiates_untouched` | performed |
 | `connector.export.read-handle` | `crates/contextful-wasm/tests/integration/export.rs::a_read_yields_batches_to_exhaustion_and_resumes_from_its_position` | performed |
 | `connector.export.type-taxonomy` | `crates/contextful-wasm/tests/integration/export.rs::a_schema_declares_fields_over_the_eight_scalar_types` | performed |
@@ -464,6 +463,7 @@ Unscheduled operations: 10.
 | `connector.source.http-limiter` | `crates/contextful-cli/tests/integration/pipeline.rs::a_bound_quota_meters_every_page_of_a_run` | performed |
 | `connector.source.http-page-pull` | `crates/contextful-connectors/tests/integration/http.rs::a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page` | performed |
 | `connector.source.http-scope-probe` | `crates/contextful-connectors/tests/integration/http.rs::the_scope_probe_runs_before_the_first_page` | performed |
+| `connector.source.http-url-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_next_url_walk_keeps_the_next_urls_query_out_of_every_position` | performed |
 | `connector.source.http-watermark-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_watermarked_read_walks_every_page_in_one_pull` | performed |
 | `connector.source.next-link-origin` | `crates/contextful-connectors/tests/integration/http.rs::a_next_link_off_the_configured_origin_fails_the_read` | performed |
 | `connector.source.object-address` | `crates/contextful-connectors/tests/integration/object.rs::a_key_and_a_prefix_together_or_neither_are_refused_at_build` | performed |
