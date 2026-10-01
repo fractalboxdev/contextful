@@ -1,0 +1,10 @@
+{
+  "comment": "Exchanges placing the root folder in shared drive `0AExampleDrive`, ahead of those in recording.json.",
+  "exchanges": [
+    {
+      "method": "GET", "path": "/drive/v3/files/root-f",
+      "status": 200,
+      "body": {"id": "root-f", "name": "Team", "mimeType": "application/vnd.google-apps.folder", "driveId": "0AExampleDrive"}
+    }
+  ]
+}
