@@ -67,7 +67,7 @@ fn keys(v: &Value) -> Vec<&str> {
 }
 
 /// `contextful query --json <sql>` prints the one projection for a statement over no store.
-// spec: read.query.operator-verb@1da4de1d
+// spec: read.query.operator-verb@70205979
 #[test]
 fn a_statement_prints_the_one_projection() {
     let dir = tempfile::tempdir().unwrap();
@@ -109,7 +109,6 @@ fn operator_text_runs_raw_where_token_text_is_gated() {
 }
 
 /// `--project` registers every table under its bare name; a quiet table reads as zero rows.
-// spec: read.query.project-relations@00e9b3b1
 #[test]
 fn a_project_registers_every_table_under_its_bare_name() {
     let p = project();
@@ -180,7 +179,7 @@ fn text_holding_two_statements_runs_none() {
 }
 
 /// A `--project` naming no store on disk is refused rather than answered with quiet tables.
-// spec: read.query.project-store@bb44fa8e
+// spec: read.query.project-store@aaa475d7
 #[test]
 fn a_project_with_no_store_is_refused() {
     let p = project();
@@ -192,7 +191,7 @@ fn a_project_with_no_store_is_refused() {
 }
 
 /// `--declaration` names the manifest whose declared tables register beside the store's.
-// spec: read.query.declaration-default@3a32905a
+// spec: read.query.declaration-default@39d16cd2
 #[test]
 fn a_declaration_path_supplies_the_manifest() {
     let p = project();
@@ -202,4 +201,59 @@ fn a_declaration_path_supplies_the_manifest() {
     assert_eq!(out["rows"], json!([]));
     let absent = run(p.path(), &["query", "--json", "--project", "research", sql]);
     assert!(!absent.status.success());
+}
+
+/// An initialized project with `research/notes` landed, and its `notes/inbox/` subdirectory.
+fn discovered() -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    stdout(&run(dir.path(), &["init", "research", "--authoring-posture", "per_request"]));
+    let path = dir.path().join("contextful.toml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let tables = "\n[[pipeline.tables]]\nname = \"research/notes\"\n\n[[pipeline.tables]]\nname = \"research/quiet\"\n";
+    std::fs::write(&path, format!("{text}{tables}")).unwrap();
+    let notes = dir.path().join("notes/inbox");
+    std::fs::create_dir_all(&notes).unwrap();
+    std::fs::write(notes.join("rows.jsonl"), "{\"note_id\":\"n1\"}\n{\"note_id\":\"n2\"}\n").unwrap();
+    stdout(&run(&notes, &["context", "land", "research/notes", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "s"]));
+    (dir, notes)
+}
+
+/// Without `--project`, the project the nearest `contextful.toml` names registers its tables.
+// spec: read.query.project-relations@aa585df2
+#[test]
+fn a_discovered_project_registers_its_tables_from_a_subdirectory() {
+    let (_dir, notes) = discovered();
+    let out = query(&notes, &["SELECT count(*) AS n FROM \"research/notes\""]);
+    assert_eq!(out["rows"], json!([["2"]]));
+    let quiet = query(&notes, &["SELECT * FROM \"research/quiet\""]);
+    assert_eq!(quiet["rows"], json!([]));
+    assert!(!notes.join(".contextful").exists());
+}
+
+/// A discovered project takes `--declaration` without `--project`, and one with no store is refused.
+#[test]
+fn a_discovered_project_takes_a_declaration_and_needs_a_store() {
+    let (dir, notes) = discovered();
+    std::fs::write(notes.join("other.toml"), "[[pipeline.tables]]\nname = \"research/elsewhere\"\n").unwrap();
+    let out = query(&notes, &["--declaration", "other.toml", "SELECT * FROM \"research/elsewhere\""]);
+    assert_eq!(out["rows"], json!([]));
+
+    std::fs::remove_dir_all(dir.path().join(".contextful/context/research")).unwrap();
+    let absent = run(&notes, &["query", "--json", "SELECT 1"]);
+    assert!(!absent.status.success());
+    assert!(stderr(&absent).contains("QueryProjectAbsent"), "{}", stderr(&absent));
+}
+
+/// Where no `contextful.toml` names a project, the statement runs with no relation registered.
+// spec: read.query.undiscovered-runs-bare@67c50b14
+#[test]
+fn an_undiscovered_project_runs_the_statement_bare() {
+    let p = project();
+    let one = query(p.path(), &["SELECT 1 AS one"]);
+    assert_eq!(one["rows"], json!([[1]]));
+    let bare = run(p.path(), &["query", "--json", "SELECT * FROM \"research/notes\""]);
+    assert!(!bare.status.success());
+    let declared = run(p.path(), &["query", "--json", "--declaration", "contextful.toml", "SELECT 1"]);
+    assert!(!declared.status.success());
+    assert!(stderr(&declared).contains("StoreProjectUndiscovered"), "{}", stderr(&declared));
 }

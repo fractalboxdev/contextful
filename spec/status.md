@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 13 | 282 | 76 | 19 | 9 | 156 | 0 | 156 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
-| `read` | 2 | 15 | 164 | 28 | 22 | 20 | 139 | 0 | 139 |
+| `read` | 2 | 15 | 165 | 28 | 22 | 20 | 140 | 0 | 140 |
 | `run` | 3 | 26 | 358 | 94 | 35 | 35 | 238 | 0 | 238 |
 | `store` | 1 | 17 | 214 | 53 | 12 | 17 | 173 | 0 | 173 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 153 | 1763 | 539 | 183 | 134 | 1075 | 0 | |
+| **total** | 19 | 153 | 1764 | 539 | 183 | 134 | 1076 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 151 | 115 | passing | closed |
 | 3 — The run path | 11 | 197 | 125 | passing | closed |
 | 4 — Ingest | 24 | 421 | 237 | passing | open |
-| 5 — The read face under enforcement | 17 | 242 | 173 | passing | open |
+| 5 — The read face under enforcement | 17 | 243 | 174 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
 | 8 — Accountability | 5 | 40 | 20 | open | open |
@@ -574,8 +574,9 @@ Unscheduled operations: 10.
 | `read.query.limit-truncates` | `crates/contextful-cli/tests/integration/query.rs::a_limit_truncates_exactly` | performed |
 | `read.query.one-statement` | `crates/contextful-cli/tests/integration/query.rs::text_holding_two_statements_runs_none` | performed |
 | `read.query.operator-verb` | `crates/contextful-cli/tests/integration/query.rs::a_statement_prints_the_one_projection` | performed |
-| `read.query.project-relations` | `crates/contextful-cli/tests/integration/query.rs::a_project_registers_every_table_under_its_bare_name` | performed |
+| `read.query.project-relations` | `crates/contextful-cli/tests/integration/query.rs::a_discovered_project_registers_its_tables_from_a_subdirectory` | performed |
 | `read.query.project-store` | `crates/contextful-cli/tests/integration/query.rs::a_project_with_no_store_is_refused` | performed |
+| `read.query.undiscovered-runs-bare` | `crates/contextful-cli/tests/integration/query.rs::an_undiscovered_project_runs_the_statement_bare` | performed |
 | `read.rank.absent-block` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_statement_carries_no_retrieval_block` | performed |
 | `read.rank.caller-embedding` | `crates/contextful-core/tests/integration/read/embed.rs::a_caller_embedding_adds_a_cosine_leg_and_omitting_it_leaves_lexical_order` | performed |
 | `read.rank.flat-window-full-credit` | `crates/contextful-core/tests/integration/read/rank.rs::a_flat_window_awards_full_credit` | performed |
