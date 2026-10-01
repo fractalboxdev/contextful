@@ -44,11 +44,11 @@ fn a_template_declares_an_id_a_statement_typed_parameters_and_a_ceiling() {
     assert!(parse_templates("[[query_templates]]\nid = \"x\"\nsql = \"SELECT 1\"\nparameters = [\"n\"]\n").is_err());
 }
 
-/// A template parameter named `as_of`, `valid_as_of` or `zone` refuses the manifest; those names carry the read's bounds and zone on every template tool.
-// spec: read.guard.template-reserved-parameter@dd4b75b1
+/// A template parameter named `as_of`, `valid_as_of`, `zone` or `pin` refuses the manifest; those names carry the read's bounds, zone and pin map on every template tool.
+// spec: read.guard.template-reserved-parameter@b782a9ff
 #[test]
 fn a_parameter_named_for_a_read_argument_refuses_the_manifest() {
-    for reserved in ["as_of:timestamp", "valid_as_of:timestamp", "zone:string"] {
+    for reserved in ["as_of:timestamp", "valid_as_of:timestamp", "zone:string", "pin:string"] {
         let manifest = format!("[[query_templates]]\nid = \"x\"\nsql = \"SELECT 1 WHERE ? IS NOT NULL\"\nparameters = [\"{reserved}\"]\n");
         let refused = parse_templates(&manifest).unwrap_err();
         assert!(refused.0.contains(reserved.split(':').next().unwrap()), "{refused:?}");

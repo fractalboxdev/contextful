@@ -6,6 +6,7 @@ mod enforce;
 mod fulltext;
 mod guard;
 mod latency;
+mod pin;
 mod pool;
 mod register;
 mod respond;

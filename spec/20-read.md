@@ -138,7 +138,7 @@ Admission of caller-written SQL: what parses, what a base relation names, whose 
   *A-read*
 - `quoted-identifiers` — Every schema- or manifest-derived identifier is double-quoted where rendered, admitting any UTF-8 vendor field name as an identifier and never as an expression.
 - `template-declaration` — A template declares an identifier, one SQL statement, positional parameters written `name:type` over integer, float, string, timestamp and boolean, and an optional row ceiling.
-- `template-reserved-parameter` — A template parameter named `as_of`, `valid_as_of` or `zone` refuses the manifest; those names carry the read's bounds and zone on every template tool.
+- `template-reserved-parameter` — A template parameter named `as_of`, `valid_as_of`, `zone` or `pin` refuses the manifest; those names carry the read's bounds, zone and pin map on every template tool.
   *because a parameter sharing a read argument's name hides that bound from the template tool*
 - `template-relation-shape` — Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier opens with a built-in tool prefix — `context.`, `corpus.` or `memory.` — raising `TemplateNamesForeignRelation`.
   *A-read*
@@ -352,7 +352,7 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
 - `snapshot-invalidates` — A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}}.
   *P4*
 - `keep-warm-is-per-deployment` — A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.
-- `session-pool` — `Face` reuses a resolved session and its connections while the whole key holds: admitted authority with token id and revocation epoch, request zone, bounds, table set, and per granted table its schema digest, pointer, run set and ledger files.
+- `session-pool` — `Face` reuses a resolved session and its connections while the whole key holds: admitted authority, token id, revocation epoch, request zone, bounds, pin map, table set, and per granted table its schema digest, pointer, run set and ledger files.
   *A-read*
 - `change-misses` — A committed run, snapshot, schema edit, new table, request-ledger file or token under another id or epoch misses the pool, and the next statement reads the new state on a new connection.
   *A-read*
@@ -365,11 +365,12 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
 
 Resolution of a named published-model build at read time, and the state each response echoes.
 
-- `pin-parameter` — `pin` maps a table name to a build identifier and resolves that table to the state the build published. An unnamed table resolves to the latest published state.
+- `pin-parameter` — Every read tool admits `pin`, mapping a table name to a build identifier, and resolves that table to the files its build's committed manifest names. An unnamed table resolves to the latest published state.
+- `null-pin` — A table `pin` maps to `null` resolves as an unnamed table, and a pin map differing from another only by such entries is the same map.
 - `unknown-build` — An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.
   *because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states*
 - `earlier-bound-wins` — A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.
-- `resolved-echo` — A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not; the watermark names, per input table, the snapshot id and the committed runs it omits.
+- `resolved-echo` — A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not and zero rows included; the watermark names, per input table, the snapshot id and the committed runs it omits.
 - `absent-watermark` — The watermark is null for a materialization carrying none, distinct from a watermark of zero.
   *P4*
 - `consumer-comparison` — A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.
@@ -416,7 +417,12 @@ The response projection, with `total_cents` a `BIGINT` column:
   "rows": [["A-8812", "1299", "2026-02-14T09:31:00Z"], ["A-8813", "9007199254740993", "2026-02-14T09:44:12Z"]],
   "truncated": true,
   "contextful.bounds": { "as_of": "2026-03-01T00:00:00Z", "inclusive": false },
-  "contextful.resolved": { "orders": { "build_id": "b-0f31a7", "watermark": "2026-02-14T10:00:00Z" } },
+  "contextful.resolved": {
+    "daily_orders": {
+      "build_id": "snapshot-01773100800000000000",
+      "watermark": { "at": "2026-02-14T10:00:00Z", "inputs": { "orders": { "snapshot_id": null, "runs": ["run-0192/node-9f2c"] } } }
+    }
+  },
   "contextful.policy.applied": { "rows_dropped": 12, "columns_masked": ["email"], "overfetch_rounds": 1 },
   "contextful.retrieval": {
     "window": 200, "candidates_prefloor": 200, "candidates": 61,

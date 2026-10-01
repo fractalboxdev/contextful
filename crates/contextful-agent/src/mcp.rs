@@ -14,6 +14,7 @@
 
 use contextful_context::read::{Face, ReadFault, ReadOptions, RecallRequest, RetrieveRequest};
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
+use contextful_core::read::pin::{Pins, PIN_ARGUMENT};
 use contextful_core::read::template::READ_ARGUMENTS;
 use contextful_core::read::respond::Response;
 use contextful_core::read::Refusal;
@@ -282,13 +283,13 @@ impl<'a> Tools<'a> {
         }))
     }
 
-    fn session(&self, caller: Caller<'_>, zone: Option<&str>, bounds: Bounds) -> Result<contextful_policy::enforce::session::Session, ReadFault> {
+    fn session(&self, caller: Caller<'_>, zone: Option<&str>, bounds: Bounds, pins: &Pins) -> Result<contextful_policy::enforce::session::Session, ReadFault> {
         (caller.boundary)(caller.authority)?;
-        self.face.session(caller.authority, &Request { zone }, bounds)
+        self.face.session_pinned(caller.authority, &Request { zone }, bounds, pins)
     }
 
     fn list(&self, caller: Caller<'_>) -> Result<Value, Protocol> {
-        match self.session(caller, None, Bounds::default()) {
+        match self.session(caller, None, Bounds::default(), &Pins::default()) {
             Ok(s) => Ok(json!({ "tools": self.face.tools(&s) })),
             Err(fault) => Err(Protocol(INVALID_PARAMS, fault.to_string())),
         }
@@ -322,12 +323,15 @@ impl<'a> Tools<'a> {
     fn dispatch(&self, caller: Caller<'_>, name: &str, args: &Map<String, Value>) -> Result<Result<(Value, u64), ReadFault>, Protocol> {
         let zone = string(args, "zone")?;
         let zone = zone.as_deref();
+        // Every read tool admits a pin map (`read.resolve-pin.pin-parameter`).
+        let pins = Pins::parse(args.get(PIN_ARGUMENT)).map_err(invalid)?;
+        let pins = &pins;
         Ok(match name {
             "context.describe" => {
                 only(args, name, &["table"])?;
                 let table = string(args, "table")?;
                 let b = bounds(args)?;
-                self.session(caller, zone, b).and_then(|s| self.face.describe(&s, table.as_deref(), b)).map(|v| (v, 0))
+                self.session(caller, zone, b, pins).and_then(|s| self.face.describe(&s, table.as_deref(), b)).map(|v| (v, 0))
             }
             "context.query" => {
                 only(args, name, &["sql", "parameters", "limit", "internals"])?;
@@ -338,7 +342,7 @@ impl<'a> Tools<'a> {
                     Some(_) => return Err(invalid("`parameters` is an object")),
                 };
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds)
+                self.session(caller, zone, opts.bounds, pins)
                     .and_then(|s| self.face.query_with(&s, &sql, &parameters, opts))
                     .map(answered)
             }
@@ -351,20 +355,20 @@ impl<'a> Tools<'a> {
                     Some(_) => return Err(invalid("`arguments` is an object")),
                 };
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds)
+                self.session(caller, zone, opts.bounds, pins)
                     .and_then(|s| self.face.execute_template(&s, &id, &arguments, opts))
                     .map(answered)
             }
             "context.files" => {
                 only(args, name, &[])?;
                 let b = bounds(args)?;
-                self.session(caller, zone, b).and_then(|s| self.face.files(&s, b)).map(answered)
+                self.session(caller, zone, b, pins).and_then(|s| self.face.files(&s, b)).map(answered)
             }
             "context.file" => {
                 only(args, name, &["path", "limit", "internals"])?;
                 let path = required(args, "path")?;
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds).and_then(|s| self.face.file(&s, &path, opts)).map(answered)
+                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.file(&s, &path, opts)).map(answered)
             }
             "corpus.retrieve" => {
                 only(args, name, &["prefix", "query", "query_embedding", "filter", "kinds", "limit", "since", "min_score", "internals"])?;
@@ -403,7 +407,7 @@ impl<'a> Tools<'a> {
                         b.as_of.map_or_else(|| self.clock.now(), |a| a.at),
                     )
                 };
-                self.session(caller, zone, b).and_then(|s| self.face.retrieve(&s, &request, b)).map(answered)
+                self.session(caller, zone, b, pins).and_then(|s| self.face.retrieve(&s, &request, b)).map(answered)
             }
             "memory.recall" => {
                 only(args, name, &["table", "subject", "observed_at", "as_of_ingest", "limit"])?;
@@ -417,7 +421,7 @@ impl<'a> Tools<'a> {
                     limit: integer(args, "limit")?,
                     ..RecallRequest::new(required(args, "table")?, required(args, "subject")?, self.clock.now())
                 };
-                self.session(caller, zone, request.bounds()).and_then(|s| self.face.recall(&s, &request)).map(answered)
+                self.session(caller, zone, request.bounds(), pins).and_then(|s| self.face.recall(&s, &request)).map(answered)
             }
             template if self.face.templates().iter().any(|t| t.id == template) => {
                 // No template parameter takes a read argument's name (`read.guard.template-reserved-parameter`).
@@ -426,7 +430,7 @@ impl<'a> Tools<'a> {
                     arguments.remove(key);
                 }
                 let opts = ReadOptions { bounds: bounds(args)?, ..ReadOptions::default() };
-                self.session(caller, zone, opts.bounds)
+                self.session(caller, zone, opts.bounds, pins)
                     .and_then(|s| self.face.execute_template(&s, template, &arguments, opts))
                     .map(answered)
             }

@@ -2,7 +2,7 @@
 //! open connections, reused while the whole key they were built under holds.
 //!
 //! The key splits in two. The principal part digests the admitted authority — its token id
-//! and revocation epoch among it — the request zone and the bounds. The store part digests
+//! and revocation epoch among it — the request zone, the bounds and the pin map. The store part digests
 //! the table set under `tables/` and, per granted table, its `schema.json` bytes, pointer
 //! bytes, committed run manifests, snapshot directories and request-ledger files, and the
 //! commit logs under `cursors/`. A change to any of them is another key, so no reuse
@@ -13,6 +13,7 @@ use super::engine::SqlEngine;
 use super::fault::ReadFault;
 use crate::store::Store;
 use contextful_core::read::cache::{SESSION_POOL_CONNECTIONS, SESSION_POOL_ENTRIES};
+use contextful_core::read::pin::Pins;
 use contextful_core::store::bound_time::Bounds;
 use contextful_policy::enforce::session::{Request, Session};
 use contextful_policy::verify::AdmittedAuthority;
@@ -60,14 +61,15 @@ impl Default for SessionPool {
 }
 
 /// The principal part of a key: the admitted authority with its token id and revocation
-/// epoch, the request zone and the bounds.
-pub(crate) fn principal(authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds) -> Digest32 {
+/// epoch, the request zone, the bounds and the pin map.
+pub(crate) fn principal(authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, pins: &Pins) -> Digest32 {
     let mut h = Sha256::new();
     field(&mut h, authority.to_json().as_bytes());
     field(&mut h, authority.credential_id().as_bytes());
     field(&mut h, &authority.epoch().to_be_bytes());
     field(&mut h, request.zone.unwrap_or("\u{0}none").as_bytes());
     field(&mut h, format!("{bounds:?}").as_bytes());
+    field(&mut h, pins.key().as_bytes());
     h.finalize().into()
 }
 

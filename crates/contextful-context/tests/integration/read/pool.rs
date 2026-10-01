@@ -5,6 +5,7 @@ use super::*;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::PoolCounts;
 use contextful_core::read::cache::{SESSION_POOL_CONNECTIONS, SESSION_POOL_ENTRIES};
+use contextful_core::read::pin::Pins;
 use contextful_core::store::bound_time::Bound;
 use contextful_core::store::ledger::RequestRecord;
 use contextful_policy::issue::MintClaims;
@@ -38,8 +39,8 @@ fn counts(r: &Reads) -> (u64, u64, u64) {
     (session_hits, session_misses, engine_opens)
 }
 
-/// `Face` reuses a resolved session and its connections while the whole key holds: admitted authority with token id and revocation epoch, request zone, bounds, table set, and per granted table its schema digest, pointer, run set and ledger files.
-// spec: read.cache.session-pool@916644f6
+/// `Face` reuses a resolved session and its connections while the whole key holds: admitted authority, token id, revocation epoch, request zone, bounds, pin map, table set, and per granted table its schema digest, pointer, run set and ledger files.
+// spec: read.cache.session-pool@945a082b
 #[test]
 fn statements_under_one_key_share_one_resolved_session_and_one_engine() {
     let r = Reads::new();
@@ -60,6 +61,14 @@ fn statements_under_one_key_share_one_resolved_session_and_one_engine() {
     let s = r.face.session(&authority, &Request::default(), bounded).unwrap();
     r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
     assert_eq!(counts(&r), (1, 3, 3));
+    // Another pin map is another key; a map of null pins is the unpinned key.
+    let nulled = Pins::parse(Some(&serde_json::json!({ EVENTS: null }))).unwrap();
+    r.face.session_pinned(&authority, &Request::default(), Bounds::default(), &nulled).unwrap();
+    assert_eq!(counts(&r), (2, 3, 3));
+    let pinned = Pins::default().with("bench/other", "snapshot-01773100800000000000");
+    let s = r.face.session_pinned(&authority, &Request::default(), Bounds::default(), &pinned).unwrap();
+    r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
+    assert_eq!(counts(&r), (2, 4, 4));
 }
 
 /// A committed run, snapshot, schema edit, new table, request-ledger file or token under another id or epoch misses the pool, and the next statement reads the new state on a new connection.

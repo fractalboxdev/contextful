@@ -6,6 +6,8 @@ use crate::parquet_io;
 use crate::store::Store;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::declare::TableDecl;
+use contextful_core::store::lay_out::SnapshotManifest;
+use contextful_core::store::resolve::Resolution;
 use contextful_core::store::reconcile::Column;
 use contextful_core::store::relation::relation;
 use serde_json::Value;
@@ -26,13 +28,22 @@ pub struct Scan {
 /// manifests alone, so a stray file, a staging directory and an uncommitted run join
 /// nothing (`store.reconcile.explicit-file-list`).
 pub fn scan(store: &Store, decl: &TableDecl, bounds: Bounds) -> Result<Scan> {
+    scan_at(store, decl, bounds, None)
+}
+
+/// Resolve `decl`'s table to `snapshot`'s parts alone where one is given — a pinned
+/// build's committed manifest (`read.resolve-pin.pin-parameter`) — and under `bounds`
+/// otherwise; `valid_as_of` wraps the relation either way.
+pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option<&SnapshotManifest>) -> Result<Scan> {
     let table = decl.name.as_str();
     let schema = store.schema(table)?;
     decl.validate(&schema)?;
-    let state = store.state(decl)?;
-    let resolution = state.resolve(bounds.as_of)?;
+    let resolved = match snapshot {
+        Some(s) => Resolution { snapshot: Some(s), runs: Vec::new() }.files(),
+        None => store.state(decl)?.resolve(bounds.as_of)?.files(),
+    };
     let table_rel = format!("tables/{table}");
-    let files: Vec<String> = resolution.files().into_iter().map(|f| format!("{table_rel}/{f}")).collect();
+    let files: Vec<String> = resolved.into_iter().map(|f| format!("{table_rel}/{f}")).collect();
     let absolute: Vec<String> = files.iter().map(|f| store.root().join(f).to_string_lossy().into_owned()).collect();
 
     let mut carried = BTreeSet::new();
