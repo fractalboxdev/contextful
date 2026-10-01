@@ -15,7 +15,7 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 /// Gate stages in run order. The pull-request workflow dispatches each as its own check.
-const STAGES: [&str; 7] = ["schema", "test-first", "workspace", "acceptance", "evaluate", "features", "crate-graph"];
+const STAGES: [&str; 8] = ["schema", "test-first", "workspace", "acceptance", "evaluate", "features", "crate-graph", "budget"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
 /// The features stage's own target directory, under the workspace root.
@@ -219,6 +219,17 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             "crate-graph" => {
                 committed_lock(&root)?;
                 topology::check(&root)?
+            }
+            "budget" => {
+                // The footprint builds run here, apart from the evaluate stage
+                // (`assurance.gate.budget-stage`).
+                let profiles: Vec<String> = topology::declared_profiles(&root)?.into_iter().map(str::to_string).collect();
+                if profiles.is_empty() {
+                    println!("budget: no package declares a profile");
+                } else {
+                    footprint::build(&root, &profiles, false)?;
+                    let _ = std::fs::remove_dir_all(root.join(footprint::TARGET_DIR));
+                }
             }
             _ => unreachable!(),
         }

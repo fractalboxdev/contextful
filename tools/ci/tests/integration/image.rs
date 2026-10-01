@@ -182,9 +182,9 @@ fn an_artifact_over_budget_or_linking_beyond_the_c_library_is_refused() {
 
 /// Per change and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
 ///
-/// Under `contextful-ci measure` the step builds and measures all three profiles and the
-/// ledger records how many exceed their budgets; elsewhere, the workspace stage among them,
-/// it prints the three builds it runs.
+/// Under `contextful-ci measure --tier trend` the step builds and measures all three
+/// profiles and the ledger records how many exceed their budgets; elsewhere, the workspace
+/// stage among them, it prints the three builds it runs. The budget stage gates them.
 // spec: assurance.gate.footprint@32cd798c
 #[test]
 fn this_repository_profiles_hold_to_their_footprint_budgets() {
@@ -216,4 +216,42 @@ fn this_repository_profiles_hold_to_their_footprint_budgets() {
     let _ = std::fs::remove_dir_all(root.join("target/footprint"));
     assert_eq!(over, 0, "{out}\n{}", stderr(&o));
     assert!(o.status.success(), "{}", stderr(&o));
+}
+
+/// The budget stage runs the footprint step over every profile, and the evaluate stage builds no profile.
+// spec: assurance.gate.budget-stage@a70aacda
+#[test]
+fn the_budget_stage_builds_every_profile_and_the_evaluate_stage_none() {
+    let stages = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
+    let listed = String::from_utf8_lossy(&stages.stdout).into_owned();
+    assert_eq!(listed.lines().last(), Some("budget"), "{listed}");
+
+    // A tree whose binary declares no profile builds nothing.
+    let r = Repo::init();
+    r.lock();
+    r.commit("lock");
+    let o = r.gate(&["--stage", "budget"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(String::from_utf8_lossy(&o.stdout).contains("budget: no package declares a profile"), "{}", stderr(&o));
+
+    // A binary declaring the three profiles under a fragment budgeting the edge alone stops
+    // the stage at the first profile, before it builds.
+    let r = budgeted();
+    let features = "[features]\ncontextful-control = []\ncontextful-edge = []\ncontextful-full = []\n";
+    r.write("crates/contextful-cli/Cargo.toml", &format!("{}{features}", crate::manifest("contextful-cli", "")));
+    r.write("crates/contextful-cli/src/lib.rs", "");
+    r.write("crates/contextful-cli/tests/integration/main.rs", "");
+    r.lock();
+    r.commit("a binary declaring the profiles");
+    let o = r.gate(&["--stage", "budget"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("no `assurance-control-compressed` bound"), "{}", stderr(&o));
+
+    let text = std::fs::read_to_string(repo_root().join("evals/ledger.toml")).unwrap();
+    let ledger: toml::Value = toml::from_str(&text).unwrap();
+    for (id, entry) in ledger["entry"].as_table().unwrap() {
+        let test = entry.get("method").and_then(|m| m.get("test")).and_then(toml::Value::as_str).unwrap_or_default();
+        let builds = test.ends_with("::this_repository_profiles_hold_to_their_footprint_budgets");
+        assert!(!(builds && entry["tier"].as_str() == Some("gate")), "the gate-tier entry `{id}` builds every profile in the evaluate stage");
+    }
 }

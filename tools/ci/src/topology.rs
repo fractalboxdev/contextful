@@ -813,6 +813,16 @@ fn profile_leaks(root: &Path, g: &Graph) -> Result<(Vec<&'static str>, Vec<(&'st
     Ok((declared, out))
 }
 
+/// The profile bundles the workspace's binary declares, in [`PROFILES`] order; none when
+/// the workspace holds no binary package.
+pub fn declared_profiles(root: &Path) -> Result<Vec<&'static str>> {
+    let g = Graph::load(root)?;
+    let Some(binary) = g.id_of(BINARY).and_then(|id| g.packages.get(id)).filter(|p| p.workspace) else {
+        return Ok(Vec::new());
+    };
+    Ok(PROFILES.into_iter().filter(|p| binary.features.contains_key(*p)).collect())
+}
+
 pub fn check(root: &Path) -> Result<()> {
     let g = Graph::load(root)?;
     if g.id_of(STORE).is_some() {

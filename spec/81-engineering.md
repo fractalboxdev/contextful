@@ -187,6 +187,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `control-budget` — The control profile holds to 60 MiB compressed and 80 MiB idle resident set.
 - `footprint` — Per change and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
   *P7*
+- `budget-stage` — The budget stage runs {{assurance.gate.footprint}} over every profile, and the evaluate stage builds no profile.
+  *because three link-time-optimized release builds beside the gate-tier ledger outlast one stage's wall clock*
 - `footprint-exceeded` — An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.
   *P7*
 - `typescript-surfaces` — The TypeScript surfaces run typecheck, unit tests and framework build in one stage, and a surface declaring no script for a check skips that check.

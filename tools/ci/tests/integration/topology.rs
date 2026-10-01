@@ -748,7 +748,7 @@ fn this_repository_crate_map_names_every_crate() {
 #[test]
 fn the_crate_graph_stage_refuses_an_undeclared_crossing() {
     let stages = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
-    assert_eq!(stdout(&stages).lines().last(), Some("crate-graph"), "{}", stdout(&stages));
+    assert!(stdout(&stages).lines().any(|l| l == "crate-graph"), "{}", stdout(&stages));
 
     let r = Repo::init();
     package(&r, "contextful-core", "");

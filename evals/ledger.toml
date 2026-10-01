@@ -409,7 +409,7 @@ target = { op = "==", value = 0 }
 clause = "assurance.gate.footprint"
 metric = "footprint.profiles_over_budget"
 kind   = "size"
-tier   = "gate"
+tier   = "trend"
 method = { test = "contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets" }
 target = { op = "==", value = 0 }
 
