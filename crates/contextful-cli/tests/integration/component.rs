@@ -27,7 +27,7 @@ fn project(manifest: &str) -> tempfile::TempDir {
     std::fs::create_dir_all(dir.path().join("connectors")).unwrap();
     std::fs::copy(PROBE, dir.path().join("connectors/probe.wasm")).unwrap();
     std::fs::copy(PROBE_BASE, dir.path().join("connectors/probe-base.wasm")).unwrap();
-    std::fs::write(dir.path().join("contextful.toml"), manifest).unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest)).unwrap();
     dir
 }
 
@@ -194,23 +194,23 @@ fn validate_loads_a_local_component_and_runs_discovery() {
 
     // Core-module bytes are no component.
     std::fs::write(dir.path().join("connectors/core.wasm"), b"\0asm\x01\0\0\0").unwrap();
-    std::fs::write(dir.path().join("contextful.toml"), manifest("connectors/core.wasm", &["items"], "")).unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest("connectors/core.wasm", &["items"], ""))).unwrap();
     refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "the component does not load");
 
     // A guest table against a guest exporting no configuration interface.
-    std::fs::write(dir.path().join("contextful.toml"), manifest("connectors/probe-base.wasm", &["items"], "guest = { region = \"eu\" }")).unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest("connectors/probe-base.wasm", &["items"], "guest = { region = \"eu\" }"))).unwrap();
     refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorConfigUnclaimed");
 
     // A remote artifact is parsed and pinned, never fetched.
     let remote = manifest("https://dl.vendor.invalid/probe.wasm", &["items"], &format!("sha256 = \"{pin}\""));
-    std::fs::write(dir.path().join("contextful.toml"), remote).unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", remote)).unwrap();
     let out = ok(&cf(dir.path(), &["pipeline", "validate"], &[]));
     assert!(out.contains("probe: valid"), "{out}");
 
     // A manifest below the project names its artifact against the project directory, as `pipeline run` reads it.
     let dir = project("");
     std::fs::create_dir_all(dir.path().join("conf")).unwrap();
-    std::fs::write(dir.path().join("conf/contextful.toml"), manifest("connectors/probe.wasm", &["items"], &format!("sha256 = \"{pin}\""))).unwrap();
+    std::fs::write(dir.path().join("conf/contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest("connectors/probe.wasm", &["items"], &format!("sha256 = \"{pin}\"")))).unwrap();
     let validate = ["pipeline", "validate", "--declaration", "conf/contextful.toml"];
     assert!(ok(&cf(dir.path(), &validate, &[])).contains("discovers items"));
     assert!(ok(&cf(dir.path(), &[&validate[..], &["--project", "research"]].concat(), &[])).contains("discovers items"));

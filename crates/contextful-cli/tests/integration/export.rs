@@ -139,7 +139,7 @@ fn project(manifest: &str, table: &str) -> (tempfile::TempDir, String, String) {
     std::fs::create_dir_all(&store).unwrap();
     std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
     std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
-    std::fs::write(p.join("contextful.toml"), manifest).unwrap();
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest)).unwrap();
     let public = ok(&cf(p, &["token", "keygen", "--out", ".contextful/issuer.seed"], &[]));
     let token = ok(&cf(
         p,

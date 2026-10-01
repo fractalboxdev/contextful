@@ -52,7 +52,7 @@ pub(crate) fn project(manifest: &str) -> tempfile::TempDir {
     let store = dir.path().join(".contextful/context/research");
     std::fs::create_dir_all(&store).unwrap();
     std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
-    std::fs::write(dir.path().join("contextful.toml"), manifest).unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{manifest}")).unwrap();
     dir
 }
 
@@ -120,7 +120,7 @@ fn one_id_declared_twice_names_both_declarations() {
     assert!(!out.status.success());
     let err = stderr(&out);
     assert!(err.contains("PipelineDuplicateId"), "{err}");
-    assert!(err.contains("contextful.toml:3") && err.contains("pipelines/orders.toml:3"), "{err}");
+    assert!(err.contains("contextful.toml:4") && err.contains("pipelines/orders.toml:3"), "{err}");
 }
 
 /// The local context store is the only destination, and synthesized artifacts write back through it; any other

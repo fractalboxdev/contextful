@@ -5,6 +5,7 @@
 //! `.contextful/run/<project>/`, a command source, and the store as the destination. No
 //! run rule lives here.
 
+use crate::admit::{AdmitArgs, Author};
 use crate::project::{locate, Located};
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
@@ -30,6 +31,7 @@ use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_engine::{Engine, Journal, RunSpec};
 use contextful_sqlite::MachineCatalog;
 use contextful_engine::stores::FileAwakeableStore;
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -67,6 +69,8 @@ pub enum RunCmd {
         /// The environment variable holding this run's site id; replaces the manifest's declaration.
         #[arg(long)]
         site_id_env: Option<String>,
+        #[command(flatten)]
+        admit: AdmitArgs,
     },
     /// Print a run row as JSON.
     Show {
@@ -205,6 +209,8 @@ pub(crate) struct StoreDestination {
     pub(crate) store: Store,
     pub(crate) decls: Vec<TableDecl>,
     pub(crate) node: contextful_core::store::lay_out::NodeId,
+    /// The admitted credential every commit lands under; `None` lands unauthored.
+    pub(crate) author: Option<Author>,
 }
 
 fn store_failure(e: ContextError) -> Failure {
@@ -224,11 +230,30 @@ impl Destination for StoreDestination {
         let batches: Vec<Batch> = commit.batches.into_iter().map(|rows| Batch { rows, types: types.clone() }).collect();
         let ctx = RunContext {
             node: self.node.clone(),
-            injection: Injection { run_id: commit.run_id.clone(), site_id: commit.site_id.clone(), batch_seq: None, authored_by: None, taint: None },
+            injection: Injection {
+                run_id: commit.run_id.clone(),
+                site_id: commit.site_id.clone(),
+                batch_seq: None,
+                authored_by: self.author.as_ref().and_then(Author::on_behalf_of),
+                taint: None,
+            },
             committed_at: commit.committed_at,
         };
         let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some() };
-        let precommit = || precommit().map_err(|f| ContextError::Invalid(f.to_string()));
+        // A lapse at the commit boundary is the credential's, not the store's: it fails the
+        // run deterministically rather than as a retryable storage fault.
+        let lapsed: RefCell<Option<Failure>> = RefCell::default();
+        let precommit = || {
+            precommit().map_err(|f| ContextError::Invalid(f.to_string()))?;
+            match &self.author {
+                Some(a) => a.boundary().map_err(|e| {
+                    let message = format!("{e:#}");
+                    *lapsed.borrow_mut() = Some(Failure::deterministic(FailureTag::Permanent, message.clone()));
+                    ContextError::Invalid(message)
+                }),
+                None => Ok(()),
+            }
+        };
         // Under a lease, the commit-log create is the commit point: the manifest stays
         // unreadable unless the log records this run under its fence.
         let commit_point = |_: &contextful_core::store::lay_out::RunManifest| match commit.fence {
@@ -238,7 +263,7 @@ impl Destination for StoreDestination {
             }
             None => Ok(()),
         };
-        let manifest = commit_batches(&self.store, &decl, &batches, &ctx, &position, &precommit, &commit_point).map_err(store_failure)?;
+        let manifest = commit_batches(&self.store, &decl, &batches, &ctx, &position, &precommit, &commit_point).map_err(|e| lapsed.take().unwrap_or_else(|| store_failure(e)))?;
         let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join("data").join("runs").join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;
         for p in &manifest.parts {
@@ -281,7 +306,7 @@ fn awake_error(e: AwakeError) -> anyhow::Error {
 
 pub fn run(cmd: RunCmd) -> Result<()> {
     match cmd {
-        RunCmd::Start { project, plan, declaration, run_id, site_id, site_id_env } => {
+        RunCmd::Start { project, plan, declaration, run_id, site_id, site_id_env, admit } => {
             let l = project.locate(declaration)?;
             crate::sync::pull_before_run(&l)?;
             let declaration = &l.declaration;
@@ -291,6 +316,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let plan = Plan::compile(&bytes).with_context(|| format!("`{}`", plan.display()))?;
             let cwd = std::env::current_dir()?;
             let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", declaration.display()))?;
+            let author = admit.author(&text, &[&plan.spec.table], "`run start`")?;
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let w = wire_at(&l.project, &project.now)?;
@@ -306,7 +332,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let connector = plan.connector_pin(&artifact_hash(&plan.spec.connector.command, &cwd));
             let spec = RunSpec { connector, plan: plan.clone(), run_id, site_id, pid: std::process::id(), boot_id: boot_id(), trace_id: None };
             let mut source = CommandSource { argv: plan.spec.connector.command.clone(), cwd };
-            let mut dest = StoreDestination { store, decls, node };
+            let mut dest = StoreDestination { store, decls, node, author };
             let row = w.engine.run(&spec, &mut source, &mut dest)?;
             if row.status == RunStatus::Success {
                 println!("{}: success · {} rows in {} batches", row.run_id, row.rows, row.batches);

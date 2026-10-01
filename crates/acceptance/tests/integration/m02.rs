@@ -28,7 +28,7 @@ fn m02_store() {
     p.write(&format!("{STORE}/config.toml"), "[node]\nid = \"ingest-a\"\n");
     p.write(
         "contextful.toml",
-        "[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\norder_by = \"revised_at\"\n",
+        "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\norder_by = \"revised_at\"\n",
     );
     p.write(
         "batch-1.jsonl",
@@ -124,10 +124,10 @@ fn m02_init_and_discovery() {
         Command::new(&cf).args(args).current_dir(dir).env_remove("CARGO_TARGET_DIR").env("CONTEXTFUL_NODE_ID", "ingest-a").output().unwrap()
     };
 
-    ok(&at(&p.root, &["init", "research"]));
+    ok(&at(&p.root, &["init", "research", "--authoring-posture", "per_request"]));
     assert!(p.root.join(STORE).is_dir());
     let declared = std::fs::read_to_string(p.root.join("contextful.toml")).unwrap();
-    ok(&at(&p.root, &["init", "research"]));
+    ok(&at(&p.root, &["init", "research", "--authoring-posture", "per_request"]));
     assert_eq!(std::fs::read_to_string(p.root.join("contextful.toml")).unwrap(), declared);
     refused(&at(&p.root, &["init", "archive"]), "StoreProjectConflict");
 

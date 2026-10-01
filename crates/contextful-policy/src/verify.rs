@@ -140,6 +140,16 @@ impl AdmittedAuthority {
             .any(|g| g.actions.contains(&action) && tables.iter().all(|t| g.tables.iter().any(|p| p.covers_name(t))))
     }
 
+    /// Refuse a table write unless one grant carries `write` over `table`
+    /// (`authority.grant.write-not-covered`).
+    pub fn require_write(&self, table: &str) -> Result<(), AuthorityError> {
+        if self.permits(Action::Write, &[table]) {
+            Ok(())
+        } else {
+            Err(AuthorityError::GrantWriteNotCovered(format!("the credential holds no `write` grant over `{table}`")))
+        }
+    }
+
     /// The admitted value as JSON, for a surface to print.
     pub fn to_json(&self) -> String {
         #[derive(Serialize)]

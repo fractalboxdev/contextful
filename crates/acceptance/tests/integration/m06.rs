@@ -72,7 +72,7 @@ impl Node<'_> {
 fn node<'a>(cf: &'a Path, bucket: &'a Bucket, id: &str, extra: &str) -> Node<'a> {
     let repo = GitRepo::init();
     repo.write(&format!("{STORE}/config.toml"), &format!("[node]\nid = \"{id}\"\n\n[sync]\n{}{extra}", bucket.sync));
-    repo.write("contextful.toml", "[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\norder_by = \"revised_at\"\n");
+    repo.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\norder_by = \"revised_at\"\n");
     Node { repo, cf, bucket }
 }
 

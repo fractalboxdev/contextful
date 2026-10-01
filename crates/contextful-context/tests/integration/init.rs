@@ -1,6 +1,7 @@
 //! `store.init`: the declaration file an init writes, and finding it from a working directory.
 
-use contextful_context::project::{discover, init, Initialized, Project, DECLARATION_FILE};
+use contextful_context::project::{declare_posture, discover, init, Initialized, Project, DECLARATION_FILE};
+use contextful_core::issue::AuthoringPosture;
 use contextful_context::ContextError;
 use contextful_core::store::StoreError;
 use std::fs;
@@ -39,7 +40,7 @@ fn a_traversing_or_unsafe_name_refuses_before_any_write() {
 }
 
 /// An init against a `contextful.toml` already declaring the same name rewrites nothing and succeeds.
-// spec: store.init.repeat@e535e52a
+// spec: store.init.repeat@db5b16da
 #[test]
 fn a_repeated_init_rewrites_nothing() {
     let dir = tempfile::tempdir().unwrap();
@@ -143,4 +144,27 @@ fn every_project_path_is_based_on_the_project_directory() {
     assert_eq!(p.store_root(), dir.path().join(".contextful/context/research"));
     assert_eq!(p.run_dir(), dir.path().join(".contextful/run/research"));
     assert_eq!(p.memory_dir(), dir.path().join(".contextful/memory/research"));
+}
+
+/// `--authoring-posture` prepends a top-level `authoring_posture` to a declaration declaring none, keeping every other byte; a declared posture stands.
+#[test]
+fn an_init_posture_is_prepended_once_and_a_declared_one_stands() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(DECLARATION_FILE);
+    init(dir.path(), "research").unwrap();
+    let before = format!("{}\n[[pipeline.tables]]\nname = \"filings\"\n", fs::read_to_string(&path).unwrap());
+    fs::write(&path, &before).unwrap();
+
+    assert!(declare_posture(dir.path(), AuthoringPosture::PerRequest).unwrap());
+    let after = fs::read_to_string(&path).unwrap();
+    assert!(after.ends_with(&before), "{after}");
+    assert_eq!(AuthoringPosture::from_manifest(&after).unwrap(), AuthoringPosture::PerRequest);
+    let parsed: toml::Value = toml::from_str(&after).unwrap();
+    assert_eq!(parsed["project"]["name"].as_str(), Some("research"));
+    assert_eq!(parsed["pipeline"]["tables"][0]["name"].as_str(), Some("filings"));
+
+    // A declared posture stands against another flag, and a repeat rewrites nothing.
+    assert!(!declare_posture(dir.path(), AuthoringPosture::Session).unwrap());
+    assert!(!declare_posture(dir.path(), AuthoringPosture::PerRequest).unwrap());
+    assert_eq!(fs::read_to_string(&path).unwrap(), after);
 }

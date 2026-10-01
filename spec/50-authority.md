@@ -162,6 +162,8 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
   *P2*
 - `run-trace-denied` — Tracing a run gates on the pipeline resolved from the run record and raises `GrantRunTraceDenied` without naming that pipeline.
   *P2*
+- `write-not-covered` — A credentialed table write whose grants carry no `write` over a destination table raises `GrantWriteNotCovered`, naming the table, before its first effect.
+  *because a write grant names the tables a principal authors, and a row landed outside them carries a principal who never authorized it*
 - `row-ceiling` — A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.
   *A-authority*
 - `aggregate` — An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.
@@ -170,6 +172,8 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
   *A-authority*
 
 unsettled: When a table declares no partition key, how does a consumer with a per-tenant need express the scope? owner: authority affects: authority.grant
+
+unsettled: Does a credentialed `run start` or `pipeline run` also need `execute` over its pipeline beside `write` over its tables? owner: authority affects: authority.grant
 
 ## attenuate
 
@@ -234,7 +238,11 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority*
 - `absent-author` — An absent authorship value on a landed row means no credential authorized the write: the uncredentialed owner or a timer-fired run.
   *A-authority*
-- `authoring-posture` — Every project load declares an authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.
+- `authoring-posture` — Every table write verb {{authority.verify.write-verbs}} runs under its manifest's authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.
+  *A-authority*
+- `posture-key` — A manifest declares its posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.
+  *A-authority*
+- `session-credential` — Under `session`, a table write verb run with no credential raises `AuthoringCredentialMissing` before its first effect.
   *A-authority*
 - `one-credential` — A served face admits a verified capability credential, presented as a bearer or bound to a holder key, and nothing else: no static bearer, no gateway shared secret, no unauthenticated owner path.
   *A-authority*
@@ -266,11 +274,17 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
 - `key-rotation` — The issuer signing key rotates every 90 d, and at once on suspected compromise.
   *A-authority*
 
+unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the posture bind table write verbs alone? owner: authority affects: authority.issue
+
 ## verify
 
 Admission at a checkpoint: signatures, audience, timestamps, possession proof, key sets, and the admitted-authority value.
 
 - `admitted-authority` — Verification yields an admitted-authority value carrying the normalized subject tuple and its grants. Every read surface and row-landing effect takes that value as an argument; nothing downstream re-parses a credential or reads ambient state.
+  *A-authority*
+- `write-verbs` — `context land`, `run start` and `pipeline run` are the table write verbs. Each admits its accompanying credential before its first effect and stamps that credential's `on_behalf_of` as every landed row's `_authored_by`.
+  *A-authority*
+- `write-commit` — A credentialed table write reads its denylist afresh and checks expiry immediately before each commit; a credential revoked or lapsed since admission commits nothing, as {{authority.revoke.revoked}} and {{authority.verify.expired}}.
   *A-authority*
 - `no-bypass-constructor` — The admitted-authority type has no constructor that produces a value without a verification.
   *A-authority*

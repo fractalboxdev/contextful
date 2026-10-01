@@ -357,3 +357,62 @@ fn action_name(action: Action) -> &'static str {
         Action::Admin => "admin",
     }
 }
+
+/// Who authors a table write when no credential accompanies it
+/// (`authority.issue.authoring-posture`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthoringPosture {
+    /// One verified ambient credential authors every write; a write without it refuses.
+    Session,
+    /// No ambient principal: a write without a credential lands unauthored.
+    PerRequest,
+}
+
+impl AuthoringPosture {
+    /// The manifest's top-level key (`authority.issue.posture-key`).
+    pub const KEY: &'static str = "authoring_posture";
+
+    /// The value the manifest key spells.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AuthoringPosture::Session => "session",
+            AuthoringPosture::PerRequest => "per_request",
+        }
+    }
+
+    /// The posture `value` spells, or `None` for any other value.
+    pub fn parse(value: &str) -> Option<AuthoringPosture> {
+        [AuthoringPosture::Session, AuthoringPosture::PerRequest].into_iter().find(|p| p.as_str() == value)
+    }
+
+    /// The posture a manifest declares. The key has no default: absent, or naming any
+    /// value but `session` or `per_request`, it raises `AuthoringPostureUndeclared`.
+    pub fn from_manifest(text: &str) -> Result<AuthoringPosture, AuthorityError> {
+        let undeclared = |why: String| {
+            AuthorityError::AuthoringPostureUndeclared(format!(
+                "{why}; declare `{key} = \"session\"` or `{key} = \"per_request\"` at the top of the manifest, \
+                 or run `contextful init <name> --authoring-posture <session|per_request>`",
+                key = Self::KEY
+            ))
+        };
+        let value: toml::Value = toml::from_str(text).map_err(|e| undeclared(format!("the manifest does not parse: {}", e.message())))?;
+        match value.get(Self::KEY) {
+            None => Err(undeclared(format!("the manifest declares no `{}`", Self::KEY))),
+            Some(other) => match other.as_str().and_then(AuthoringPosture::parse) {
+                Some(posture) => Ok(posture),
+                None => Err(undeclared(format!("`{}` is `{other}`", Self::KEY))),
+            },
+        }
+    }
+
+    /// Refuse a write `what` names that arrives with no credential under `session`
+    /// (`authority.issue.session-credential`); under `per_request` it lands unauthored.
+    pub fn unaccompanied(self, what: &str) -> Result<(), AuthorityError> {
+        match self {
+            AuthoringPosture::Session => Err(AuthorityError::AuthoringCredentialMissing(format!(
+                "{what} runs under the `session` authoring posture and carries no credential"
+            ))),
+            AuthoringPosture::PerRequest => Ok(()),
+        }
+    }
+}

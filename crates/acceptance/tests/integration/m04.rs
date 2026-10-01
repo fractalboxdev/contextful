@@ -82,7 +82,7 @@ fn m04_ingest() {
     p.write(&format!("{STORE}/config.toml"), "[node]\nid = \"ingest-a\"\n");
     let declaration = |headers: &str| {
         format!(
-            "[[pipeline]]\nid = \"filings\"\nincremental = \"updated_at\"\n\n[pipeline.source]\nname = \"http\"\n\n\
+            "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"filings\"\nincremental = \"updated_at\"\n\n[pipeline.source]\nname = \"http\"\n\n\
              [pipeline.source.config]\nendpoint = \"{}\"\nformat = \"json\"\nrecords = \"/data\"\npage_param = \"page\"\nsince_param = \"since\"\n\n\
              [pipeline.source.config.headers]\n{headers}\n\n[[pipeline.tables]]\nname = \"records\"\nprimary_key = [\"id\"]\n",
             vendor.url("/v1/filings")
@@ -171,7 +171,7 @@ fn m04_component_guest() {
     std::fs::write(p.root.join("connectors/vendor.wasm"), &wasm).unwrap();
     let declaration = |pin: &str, tables: &str| {
         format!(
-            "[[pipeline]]\nid = \"vendor\"\ntables = [{tables}]\n\n[pipeline.source]\nname = \"connectors/vendor.wasm\"\n\n\
+            "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"vendor\"\ntables = [{tables}]\n\n[pipeline.source]\nname = \"connectors/vendor.wasm\"\n\n\
              [pipeline.source.config]\nsha256 = \"{pin}\"\nallow = [\"127.0.0.1\"]\n"
         )
     };

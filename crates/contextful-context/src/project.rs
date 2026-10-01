@@ -2,6 +2,7 @@
 //! belongs to.
 
 use crate::error::{IoPath, Result};
+use contextful_core::issue::AuthoringPosture;
 use contextful_core::store::lay_out::{is_path_segment, store_root};
 use contextful_core::store::StoreError;
 use std::fs;
@@ -125,6 +126,31 @@ pub fn init(dir: &Path, name: &str) -> Result<Initialized> {
     let root = dir.join(store_root(name));
     fs::create_dir_all(&root).at(&root)?;
     Ok(outcome)
+}
+
+/// `contextful init <name> --authoring-posture <posture>` (`store.init.posture`): prepend a
+/// top-level `authoring_posture` to the declaration in `dir` when it declares none,
+/// keeping every other byte. A declared posture stands. Returns whether the file changed.
+pub fn declare_posture(dir: &Path, posture: AuthoringPosture) -> Result<bool> {
+    let path = dir.join(DECLARATION_FILE);
+    let text = fs::read_to_string(&path).at(&path)?;
+    if declared_posture(&path, &text)?.is_some() {
+        return Ok(false);
+    }
+    let staged = dir.join(format!(".{DECLARATION_FILE}.posture"));
+    let mut file = fs::File::create(&staged).at(&staged)?;
+    let line = format!("{} = \"{}\"\n", AuthoringPosture::KEY, posture.as_str());
+    std::io::Write::write_all(&mut file, format!("{line}{text}").as_bytes()).at(&staged)?;
+    file.sync_all().at(&staged)?;
+    fs::rename(&staged, &path).at(&path)?;
+    Ok(true)
+}
+
+/// The `authoring_posture` value a declaration spells, whatever it names.
+pub fn declared_posture(path: &Path, text: &str) -> Result<Option<String>> {
+    let value: toml::Value =
+        toml::from_str(text).map_err(|e| crate::ContextError::Invalid(format!("{}: {}", path.display(), e.message())))?;
+    Ok(value.get(AuthoringPosture::KEY).map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string)))
 }
 
 /// Create the declaration, never replacing one written between the read and the write.

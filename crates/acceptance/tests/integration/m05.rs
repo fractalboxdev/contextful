@@ -60,6 +60,7 @@ fn m05_read_face() {
     p.write(
         "contextful.toml",
         r#"
+authoring_posture = "per_request"
 [[pipeline.tables]]
 name = "research/notes"
 partition_by = ["tenant"]
@@ -197,7 +198,7 @@ name = "hr/salaries"
 fn m05_operator_query() {
     let cf = bin("contextful");
     let p = GitRepo::init();
-    p.write("contextful.toml", "[[pipeline.tables]]\nname = \"research/notes\"\n");
+    p.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"research/notes\"\n");
     p.write("notes.jsonl", &[json!({"note_id": "n1"}), json!({"note_id": "n2"}), json!({"note_id": "n3"})].map(|r| r.to_string()).join("\n"));
     ok(&p.run(&cf, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
     p.write("objects/a.json", "{\"k\":1}\n");
@@ -294,7 +295,7 @@ fn m05_http_face() {
     let cf = bin("contextful");
     let p = GitRepo::init();
     p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n"));
-    p.write("contextful.toml", "[[pipeline.tables]]\nname = \"research/notes\"\n\n[[pipeline.tables]]\nname = \"research/nums\"\n\n[[pipeline.tables]]\nname = \"hr/salaries\"\n");
+    p.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"research/notes\"\n\n[[pipeline.tables]]\nname = \"research/nums\"\n\n[[pipeline.tables]]\nname = \"hr/salaries\"\n");
     p.write("notes.jsonl", &[json!({"note_id": "n1"}), json!({"note_id": "n2"})].map(|r| r.to_string()).join("\n"));
     p.write("nums.jsonl", &(0..1000).map(|x| json!({ "x": x }).to_string()).collect::<Vec<_>>().join("\n"));
     p.write("salaries.jsonl", &json!({"employee": "e1"}).to_string());

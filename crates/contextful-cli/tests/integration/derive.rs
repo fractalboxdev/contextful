@@ -65,7 +65,7 @@ fn host_project(manifest: &str) -> tempfile::TempDir {
     let store = dir.path().join(".contextful/context/research");
     std::fs::create_dir_all(&store).unwrap();
     std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
-    std::fs::write(dir.path().join("contextful.toml"), manifest).unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest)).unwrap();
     std::fs::write(
         dir.path().join("documents.jsonl"),
         "{\"doc_id\":\"d1\",\"body\":\"alpha beta\"}\n{\"doc_id\":\"d2\",\"body\":\"gamma\"}\n{\"doc_id\":\"d3\",\"body\":\"   \"}\n",
@@ -99,7 +99,7 @@ fn a_registered_host_task_builds_and_an_unregistered_name_lists_both_sets() {
     let err = String::from_utf8_lossy(&stock.stderr);
     assert!(!stock.status.success() && err.contains("DeriveUnknownTask") && err.contains("(none)"), "{err}");
 
-    std::fs::write(dir.path().join("contextful.toml"), host_manifest("word-splat")).unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", host_manifest("word-splat"))).unwrap();
     let out = run_bin(&host, dir.path(), &["pipeline", "validate"], &[]);
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(!out.status.success(), "{err}");

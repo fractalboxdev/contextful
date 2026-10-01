@@ -43,6 +43,7 @@ fn m09_visibility() {
     p.write(
         "contextful.toml",
         r#"
+authoring_posture = "per_request"
 [[pipeline.tables]]
 name = "wiki/pages"
 

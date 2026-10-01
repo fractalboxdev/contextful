@@ -71,7 +71,7 @@ fn project() -> (tempfile::TempDir, String, String) {
     std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
     std::fs::write(
         p.join("contextful.toml"),
-        "[[pipeline.tables]]\nname = \"research/notes\"\n\n[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n",
+        "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"research/notes\"\n\n[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n",
     )
     .unwrap();
     std::fs::write(p.join("n1.jsonl"), "{\"note_id\":\"n1\",\"text\":\"Dana is Acme's CFO.\"}\n").unwrap();

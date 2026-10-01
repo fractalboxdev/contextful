@@ -37,6 +37,9 @@ GrantRunTraceDenied                  = { clause = "authority.grant.run-trace-den
 AttenuationWidens                    = { clause = "authority.attenuate.widens", gloss = "A child broader than its parent on a grant dimension." }
 AttenuationExpiryExtended            = { clause = "authority.attenuate.expiry-extended", gloss = "A child expiry past its parent's." }
 AttenuationTenantDropped             = { clause = "authority.attenuate.tenant-dropped", gloss = "A child dropping or changing its parent's tenant scope." }
+AuthoringPostureUndeclared           = { clause = "authority.issue.posture-key", gloss = "A table write verb reading a manifest with no valid authoring posture." }
+AuthoringCredentialMissing           = { clause = "authority.issue.session-credential", gloss = "A table write verb under the session posture with no credential." }
+GrantWriteNotCovered                 = { clause = "authority.grant.write-not-covered", gloss = "A credentialed table write with no write grant over its destination." }
 IssuanceLifetimeAboveCeiling         = { clause = "authority.issue.above-ceiling", gloss = "A requested lifetime above the persisted ceiling." }
 IssuancePrincipalRequired            = { clause = "authority.issue.principal-required", gloss = "A write or execute grant naming no on-behalf-of principal." }
 IssuerKeyMissing                     = { clause = "authority.issue.missing-key", gloss = "A face configured with no issuer key." }

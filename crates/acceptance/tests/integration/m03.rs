@@ -87,7 +87,7 @@ fn m03_run_path() {
     let cf = bin("contextful");
     let p = GitRepo::init();
     p.write(&format!("{STORE}/config.toml"), "[node]\nid = \"ingest-a\"\n");
-    p.write("contextful.toml", "[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\n");
+    p.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\n");
     p.write("vendor.sh", VENDOR);
     p.write("plan.toml", PLAN);
     p.write("crash-armed", "");
