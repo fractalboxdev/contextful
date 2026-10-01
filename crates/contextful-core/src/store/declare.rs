@@ -194,10 +194,17 @@ impl TableDecl {
             }
         };
         for t in &tables {
-            t.retain_runs_secs()?;
-            crate::disclosure::declare::Binding::of(t)?;
+            t.check()?;
         }
         Ok(tables)
+    }
+
+    /// The load checks every parsed table block answers to: its run retention and its
+    /// visibility block.
+    pub fn check(&self) -> Result<(), crate::disclosure::declare::DeclareError> {
+        self.retain_runs_secs()?;
+        crate::disclosure::declare::Binding::of(self)?;
+        Ok(())
     }
 
     /// The canonical serialization: JSON with every unset key absent.

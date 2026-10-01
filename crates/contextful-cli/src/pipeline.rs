@@ -21,7 +21,7 @@ use contextful_core::run::derive::task::{check_host_tables, DeriveTask, Tasks};
 use contextful_core::run::ports::{Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_context::{node, ContextError, Store};
-use contextful_core::pipeline::declare::{collect, Declared, ManifestFile, PipelineSpec, SourceBlock};
+use contextful_core::pipeline::declare::{collect, read_manifest, Declared, ManifestFile, PipelineSpec, SourceBlock};
 use contextful_core::pipeline::transform::Chain;
 use contextful_core::run::advance::CursorKind;
 use contextful_core::run::journal::sha256_hex;
@@ -85,6 +85,29 @@ pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
     if declaration.is_file() {
         files.push(ManifestFile { path: declaration.display().to_string(), text: std::fs::read_to_string(declaration)? });
     }
+    files.extend(pipeline_files(declaration)?);
+    Ok(files)
+}
+
+/// The tables the `pipelines/` files beside `declaration` declare, each under its
+/// destination name (`read.register.declaration-set`).
+pub(crate) fn pipeline_tables(declaration: &Path) -> Result<Vec<TableDecl>> {
+    let mut tables = Vec::new();
+    for f in pipeline_files(declaration)? {
+        for d in read_manifest(&f)? {
+            tables.extend(d.spec.tables.iter().map(|t| {
+                let mut decl = t.decl();
+                decl.name = d.spec.table_name(t.name());
+                decl
+            }));
+        }
+    }
+    Ok(tables)
+}
+
+/// `pipelines/*.toml` and `pipelines/*.json` beside `declaration`, sorted.
+fn pipeline_files(declaration: &Path) -> Result<Vec<ManifestFile>> {
+    let mut files = Vec::new();
     let dir = declaration.parent().map(|p| p.join("pipelines")).unwrap_or_else(|| PathBuf::from("pipelines"));
     if let Ok(entries) = std::fs::read_dir(&dir) {
         let mut paths: Vec<PathBuf> =

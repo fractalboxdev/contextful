@@ -60,6 +60,8 @@ flowchart LR
 The relations, tools and templates one connection sees, the engine executing against them, and the network transport carrying the tools.
 
 - `connection-views` — A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.
+- `declaration-set` — The face declares the tables of the project manifest and of every `pipelines/*.toml` and `pipelines/*.json` beside it, {{run.declare.manifest-file}}, each pipeline table under its destination name with its declared primary key.
+  *because a pipeline file fires its tables, and a key the reader never sees leaves every run's copy of a row visible*
 - `engine` — The executor is an embedded columnar SQL engine, linked into every profile that serves reads, reading Parquet natively in standard SQL. An external process reads the same files with the engine uninstalled.
   *A-topology*
 - `quiet-table` — A quiet table registers as {{store.declare.empty-run}}. A read of it returns an empty result, never a missing-relation fault.
@@ -216,7 +218,7 @@ The operator's raw statement verb on the command line: its arguments, the relati
   *because operator text is the store owner's own, and a restriction bounds a capability-token caller*
 - `project-store` — A `--project` whose `.contextful/context/<project>/` store is absent raises `QueryProjectAbsent`.
   *because every declared table of an absent store registers as quiet, and an operator reads its zero rows as an answer*
-- `declaration-default` — `--declaration <path>` names the manifest whose declared tables register; without it, `contextful.toml` in the working directory does when present, and no manifest otherwise.
+- `declaration-default` — `--declaration <path>` names the project manifest whose {{read.register.declaration-set}} registers; without it, `contextful.toml` in the working directory does when present, and no manifest otherwise.
 - `limit-truncates` — `--limit <n>` bounds rows delivered with the over-fetch of {{read.respond.row-ceiling}}, and sets `truncated` per {{read.respond.truncation-is-exact}}. Without it every row is delivered and `truncated` is false.
 - `engine-fault` — A statement the engine rejects exits non-zero with the engine's message on standard error and nothing on standard output.
   *because a caller parsing standard output never mistakes a partial or empty envelope for an answer*

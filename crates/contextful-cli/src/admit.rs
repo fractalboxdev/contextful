@@ -241,9 +241,16 @@ pub fn face(located: &Located) -> Result<Face> {
     let manifest =
         std::fs::read_to_string(declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
     let store = Store::open(&located.project.dir, &located.project.name)?;
-    let face = Face::open(store, &manifest, pepper.clone())?;
+    let face = open_face(store, declaration, &manifest, pepper.clone())?;
     if let Some(signal) = pepper.signal() {
         eprintln!("{signal}");
     }
     Ok(face)
+}
+
+/// Open the read face over `manifest`, the text of the project manifest at `declaration`,
+/// and the tables of the `pipelines/` files beside it (`read.register.declaration-set`).
+pub fn open_face(store: Store, declaration: &Path, manifest: &str, pepper: Pepper) -> Result<Face> {
+    let tables = crate::pipeline::pipeline_tables(declaration)?;
+    Ok(Face::open_declared(store, manifest, tables, pepper)?)
 }

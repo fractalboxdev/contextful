@@ -39,10 +39,16 @@ fn project() -> tempfile::TempDir {
 /// Run the tool server with a credential reading `research/*`, and return the answer to
 /// one `context.query` call.
 fn mcp_query(dir: &Path, sql: &str) -> Value {
+    mcp_query_over(dir, sql, "research/*")
+}
+
+/// Run the tool server with a credential reading `tables`, and return the answer to one
+/// `context.query` call.
+fn mcp_query_over(dir: &Path, sql: &str, tables: &str) -> Value {
     let public = stdout(&run(dir, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     let token = stdout(&run(
         dir,
-        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "600"],
+        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", tables, "--ttl", "600"],
     ));
     let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(["mcp", "--project", "research", "--public-key", &public, "--audience", AUD])
@@ -192,7 +198,7 @@ fn a_project_with_no_store_is_refused() {
 }
 
 /// `--declaration` names the manifest whose declared tables register beside the store's.
-// spec: read.query.declaration-default@3a32905a
+// spec: read.query.declaration-default@670a6b16
 #[test]
 fn a_declaration_path_supplies_the_manifest() {
     let p = project();
@@ -202,4 +208,40 @@ fn a_declaration_path_supplies_the_manifest() {
     assert_eq!(out["rows"], json!([]));
     let absent = run(p.path(), &["query", "--json", "--project", "research", sql]);
     assert!(!absent.status.success());
+}
+
+/// The project of [`project`] with a `pipelines/feed.toml` keying `feed_items` on `id`,
+/// and two runs landing the same key into it.
+fn keyed_pipeline_project() -> tempfile::TempDir {
+    let dir = project();
+    let p = dir.path();
+    std::fs::create_dir_all(p.join("pipelines")).unwrap();
+    std::fs::write(
+        p.join("pipelines/feed.toml"),
+        "id = \"feed\"\ntables = [{ name = \"items\", primary_key = [\"id\"] }]\n[source]\nname = \"http\"\nconfig = { endpoint = \"http://127.0.0.1:9/v1\" }\n",
+    )
+    .unwrap();
+    for (run_id, title) in [("run-0002", "draft"), ("run-0003", "final")] {
+        std::fs::write(p.join("items.jsonl"), format!("{{\"id\":\"i1\",\"title\":\"{title}\"}}\n")).unwrap();
+        stdout(&run(p, &["context", "land", "feed_items", "--project", "research", "--rows", "items.jsonl", "--run-id", run_id, "--site-id", "site-a"]));
+    }
+    dir
+}
+
+/// A table a `pipelines/` file declares registers with its primary key, so two runs
+/// landing one key read as the newest row.
+// spec: read.register.declaration-set@78e58d03
+#[test]
+fn a_pipelines_file_keys_the_operator_read() {
+    let p = keyed_pipeline_project();
+    let out = query(p.path(), &["--project", "research", "SELECT id, title FROM feed_items"]);
+    assert_eq!(out["rows"], json!([["i1", "final"]]));
+}
+
+/// The token-facing read face declares the same `pipelines/` tables the operator verb does.
+#[test]
+fn a_pipelines_file_keys_the_tool_read() {
+    let p = keyed_pipeline_project();
+    let answer = mcp_query_over(p.path(), "SELECT id, title FROM feed_items", "feed_*");
+    assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["i1", "final"]]), "{answer}");
 }

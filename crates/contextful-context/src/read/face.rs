@@ -72,7 +72,18 @@ impl Face {
     /// against its table's schema is checked here, once, caller-independently; one
     /// failure refuses the whole manifest (`read.guard.startup-time-check`).
     pub fn open(store: Store, manifest: &str, pepper: Pepper) -> Result<Face, ReadFault> {
+        Face::open_declared(store, manifest, Vec::new(), pepper)
+    }
+
+    /// [`Face::open`] over the project manifest and the `tables` its sibling pipeline files
+    /// declare under their destination names (`read.register.declaration-set`). Each
+    /// answers to the manifest's own load checks.
+    pub fn open_declared(store: Store, manifest: &str, tables: Vec<TableDecl>, pepper: Pepper) -> Result<Face, ReadFault> {
         let mut parsed = TableDecl::parse_pipeline(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
+        for t in &tables {
+            t.check().map_err(|e| ReadFault::Policy(e.into()))?;
+        }
+        parsed.extend(tables);
         let memory = MemoryDeclarations::parse(manifest).map_err(|e| match e {
             DeclareError::Memory(m) => ReadFault::Refused(m.into()),
             DeclareError::Malformed(m) => ReadFault::Policy(m.into()),

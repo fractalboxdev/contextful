@@ -5,7 +5,8 @@
 //! counterpart on the tool protocol or any network face.
 
 use anyhow::{Context, Result};
-use contextful_context::read::{operator_query, Face, ReadOptions};
+use crate::admit::open_face;
+use contextful_context::read::{operator_query, ReadOptions};
 use contextful_context::Store;
 use contextful_policy::enforce::mask::Pepper;
 use std::path::PathBuf;
@@ -31,14 +32,17 @@ pub struct QueryArgs {
     sql: String,
 }
 
-fn manifest(declaration: Option<PathBuf>) -> Result<String> {
-    match declaration {
-        Some(path) => std::fs::read_to_string(&path).with_context(|| format!("reading the declaration `{}`", path.display())),
-        None => match std::fs::read_to_string(DEFAULT_DECLARATION) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-            other => other.with_context(|| format!("reading the declaration `{DEFAULT_DECLARATION}`")),
-        },
-    }
+/// The project manifest's path and text: the named file, else `contextful.toml` when present.
+fn manifest(declaration: Option<PathBuf>) -> Result<(PathBuf, String)> {
+    let Some(path) = declaration else {
+        let text = match std::fs::read_to_string(DEFAULT_DECLARATION) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            other => other.with_context(|| format!("reading the declaration `{DEFAULT_DECLARATION}`"))?,
+        };
+        return Ok((PathBuf::from(DEFAULT_DECLARATION), text));
+    };
+    let text = std::fs::read_to_string(&path).with_context(|| format!("reading the declaration `{}`", path.display()))?;
+    Ok((path, text))
 }
 
 pub fn run(args: QueryArgs) -> Result<()> {
@@ -46,7 +50,8 @@ pub fn run(args: QueryArgs) -> Result<()> {
     let response = match args.project {
         Some(project) => {
             let store = Store::open(&std::env::current_dir()?, &project)?;
-            let face = Face::open(store, &manifest(args.declaration)?, Pepper::resolve(|k| std::env::var(k).ok()))?;
+            let (path, text) = manifest(args.declaration)?;
+            let face = open_face(store, &path, &text, Pepper::resolve(|k| std::env::var(k).ok()))?;
             face.operator_query(&args.sql, opts)?
         }
         None => operator_query(&args.sql, opts)?,
