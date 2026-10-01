@@ -355,8 +355,262 @@ fn a_long_walk_rehydrates_a_lease_before_it_expires() {
         "headers": {"Authorization": "Bearer ${secret://vendor-token}"}
     }))
     .unwrap();
-    let mut src = contextful_connectors::http::HttpSource::new(config, "t", resolver).unwrap();
-    src.pull(&request(None), &Never).unwrap();
+    let src = contextful_connectors::http::HttpSource::new(config, "t", resolver).unwrap();
+    src.walk(&request(None), &Never).unwrap();
     let sent: Vec<String> = server.requests.lock().unwrap().iter().map(|r| r.header("authorization").unwrap_or_default().to_string()).collect();
     assert_eq!(sent, ["Bearer lease-1", "Bearer lease-2", "Bearer lease-3", "Bearer lease-4"], "each page carries a live lease");
+}
+
+/// The pulled bytes of one pull: rows, cursor and whether another follows.
+fn pulled(s: &mut contextful_connectors::http::HttpSource, position: Option<Value>) -> Result<(Vec<String>, Option<Value>, bool), contextful_core::run::Failure> {
+    let v: Value = serde_json::from_slice(&s.pull(&request(position), &Never)?).unwrap();
+    let rows: Vec<serde_json::Map<String, Value>> = serde_json::from_value(v["rows"].clone()).unwrap();
+    Ok((ids(&rows), v.get("cursor").cloned(), v["more"].as_bool().unwrap_or(false)))
+}
+
+/// One pull reads one page and pairs it with the position of the page after it.
+#[test]
+fn one_pull_reads_one_page_and_carries_the_next_as_its_position() {
+    let vendor = Server::start(|r| match r.query("after").as_deref() {
+        None => Response::json(200, "{\"data\":[{\"id\":\"c1\"}],\"next\":\"k2\"}"),
+        Some("k2") => Response::json(200, "{\"data\":[{\"id\":\"c2\"}],\"next\":\"k3\"}"),
+        Some("k3") => Response::json(200, "{\"data\":[{\"id\":\"c3\"}],\"next\":null}"),
+        _ => Response::json(500, "{}"),
+    });
+    let config = json!({"endpoint": vendor.url("/v1"), "records": "/data", "next_cursor_path": "/next", "cursor_param": "after"});
+    let mut s = source(config.clone(), vec![]);
+    assert_eq!(pulled(&mut s, None).unwrap(), (vec!["c1".to_string()], Some(json!({"next": "k2"})), true));
+    assert_eq!(pulled(&mut s, Some(json!({"next": "k2"}))).unwrap(), (vec!["c2".to_string()], Some(json!({"next": "k3"})), true));
+    // The walk's last page names the start: the next run walks from the first page again.
+    assert_eq!(pulled(&mut s, Some(json!({"next": "k3"}))).unwrap(), (vec!["c3".to_string()], Some(json!({"next": null})), false));
+    assert_eq!(vendor.received("/v1").len(), 3, "one request per pull");
+
+    // A fresh source resumes from a stored page position without re-reading the pages before it.
+    let mut resumed = source(config.clone(), vec![]);
+    assert_eq!(pulled(&mut resumed, Some(json!({"next": "k3"}))).unwrap().0, ["c3"]);
+    assert_eq!(pulled(&mut resumed, Some(json!({"next": null}))).unwrap().0, ["c1"], "a finished walk reads from the start");
+    let targets: Vec<Option<String>> = vendor.received("/v1").iter().map(|r| r.query("after")).collect();
+    assert_eq!(targets, [None, Some("k2".into()), Some("k3".into()), Some("k3".into()), None]);
+
+    // A position that is no page position refuses before any request.
+    let f = pulled(&mut source(config, vec![]), Some(json!({"next": 7}))).unwrap_err();
+    assert_eq!(f.tag, FailureTag::Config, "{f}");
+    assert_eq!(vendor.received("/v1").len(), 5);
+}
+
+/// Under page-number, next-cursor or no pagination and without an incremental field, one generic HTTP source pull
+/// reads one page and carries the next page's token as its position. The walk's last page carries a position naming the first page.
+// spec: connector.source.http-page-pull@8b42240d
+#[test]
+fn a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page() {
+    let pages = Server::start(|r| match r.query("p").as_deref() {
+        Some("1") => Response::json(200, "[{\"id\":\"p1\"}]"),
+        _ => Response::json(200, "[]"),
+    });
+    let mut p = source(json!({"endpoint": pages.url("/v1"), "page_param": "p"}), vec![]);
+    assert_eq!(pulled(&mut p, None).unwrap(), (vec!["p1".to_string()], Some(json!({"next": "2"})), true));
+    assert_eq!(pulled(&mut p, Some(json!({"next": "2"}))).unwrap(), (vec![], Some(json!({"next": null})), false));
+    assert_eq!(pulled(&mut p, Some(json!({"next": null}))).unwrap().0, ["p1"], "the next run walks from the first page");
+    let asked: Vec<Option<String>> = pages.received("/v1").iter().map(|r| r.query("p")).collect();
+    assert_eq!(asked, [Some("1".into()), Some("2".into()), Some("1".into())]);
+}
+
+/// Under next-URL or Link-header pagination, one generic HTTP source pull walks every page, and no position carries
+/// a page URL.
+// spec: connector.source.http-url-walk@ef55a50e
+#[test]
+fn a_next_url_walk_keeps_the_next_urls_query_out_of_every_position() {
+    for (key, value) in [("next_url_path", json!("/next")), ("link_header", json!(true))] {
+        let secret = "SEKRET123";
+        let fail = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let failing = fail.clone();
+        let vendor = Server::start(move |r| match r.path() {
+            "/v1" => Response {
+                status: 200,
+                headers: vec![("Link".into(), format!("</v1/2?access_token={secret}>; rel=\"next\""))],
+                body: format!("{{\"data\":[{{\"id\":\"a\"}}],\"next\":\"/v1/2?access_token={secret}\"}}").into_bytes(),
+            },
+            _ if failing.load(std::sync::atomic::Ordering::SeqCst) => Response::json(400, "{}"),
+            _ => Response::json(200, "{\"data\":[{\"id\":\"b\"}]}"),
+        });
+        let mut config = json!({"endpoint": vendor.url("/v1"), "records": "/data"});
+        config[key] = value.clone();
+        let mut s = source(config.clone(), vec![]);
+        // A page failing mid-walk leaves no pulled bytes behind, and its message carries no query.
+        let f = s.pull(&request(None), &Never).unwrap_err();
+        assert!(!f.message.contains(secret), "{key}: {f}");
+
+        fail.store(false, std::sync::atomic::Ordering::SeqCst);
+        let mut s = source(config, vec![]);
+        let bytes = s.pull(&request(None), &Never).unwrap();
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        assert!(!text.contains(secret), "{key}: {text}");
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!((v["more"].as_bool(), v.get("cursor")), (Some(false), None), "{key}: {text}");
+        assert_eq!(v["rows"].as_array().map(Vec::len), Some(2), "{key}: one pull walks every page");
+    }
+}
+
+/// Under an incremental field, one generic HTTP source pull walks every page from the stored watermark.
+// spec: connector.source.http-watermark-walk@eb93fe37
+#[test]
+fn a_watermarked_read_walks_every_page_in_one_pull() {
+    let vendor = Server::start(|r| match r.query("p").as_deref() {
+        Some("1") => Response::json(200, "[{\"id\":\"w1\",\"at\":\"2030-01-02\"}]"),
+        Some("2") => Response::json(200, "[{\"id\":\"w2\",\"at\":\"2030-01-03\"}]"),
+        _ => Response::json(200, "[]"),
+    });
+    let mut s = source(json!({"endpoint": vendor.url("/v1"), "page_param": "p", "since_param": "since"}), vec![]).watermarked();
+    let (rows, cursor, more) = pulled(&mut s, Some(json!({"field": "at", "at": "2030-01-01"}))).unwrap();
+    assert_eq!((rows, cursor, more), (vec!["w1".to_string(), "w2".to_string()], None, false));
+    assert!(vendor.received("/v1").iter().all(|r| r.query("since").as_deref() == Some("2030-01-01")));
+}
+
+const LIMITER_TOKEN: &str = "lim-7f2a";
+
+/// A limiter granting `permits` per acquire, recording every call.
+fn limiter_server(permits: u32) -> Server {
+    Server::start(move |r| {
+        if r.header("authorization") != Some(&format!("Bearer {LIMITER_TOKEN}")) {
+            return Response::json(401, "{}");
+        }
+        match r.path() {
+            "/acquire" => Response::json(200, &format!("{{\"decision\":\"granted\",\"permits\":{permits},\"ttl_secs\":60}}")),
+            _ => Response::json(204, ""),
+        }
+    })
+}
+
+fn bound_limiter(limiter: &Server, permits: u32) -> std::sync::Arc<contextful_outbound::Limiter> {
+    let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+    let binding = contextful_core::connector::meter::LimiterBinding::parse("vendor-app", &limiter.url(""), "secret://limiter-token", Some(permits)).unwrap();
+    let resolver = crate::support::resolver(vec![("limiter-token", LIMITER_TOKEN)]);
+    std::sync::Arc::new(contextful_outbound::Limiter::new(binding, resolver, "run-7", clock).unwrap())
+}
+
+fn metered_config(vendor: &Server) -> Value {
+    json!({
+        "endpoint": vendor.url("/v1"), "page_param": "p",
+        "limiter": {"quota": "vendor-app", "class": "batch-read", "usage_headers": ["X-RateLimit-Remaining"]}
+    })
+}
+
+fn paged_vendor() -> Server {
+    Server::start(|r| match r.query("p").as_deref() {
+        Some("1") | Some("2") => Response { status: 200, headers: vec![("X-RateLimit-Remaining".into(), "41".into())], body: b"[{\"id\":\"x\"}]".to_vec() },
+        _ => Response::json(200, "[]"),
+    })
+}
+
+/// The HTTP source's mediated client reserves one permit ahead of each page request, under the declared class.
+#[test]
+fn a_declared_limiter_reserves_one_permit_per_page() {
+    use contextful_connectors::http::{HttpSource, Mediation};
+    let (vendor, limiter) = (paged_vendor(), limiter_server(1));
+    let bound = bound_limiter(&limiter, 1);
+    let config = HttpConfig::parse(&metered_config(&vendor)).unwrap();
+    let mut s = HttpSource::mediated(config, "t", crate::support::resolver(vec![]), Mediation { limiter: Some(bound.clone()), ..Mediation::default() }).unwrap();
+    let mut position = None;
+    loop {
+        let (_, cursor, more) = pulled(&mut s, position).unwrap();
+        position = cursor;
+        if !more {
+            break;
+        }
+    }
+    bound.finish();
+    assert_eq!(vendor.received("/v1").len(), 3);
+    let acquires = limiter.received("/acquire");
+    assert_eq!(acquires.len(), 3, "one permit per page");
+    let body: Value = serde_json::from_slice(&acquires[0].body).unwrap();
+    assert_eq!((body["quota"].as_str(), body["class"].as_str()), (Some("vendor-app"), Some("batch-read")));
+    let reported: Value = serde_json::from_slice(&limiter.received("/report").last().unwrap().body).unwrap();
+    assert_eq!(reported["run_id"], "run-7");
+}
+
+/// Under a declared limiter, a vendor request with no granted reservation raises `ConnectorUnmetered`: a source
+/// declaring a quota with no limiter bound sends nothing.
+#[test]
+fn a_declared_limiter_left_unbound_sends_no_request() {
+    let vendor = paged_vendor();
+    let mut s = source(metered_config(&vendor), vec![]);
+    let f = pulled(&mut s, None).unwrap_err();
+    assert!(f.message.starts_with("ConnectorUnmetered"), "{f}");
+    assert!(vendor.received("/v1").is_empty());
+    // An unreachable limiter is no grant either.
+    let gone = Server::start(|_| Response::json(503, "{}"));
+    let bound = bound_limiter(&gone, 1);
+    let mut s = contextful_connectors::http::HttpSource::mediated(
+        HttpConfig::parse(&metered_config(&vendor)).unwrap(),
+        "t",
+        crate::support::resolver(vec![]),
+        contextful_connectors::http::Mediation { limiter: Some(bound), ..Default::default() },
+    )
+    .unwrap();
+    let f = pulled(&mut s, None).unwrap_err();
+    assert!(f.message.starts_with("ConnectorUnmetered"), "{f}");
+    assert!(vendor.received("/v1").is_empty());
+}
+
+/// An operator hook refusing the page request's intent spends no permit.
+struct Refusing(std::sync::Mutex<Vec<contextful_outbound::Intent>>);
+
+impl contextful_outbound::PreSendHook for Refusing {
+    fn admit(&self, intent: &contextful_outbound::Intent) -> Result<(), String> {
+        self.0.lock().unwrap().push(intent.clone());
+        Err("outside the change window".into())
+    }
+
+    fn settle(&self, _: &contextful_outbound::Intent, _: &contextful_outbound::Outcome) {}
+}
+
+#[test]
+fn an_operator_hook_composes_in_front_of_the_reservation() {
+    use contextful_connectors::http::{HttpSource, Mediation};
+    let (vendor, limiter) = (paged_vendor(), limiter_server(1));
+    let hook = std::sync::Arc::new(Refusing(Default::default()));
+    let mediation = Mediation { limiter: Some(bound_limiter(&limiter, 1)), hook: Some(hook.clone()), run_id: Some("run-7".into()), ..Mediation::default() };
+    let mut s = HttpSource::mediated(HttpConfig::parse(&metered_config(&vendor)).unwrap(), "t", crate::support::resolver(vec![]), mediation).unwrap();
+    let f = pulled(&mut s, None).unwrap_err();
+    assert!(f.message.starts_with("ConnectorEgressRefused") && f.message.contains("outside the change window"), "{f}");
+    assert!(limiter.received("/acquire").is_empty() && vendor.received("/v1").is_empty());
+    let seen = hook.0.lock().unwrap();
+    assert_eq!((seen[0].class.as_deref(), seen[0].run_id.as_deref()), (Some("batch-read"), Some("run-7")));
+}
+
+/// The generic HTTP source reads its scope probe from a `scope_probe` config table and carries its first
+/// reference-bound header as the bound credential.
+// spec: connector.source.http-scope-probe@09566d74
+#[test]
+fn the_scope_probe_runs_before_the_first_page() {
+    let grant = std::sync::Arc::new(std::sync::Mutex::new("items.read"));
+    let granted = grant.clone();
+    let vendor = Server::start(move |r| match r.path() {
+        "/identity" => Response { status: 200, headers: vec![("X-Granted-Scopes".into(), granted.lock().unwrap().to_string())], body: Vec::new() },
+        _ => match r.query("p").as_deref() {
+            Some("1") => Response::json(200, "[{\"id\":\"a\"}]"),
+            _ => Response::json(200, "[]"),
+        },
+    });
+    let config = json!({
+        "endpoint": vendor.url("/v1"), "page_param": "p",
+        "headers": {"Authorization": "Bearer ${secret://vendor-token}"},
+        "scope_probe": {"endpoint": vendor.url("/identity"), "scopes_header": "X-Granted-Scopes", "expect": ["items.read"]}
+    });
+    let mut s = source(config.clone(), vec![("vendor-token", "tok-1")]);
+    let (_, cursor, _) = pulled(&mut s, None).unwrap();
+    pulled(&mut s, cursor).unwrap();
+    let paths: Vec<String> = vendor.requests.lock().unwrap().iter().map(|r| r.path().to_string()).collect();
+    assert_eq!(paths, ["/identity", "/v1", "/v1"]);
+    assert_eq!(vendor.received("/identity")[0].header("authorization"), Some("Bearer tok-1"));
+
+    *grant.lock().unwrap() = "items.read, items.write";
+    let mut wide = source(config, vec![("vendor-token", "tok-1")]);
+    let f = pulled(&mut wide, None).unwrap_err();
+    assert!(f.message.starts_with("ConnectorScopeExceeded"), "{f}");
+    assert_eq!(vendor.received("/v1").len(), 2, "no page follows a refused grant");
+
+    // A probe with no bound credential to carry refuses at build.
+    let bare = json!({"endpoint": vendor.url("/v1"), "scope_probe": {"endpoint": vendor.url("/identity"), "scopes_header": "X-Granted-Scopes", "expect": []}});
+    assert!(HttpConfig::parse(&bare).is_err());
 }
