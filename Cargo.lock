@@ -555,6 +555,7 @@ dependencies = [
  "sha2 0.9.9",
  "thiserror 1.0.69",
  "time",
+ "wasm-bindgen",
  "zeroize",
 ]
 
@@ -1095,6 +1096,7 @@ dependencies = [
  "contextful-core",
  "contextful-eval",
  "ed25519-dalek",
+ "getrandom 0.2.17",
  "hex",
  "hmac 0.12.1",
  "jsonwebtoken",

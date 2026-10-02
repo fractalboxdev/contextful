@@ -12,6 +12,7 @@ mod release;
 mod secrets;
 mod test_first;
 mod topology;
+mod wasm;
 mod workflow;
 
 use std::path::{Path, PathBuf};

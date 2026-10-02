@@ -1,21 +1,27 @@
-//! `contextful formal differential` — the engine's pure decision functions against the
-//! Lean reference model, over seeded generated cases.
+//! `contextful formal differential` — the decision module's native and WebAssembly builds
+//! against the Lean reference model, over seeded generated cases.
 //!
-//! Two decisions are under test: table-pattern coverage (`contextful_core::grant`) and
-//! grant narrowing legality (`contextful_core::attenuate`). A case is one JSON value; the
-//! engine side decodes it through the domain parsers and calls the domain functions, the
-//! reference side is the `formal/reference` binary reading the case on standard input.
-//! The corpus replays first, then the generated cases run; the first disagreement shrinks
-//! by field removal, lands in the corpus and raises `ReferenceModelDrift`.
+//! Five decisions are under test: table-pattern coverage, grant narrowing legality, zone
+//! admission, session-zone resolution and credential admission, all in
+//! `contextful_policy::decide`. A case is one text, usually JSON; the native build decides
+//! it in process, the `wasm32-unknown-unknown` build decides it under the decision-module
+//! host, and the reference is the `formal/reference` binary reading it on standard input.
+//! A credential case skips the reference, which models no signature scheme. The corpus
+//! replays first, then the generated cases run; the first case on which any two decisions
+//! differ shrinks, lands in the corpus and raises `ReferenceModelDrift`.
 
 use anyhow::{bail, Context, Result};
 use clap::Args;
-use contextful_core::attenuate::{attenuate, Authority, Proposal};
-use contextful_core::grant::{Action, AggregateGrant, Grant, TablePattern, TenantScope};
-use contextful_core::identify::NormalizedSubject;
-use contextful_core::AuthorityError;
+pub use contextful_core::decide::{Decision, DECISION_FIELDS as COMPARED_FIELDS};
+use contextful_core::grant::{Action, Grant, TablePattern};
+use contextful_core::identify::Subject;
+use contextful_core::issue::{MintPlan, SignatureAlgorithm};
+use contextful_core::time::Instant as At;
+use contextful_policy::decide::VERIFY;
+use contextful_policy::issue::{mint_seeded, MintClaims, SeedSigner};
+use std::cell::RefCell;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -38,11 +44,17 @@ pub const DEFAULT_CORPUS: &str = "corpus/counterexamples.jsonl";
 /// The reference binary `lake build` writes, relative to the reference package root.
 pub const REFERENCE_EXE: &str = ".lake/build/bin/contextful-reference";
 
-/// The decision fields the harness compares, in order.
-pub const COMPARED_FIELDS: [&str; 3] = ["verdict", "error", "dimension"];
+/// The target the decision module's WebAssembly build compiles for.
+#[cfg(feature = "component-host")]
+pub const WASM_TARGET: &str = "wasm32-unknown-unknown";
 
-/// The identifier both sides give a case that does not decode as a case.
-pub const CASE_MALFORMED: &str = "CaseMalformed";
+/// The target directory, under the cargo target directory, the WebAssembly build uses.
+#[cfg(feature = "component-host")]
+pub const WASM_TARGET_DIR: &str = "decision-wasm";
+
+/// The package holding the decision module.
+#[cfg(feature = "component-host")]
+pub const DECISION_PACKAGE: &str = "contextful-policy";
 
 /// The refusals of `contextful formal differential`. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -76,20 +88,20 @@ pub struct DifferentialArgs {
     /// Lower the run budget below 300 s.
     #[arg(long, hide = true)]
     budget_secs: Option<u64>,
-    /// Read one case on standard input and print the engine's decision.
+    /// A prebuilt `wasm32-unknown-unknown` build of the decision module, used as is instead
+    /// of building one with cargo.
+    #[arg(long)]
+    wasm: Option<PathBuf>,
+    /// Read one case on standard input and print the native build's decision.
     #[arg(long)]
     decide: bool,
 }
 
 pub fn run(args: DifferentialArgs) -> Result<()> {
     if args.decide {
-        let mut input = String::new();
-        std::io::stdin().read_to_string(&mut input)?;
-        let decision = match serde_json::from_str::<Value>(&input) {
-            Ok(case) => engine_decide(&case),
-            Err(_) => Decision::refused(CASE_MALFORMED, None),
-        };
-        println!("{}", serde_json::to_string(&decision)?);
+        let mut input = Vec::new();
+        std::io::stdin().read_to_end(&mut input)?;
+        println!("{}", serde_json::to_string(&contextful_policy::decide::decide(&input))?);
         return Ok(());
     }
     let budget = match args.budget_secs {
@@ -98,20 +110,17 @@ pub fn run(args: DifferentialArgs) -> Result<()> {
         Some(s) => bail!("a budget of {s} s exceeds the {} s one invocation has", DIFFERENTIAL_BUDGET.as_secs()),
     };
     let started = Instant::now();
-    let root = match &args.root {
-        Some(r) => r.clone(),
-        None => {
-            let cwd = std::env::current_dir()?;
-            toplevel(&cwd).unwrap_or(cwd).join("formal/reference")
-        }
-    };
+    let cwd = std::env::current_dir()?;
+    let repo = toplevel(&cwd).unwrap_or(cwd);
+    let root = args.root.clone().unwrap_or_else(|| repo.join("formal/reference"));
     let reference = match args.reference {
         Some(exe) => exe,
         None => build_reference(&root)?,
     };
     let corpus = args.corpus.unwrap_or_else(|| root.join(DEFAULT_CORPUS));
     let seed = args.seed.unwrap_or_else(fresh_seed);
-    let harness = Harness { reference, corpus, deadline: started + budget, budget };
+    let wasm = wasm_build(&repo, args.wasm)?;
+    let harness = Harness { reference, wasm, corpus, deadline: started + budget, budget };
     let report = harness.run(seed, args.cases)?;
     print!("{report}");
     Ok(())
@@ -138,6 +147,67 @@ fn build_reference(root: &Path) -> Result<PathBuf> {
     Ok(root.join(REFERENCE_EXE))
 }
 
+/// The decision module's WebAssembly build, loaded: the one `--wasm` names, or one cargo
+/// builds from the repository. A binary built without the component host compares the
+/// native build alone.
+#[cfg(feature = "component-host")]
+fn wasm_build(repo: &Path, prebuilt: Option<PathBuf>) -> Result<Option<RefCell<contextful_wasm::DecisionModule>>> {
+    let path = match prebuilt {
+        Some(p) => p,
+        None => build_wasm(repo)?,
+    };
+    let bytes = std::fs::read(&path).with_context(|| format!("reading the WebAssembly build {}", path.display()))?;
+    let module = contextful_wasm::DecisionModule::load(&bytes).with_context(|| format!("loading {}", path.display()))?;
+    Ok(Some(RefCell::new(module)))
+}
+
+#[cfg(not(feature = "component-host"))]
+fn wasm_build(_repo: &Path, prebuilt: Option<PathBuf>) -> Result<Option<RefCell<Never>>> {
+    match prebuilt {
+        Some(p) => bail!("this binary carries no component host to run {}", p.display()),
+        None => Ok(None),
+    }
+}
+
+/// The decision module's host where the binary carries none.
+#[cfg(not(feature = "component-host"))]
+enum Never {}
+
+#[cfg(not(feature = "component-host"))]
+impl Never {
+    fn decide(&mut self, _case: &[u8]) -> Result<Vec<u8>> {
+        match *self {}
+    }
+}
+
+/// Build the decision module for `wasm32-unknown-unknown` as a `cdylib`, into its own
+/// target directory, and return the module's path.
+#[cfg(feature = "component-host")]
+fn build_wasm(repo: &Path) -> Result<PathBuf> {
+    let base = match std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from) {
+        Some(d) if d.is_absolute() => d,
+        Some(d) => repo.join(d),
+        None => repo.join("target"),
+    };
+    let target_dir = base.join(WASM_TARGET_DIR);
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let out = Command::new(cargo)
+        .args(["rustc", "-q", "-p", DECISION_PACKAGE, "--lib", "--release", "--target", WASM_TARGET, "--crate-type", "cdylib"])
+        .arg("--target-dir")
+        .arg(&target_dir)
+        .current_dir(repo)
+        .output()
+        .context("running cargo")?;
+    if !out.status.success() {
+        bail!(
+            "building {DECISION_PACKAGE} for {WASM_TARGET} failed in {}:\n{}",
+            repo.display(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    Ok(target_dir.join(WASM_TARGET).join("release").join(format!("{}.wasm", DECISION_PACKAGE.replace('-', "_"))))
+}
+
 fn fresh_seed() -> u64 {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     (nanos as u64) ^ u64::from(std::process::id()).rotate_left(32)
@@ -145,166 +215,92 @@ fn fresh_seed() -> u64 {
 
 // ---------------------------------------------------------------- decisions
 
-/// One decision: a verdict, an error identifier, and the dimension a widening names.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Decision {
-    pub verdict: String,
-    pub error: Option<String>,
-    pub dimension: Option<String>,
+/// The decision as the corpus prints it.
+fn render(d: &Decision) -> String {
+    serde_json::to_value(d).map(|v| v.to_string()).unwrap_or_default()
 }
 
-impl Decision {
-    fn verdict(v: &str) -> Decision {
-        Decision { verdict: v.to_string(), error: None, dimension: None }
-    }
-
-    fn refused(error: &str, dimension: Option<&str>) -> Decision {
-        Decision { verdict: "refused".into(), error: Some(error.into()), dimension: dimension.map(str::to_string) }
-    }
-
-    fn coverage(covered: bool) -> Decision {
-        Decision::verdict(if covered { "covered" } else { "not_covered" })
-    }
-
-    /// The fields on which two decisions differ, in [`COMPARED_FIELDS`] order.
-    pub fn differing(&self, other: &Decision) -> Vec<&'static str> {
-        let pairs = [
-            self.verdict == other.verdict,
-            self.error == other.error,
-            self.dimension == other.dimension,
-        ];
-        COMPARED_FIELDS.iter().zip(pairs).filter(|(_, same)| !same).map(|(f, _)| *f).collect()
-    }
-
-    /// The decision as the corpus prints it.
-    fn render(&self) -> String {
-        serde_json::to_value(self).map(|v| v.to_string()).unwrap_or_default()
-    }
+/// One case: a JSON value, or bytes no JSON value serializes to.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Case {
+    Json(Value),
+    Bytes(Vec<u8>),
 }
 
-/// A fault decoding a case: its shape, or a domain parser's refusal.
-enum Fault {
-    Malformed,
-    Refused(AuthorityError),
-}
-
-impl From<AuthorityError> for Fault {
-    fn from(e: AuthorityError) -> Fault {
-        Fault::Refused(e)
-    }
-}
-
-type Decoded<T> = std::result::Result<T, Fault>;
-
-/// The error identifier an [`AuthorityError`] carries at the head of its `Display`.
-fn identifier(e: &AuthorityError) -> String {
-    e.to_string().split(':').next().unwrap_or_default().to_string()
-}
-
-/// The engine's decision on one case.
-pub fn engine_decide(case: &Value) -> Decision {
-    match decide_case(case) {
-        Ok(d) => d,
-        Err(Fault::Malformed) => Decision::refused(CASE_MALFORMED, None),
-        Err(Fault::Refused(e)) => refusal(&e),
-    }
-}
-
-fn refusal(e: &AuthorityError) -> Decision {
-    let id = identifier(e);
-    let dimension = match e {
-        // The widened dimension heads the message (`authority.attenuate.widens`).
-        AuthorityError::AttenuationWidens(msg) => msg.split(':').next().map(str::trim),
-        _ => None,
-    };
-    Decision::refused(&id, dimension)
-}
-
-fn decide_case(case: &Value) -> Decoded<Decision> {
-    let obj = case.as_object().ok_or(Fault::Malformed)?;
-    match string(required(obj, "op")?)? {
-        "covers_name" => {
-            let pattern = string(required(obj, "pattern")?)?;
-            let name = string(required(obj, "name")?)?;
-            Ok(Decision::coverage(TablePattern::parse(pattern)?.covers_name(name)))
+impl Case {
+    /// The text every decider reads.
+    pub fn text(&self) -> Vec<u8> {
+        match self {
+            Case::Json(v) => v.to_string().into_bytes(),
+            Case::Bytes(b) => b.clone(),
         }
-        "covers_pattern" => {
-            let pattern = string(required(obj, "pattern")?)?;
-            let other = string(required(obj, "other")?)?;
-            let pattern = TablePattern::parse(pattern)?;
-            let other = TablePattern::parse(other)?;
-            Ok(Decision::coverage(pattern.covers(&other)))
+    }
+
+    /// Whether the reference model decides the case: every text but one reading as a JSON
+    /// credential case, whatever its field values.
+    fn reaches_reference(&self) -> bool {
+        let text = self.text();
+        serde_json::from_slice::<Value>(&text).map_or(true, |v| v.get("op").and_then(Value::as_str) != Some(VERIFY))
+    }
+
+    /// The operation a report counts the case under.
+    fn op(&self) -> &str {
+        match self {
+            Case::Json(v) => v.get("op").and_then(Value::as_str).filter(|op| OPERATIONS.contains(op)).unwrap_or("unknown"),
+            Case::Bytes(_) => "bytes",
         }
-        "narrow" => {
-            let parent = required(obj, "parent")?.as_array().ok_or(Fault::Malformed)?;
-            let child = required(obj, "child")?.as_array().ok_or(Fault::Malformed)?;
-            let parent = parent.iter().map(grant).collect::<Decoded<Vec<_>>>()?;
-            let child = child.iter().map(grant).collect::<Decoded<Vec<_>>>()?;
-            let authority = Authority { grants: parent, exp: 0, subject: NormalizedSubject::default() };
-            let proposal = Proposal { grants: Some(child), ..Proposal::default() };
-            Ok(match attenuate(&authority, &proposal) {
-                Ok(_) => Decision::verdict("admitted"),
-                Err(e) => refusal(&e),
-            })
-        }
-        _ => Err(Fault::Malformed),
     }
 }
 
-/// A present, non-null field.
-fn field<'a>(obj: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
-    obj.get(key).filter(|v| !v.is_null())
+impl std::fmt::Display for Case {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Case::Json(v) => write!(f, "{v}"),
+            Case::Bytes(b) => write!(f, "bytes {}", hex(b)),
+        }
+    }
 }
 
-fn required<'a>(obj: &'a Map<String, Value>, key: &str) -> Decoded<&'a Value> {
-    field(obj, key).ok_or(Fault::Malformed)
+/// The verdicts a credential case decides, in report order.
+pub const CREDENTIAL_VERDICTS: [&str; 3] = ["admitted", "not_covered", "refused"];
+
+/// The operations a case names.
+pub const OPERATIONS: [&str; 6] = ["covers_name", "covers_pattern", "narrow", "zone_admits", "session_zone", VERIFY];
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn string(v: &Value) -> Decoded<&str> {
-    v.as_str().ok_or(Fault::Malformed)
+fn unhex(text: &str) -> Option<Vec<u8>> {
+    if text.len() % 2 != 0 {
+        return None;
+    }
+    (0..text.len()).step_by(2).map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok()).collect()
 }
 
-fn strings(v: &Value) -> Decoded<Vec<String>> {
-    v.as_array().ok_or(Fault::Malformed)?.iter().map(|s| string(s).map(str::to_string)).collect()
+/// The decisions on one case; `wasm` is absent where the binary carries no host, and
+/// `reference` on a credential case.
+#[derive(Debug, Clone)]
+struct Decisions {
+    native: Decision,
+    wasm: Option<Decision>,
+    reference: Option<Decision>,
 }
 
-fn unsigned(v: &Value) -> Decoded<u64> {
-    v.as_u64().ok_or(Fault::Malformed)
-}
+impl Decisions {
+    /// Every field on which any two decisions differ, in [`COMPARED_FIELDS`] order.
+    fn differing(&self) -> Vec<&'static str> {
+        let others: Vec<&Decision> = self.wasm.iter().chain(&self.reference).collect();
+        let mut pairs: Vec<(&Decision, &Decision)> = others.iter().map(|o| (&self.native, *o)).collect();
+        if let (Some(w), Some(r)) = (&self.wasm, &self.reference) {
+            pairs.push((w, r));
+        }
+        COMPARED_FIELDS.iter().copied().filter(|f| pairs.iter().any(|(a, b)| a.differing(b).contains(f))).collect()
+    }
 
-fn optional<T>(obj: &Map<String, Value>, key: &str, f: impl Fn(&Value) -> Decoded<T>) -> Decoded<Option<T>> {
-    field(obj, key).map(f).transpose()
-}
-
-fn tenant(v: &Value) -> Decoded<TenantScope> {
-    let obj = v.as_object().ok_or(Fault::Malformed)?;
-    let table = string(required(obj, "table")?)?.to_string();
-    let value = string(required(obj, "value")?)?.to_string();
-    Ok(TenantScope { table, value })
-}
-
-fn aggregate(v: &Value) -> Decoded<AggregateGrant> {
-    let obj = v.as_object().ok_or(Fault::Malformed)?;
-    let min_group_size = unsigned(required(obj, "min_group_size")?)?;
-    let max_contributor_share = required(obj, "max_contributor_share")?.as_f64().ok_or(Fault::Malformed)?;
-    let functions = strings(required(obj, "functions")?)?;
-    let max_groups = unsigned(required(obj, "max_groups")?)?;
-    let max_rows = optional(obj, "max_rows", unsigned)?;
-    Ok(AggregateGrant { min_group_size, max_contributor_share, functions, max_groups, max_rows })
-}
-
-/// One grant: its shape first, then each action, then each table pattern.
-fn grant(v: &Value) -> Decoded<Grant> {
-    let obj = v.as_object().ok_or(Fault::Malformed)?;
-    let actions = strings(required(obj, "actions")?)?;
-    let tables = strings(required(obj, "tables")?)?;
-    let tenant = optional(obj, "tenant", tenant)?;
-    let templates = optional(obj, "templates", strings)?;
-    let aggregate = optional(obj, "aggregate", aggregate)?;
-    let max_rows = optional(obj, "max_rows", unsigned)?;
-    let actions = actions.iter().map(|a| Action::parse(a)).collect::<Result<Vec<_>, _>>()?;
-    let tables = tables.iter().map(|t| TablePattern::parse(t)).collect::<Result<Vec<_>, _>>()?;
-    Ok(Grant { actions, tables, tenant, aggregate, templates, max_rows })
+    fn agree(&self) -> bool {
+        self.differing().is_empty()
+    }
 }
 
 // ---------------------------------------------------------------- generator
@@ -369,6 +365,16 @@ struct Pools {
     shares: &'static [f64],
     /// How often a grant carries aggregate constraints, in percent.
     aggregate_percent: u64,
+    zones: &'static [&'static str],
+    entries: &'static [&'static str],
+    /// Credential lifetimes, in seconds from issue.
+    lifetimes: &'static [u64],
+    /// Evaluation instants, in seconds from expiry.
+    expiry_offsets: &'static [i64],
+    /// The audiences a checkpoint declares; an empty one declares none.
+    audiences: &'static [&'static str],
+    /// How often a credential's text is damaged before the case carries it, in percent.
+    damage_percent: u64,
 }
 
 const ACTIONS: [&str; 4] = ["read", "write", "execute", "admin"];
@@ -392,6 +398,21 @@ const WELL_FORMED: Pools = Pools {
     counts: &[2, 5, 10, 20, 100],
     shares: &[0.1, 0.25, 0.5, 0.75, 1.0],
     aggregate_percent: 30,
+    zones: &["local:device", "on-prem:hq", "on-prem:ward-3", "private-cloud:vpc-7", "public-cloud:us-east-1", "public-cloud:eu-west-1"],
+    entries: &[
+        "*",
+        "local:device",
+        "on-prem:*",
+        "on-prem:hq",
+        "private-cloud:*",
+        "private-cloud:vpc-7",
+        "public-cloud:*",
+        "public-cloud:us-east-1",
+    ],
+    lifetimes: &[60, 900, 3600],
+    expiry_offsets: &[-3000, -600, -60],
+    audiences: &[AUDIENCE, AUDIENCE, AUDIENCE, OTHER_AUDIENCE],
+    damage_percent: 0,
 };
 
 const BOUNDARY: Pools = Pools {
@@ -410,7 +431,144 @@ const BOUNDARY: Pools = Pools {
     counts: &[0, 1, 2, u64::MAX - 1, u64::MAX],
     shares: &[0.0, 1.0, 0.5, 0.9999],
     aggregate_percent: 60,
+    // Whitespace Unicode lists, a zero-width space it does not, identifiers at and past
+    // 128 chars, a second colon, case and non-ASCII letters.
+    zones: &[
+        "",
+        " local:device ",
+        "\u{a0}on-prem:hq",
+        "on-prem:hq\u{3000}",
+        "\u{200b}on-prem:hq",
+        "\u{85}public-cloud:x\u{2029}",
+        "on-prem:",
+        "on-prem:*",
+        "Local:device",
+        "on-prem:a:b",
+        "on-prem:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "on-prem:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "on-prem:\u{e9}",
+        "public-cloud:us east",
+        "undeclared",
+    ],
+    entries: &[
+        "*",
+        " * ",
+        "",
+        "local:device",
+        "on-prem:*",
+        "on-prem:**",
+        "on-prem:",
+        "onprem:*",
+        "on-prem:hq",
+        "\u{a0}on-prem:*",
+        "*:*",
+        "local:*",
+        "on-prem:a:b",
+        "on-prem:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "on-prem:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "public-cloud:*",
+    ],
+    lifetimes: &[0, 1, 3600, 3601, 86_400],
+    expiry_offsets: &[-1, 0, 1, -3601],
+    audiences: &[AUDIENCE, "", " contextful://acme-research", "CONTEXTFUL://ACME-RESEARCH", OTHER_AUDIENCE],
+    damage_percent: 40,
 };
+
+/// The audience every generated credential names.
+const AUDIENCE: &str = "contextful://acme-research";
+const OTHER_AUDIENCE: &str = "contextful://another-project";
+
+/// The instant every generated credential is issued at: 2030-01-01T00:00:00Z.
+const ISSUED_AT: i64 = 1_893_456_000;
+
+/// The issuer seeds a credential case signs under, each in the library's text form.
+const ISSUERS: [&str; 3] = [
+    "ed25519-private/1111111111111111111111111111111111111111111111111111111111111111",
+    "ed25519-private/2222222222222222222222222222222222222222222222222222222222222222",
+    "secp256r1-private/3333333333333333333333333333333333333333333333333333333333333333",
+];
+
+fn issuer(seed: &str) -> SeedSigner {
+    SeedSigner::from_seed(seed).expect("a fixed issuer seed decodes")
+}
+
+/// A credential case: a credential minted from the sequence, checked against pinned keys
+/// that include its issuer's or not, at an instant around its expiry, for a declared
+/// audience or none, optionally denylisted, holder-bound or damaged, and optionally asking
+/// whether an action over tables is covered.
+fn gen_verify(rng: &mut Rng, pools: &Pools) -> Value {
+    let issuer_at = rng.below(ISSUERS.len());
+    let signer = issuer(ISSUERS[issuer_at]);
+    let grants: Vec<Grant> = (0..rng.below(3) + 1)
+        .map(|_| {
+            let mut actions = rng.subset(&[Action::Read, Action::Write, Action::Execute], 50);
+            if actions.is_empty() {
+                actions.push(Action::Read);
+            }
+            let mut tables: Vec<TablePattern> =
+                (0..rng.below(2) + 1).filter_map(|_| TablePattern::parse(rng.pick(pools.patterns)).ok()).collect();
+            if tables.is_empty() {
+                tables.push(TablePattern::parse("research/*").expect("a fixed pattern parses"));
+            }
+            Grant { actions, tables, tenant: None, aggregate: None, templates: None, max_rows: None }
+        })
+        .collect();
+    let lifetime = *rng.pick(pools.lifetimes);
+    let expires = ISSUED_AT + lifetime as i64;
+    let plan = MintPlan {
+        subject: Subject {
+            on_behalf_of: rng.chance(90).then(|| "user://dana@acme.example".to_string()),
+            agent: rng.chance(60).then(|| "agent://research-loop".to_string()),
+            ..Subject::default()
+        },
+        grants,
+        audience: AUDIENCE.to_string(),
+        issuer: None,
+        algorithm: if issuer_at == 2 { SignatureAlgorithm::Es256 } else { SignatureAlgorithm::Ed25519 },
+        issued_at: At::from_unix_secs(ISSUED_AT).expect("a fixed instant"),
+        expires_at: At::from_unix_secs(expires).expect("a fixed instant"),
+        lifetime_secs: lifetime,
+    };
+    let claims = MintClaims { confirmation: rng.chance(10).then(|| "holder-thumbprint".to_string()), epoch: 0 };
+    let mut seed = [0u8; 32];
+    for chunk in seed.chunks_mut(8) {
+        chunk.copy_from_slice(&rng.next().to_le_bytes());
+    }
+    let credential = mint_seeded(&plan, &claims, &signer, &seed).expect("a generated plan mints");
+    let mut keys = Vec::new();
+    for (i, other) in ISSUERS.iter().enumerate() {
+        let pinned = if i == issuer_at { rng.chance(90) } else { rng.chance(30) };
+        if pinned {
+            keys.push(format!("k{i}={}", issuer(other).public_key_text()));
+        }
+    }
+    let at = expires + *rng.pick(pools.expiry_offsets);
+    let mut case = json!({"op": VERIFY, "credential": credential, "keys": keys, "at": at.max(0)});
+    let audience = *rng.pick(pools.audiences);
+    if !audience.is_empty() {
+        case["audience"] = json!(audience);
+    }
+    if rng.chance(15) {
+        let rev = contextful_policy::verify::introspect(&credential).map(|i| i.authority.rev.id).unwrap_or_default();
+        case["denylist"] = json!([rev]);
+    }
+    if rng.chance(50) {
+        let tables: Vec<&str> = (0..rng.below(2) + 1).map(|_| *rng.pick(pools.names)).collect();
+        case["action"] = json!(rng.pick(&ACTIONS));
+        case["tables"] = json!(tables);
+    }
+    if rng.chance(pools.damage_percent) {
+        let mut text = credential.into_bytes();
+        let at = rng.below(text.len());
+        match rng.below(3) {
+            0 => text[at] = if text[at] == b'A' { b'B' } else { b'A' },
+            1 => text.truncate(at),
+            _ => text.insert(at, b'='),
+        }
+        case["credential"] = json!(String::from_utf8_lossy(&text));
+    }
+    case
+}
 
 const MISPLACED_STARS: [&str; 5] = ["a*b", "**", "*x", "re*s*", "research/*/eu"];
 const UNKNOWN_ACTIONS: [&str; 5] = ["READ", "delete", " read", "", "reads"];
@@ -535,9 +693,23 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
 }
 
 fn gen_request(rng: &mut Rng, pools: &Pools) -> Value {
-    match rng.below(10) {
+    match rng.below(16) {
+        14..=15 => gen_verify(rng, pools),
         0..=2 => json!({"op": "covers_name", "pattern": gen_pattern(rng, pools), "name": rng.pick(pools.names)}),
         3..=5 => json!({"op": "covers_pattern", "pattern": gen_pattern(rng, pools), "other": gen_pattern(rng, pools)}),
+        10..=11 => {
+            let allow: Vec<&str> = (0..rng.below(4)).map(|_| *rng.pick(pools.entries)).collect();
+            json!({"op": "zone_admits", "zone": rng.pick(pools.zones), "allow": allow})
+        }
+        12..=13 => {
+            let mut case = json!({"op": "session_zone", "incognito": rng.chance(50)});
+            for key in ["asserted", "signed"] {
+                if rng.chance(60) {
+                    case[key] = json!(rng.pick(pools.zones));
+                }
+            }
+            case
+        }
         _ => {
             let parent: Vec<Value> = (0..rng.below(3) + usize::from(rng.chance(90))).map(|_| gen_grant(rng, pools)).collect();
             let child: Vec<Value> = (0..rng.below(3) + usize::from(rng.chance(80)))
@@ -647,17 +819,86 @@ fn corrupt(rng: &mut Rng, mut case: Value) -> Value {
                 None => case = json!({"op": "narrow", "parent": [{"actions": ["read"], "tables": ["*"], "max_rows": replacement}], "child": []}),
             }
         }
-        4 => case["op"] = json!(rng.pick(&["cover", "", "NARROW", "covers_names"])),
+        4 => case["op"] = json!(rng.pick(&["cover", "", "NARROW", "covers_names", "ZONE_ADMITS", "session-zone", "VERIFY"])),
         _ => case = rng.pick(&[json!(null), json!([]), json!("narrow"), json!(3), json!({})]).clone(),
     }
     case
+}
+
+/// Byte sequences no UTF-8 decoder accepts: a stray byte, a truncated or overlong
+/// sequence, an encoded surrogate, a scalar past U+10FFFF, a lone continuation byte.
+const INVALID_UTF8: [&[u8]; 7] =
+    [b"\xff", b"\xc3\x28", b"\xc0\xaf", b"\xed\xa0\x80", b"\xe2\x82", b"\xf4\x90\x80\x80", b"\x80"];
+
+/// Integer literals outside the unsigned 64-bit range.
+const OUT_OF_RANGE: [&str; 6] = [
+    "18446744073709551616",
+    "18446744073709551617",
+    "100000000000000000000",
+    "340282366920938463463374607431768211456",
+    "-9223372036854775809",
+    "-1",
+];
+
+/// Stands in for a value until the case serializes; no pool value holds `@`.
+const MARKER: &str = "@@@";
+
+/// A well-formed request's text with invalid UTF-8 in one of its strings, or an
+/// out-of-range literal in one of its integer fields.
+fn malformed_bytes(rng: &mut Rng, pools: &Pools) -> Vec<u8> {
+    let mut case = gen_request(rng, pools);
+    if rng.chance(50) {
+        let bad = *rng.pick(&INVALID_UTF8);
+        let text = if mark(rng, &mut case, |_, v| v.is_string()) { case.to_string() } else { format!("{MARKER}{case}") };
+        splice_marker(text.as_bytes(), bad)
+    } else {
+        let literal = rng.pick(&OUT_OF_RANGE).as_bytes();
+        let integer = |p: &[Step], _: &Value| {
+            matches!(p.last(), Some(Step::Key(k)) if ["min_group_size", "max_groups", "max_rows"].contains(&k.as_str()))
+        };
+        if !mark(rng, &mut case, integer) {
+            case = json!({"op": "narrow", "parent": [{"actions": ["read"], "tables": ["*"], "max_rows": MARKER}], "child": []});
+        }
+        splice_marker(case.to_string().as_bytes(), &[b"\"", literal, b"\""].concat())
+    }
+}
+
+/// Replace one value `keep` admits, chosen at random, with the marker; false when `keep`
+/// admits none.
+fn mark(rng: &mut Rng, case: &mut Value, keep: impl Fn(&[Step], &Value) -> bool) -> bool {
+    let mut all = Vec::new();
+    paths(case, &mut Vec::new(), &mut all);
+    let candidates: Vec<Vec<Step>> = all.into_iter().filter(|p| at_mut(case, p).is_some_and(|v| keep(p, v))).collect();
+    if candidates.is_empty() {
+        return false;
+    }
+    let path = &candidates[rng.below(candidates.len())];
+    if let Some(v) = at_mut(case, path) {
+        *v = json!(MARKER);
+    }
+    true
+}
+
+/// The text with the first quoted or bare marker replaced by `with`: a quoted marker loses
+/// its quotes only where `with` supplies them.
+fn splice_marker(text: &[u8], with: &[u8]) -> Vec<u8> {
+    let needle = MARKER.as_bytes();
+    match text.windows(needle.len()).position(|w| w == needle) {
+        Some(at) => {
+            let quoted = with.first() == Some(&b'"') && at > 0 && text.get(at + needle.len()) == Some(&b'"');
+            let (from, to) = if quoted { (at - 1, at + needle.len() + 1) } else { (at, at + needle.len()) };
+            let body = if quoted { &with[1..with.len() - 1] } else { with };
+            [&text[..from], body, &text[to..]].concat()
+        }
+        None => [text, with].concat(),
+    }
 }
 
 /// The case at one position of a seeded sequence.
 struct Generated {
     index: u64,
     class: CaseClass,
-    case: Value,
+    case: Case,
 }
 
 struct Generator {
@@ -678,12 +919,16 @@ impl Generator {
             _ => CaseClass::WellFormed,
         };
         let case = match class {
-            CaseClass::WellFormed => gen_request(rng, &WELL_FORMED),
-            CaseClass::Boundary => gen_request(rng, &BOUNDARY),
+            CaseClass::WellFormed => Case::Json(gen_request(rng, &WELL_FORMED)),
+            CaseClass::Boundary => Case::Json(gen_request(rng, &BOUNDARY)),
             CaseClass::Malformed => {
                 let pools = if rng.chance(50) { &WELL_FORMED } else { &BOUNDARY };
-                let base = gen_request(rng, pools);
-                corrupt(rng, base)
+                if rng.chance(30) {
+                    Case::Bytes(malformed_bytes(rng, pools))
+                } else {
+                    let base = gen_request(rng, pools);
+                    Case::Json(corrupt(rng, base))
+                }
             }
         };
         let g = Generated { index: self.index, class, case };
@@ -778,12 +1023,22 @@ fn shortenings(v: &Value) -> Vec<Value> {
 
 // ---------------------------------------------------------------- corpus
 
-/// One corpus line: the minimized case, both decisions on it, and where it came from.
+/// One corpus line: the minimized case, every decision on it, and where it came from. A
+/// case no JSON value serializes to sits in `bytes`, hex-encoded, with `case` absent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entry {
+    #[serde(default, skip_serializing_if = "Value::is_null")]
     pub case: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<String>,
+    /// The native build's decision.
     pub engine: Decision,
-    pub reference: Decision,
+    /// The WebAssembly build's decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wasm: Option<Decision>,
+    /// The reference model's decision; absent on a credential case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<Decision>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -793,6 +1048,25 @@ pub struct Entry {
     /// The generated case before shrinking.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub original: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_bytes: Option<String>,
+}
+
+impl Entry {
+    fn case(&self) -> Case {
+        match self.bytes.as_deref().and_then(unhex) {
+            Some(b) => Case::Bytes(b),
+            None => Case::Json(self.case.clone()),
+        }
+    }
+}
+
+/// A case split into the entry's JSON and hex-encoded forms.
+fn entry_forms(case: &Case) -> (Value, Option<String>) {
+    match case {
+        Case::Json(v) => (v.clone(), None),
+        Case::Bytes(b) => (Value::Null, Some(hex(b))),
+    }
 }
 
 fn load_corpus(path: &Path) -> Result<Vec<Entry>> {
@@ -824,8 +1098,14 @@ fn store_corpus(path: &Path, entries: &[Entry]) -> Result<()> {
 
 // ---------------------------------------------------------------- harness
 
+#[cfg(feature = "component-host")]
+type WasmHost = contextful_wasm::DecisionModule;
+#[cfg(not(feature = "component-host"))]
+type WasmHost = Never;
+
 struct Harness {
     reference: PathBuf,
+    wasm: Option<RefCell<WasmHost>>,
     corpus: PathBuf,
     deadline: Instant,
     budget: Duration,
@@ -835,8 +1115,11 @@ struct Harness {
 struct Report {
     replayed: usize,
     generated: u64,
+    builds: &'static str,
     classes: BTreeMap<CaseClass, u64>,
     operations: BTreeMap<String, u64>,
+    /// The native build's verdict on each credential case, counted.
+    credential_verdicts: BTreeMap<String, u64>,
     digest: String,
     elapsed: Duration,
 }
@@ -848,8 +1131,14 @@ impl std::fmt::Display for Report {
         let ops: Vec<String> = self.operations.iter().map(|(op, n)| format!("{op} {n}")).collect();
         writeln!(f, "replayed {}", self.replayed)?;
         writeln!(f, "generated {}", self.generated)?;
+        writeln!(f, "builds {}", self.builds)?;
         writeln!(f, "classes {}", classes.join(", "))?;
         writeln!(f, "operations {}", ops.join(", "))?;
+        let verdicts: Vec<String> = CREDENTIAL_VERDICTS
+            .iter()
+            .map(|v| format!("{v} {}", self.credential_verdicts.get(*v).copied().unwrap_or(0)))
+            .collect();
+        writeln!(f, "verify verdicts {}", verdicts.join(", "))?;
         writeln!(f, "compared fields {}", COMPARED_FIELDS.join(", "))?;
         writeln!(f, "cases sha256 {}", self.digest)?;
         writeln!(f, "disagreements 0")?;
@@ -864,39 +1153,40 @@ impl Harness {
         let corpus = load_corpus(&self.corpus)?;
         for entry in &corpus {
             self.within_budget()?;
-            let (engine, reference) = self.both(&entry.case)?;
-            if !engine.differing(&reference).is_empty() {
+            let case = entry.case();
+            let decisions = self.decide(&case)?;
+            if !decisions.agree() {
                 // The case is already recorded; its entry is the retained counterexample.
-                return Err(self.drift(&entry.case, &engine, &reference, "replayed from the corpus").into());
+                return Err(self.drift(&case, &decisions, "replayed from the corpus").into());
             }
         }
         let mut generator = Generator::new(seed);
         let mut digest = Sha256::new();
         let mut classes = BTreeMap::new();
         let mut operations = BTreeMap::new();
+        let mut credential_verdicts = BTreeMap::new();
         for _ in 0..cases {
             self.within_budget()?;
             let g = generator.next_case();
-            digest.update(g.case.to_string().as_bytes());
+            digest.update(g.case.text());
             digest.update(b"\n");
             *classes.entry(g.class).or_insert(0) += 1;
-            let op = g
-                .case
-                .get("op")
-                .and_then(Value::as_str)
-                .filter(|op| ["covers_name", "covers_pattern", "narrow"].contains(op))
-                .unwrap_or("unknown");
-            *operations.entry(op.to_string()).or_insert(0) += 1;
-            let (engine, reference) = self.both(&g.case)?;
-            if !engine.differing(&reference).is_empty() {
+            *operations.entry(g.case.op().to_string()).or_insert(0) += 1;
+            let decisions = self.decide(&g.case)?;
+            if !decisions.agree() {
                 return Err(self.record(seed, g)?);
+            }
+            if g.case.op() == VERIFY {
+                *credential_verdicts.entry(decisions.native.verdict).or_insert(0) += 1;
             }
         }
         Ok(Report {
             replayed: corpus.len(),
             generated: cases,
+            builds: if self.wasm.is_some() { "native, wasm32-unknown-unknown" } else { "native" },
             classes,
             operations,
+            credential_verdicts,
             digest: format!("{:x}", digest.finalize()),
             elapsed: started.elapsed(),
         })
@@ -909,7 +1199,7 @@ impl Harness {
         Ok(())
     }
 
-    fn reference_decide(&self, case: &Value) -> Result<Decision> {
+    fn reference_decide(&self, case: &Case) -> Result<Decision> {
         let mut child = Command::new(&self.reference)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -917,7 +1207,9 @@ impl Harness {
             .spawn()
             .with_context(|| format!("running the reference binary {}", self.reference.display()))?;
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(format!("{case}\n").as_bytes())?;
+            let mut text = case.text();
+            text.push(b'\n');
+            stdin.write_all(&text)?;
         }
         let out = child.wait_with_output()?;
         if !out.status.success() {
@@ -932,21 +1224,43 @@ impl Harness {
         })
     }
 
-    fn both(&self, case: &Value) -> Result<(Decision, Decision)> {
-        Ok((engine_decide(case), self.reference_decide(case)?))
+    fn wasm_decide(&self, case: &Case) -> Result<Option<Decision>> {
+        let Some(module) = &self.wasm else { return Ok(None) };
+        let out = module.borrow_mut().decide(&case.text())?;
+        let decision = serde_json::from_slice(&out).with_context(|| {
+            format!("the WebAssembly build printed no decision on {case}: {}", String::from_utf8_lossy(&out))
+        })?;
+        Ok(Some(decision))
     }
 
-    fn disagrees(&self, case: &Value) -> Result<bool> {
+    fn decide(&self, case: &Case) -> Result<Decisions> {
+        let native = contextful_policy::decide::decide(&case.text());
+        let wasm = self.wasm_decide(case)?;
+        let reference = if case.reaches_reference() { Some(self.reference_decide(case)?) } else { None };
+        Ok(Decisions { native, wasm, reference })
+    }
+
+    fn disagrees(&self, case: &Case) -> Result<bool> {
         self.within_budget()?;
-        let (e, r) = self.both(case)?;
-        Ok(!e.differing(&r).is_empty())
+        Ok(!self.decide(case)?.agree())
     }
 
-    /// Shrink until no single field removal keeps the disagreement.
-    fn shrink(&self, mut case: Value) -> Result<Value> {
+    /// Shrink until no single field removal, string shortening or byte removal keeps the
+    /// disagreement.
+    fn shrink(&self, mut case: Case) -> Result<Case> {
         loop {
+            let candidates: Vec<Case> = match &case {
+                Case::Json(v) => removals(v).into_iter().chain(shortenings(v)).map(Case::Json).collect(),
+                Case::Bytes(b) => (0..b.len())
+                    .map(|i| {
+                        let mut c = b.clone();
+                        c.remove(i);
+                        Case::Bytes(c)
+                    })
+                    .collect(),
+            };
             let mut next = None;
-            for candidate in removals(&case).into_iter().chain(shortenings(&case)) {
+            for candidate in candidates {
                 if self.disagrees(&candidate)? {
                     next = Some(candidate);
                     break;
@@ -970,20 +1284,25 @@ impl Harness {
     /// Shrink a disagreement, record it, and return the refusal the run ends with.
     fn record(&self, seed: u64, g: Generated) -> Result<anyhow::Error> {
         let minimized = self.shrink(g.case.clone())?;
-        let (engine, reference) = self.both(&minimized)?;
-        let drift = self.drift(&minimized, &engine, &reference, &format!("seed {seed}, case {} ({})", g.index, g.class.as_str()));
+        let decisions = self.decide(&minimized)?;
+        let drift = self.drift(&minimized, &decisions, &format!("seed {seed}, case {} ({})", g.index, g.class.as_str()));
+        let (case, bytes) = entry_forms(&minimized);
+        let (original, original_bytes) = entry_forms(&g.case);
         let entry = Entry {
-            case: minimized.clone(),
-            engine,
-            reference,
+            case,
+            bytes,
+            engine: decisions.native,
+            wasm: decisions.wasm,
+            reference: decisions.reference,
             seed: Some(seed),
             index: Some(g.index),
             class: Some(g.class.as_str().to_string()),
-            original: Some(g.case),
+            original: (!original.is_null()).then_some(original),
+            original_bytes,
         };
         let written = self.append(entry).and_then(|()| load_corpus(&self.corpus));
         match written {
-            Ok(entries) if entries.iter().any(|e| e.case == minimized) => Ok(drift.into()),
+            Ok(entries) if entries.iter().any(|e| e.case() == minimized) => Ok(drift.into()),
             Ok(_) => Ok(DifferentialError::CounterexampleDiscarded(format!(
                 "{} holds no entry for the disagreement\n{drift}",
                 self.corpus.display()
@@ -1015,12 +1334,14 @@ impl Harness {
         store_corpus(&self.corpus, &entries)
     }
 
-    fn drift(&self, case: &Value, engine: &Decision, reference: &Decision, origin: &str) -> DifferentialError {
+    fn drift(&self, case: &Case, d: &Decisions, origin: &str) -> DifferentialError {
+        let wasm = d.wasm.as_ref().map_or_else(|| "not built".to_string(), render);
+        let reference = d.reference.as_ref().map_or_else(|| "not consulted on a credential case".to_string(), render);
         DifferentialError::ReferenceModelDrift(format!(
-            "the engine and the reference model disagree on {}\n  minimized case  {case}\n  engine          {}\n  reference       {}\n  origin          {origin}\n  corpus          {}",
-            engine.differing(reference).join(", "),
-            engine.render(),
-            reference.render(),
+            "the native build, the WebAssembly build and the reference model disagree on {}\n  minimized case  {case}\n  native build    {}\n  wasm build      {wasm}\n  reference       {}\n  origin          {origin}\n  corpus          {}",
+            d.differing().join(", "),
+            render(&d.native),
+            reference,
             self.corpus.display()
         ))
     }

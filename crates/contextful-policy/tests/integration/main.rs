@@ -1,6 +1,7 @@
 //! The policy crate's one integration binary, one module per operation.
 
 mod attenuate;
+mod decide;
 mod audit;
 mod enforce;
 #[cfg(feature = "exchange")]

@@ -28,6 +28,15 @@ pub enum PolicyError {
     Visibility(#[from] contextful_core::disclosure::VisibilityError),
 }
 
+impl From<contextful_core::place::PlaceError> for PolicyError {
+    fn from(e: contextful_core::place::PlaceError) -> Self {
+        match e {
+            contextful_core::place::PlaceError::Enforce(e) => PolicyError::Enforce(e),
+            contextful_core::place::PlaceError::Malformed(m) => PolicyError::Malformed(m),
+        }
+    }
+}
+
 impl From<contextful_core::disclosure::declare::DeclareError> for PolicyError {
     fn from(e: contextful_core::disclosure::declare::DeclareError) -> Self {
         match e {

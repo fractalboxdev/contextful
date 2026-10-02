@@ -153,3 +153,21 @@ Decision: the workspace first resolves a single arrow tree, then the gate contai
 | A higher stage timeout | Recorded bound | A growing cold build stays unseen until the next cap. |
 
 Consequences: a stage exceeding 30 min is a gate fact, not a flake to rerun. The accepted cost: stage time depends on cache warmth, so a dependency bump runs cold once.
+
+## One decision module compiles native and to WebAssembly
+
+**Status:** accepted
+
+Context: a gateway verifies a credential, then admits and places the request ahead of the engine; one verdict from two sources drifts. The credential adapter lives in `contextful-policy`. Criteria: one source for every verdict the gateway and the engine share decided it; the gateway needs verification, admission and placement, never SQL; the module runs under a host with no JavaScript.
+
+Decision: `assurance.structure-tree.decision-module` is `contextful_policy::decide`. A `verify` case admits one credential as a network checkpoint does; coverage, narrowing, zone admission and session-zone resolution delegate to the domain crate. It builds native and as a `wasm32-unknown-unknown` `cdylib` exporting three functions and importing the credential library's evaluator clock, which the host answers. `assurance.differential-test` compares both builds on every case, and the reference model on all but credential cases.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| The policy package, the credential library's clock as the one import *(chosen)* | — | A 2.7 MB module each differential run compiles once. |
+| The domain crate alone, verification outside the module | Gateway need | The gateway verifies signatures from a second source. |
+| The credential library's JavaScript bindings | Host | The differential host and a native embedder run no JavaScript. |
+| Query rewriting in the module too | Gateway need | The rewriter carries the SQL engine's types. |
+| A gateway reimplementation in TypeScript | One home | Two sources for one verdict. |
+
+Consequences: a divergence between builds surfaces as a disagreement. The accepted cost: the host links imports by the binding generator's names, which a credential-library release may rename, and no reference model checks a credential case.

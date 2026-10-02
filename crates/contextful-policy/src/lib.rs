@@ -2,6 +2,7 @@
 
 pub mod attenuate;
 pub mod audit;
+pub mod decide;
 pub mod enforce;
 #[cfg(feature = "exchange")]
 pub mod exchange;

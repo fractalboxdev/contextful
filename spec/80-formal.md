@@ -14,8 +14,8 @@ owns:
 Two Lean 4 packages stand beside the engine: one specifying the policy core, and one holding
 an executable state machine of the store's lease, compare-and-swap and fence protocol, its
 invariants stated as theorems. The gate checks both on every change, and one differential
-harness ties each model to the code it describes: the policy model to the engine's decision
-functions, the protocol model to the Rust store.
+harness ties each model to the code it describes: the policy model to both builds of the
+decision module, the protocol model to the Rust store.
 
 The two models, the checks over them, and where each meets the engine:
 
@@ -31,7 +31,8 @@ flowchart LR
     PEXE["protocol executable"]
   end
   subgraph engine["Rust engine"]
-    ENG["engine decision functions"]
+    ENG["native decision module"]
+    WASMB["WebAssembly decision module"]
     RUST["Rust storage layer"]
   end
   subgraph gate["gate: formal stage"]
@@ -49,6 +50,7 @@ flowchart LR
   LEAN -->|"compiled"| REF
   REF -->|"decisions"| DIFF
   ENG -->|"decisions"| DIFF
+  WASMB -->|"decisions"| DIFF
   PROT -->|"3 nodes, 4 lease generations"| MC
   PROT -->|"invariant theorems"| AUD
   PROT -->|"lean_exe"| PEXE
@@ -205,15 +207,22 @@ unsettled: Which translation toolchain reaches Lean from the engine's source, an
 The executable reference models, the case generators, the minimized counterexample corpus and the command running them.
 
 - `reference-model` — The reference model is an executable Lean rendering of the decision functions, built to a binary that reads one case on standard input and prints one decision.
-- `harness` — The harness drives the reference binary and the engine's decision function over each generated case and compares the two decisions field by field.
+- `harness` — The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
   *A-assurance*
+- `builds` — The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.
+  *A-assurance*
+- `decision-cases` — A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, session-zone resolution, or credential admission; a placement decision also carries the zone it resolved.
+- `credential-cases` — A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.
+  *because the reference model carries no signature scheme, and a gateway admits the credential before it places the request*
 - `case-classes` — Each run generates malformed inputs, boundary values and well-formed requests, and its report names the classes it drew from.
   *because a green run is evidence over the generated classes, not an equivalence proof*
-- `minimized` — A disagreement is shrunk until removing any further field makes the two agree, and the minimized case is recorded.
+- `malformed-bytes` — The malformed class draws case texts carrying invalid UTF-8 or an integer literal outside the unsigned 64-bit range, handed as bytes to every decider, and each decides such a text malformed.
+  *because a 32-bit WebAssembly build and a 64-bit native build part ways first at byte decoding and integer width*
+- `minimized` — A disagreement is shrunk until no single field removal, string shortening or byte removal keeps any two of the three decisions apart, and the minimized case is recorded.
 - `corpus-replay` — Every counterexample-corpus case replays before any freshly generated case.
 - `corpus-entries` — The counterexample corpus retains at most 256 entries, evicting the oldest case a fresh seed reproduces.
 - `run-budget` — One invocation, corpus replay included, completes within 300 s.
-- `disagreement` — A case on which the two decisions differ raises `ReferenceModelDrift`, printing the minimized case and both decisions.
+- `disagreement` — A case on which any two of the three decisions differ raises `ReferenceModelDrift`, printing the minimized case and every decision.
   *A-assurance*
 - `discarded-counterexample` — A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`.
   *A-assurance*
@@ -237,14 +246,19 @@ sequenceDiagram
         participant R as reference binary
     end
     box Rust engine
-        participant E as engine decision function
+        participant E as native build
+        participant W as WebAssembly build
     end
     H->>K: replay every entry before fresh cases
     loop each generated case, from the recorded seed
-        H->>R: case on standard input
-        R-->>H: decision
+        opt not a credential case
+            H->>R: case on standard input
+            R-->>H: decision
+        end
         H->>E: the same case
         E-->>H: decision
+        H->>W: the same case in linear memory
+        W-->>H: decision
         opt decisions differ
             H->>H: shrink to the minimized case
             H->>K: record the minimized case
@@ -252,8 +266,6 @@ sequenceDiagram
         end
     end
 ```
-
-unsettled: What generated case separates a native build of a decision function from its WebAssembly build on malformed input? owner: formal affects: assurance.differential-test
 
 ## Shapes
 

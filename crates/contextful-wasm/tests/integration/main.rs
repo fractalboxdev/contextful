@@ -2,6 +2,7 @@
 //! operation.
 
 mod attach;
+mod decision;
 mod export;
 mod import;
 mod meter;
