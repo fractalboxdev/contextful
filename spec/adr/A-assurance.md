@@ -220,3 +220,20 @@ Decision: a suite asserting through SQL runs on the adapter's own read engine an
 | A second Parquet reader for every assertion | One home | A parallel evaluator of the scan relation drifts from the one reads execute. |
 
 Consequences: the accepted cost is that a defect in the relation a scan resolves surfaces only in the read-enabled runs.
+
+## A stage subset runs in sequence order and refuses a missing predecessor
+
+**Status:** accepted
+
+Context: the toolchain stage reads the pins stage's record, and the formal stage reads the toolchain stage's environment. Each remote check runs one stage in a fresh sandbox, and a contributor reruns one stage locally. Criteria: a gate fails rather than skips (P7); a remote check and a local run invoke one command; a rerun reuses an output already on disk.
+
+Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order and refuses before any stage starts when a selected stage reads an unselected predecessor's output and that output is absent. `--predecessors` adds those predecessors, and the workflow passes it (`assurance.gate.remote-predecessors`).
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Sequence order, refuse an absent predecessor output *(chosen)* | — | Each remote formal check reruns pins and toolchain. |
+| Run the named stages alone, whatever is absent | Fail rather than skip | The formal stage runs without the pinned Lean toolchain and reports a verdict on another one. |
+| Always add every predecessor | Rerun reuse | A local formal rerun repeats the pin fetch and provisioning each time. |
+| Run in the order named | One command | Two contributors naming one subset differently run different gates. |
+
+Consequences: a predecessor's output on disk satisfies its reader, so a stale record from an earlier run reaches the stage. The accepted cost: the remote formal check pays the pins and toolchain stages on every run.

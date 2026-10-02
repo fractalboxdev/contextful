@@ -151,7 +151,11 @@ Target directories, the engine-linked invocation, linked query functions, build 
 Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.
 
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
+- `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
+  *A-assurance*
 - `remote-check` — The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, each as one status check labelled with the stage's name.
+  *A-assurance*
+- `remote-predecessors` — Each remote check runs its stage together with every predecessor whose output that stage reads, so no check reads another check's sandbox.
   *A-assurance*
 - `fork-dispatch` — The pull-request workflow dispatches only a head commit pushed to the repository itself; a pull request from a fork dispatches no stage and so carries none of the required checks.
   *because a dispatch carries the org's signing secret and runs the commit on the org's runner, and an absent required check fails closed*
@@ -238,8 +242,6 @@ flowchart LR
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate
 
 unsettled: Which cache hit rate holds `test-first` and `workspace` under the per-stage wall clock once the `Cargo.lock`-keyed build cache serves the gate container (issue 31)? owner: build affects: assurance.gate
-
-unsettled: What ordering holds when a selected stage subset omits a stage a later stage reads output from? owner: build affects: assurance.gate
 
 ## evaluate
 

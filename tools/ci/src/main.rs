@@ -6,6 +6,7 @@ mod allowlist;
 mod measure;
 mod release;
 mod probe;
+mod stage;
 mod tag;
 mod footprint;
 mod topology;
@@ -14,12 +15,11 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use contextful_eval::ledger::Tier;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
-/// Gate stages in run order. The pull-request workflow dispatches each as its own check.
-const STAGES: [&str; 8] = ["schema", "test-first", "workspace", "acceptance", "evaluate", "features", "crate-graph", "budget"];
+use stage::STAGES;
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
 /// The features stage's own target directory, under the workspace root.
@@ -68,9 +68,12 @@ struct Cli {
 enum Cmd {
     /// Run every stage in order, or the named stages.
     Gate {
-        /// A stage to run; repeatable. Defaults to every stage.
+        /// A stage to run; repeatable. Defaults to every stage. A subset runs in run order.
         #[arg(long = "stage", value_parser = clap::builder::PossibleValuesParser::new(STAGES))]
         stages: Vec<String>,
+        /// Also run every stage whose output a selected stage reads.
+        #[arg(long)]
+        predecessors: bool,
         /// The revision the change is measured against.
         #[arg(long, default_value = "origin/HEAD")]
         base: String,
@@ -215,7 +218,7 @@ fn main() {
             STAGES.iter().for_each(|s| println!("{s}"));
             Ok(())
         }
-        Cmd::Gate { stages, base, base_bound_secs } => gate(&stages, &base, Duration::from_secs(base_bound_secs)),
+        Cmd::Gate { stages, predecessors, base, base_bound_secs } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs)),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
@@ -266,8 +269,48 @@ fn main() {
     };
     if let Err(e) = result {
         eprintln!("{e:#}");
-        let disk = e.downcast_ref::<Refusal>().is_some_and(|r| r.code == "BuildDiskPrecondition");
-        std::process::exit(if disk { DISK_EXIT } else { 1 });
+        std::process::exit(exit_code(&e));
+    }
+}
+
+/// A child process that failed: the command, and the code or signal it ended with.
+#[derive(Debug)]
+struct Exited {
+    what: String,
+    code: Option<i32>,
+    signal: Option<i32>,
+}
+
+impl std::fmt::Display for Exited {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (self.code, self.signal) {
+            (_, Some(s)) => write!(f, "`{}` was killed by signal {s}", self.what),
+            (Some(c), None) => write!(f, "`{}` exited {c}", self.what),
+            (None, None) => write!(f, "`{}` ended without an exit code", self.what),
+        }
+    }
+}
+
+impl std::error::Error for Exited {}
+
+fn exited(what: String, status: ExitStatus) -> anyhow::Error {
+    #[cfg(unix)]
+    let signal = std::os::unix::process::ExitStatusExt::signal(&status);
+    #[cfg(not(unix))]
+    let signal = None;
+    Exited { what, code: status.code(), signal }.into()
+}
+
+/// The exit code a failed run propagates: a child's own code, `128 + n` for a child killed
+/// by signal `n`, 28 for the disk precondition, and 1 otherwise.
+fn exit_code(e: &anyhow::Error) -> i32 {
+    if e.downcast_ref::<Refusal>().is_some_and(|r| r.code == "BuildDiskPrecondition") {
+        return DISK_EXIT;
+    }
+    match e.downcast_ref::<Exited>() {
+        Some(Exited { signal: Some(s), .. }) => 128 + s,
+        Some(Exited { code: Some(c), .. }) if *c != 0 => *c,
+        _ => 1,
     }
 }
 
@@ -275,53 +318,67 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(git(&["rev-parse", "--show-toplevel"])?))
 }
 
-fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
+fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Result<()> {
     let root = repo_root()?;
-    for stage in STAGES.iter().filter(|s| selected.is_empty() || selected.iter().any(|x| x == *s)) {
+    for stage in stage::select(&root, named, predecessors)? {
         eprintln!("--- stage {stage}");
         free_disk(&root, stage)?;
-        match *stage {
-            "schema" => {
-                secrets(&root)?;
-                mirrors(&root)?;
-                measure::status(&root, true)?;
-                run_staged(&root, stage, &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
-            }
-            "test-first" => {
-                provision_lean(&root)?;
-                provision_wasm(&root)?;
-                test_first(&root, base, bound)?
-            }
-            "workspace" => {
-                provision_lean(&root)?;
-                provision_wasm(&root)?;
-                workspace(&root)?
-            }
-            "acceptance" => acceptance(&root)?,
-            "evaluate" => measure::evaluate(&root)?,
-            "features" => features(&root)?,
-            "crate-graph" => {
-                committed_lock(&root)?;
-                topology::check(&root)?;
-                deny::check(&root)?;
-                allowlist::check(&root)?
-            }
-            "budget" => {
-                // The footprint builds run here, apart from the evaluate stage
-                // (`assurance.gate.budget-stage`).
-                let profiles: Vec<String> = topology::declared_profiles(&root)?.into_iter().map(str::to_string).collect();
-                if profiles.is_empty() {
-                    println!("budget: no package declares a profile");
-                } else {
-                    footprint::build(&root, &profiles, false)?;
-                    let _ = std::fs::remove_dir_all(root.join(footprint::TARGET_DIR));
-                }
-            }
-            _ => unreachable!(),
-        }
+        let mark = stage::mark();
+        let outcome = run_stage(&root, stage, base, bound);
+        stage::report(stage, &mark, &outcome);
+        outcome?;
         // A passing stage leaves no build behind (`assurance.build.target-dir-per-stage`); a
         // failing one keeps its directory for diagnosis.
         let _ = std::fs::remove_dir_all(stage_target(&root, stage));
+    }
+    Ok(())
+}
+
+/// One stage's work, apart from the disk precondition and its report.
+fn run_stage(root: &Path, stage: &str, base: &str, bound: Duration) -> Result<()> {
+    match stage {
+        "pins" => stage::pins(root)?,
+        "toolchain" => stage::toolchain(root)?,
+        "schema" => {
+            secrets(root)?;
+            mirrors(root)?;
+            stage::regenerate(root)?;
+            run_staged(root, stage, &["run", "--locked", "-q", "-p", "contextful-spec", "--", "lint"])?
+        }
+        "test-first" => {
+            provision_lean(root)?;
+            provision_wasm(root)?;
+            test_first(root, base, bound)?
+        }
+        "workspace" => {
+            provision_lean(root)?;
+            provision_wasm(root)?;
+            workspace(root)?
+        }
+        "acceptance" => acceptance(root)?,
+        "evaluate" => measure::evaluate(root)?,
+        "features" => features(root)?,
+        "crate-graph" => {
+            committed_lock(root)?;
+            topology::check(root)?;
+            deny::check(root)?;
+            allowlist::check(root)?
+        }
+        "budget" => {
+            // The footprint builds run here, apart from the evaluate stage
+            // (`assurance.gate.budget-stage`).
+            let profiles: Vec<String> = topology::declared_profiles(root)?.into_iter().map(str::to_string).collect();
+            if profiles.is_empty() {
+                println!("budget: no package declares a profile");
+            } else {
+                footprint::build(root, &profiles, false)?;
+                let _ = std::fs::remove_dir_all(root.join(footprint::TARGET_DIR));
+            }
+        }
+        "connectors" => stage::connectors(root)?,
+        "surfaces" => stage::typescript(root)?,
+        "formal" => stage::formal(root)?,
+        _ => unreachable!(),
     }
     Ok(())
 }
@@ -436,7 +493,7 @@ fn features(root: &Path) -> Result<()> {
                 .current_dir(root)
                 .status()?;
             if !status.success() {
-                bail!("`cargo {verb} -p {name} {shown}` exited {}", status.code().unwrap_or(-1));
+                return Err(exited(format!("cargo {verb} -p {name} {shown}"), status));
             }
         }
     }
@@ -451,7 +508,11 @@ fn features(root: &Path) -> Result<()> {
 /// this gate run starts. A tree pinning no toolchain is left untouched.
 fn provision_lean(root: &Path) -> Result<()> {
     let Ok(pin) = std::fs::read_to_string(root.join(LEAN_PIN)) else { return Ok(()) };
-    let pin = pin.trim();
+    provision_lean_pin(root, pin.trim())
+}
+
+/// Provision the Lean toolchain `pin` names, as [`provision_lean`] describes.
+fn provision_lean_pin(root: &Path, pin: &str) -> Result<()> {
     let elan_home = std::env::var_os("ELAN_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".elan")))
@@ -1068,7 +1129,7 @@ fn tracked(root: &Path) -> Result<Vec<String>> {
 fn run(root: &Path, program: &str, args: &[&str]) -> Result<()> {
     let status = Command::new(program).args(args).current_dir(root).status()?;
     if !status.success() {
-        bail!("`{program} {}` exited {}", args.join(" "), status.code().unwrap_or(-1));
+        return Err(exited(format!("{program} {}", args.join(" ")), status));
     }
     Ok(())
 }

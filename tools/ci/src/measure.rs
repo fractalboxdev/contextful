@@ -217,14 +217,45 @@ fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
         .current_dir(root)
         .status()?;
     if !status.success() {
-        bail!("`cargo test -p {package} --test integration -- --exact {name}` exited {}", status.code().unwrap_or(-1));
+        return Err(crate::exited(format!("cargo test -p {package} --test integration -- --exact {name}"), status));
     }
     Ok(())
 }
 
-/// The evaluate stage: every gate-tier entry, then the build directory reclaimed.
+/// The native case set, scored in the deterministic tier against its floors and baseline.
+const NATIVE_CASES: &str = "evals/cases/native.jsonl";
+/// The clause owning the ledger entries that run the native case set.
+const NATIVE_GATE: &str = "assurance.baseline.native-gate";
+
+/// The evaluate stage (`assurance.gate.evaluate-stage`): every gate-tier entry, the native
+/// case set among them, then the floor and baseline verdicts and the build directory
+/// reclaimed. A tree carrying the native case set with no gate-tier entry running it fails.
 pub fn evaluate(root: &Path) -> Result<()> {
-    run(root, &[Tier::Gate])?;
+    let native: Vec<(String, String)> = load(root)?
+        .map(|l| {
+            l.entry
+                .iter()
+                .filter(|(_, e)| e.tier == Tier::Gate && e.clause == NATIVE_GATE)
+                .filter_map(|(id, e)| match e.method() {
+                    Some(Method::Test(t)) => Some((id.clone(), t.to_string())),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if root.join(NATIVE_CASES).is_file() && native.is_empty() {
+        bail!("the tree carries {NATIVE_CASES}, and no gate-tier ledger entry owned by `{NATIVE_GATE}` runs it");
+    }
+    let outcome = run(root, &[Tier::Gate]);
+    let failed = |test: &str| outcome.as_ref().err().is_some_and(|e| format!("{e:#}").contains(test.rsplit("::").next().unwrap_or(test)));
+    let baseline_red = native.iter().any(|(_, t)| failed(t));
+    let floors_red = outcome.is_err() && !baseline_red;
+    eprintln!("evaluate: floor verdict {} over the gate-tier targets", if floors_red || baseline_red { "red" } else { "held" });
+    if !native.is_empty() {
+        let ids: Vec<&str> = native.iter().map(|(id, _)| id.as_str()).collect();
+        eprintln!("evaluate: baseline verdict {} for {NATIVE_CASES} ({})", if baseline_red { "red" } else { "held" }, ids.join(", "));
+    }
+    outcome?;
     let _ = std::fs::remove_dir_all(root.join(EVALUATE_TARGET));
     Ok(())
 }

@@ -1,17 +1,23 @@
 # The gate, one FlareDispatch `check` per stage.
 #
-# Each matrix entry dispatches `contextful-ci gate --stage <stage>` to the org's
-# Dispatcher, which clones the PR head into a Rust-equipped sandbox and reports the
-# verdict as the check-run `flare-dispatch/check:<stage>`. This job goes green once
-# the dispatch is accepted; branch protection requires the eight check-runs:
+# Each matrix entry dispatches `contextful-ci gate --predecessors --stage <stage>` to the
+# org's Dispatcher, which clones the PR head into a Rust-equipped sandbox and reports the
+# verdict as the check-run `flare-dispatch/check:<stage>`. `--predecessors` also runs each
+# stage whose output the stage reads, so the formal check runs pins and toolchain first.
+# This job goes green once the dispatch is accepted; one check-run per stage:
 #
-#   flare-dispatch/check:schema      secrets of record, mirrors: annotations, contextful-spec lint
+#   flare-dispatch/check:pins        every pinned identity resolved before any compilation
+#   flare-dispatch/check:toolchain   the pinned Lean toolchain and the WebAssembly target provisioned
+#   flare-dispatch/check:schema      secrets of record, mirrors: annotations, derived artifacts regenerated, contextful-spec lint
 #   flare-dispatch/check:test-first  a test under tests/ fails against the base source
 #   flare-dispatch/check:workspace   cargo test --workspace, acceptance excluded
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
 #   flare-dispatch/check:evaluate    every gate-tier entry of evals/ledger.toml, held to its target
 #   flare-dispatch/check:features    each package declaring a feature, tested with none and with all
 #   flare-dispatch/check:crate-graph the topology dependency rules over `cargo tree --locked` per package, and cargo-deny bans per profile
+#   flare-dispatch/check:connectors  the connector and guest-host suites with every feature on
+#   flare-dispatch/check:surfaces    each TypeScript surface's typecheck, unit tests and framework build
+#   flare-dispatch/check:formal      the assumption audit, the differential run and the protocol check
 #   flare-dispatch/check:budget      each profile built static for Linux, held to its footprint budget
 #
 # Lean is provisioned by the dispatched command, not by a step in this file:
@@ -42,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stage: [schema, test-first, workspace, acceptance, evaluate, features, crate-graph, budget]
+        stage: [pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate-graph, connectors, surfaces, formal, budget]
     steps:
       - uses: fractalboxdev/flare-dispatch/actions/flare-dispatch-action@a5118d6594c8f3e4040bb90afcb02898a6e7b7bd
         with:
@@ -55,7 +61,7 @@ jobs:
               "repo": "${{ github.repository }}",
               "sha": "${{ github.event.pull_request.head.sha }}",
               "checkLabel": "${{ matrix.stage }}",
-              "command": "cargo run --locked -q -p contextful-ci -- gate --stage ${{ matrix.stage }} --base ${{ github.event.pull_request.base.sha }}",
+              "command": "cargo run --locked -q -p contextful-ci -- gate --predecessors --stage ${{ matrix.stage }} --base ${{ github.event.pull_request.base.sha }}",
               "failOnNonZeroExit": true,
               "timeoutSec": 1800
             }

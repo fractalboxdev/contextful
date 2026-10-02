@@ -95,7 +95,7 @@ pub fn tag(branch: &str, base: &str) -> Result<()> {
 
     // `assurance.release.gate-failed`
     eprintln!("tag: v{version} on {short}; running every gate stage against {base}");
-    gate(&[], base, Duration::from_secs(BASE_RUN_BOUND_SECS))
+    gate(&[], false, base, Duration::from_secs(BASE_RUN_BOUND_SECS))
         .map_err(|e| refuse("TagGateFailed", format!("the gate fails on {short}, so v{version} is not cut: {e:#}")))?;
 
     // `assurance.release.annotated`: without `--force`, git refuses an existing name.
