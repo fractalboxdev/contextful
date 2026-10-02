@@ -23,7 +23,7 @@ pub const NAME: &str = "http";
 pub const PAGE_CAP: usize = 1000;
 
 /// The configuration keys the HTTP source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 16] = [
+pub const KEYS: [&str; 18] = [
     "endpoint",
     "table_pattern",
     "format",
@@ -40,6 +40,8 @@ pub const KEYS: [&str; 16] = [
     "skip_rows",
     "limiter",
     "scope_probe",
+    "bound_columns",
+    "conditional",
 ];
 
 /// One `/`-separated segment of a table pattern.
@@ -152,6 +154,45 @@ fn percent_encode(value: &str) -> String {
     value.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
 }
 
+/// `template` with each `{name}` in `values` replaced by `encode` of its value, in one pass
+/// so a bound value never expands; a placeholder outside `values` stays as written.
+fn fill(template: &str, values: &BTreeMap<String, String>, encode: impl Fn(&str) -> String) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some((open, close)) = rest.find('{').and_then(|o| rest[o..].find('}').map(|c| (o, o + c))) {
+        out.push_str(&rest[..open]);
+        match values.get(&rest[open + 1..close]) {
+            Some(v) => out.push_str(&encode(v)),
+            None => out.push_str(&rest[open..=close]),
+        }
+        rest = &rest[close + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Hold every placeholder of `text` to `{table}` or a field of `pattern`; any other has
+/// nothing to bind it (`connector.source.placeholder-unbound`).
+fn check_placeholders(what: &str, text: &str, pattern: Option<&TablePattern>) -> Result<(), ConnectorError> {
+    let mut rest = text;
+    while let Some(open) = rest.find('{') {
+        let placeholder = match rest[open..].find('}') {
+            Some(close) => &rest[open..=open + close],
+            None => &rest[open..],
+        };
+        let name = placeholder.strip_prefix('{').and_then(|p| p.strip_suffix('}'));
+        if !name.is_some_and(|n| n == "table" || pattern.is_some_and(|p| p.binds(n))) {
+            let binds = match pattern {
+                Some(p) => format!("`{{table}}` and the fields of `table_pattern = \"{p}\"` are the placeholders"),
+                None => "`{table}` is the one placeholder without a `table_pattern`".to_string(),
+            };
+            return Err(ConnectorError::ConnectorPlaceholderUnbound(format!("{what}'s placeholder `{placeholder}` has no table pattern to bind it; {binds}")));
+        }
+        rest = &rest[open + placeholder.len()..];
+    }
+    Ok(())
+}
+
 /// How a walk finds its next page (`connector.source.pagination`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pagination {
@@ -186,6 +227,12 @@ pub struct HttpConfig {
     pub limiter: Option<LimiterDeclaration>,
     /// The identity endpoint called with the bound credential ahead of the first page.
     pub scope_probe: Option<ScopeProbe>,
+    /// Column name to a template over `{table}` and the pattern's fields, stamped onto
+    /// every fetched row (`connector.source.bound-columns`).
+    pub bound_columns: BTreeMap<String, String>,
+    /// Whether a read sends the stored validators and keeps a `304` as no change
+    /// (`connector.source.conditional-get`).
+    pub conditional: bool,
 }
 
 fn key_error(k: &str) -> RunError {
@@ -299,23 +346,22 @@ impl HttpConfig {
             }
         }
         let table_pattern = text(cfg, "table_pattern")?.as_deref().map(TablePattern::parse).transpose()?;
-        // Every placeholder is `{table}` or a field of the table pattern; any other has
-        // nothing to bind it.
-        let mut rest = endpoint_raw.as_str();
-        while let Some(open) = rest.find('{') {
-            let placeholder = match rest[open..].find('}') {
-                Some(close) => &rest[open..=open + close],
-                None => &rest[open..],
-            };
-            let name = placeholder.strip_prefix('{').and_then(|p| p.strip_suffix('}'));
-            if !name.is_some_and(|n| n == "table" || table_pattern.as_ref().is_some_and(|p| p.binds(n))) {
-                let binds = match &table_pattern {
-                    Some(p) => format!("`{{table}}` and the fields of `table_pattern = \"{p}\"` are the placeholders"),
-                    None => "`{table}` is the one placeholder without a `table_pattern`".to_string(),
-                };
-                return Err(ConnectorError::ConnectorPlaceholderUnbound(format!("the endpoint's placeholder `{placeholder}` has no table pattern to bind it; {binds}")).into());
+        check_placeholders("the endpoint", &endpoint_raw, table_pattern.as_ref())?;
+        let mut bound_columns = BTreeMap::new();
+        if let Some(b) = cfg.get("bound_columns") {
+            let b = b.as_object().ok_or_else(|| RunError::Invalid("`bound_columns` is a table of column name to value template".into()))?;
+            for (column, v) in b {
+                let v = v.as_str().ok_or_else(|| RunError::Invalid(format!("bound column `{column}` is a template string, found {v}")))?;
+                check_placeholders(&format!("bound column `{column}`"), v, table_pattern.as_ref())?;
+                bound_columns.insert(column.clone(), v.to_string());
             }
-            rest = &rest[open + placeholder.len()..];
+        }
+        let conditional = match cfg.get("conditional") {
+            None => false,
+            Some(v) => v.as_bool().ok_or_else(|| RunError::Invalid(format!("`{NAME}` source key `conditional` is a boolean, found {v}")))?,
+        };
+        if let (true, Some(k)) = (conditional, declared.first()) {
+            return Err(ConnectorError::ConnectorConditionalRejected(format!("`conditional` beside `{k}`: a validator names one document, and a page walk reads many")).into());
         }
         // A field the endpoint never places leaves every table matching the pattern on one URL.
         if let Some(p) = &table_pattern {
@@ -346,6 +392,8 @@ impl HttpConfig {
             skip_rows: skip_rows.unwrap_or(0),
             limiter,
             scope_probe,
+            bound_columns,
+            conditional,
         };
         if c.scope_probe.is_some() && c.probe_credential().is_none() {
             return Err(RunError::Invalid(format!("the `{NAME}` source's `scope_probe` carries a bound credential, and no `headers` template binds one")).into());
@@ -364,6 +412,11 @@ impl HttpConfig {
     /// refuses at build, ahead of the run that would commit its first position
     /// (`connector.source.workbook-incremental`).
     pub fn accepts_incremental(&self) -> Result<(), ConnectorError> {
+        if self.conditional {
+            return Err(ConnectorError::ConnectorConditionalRejected(
+                "`conditional` beside a declared `incremental`: the position holds the watermark, leaving the validators no place to commit".into(),
+            ));
+        }
         match self.format {
             Format::Workbook => Err(incremental("the pipeline declares `incremental`")),
             _ => Ok(()),
@@ -393,18 +446,21 @@ impl HttpConfig {
             return Err(ConnectorError::ConnectorTableUnmatched(format!("table `{table}` binds a dot segment into the endpoint's `{{table}}`")));
         }
         values.insert("table".to_string(), table.to_string());
-        let mut out = String::with_capacity(self.endpoint.len());
-        let mut rest = self.endpoint.as_str();
-        while let Some((open, close)) = rest.find('{').and_then(|o| rest[o..].find('}').map(|c| (o, o + c))) {
-            out.push_str(&rest[..open]);
-            match values.get(&rest[open + 1..close]) {
-                Some(v) => out.push_str(&percent_encode(v)),
-                None => out.push_str(&rest[open..=close]),
-            }
-            rest = &rest[close + 1..];
+        endpoint(NAME, &fill(&self.endpoint, &values, percent_encode))
+    }
+
+    /// The bound columns' values for `table`, each template filled with its values as
+    /// written (`connector.source.bound-columns`).
+    pub fn bound_values(&self, table: &str) -> Result<Vec<(String, String)>, ConnectorError> {
+        if self.bound_columns.is_empty() {
+            return Ok(Vec::new());
         }
-        out.push_str(rest);
-        endpoint(NAME, &out)
+        let mut values = match &self.table_pattern {
+            Some(p) => p.bind(table)?,
+            None => BTreeMap::new(),
+        };
+        values.insert("table".to_string(), table.to_string());
+        Ok(self.bound_columns.iter().map(|(c, t)| (c.clone(), fill(t, &values, str::to_string))).collect())
     }
 }
 
@@ -577,6 +633,7 @@ impl HttpSource {
             Format::Workbook => (workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?, None),
             format => decode(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?,
         };
+        let batch = self.stamp(batch, &resp.url)?;
         let next = match &self.config.pagination {
             Pagination::None => None,
             Pagination::Page { start, .. } => {
@@ -729,6 +786,77 @@ fn next_link(header: &str) -> Option<String> {
     })
 }
 
+/// The request headers a conditional read sends from its stored validators.
+fn conditional_headers(position: Option<&Value>) -> Vec<(String, HeaderValue)> {
+    [("etag", "If-None-Match"), ("last_modified", "If-Modified-Since")]
+        .into_iter()
+        .filter_map(|(key, header)| position?.get(key)?.as_str().map(|v| (header.to_string(), HeaderValue::Plain(v.to_string()))))
+        .collect()
+}
+
+/// The validators a `2xx` serves, as the position a conditional read commits: `etag` and
+/// `last_modified`, each present when served.
+fn served_validators(resp: &contextful_outbound::client::Response) -> Value {
+    let mut out = Map::new();
+    for (header, key) in [("etag", "etag"), ("last-modified", "last_modified")] {
+        if let Some(v) = resp.header(header) {
+            out.insert(key.to_string(), Value::String(v.to_string()));
+        }
+    }
+    Value::Object(out)
+}
+
+impl HttpSource {
+    /// Stamp every bound column onto each of `batch`'s rows (`connector.source.bound-columns`).
+    fn stamp(&self, batch: Vec<Row>, url: &Url) -> Result<Vec<Row>, Failure> {
+        let bound = self.config.bound_values(&self.table).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
+        let mut out = Vec::with_capacity(batch.len());
+        for mut row in batch {
+            for (column, value) in &bound {
+                if row.contains_key(column) {
+                    return Err(Failure::deterministic(
+                        FailureTag::Permanent,
+                        ConnectorError::ConnectorBoundColumnOccupied(format!(
+                            "a row from `{}` already carries `{column}`, which the source binds from table `{}`",
+                            scrub(url),
+                            self.table
+                        ))
+                        .to_string(),
+                    ));
+                }
+                row.insert(column.clone(), Value::String(value.clone()));
+            }
+            out.push(row);
+        }
+        Ok(out)
+    }
+
+    /// A conditional pull: one request for the one document, carrying the stored validators.
+    /// The validators are the whole position, and the pull reports no further page
+    /// (`connector.source.conditional-position`).
+    fn conditional_pull(&self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Value, Failure> {
+        if cancel.requested() {
+            return Err(Failure::canceled("stopped ahead of the conditional request"));
+        }
+        let url = self.config.table_url(&self.table).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
+        let mut headers = self.headers(&request.idempotency_key)?;
+        headers.extend(conditional_headers(request.position.as_ref()));
+        let resp = self.client.send("GET", &url, &headers, None)?;
+        if resp.status == 304 {
+            return Ok(serde_json::json!({ "rows": [], "cursor": request.position.clone().unwrap_or_else(|| Value::Object(Map::new())), "more": false }));
+        }
+        if !(200..300).contains(&resp.status) {
+            let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
+            return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
+        }
+        let batch = match self.config.format {
+            Format::Workbook => workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?,
+            format => decode(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?.0,
+        };
+        Ok(serde_json::json!({ "rows": self.stamp(batch, &resp.url)?, "cursor": served_validators(&resp), "more": false }))
+    }
+}
+
 impl Source for HttpSource {
     /// One pull reads one page and carries the next page's token as its position, so a
     /// walk resumes at the page it stopped on; the last page's position names the start.
@@ -738,7 +866,9 @@ impl Source for HttpSource {
             return Err(Failure::canceled("stopped ahead of the page request"));
         }
         self.open()?;
-        let pulled = if self.walks_whole() {
+        let pulled = if self.config.conditional {
+            self.conditional_pull(request, cancel)?
+        } else if self.walks_whole() {
             serde_json::json!({ "rows": self.walk(request, cancel)?, "more": false })
         } else {
             let (rows, next) = self.read_page(request)?;

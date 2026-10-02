@@ -1,8 +1,11 @@
 //! The native sources' one integration binary, one module per source.
 
+mod bound;
 mod boundary;
+mod conditional;
 mod derive;
 mod drive;
+mod github;
 mod http;
 mod object;
 mod support;

@@ -13,26 +13,27 @@ fn ops(v: Value) -> Vec<TransformOp> {
     serde_json::from_value(v).unwrap()
 }
 
-/// The chain is an ordered list of `select`, `rename`, `cast` and a single-column `filter`, declared once per
-/// pipeline and bound to the root table.
-// spec: run.transform.chain@c3be3181
+/// The chain is an ordered list of `select`, `rename`, `cast`, `extract` and a single-column `filter`, declared
+/// once per pipeline and bound to the root table.
+// spec: run.transform.chain@33e858bd
 #[test]
-fn the_chain_runs_its_four_operations_in_order() {
+fn the_chain_runs_its_five_operations_in_order() {
     let chain = ops(json!([
         {"op": "filter", "column": "status", "equals": "open"},
         {"op": "cast", "column": "total", "to": "float64"},
         {"op": "rename", "from": "total", "to": "amount"},
-        {"op": "select", "columns": ["id", "amount"]}
+        {"op": "extract", "pointer": "/buyer/region", "to": "region"},
+        {"op": "select", "columns": ["id", "amount", "region"]}
     ]));
-    let batch = rows(json!([{"id": 1, "status": "open", "total": "9.5"}, {"id": 2, "status": "closed", "total": "1"}]));
-    assert_eq!(apply(&chain, batch.clone(), "orders_items").unwrap(), rows(json!([{"id": 1, "amount": 9.5}])));
+    let batch = rows(json!([{"id": 1, "status": "open", "total": "9.5", "buyer": {"region": "eu"}}, {"id": 2, "status": "closed", "total": "1"}]));
+    assert_eq!(apply(&chain, batch.clone(), "orders_items").unwrap(), rows(json!([{"id": 1, "amount": 9.5, "region": "eu"}])));
     // Order matters: renaming before the cast leaves the cast nothing to name.
     let reordered = vec![chain[2].clone(), chain[1].clone()];
     assert!(matches!(apply(&reordered, batch.clone(), "orders_items"), Err(RunError::PipelineTransformColumnMissing(_))));
     // Bound to the root table as the stage between the journal and the land path.
     let stage = Chain { ops: chain, table: "orders_items".into() };
     assert_eq!(stage.shape(batch).unwrap().len(), 1);
-    assert!(serde_json::from_value::<Vec<TransformOp>>(json!([{"op": "explode", "column": "x"}])).is_err(), "a fifth operation does not parse");
+    assert!(serde_json::from_value::<Vec<TransformOp>>(json!([{"op": "explode", "column": "x"}])).is_err(), "a sixth operation does not parse");
 }
 
 /// A chain operation emitting more rows than it consumed raises `PipelineTransformArity`.
@@ -48,9 +49,9 @@ fn an_operation_emitting_more_rows_than_it_consumed_is_refused() {
     assert_eq!(checked(&op, rows(json!([{"id": 1}])), "orders_items", |_, rs, _| Ok(rs)).unwrap().len(), 1);
 }
 
-/// A filter or cast naming a column the batch does not carry raises `PipelineTransformColumnMissing`, printing
-/// the column and the table.
-// spec: run.transform.column-missing@fa996ce3
+/// A value filter or cast naming a column the batch does not carry raises `PipelineTransformColumnMissing`,
+/// printing the column and the table.
+// spec: run.transform.column-missing@825ba791
 #[test]
 fn a_filter_or_cast_over_an_absent_column_is_refused() {
     let batch = rows(json!([{"id": 1}]));
@@ -162,4 +163,76 @@ fn a_pulled_type_follows_a_rename_and_leaves_with_a_select_or_a_scalar_cast() {
             .into_iter()
             .collect()
     );
+}
+
+/// `extract` copies the value at an RFC 6901 pointer into a named column, null where the pointer names nothing,
+/// keeps the source column, and lands the new column with no pulled type.
+// spec: run.transform.extract@fb60e145
+#[test]
+fn extract_copies_the_value_at_a_pointer_into_a_column() {
+    let chain = ops(json!([
+        {"op": "extract", "pointer": "/commit/committer/date", "to": "committed_at"},
+        {"op": "extract", "pointer": "/author/login", "to": "author_login"},
+        {"op": "extract", "pointer": "/labels/0/name", "to": "first_label"}
+    ]));
+    for op in &chain {
+        op.validate().unwrap();
+    }
+    let batch = rows(json!([
+        {"sha": "a1", "commit": {"committer": {"date": "2012-03-06T23:06:50Z"}}, "author": {"login": "octocat"}, "labels": [{"name": "bug"}]},
+        {"sha": "b2", "commit": {"committer": {}}, "author": null}
+    ]));
+    let out = apply(&chain, batch, "commits").unwrap();
+    assert_eq!(out[0]["committed_at"], json!("2012-03-06T23:06:50Z"));
+    assert_eq!(out[0]["author_login"], json!("octocat"));
+    assert_eq!(out[0]["first_label"], json!("bug"));
+    assert_eq!(out[0]["commit"], json!({"committer": {"date": "2012-03-06T23:06:50Z"}}), "the source column stays");
+    for column in ["committed_at", "author_login", "first_label"] {
+        assert_eq!(out[1][column], Value::Null, "{column}");
+    }
+    // `~1` escapes `/` inside a key, as RFC 6901 spells it.
+    let out = apply(&ops(json!([{"op": "extract", "pointer": "/a~1b", "to": "ab"}])), rows(json!([{"a/b": 3}])), "t").unwrap();
+    assert_eq!(out[0]["ab"], json!(3));
+    // A pointer opens with `/`: the empty pointer names the whole row, which is no column value.
+    for bad in ["commit/date", ""] {
+        assert!(TransformOp::Extract { pointer: bad.into(), to: "x".into() }.validate().is_err(), "{bad:?}");
+    }
+    // The extracted column carries no pulled type: an earlier type under its name leaves.
+    use contextful_core::store::reconcile::ColumnType;
+    let stage = Chain { ops: ops(json!([{"op": "extract", "pointer": "/meta/digest", "to": "digest"}])), table: "t".into() };
+    assert!(stage.shape_types([("digest".to_string(), ColumnType::Binary)].into_iter().collect()).is_empty());
+}
+
+/// A `filter` naming `absent` keeps the rows whose column is missing or null, and one naming `present` keeps the
+/// rest; neither requires the batch to carry the column.
+// spec: run.transform.presence-filter@b61a4560
+#[test]
+fn a_presence_filter_keeps_rows_by_whether_a_column_holds_a_value() {
+    let batch = rows(json!([
+        {"number": 1, "pull_request": {"url": "https://api.example.test/pulls/1"}},
+        {"number": 7},
+        {"number": 12, "pull_request": null}
+    ]));
+    let absent = apply(&ops(json!([{"op": "filter", "absent": "pull_request"}])), batch.clone(), "issues").unwrap();
+    assert_eq!(absent.iter().map(|r| r["number"].clone()).collect::<Vec<_>>(), [json!(7), json!(12)]);
+    let present = apply(&ops(json!([{"op": "filter", "present": "pull_request"}])), batch, "issues").unwrap();
+    assert_eq!(present.iter().map(|r| r["number"].clone()).collect::<Vec<_>>(), [json!(1)]);
+    // A batch carrying the column on no row is no refusal: every row is absent.
+    let none = apply(&ops(json!([{"op": "filter", "absent": "pull_request"}])), rows(json!([{"number": 3}])), "issues").unwrap();
+    assert_eq!(none.len(), 1);
+    // A filter takes one form: a value, `absent` or `present`.
+    for bad in [
+        json!({"op": "filter", "absent": "a", "present": "b"}),
+        json!({"op": "filter", "column": "a", "equals": 1, "absent": "a"}),
+        json!({"op": "filter", "column": "a"}),
+        json!({"op": "filter"}),
+    ] {
+        let parsed: Result<Vec<TransformOp>, _> = serde_json::from_value(json!([bad.clone()]));
+        assert!(parsed.map_or(true, |o| o[0].validate().is_err()), "{bad}");
+    }
+    // The value form serializes as it always has, so a declaration's content hash holds.
+    let equals = ops(json!([{"op": "filter", "column": "status", "equals": null}]));
+    equals[0].validate().unwrap();
+    assert_eq!(serde_json::to_value(&equals).unwrap(), json!([{"op": "filter", "column": "status", "equals": null}]));
+    assert_eq!(apply(&equals, rows(json!([{"status": null}, {"status": "open"}])), "t").unwrap().len(), 1);
 }

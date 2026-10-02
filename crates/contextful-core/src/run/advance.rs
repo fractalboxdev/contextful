@@ -110,15 +110,25 @@ fn unorderable(a: &Value, b: &Value) -> RunError {
     RunError::CursorPositionUnorderable(format!("clock values {a} and {b} have no common order"))
 }
 
+/// A row's clock value under the declared `incremental` field: a column, or the value at
+/// an RFC 6901 pointer when the field opens with `/` (`run.declare.incremental-pointer`).
+pub fn clock<'a>(row: &'a serde_json::Map<String, Value>, field: &str) -> Option<&'a Value> {
+    if field.starts_with('/') {
+        crate::pipeline::transform::row_pointer(row, field)
+    } else {
+        row.get(field)
+    }
+}
+
 /// The frontier of one fetched window: the highest clock value over every fetched row,
 /// landed or not. A row with no orderable value refuses, terminal for the pull.
 pub fn frontier<'a>(field: &str, rows: impl IntoIterator<Item = &'a serde_json::Map<String, Value>>) -> Result<Option<Value>, RunError> {
     let mut best: Option<&Value> = None;
     for row in rows {
-        let v = row.get(field).filter(|v| v.is_number() || v.is_string()).ok_or_else(|| {
+        let v = clock(row, field).filter(|v| v.is_number() || v.is_string()).ok_or_else(|| {
             RunError::CursorPositionUnorderable(format!(
                 "a row carries {} in the clock field `{field}`",
-                row.get(field).map_or("no value".to_string(), Value::to_string)
+                clock(row, field).map_or("no value".to_string(), Value::to_string)
             ))
         })?;
         best = Some(match best {

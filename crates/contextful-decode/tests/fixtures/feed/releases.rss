@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Example releases</title>
+    <link>https://releases.example.test/</link>
+    <description>Release notes</description>
+    <item>
+      <title>v2.1.0</title>
+      <link>https://releases.example.test/v2.1.0</link>
+      <guid isPermaLink="false">release-2.1.0</guid>
+      <pubDate>Tue, 03 Mar 2026 09:30:00 +0100</pubDate>
+      <description><![CDATA[<p>Adds <b>feeds</b> &amp; fixes.</p>]]></description>
+      <dc:creator>Release Bot</dc:creator>
+    </item>
+    <item>
+      <title>v2.0.1 &amp; notes</title>
+      <link>https://releases.example.test/v2.0.1</link>
+      <pubDate>Mon, 02 Feb 2026 23:00:00 GMT</pubDate>
+      <description>Patch release.</description>
+    </item>
+    <item>
+      <title>Undated</title>
+      <guid>https://releases.example.test/undated</guid>
+    </item>
+  </channel>
+</rss>

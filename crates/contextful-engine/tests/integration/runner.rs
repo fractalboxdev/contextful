@@ -224,6 +224,40 @@ fn every_poll_re_lands_the_boundary_instant() {
     assert_eq!(ids(&sink.commits[2]), [vec!["b", "c"]], "the boundary rows re-land on every poll");
 }
 
+/// A source serving every row it holds on each pull, its clock nested inside each row.
+struct Nested(Vec<Value>);
+
+impl Source for Nested {
+    fn pull(&mut self, _: &PullRequest, _: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        Ok(serde_json::to_vec(&json!({ "rows": self.0, "more": false })).unwrap())
+    }
+}
+
+/// An `incremental` value opening with `/` is an RFC 6901 pointer read from each fetched row, so a nested clock
+/// such as `/commit/committer/date` orders the stream and names its watermark.
+// spec: run.declare.incremental-pointer@d55d2b92
+#[test]
+fn a_pointer_clock_reads_a_nested_value_from_each_row() {
+    let rig = Rig::new();
+    let p = plan("kind = \"monotonic\"\nfield = \"/commit/committer/date\"", "");
+    let commit = |id: &str, date: &str| json!({"id": id, "commit": {"committer": {"date": date}}});
+    let mut source = Nested(vec![commit("a", "2011-01-26T19:06:08Z"), commit("b", "2012-03-06T23:06:50Z")]);
+    let mut sink = Sink::default();
+    rig.run(&p, "1.0.0", "run-1", &mut source, &mut sink).unwrap();
+    assert_eq!(
+        rig.catalog().cursor("feed", "filings").unwrap().position,
+        Some(json!({"field": "/commit/committer/date", "at": "2012-03-06T23:06:50Z"}))
+    );
+    assert_eq!(ids(&sink.commits[0]), [vec!["a", "b"]]);
+    // The next poll admits the boundary row and a later one, and drops the older row.
+    source.0.push(commit("c", "2012-04-01T00:00:00Z"));
+    rig.run(&p, "1.0.0", "run-2", &mut source, &mut sink).unwrap();
+    assert_eq!(ids(&sink.commits[1]), [vec!["b", "c"]]);
+    // A row whose pointer names nothing has no orderable clock.
+    source.0.push(json!({"id": "d", "commit": {}}));
+    assert!(rig.run(&p, "1.0.0", "run-3", &mut source, &mut sink).map_or(true, |r| r.status != RunStatus::Success));
+}
+
 /// A `monotonic` position is concurrent-safe and commits the highest value observed. An `opaque-token` or
 /// `snapshot-id` position moves only under a single-writer lease. Last-write-wins governs no cursor.
 // spec: run.advance.concurrency-by-kind@b06ad45d

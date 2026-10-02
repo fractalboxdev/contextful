@@ -154,8 +154,9 @@ fn a_next_link_off_the_configured_origin_fails_the_read() {
     assert!(elsewhere.requests.lock().unwrap().is_empty(), "no request reached the other port");
 }
 
-/// A URL placeholder with no pattern to bind it raises `ConnectorPlaceholderUnbound` at build.
-// spec: connector.source.placeholder-unbound@4b5e57a5
+/// A URL or bound-column placeholder naming neither `{table}` nor a table-pattern field raises
+/// `ConnectorPlaceholderUnbound` at build.
+// spec: connector.source.placeholder-unbound@f354f202
 #[test]
 fn a_placeholder_other_than_the_table_is_refused_at_build() {
     match HttpConfig::parse(&json!({"endpoint": "https://api.vendor.example/v1/{account}/items"})) {

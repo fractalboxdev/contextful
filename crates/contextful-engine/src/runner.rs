@@ -10,7 +10,7 @@ use crate::journal::{Journal, Resolved};
 use crate::project::Emitter;
 use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
-use contextful_core::run::advance::{admits, advance, frontier, open_watermark, resolve_concurrent, watermark, CursorKind};
+use contextful_core::run::advance::{admits, advance, clock, frontier, open_watermark, resolve_concurrent, watermark, CursorKind};
 use contextful_core::run::cancel::{mark, same_grain, Scope};
 use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{ConnectorPin, OwnerScope, Pins};
@@ -230,7 +230,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     let next = advance(at.as_ref(), f.as_ref())?;
                     let mut admitted = Vec::new();
                     for r in pull.rows {
-                        if let Some(v) = r.get(&field) {
+                        if let Some(v) = clock(&r, &field) {
                             if admits(at.as_ref(), v)? {
                                 admitted.push(r);
                             }

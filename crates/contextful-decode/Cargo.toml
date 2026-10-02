@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-# The record decoders every source shares: JSON, JSON Lines, delimited text and a workbook.
+# The record decoders every source shares: JSON, JSON Lines, delimited text, a feed and a workbook.
 # The package links no network stack (`topology.package.decode-network-free`).
 
 [dependencies]
@@ -15,6 +15,7 @@ flate2 = "1"
 pdf-extract = { version = "0.12", optional = true }
 quick-xml = "0.37"
 serde_json = "1"
+time = { version = "0.3", features = ["parsing", "formatting"] }
 zip = { version = "6", default-features = false, features = ["deflate"] }
 
 [features]

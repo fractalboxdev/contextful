@@ -17,8 +17,38 @@ pub enum TransformOp {
     /// Rewrite one column's type: `string`, `int64`, `float64` or `boolean`, or a binary
     /// or vector type (`run.transform.typed-cast`).
     Cast { column: String, to: String },
-    /// Keep the rows whose single column equals a value.
-    Filter { column: String, equals: Value },
+    /// Keep the rows whose single column equals a value, or by whether a column holds a
+    /// value at all (`run.transform.presence-filter`). A filter takes exactly one form.
+    Filter {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        column: Option<String>,
+        /// Present when declared, `null` included: an explicit `null` is a value to match.
+        #[serde(default, deserialize_with = "declared", skip_serializing_if = "Option::is_none")]
+        equals: Option<Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        absent: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        present: Option<String>,
+    },
+    /// Copy the value at an RFC 6901 pointer into a named column (`run.transform.extract`).
+    Extract { pointer: String, to: String },
+}
+
+/// A declared key's value, `null` included.
+fn declared<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(d).map(Some)
+}
+
+/// The value at RFC 6901 `pointer` inside `row`; `None` when it names nothing or is not a
+/// pointer. The first token names a column, the rest descend into its value.
+pub fn row_pointer<'a>(row: &'a Row, pointer: &str) -> Option<&'a Value> {
+    let rest = pointer.strip_prefix('/')?;
+    let (first, tail) = match rest.find('/') {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, ""),
+    };
+    let column = first.replace("~1", "/").replace("~0", "~");
+    row.get(&column)?.pointer(tail)
 }
 
 /// The scalar types a cast reaches.
@@ -47,15 +77,30 @@ impl TransformOp {
             TransformOp::Rename { .. } => "rename",
             TransformOp::Cast { .. } => "cast",
             TransformOp::Filter { .. } => "filter",
+            TransformOp::Extract { .. } => "extract",
         }
     }
 
-    /// Hold the operation's own declaration: a cast names a type it reaches.
+    /// Hold the operation's own declaration: a cast names a type it reaches, a filter takes
+    /// one form, and an extract names a pointer into the row.
     pub fn validate(&self) -> Result<(), RunError> {
         match self {
             TransformOp::Cast { to, column } if !CAST_TYPES.contains(&to.as_str()) && typed_cast(to).is_none() => Err(RunError::Invalid(format!(
                 "cast of `{column}` names type `{to}`; a cast reaches {}, `binary`, `binary(n)`, `float32[n]` or `float16[n]`",
                 CAST_TYPES.join(", ")
+            ))),
+            TransformOp::Filter { column, equals, absent, present } => {
+                let forms = [column.is_some() && equals.is_some(), absent.is_some(), present.is_some()];
+                let stray = column.is_some() != equals.is_some();
+                if stray || forms.iter().filter(|f| **f).count() != 1 {
+                    return Err(RunError::Invalid(
+                        "a filter declares exactly one of `column` with `equals`, `absent` or `present`".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            TransformOp::Extract { pointer, to } if !pointer.starts_with('/') => Err(RunError::Invalid(format!(
+                "extract into `{to}` names pointer `{pointer}`; a pointer opens with `/` and its first token names a column"
             ))),
             _ => Ok(()),
         }
@@ -86,6 +131,11 @@ fn cast_value(v: &Value, to: &str) -> Value {
     }
 }
 
+/// Whether `row` holds a value in `column`: the key is present and not `null`.
+fn holds(row: &Row, column: &str) -> bool {
+    row.get(column).is_some_and(|v| !v.is_null())
+}
+
 fn require(rows: &[Row], column: &str, op: &TransformOp, table: &str) -> Result<(), RunError> {
     if !rows.is_empty() && !rows.iter().any(|r| r.contains_key(column)) {
         return Err(RunError::PipelineTransformColumnMissing(format!(
@@ -98,6 +148,10 @@ fn require(rows: &[Row], column: &str, op: &TransformOp, table: &str) -> Result<
 
 /// Apply one operation to a batch.
 pub fn apply_op(op: &TransformOp, rows: Vec<Row>, table: &str) -> Result<Vec<Row>, RunError> {
+    // A filter's form and an extract's pointer decide which rows and values it reads.
+    if matches!(op, TransformOp::Filter { .. } | TransformOp::Extract { .. }) {
+        op.validate()?;
+    }
     Ok(match op {
         TransformOp::Select { columns } => rows.into_iter().map(|r| r.into_iter().filter(|(k, _)| columns.contains(k)).collect()).collect(),
         TransformOp::Rename { from, to } => rows
@@ -120,10 +174,22 @@ pub fn apply_op(op: &TransformOp, rows: Vec<Row>, table: &str) -> Result<Vec<Row
                 })
                 .collect()
         }
-        TransformOp::Filter { column, equals } => {
+        TransformOp::Filter { column: Some(column), equals: Some(equals), .. } => {
             require(&rows, column, op, table)?;
             rows.into_iter().filter(|r| r.get(column) == Some(equals)).collect()
         }
+        TransformOp::Filter { absent: Some(column), .. } => rows.into_iter().filter(|r| !holds(r, column)).collect(),
+        TransformOp::Filter { present: Some(column), .. } => rows.into_iter().filter(|r| holds(r, column)).collect(),
+        // Unreachable past the form check above, which admits exactly one form.
+        TransformOp::Filter { .. } => rows,
+        TransformOp::Extract { pointer, to } => rows
+            .into_iter()
+            .map(|mut r| {
+                    let v = row_pointer(&r, pointer).cloned().unwrap_or(Value::Null);
+                    r.insert(to.clone(), v);
+                    r
+                })
+                .collect(),
     })
 }
 
@@ -182,6 +248,9 @@ pub fn carry_types(chain: &[TransformOp], mut types: Types) -> Types {
                 }
             },
             TransformOp::Filter { .. } => {}
+            TransformOp::Extract { to, .. } => {
+                types.remove(to);
+            }
         }
     }
     types

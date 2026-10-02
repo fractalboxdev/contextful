@@ -30,6 +30,12 @@ pub enum ConnectorError {
     /// An environment binding on a key the connector does not read. (`connector.declare-capability.binding-unsupported`)
     #[error("ConnectorBindingUnsupported: {0}")]
     ConnectorBindingUnsupported(String),
+    /// A fetched row already carrying a column the source binds from the table name. (`connector.source.bound-column-occupied`)
+    #[error("ConnectorBoundColumnOccupied: {0}")]
+    ConnectorBoundColumnOccupied(String),
+    /// A conditional read beside a pagination shape or a declared incremental field. (`connector.source.conditional-rejected`)
+    #[error("ConnectorConditionalRejected: {0}")]
+    ConnectorConditionalRejected(String),
     /// A worksheet cell holding a value past the header's width. (`connector.source.cell-out-of-range`)
     #[error("ConnectorCellOutOfRange: {0}")]
     ConnectorCellOutOfRange(String),
