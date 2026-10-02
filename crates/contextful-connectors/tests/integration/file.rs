@@ -89,8 +89,8 @@ fn the_walk_follows_no_symbolic_link() {
 }
 
 /// The `file` source walks `root`, resolved against the project directory, into one `documents` table: `.md` and
-/// `.markdown` as notes, `.txt` as plain text and `.pdf` as PDF pages. Any other extension is declined.
-// spec: connector.source.file-source@e9d6584a
+/// `.markdown` as notes, `.txt` as plain text and `.pdf` as PDF pages. Any other extension is declined unopened.
+// spec: connector.source.file-source@35ae5d21
 #[test]
 fn notes_text_and_pdfs_land_and_every_other_extension_is_declined_by_extension() {
     let dir = tempfile::tempdir().unwrap();
@@ -248,9 +248,11 @@ fn a_row_carries_its_columns_and_a_title_from_frontmatter_heading_or_stem() {
     write(dir.path(), "a.md", declared);
     write(dir.path(), "b.md", "intro\n\n# Heading Title\n");
     write(dir.path(), "c-notes.md", "## Only a subheading\n");
+    write(dir.path(), "d.md", "---\nTitle: Shouted\n---\n# Heading Title\n");
     let (rows, _, _) = read(&source(dir.path(), json!({"root": "."})), None).unwrap();
     let titles: Vec<&str> = rows.iter().map(|r| r["title"].as_str().unwrap()).collect();
-    assert_eq!(titles, ["Declared Title", "Heading Title", "c-notes"]);
+    assert_eq!(titles, ["Declared Title", "Heading Title", "c-notes", "Shouted"]);
+    assert!(row(&rows, "d", 1).get("Title").is_none(), "a declared `Title` is the title, not a column");
     let a = row(&rows, "a", 1);
     let mut columns: Vec<&str> = a.keys().map(String::as_str).collect();
     columns.sort();
@@ -259,16 +261,19 @@ fn a_row_carries_its_columns_and_a_title_from_frontmatter_heading_or_stem() {
     assert_eq!((a["sha256"].clone(), a["text"].clone(), a["url"].clone(), a["heading"].clone()), (json!(digest), json!("# Heading Title"), Value::Null, Value::Null));
 }
 
-/// Each other frontmatter key lands as a string column on every row of its note: a scalar as its text, a list as a
+/// Each other frontmatter key lands lowercased as a string column on every row of its note: a scalar as its text, a list as a
 /// JSON array.
-// spec: connector.source.frontmatter-columns@4a24156e
+// spec: connector.source.frontmatter-columns@bc706cbc
 #[test]
 fn frontmatter_keys_land_as_string_columns_on_every_row() {
     let dir = tempfile::tempdir().unwrap();
     let front = "---\nowner: Ops\nreviewed: 2031-03-01\ntags: [onboarding, \"set, up\"]\naliases:\n  - first\n  - second\nempty:\n---\n";
     write(dir.path(), "guide.md", format!("{front}{}", long_note()));
     write(dir.path(), "bare.md", "no frontmatter");
+    write(dir.path(), "shouted.md", "---\nOwner: Finance\n---\nbody");
     let (rows, _, _) = read(&source(dir.path(), json!({"root": "."})), None).unwrap();
+    assert_eq!(row(&rows, "shouted", 1)["owner"], json!("Finance"), "a key lands under its lowercased name");
+    assert!(rows.iter().all(|r| !r.contains_key("Owner")), "`owner` and `Owner` share one column");
     for r in rows.iter().filter(|r| r["slug"] == json!("guide")) {
         assert_eq!(
             (r["owner"].clone(), r["reviewed"].clone(), r["tags"].clone(), r["aliases"].clone(), r["empty"].clone()),
@@ -279,9 +284,10 @@ fn frontmatter_keys_land_as_string_columns_on_every_row() {
     assert_eq!(row(&rows, "bare", 1)["owner"], Value::Null, "every row of one pull carries every frontmatter column");
 }
 
-/// A nested map, a block scalar, a repeated key, a key carrying the reserved producer prefix, or a key other than
-/// `title` naming a column the source lands, in a note's frontmatter raises `ConnectorFrontmatterRejected`.
-// spec: connector.source.frontmatter-shape@9d1a9935
+/// A nested map, a block scalar, a key carrying the reserved producer prefix, or, compared without case, a repeated
+/// key or a key other than `title` naming a column the source lands, in a note's frontmatter raises
+/// `ConnectorFrontmatterRejected`.
+// spec: connector.source.frontmatter-shape@d5e4355e
 #[test]
 fn a_nested_map_block_scalar_or_reserved_key_in_frontmatter_refuses() {
     for (front, why) in [
@@ -292,7 +298,11 @@ fn a_nested_map_block_scalar_or_reserved_key_in_frontmatter_refuses() {
         ("summary: >-\n  folded\n", "block scalar"),
         ("_taint: trusted\n", "reserved producer prefix"),
         ("text: replaced\n", "names a column"),
+        ("Text: replaced\n", "names a column"),
+        ("SLUG: other\n", "names a column"),
         ("owner: a\nowner: b\n", "declared twice"),
+        ("owner: a\nOwner: b\n", "declared twice"),
+        ("title: a\nTitle: b\n", "declared twice"),
     ] {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "kept.md", "kept");
@@ -307,9 +317,9 @@ fn a_nested_map_block_scalar_or_reserved_key_in_frontmatter_refuses() {
     assert!(f.message.starts_with("ConnectorFrontmatterRejected") && f.message.contains("never closes"), "{f}");
 }
 
-/// A compound-binary office container, detected by magic bytes as well as extension, raises
-/// `ConnectorConversionRequired` naming the conversion command.
-// spec: connector.source.conversion-required@f58ff03c
+/// A compound-binary office container, detected by an office extension or by magic bytes under an extension the
+/// source reads, raises `ConnectorConversionRequired` naming the conversion command.
+// spec: connector.source.conversion-required@6c075c90
 #[test]
 fn a_compound_binary_container_refuses_by_extension_or_magic_naming_the_command() {
     const MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
@@ -317,7 +327,7 @@ fn a_compound_binary_container_refuses_by_extension_or_magic_naming_the_command(
         ("Board/minutes.doc", b"not even ole".to_vec(), "pdf"),
         ("Board/ledger.XLS", b"x".to_vec(), "xlsx"),
         ("Board/renamed.txt", [MAGIC.as_slice(), b"rest"].concat(), "pdf"),
-        ("Board/attachment.bin", [MAGIC.as_slice(), b"rest"].concat(), "pdf"),
+        ("Board/renamed.md", [MAGIC.as_slice(), b"rest"].concat(), "pdf"),
     ] {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "a.md", "first");
@@ -326,6 +336,14 @@ fn a_compound_binary_container_refuses_by_extension_or_magic_naming_the_command(
         assert!(f.message.starts_with("ConnectorConversionRequired") && f.message.contains(path), "{path}: {f}");
         assert!(f.message.contains(&format!("soffice --headless --convert-to {target}")), "{path}: {f}");
     }
+    // A compound container under an extension the source neither reads nor converts is declined unopened.
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.md", "first");
+    write(dir.path(), "Thumbs.db", [MAGIC.as_slice(), b"rest"].concat());
+    write(dir.path(), "mail/note.msg", [MAGIC.as_slice(), b"rest"].concat());
+    let (rows, _, declined) = read(&source(dir.path(), json!({"root": "."})), None).unwrap();
+    assert_eq!(keys(&rows), [("a".to_string(), 1, false)]);
+    assert_eq!(declined, json!({"db": 1, "msg": 1}));
 }
 
 /// A compiled-in source decodes behind {{run.land.parse-boundary}}.
@@ -370,6 +388,32 @@ fn a_second_read_relands_what_changed_and_tombstones_what_left() {
     let tomb = row(&rows, "gone", 1);
     assert_eq!((tomb["path"].clone(), tomb["text"].clone(), tomb["sha256"].clone()), (json!("gone.txt"), Value::Null, Value::Null));
     assert_eq!(after["files"].as_object().unwrap().keys().collect::<Vec<_>>(), ["kept.md", "shrinks.pdf"]);
+}
+
+/// A file renamed onto its old slug re-lands under its new path, and the old path tombstones only ordinals past the
+/// renamed file's row count.
+// spec: connector.source.file-rename@d4f061d4
+#[test]
+fn a_rename_onto_the_same_slug_keeps_the_renamed_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.txt", "first");
+    write(dir.path(), "My Report.pdf", "%PDF-stub\none\u{c}two\u{c}three");
+    let s = source(dir.path(), json!({"root": "."}));
+    let (_, at, _) = read(&s, None).unwrap();
+
+    std::fs::rename(dir.path().join("a.txt"), dir.path().join("a.md")).unwrap();
+    std::fs::remove_file(dir.path().join("My Report.pdf")).unwrap();
+    write(dir.path(), "my-report.txt", "one page now");
+    let (rows, after, _) = read(&s, Some(&at)).unwrap();
+    let mut got = keys(&rows);
+    got.sort();
+    assert_eq!(
+        got,
+        [("a".to_string(), 1, false), ("my-report".to_string(), 1, false), ("my-report".to_string(), 2, true), ("my-report".to_string(), 3, true)]
+    );
+    assert_eq!(row(&rows, "a", 1)["path"], json!("a.md"));
+    assert_eq!(row(&rows, "my-report", 1)["path"], json!("my-report.txt"));
+    assert_eq!(after["files"].as_object().unwrap().keys().collect::<Vec<_>>(), ["a.md", "my-report.txt"]);
 }
 
 /// A file over 64 MiB is declined, and none of it past the leading bytes announcing its format is read.

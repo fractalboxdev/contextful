@@ -11660,7 +11660,7 @@
       "operation": "source",
       "subject": "declined-tally",
       "kind": "behavior",
-      "statement": "A directory walk records on the run record what it declined, tallied by extension.",
+      "statement": "A directory walk records on the run record what it declined, tallied by extension, and reports the total as its {{run.record.skipped-count}}.",
       "why": "P4",
       "file": "spec/40-connector.md",
       "line": 430
@@ -11814,7 +11814,7 @@
       "operation": "source",
       "subject": "frontmatter-shape",
       "kind": "refusal",
-      "statement": "A nested map, a block scalar, or a key carrying the reserved producer prefix in a note's frontmatter raises `ConnectorFrontmatterRejected`.",
+      "statement": "A nested map, a block scalar, a key carrying the reserved producer prefix, or, compared without case, a repeated key or a key other than `title` naming a column the source lands, in a note's frontmatter raises `ConnectorFrontmatterRejected`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
       "line": 450
@@ -11825,10 +11825,164 @@
       "operation": "source",
       "subject": "conversion-required",
       "kind": "refusal",
-      "statement": "A compound-binary office container, detected by magic bytes as well as extension, raises `ConnectorConversionRequired` naming the conversion command.",
+      "statement": "A compound-binary office container, detected by an office extension or by magic bytes under an extension the source reads, raises `ConnectorConversionRequired` naming the conversion command.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
       "line": 452
+    },
+    {
+      "id": "connector.source.file-source",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-source",
+      "kind": "behavior",
+      "statement": "The `file` source walks `root`, resolved against the project directory, into one `documents` table: `.md` and `.markdown` as notes, `.txt` as plain text and `.pdf` as PDF pages. Any other extension is declined unopened.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 454
+    },
+    {
+      "id": "connector.source.file-globs",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-globs",
+      "kind": "behavior",
+      "statement": "A root-relative path is read when it matches an `include` glob, or none is declared, and matches no `exclude` glob. `*` and `?` match within one segment; a `**` segment matches any number.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 455
+    },
+    {
+      "id": "connector.source.file-no-follow",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-no-follow",
+      "kind": "behavior",
+      "statement": "The `file` walk follows no symbolic link, to a file or a directory.",
+      "why": "because a link is the one path out of the root that a sorted walk of names cannot see",
+      "file": "spec/40-connector.md",
+      "line": 456
+    },
+    {
+      "id": "connector.source.file-table-unmatched",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-table-unmatched",
+      "kind": "behavior",
+      "statement": "A `file` table other than `documents` refuses as {{connector.source.table-unmatched}}, ahead of the walk.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 458
+    },
+    {
+      "id": "connector.source.document-slug",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "document-slug",
+      "kind": "behavior",
+      "statement": "A document's slug is its root-relative path without extension, lowercased, each run of characters other than ASCII letters and digits in a segment folded to `-`. Two files folding to one slug fail the read naming both.",
+      "why": "because a slug is the identity a link and a citation carry, and two files under one identity overwrite each other's rows",
+      "file": "spec/40-connector.md",
+      "line": 459
+    },
+    {
+      "id": "connector.source.heading-threshold",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "heading-threshold",
+      "kind": "limit",
+      "statement": "A note whose body past its frontmatter exceeds 8192 B lands one row per heading section, the text before its first heading as its own row; a shorter note and a text file land one row.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 461
+    },
+    {
+      "id": "connector.source.document-columns",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "document-columns",
+      "kind": "behavior",
+      "statement": "A document row carries slug, ordinal, root-relative path, kind, title, heading, text, url, the file's SHA-256 and a `removed` flag. The title is the frontmatter `title`, else the first level-one heading, else the file stem.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 462
+    },
+    {
+      "id": "connector.source.frontmatter-columns",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "frontmatter-columns",
+      "kind": "behavior",
+      "statement": "Each other frontmatter key lands lowercased as a string column on every row of its note: a scalar as its text, a list as a JSON array.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 463
+    },
+    {
+      "id": "connector.source.document-url",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "document-url",
+      "kind": "behavior",
+      "statement": "With `base_url`, a row's url is the base joined with its slug, then `#page=<n>` on a PDF page or the heading's anchor on a heading section; without `base_url` the url is null.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 464
+    },
+    {
+      "id": "connector.source.file-position",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-position",
+      "kind": "behavior",
+      "statement": "The `file` position maps each landed path to its digest and row count. A matching digest lands nothing, a changed file re-lands whole and tombstones ordinals past its new count, and a vanished file tombstones every row.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 465
+    },
+    {
+      "id": "connector.source.file-rename",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-rename",
+      "kind": "behavior",
+      "statement": "A file renamed onto its old slug re-lands under its new path, and the old path tombstones only ordinals past the renamed file's row count.",
+      "why": "because a tombstone on an identity the read lands live removes the renamed document",
+      "file": "spec/40-connector.md",
+      "line": 466
+    },
+    {
+      "id": "connector.source.file-cap",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-cap",
+      "kind": "limit",
+      "statement": "A file over 64 MiB is declined, and none of it past the leading bytes announcing its format is read.",
+      "why": "because a row-per-page document past that size is an export, not a note, and one file must not exhaust the read's memory",
+      "file": "spec/40-connector.md",
+      "line": 468
+    },
+    {
+      "id": "connector.source.file-pdf-absent",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-pdf-absent",
+      "kind": "behavior",
+      "statement": "A PDF the walk reaches in a build without the PDF decoder fails the read as a configuration fault naming the feature to rebuild with.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 470
+    },
+    {
+      "id": "connector.source.file-position-owned",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-position-owned",
+      "kind": "behavior",
+      "statement": "`incremental` beside the `file` source refuses as {{connector.package.component-position}} at validation.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 471
     },
     {
       "id": "connector.source.parse-containment",
@@ -11839,7 +11993,7 @@
       "statement": "A compiled-in source decodes behind {{run.land.parse-boundary}}.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 454
+      "line": 472
     },
     {
       "id": "connector.source.office-part-selection",
@@ -11850,7 +12004,7 @@
       "statement": "An office container is read by exact part name. No other part is opened and no external entity is resolved.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 456
+      "line": 474
     },
     {
       "id": "connector.source.decompression-budget",
@@ -11861,7 +12015,7 @@
       "statement": "A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 458
+      "line": 476
     },
     {
       "id": "connector.source.worksheet-landing",
@@ -11872,7 +12026,7 @@
       "statement": "One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.",
       "why": "because shared-string fan-out turns a small input into an unbounded output",
       "file": "spec/40-connector.md",
-      "line": 460
+      "line": 478
     },
     {
       "id": "connector.source.cell-out-of-range",
@@ -11883,7 +12037,7 @@
       "statement": "A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 462
+      "line": 480
     },
     {
       "id": "connector.source.external-reference",
@@ -11894,7 +12048,7 @@
       "statement": "An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 464
+      "line": 482
     },
     {
       "id": "connector.source.workbook-cell-typing",
@@ -11905,7 +12059,7 @@
       "statement": "A workbook cell lands as a string and a date cell as its serial number. No formula is evaluated; a formula cell lands its cached value.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 466
+      "line": 484
     },
     {
       "id": "connector.source.workbook-incremental",
@@ -11916,7 +12070,7 @@
       "statement": "An incremental position against a workbook raises `ConnectorIncrementalUnsupported`.",
       "why": "because a variable-width serial number advances a lexicographic watermark past unlanded rows",
       "file": "spec/40-connector.md",
-      "line": 468
+      "line": 486
     },
     {
       "id": "connector.source.report-id-commit",
@@ -11927,7 +12081,7 @@
       "statement": "An async-report source commits the vendor's run id the instant creation returns it. An exhausted polling budget ends the read successfully, and an expired vendor run is recreated for the same window.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 470
+      "line": 488
     },
     {
       "id": "connector.source.page-drain",
@@ -11938,7 +12092,7 @@
       "statement": "Report paging drains a fixed number of pages per read, one batch per page, each carrying the position after it.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 472
+      "line": 490
     },
     {
       "id": "connector.source.page-cursor-missing",
@@ -11949,7 +12103,7 @@
       "statement": "A response announcing another page while naming its cursor in neither the cursor field nor the next link raises `ConnectorPageCursorMissing`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 473
+      "line": 491
     },
     {
       "id": "connector.source.report-watermark",
@@ -11960,7 +12114,7 @@
       "statement": "Report watermarks are held per partition — account, grain, breakdown and any split dimension — as a versioned map inside one position.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 475
+      "line": 493
     },
     {
       "id": "connector.source.partition-isolation",
@@ -11971,7 +12125,7 @@
       "statement": "A retryable failure on one partition holds it at its committed position and keeps the pages other partitions drained.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 476
+      "line": 494
     },
     {
       "id": "connector.source.metric-grain",
@@ -11982,7 +12136,7 @@
       "statement": "A metric read at a grain where the vendor estimates rather than computes it raises `ConnectorMetricGrainRejected`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 478
+      "line": 496
     },
     {
       "id": "connector.source.restated-window",
@@ -11993,7 +12147,7 @@
       "statement": "A caught-up partition re-opens its lookback window every run, the pull window is at least that wide, and each row carries a deterministic key over partition, entity, date and breakdown.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 480
+      "line": 498
     },
     {
       "id": "connector.source.report-event-time",
@@ -12004,7 +12158,7 @@
       "statement": "A report row's event time is an RFC 3339 instant at midnight UTC of the window-start day, null where the vendor gave no usable date.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 481
+      "line": 499
     },
     {
       "id": "connector.source.ordering-column",
@@ -12015,7 +12169,7 @@
       "statement": "Ordering a report stream by the engine-injected ingest stamp raises `ConnectorOrderingColumnRejected`.",
       "why": "because a late seed then outranks a live restatement",
       "file": "spec/40-connector.md",
-      "line": 482
+      "line": 500
     },
     {
       "id": "connector.source.field-drift",
@@ -12026,7 +12180,7 @@
       "statement": "Report rows stay untyped JSON into the batch, and throttling is recognized from a throttle status or from an error body carrying a throttle code.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 484
+      "line": 502
     },
     {
       "id": "connector.source.report-auth",
@@ -12037,7 +12191,7 @@
       "statement": "An authentication failure on a report read raises `ConnectorAuthTerminal`, terminal against the retry schedule.",
       "why": "P6",
       "file": "spec/40-connector.md",
-      "line": 485
+      "line": 503
     },
     {
       "id": "connector.source.image-row",
@@ -12048,7 +12202,7 @@
       "statement": "An image source lands path, content hash, header width and height, embedded capture instant, file modification time, a modality marker and a null body. No pixel decode runs on ingest.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 487
+      "line": 505
     },
     {
       "id": "connector.source.image-header",
@@ -12059,7 +12213,7 @@
       "statement": "An image header that does not parse raises `ConnectorImageHeaderUnreadable` naming the path.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 488
+      "line": 506
     },
     {
       "id": "connector.source.quotability-marker",
@@ -12070,7 +12224,7 @@
       "statement": "Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model's reading.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 490
+      "line": 508
     },
     {
       "id": "connector.source.marker-body-pairing",
@@ -12081,7 +12235,7 @@
       "statement": "An image body and its quotability marker that are not null together raise `ConnectorQuotabilityMismatch`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 491
+      "line": 509
     },
     {
       "id": "connector.source.search-config",
@@ -12092,7 +12246,7 @@
       "statement": "The search source takes a driver, a query, a freshness window and a result ceiling, landing one row per result. Its cursor kind is snapshot-id, keyed on the result URL.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 493
+      "line": 511
     },
     {
       "id": "connector.source.provider-origin",
@@ -12103,7 +12257,7 @@
       "statement": "Each search provider's host is pinned at the call site; a non-TLS transport or another host raises `ConnectorProviderOriginRejected`, loopback excepted.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 494
+      "line": 512
     },
     {
       "id": "connector.source.search-degradation",
@@ -12114,7 +12268,7 @@
       "statement": "An absent provider key and a provider `5xx` are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 496
+      "line": 514
     },
     {
       "id": "connector.source.poll-only-increments",
@@ -12125,7 +12279,7 @@
       "statement": "Incremental loading is a scheduled poll. A replication socket held open is not a source read.",
       "why": "because its output is unbounded and has no recorded exchange to replay",
       "file": "spec/40-connector.md",
-      "line": 497
+      "line": 515
     },
     {
       "id": "connector.source.twin-api",
@@ -12136,7 +12290,7 @@
       "statement": "A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. A sanctioned, disclosed organization-wide export path is admitted.",
       "why": "A-read",
       "file": "spec/40-connector.md",
-      "line": 499
+      "line": 517
     },
     {
       "id": "connector.source.drive-walk",
@@ -12147,7 +12301,7 @@
       "statement": "The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder, within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is followed.",
       "why": "because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot",
       "file": "spec/40-connector.md",
-      "line": 501
+      "line": 519
     },
     {
       "id": "connector.source.drive-root",
@@ -12158,7 +12312,7 @@
       "statement": "A `folder_id` naming no folder, or one outside a declared `drive_id`, fails the read as a configuration fault before any listing.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 503
+      "line": 521
     },
     {
       "id": "connector.source.drive-tables",
@@ -12169,7 +12323,7 @@
       "statement": "The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the root, MIME type, `modifiedTime`, Drive's `md5Checksum` and the SHA-256 of the bytes read, and `pages`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 504
+      "line": 522
     },
     {
       "id": "connector.source.drive-table-unmatched",
@@ -12180,7 +12334,7 @@
       "statement": "A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any request.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 505
+      "line": 523
     },
     {
       "id": "connector.source.drive-export",
@@ -12191,7 +12345,7 @@
       "statement": "A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 506
+      "line": 524
     },
     {
       "id": "connector.source.drive-page-grain",
@@ -12202,7 +12356,7 @@
       "statement": "A PDF body lands one `pages` row per page under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column.",
       "why": "because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table",
       "file": "spec/40-connector.md",
-      "line": 507
+      "line": 525
     },
     {
       "id": "connector.source.drive-bytes",
@@ -12213,7 +12367,7 @@
       "statement": "Every body the drive source reads whole, exported or downloaded, lands as {{store.lay-out.landed-blob}}, and its file row's `sha256` names that blob.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 509
+      "line": 527
     },
     {
       "id": "connector.source.drive-file-cap",
@@ -12224,7 +12378,7 @@
       "statement": "A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap and no pages. No byte past the cap is read, and the read continues.",
       "why": "because a row naming the skipped file answers for it, where truncated bytes read as the whole document",
       "file": "spec/40-connector.md",
-      "line": 510
+      "line": 528
     },
     {
       "id": "connector.source.drive-unreadable",
@@ -12235,7 +12389,7 @@
       "statement": "A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.",
       "why": "because one unreadable file failing the fire holds back every other file's row and the position behind them",
       "file": "spec/40-connector.md",
-      "line": 512
+      "line": 530
     },
     {
       "id": "connector.source.drive-export-limit",
@@ -12246,7 +12400,7 @@
       "statement": "A Doc, Sheet or Slides deck whose export Drive answers `403 exportSizeLimitExceeded` lands its file row with a `skipped` reason naming Drive's export limit and no pages, and the read continues.",
       "why": "because Drive refuses that export on every fire, so failing the read stalls the whole tree behind one file",
       "file": "spec/40-connector.md",
-      "line": 514
+      "line": 532
     },
     {
       "id": "connector.source.drive-skip-count",
@@ -12257,7 +12411,7 @@
       "statement": "Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 516
+      "line": 534
     },
     {
       "id": "connector.source.drive-incremental",
@@ -12268,7 +12422,7 @@
       "statement": "The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 517
+      "line": 535
     },
     {
       "id": "connector.source.drive-fire",
@@ -12279,7 +12433,7 @@
       "statement": "One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 518
+      "line": 536
     },
     {
       "id": "connector.source.drive-oauth",
@@ -12290,7 +12444,7 @@
       "statement": "The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.",
       "why": "because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour",
       "file": "spec/40-connector.md",
-      "line": 519
+      "line": 537
     },
     {
       "id": "connector.source.drive-oauth-shape",
@@ -12301,7 +12455,7 @@
       "statement": "`oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 521
+      "line": 539
     },
     {
       "id": "connector.source.drive-origin",
@@ -12312,7 +12466,7 @@
       "statement": "The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 522
+      "line": 540
     },
     {
       "id": "connector.source.drive-position-owned",
@@ -12323,7 +12477,7 @@
       "statement": "`incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 523
+      "line": 541
     },
     {
       "id": "connector.reference.credential-plane",
@@ -21443,6 +21597,10 @@
       "connector.attach.weakened-hop"
     ],
     [
+      "connector.source.declined-tally",
+      "run.record.skipped-count"
+    ],
+    [
       "connector.source.object-unreadable",
       "run.land.unreadable-input"
     ],
@@ -21469,6 +21627,14 @@
     [
       "connector.source.document-unreadable",
       "run.land.unreadable-input"
+    ],
+    [
+      "connector.source.file-table-unmatched",
+      "connector.source.table-unmatched"
+    ],
+    [
+      "connector.source.file-position-owned",
+      "connector.package.component-position"
     ],
     [
       "connector.source.parse-containment",
@@ -23658,6 +23824,20 @@
             "unit": "s",
             "basis": "chosen",
             "gloss": "Wall-clock deadline on one discovery call."
+          },
+          "connector-document-chunk": {
+            "clause": "connector.source.heading-threshold",
+            "value": 8192,
+            "unit": "B",
+            "basis": "chosen",
+            "gloss": "Note body bytes past which a note lands one row per heading section."
+          },
+          "connector-document-file-bytes": {
+            "clause": "connector.source.file-cap",
+            "value": 64,
+            "unit": "MiB",
+            "basis": "chosen",
+            "gloss": "Bytes one file under a `file` root carries before the walk declines it."
           },
           "connector-drive-file-bytes": {
             "clause": "connector.source.drive-file-cap",

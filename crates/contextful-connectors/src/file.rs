@@ -411,6 +411,12 @@ impl FileSource {
                 return Err(Failure::canceled("stopped between files"));
             }
             let kind = Kind::of(&f.extension);
+            if kind == Kind::Other {
+                // An extension the source neither reads nor converts is declined unopened, so a
+                // non-office compound container such as `Thumbs.db` or `.msg` never fails the read.
+                *declined.entry(f.extension.clone()).or_default() += 1;
+                continue;
+            }
             if kind == Kind::Compound || is_compound(&self.head(&f)?) {
                 let to = if matches!(f.extension.as_str(), "xls" | "xlt") { "xlsx" } else { "pdf" };
                 return Err(Failure::deterministic(
@@ -422,7 +428,7 @@ impl FileSource {
                     .to_string(),
                 ));
             }
-            if kind == Kind::Other || f.size > MAX_FILE_BYTES {
+            if f.size > MAX_FILE_BYTES {
                 *declined.entry(f.extension.clone()).or_default() += 1;
                 continue;
             }
@@ -485,6 +491,18 @@ impl FileSource {
         for (path, h) in before.iter().filter(|(p, _)| !after.contains_key(*p)) {
             rows.extend((1..=h.rows).map(|o| Self::tombstone(&h.slug, o, path)));
         }
+        // A rename onto the same slug re-lands the identity under its new path; a tombstone on
+        // an identity the read holds live would remove the renamed rows.
+        let live: BTreeSet<(String, u64)> = after
+            .values()
+            .flat_map(|v| {
+                let s = v["slug"].as_str().unwrap_or_default().to_string();
+                (1..=v["rows"].as_u64().unwrap_or(0)).map(move |o| (s.clone(), o))
+            })
+            .collect();
+        rows.retain(|r| {
+            r["removed"] != json!(true) || !live.contains(&(r["slug"].as_str().unwrap_or_default().to_string(), r["ordinal"].as_u64().unwrap_or(0)))
+        });
         // Every row of one pull carries every frontmatter column the pull lands.
         for r in &mut rows {
             for c in &columns {

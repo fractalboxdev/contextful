@@ -447,11 +447,11 @@ The declared behavior of each source compiled into the engine.
   *because an identity then survives a document crossing the threshold*
 - `document-unreadable` — An encrypted document, and one with no extractable text on any page, is unreadable input under {{run.land.unreadable-input}} and never lands as empty pages.
   *P2*
-- `frontmatter-shape` — A nested map, a block scalar, a repeated key, a key carrying the reserved producer prefix, or a key other than `title` naming a column the source lands, in a note's frontmatter raises `ConnectorFrontmatterRejected`.
+- `frontmatter-shape` — A nested map, a block scalar, a key carrying the reserved producer prefix, or, compared without case, a repeated key or a key other than `title` naming a column the source lands, in a note's frontmatter raises `ConnectorFrontmatterRejected`.
   *A-connector*
-- `conversion-required` — A compound-binary office container, detected by magic bytes as well as extension, raises `ConnectorConversionRequired` naming the conversion command.
+- `conversion-required` — A compound-binary office container, detected by an office extension or by magic bytes under an extension the source reads, raises `ConnectorConversionRequired` naming the conversion command.
   *A-connector*
-- `file-source` — The `file` source walks `root`, resolved against the project directory, into one `documents` table: `.md` and `.markdown` as notes, `.txt` as plain text and `.pdf` as PDF pages. Any other extension is declined.
+- `file-source` — The `file` source walks `root`, resolved against the project directory, into one `documents` table: `.md` and `.markdown` as notes, `.txt` as plain text and `.pdf` as PDF pages. Any other extension is declined unopened.
 - `file-globs` — A root-relative path is read when it matches an `include` glob, or none is declared, and matches no `exclude` glob. `*` and `?` match within one segment; a `**` segment matches any number.
 - `file-no-follow` — The `file` walk follows no symbolic link, to a file or a directory.
   *because a link is the one path out of the root that a sorted walk of names cannot see*
@@ -460,9 +460,11 @@ The declared behavior of each source compiled into the engine.
   *because a slug is the identity a link and a citation carry, and two files under one identity overwrite each other's rows*
 - `heading-threshold` — A note whose body past its frontmatter exceeds 8192 B lands one row per heading section, the text before its first heading as its own row; a shorter note and a text file land one row.
 - `document-columns` — A document row carries slug, ordinal, root-relative path, kind, title, heading, text, url, the file's SHA-256 and a `removed` flag. The title is the frontmatter `title`, else the first level-one heading, else the file stem.
-- `frontmatter-columns` — Each other frontmatter key lands as a string column on every row of its note: a scalar as its text, a list as a JSON array.
+- `frontmatter-columns` — Each other frontmatter key lands lowercased as a string column on every row of its note: a scalar as its text, a list as a JSON array.
 - `document-url` — With `base_url`, a row's url is the base joined with its slug, then `#page=<n>` on a PDF page or the heading's anchor on a heading section; without `base_url` the url is null.
 - `file-position` — The `file` position maps each landed path to its digest and row count. A matching digest lands nothing, a changed file re-lands whole and tombstones ordinals past its new count, and a vanished file tombstones every row.
+- `file-rename` — A file renamed onto its old slug re-lands under its new path, and the old path tombstones only ordinals past the renamed file's row count.
+  *because a tombstone on an identity the read lands live removes the renamed document*
 - `file-cap` — A file over 64 MiB is declined, and none of it past the leading bytes announcing its format is read.
   *because a row-per-page document past that size is an export, not a note, and one file must not exhaust the read's memory*
 - `file-pdf-absent` — A PDF the walk reaches in a build without the PDF decoder fails the read as a configuration fault naming the feature to rebuild with.

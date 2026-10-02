@@ -31,8 +31,9 @@ fn rejected(input: &str, line: usize, why: impl std::fmt::Display) -> Failure {
 /// One frontmatter value: a scalar's text, a list of scalars, or null for a key with none.
 pub type Entry = (String, Value);
 
-/// Split a note into its frontmatter entries, in declared order, and its body. A key in
-/// `taken` names a column the source lands itself and refuses like a reserved key.
+/// Split a note into its frontmatter entries, in declared order and keyed lowercased, and its
+/// body. `taken` holds lowercase column names the source lands itself; a key folding onto one
+/// refuses like a reserved key, and two keys folding onto one name refuse as a repeat.
 pub fn frontmatter<'a>(text: &'a str, input: &str, taken: &[&str]) -> Result<(Vec<Entry>, &'a str), Failure> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let Some(rest) = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n")) else {
@@ -76,12 +77,15 @@ pub fn frontmatter<'a>(text: &'a str, input: &str, taken: &[&str]) -> Result<(Ve
         if key.starts_with(RESERVED_PREFIX) {
             return Err(rejected(input, n, format!("key `{key}` carries the reserved producer prefix `{RESERVED_PREFIX}`")));
         }
-        if taken.contains(&key.as_str()) {
+        // The store folds column names without case, so a key is judged and landed lowercased.
+        let folded = key.to_lowercase();
+        if taken.contains(&folded.as_str()) {
             return Err(rejected(input, n, format!("key `{key}` names a column the source lands")));
         }
-        if !seen.insert(key.clone()) {
+        if !seen.insert(folded.clone()) {
             return Err(rejected(input, n, format!("key `{key}` is declared twice")));
         }
+        let key = folded;
         let value = value.trim();
         let parsed = if value.is_empty() {
             // A value on the following indented lines: a block list, or a nested map.
