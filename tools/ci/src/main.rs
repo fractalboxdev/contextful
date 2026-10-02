@@ -127,6 +127,13 @@ enum Cmd {
         #[arg(long)]
         plan: bool,
     },
+    /// Build the edge profile for `wasm32-wasip2` and record its compressed size under the
+    /// scheduled ledger entry; a failed build records nothing and exits 0.
+    WasiProbe {
+        /// The directory the build compiles into, removed afterwards.
+        #[arg(long, default_value = release::WASI_TARGET_DIR)]
+        target_dir: PathBuf,
+    },
     /// Write the package-manager formulae and `SHA256SUMS` over a directory of release archives.
     Formula {
         /// The directory `contextful-ci release` packaged every target into.
@@ -208,6 +215,7 @@ fn main() {
             }
             release::release(&root, &profiles, &targets, &root.join(target_dir), &out)
         }),
+        Cmd::WasiProbe { target_dir } => repo_root().and_then(|root| release::wasi_probe(&root, &root.join(target_dir))),
         Cmd::Formula { dist, base_url } => repo_root().and_then(|root| {
             release::formulae(&root, &dist, &base_url).map(|written| written.iter().for_each(|p| println!("formula: {}", p.display())))
         }),

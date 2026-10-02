@@ -336,3 +336,40 @@ pub fn formulae(root: &Path, dist: &Path, base_url: &str) -> Result<Vec<PathBuf>
     std::fs::write(dist.join("SHA256SUMS"), sums)?;
     Ok(written)
 }
+
+/// The target no profile ships for, which the scheduled probe builds the edge profile for
+/// (`assurance.build.wasi-probe`).
+const WASI: &str = "wasm32-wasip2";
+const WASI_PROFILE: &str = "contextful-edge";
+/// The ledger entry the probe records under.
+const WASI_ENTRY: &str = "edge-wasip2-footprint";
+/// The directory the probe builds into, apart from every other stage's.
+pub const WASI_TARGET_DIR: &str = "target/wasi-probe";
+/// The zstd level the release archive compresses with.
+const WASI_LEVEL: i32 = 19;
+
+/// Build the edge profile for `wasm32-wasip2` and record its zstd-compressed size in MiB
+/// under the ledger entry. A failed build records nothing and returns cleanly, so the
+/// scheduled tier reads an absent figure and runs its next entry. The build directory is
+/// reclaimed either way.
+pub fn wasi_probe(root: &Path, target_dir: &Path) -> Result<()> {
+    let args = cargo_build(WASI_PROFILE, WASI);
+    eprintln!("wasi-probe: cargo {}", args.join(" "));
+    let built = Command::new("cargo").args(&args).env("CARGO_TARGET_DIR", target_dir).current_dir(root).output().context("running cargo")?;
+    let result = if built.status.success() {
+        let wasm = target_dir.join(WASI).join("release").join(format!("{BINARY}.wasm"));
+        let bytes = std::fs::read(&wasm).with_context(|| format!("reading {}", wasm.display()))?;
+        let compressed = zstd::bulk::compress(&bytes, WASI_LEVEL).context("compressing the artifact")?;
+        let mib = compressed.len() as f64 / (1024.0 * 1024.0);
+        contextful_eval::record::emit(WASI_ENTRY, mib, 1, 0);
+        eprintln!("wasi-probe: {WASI_PROFILE} for {WASI} compresses to {mib:.2} MiB");
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&built.stderr);
+        let tail: Vec<&str> = stderr.lines().filter(|l| l.starts_with("error")).take(5).collect();
+        eprintln!("wasi-probe: {WASI_PROFILE} does not build for {WASI}; recorded nothing\n{}", tail.join("\n"));
+        Ok(())
+    };
+    let _ = std::fs::remove_dir_all(target_dir);
+    result
+}

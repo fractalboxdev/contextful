@@ -148,6 +148,21 @@ fn the_release_workflow_builds_every_matrix_target_and_publishes_only_off_a_dry_
     let mut built: Vec<&str> = yml.lines().filter_map(|l| l.trim().strip_prefix("- target: ")).collect();
     built.sort();
     assert_eq!(built, targets, "the workflow's build matrix differs from the release matrix");
+    // Each target builds natively on a hosted runner of its own architecture; a retired
+    // image schedules no job, and its archives then never reach the formula step.
+    let lines: Vec<&str> = yml.lines().map(str::trim).collect();
+    let runner_of = |target: &str| {
+        let at = lines.iter().position(|l| *l == format!("- target: {target}")).unwrap();
+        lines[at + 1].strip_prefix("runner: ").unwrap_or_else(|| panic!("`{target}` names no runner")).to_string()
+    };
+    for (target, runner) in [
+        ("x86_64-unknown-linux-musl", "ubuntu-24.04"),
+        ("aarch64-unknown-linux-musl", "ubuntu-24.04-arm"),
+        ("aarch64-apple-darwin", "macos-15"),
+        ("x86_64-apple-darwin", "macos-15-intel"),
+    ] {
+        assert_eq!(runner_of(target), runner, "`{target}` runs on another runner");
+    }
     let images = yml.lines().find_map(|l| l.trim().strip_prefix("profile: [")).and_then(|l| l.strip_suffix(']')).expect("an image matrix");
     let images: Vec<&str> = images.split(',').map(str::trim).collect();
     assert_eq!(images, profiles);
@@ -162,9 +177,9 @@ fn the_release_workflow_builds_every_matrix_target_and_publishes_only_off_a_dry_
 
 /// No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.
 ///
-/// Under `contextful-ci measure --tier scheduled` the probe builds the edge profile for
-/// `wasm32-wasip2` and records its zstd-compressed size; elsewhere it checks the ledger
-/// schedules it and the release matrix leaves the target out.
+/// Under `contextful-ci measure --tier scheduled` the probe runs `contextful-ci wasi-probe`,
+/// which records the compressed size or, when the build fails, nothing; elsewhere it checks
+/// the ledger schedules it and the release matrix leaves the target out.
 // spec: assurance.build.wasi-probe@67a91a2c
 #[test]
 fn the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget() {
@@ -180,19 +195,60 @@ fn the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget() {
     if std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_none() {
         return;
     }
-    let target = root.join("target/wasi-probe");
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    let built = Command::new(cargo)
-        .args(["build", "--release", "--locked", "-p", "contextful-cli", "--bin", "contextful"])
-        .args(["--no-default-features", "--features", "contextful-edge", "--target", "wasm32-wasip2"])
-        .env("CARGO_TARGET_DIR", &target)
-        .current_dir(root)
+    let probe = ci(&["wasi-probe"], None);
+    assert!(probe.status.success(), "{}", String::from_utf8_lossy(&probe.stderr));
+}
+
+/// A `cargo` whose `build` exits `code`, first writing `bytes` as the wasm artifact under
+/// `$CARGO_TARGET_DIR` when `code` is 0.
+fn wasi_cargo(dir: &Path, code: i32, bytes: usize) {
+    let script = format!(
+        "#!/bin/sh\n[ \"$1\" = build ] || exit 2\n[ {code} = 0 ] || {{ echo 'error: no available targets' >&2; exit {code}; }}\n\
+         d=\"$CARGO_TARGET_DIR/wasm32-wasip2/release\"\nmkdir -p \"$d\"\nhead -c {bytes} /dev/zero > \"$d/contextful.wasm\"\n"
+    );
+    let path = dir.join("cargo");
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+}
+
+fn probe(bin: &Path, records: &Path, target: &Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["wasi-probe", "--target-dir"])
+        .arg(target)
+        .env("PATH", format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default()))
+        .env(contextful_eval::record::MEASURE_DIR_VAR, records)
+        .current_dir(repo_root())
         .output()
-        .unwrap();
-    assert!(built.status.success(), "the edge profile does not build for wasm32-wasip2: {}", String::from_utf8_lossy(&built.stderr));
-    let artifact = std::fs::read(target.join("wasm32-wasip2/release/contextful.wasm")).unwrap();
-    let compressed = zstd::bulk::compress(&artifact, 19).unwrap();
-    let mib = compressed.len() as f64 / (1024.0 * 1024.0);
-    contextful_eval::record::emit("edge-wasip2-footprint", mib, 1, 0);
-    let _ = std::fs::remove_dir_all(&target);
+        .unwrap()
+}
+
+/// A failed `wasm32-wasip2` build records nothing and gates nothing: the probe exits 0 with
+/// no record, so the scheduled tier runs its next entry.
+#[test]
+fn a_wasi_probe_whose_build_fails_records_nothing_and_exits_cleanly() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (bin, records) = (tmp.path().join("bin"), tmp.path().join("records"));
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&records).unwrap();
+    wasi_cargo(&bin, 101, 0);
+    let o = probe(&bin, &records, &tmp.path().join("target"));
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("recorded nothing"), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(std::fs::read_dir(&records).unwrap().count(), 0, "a failed build left a record");
+}
+
+/// A built artifact is compressed and recorded under the ledger entry, and the probe's
+/// build directory is reclaimed.
+#[test]
+fn a_wasi_probe_whose_build_succeeds_records_the_compressed_size() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (bin, records, target) = (tmp.path().join("bin"), tmp.path().join("records"), tmp.path().join("target"));
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&records).unwrap();
+    wasi_cargo(&bin, 0, 4096);
+    let o = probe(&bin, &records, &target);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let r = contextful_eval::record::read(&records, "edge-wasip2-footprint").unwrap();
+    assert!(r.value > 0.0 && r.value < 1.0, "{}", r.value);
+    assert!(!target.exists(), "the probe left {}", target.display());
 }
