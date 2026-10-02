@@ -211,14 +211,16 @@ unsettled: Does partial-result streaming belong on this surface, or does a full 
 
 The operator's raw statement verb on the command line: its arguments, the relations it registers, its row bound and its output.
 
-- `operator-verb` — `contextful query --json [--project <name> [--declaration <path>]] [--limit <n>] <sql>` runs one operator statement raw under {{read.guard.statement-provenance}} and prints the {{read.respond.one-projection}} envelope as one JSON line on standard output.
+- `operator-verb` — `contextful query --json [--project <name>] [--declaration <path>] [--limit <n>] <sql>` runs one operator statement raw under {{read.guard.statement-provenance}} and prints the {{read.respond.one-projection}} envelope as one JSON line on standard output.
 - `one-statement` — Text the engine's parser splits into other than exactly one statement raises `QueryNotOneStatement` before any statement runs.
   *because preparing multi-statement text executes every statement but the last and answers only the last, dropping the earlier results and side effects unseen*
-- `project-relations` — With `--project`, every table the store holds or the manifest declares registers under its bare name as its unrestricted base relation at the latest committed state; a quiet table reads as {{read.register.quiet-table}}. Without it, no relation registers.
+- `project-relations` — Under a project, every table the store holds or the manifest declares registers under its bare name as its unrestricted base relation at the latest committed state; a quiet table reads as {{read.register.quiet-table}}.
   *because operator text is the store owner's own, and a restriction bounds a capability-token caller*
+- `discovered-project` — Without `--project`, the project {{store.init.discovery}} finds is the verb's project. When discovery finds none, or the found project's store is absent, no relation registers and the statement runs over no store.
+  *because every other verb reads the nearest `contextful.toml`, and a statement over files or literals needs no store*
 - `project-store` — A `--project` whose `.contextful/context/<project>/` store is absent raises `QueryProjectAbsent`.
   *because every declared table of an absent store registers as quiet, and an operator reads its zero rows as an answer*
-- `declaration-default` — `--declaration <path>` names the manifest whose declared tables register; without it, `contextful.toml` in the working directory does when present, and no manifest otherwise.
+- `declaration-default` — `--declaration <path>` names the manifest whose declared tables register; without it, the {{store.init.default-declaration}} file does when present, and no manifest otherwise. With no project, `--declaration` refuses by {{store.init.undiscovered}}.
 - `limit-truncates` — `--limit <n>` bounds rows delivered with the over-fetch of {{read.respond.row-ceiling}}, and sets `truncated` per {{read.respond.truncation-is-exact}}. Without it every row is delivered and `truncated` is false.
 - `engine-fault` — A statement the engine rejects exits non-zero with the engine's message on standard error and nothing on standard output.
   *because a caller parsing standard output never mistakes a partial or empty envelope for an answer*
