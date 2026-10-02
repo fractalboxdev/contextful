@@ -16,6 +16,7 @@ use contextful_core::store::lay_out::NodeId;
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
+use contextful_policy::audit::{AuditLog, NoIssuerKey};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::issue::{mint, MintClaims, SeedSigner};
 use contextful_policy::keyset::{KeySource, StaticPins};
@@ -30,10 +31,12 @@ fn at(s: &str) -> Instant {
     Instant::parse(s).unwrap()
 }
 
-struct Fixture {
-    _dir: tempfile::TempDir,
-    face: Face,
-    authority: AdmittedAuthority,
+/// The audit log is declared first so it closes before the directory goes.
+pub(crate) struct Fixture {
+    pub(crate) audit: AuditLog<NoIssuerKey>,
+    pub(crate) face: Face,
+    pub(crate) authority: AdmittedAuthority,
+    pub(crate) dir: tempfile::TempDir,
 }
 
 /// Land one batch of `rows` into `decl`'s table as run `run`, committed at `now`.
@@ -57,7 +60,7 @@ fn fixture() -> Fixture {
     })
 }
 
-fn fixture_over(manifest: &str, seed: impl FnOnce(&Store)) -> Fixture {
+pub(crate) fn fixture_over(manifest: &str, seed: impl FnOnce(&Store)) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path(), "research").unwrap();
     seed(&store);
@@ -86,22 +89,23 @@ fn fixture_over(manifest: &str, seed: impl FnOnce(&Store)) -> Fixture {
     let keys = StaticPins::parse(&signer.public_key_text()).unwrap().keys().unwrap();
     let revocation = RevocationState::default();
     let authority = verify_inherited_pipe(&token, &keys, &Admission::new(at("2030-01-01T00:05:00Z"), &revocation).expecting(AUD)).unwrap();
-    Fixture { _dir: dir, face, authority }
+    let audit = AuditLog::unanchored(dir.path().join("audit")).unwrap();
+    Fixture { audit, face, authority, dir }
 }
 
 /// An effect boundary that admits the carried authority.
-fn current(_: &AdmittedAuthority) -> Result<(), AuthorityError> {
+pub(crate) fn current(_: &AdmittedAuthority) -> Result<(), AuthorityError> {
     Ok(())
 }
 
-fn ask(server: &Server<'_>, id: u64, method: &str, params: Value) -> Value {
+pub(crate) fn ask(server: &Server<'_>, id: u64, method: &str, params: Value) -> Value {
     let line = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string();
     let answer = server.handle(&line).expect("a request is answered");
     assert_eq!(answer["id"], json!(id));
     answer
 }
 
-fn call(server: &Server<'_>, tool: &str, arguments: Value) -> Value {
+pub(crate) fn call(server: &Server<'_>, tool: &str, arguments: Value) -> Value {
     ask(server, 7, "tools/call", json!({ "name": tool, "arguments": arguments }))
 }
 
@@ -111,7 +115,7 @@ fn call(server: &Server<'_>, tool: &str, arguments: Value) -> Value {
 fn the_tool_list_is_the_closed_read_set() {
     let f = fixture();
     let clock = FixedClock(at("2030-01-01T00:06:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert_eq!(names, ["context.describe", "context.query", "context.execute_query", "context.files", "context.file", "corpus.retrieve", "memory.recall"]);
@@ -125,7 +129,7 @@ fn the_tool_list_is_the_closed_read_set() {
 fn a_refusal_arrives_in_band() {
     let f = fixture();
     let clock = FixedClock(at("2030-01-01T00:06:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let refused = call(&server, "context.query", json!({ "sql": "SELECT * FROM \"hr/salaries\"" }));
     assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
     assert_eq!(refused["result"]["structuredContent"]["error"]["identifier"], json!("EnforceUnknownRelation"));
@@ -144,7 +148,7 @@ fn a_refusal_arrives_in_band() {
 fn context_query_binds_typed_parameters() {
     let f = fixture();
     let clock = FixedClock(at("2030-01-01T00:06:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     let query = tools["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == json!("context.query")).unwrap().clone();
     assert_eq!(query["inputSchema"]["properties"]["parameters"]["type"], json!("object"), "{query}");
@@ -162,7 +166,7 @@ fn context_query_binds_typed_parameters() {
 fn the_handshake_reports_the_build_and_refuses_an_absent_face() {
     let f = fixture();
     let clock = FixedClock(at("2030-01-01T00:06:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let init = ask(&server, 1, "initialize", json!({ "protocolVersion": "2025-06-18", "require": ["duckdb"] }));
     assert_eq!(init["result"]["contextful.build"]["backends"], json!(["duckdb", "fts"]));
     let absent = ask(&server, 2, "initialize", json!({ "require": ["hnsw"] }));
@@ -175,7 +179,7 @@ fn every_call_re_reads_the_authority() {
     let f = fixture();
     let boundary = |_: &AdmittedAuthority| Err(AuthorityError::AuthorityExpired("expired at 2030-01-01T00:15:00Z".into()));
     let clock = FixedClock(at("2030-01-01T00:06:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &boundary, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &boundary, &clock, &f.audit).unwrap();
     let stopped = call(&server, "context.query", json!({ "sql": "SELECT note_id FROM \"research/notes\"" }));
     assert_eq!(stopped["result"]["isError"], json!(true));
     assert!(stopped["result"]["content"][0]["text"].as_str().unwrap().contains("AuthorityExpired"));
@@ -205,7 +209,7 @@ parameters = ["skip:string"]
 "#;
 
 /// A keyed table folded after its second run, beside a table declaring a valid-time pair.
-fn bounded() -> Fixture {
+pub(crate) fn bounded() -> Fixture {
     let decls = TableDecl::parse_pipeline(BOUNDED).unwrap();
     let decl = |name: &str| decls.iter().find(|d| d.name == name).unwrap().clone();
     fixture_over(BOUNDED, |store| {
@@ -236,7 +240,7 @@ fn echoed(answer: &Value) -> &Value {
 fn as_of_on_every_read_tool_returns_the_pre_fold_row() {
     let f = bounded();
     let clock = FixedClock(at("2030-01-01T04:00:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let sql = r#"SELECT CAST(v AS VARCHAR) AS v FROM "research/filings""#;
     let before = "2030-01-01T01:00:00Z";
     let echo = json!({ "as_of": "2030-01-01T01:00:00.000000000Z", "inclusive": true });
@@ -286,7 +290,7 @@ fn as_of_on_every_read_tool_returns_the_pre_fold_row() {
 fn valid_as_of_wraps_only_the_tables_a_read_touches() {
     let f = bounded();
     let clock = FixedClock(at("2030-01-01T04:00:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let when = "2030-01-10T00:00:00Z";
     let echo = json!({ "valid_as_of": "2030-01-10T00:00:00.000000000Z", "inclusive": true });
     let sql = r#"SELECT ccy FROM "research/rates" ORDER BY ccy"#;
@@ -330,7 +334,7 @@ fn valid_as_of_wraps_only_the_tables_a_read_touches() {
 fn a_listing_ignores_valid_as_of_and_echoes_only_as_of() {
     let f = bounded();
     let clock = FixedClock(at("2030-01-01T04:00:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let when = "2030-01-10T00:00:00Z";
     let before = "2030-01-01T01:00:00Z";
     let echo = json!({ "as_of": "2030-01-01T01:00:00.000000000Z", "inclusive": true });
@@ -353,7 +357,7 @@ fn a_listing_ignores_valid_as_of_and_echoes_only_as_of() {
 fn every_read_tool_declares_both_bounds() {
     let f = bounded();
     let clock = FixedClock(at("2030-01-01T04:00:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     let tools = tools["result"]["tools"].as_array().unwrap();
     assert!(tools.iter().any(|t| t["name"] == json!("filing")));
@@ -415,7 +419,7 @@ fn claims() -> Fixture {
 fn memory_recall_answers_keyed_over_the_tool_protocol() {
     let f = claims();
     let clock = FixedClock(at("2030-06-01T00:00:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let objects = |answer: &Value| -> Vec<Value> {
         let content = &answer["result"]["structuredContent"];
         let i = content["columns"].as_array().unwrap().iter().position(|c| c == "object").unwrap();
@@ -449,7 +453,7 @@ fn memory_recall_answers_keyed_over_the_tool_protocol() {
 fn corpus_retrieve_takes_a_filter_and_kinds() {
     let f = fixture();
     let clock = FixedClock(at("2030-01-01T00:06:00Z"));
-    let server = Server::new(&f.face, f.authority.clone(), &current, &clock).unwrap();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     let retrieve = tools["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == json!("corpus.retrieve")).unwrap().clone();
     let properties = &retrieve["inputSchema"]["properties"];

@@ -10,7 +10,7 @@
 //! segments/000001.root.json   the signed root closing the segment
 //! chain.tip                   a signed {seq, entry_hash} at or behind the chain end
 //! chain.held                  the signed {seq, entry_hash} at which the issuer first held the log
-//! audit.lock                  held by the one process writing the log
+//! audit.lock                  held by the one append group writing the log
 //! ```
 //!
 //! Two formats verify (`disclosure.record.v0-chain`). A v1 chain carries `header.json`,
@@ -30,6 +30,15 @@
 //! after [`AUDIT_TIP_IDLE`] without an append, at export and when the log closes
 //! (`disclosure.record.tip-signing`), so entries past the tip are an unsigned tail whose
 //! truncation only a replicated root catches.
+//!
+//! One append group holds the log at a time (`disclosure.record.single-writer`): a group,
+//! the open, the idle signer and an export each take `audit.lock` for their write alone, so
+//! several processes and handles append to one directory. A group finding the last segment
+//! grown since this handle's last write reads the new tail entry and links after it
+//! (`disclosure.record.foreign-tail`), with no sync beyond the group's own.
+//! An unanchored handle checks for `chain.held` under the lock before each group and tip
+//! write, so a held open landing between two of its groups is never overwritten unsigned
+//! (`disclosure.record.held-under-append`).
 //!
 //! Roots and the tip sign through the signing port a mint signs through
 //! (`authority.issue.signing-port`), under either scheme and stored as 64 raw Ed25519
@@ -57,7 +66,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Display;
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
@@ -96,9 +105,6 @@ pub enum AuditError {
     /// (`disclosure.record.unpersisted-entry`)
     #[error("AuditEntryUnpersisted: {0}")]
     AuditEntryUnpersisted(String),
-    /// An audit log another process holds open. (`disclosure.record.single-writer`)
-    #[error("AuditLogHeld: {0}")]
-    AuditLogHeld(String),
     /// A chain header naming a format, digest or segment size this build does not verify.
     /// (`disclosure.record.header-unsupported`)
     #[error("AuditHeaderUnsupported: {0}")]
@@ -978,19 +984,86 @@ fn walk(dir: &Path, check: Check) -> Result<Walked, AuditError> {
     Ok(Walked { end, unrooted })
 }
 
-/// Take the directory's writer lock, refusing one another handle holds.
-fn take_lock(dir: &Path) -> Result<File, AuditError> {
+/// Open the directory's `audit.lock`, creating it and the segments directory. The handle
+/// owns its own open file description, so its lock excludes every other handle's, in this
+/// process or another.
+fn open_lock(dir: &Path) -> Result<File, AuditError> {
     let seg_dir = segments_dir(dir);
     fs::create_dir_all(&seg_dir).map_err(unreadable(&seg_dir))?;
     let lock_path = dir.join("audit.lock");
-    let lock = OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(unreadable(&lock_path))?;
-    match lock.try_lock() {
-        Ok(()) => Ok(lock),
-        Err(fs::TryLockError::WouldBlock) => {
-            Err(AuditError::AuditLogHeld(format!("{} is held by another writer", lock_path.display())))
-        }
-        Err(fs::TryLockError::Error(e)) => Err(unreadable(&lock_path)(e)),
+    OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(unreadable(&lock_path))
+}
+
+/// `audit.lock`, held for one write and released when dropped.
+struct DirLock<'f>(&'f File);
+
+impl<'f> DirLock<'f> {
+    /// Block until no other group, open or tip write holds the directory.
+    fn take(file: &'f File) -> Result<DirLock<'f>, String> {
+        file.lock().map_err(|e| format!("taking audit.lock: {e}"))?;
+        Ok(DirLock(file))
     }
+}
+
+impl Drop for DirLock<'_> {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+/// The last segment file a handle wrote or read, and its length then. A group finding
+/// either changed re-reads the tail before it links.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Seen {
+    segment: u64,
+    len: u64,
+}
+
+/// The last segment file at or after `from`, and its length; segment 1 at length 0 for a
+/// chain holding no segment. A probe per segment past `from`, never a directory listing.
+fn seen_from(dir: &Path, from: u64) -> Result<Seen, String> {
+    let mut n = from.max(1);
+    if !segment_path(dir, n).exists() && n > 1 {
+        // The segment this handle last saw is gone; find the last one from the start.
+        n = 1;
+    }
+    while segment_path(dir, n + 1).exists() {
+        n += 1;
+    }
+    let path = segment_path(dir, n);
+    match fs::metadata(&path) {
+        Ok(m) => Ok(Seen { segment: n, len: m.len() }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Seen { segment: n, len: 0 }),
+        Err(e) => Err(fail(&path)(e)),
+    }
+}
+
+/// The bytes of `path` up to `len` that hold its last line: a 64 KiB window from the end,
+/// cut at its first line break, or the whole file when one line outgrows the window.
+fn tail(path: &Path, len: u64) -> Result<Vec<u8>, String> {
+    const WINDOW: u64 = 64 * 1024;
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(fail(path)(e)),
+    };
+    let from = len.saturating_sub(WINDOW);
+    let mut bytes = Vec::new();
+    file.seek(SeekFrom::Start(from)).and_then(|_| (&mut file).take(len - from).read_to_end(&mut bytes)).map_err(fail(path))?;
+    if from > 0 {
+        match bytes[..bytes.len().saturating_sub(1)].iter().position(|b| *b == b'\n') {
+            Some(i) => drop(bytes.drain(..=i)),
+            None => return fs::read(path).map_err(fail(path)),
+        }
+    }
+    Ok(bytes)
+}
+
+/// The last whole entry line of `bytes`, if any.
+fn last_line(bytes: &[u8]) -> Option<&[u8]> {
+    let body = bytes.strip_suffix(b"\n")?;
+    let start = body.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+    Some(&body[start..]).filter(|l| !l.is_empty())
 }
 
 /// What one audit sync makes durable.
@@ -1150,9 +1223,15 @@ struct Member {
 /// when it closed a segment.
 type Committed = (Vec<AuditEntry>, ChainTip, Option<ChainTip>);
 
+/// A group's outcome — its entries, or the refusal and the reason the log is poisoned
+/// when the reversal failed — with the chain end and position the handle now knows.
+type Grouped = (Result<Committed, (AuditError, Option<String>)>, ChainTip, Seen);
+
 struct State {
-    /// The last durable entry.
+    /// The last durable entry this handle knows of.
     tip: ChainTip,
+    /// The segment file and length behind `tip`.
+    seen: Seen,
     /// The entry `chain.tip` names.
     signed: ChainTip,
     queue: Vec<Member>,
@@ -1200,9 +1279,9 @@ struct Inner<S> {
     custody: Custody<S>,
     fsync: Arc<dyn FsyncPort>,
     idle: Duration,
-    /// The exclusive lock on `audit.lock`, held for the log's lifetime by every handle
-    /// that appends.
-    _lock: Option<File>,
+    /// `audit.lock`, opened by every handle that appends and locked for one write at a
+    /// time (`disclosure.record.single-writer`).
+    lock: Option<File>,
     state: Mutex<State>,
     turn: Condvar,
 }
@@ -1251,8 +1330,11 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
     fn start(dir: PathBuf, custody: Custody<S>, options: AuditOptions, anchoring: bool) -> Result<AuditLog<S>, AuditError> {
         let lock = match custody {
             Custody::ReadOnly => None,
-            _ => Some(take_lock(&dir)?),
+            _ => Some(open_lock(&dir)?),
         };
+        // The open reads and repairs the chain under the lock, and releases it on return.
+        let opening = lock.as_ref().map(|f| f.try_clone().map_err(unreadable(&dir.join("audit.lock")))).transpose()?;
+        let _opening = opening.as_ref().map(DirLock::take).transpose().map_err(AuditError::Io)?;
         if let Custody::Unanchored = custody {
             let anchored = |why: String| AuditError::AuditLogAnchored(format!("{}: {why}; open it with the issuer's signing port", dir.display()));
             if read_tip(&dir)?.is_some_and(|t| t.signature.is_some()) {
@@ -1284,8 +1366,13 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
             None => true,
             Some(t) => t.seq != end.seq || t.entry_hash != end.entry_hash || (held && t.signature.is_none()),
         };
+        let seen = match lock {
+            Some(_) => seen_from(&dir, 1).map_err(AuditError::Io)?,
+            None => Seen::default(),
+        };
         let state = State {
             tip: end.clone(),
+            seen,
             signed: recorded.map(|t| ChainTip { seq: t.seq, entry_hash: t.entry_hash }).unwrap_or_else(ChainTip::genesis),
             queue: Vec::new(),
             next_ticket: 0,
@@ -1302,7 +1389,7 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
             custody,
             fsync: options.fsync,
             idle: options.idle,
-            _lock: lock,
+            lock,
             state: Mutex::new(state),
             turn: Condvar::new(),
         });
@@ -1378,18 +1465,21 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
         // This append leads the next group: every append queued so far, its own included.
         st.busy = true;
         let group = std::mem::take(&mut st.queue);
-        let (tip, poisoned) = (st.tip.clone(), st.poisoned.clone());
+        let (tip, seen, poisoned) = (st.tip.clone(), st.seen, st.poisoned.clone());
         drop(st);
         let sizes: Vec<(u64, usize)> = group.iter().map(|m| (m.ticket, m.batch.len())).collect();
         let values: Vec<Value> = group.into_iter().flat_map(|m| m.batch).collect();
-        let outcome = match poisoned {
-            Some(reason) => Err((format!("an earlier append could not be reversed ({reason}); reopen the log"), None)),
-            None => inner.commit(&tip, values),
+        let (outcome, tip, seen) = match poisoned {
+            Some(reason) => {
+                let reason = format!("an earlier append could not be reversed ({reason}); reopen the log");
+                (Err((AuditError::AuditEntryUnpersisted(reason), None)), tip, seen)
+            }
+            None => inner.group(tip, seen, values),
         };
         let mut st = inner.lock();
+        (st.tip, st.seen) = (tip, seen);
         match outcome {
-            Ok((entries, end, signed)) => {
-                st.tip = end;
+            Ok((entries, _, signed)) => {
                 if let Some(signed) = signed {
                     st.signed = signed;
                 }
@@ -1398,12 +1488,12 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
                     st.done.insert(t, Ok(entries.by_ref().take(len).collect()));
                 }
             }
-            Err((reason, poison)) => {
+            Err((refusal, poison)) => {
                 if let Some(poison) = poison {
                     st.poisoned = Some(poison);
                 }
                 for (t, _) in sizes {
-                    st.done.insert(t, Err(AuditError::AuditEntryUnpersisted(reason.clone())));
+                    st.done.insert(t, Err(refusal.clone()));
                 }
             }
         }
@@ -1423,10 +1513,11 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
             st = inner.turn.wait(st).unwrap_or_else(PoisonError::into_inner);
         }
         st.busy = true;
-        let tip = st.tip.clone();
+        let (tip, seen) = (st.tip.clone(), st.seen);
         drop(st);
-        let written = inner.write_tip(&tip);
+        let (written, tip, seen) = inner.sign_end(tip, seen);
         let mut st = inner.lock();
+        (st.tip, st.seen) = (tip.clone(), seen);
         if written.is_ok() {
             st.signed = tip;
         }
@@ -1446,9 +1537,9 @@ impl<S: SigningPort + Send + Sync + 'static> Drop for AuditLog<S> {
         }
         let st = self.inner.lock();
         if st.signed != st.tip && st.poisoned.is_none() {
-            let tip = st.tip.clone();
+            let (tip, seen) = (st.tip.clone(), st.seen);
             drop(st);
-            let _ = self.inner.write_tip(&tip);
+            let _ = self.inner.sign_end(tip, seen);
         }
     }
 }
@@ -1464,6 +1555,102 @@ impl<S: SigningPort> Inner<S> {
             Custody::ReadOnly => Err(AuditError::AuditLogReadOnly(format!("{} is open read-only; nothing appends through it", self.dir.display()))),
             _ => Ok(()),
         }
+    }
+
+    /// Take the directory lock; a read-only handle holds none and writes nothing.
+    fn take(&self) -> Result<DirLock<'_>, String> {
+        match &self.lock {
+            Some(file) => DirLock::take(file),
+            None => Err(format!("{} is open read-only; nothing writes through it", self.dir.display())),
+        }
+    }
+
+    /// Refuse a write through an unanchored handle once a held open has written
+    /// `chain.held` since it opened (`disclosure.record.held-under-append`). Called under
+    /// the directory lock, which a held open writes `chain.held` under.
+    fn still_unanchored(&self) -> Result<(), AuditError> {
+        match self.custody {
+            Custody::Unanchored if held_path(&self.dir).exists() => Err(AuditError::AuditLogAnchored(format!(
+                "{}: chain.held records the chain held since this handle opened; open it with the issuer's signing port",
+                self.dir.display()
+            ))),
+            _ => Ok(()),
+        }
+    }
+
+    /// Run one append group under the directory lock: link `values` after the chain end,
+    /// read afresh when the last segment changed since `seen`, and sync. Returns the
+    /// outcome with the chain end and segment position this handle now knows.
+    fn group(&self, tip: ChainTip, seen: Seen, values: Vec<Value>) -> Grouped {
+        let unpersisted = |e: String| (AuditError::AuditEntryUnpersisted(e), None);
+        let _held = match self.take() {
+            Ok(held) => held,
+            Err(e) => return (Err(unpersisted(e)), tip, seen),
+        };
+        if let Err(e) = self.still_unanchored() {
+            return (Err((e, None)), tip, seen);
+        }
+        let (tip, seen) = match self.refresh(tip.clone(), seen) {
+            Ok(fresh) => fresh,
+            Err(e) => return (Err(unpersisted(e)), tip, seen),
+        };
+        match self.commit(&tip, values) {
+            Ok(committed) if committed.0.is_empty() => (Ok(committed), tip, seen),
+            Ok(committed) => {
+                let end = committed.1.clone();
+                let now = seen_from(&self.dir, segment_of(end.seq, self.chain.segment_entries())).unwrap_or_default();
+                (Ok(committed), end, now)
+            }
+            Err((e, poison)) => (Err((AuditError::AuditEntryUnpersisted(e), poison)), tip, seen),
+        }
+    }
+
+    /// Write the chain end, read afresh under the directory lock, as `chain.tip`.
+    fn sign_end(&self, tip: ChainTip, seen: Seen) -> (Result<SignedTip, String>, ChainTip, Seen) {
+        let _held = match self.take() {
+            Ok(held) => held,
+            Err(e) => return (Err(e), tip, seen),
+        };
+        if let Err(e) = self.still_unanchored() {
+            return (Err(e.to_string()), tip, seen);
+        }
+        match self.refresh(tip.clone(), seen) {
+            Ok((tip, seen)) => (self.write_tip(&tip), tip, seen),
+            Err(e) => (Err(e), tip, seen),
+        }
+    }
+
+    /// The chain end under the held directory lock: `tip` when the last segment file and
+    /// its length match `seen`, otherwise the last entry line another writer left, read
+    /// without a sync. Unterminated bytes a crashed writer left are cut back first.
+    fn refresh(&self, tip: ChainTip, seen: Seen) -> Result<(ChainTip, Seen), String> {
+        let mut now = seen_from(&self.dir, seen.segment)?;
+        if now == seen {
+            return Ok((tip, seen));
+        }
+        let mut bytes = tail(&segment_path(&self.dir, now.segment), now.len)?;
+        if bytes.last().is_some_and(|b| *b != b'\n') {
+            drop_torn_tail(&self.dir, &*self.fsync).map_err(|e| e.to_string())?;
+            now = seen_from(&self.dir, now.segment)?;
+            bytes = tail(&segment_path(&self.dir, now.segment), now.len)?;
+        }
+        let mut n = now.segment;
+        let mut line = last_line(&bytes).map(<[u8]>::to_vec);
+        // A segment another writer created and left empty: the tail is the segment before.
+        while line.is_none() && n > 1 {
+            n -= 1;
+            let before = segment_path(&self.dir, n);
+            let len = fs::metadata(&before).map_err(fail(&before))?.len();
+            line = last_line(&tail(&before, len)?).map(<[u8]>::to_vec);
+        }
+        let fresh = match line {
+            Some(line) => serde_json::from_slice::<AuditEntry>(&line).map_err(fail(&segment_path(&self.dir, n)))?.tip(),
+            None => self.chain.genesis(),
+        };
+        if fresh.seq < tip.seq {
+            return Err(format!("the chain end moved back from seq {} to {}; reopen the log", tip.seq, fresh.seq));
+        }
+        Ok((fresh, now))
     }
 
     /// Write one group after `tip`, reversing it on failure. The error carries the reason
@@ -1577,10 +1764,11 @@ impl<S: SigningPort> Inner<S> {
                 continue;
             }
             st.busy = true;
-            let tip = st.tip.clone();
+            let (tip, seen) = (st.tip.clone(), st.seen);
             drop(st);
-            let written = self.write_tip(&tip);
+            let (written, tip, seen) = self.sign_end(tip, seen);
             st = self.lock();
+            (st.tip, st.seen) = (tip.clone(), seen);
             match written {
                 Ok(_) => st.signed = tip,
                 Err(_) => st.last_append = Instant::now(),

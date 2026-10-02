@@ -139,7 +139,7 @@ clause = "disclosure.record.unpersisted-entry"
 metric = "audit.read.rows_before_sync"
 kind   = "test"
 tier   = "gate"
-method = { issue = 75 }
+method = { test = "contextful_agent::audit::a_read_whose_entry_does_not_sync_releases_no_rows" }
 target = { op = "==", value = 0 }
 
 [entry.audit-inclusion-proof]

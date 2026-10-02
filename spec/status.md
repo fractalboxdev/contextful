@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 263 | 77 | 27 | 10 | 200 | 0 | 200 |
 | `connector` | 2 | 13 | 299 | 78 | 19 | 14 | 173 | 0 | 173 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
-| `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
+| `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 165 | 28 | 22 | 20 | 140 | 0 | 140 |
 | `run` | 3 | 26 | 362 | 96 | 35 | 35 | 245 | 0 | 245 |
 | `store` | 1 | 17 | 216 | 53 | 12 | 17 | 176 | 0 | 176 |
 | `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 153 | 1827 | 555 | 184 | 137 | 1160 | 0 | |
+| **total** | 19 | 153 | 1833 | 554 | 184 | 137 | 1167 | 0 | |
 
 Decision records: 18.
 
@@ -33,7 +33,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 5 — The read face under enforcement | 17 | 243 | 174 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
-| 8 — Accountability | 5 | 40 | 20 | open | open |
+| 8 — Accountability | 5 | 46 | 27 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 53 | 19 | open | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
@@ -581,15 +581,22 @@ Unscheduled operations: 10.
 | `disclosure.record.chain-header` | `crates/contextful-policy/tests/integration/audit.rs::a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link` | performed |
 | `disclosure.record.entry-fields` | `crates/contextful-policy/tests/integration/audit.rs::an_entry_carrying_a_field_outside_its_digest_breaks_the_chain_at_that_entry` | performed |
 | `disclosure.record.entry-format` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_entry_digests_the_rfc_8785_form_of_its_whole_entry` | performed |
+| `disclosure.record.foreign-tail` | `crates/contextful-policy/tests/integration/audit.rs::a_group_after_another_writer_rereads_the_tail_and_syncs_once` | performed |
 | `disclosure.record.group-commit` | `crates/contextful-policy/tests/integration/audit.rs::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together` | performed |
 | `disclosure.record.header-unsupported` | `crates/contextful-policy/tests/integration/audit.rs::a_header_naming_another_format_digest_or_segment_size_raises_audit_header_unsupported` | performed |
+| `disclosure.record.held-under-append` | `crates/contextful-policy/tests/integration/audit.rs::an_unanchored_handle_running_under_a_held_open_refuses_and_writes_nothing` | performed |
 | `disclosure.record.inexact-integer` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_attribute_integer_beyond_2_53_raises_audit_attribute_inexact` | performed |
+| `disclosure.record.read-attributes` | `crates/contextful-agent/tests/integration/audit.rs::a_read_entry_names_tool_credential_subject_and_row_count` | performed |
+| `disclosure.record.read-chain` | `crates/contextful-cli/tests/integration/mcp.rs::the_server_appends_to_the_projects_chain_and_stops_on_one_that_does_not_open` | performed |
+| `disclosure.record.read-entry` | `crates/contextful-agent/tests/integration/audit.rs::each_answered_read_tool_call_appends_one_entry_synced_before_its_result` | performed |
 | `disclosure.record.read-only` | `crates/contextful-policy/tests/integration/audit.rs::a_read_only_handle_verifies_beside_the_writer_and_refuses_appends` | performed |
 | `disclosure.record.segment` | `crates/contextful-policy/tests/integration/audit.rs::a_segment_closes_at_4096_entries_under_one_signed_root` | performed |
 | `disclosure.record.segment-open` | `crates/contextful-policy/tests/integration/audit.rs::an_append_group_that_creates_a_segment_adds_one_directory_sync` | performed |
-| `disclosure.record.single-writer` | `crates/contextful-policy/tests/integration/audit.rs::a_second_writer_on_one_directory_is_refused` | performed |
+| `disclosure.record.single-writer` | `crates/contextful-policy/tests/integration/audit.rs::two_writers_on_one_directory_append_into_one_linear_chain` | performed |
 | `disclosure.record.tip-signing` | `crates/contextful-policy/tests/integration/audit.rs::the_tip_signs_at_segment_close_on_idle_and_at_export` | performed |
 | `disclosure.record.unanchored-over-signed` | `crates/contextful-policy/tests/integration/audit.rs::an_unanchored_handle_links_under_an_unsigned_tip_and_refuses_a_signed_chain` | performed |
+| `disclosure.record.unpersisted-entry` | `crates/contextful-agent/tests/integration/audit.rs::a_read_whose_entry_does_not_sync_releases_no_rows` | performed |
+| `disclosure.record.unpersisted-wire` | `crates/contextful-agent/tests/integration/audit.rs::a_read_whose_entry_does_not_sync_releases_no_rows` | performed |
 | `disclosure.record.unsigned-tip` | `crates/contextful-policy/tests/integration/audit.rs::a_held_open_over_an_unsigned_tip_refuses_until_the_key_holder_anchors_it` | performed |
 | `disclosure.record.v0-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_v0_chain_verifies_and_appends_under_v0_rules` | performed |
 | `disclosure.suppress.contributor-share` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::contributor_share` | performed |

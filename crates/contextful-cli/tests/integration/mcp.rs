@@ -134,3 +134,30 @@ fn a_server_admits_over_its_inherited_pipe_only_a_credential_binding_no_key() {
     let err = String::from_utf8_lossy(&refused.stderr);
     assert!(err.contains("PossessionProofInvalid"), "{err}");
 }
+
+/// `contextful serve` and `contextful mcp` open the project's chain at `.contextful/audit/` unanchored before answering a message; a chain that does not open stops the process before it reads a row.
+// spec: disclosure.record.read-chain@06b13285
+#[test]
+fn the_server_appends_to_the_projects_chain_and_stops_on_one_that_does_not_open() {
+    let (dir, public, token) = project();
+    let args = ["mcp", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let read = [json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })];
+    let out = serve(dir.path(), &args, Some(&token), &read);
+    let answer: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]), "{answer}");
+    let segment = dir.path().join(".contextful/audit/segments/000001.jsonl");
+    let entries: Vec<Value> = std::fs::read_to_string(&segment).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(entries.len(), 1);
+    assert_eq!((entries[0]["seq"].clone(), entries[0]["attributes"]["contextful.tool"].clone()), (json!(1), json!("context.query")));
+    let tip: Value = serde_json::from_str(&std::fs::read_to_string(dir.path().join(".contextful/audit/chain.tip")).unwrap()).unwrap();
+    assert!(tip.get("signature").is_none_or(Value::is_null), "an unanchored chain carries an unsigned tip: {tip}");
+
+    // A tip signed by an issuer key: the chain opens held alone, so the server does not start.
+    let signed = json!({ "seq": 1, "entry_hash": entries[0]["entry_hash"], "signature": "00" });
+    std::fs::write(dir.path().join(".contextful/audit/chain.tip"), signed.to_string()).unwrap();
+    let out = serve(dir.path(), &args, Some(&token), &read);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("AuditLogAnchored"), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(std::fs::read_to_string(&segment).unwrap().lines().count(), 1, "no read ran");
+}

@@ -59,7 +59,6 @@ DisclosureTemplateMultiStatement     = { clause = "disclosure.template.single-st
 DisclosureCohortWidening             = { clause = "disclosure.bound-cohort.cohort-widening", gloss = "A read merged an under-floor group into a coarser key." }
 DisclosurePerIndividualUngranted     = { clause = "disclosure.bound-cohort.per-individual-row", gloss = "A per-individual row was read without an explicit grant." }
 DisclosureSingletonCohort            = { clause = "disclosure.bound-cohort.singleton-cohort", gloss = "A cohort key's grain resolves to one person." }
-AuditLogHeld             = { clause = "disclosure.record.single-writer", gloss = "An audit log another process holds open." }
 AuditEntryUnpersisted    = { clause = "disclosure.record.unpersisted-entry", gloss = "A read's audit entry did not persist; no rows are returned." }
 AuditLogReadOnly         = { clause = "disclosure.record.read-only", gloss = "An append through a read-only audit handle." }
 AuditLogAnchored         = { clause = "disclosure.record.unanchored-over-signed", gloss = "An unanchored handle opened over a chain holding a signed tip, a signed root or a held record." }

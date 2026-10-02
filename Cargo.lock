@@ -900,6 +900,7 @@ version = "0.5.0"
 dependencies = [
  "contextful-context",
  "contextful-core",
+ "contextful-eval",
  "contextful-policy",
  "ed25519-dalek",
  "httparse",

@@ -75,12 +75,24 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *A-disclosure*
 - `unpersisted-entry` — A read whose entry fails to reach local durable storage raises `AuditEntryUnpersisted` and returns no rows.
   *A-disclosure*
-- `single-writer` — One process holds a directory's audit log at a time; opening a log another holds raises `AuditLogHeld`.
-  *because two writers caching one tip append the same seq twice, and every later verification breaks there*
+- `unpersisted-wire` — The read face answers {{disclosure.record.unpersisted-entry}} in-band as wire code `audit_entry_unpersisted`, HTTP `503`, with no `rows` in the result.
+  *because a storage fault is the server's and passes, so a client retries it rather than rewording the read*
+- `read-entry` — Each read tool call the face answers with a result, over stdio or HTTP, appends one entry, and the result leaves only after that entry's append group syncs; `initialize`, `ping` and `tools/list` append none.
+  *A-disclosure*
+- `read-attributes` — A read's entry carries `contextful.tool`, `contextful.credential`, `contextful.subject.<member>` and `contextful.subject.attestation.<member>` for each present subject member, and `contextful.result.rows`.
+  *because the chain answers who read how much under which credential, and the attestation keeps an asserted member from reading as identity*
+- `read-chain` — `contextful serve` and `contextful mcp` open the project's chain at `.contextful/audit/` unanchored before answering a message; a chain that does not open stops the process before it reads a row.
+  *A-disclosure*
+- `single-writer` — One append group holds a directory's audit log at a time: it takes `audit.lock`, links after the chain end, syncs, then releases the lock, so several processes append to one linear chain.
+  *A-disclosure*
+- `foreign-tail` — An append group finding the last segment file changed since its handle's last write reads that segment's last entry before linking, and issues no sync beyond {{disclosure.record.group-commit}}.
+  *A-disclosure*
 - `read-only` — A read-only audit handle verifies the chain without the writer lock; an append through it raises `AuditLogReadOnly`.
   *A-disclosure*
 - `unanchored-over-signed` — An unanchored handle links entries under an unsigned tip and writes no root; opening one over a signed tip, a signed root or the signed `chain.held` a held open writes raises `AuditLogAnchored`.
   *A-disclosure*
+- `held-under-append` — An unanchored handle's append group or tip write finding `chain.held` written since its open raises {{disclosure.record.unanchored-over-signed}} and writes nothing, so a held open never meets an unsigned tip or an unrooted segment.
+  *because the lock is held per append group, so a held open can land between two groups of a running unanchored handle*
 - `unsigned-tip` — A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.
   *A-disclosure*
 - `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
@@ -234,6 +246,7 @@ The audit segment and the ledger:
       000001.root.json      the signed Merkle root closing the segment
     chain.tip               last accepted {seq, entry_hash}
     chain.held              signed {seq, entry_hash} where the issuer first held the log
+    audit.lock              held by the one append group writing
   forget/
     <subject_hash>.stale    {subject_hash, executed_at}
   catalog.db

@@ -219,21 +219,64 @@ fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     assert_eq!(broken_at(AuditLog::open(dir.path(), key())), AUDIT_SEGMENT_ENTRIES);
 }
 
-/// One process holds a directory's audit log at a time; opening a log another holds raises `AuditLogHeld`.
-// spec: disclosure.record.single-writer@f85b6bac
+/// One append group holds a directory's audit log at a time: a group takes the directory lock, links after the chain end, syncs, then releases it.
+// spec: disclosure.record.single-writer@307084b5
 #[test]
-fn a_second_writer_on_one_directory_is_refused() {
+fn two_writers_on_one_directory_append_into_one_linear_chain() {
+    const THREADS: u64 = 4;
+    const EACH: u64 = 25;
     let dir = log_of(2);
-    let first = AuditLog::open(dir.path(), key()).unwrap();
-    match AuditLog::open(dir.path(), key()) {
-        Err(AuditError::AuditLogHeld(m)) => assert!(m.contains("audit.lock"), "{m}"),
-        other => panic!("expected AuditLogHeld, got {other:?}"),
+    // Each handle opens its own `audit.lock` description, as a second process does.
+    let a = AuditLog::open(dir.path(), key()).unwrap();
+    let b = AuditLog::open(dir.path(), key()).unwrap();
+    assert_eq!(a.append(attrs("agent://a", 3)).unwrap().seq, 3);
+    assert_eq!(b.append(attrs("agent://b", 4)).unwrap().seq, 4);
+    assert_eq!(a.append(attrs("agent://a", 5)).unwrap().seq, 5);
+
+    std::thread::scope(|s| {
+        for log in [&a, &b] {
+            for t in 0..THREADS {
+                s.spawn(move || {
+                    for i in 0..EACH {
+                        log.append(attrs("agent://w", t * EACH + i)).unwrap();
+                    }
+                });
+            }
+        }
+    });
+    let end = 5 + 2 * THREADS * EACH;
+    let entries = lines(&segment(dir.path(), 1));
+    assert_eq!(entries.iter().map(|e| e.seq).collect::<Vec<_>>(), (1..=end).collect::<Vec<_>>(), "one seq per entry, no gap and no repeat");
+    assert!(entries.windows(2).all(|w| w[1].prev_hash == w[0].entry_hash), "every entry links to the one before it");
+    drop((a, b));
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, end);
+}
+
+/// An append group finding the chain grown past its own last append reads the new tail entry before linking, and issues no extra sync.
+// spec: disclosure.record.foreign-tail@56ab2f50
+#[test]
+fn a_group_after_another_writer_rereads_the_tail_and_syncs_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (pa, pb) = (Arc::new(Probe::default()), Arc::new(Probe::default()));
+    let a = AuditLog::open_with(dir.path(), key(), quiet(&pa)).unwrap();
+    let b = AuditLog::open_with(dir.path(), key(), quiet(&pb)).unwrap();
+    assert_eq!(a.append(attrs("agent://a", 1)).unwrap().seq, 1);
+
+    for (log, probe, seq) in [(&b, &pb, 2), (&a, &pa, 3), (&a, &pa, 4), (&b, &pb, 5)] {
+        let before = probe.calls.lock().unwrap().len();
+        assert_eq!(log.append(attrs("agent://x", seq)).unwrap().seq, seq);
+        assert_eq!(&probe.calls.lock().unwrap()[before..], [Fsync::Segment(1)], "one segment sync for the group at seq {seq}");
+        assert_eq!(log.tip().seq, seq);
     }
-    first.append(attrs("agent://a", 3)).unwrap();
-    drop(first);
-    let second = AuditLog::open(dir.path(), key()).unwrap();
-    assert_eq!(second.append(attrs("agent://b", 4)).unwrap().seq, 4);
-    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 4);
+    // A segment another writer opened is found as the new tail too.
+    let batch: Vec<Value> = (0..AUDIT_SEGMENT_ENTRIES - 5).map(|i| attrs("agent://a", i)).collect();
+    a.append_all(batch).unwrap();
+    assert_eq!(a.append(attrs("agent://a", 0)).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 1);
+    let before = pb.calls.lock().unwrap().len();
+    assert_eq!(b.append(attrs("agent://b", 0)).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 2);
+    assert_eq!(&pb.calls.lock().unwrap()[before..], [Fsync::Segment(2)]);
+    drop((a, b));
+    assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, AUDIT_SEGMENT_ENTRIES + 2);
 }
 
 /// A read-only audit handle verifies the chain without the writer lock; an append through it raises `AuditLogReadOnly`.
@@ -297,6 +340,43 @@ fn an_unanchored_handle_links_under_an_unsigned_tip_and_refuses_a_signed_chain()
     fs::write(held.path().join("chain.tip"), serde_json::to_vec(&SignedTip { signature: None, ..tip }).unwrap()).unwrap();
     assert!(anchored(AuditLog::unanchored(held.path())).contains("chain.held"));
     assert_eq!(verify(signed.path()).unwrap().seq, 2, "a refused open leaves the chain as it was");
+}
+
+/// An unanchored handle's append group or tip write finding `chain.held` written since its open raises `AuditLogAnchored` and writes nothing, so a held open never meets an unsigned tip or an unrooted segment.
+// spec: disclosure.record.held-under-append@bd383fa1
+#[test]
+fn an_unanchored_handle_running_under_a_held_open_refuses_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let options = AuditOptions { idle: Duration::from_millis(20), ..AuditOptions::default() };
+    let running = AuditLog::unanchored_with(dir.path(), options).unwrap();
+    assert_eq!(running.append(attrs("agent://u", 1)).unwrap().seq, 1);
+
+    // The issuer anchors the directory while the unanchored handle stays open.
+    let held = AuditLog::anchor(dir.path(), key()).unwrap();
+    assert_eq!(held.append(attrs("agent://a", 2)).unwrap().seq, 2);
+    drop(held);
+    let signer = SignerKey::of(&key());
+    assert_eq!(verify_signed(dir.path(), &signer).unwrap().seq, 2);
+    let before = fs::read(segment(dir.path(), 1)).unwrap();
+
+    let anchored = |r: Result<Vec<AuditEntry>, AuditError>| match r {
+        Err(AuditError::AuditLogAnchored(m)) => assert!(m.contains("chain.held"), "{m}"),
+        other => panic!("expected AuditLogAnchored, got {other:?}"),
+    };
+    anchored(running.append_all(vec![attrs("agent://u", 3)]));
+    // A group that would fill the segment closes nothing under no key.
+    anchored(running.append_all((0..AUDIT_SEGMENT_ENTRIES).map(|i| attrs("agent://u", i)).collect()));
+    // The idle signer and the close write no unsigned tip over the held chain.
+    std::thread::sleep(Duration::from_millis(200));
+    drop(running);
+
+    assert_eq!(fs::read(segment(dir.path(), 1)).unwrap(), before, "the segment stays as the held handle left it");
+    assert!(!root_file(dir.path(), 1).exists() && !segment(dir.path(), 2).exists());
+    let tip = tip_of(dir.path());
+    assert_eq!(tip.seq, 2);
+    assert!(tip.verify(&signer), "chain.tip stays signed");
+    assert_eq!(verify(dir.path()).unwrap().seq, 2);
+    assert_eq!(verify_signed(dir.path(), &signer).unwrap().seq, 2);
 }
 
 /// A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.

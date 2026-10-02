@@ -414,4 +414,12 @@ fn m05_http_face() {
     let (status, _, revoked) = post_mcp(&addr, &fast, Some(research));
     assert_eq!((status, parse(&revoked)["error"]["identifier"].clone()), (401, json!("AuthorityRevoked")));
     assert_eq!(post_mcp(&addr, &call(r#"SELECT employee FROM "hr/salaries""#), Some(hr)).0, 200);
+
+    // The listener and the stdio server appended to the project's one chain, each answered
+    // read once, in one unbroken sequence: seven reads over HTTP and one over stdio.
+    let chain = std::fs::read_to_string(p.root.join(".contextful/audit/segments/000001.jsonl")).unwrap();
+    let entries: Vec<Value> = chain.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(entries.iter().map(|e| e["seq"].as_u64().unwrap()).collect::<Vec<_>>(), (1..=8).collect::<Vec<_>>());
+    assert!(entries.windows(2).all(|w| w[1]["prev_hash"] == w[0]["entry_hash"]), "{chain}");
+    assert!(entries.iter().all(|e| e["attributes"]["contextful.tool"] == json!("context.query")), "{chain}");
 }
