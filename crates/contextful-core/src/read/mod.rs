@@ -9,6 +9,7 @@ pub mod error;
 pub mod face;
 pub mod filter;
 pub mod guard;
+pub mod pin;
 pub mod rank;
 pub mod respond;
 pub mod template;

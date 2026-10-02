@@ -5,6 +5,7 @@ pub(crate) mod engine;
 pub mod face;
 pub mod fault;
 mod input;
+mod pin;
 pub mod pool;
 pub mod recall;
 pub mod retrieve;

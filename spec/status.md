@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 307 | 80 | 19 | 15 | 175 | 0 | 175 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
-| `read` | 2 | 15 | 165 | 28 | 22 | 20 | 140 | 0 | 140 |
+| `read` | 2 | 15 | 168 | 28 | 22 | 20 | 149 | 0 | 149 |
 | `run` | 3 | 26 | 362 | 96 | 35 | 35 | 245 | 0 | 245 |
 | `store` | 1 | 17 | 216 | 53 | 12 | 17 | 176 | 0 | 176 |
 | `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1843 | 558 | 184 | 138 | 1173 | 0 | |
+| **total** | 19 | 154 | 1846 | 558 | 184 | 138 | 1182 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 153 | 118 | passing | closed |
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
 | 4 — Ingest | 25 | 450 | 263 | passing | open |
-| 5 — The read face under enforcement | 17 | 243 | 174 | passing | open |
+| 5 — The read face under enforcement | 17 | 246 | 183 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
 | 8 — Accountability | 5 | 46 | 27 | open | open |
@@ -690,6 +690,15 @@ Unscheduled operations: 10.
 | `read.register.tool-set` | `crates/contextful-agent/tests/integration/mcp.rs::the_tool_list_is_the_closed_read_set` | performed |
 | `read.resolve-entity.ambiguous-mention` | `crates/contextful-core/tests/integration/memory/resolve.rs::a_mention_two_identities_share_is_ambiguous` | performed |
 | `read.resolve-entity.edge-endpoint` | `crates/contextful-core/tests/integration/memory/resolve.rs::an_edge_with_an_unresolved_endpoint_is_refused` | performed |
+| `read.resolve-pin.absent-watermark` | `crates/contextful-context/tests/integration/read/pin.rs::a_build_over_no_input_echoes_a_null_watermark` | performed |
+| `read.resolve-pin.consumer-comparison` | `crates/contextful-context/tests/integration/read/pin.rs::a_derivation_spanning_two_builds_fails_and_a_pinned_one_holds` | performed |
+| `read.resolve-pin.earlier-bound-wins` | `crates/contextful-context/tests/integration/read/pin.rs::a_pin_and_as_of_resolve_to_the_earlier_bound` | performed |
+| `read.resolve-pin.null-pin` | `crates/contextful-context/tests/integration/read/pin.rs::a_null_pin_reads_the_latest_build_under_the_unpinned_key` | performed |
+| `read.resolve-pin.pin-parameter` | `crates/contextful-context/tests/integration/read/pin.rs::a_pinned_table_reads_its_build_and_an_unnamed_one_the_latest` | performed |
+| `read.resolve-pin.pinned-schema` | `crates/contextful-context/tests/integration/read/pin.rs::a_pinned_build_reads_under_its_own_schema` | performed |
+| `read.resolve-pin.resolved-echo` | `crates/contextful-context/tests/integration/read/pin.rs::every_response_touching_a_published_model_echoes_its_build` | performed |
+| `read.resolve-pin.unknown-build` | `crates/contextful-context/tests/integration/read/pin.rs::an_unknown_or_collected_build_is_refused_naming_the_oldest_pinnable` | performed |
+| `read.resolve-pin.unregistered-pin` | `crates/contextful-context/tests/integration/read/pin.rs::a_pin_on_a_table_outside_the_session_refuses` | performed |
 | `read.respond.bytes-and-vectors` | `crates/contextful-core/tests/integration/read/respond.rs::bytes_are_base64_and_vectors_are_number_arrays` | performed |
 | `read.respond.cell-encoding` | `crates/contextful-core/tests/integration/read/respond.rs::cells_encode_by_their_sql_type` | performed |
 | `read.respond.face-ceiling` | `crates/contextful-context/tests/integration/read/register.rs::the_face_ceiling_bounds_every_read` | performed |

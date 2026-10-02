@@ -6,6 +6,7 @@ mod enforce;
 mod fulltext;
 mod guard;
 mod latency;
+mod pin;
 mod pool;
 mod register;
 mod respond;
@@ -125,6 +126,16 @@ pub struct Reads {
     pub store: Store,
     pub face: Face,
     signer: SeedSigner,
+}
+
+/// Build the model `id` that `models` declares over `face`'s store at `now`.
+pub fn build_model(face: &Face, models: &str, id: &str, now: &str) -> contextful_context::build::Built {
+    use contextful_context::build::{build, BuildRequest};
+    use contextful_core::pipeline::declare::{collect, ManifestFile};
+    use contextful_core::pipeline::model::collect_models;
+    let files = [ManifestFile { path: "contextful.toml".into(), text: models.to_string() }];
+    let spec = collect_models(&files, &collect(&files).unwrap()).unwrap().into_iter().find(|m| m.spec.id == id).unwrap().spec;
+    build(face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) }).unwrap()
 }
 
 pub fn land_rows(store: &Store, table: &str, run: &str, rows: Value) {

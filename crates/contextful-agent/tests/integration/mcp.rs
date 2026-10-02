@@ -486,3 +486,84 @@ fn corpus_retrieve_takes_a_filter_and_kinds() {
     let malformed = call(&server, "corpus.retrieve", with(json!({ "kinds": "memo" })));
     assert_eq!(malformed["error"]["code"], json!(-32602), "{malformed}");
 }
+
+const PINNED: &str = r#"[[pipeline.tables]]
+name = "research/notes"
+
+[[model]]
+id = "research/titles"
+sql = "SELECT note_id, title FROM \"research/notes\""
+unique_key = ["note_id"]
+
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "note_id", type = "utf8", nullable = false }, { name = "title", type = "utf8" }]
+"#;
+
+/// A template over the model, checked when the face opens over the built store.
+const TITLES_TEMPLATE: &str = r#"
+[[query_templates]]
+id = "titles"
+sql = "SELECT note_id FROM \"research/titles\" ORDER BY note_id"
+"#;
+
+/// Build `research/titles` over the store at `now`; its build id.
+fn build_titles(store: &Store, now: &str) -> String {
+    use contextful_context::build::{build, BuildRequest};
+    use contextful_core::pipeline::declare::{collect, ManifestFile};
+    use contextful_core::pipeline::model::collect_models;
+    let files = [ManifestFile { path: "contextful.toml".into(), text: PINNED.to_string() }];
+    let spec = collect_models(&files, &collect(&files).unwrap()).unwrap().remove(0).spec;
+    let face = Face::open(store.clone(), PINNED, Pepper::resolve(|_| None)).unwrap();
+    build(&face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) }).unwrap().build_id
+}
+
+/// Every read tool declares and admits `pin`; each answer touching the pinned model reads
+/// and echoes the pinned build, and a malformed map is a protocol error.
+#[test]
+fn every_read_tool_admits_a_pin_map() {
+    let notes = TableDecl::named("research/notes");
+    let mut first = String::new();
+    let f = fixture_over(&format!("{PINNED}{TITLES_TEMPLATE}"), |store| {
+        put(store, &notes, "run-0001", "2030-01-01T00:00:00Z", json!([{ "note_id": "n1", "title": "Solar battery storage" }]), &[]);
+        first = build_titles(store, "2030-01-01T01:00:00Z");
+        put(store, &notes, "run-0002", "2030-01-01T02:00:00Z", json!([{ "note_id": "n2", "title": "Battery storage grids" }]), &[]);
+        build_titles(store, "2030-01-01T03:00:00Z");
+    });
+    let clock = FixedClock(at("2030-01-01T04:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let tools = ask(&server, 1, "tools/list", json!({}));
+    for tool in tools["result"]["tools"].as_array().unwrap() {
+        assert_eq!(tool["inputSchema"]["properties"]["pin"]["type"], json!("object"), "{} lacks `pin`", tool["name"]);
+    }
+
+    let pin = json!({ "research/titles": first });
+    let echoed_build = |answer: &Value| answer["result"]["structuredContent"]["contextful.resolved"]["research/titles"]["build_id"].clone();
+    let sql = r#"SELECT note_id FROM "research/titles" ORDER BY note_id"#;
+    for answer in [
+        call(&server, "context.query", json!({ "sql": sql, "pin": pin })),
+        call(&server, "context.execute_query", json!({ "id": "titles", "pin": pin })),
+        call(&server, "titles", json!({ "pin": pin })),
+    ] {
+        assert_eq!(rows(&answer), &json!([["n1"]]));
+        assert_eq!(echoed_build(&answer), json!(first), "{answer}");
+    }
+    let described = call(&server, "context.describe", json!({ "table": "research/titles", "pin": pin }));
+    assert_eq!(described["result"]["structuredContent"]["row_count"], json!("1"), "{described}");
+    assert_eq!(echoed_build(&described), json!(first));
+    let listed = call(&server, "context.files", json!({ "pin": pin }));
+    assert!(rows(&listed).as_array().unwrap().iter().any(|r| r[1].as_str().unwrap().contains(&format!("/{first}/"))), "{listed}");
+    assert_eq!(echoed_build(&listed), json!(first));
+    let ranked = call(&server, "corpus.retrieve", json!({ "prefix": "research/titles", "query": "battery storage", "pin": pin }));
+    assert_eq!(rows(&ranked).as_array().unwrap().len(), 1, "{ranked}");
+    assert_eq!(echoed_build(&ranked), json!(first));
+
+    // A null pin reads the latest build; a malformed map is a protocol error.
+    let latest = call(&server, "context.query", json!({ "sql": sql, "pin": { "research/titles": null } }));
+    assert_eq!(rows(&latest), &json!([["n1"], ["n2"]]));
+    assert_ne!(echoed_build(&latest), json!(first));
+    let malformed = call(&server, "context.query", json!({ "sql": sql, "pin": ["research/titles"] }));
+    assert_eq!(malformed["error"]["code"], json!(-32602), "{malformed}");
+    let unknown = call(&server, "context.query", json!({ "sql": sql, "pin": { "research/titles": "snapshot-garbage" } }));
+    assert_eq!(unknown["result"]["structuredContent"]["error"]["identifier"], json!("PinnedBuildUnavailable"), "{unknown}");
+}

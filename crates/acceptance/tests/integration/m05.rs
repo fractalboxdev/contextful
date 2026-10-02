@@ -192,6 +192,77 @@ name = "hr/salaries"
     assert!(client.session.close().success());
 }
 
+/// A pinned read over MCP: an unpinned read of a published model names the build it read,
+/// and after a newer build lands, a read pinned to that build returns its rows and names it.
+#[test]
+fn m05_pinned_read() {
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
+    p.write(
+        "contextful.toml",
+        r#"
+authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "research/notes"
+
+[[model]]
+id = "research/titles"
+sql = "SELECT note_id, title FROM \"research/notes\""
+unique_key = ["note_id"]
+
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "note_id", type = "utf8", nullable = false }, { name = "title", type = "utf8" }]
+"#,
+    );
+    let land = |run: &str, rows: &[Value]| {
+        p.write("notes.jsonl", &rows.iter().map(Value::to_string).collect::<Vec<_>>().join("\n"));
+        ok(&p.run(&cf, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", run, "--site-id", "site-a"]));
+    };
+    let build = || -> String {
+        let built: Value =
+            serde_json::from_str(&ok(&p.run(&cf, &["build", "research/titles", "--project", "research", "--site-id", "site-a", "--json"]))).unwrap();
+        assert_eq!(built["published"], json!(true), "{built}");
+        built["build_id"].as_str().unwrap().to_string()
+    };
+    land("run-0001", &[json!({"note_id": "n1", "title": "Solar battery storage costs fall"})]);
+    let first = build();
+
+    let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let token = ok(&p.run(
+        &cf,
+        &[
+            "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example",
+            "--agent", "agent://research-loop", "--zone", "on-prem:hq", "--action", "read", "--table", "research/*", "--ttl", "3600",
+        ],
+    ));
+    let session = Session::spawn(
+        &cf,
+        &["mcp", "--project", "research", "--public-key", &public, "--audience", AUD],
+        &p.root,
+        &[("CONTEXTFUL_TOKEN", &token)],
+    );
+    let mut client = Client { session, next: 0 };
+    let sql = r#"SELECT note_id FROM "research/titles" ORDER BY note_id"#;
+    let resolved = |r: &Value| r["contextful.resolved"]["research/titles"]["build_id"].as_str().unwrap_or_default().to_string();
+
+    // Unpinned: the latest build, named.
+    let unpinned = client.query(sql).unwrap();
+    assert_eq!(column(&unpinned, "note_id"), [json!("n1")]);
+    let named = resolved(&unpinned);
+    assert_eq!(named, first, "{unpinned}");
+
+    // A newer build lands; the read pinned to the named build returns that build's rows.
+    land("run-0002", &[json!({"note_id": "n2", "title": "Battery storage for regional grids"})]);
+    assert_ne!(build(), first);
+    let pinned = client.call("context.query", json!({ "sql": sql, "pin": { "research/titles": named } })).unwrap();
+    assert_eq!(column(&pinned, "note_id"), [json!("n1")], "{pinned}");
+    assert_eq!(resolved(&pinned), first, "{pinned}");
+
+    assert!(client.session.close().success());
+}
+
 /// The operator's raw verb: `contextful query --json` over a project's tables and over
 /// local files, printed as the one response projection, with an exact truncation flag.
 #[test]

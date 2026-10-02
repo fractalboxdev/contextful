@@ -18,6 +18,9 @@ pub enum ReadError {
     /// A tenant-scoped token named the request-ledger child relation. (`read.register.scoped-ledger`)
     #[error("LedgerNotTenantScoped: {0}")]
     LedgerNotTenantScoped(String),
+    /// A pinned build identifier is unknown or collected. (`read.resolve-pin.unknown-build`)
+    #[error("PinnedBuildUnavailable: {0}")]
+    PinnedBuildUnavailable(String),
     /// A client required a face this binary did not link. (`read.embed.required-face`)
     #[error("RequiredFaceAbsent: {0}")]
     RequiredFaceAbsent(String),
@@ -57,6 +60,7 @@ impl ReadError {
             ReadError::FilePreviewNotATable(_) => "FilePreviewNotATable",
             ReadError::FilterBudgetExceeded(_) => "FilterBudgetExceeded",
             ReadError::LedgerNotTenantScoped(_) => "LedgerNotTenantScoped",
+            ReadError::PinnedBuildUnavailable(_) => "PinnedBuildUnavailable",
             ReadError::QueryParameterRejected(_) => "QueryParameterRejected",
             ReadError::RequiredFaceAbsent(_) => "RequiredFaceAbsent",
             ReadError::QueryProjectAbsent(_) => "QueryProjectAbsent",

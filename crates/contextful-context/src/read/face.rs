@@ -5,11 +5,12 @@
 use super::engine::{SqlEngine, ENGINE};
 use super::fault::ReadFault;
 use super::pool::{self, SessionPool};
-use crate::scan::scan;
+use crate::scan::{scan, scan_at};
 use crate::store::Store;
 use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers};
 use contextful_core::read::face::TOOLS;
 use contextful_core::read::guard::{admit, Admitted};
+use contextful_core::read::pin::{Pins, Resolved, PIN_ARGUMENT, RESOLVED_BLOCK};
 use contextful_core::read::respond::{Cell, Internals, Response};
 use contextful_core::read::template::{bind_query, parse_templates, Bindings, Bound, ParamType, QueryTemplate};
 use contextful_core::read::ReadError;
@@ -146,9 +147,11 @@ impl Face {
         self.decls.get(table).cloned().unwrap_or_else(|| TableDecl::named(table))
     }
 
-    /// One table under the request's bounds. A table no batch has landed in registers as
-    /// a zero-row relation over the injected columns (`read.register.quiet-table`).
-    fn source(&self, table: &str, bounds: Bounds) -> Result<TableSource, ReadFault> {
+    /// One table under the request's bounds, or under its pinned build where `pin` names
+    /// one and `as_of` is not the earlier bound (`read.resolve-pin.earlier-bound-wins`). A
+    /// table no batch has landed in registers as a zero-row relation over the injected
+    /// columns (`read.register.quiet-table`).
+    fn source(&self, table: &str, bounds: Bounds, pin: Option<&str>) -> Result<TableSource, ReadFault> {
         let decl = self.decl(table);
         let policy = match self.policies.get(table) {
             Some(p) => p.clone(),
@@ -156,15 +159,24 @@ impl Face {
         };
         let ledger = crate::ledger::files(&self.store, table)?.iter().map(|p| p.to_string_lossy().into_owned()).collect();
         Ok(match self.store.try_schema(table)? {
-            Some(schema) => {
-                let s = scan(&self.store, &decl, bounds)?;
+            Some(_) => {
+                let pinned = match pin {
+                    Some(build) => super::pin::pinned(&self.store, table, build, bounds.as_of)?,
+                    None => None,
+                };
+                let s = scan_at(&self.store, &decl, bounds, pinned.as_ref())?;
                 let files = s.files.iter().map(|f| self.absolute(f)).collect();
-                TableSource { decl, policy, base: s.relation, files, columns: schema.columns, landed: true, ledger }
+                let resolved = s.publish.as_ref().map(Resolved::of);
+                TableSource { decl, policy, base: s.relation, files, columns: s.columns, landed: true, ledger, resolved }
             }
             None => {
+                // A pin on a table holding no build names no committed manifest.
+                if let Some(build) = pin {
+                    super::pin::pinned(&self.store, table, build, bounds.as_of)?;
+                }
                 let columns = injected_columns();
                 let base = relation(&TableDecl::named(table), &[], &columns, &[], None)?;
-                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger }
+                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger, resolved: None }
             }
         })
     }
@@ -182,15 +194,29 @@ impl Face {
     /// the key is computed before any resolution, so a commit racing the resolution lands
     /// under a key no later call computes (`read.cache.session-pool`).
     pub fn session(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds) -> Result<Session, ReadFault> {
+        self.session_pinned(authority, request, bounds, &Pins::default())
+    }
+
+    /// [`Face::session`] with each table `pins` names resolved to its pinned build
+    /// (`read.resolve-pin.pin-parameter`); an unnamed table resolves to the latest
+    /// published state. The pin map joins the pool key (`read.cache.session-pool`). A pin
+    /// on a table the session registers no relation for — absent or outside the grants —
+    /// refuses as a table publishing no build, so the refusal names no table the
+    /// credential cannot read, and the pin never widens to the latest state
+    /// (`read.resolve-pin.unknown-build`).
+    pub fn session_pinned(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, pins: &Pins) -> Result<Session, ReadFault> {
         let tables = self.tables()?;
         let granted: Vec<String> = tables.iter().filter(|t| raw_read_covers(authority.grants(), t)).cloned().collect();
-        let principal = pool::principal(authority, request, bounds);
+        if let Some((table, build)) = pins.iter().find(|(t, _)| !granted.iter().any(|g| g == t)) {
+            return Err(super::pin::unavailable(table, build, None));
+        }
+        let principal = pool::principal(authority, request, bounds, pins);
         let state = pool::store_state(&self.store, &tables, &granted)?;
         let transaction = Bounds { valid_as_of: None, ..bounds };
         self.pool.session(principal, state, || {
             let sources = granted
                 .iter()
-                .map(|t| self.source(t, if self.decl(t).valid_time.is_some() { bounds } else { transaction }))
+                .map(|t| self.source(t, if self.decl(t).valid_time.is_some() { bounds } else { transaction }, pins.build(t)))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Session::open(authority, request, sources, &self.pepper)?)
         })
@@ -246,7 +272,7 @@ impl Face {
         one_statement(sql)?;
         let engine = SqlEngine::raw()?;
         for t in self.tables()? {
-            engine.register(&t, &self.source(&t, Bounds::default())?.base)?;
+            engine.register(&t, &self.source(&t, Bounds::default(), None)?.base)?;
         }
         respond(&engine, sql, &Bindings::default(), opts.limit, opts)
     }
@@ -257,7 +283,7 @@ impl Face {
     pub(crate) fn register_operator(&self, engine: &SqlEngine) -> Result<Vec<String>, ReadFault> {
         let tables = self.tables()?;
         for t in &tables {
-            engine.register(t, &self.source(t, Bounds::default())?.base)?;
+            engine.register(t, &self.source(t, Bounds::default(), None)?.base)?;
         }
         Ok(tables)
     }
@@ -312,9 +338,11 @@ impl Face {
         let mut tools: Vec<Value> = TOOLS.iter().map(|t| builtin_tool(t)).collect();
         tools.extend(self.templates.iter().filter(|t| allowed.contains(&t.id.as_str())).map(|t| {
             let mut tool = t.tool();
+            let properties = tool["inputSchema"]["properties"].as_object_mut().expect("a template schema lists properties");
             for (name, schema) in bound_properties() {
-                tool["inputSchema"]["properties"].as_object_mut().expect("a template schema lists properties").insert(name, schema);
+                properties.insert(name, schema);
             }
+            properties.insert(PIN_ARGUMENT.into(), pin_property());
             tool
         }));
         tools
@@ -357,7 +385,7 @@ impl Face {
         let row_count = count.first().and_then(|r| r.first()).map(Cell::to_json).unwrap_or(Value::Null);
         let decl = self.decl(table);
         let policy = session.policy(table).expect("a registered table carries its policy");
-        let schema = self.store.try_schema(table)?.map(|s| s.columns).unwrap_or_else(injected_columns);
+        let schema = session.columns(table).expect("a registered table carries its columns");
         let columns: Vec<Value> = schema.iter().map(|c| json!({ "name": c.name, "type": c.ty.name() })).collect();
         let fingerprint: String = {
             let text: Vec<String> = schema.iter().map(|c| format!("{}:{}", c.name, c.ty.name())).collect();
@@ -381,26 +409,32 @@ impl Face {
         if let Some(max) = policy.max_rows {
             out["limits"] = json!({ "max_rows": max });
         }
+        if let Some(resolved) = super::pin::resolved(session, [table]) {
+            out[format!("contextful.{RESOLVED_BLOCK}")] = resolved;
+        }
         Ok(echo(out, bounds))
     }
 
-    /// Committed data files of the tables the session reads, store-root-relative; a table
-    /// outside the session contributes no path (`read.register.file-listing`). Only `as_of`
-    /// selects files and only it echoes (`read.register.bound-listing`).
+    /// Committed data files of the tables the session reads, store-root-relative: the files
+    /// each registered relation reads, a pinned table's build included; a table outside the
+    /// session contributes no path (`read.register.file-listing`). Only `as_of` selects
+    /// files and only it echoes (`read.register.bound-listing`).
     pub fn files(&self, session: &Session, bounds: Bounds) -> Result<Response, ReadFault> {
         let transaction = Bounds { valid_as_of: None, ..bounds };
+        let root = format!("{}/", self.store.root().to_string_lossy());
         let mut rows = Vec::new();
         for r in session.relations() {
-            if self.store.try_schema(r.name())?.is_none() {
-                continue;
-            }
-            for f in scan(&self.store, &self.decl(r.name()), transaction)?.files {
-                rows.push(vec![json!(r.name()), json!(f)]);
+            for f in r.files() {
+                rows.push(vec![json!(r.name()), json!(f.strip_prefix(&root).unwrap_or(f))]);
             }
         }
-        let response = Response::cut(vec!["table".into(), "path".into()], rows, None);
-        Ok(match transaction.echo() {
-            Some(b) => response.with_block("bounds", b),
+        let mut response = Response::cut(vec!["table".into(), "path".into()], rows, None);
+        if let Some(b) = transaction.echo() {
+            response = response.with_block("bounds", b);
+        }
+        let names: Vec<String> = session.relations().map(|r| r.name().to_string()).collect();
+        Ok(match super::pin::resolved(session, names.iter().map(String::as_str)) {
+            Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
             None => response,
         })
     }
@@ -435,6 +469,8 @@ impl Face {
     /// excludes or column-masks, or leave the response as it is where none is
     /// (`read.respond.restriction-block`). Each count reads the whole relation under its
     /// earlier steps, never the caller's statement (`authority.place.excluded-disclosed`).
+    /// Every touched published model rides `contextful.resolved`, whatever the row count
+    /// (`read.resolve-pin.resolved-echo`).
     pub(crate) fn restrict<'t>(
         &self,
         engine: &SqlEngine,
@@ -442,8 +478,13 @@ impl Face {
         touched: impl IntoIterator<Item = &'t str>,
         response: Response,
     ) -> Result<Response, ReadFault> {
+        let touched: BTreeSet<&str> = touched.into_iter().collect();
+        let response = match super::pin::resolved(session, touched.iter().copied()) {
+            Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
+            None => response,
+        };
         let mut tables = Vec::new();
-        for withheld in touched.into_iter().collect::<BTreeSet<_>>().into_iter().filter_map(|t| session.zone_withheld(t)) {
+        for withheld in touched.into_iter().filter_map(|t| session.zone_withheld(t)) {
             let rows_dropped = match &withheld.dropped_sql {
                 Some(sql) => {
                     let (_, count) = engine.run(sql, &Bindings::default(), None)?;
@@ -637,6 +678,7 @@ fn builtin_tool(name: &str) -> Value {
             properties[bound.as_str()] = schema;
         }
     }
+    properties[PIN_ARGUMENT] = pin_property();
     json!({
         "name": name,
         "description": description,
@@ -652,4 +694,13 @@ const INSTANT_LITERAL: &str = "An RFC 3339 instant, or a YYYY-MM-DD date read as
 fn bound_properties() -> [(String, Value); 2] {
     let instant = || json!({ "type": "string", "description": INSTANT_LITERAL });
     [("as_of".into(), instant()), ("valid_as_of".into(), instant())]
+}
+
+/// The `pin` argument every read tool declares (`read.resolve-pin.pin-parameter`).
+fn pin_property() -> Value {
+    json!({
+        "type": "object",
+        "description": "Each table to the build identifier it resolves to, or null for its latest published state.",
+        "additionalProperties": { "type": ["string", "null"] }
+    })
 }

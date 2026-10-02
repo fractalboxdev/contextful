@@ -5,6 +5,7 @@ use super::*;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::PoolCounts;
 use contextful_core::read::cache::{SESSION_POOL_CONNECTIONS, SESSION_POOL_ENTRIES};
+use contextful_core::read::pin::Pins;
 use contextful_core::store::bound_time::Bound;
 use contextful_core::store::ledger::RequestRecord;
 use contextful_policy::issue::MintClaims;
@@ -14,6 +15,18 @@ use contextful_core::store::reserve::Injection;
 /// The table every pooled read touches, landed one run at a time and never folded.
 const EVENTS: &str = "bench/events";
 const COUNT: &str = r#"SELECT count(*) AS n FROM "bench/events""#;
+
+/// A published model over the events, whose build a pin names.
+const KINDS: &str = r#"
+[[model]]
+id = "bench/kinds"
+sql = "SELECT kind, CAST(count(*) AS BIGINT) AS n FROM \"bench/events\" GROUP BY kind"
+unique_key = ["kind"]
+
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "kind", type = "utf8", nullable = false }, { name = "n", type = "int64", nullable = false }]
+"#;
 
 fn land_run(store: &Store, i: usize) {
     let rows = (0..4)
@@ -38,13 +51,14 @@ fn counts(r: &Reads) -> (u64, u64, u64) {
     (session_hits, session_misses, engine_opens)
 }
 
-/// `Face` reuses a resolved session and its connections while the whole key holds: admitted authority with token id and revocation epoch, request zone, bounds, table set, and per granted table its schema digest, pointer, run set and ledger files.
-// spec: read.cache.session-pool@916644f6
+/// `Face` reuses a resolved session and its connections while the whole key holds: admitted authority, token id, revocation epoch, request zone, bounds, pin map, table set, and per granted table its schema digest, pointer, run set and ledger files.
+// spec: read.cache.session-pool@945a082b
 #[test]
 fn statements_under_one_key_share_one_resolved_session_and_one_engine() {
-    let r = Reads::new();
+    let r = Reads::with_manifest(&format!("{MANIFEST}{KINDS}"));
     land_run(&r.store, 0);
-    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&[EVENTS], None)]);
+    let kinds = build_model(&r.face, KINDS, "bench/kinds", "2030-01-11T00:00:00Z");
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&[EVENTS, "bench/kinds"], None)]);
     let s = r.face.session(&authority, &Request::default(), Bounds::default()).unwrap();
     r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
     r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
@@ -60,6 +74,14 @@ fn statements_under_one_key_share_one_resolved_session_and_one_engine() {
     let s = r.face.session(&authority, &Request::default(), bounded).unwrap();
     r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
     assert_eq!(counts(&r), (1, 3, 3));
+    // Another pin map is another key; a map of null pins is the unpinned key.
+    let nulled = Pins::parse(Some(&serde_json::json!({ EVENTS: null }))).unwrap();
+    r.face.session_pinned(&authority, &Request::default(), Bounds::default(), &nulled).unwrap();
+    assert_eq!(counts(&r), (2, 3, 3));
+    let pinned = Pins::default().with("bench/kinds", &kinds.build_id);
+    let s = r.face.session_pinned(&authority, &Request::default(), Bounds::default(), &pinned).unwrap();
+    r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
+    assert_eq!(counts(&r), (2, 4, 4));
 }
 
 /// A committed run, snapshot, schema edit, new table, request-ledger file or token under another id or epoch misses the pool, and the next statement reads the new state on a new connection.
