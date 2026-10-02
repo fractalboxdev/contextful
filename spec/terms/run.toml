@@ -41,6 +41,7 @@ AwakeableUnknown               = { clause = "run.suspend.unknown-token", gloss =
 RunRetryTagUnretryable         = { clause = "run.retry.unretryable-tag", gloss = "A `retry_on` naming a tag outside the two retryable ones." }
 StepFailed                     = { clause = "run.retry.step-failed", gloss = "A step closed on a terminal failure, carrying its label and tag." }
 ExecutionPinMismatch           = { clause = "run.own.pinned-plan-changed", gloss = "A connector identity, component world, plan hash, plan reference or host identity moved under a pending owner." }
+RunStagedBytesExceeded         = { clause = "run.own.staged-bytes", gloss = "A run whose staged parts pass the per-run staged-bytes bound." }
 CancelTargetNotInFlight        = { clause = "run.cancel.not-in-flight", gloss = "A stop matching no pending, running or waiting run." }
 SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", gloss = "A site id with no declaration, two in one place, or an unset variable." }
 HistoryBoundSpelling           = { clause = "run.record.bound-spelling", gloss = "A history window bound outside the two accepted spellings." }
@@ -64,6 +65,7 @@ PipelineUnknownDestination     = { clause = "run.land.unknown-destination", glos
 PipelineUnreadableInput        = { clause = "run.land.unreadable-input", gloss = "Input a parser cannot read, named by path and position." }
 PipelinePartialParse           = { clause = "run.land.partial-parse", gloss = "A read covering part of a multi-part input." }
 PipelineParseCrashed           = { clause = "run.land.parse-crashed", gloss = "A non-zero exit or fatal signal from the decode process." }
+PipelineTypeDeclaredLate       = { clause = "run.land.late-type", gloss = "A pull declaring a type for a column an earlier staged batch of its run carried undeclared." }
 PipelineTableFailed            = { clause = "run.land.table-failed", gloss = "One table's pull failing inside a fire." }
 ExportSignalUnknown            = { clause = "run.export.signal-unknown", gloss = "An export block naming a signal the built-in arm does not map." }
 ExportCommitSeqMissing         = { clause = "run.export.commit-seq-missing", gloss = "A table holding rows no cursor passes, their `_commit_seq` null." }
@@ -137,6 +139,7 @@ retry-jitter-ceiling       = { clause = "run.retry.default-policy", value = 250,
 retry-single-attempt       = { clause = "run.retry.single-attempt", value = 1, unit = "attempts", basis = "chosen", gloss = "Total attempts of the no-retry schedule." }
 retry-after-ceiling        = { clause = "run.retry.retry-after", value = 300, unit = "s", basis = "chosen", gloss = "Longest server-requested delay a step sleeps before closing." }
 cancel-poll-interval       = { clause = "run.cancel.poll-interval", value = 500, unit = "ms", basis = "chosen", gloss = "Cadence of the catalog read feeding the cancellation token." }
+staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages before its commit." }
 owner-lease-renewal        = { clause = "run.record.owner-lease", value = 10, unit = "s", basis = "chosen", gloss = "Renewal cadence of a run row's owner lease." }
 owner-lease-ttl            = { clause = "run.record.owner-lease", value = 30, unit = "s", basis = "chosen", gloss = "Life of an unrenewed run owner lease." }
 site-id-min-length         = { clause = "run.record.site-id-length", value = 1, unit = "chars", basis = "chosen", gloss = "Shortest site id." }

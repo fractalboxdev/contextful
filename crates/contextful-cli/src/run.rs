@@ -11,14 +11,14 @@ use contextful_core::grant::{describe_pipeline, list_pipelines, trace_run, Grant
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use clap::Subcommand;
-use contextful_context::land::{commit_batches, Batch, Position, RunContext};
+use contextful_context::land::{commit_parts, stage_part, Batch, Position, RunContext};
 use contextful_context::{commit_log, node, ContextError, Store};
 use contextful_core::store::commit_log::{CommitEntry, Kind};
 use contextful_core::ports::{Clock, FixedClock};
 use contextful_core::run::cancel::Scope;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::plan::Plan;
-use contextful_core::run::ports::{AwakeableStore, Commit, Destination, Landed, Marker};
+use contextful_core::run::ports::{AwakeableStore, Commit, Destination, Landed, Marker, Part, Stage};
 use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, resolve_site_id, select_history, RunStatus, SiteIdSources, Window};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::declare::TableDecl;
@@ -218,24 +218,39 @@ fn store_failure(e: ContextError) -> Failure {
     }
 }
 
-impl Destination for StoreDestination {
-    fn land(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
-        let decl = self.decls.iter().find(|d| d.name == commit.table).cloned().unwrap_or_else(|| TableDecl::named(&commit.table));
-        let rows: u64 = commit.batches.iter().map(|b| b.len() as u64).sum();
-        // The pulls' declared types type every batch of the commit (`run.land.typed-pull`).
-        let types: std::collections::HashMap<_, _> = commit.types.into_iter().collect();
-        let batches: Vec<Batch> = commit.batches.into_iter().map(|rows| Batch { rows, types: types.clone() }).collect();
-        let ctx = RunContext {
+impl StoreDestination {
+    fn decl(&self, table: &str) -> TableDecl {
+        self.decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table))
+    }
+
+    fn context(&self, run_id: &str, site_id: &str, at: Instant) -> RunContext {
+        RunContext {
             node: self.node.clone(),
             injection: Injection {
-                run_id: commit.run_id.clone(),
-                site_id: commit.site_id.clone(),
+                run_id: run_id.to_string(),
+                site_id: site_id.to_string(),
                 batch_seq: None,
                 authored_by: self.author.as_ref().and_then(Author::on_behalf_of),
                 taint: None,
             },
-            committed_at: commit.committed_at,
-        };
+            committed_at: at,
+        }
+    }
+}
+
+impl Destination for StoreDestination {
+    fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
+        let decl = self.decl(&stage.table);
+        let ctx = self.context(&stage.run_id, &stage.site_id, stage.staged_at);
+        // The pulls' declared types type the batch (`run.land.typed-pull`).
+        let batch = Batch { rows: stage.rows, types: stage.types.into_iter().collect() };
+        let part = stage_part(&self.store, &decl, &batch, &ctx, stage.ordinal, stage.row_offset).map_err(store_failure)?;
+        Ok(Part { name: part.name, rows: part.rows, bytes: part.bytes })
+    }
+
+    fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
+        let decl = self.decl(&commit.table);
+        let ctx = self.context(&commit.run_id, &commit.site_id, commit.committed_at);
         let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some() };
         // A lapse at the commit boundary is the credential's, not the store's: it fails the
         // run deterministically rather than as a retryable storage fault.
@@ -260,13 +275,15 @@ impl Destination for StoreDestination {
             }
             None => Ok(()),
         };
-        let manifest = commit_batches(&self.store, &decl, &batches, &ctx, &position, &precommit, &commit_point).map_err(|e| lapsed.take().unwrap_or_else(|| store_failure(e)))?;
+        let names: Vec<String> = commit.parts.iter().map(|p| p.name.clone()).collect();
+        let manifest = commit_parts(&self.store, &decl, &names, &ctx, &position, &precommit, &commit_point).map_err(|e| lapsed.take().unwrap_or_else(|| store_failure(e)))?;
+        // The committed parts carry `_commit_seq`, so their bytes are measured after the commit.
         let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join("data").join("runs").join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;
         for p in &manifest.parts {
             bytes += std::fs::metadata(dir.join(&p.name)).map(|m| m.len()).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
         }
-        Ok(Landed { rows, bytes })
+        Ok(Landed { rows: commit.parts.iter().map(|p| p.rows).sum(), bytes })
     }
 
     fn open_fence(&mut self, pipeline_id: &str, table: &str, fence: u64) -> Result<(), Failure> {

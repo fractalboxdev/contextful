@@ -5,7 +5,7 @@ use contextful_core::coordinate::Catalog;
 use contextful_core::ports::Clock;
 use contextful_core::run::own::ConnectorPin;
 use contextful_core::run::plan::Plan;
-use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Marker, PullRequest, Source};
+use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Marker, Part, PullRequest, Row, Source, Stage};
 use contextful_core::run::record::RunRow;
 use contextful_core::run::Failure;
 use contextful_core::time::Instant;
@@ -140,26 +140,69 @@ impl Source for Pages {
     }
 }
 
-/// The store stand-in: every commit it accepted, and whether it dies after the next one.
+/// A commit as the sink holds it: the rows of every part it names, in part order.
+#[derive(Debug, Clone)]
+pub struct Committed {
+    pub pipeline_id: String,
+    pub table: String,
+    pub run_id: String,
+    pub batches: Vec<Vec<Row>>,
+    pub cursor: Option<Value>,
+    pub committed_at: Instant,
+}
+
+/// The store stand-in: every stage and commit it accepted, and whether it dies after the
+/// next commit.
 #[derive(Default)]
 pub struct Sink {
-    pub commits: Vec<Commit>,
+    pub commits: Vec<Committed>,
+    /// Every batch staged, committed or not, in stage order.
+    pub staged: Vec<Stage>,
     pub die_after_land: bool,
     /// Counts to report instead of the ones the commit carries.
     pub report: Option<Landed>,
     /// Whether recording a lease's fence refuses.
     pub refuse_fence: bool,
+    /// Bytes each staged part measures.
+    pub part_bytes: u64,
+    /// Observes each stage as it arrives.
+    pub on_stage: Option<Box<dyn FnMut(&Stage)>>,
 }
 
 impl Destination for Sink {
-    fn land(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
+    fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
+        if let Some(observe) = self.on_stage.as_mut() {
+            observe(&stage);
+        }
+        let part = Part { name: format!("{}/{}", stage.run_id, stage.ordinal), rows: stage.rows.len() as u64, bytes: self.part_bytes };
+        self.staged.push(stage);
+        Ok(part)
+    }
+
+    fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
         precommit()?;
-        let rows = commit.batches.iter().map(|b| b.len() as u64).sum();
-        self.commits.push(commit);
+        let batches: Vec<Vec<Row>> = commit
+            .parts
+            .iter()
+            .map(|p| {
+                let stage = self.staged.iter().find(|s| format!("{}/{}", s.run_id, s.ordinal) == p.name).unwrap_or_else(|| panic!("no staged part `{}`", p.name));
+                stage.rows.clone()
+            })
+            .collect();
+        let rows = commit.parts.iter().map(|p| p.rows).sum();
+        let bytes = commit.parts.iter().map(|p| p.bytes).sum();
+        self.commits.push(Committed {
+            pipeline_id: commit.pipeline_id,
+            table: commit.table,
+            run_id: commit.run_id,
+            batches,
+            cursor: commit.cursor,
+            committed_at: commit.committed_at,
+        });
         if std::mem::take(&mut self.die_after_land) {
             panic!("the process dies after the commit marker lands");
         }
-        Ok(self.report.unwrap_or(Landed { rows, bytes: 0 }))
+        Ok(self.report.unwrap_or(Landed { rows, bytes }))
     }
 
     fn open_fence(&mut self, _: &str, _: &str, _: u64) -> Result<(), Failure> {
@@ -180,7 +223,7 @@ impl Destination for Sink {
 }
 
 /// Ids of the rows of every batch, per batch.
-pub fn ids(commit: &Commit) -> Vec<Vec<String>> {
+pub fn ids(commit: &Committed) -> Vec<Vec<String>> {
     commit.batches.iter().map(|b| b.iter().map(|r| r["id"].as_str().unwrap_or_default().to_string()).collect()).collect()
 }
 

@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 168 | 28 | 22 | 20 | 149 | 0 | 149 |
-| `run` | 3 | 26 | 362 | 96 | 35 | 35 | 245 | 0 | 245 |
+| `run` | 3 | 26 | 367 | 98 | 35 | 37 | 251 | 0 | 251 |
 | `store` | 1 | 17 | 228 | 54 | 13 | 19 | 188 | 0 | 188 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1878 | 559 | 187 | 141 | 1220 | 0 | |
+| **total** | 19 | 154 | 1883 | 561 | 187 | 143 | 1226 | 0 | |
 
 Decision records: 18.
 
@@ -28,8 +28,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 156 | 121 | passing | closed |
-| 3 — The run path | 11 | 200 | 133 | passing | closed |
-| 4 — Ingest | 25 | 464 | 283 | passing | open |
+| 3 — The run path | 11 | 204 | 138 | passing | closed |
+| 4 — Ingest | 25 | 465 | 284 | passing | open |
 | 5 — The read face under enforcement | 17 | 246 | 183 | passing | open |
 | 6 — Sync and replicas | 8 | 72 | 67 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
@@ -898,6 +898,7 @@ Unscheduled operations: 10.
 | `run.journal.store-input` | `crates/contextful-cli/tests/integration/job.rs::a_fire_reads_its_input_at_the_pinned_as_of_and_lands_its_output_table` | performed |
 | `run.journal.substrate-port` | `crates/contextful-engine/tests/integration/execution.rs::the_substrate_port_opens_steps_suspends_commits_and_closes_an_execution` | performed |
 | `run.journal.unwired-capability` | `crates/contextful-engine/tests/integration/execution.rs::suspending_on_an_engine_without_an_awakeable_store_is_refused_at_the_first_reach` | performed |
+| `run.land.late-type` | `crates/contextful-engine/tests/integration/runner.rs::a_type_declared_after_its_column_staged_refuses` | performed |
 | `run.land.parse-boundary` | `crates/contextful-connectors/tests/integration/boundary.rs::a_decode_runs_in_a_child_the_parent_kills_at_its_deadline` | performed |
 | `run.land.parse-crashed` | `crates/contextful-connectors/tests/integration/boundary.rs::a_crashed_decode_is_named_and_a_refusal_crosses_intact` | performed |
 | `run.land.table-failed` | `crates/contextful-cli/tests/integration/pipeline.rs::a_failing_table_is_named_with_its_kind_and_run` | performed |
@@ -927,6 +928,7 @@ Unscheduled operations: 10.
 | `run.model.unknown-model` | `crates/contextful-cli/tests/integration/build.rs::build_of_an_undeclared_model_is_refused` | performed |
 | `run.model.unpublished` | `crates/contextful-context/tests/integration/build.rs::an_unpublished_model_commits_rows_without_a_section` | performed |
 | `run.model.watermark` | `crates/contextful-context/tests/integration/build.rs::the_watermark_names_each_input_frontier` | performed |
+| `run.own.backpressure` | `crates/contextful-engine/tests/integration/runner.rs::each_batch_stages_before_the_next_pull` | performed |
 | `run.own.execution-id-keys-the-journal` | `crates/contextful-engine/tests/integration/runner.rs::a_second_attempt_under_one_owner_replays_the_firsts_recorded_pulls` | performed |
 | `run.own.host-scope` | `crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row` | performed |
 | `run.own.live-owner` | `crates/contextful-engine/tests/integration/execution.rs::a_host_open_under_a_live_attempt_fails_transient_and_joins_nothing` | performed |
@@ -934,6 +936,10 @@ Unscheduled operations: 10.
 | `run.own.one-commit-per-run` | `crates/contextful-engine/tests/integration/runner.rs::a_run_commits_once_and_a_crash_commits_nothing` | performed |
 | `run.own.pin-release` | `crates/contextful-core/tests/integration/run/own.rs::success_and_an_empty_failure_release_every_other_status_holds` | performed |
 | `run.own.pinned-plan-changed` | `crates/contextful-engine/tests/integration/runner.rs::a_moved_build_under_a_pending_owner_is_refused_before_replay` | performed |
+| `run.own.stage-commit-seq` | `crates/contextful-context/tests/integration/run_commit.rs::a_staged_run_takes_its_commit_seq_at_its_commit` | performed |
+| `run.own.stage-instant` | `crates/contextful-context/tests/integration/run_commit.rs::staged_parts_join_the_file_list_only_at_their_commit` | performed |
+| `run.own.stage-schema` | `crates/contextful-context/tests/integration/run_commit.rs::a_staged_run_types_the_table_only_at_its_commit` | performed |
+| `run.own.staged-bytes` | `crates/contextful-engine/tests/integration/runner.rs::a_run_staging_past_the_bound_commits_nothing` | performed |
 | `run.own.unclosed-execution` | `crates/contextful-engine/tests/integration/execution.rs::a_dropped_execution_resumes_under_its_scope_and_replays_its_steps` | performed |
 | `run.parse-cues.backward-cue` | `crates/contextful-core/tests/integration/run/derive.rs::a_block_starting_before_the_last_accepted_one_is_dropped` | performed |
 | `run.parse-cues.grammar` | `crates/contextful-core/tests/integration/run/derive.rs::subrip_and_webvtt_read_through_one_grammar` | performed |

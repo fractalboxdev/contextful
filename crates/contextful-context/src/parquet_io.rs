@@ -79,6 +79,36 @@ pub fn read(path: &Path) -> Result<Vec<RecordBatch>> {
     reader.map(|b| b.map_err(|e| pq(e.to_string()))).collect()
 }
 
+/// Copy the Parquet file `from` to `to` with `field` inserted after column `after`, holding
+/// `value` on every row. One record batch of `from` is in memory at a time; an existing
+/// `to` is replaced.
+pub fn copy_inserting_int64(from: &Path, to: &Path, field: Field, after: &str, value: i64) -> Result<()> {
+    let pq = |path: &Path, m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
+    let file = File::open(from).at(from)?;
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| pq(from, e.to_string()))?;
+    let source = builder.schema().clone();
+    let at = source.index_of(after).map_err(|e| pq(from, e.to_string()))? + 1;
+    let mut fields: Vec<Field> = source.fields().iter().map(|f| f.as_ref().clone()).collect();
+    fields.insert(at, field);
+    let target = Arc::new(ArrowSchema::new_with_metadata(fields, source.metadata().clone()));
+    let reader = builder.build().map_err(|e| pq(from, e.to_string()))?;
+    if to.exists() {
+        std::fs::remove_file(to).at(to)?;
+    }
+    let out = File::create(to).at(to)?;
+    let props = WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())).build();
+    let mut w = ArrowWriter::try_new(out, target.clone(), Some(props)).map_err(|e| pq(to, e.to_string()))?;
+    for batch in reader {
+        let batch = batch.map_err(|e| pq(from, e.to_string()))?;
+        let mut columns = batch.columns().to_vec();
+        columns.insert(at, Arc::new(arrow_array::Int64Array::from(vec![value; batch.num_rows()])));
+        let batch = RecordBatch::try_new(target.clone(), columns).map_err(|e| pq(to, e.to_string()))?;
+        w.write(&batch).map_err(|e| pq(to, e.to_string()))?;
+    }
+    w.close().map_err(|e| pq(to, e.to_string()))?;
+    Ok(())
+}
+
 /// The column names a Parquet file carries, read from its footer.
 pub fn columns(path: &Path) -> Result<Vec<String>> {
     let file = File::open(path).at(path)?;

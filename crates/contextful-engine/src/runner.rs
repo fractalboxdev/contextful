@@ -1,7 +1,7 @@
 //! The runner: a client of the execution handle. It opens an execution for a table
 //! against its pinned plan, resolves each pull through the secret guard and the journal
-//! under the step's retry schedule, lands every batch in one commit carrying the position,
-//! retires the owner, and closes the run row.
+//! under the step's retry schedule, stages each batch before the next pull, commits the
+//! staged parts in one commit carrying the position, retires the owner, and closes the run row.
 
 use crate::cancel::Keeper;
 use crate::guard::{log_counts, Guarded};
@@ -15,12 +15,16 @@ use contextful_core::run::cancel::{mark, same_grain, Scope};
 use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{ConnectorPin, OwnerScope, Pins};
 use contextful_core::run::plan::Plan;
-use contextful_core::run::ports::{AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Pull, PullRequest, Row, Shape, Source, Types, Unshaped};
+use contextful_core::run::ports::{
+    AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Part, Pull, PullRequest, Shape, Source, Stage, Types, Unshaped,
+    STAGED_BYTES_PER_RUN,
+};
 use contextful_core::run::record::{select_history, HistoryPage, RunRow, Window, OWNER_LEASE_TTL_SECS};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::topology::TopologyError;
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 /// Why a run could not open, or a call on the engine refused.
@@ -196,10 +200,17 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             CursorKind::Monotonic => open_watermark(position.as_ref(), &field)?.cloned(),
             _ => None,
         };
-        let mut batches: Vec<Vec<Row>> = Vec::new();
+        // Each shaped batch stages before the next pull, so the run holds one pulled batch
+        // in memory; the commit names the staged parts (`run.own.backpressure`).
+        let staged_at = self.catalog.now()?;
+        let mut parts: Vec<Part> = Vec::new();
+        let (mut staged_rows, mut staged_bytes) = (0u64, 0u64);
         let mut types = Types::new();
         let mut skipped = 0u64;
         let mut declined: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+        // Columns a staged batch carried with no declared type: their parts hold the
+        // inferred type, so a later declaration cannot retype them (`run.land.late-type`).
+        let mut undeclared: BTreeSet<String> = BTreeSet::new();
         for ordinal in 0.. {
             if execution.token().requested() {
                 return Err(Close::Failed(Failure::canceled("stopped between pulls")));
@@ -223,7 +234,20 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                         )
                         .into())
                     }
-                    _ => {
+                    Some(_) => {}
+                    None if undeclared.contains(&column) => {
+                        execution.discard();
+                        return Err(Failure::deterministic(
+                            FailureTag::SchemaIncompatible,
+                            format!(
+                                "PipelineTypeDeclaredLate: pull {ordinal} declares column `{column}` as {}, which an earlier staged batch of run `{}` carried undeclared; declare it from the first pull",
+                                ty.name(),
+                                spec.run_id
+                            ),
+                        )
+                        .into());
+                    }
+                    None => {
                         types.insert(column, ty);
                     }
                 }
@@ -255,7 +279,32 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             };
             let rows = shape.shape(rows)?;
             if !rows.is_empty() {
-                batches.push(rows);
+                let count = rows.len() as u64;
+                undeclared.extend(rows.iter().flat_map(|r| r.keys()).filter(|c| !types.contains_key(*c)).cloned());
+                let part = dest.stage_batch(Stage {
+                    pipeline_id: pipeline_id.to_string(),
+                    table: table.to_string(),
+                    run_id: spec.run_id.clone(),
+                    site_id: spec.site_id.clone(),
+                    ordinal: u32::try_from(parts.len()).map_err(|_| RunError::Invalid(format!("run `{}` stages more batches than a part ordinal numbers", spec.run_id)))?,
+                    row_offset: staged_rows,
+                    rows,
+                    types: types.clone(),
+                    staged_at,
+                })?;
+                staged_rows += count;
+                staged_bytes = staged_bytes.saturating_add(part.bytes);
+                parts.push(part);
+                if staged_bytes > STAGED_BYTES_PER_RUN {
+                    // A replay stages the same recorded pulls past the bound again.
+                    execution.discard();
+                    return Err(RunError::RunStagedBytesExceeded(format!(
+                        "run `{}` staged {staged_bytes} bytes in {} parts of `{pipeline_id}`/`{table}`, past the {STAGED_BYTES_PER_RUN}-byte bound; it commits nothing and retires its owner",
+                        spec.run_id,
+                        parts.len()
+                    ))
+                    .into());
+                }
             }
             if last {
                 break;
@@ -266,7 +315,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         // lease: a writer a later acquisition fenced out lands nothing.
         let lease = execution.lease();
         let moved = position != cached.position;
-        let batch_count = batches.len() as u64;
+        let batch_count = parts.len() as u64;
         let committed_at = self.catalog.now()?;
         let landed = if batch_count > 0 || moved {
             let precommit = || -> Result<(), Failure> {
@@ -280,14 +329,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     ))
                 }
             };
-            dest.land(
+            dest.commit(
                 Commit {
                     pipeline_id: pipeline_id.to_string(),
                     table: table.to_string(),
                     run_id: spec.run_id.clone(),
                     site_id: spec.site_id.clone(),
-                    batches,
-                    types,
+                    parts,
                     cursor: position.clone(),
                     committed_at,
                     fence: lease.as_ref().map(|l| l.fence),

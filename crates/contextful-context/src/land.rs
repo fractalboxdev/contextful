@@ -1,9 +1,10 @@
-//! Landing one batch as one run: reconcile its schema, inject the provenance columns,
-//! write the run's part, and commit by conditionally creating its manifest.
+//! Landing a run: reconcile each batch's schema, inject the provenance columns, write the
+//! run's parts, and commit by conditionally creating its manifest. A run lands its batches
+//! at once, or stages them part by part and commits the staged parts.
 
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
-use crate::store::{create_new_file, FileLock, Store, LOCK_WAIT_SECS};
+use crate::store::{create_new_file, replace_file, FileLock, Store, LOCK_WAIT_SECS};
 use arrow_array::builder::{
     BinaryBuilder, BooleanBuilder, FixedSizeBinaryBuilder, FixedSizeListBuilder, Float16Builder, Float32Builder, Float64Builder,
     Int32Builder, Int64Builder, StringBuilder, TimestampNanosecondBuilder,
@@ -20,6 +21,7 @@ use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// One batch to land as one run.
@@ -241,35 +243,15 @@ fn check_run_id(run_id: &str) -> Result<()> {
 /// One record batch per non-empty batch of the run: the producer's `arriving` columns,
 /// then the injected ones carrying `commit_seq` and the instant `at`.
 fn run_parts(arriving: &Schema, batches: &[Batch], ctx: &RunContext, per_batch: bool, commit_seq: i64, at: Instant) -> Result<Vec<RecordBatch>> {
-    let run_id = ctx.injection.run_id.as_str();
-    let at = i64::try_from(at.unix_nanos()).map_err(|_| ContextError::Invalid(format!("{at} is outside the nanosecond timestamp range")))?;
     let mut parts = Vec::new();
     let mut row_offset: i64 = 0;
     for (ordinal, b) in batches.iter().enumerate().filter(|(_, b)| !b.rows.is_empty()) {
-        let n = b.rows.len();
         let mut injection = ctx.injection.clone();
         if per_batch {
-            injection.batch_seq = Some(i32::try_from(ordinal).map_err(|_| ContextError::Invalid(format!("batch ordinal {ordinal} exceeds the `_batch_seq` range")))?);
+            injection.batch_seq = Some(batch_seq(ordinal)?);
         }
-        let mut cols: Vec<Column> = arriving.columns.clone();
-        let mut arrays: Vec<ArrayRef> = arriving.columns.iter().map(|c| column_array(c, &b.rows)).collect::<Result<_>>()?;
-        for c in injection.columns() {
-            let array: ArrayRef = match c.name.as_str() {
-                INGESTED_AT => Arc::new(arrow_array::TimestampNanosecondArray::from(vec![at; n]).with_timezone("UTC")),
-                RUN_ID => Arc::new(arrow_array::StringArray::from(vec![run_id; n])),
-                ROW_SEQ => Arc::new(arrow_array::Int64Array::from_iter_values(row_offset..row_offset + n as i64)),
-                COMMIT_SEQ => Arc::new(arrow_array::Int64Array::from(vec![commit_seq; n])),
-                BATCH_SEQ => Arc::new(arrow_array::Int32Array::from(vec![injection.batch_seq.unwrap_or_default(); n])),
-                SITE_ID => Arc::new(arrow_array::StringArray::from(vec![injection.site_id.as_str(); n])),
-                AUTHORED_BY => Arc::new(arrow_array::StringArray::from(vec![injection.authored_by.as_deref().unwrap_or_default(); n])),
-                TAINT => Arc::new(arrow_array::StringArray::from(vec![injection.taint.map(|p| p.as_str()).unwrap_or_default(); n])),
-                other => unreachable!("no injected column `{other}`"),
-            };
-            cols.push(c);
-            arrays.push(array);
-        }
-        row_offset += n as i64;
-        parts.push(RecordBatch::try_new(parquet_io::arrow_schema(&Schema { columns: cols }), arrays).map_err(|e| ContextError::Invalid(e.to_string()))?);
+        parts.push(part_batch(arriving, &b.rows, &injection, row_offset, at, Some(commit_seq))?);
+        row_offset += b.rows.len() as i64;
     }
     Ok(parts)
 }
@@ -374,6 +356,7 @@ pub struct Landing {
     pub replay: bool,
 }
 
+
 /// [`land_batches`], with `commit_point` run once the manifest exists: the step that makes
 /// a logged run readable. `precommit` and `commit_point` both run under the table's commit
 /// lock, taken before `_commit_seq` is assigned (`store.reserve.commit-order`).
@@ -400,27 +383,99 @@ fn commit_run(
 ) -> Result<Landing> {
     store.check_writable("land")?;
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
-    let all_rows = || batches.iter().flat_map(|b| b.rows.iter());
-    let table = decl.name.as_str();
-    let run_id = ctx.injection.run_id.as_str();
-    check_run_id(run_id)?;
+    let (node_dir, manifest_path) = run_dir(store, &decl.name, ctx)?;
+    let types = column_types(store, decl, batches)?;
+    if manifest_path.exists() {
+        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
+    }
+    let site = reconcile(store, decl, batches, ctx, per_batch, None, true)?;
+
+    // From here to the commit point the table's commits serialize, the Parquet write
+    // included, so the readable runs always hold a prefix of its commit sequence; a
+    // landing on the table waits for another's write, and refuses past LOCK_WAIT_SECS
+    // (`store.reserve.commit-order`).
+    let _commit_lock = store.lock_commit(&decl.name)?;
+    let _run_lock = take_run_lock(&node_dir)?;
+    if manifest_path.exists() {
+        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
+    }
+    let commit_seq = store.assign_commit_seq(&decl.name)?;
+
+    let mut parts = Vec::new();
+    for (ordinal, rb) in run_parts(&site.arriving, batches, ctx, per_batch, commit_seq, ctx.committed_at)?.into_iter().enumerate() {
+        let name = part_name(part_ordinal(ordinal)?);
+        write_batch(&site.node_dir.join(&name), &rb)?;
+        parts.push(PartEntry { name, key_version: 0 });
+    }
+    match create_manifest(&site, decl, ctx, parts, position, commit_seq, precommit, commit_point)? {
+        Some(manifest) => Ok(Landing { manifest, replay: false }),
+        None => replay(&manifest_path, &types, batches, ctx, position, per_batch),
+    }
+}
+
+/// The directory under a run's node directory holding its staged parts and staged schema.
+/// Its `.staging` suffix keeps it off every sync push, and no manifest names a file in it.
+const STAGE_DIR: &str = "stage.staging";
+
+/// The run's staged schema inside [`STAGE_DIR`]: the producer columns its stages merged
+/// (`run.own.stage-schema`).
+const STAGED_SCHEMA_FILE: &str = "schema.json";
+
+/// Where one run's parts live on its node, the producer columns its batches
+/// arrive with after reconciliation, and those merged over the run's earlier stages.
+struct RunSite {
+    node_dir: PathBuf,
+    arriving: Schema,
+    run_columns: Schema,
+}
+
+/// The node directory of run `ctx.injection.run_id` in `table`, and its manifest path.
+fn run_dir(store: &Store, table: &str, ctx: &RunContext) -> Result<(PathBuf, PathBuf)> {
+    check_run_id(&ctx.injection.run_id)?;
     contextful_core::store::reserve::check_table_name(table)?;
-    // A column's type comes from the producer, then the declaration
-    // (`store.declare.column-types`), then a binary or vector type `schema.json` already
-    // holds (`store.reconcile.stored-type`); a JSON value alone carries none of these.
+    let node_dir = store.table_dir(table)?.join("data").join("runs").join(&ctx.injection.run_id).join(ctx.node.as_str());
+    let manifest_path = node_dir.join(MANIFEST_FILE);
+    Ok((node_dir, manifest_path))
+}
+
+fn already_committed(ctx: &RunContext) -> ContextError {
+    ContextError::Invalid(format!("run `{}` is already committed on node `{}`", ctx.injection.run_id, ctx.node))
+}
+
+/// The producer columns the run's earlier stages merged, if any stage wrote them.
+fn read_staged_schema(stage_dir: &Path) -> Result<Option<Schema>> {
+    let path = stage_dir.join(STAGED_SCHEMA_FILE);
+    match std::fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| ContextError::Invalid(format!("{}: {e}", path.display()))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(ContextError::Io { path, source: e }),
+    }
+}
+
+/// A column's type comes from the producer, then the declaration
+/// (`store.declare.column-types`), then a binary or vector type `schema.json` already
+/// holds (`store.reconcile.stored-type`); a JSON value alone carries none of these.
+fn column_types(store: &Store, decl: &TableDecl, batches: &[Batch]) -> Result<HashMap<String, ColumnType>> {
     let mut types: HashMap<String, ColumnType> = HashMap::new();
-    if let Some(stored) = store.try_schema(table)? {
+    if let Some(stored) = store.try_schema(&decl.name)? {
         types.extend(stored.columns.iter().filter(|c| c.ty.is_binary() || c.ty.is_vector()).map(|c| (c.name.clone(), c.ty)));
     }
     types.extend(decl.column_types());
     for b in batches {
         types.extend(b.types.iter().map(|(k, v)| (k.clone(), *v)));
     }
-    let node_dir = store.table_dir(table)?.join("data").join("runs").join(run_id).join(ctx.node.as_str());
-    let manifest_path = node_dir.join(MANIFEST_FILE);
-    if manifest_path.exists() {
-        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
-    }
+    Ok(types)
+}
+
+/// Every refusal of `batches` against `decl`, the stored schema and the columns the run's
+/// `earlier` stages merged; then, when `write`, the merged schema written to `schema.json`.
+/// No Parquet is written here.
+fn reconcile(store: &Store, decl: &TableDecl, batches: &[Batch], ctx: &RunContext, per_batch: bool, earlier: Option<&Schema>, write: bool) -> Result<RunSite> {
+    store.check_writable("land")?;
+    let all_rows = || batches.iter().flat_map(|b| b.rows.iter());
+    let table = decl.name.as_str();
+    let (node_dir, _) = run_dir(store, table, ctx)?;
+    let types = column_types(store, decl, batches)?;
 
     // Reconcile: the producer's columns, held to the namespace, merged into the stored shape.
     let arriving = producer_columns(&rows_schema(all_rows(), &types)?)?;
@@ -454,8 +509,12 @@ fn commit_run(
             c
         })
         .collect();
+    let run_columns = match earlier {
+        Some(e) => e.merge(&arriving, decl.primary_key())?,
+        None => arriving.clone(),
+    };
     let mut merged = stored
-        .merge(&arriving, decl.primary_key())?
+        .merge(&run_columns, decl.primary_key())?
         .merge(&Schema { columns: injected }, decl.primary_key())?;
     // A column joining a non-empty schema merges as nullable; these are in every file.
     for c in merged.columns.iter_mut().filter(|c| ALWAYS_INJECTED.contains(&c.name.as_str())) {
@@ -465,42 +524,91 @@ fn commit_run(
     decl.validate_index_types(&merged)?;
     // Every refusal of the batch has fired. The schema commits before the manifest, so
     // a fold reading a run finds its columns in the schema it reads after.
-    store.write_schema(table, &merged)?;
+    if write {
+        store.write_schema(table, &merged)?;
+    }
     drop(schema_lock);
+    Ok(RunSite { node_dir, arriving, run_columns })
+}
 
-    // The part carries the name the manifest names, so two landings of one run on one
-    // node serialize from here to the manifest: without the lock the loser rewrites the part the winner's manifest
-    // already describes, and the run reads rows no manifest accounts for.
-    // From here to the commit point the table's commits serialize, the Parquet write
-    // included, so the readable runs always hold a prefix of its commit sequence; a
-    // landing on the table waits for another's write, and refuses past LOCK_WAIT_SECS
-    // (`store.reserve.commit-order`).
-    let _commit_lock = store.lock_commit(table)?;
-    std::fs::create_dir_all(&node_dir).at(&node_dir)?;
-    let _run_lock =
-        FileLock::acquire(&node_dir.join(format!("{MANIFEST_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
+/// The run's manifest lock on its node. A part carries the name the manifest names, so two
+/// landings of one run on one node serialize from the part to the manifest: without the
+/// lock the loser rewrites the part the winner's manifest already describes, and the run
+/// reads rows no manifest accounts for.
+fn take_run_lock(node_dir: &Path) -> Result<FileLock> {
+    std::fs::create_dir_all(node_dir).at(node_dir)?;
+    FileLock::acquire(&node_dir.join(format!("{MANIFEST_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))
+}
+
+/// [`take_run_lock`], refusing once the run's manifest stands.
+fn lock_run(node_dir: &Path, manifest_path: &Path, ctx: &RunContext) -> Result<FileLock> {
+    let lock = take_run_lock(node_dir)?;
     if manifest_path.exists() {
-        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
+        return Err(already_committed(ctx));
     }
+    Ok(lock)
+}
 
-    let commit_seq = store.assign_commit_seq(table)?;
+fn part_ordinal(i: usize) -> Result<u32> {
+    u32::try_from(i).map_err(|_| ContextError::Invalid("a run holds more parts than a part name numbers".into()))
+}
 
-    // The parts: the producer's columns in their arriving types, then the injected ones.
-    let mut parts = Vec::new();
-    for (ordinal, rb) in run_parts(&arriving, batches, ctx, per_batch, commit_seq, ctx.committed_at)?.into_iter().enumerate() {
-        let name = part_name(u32::try_from(ordinal).map_err(|_| ContextError::Invalid("a run holds more parts than a part name numbers".into()))?);
-        let path = node_dir.join(&name);
-        if path.exists() {
-            std::fs::remove_file(&path).at(&path)?;
-        }
-        parquet_io::write(&path, &rb)?;
-        parts.push(PartEntry { name, key_version: 0 });
+fn batch_seq(ordinal: usize) -> Result<i32> {
+    i32::try_from(ordinal).map_err(|_| ContextError::Invalid(format!("batch ordinal {ordinal} exceeds the `_batch_seq` range")))
+}
+
+/// One part as a record batch: the producer's columns in their `arriving` types, then the
+/// injected ones, `_row_seq` counting on from `row_offset`. A part without `commit_seq`
+/// omits `_commit_seq`, which its commit adds.
+fn part_batch(arriving: &Schema, rows: &[Map<String, Value>], injection: &Injection, row_offset: i64, at: Instant, commit_seq: Option<i64>) -> Result<RecordBatch> {
+    let n = rows.len();
+    let at = i64::try_from(at.unix_nanos()).map_err(|_| ContextError::Invalid(format!("{at} is outside the nanosecond timestamp range")))?;
+    let run_id = injection.run_id.as_str();
+    let mut cols: Vec<Column> = arriving.columns.clone();
+    let mut arrays: Vec<ArrayRef> = arriving.columns.iter().map(|c| column_array(c, rows)).collect::<Result<_>>()?;
+    for c in injection.columns() {
+        let array: ArrayRef = match (c.name.as_str(), commit_seq) {
+            (COMMIT_SEQ, None) => continue,
+            (COMMIT_SEQ, Some(seq)) => Arc::new(arrow_array::Int64Array::from(vec![seq; n])),
+            (INGESTED_AT, _) => Arc::new(arrow_array::TimestampNanosecondArray::from(vec![at; n]).with_timezone("UTC")),
+            (RUN_ID, _) => Arc::new(arrow_array::StringArray::from(vec![run_id; n])),
+            (ROW_SEQ, _) => Arc::new(arrow_array::Int64Array::from_iter_values(row_offset..row_offset + n as i64)),
+            (BATCH_SEQ, _) => Arc::new(arrow_array::Int32Array::from(vec![injection.batch_seq.unwrap_or_default(); n])),
+            (SITE_ID, _) => Arc::new(arrow_array::StringArray::from(vec![injection.site_id.as_str(); n])),
+            (AUTHORED_BY, _) => Arc::new(arrow_array::StringArray::from(vec![injection.authored_by.as_deref().unwrap_or_default(); n])),
+            (TAINT, _) => Arc::new(arrow_array::StringArray::from(vec![injection.taint.map(|p| p.as_str()).unwrap_or_default(); n])),
+            (other, _) => unreachable!("no injected column `{other}`"),
+        };
+        cols.push(c);
+        arrays.push(array);
     }
+    RecordBatch::try_new(parquet_io::arrow_schema(&Schema { columns: cols }), arrays).map_err(|e| ContextError::Invalid(e.to_string()))
+}
 
-    // Commit: the manifest, created only if absent.
+/// Write `rb` as the Parquet file `path`, replacing a file a lost landing left there.
+fn write_batch(path: &Path, rb: &RecordBatch) -> Result<()> {
+    if path.exists() {
+        std::fs::remove_file(path).at(path)?;
+    }
+    parquet_io::write(path, rb)
+}
+
+/// Create the run's manifest naming `parts` under `commit_seq`, only if absent, after
+/// `precommit`; then run `commit_point`. `None` when a manifest stood already.
+#[allow(clippy::too_many_arguments)]
+fn create_manifest(
+    site: &RunSite,
+    decl: &TableDecl,
+    ctx: &RunContext,
+    parts: Vec<PartEntry>,
+    position: &Position,
+    commit_seq: i64,
+    precommit: &dyn Fn() -> Result<()>,
+    commit_point: &dyn Fn(&RunManifest) -> Result<()>,
+) -> Result<Option<RunManifest>> {
     let manifest = RunManifest {
-        run_id: run_id.to_string(),
-        table: table.to_string(),
+        run_id: ctx.injection.run_id.clone(),
+        table: decl.name.clone(),
         node_id: ctx.node.to_string(),
         parts,
         committed_at: ctx.committed_at,
@@ -510,12 +618,99 @@ fn commit_run(
         logged: position.logged,
         commit_seq: Some(commit_seq),
     };
-    std::fs::create_dir_all(&node_dir).at(&node_dir)?;
+    std::fs::create_dir_all(&site.node_dir).at(&site.node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
     precommit()?;
-    if !create_new_file(&manifest_path, &bytes)? {
-        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
+    if !create_new_file(&site.node_dir.join(MANIFEST_FILE), &bytes)? {
+        return Ok(None);
     }
     commit_point(&manifest)?;
-    Ok(Landing { manifest, replay: false })
+    Ok(Some(manifest))
+}
+
+/// One part a run staged: its file name inside the run's staging directory, and what it holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StagedPart {
+    pub name: String,
+    pub rows: u64,
+    pub bytes: u64,
+}
+
+/// The name of a run's staged part `ordinal`.
+fn stage_name(ordinal: u32) -> String {
+    format!("stage-{ordinal:05}.parquet")
+}
+
+/// Stage `batch` as part `ordinal` of run `ctx.injection.run_id` (`run.own.backpressure`):
+/// the batch's refusals fire against `schema.json` and the run's earlier stages, and its
+/// columns merge into the run's staged schema, leaving `schema.json` as it stood
+/// (`run.own.stage-schema`). Its Parquet lands in the run's staging directory without
+/// `_commit_seq` (`run.own.stage-commit-seq`), joining no file list until [`commit_parts`]
+/// names it. Every row carries `_batch_seq` `ordinal`, `_row_seq` counting on from
+/// `row_offset`, and `ctx.committed_at` as `_ingested_at`.
+pub fn stage_part(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext, ordinal: u32, row_offset: u64) -> Result<StagedPart> {
+    if batch.rows.is_empty() {
+        return Err(ContextError::Invalid(format!("run `{}` stages an empty batch as part {ordinal}", ctx.injection.run_id)));
+    }
+    let (node_dir, manifest_path) = run_dir(store, &decl.name, ctx)?;
+    let stage_dir = node_dir.join(STAGE_DIR);
+    let _run_lock = lock_run(&node_dir, &manifest_path, ctx)?;
+    let earlier = read_staged_schema(&stage_dir)?;
+    let landing = reconcile(store, decl, std::slice::from_ref(batch), ctx, true, earlier.as_ref(), false)?;
+    // The staged schema lands before the part, so every part a commit names has its
+    // columns in the schema that commit merges.
+    std::fs::create_dir_all(&stage_dir).at(&stage_dir)?;
+    let text = serde_json::to_vec_pretty(&landing.run_columns).expect("a schema serializes");
+    replace_file(&stage_dir.join(STAGED_SCHEMA_FILE), &text)?;
+    let mut injection = ctx.injection.clone();
+    injection.batch_seq = Some(batch_seq(ordinal as usize)?);
+    let offset = i64::try_from(row_offset).map_err(|_| ContextError::Invalid(format!("row offset {row_offset} exceeds the `_row_seq` range")))?;
+    let name = stage_name(ordinal);
+    let path = stage_dir.join(&name);
+    write_batch(&path, &part_batch(&landing.arriving, &batch.rows, &injection, offset, ctx.committed_at, None)?)?;
+    let bytes = std::fs::metadata(&path).at(&path)?.len();
+    Ok(StagedPart { name, rows: batch.rows.len() as u64, bytes })
+}
+
+/// Commit the staged `parts` of run `ctx.injection.run_id` as one run commit carrying
+/// `position`, committed at `ctx.committed_at`. A part no stage wrote refuses first. Under
+/// the table's commit lock, the run's staged columns merge into `schema.json`, refusing as
+/// a landing does against the schema as it stands then; `_commit_seq` is assigned and
+/// written into each staged part as it becomes the run's part `i`, one part in memory at a
+/// time (`run.own.stage-commit-seq`). `precommit` runs immediately before the manifest is
+/// created and `commit_point` once it exists, as in [`commit_batches`]. A commit naming no
+/// part still merges the injected columns, so the table and its marker exist.
+pub fn commit_parts(
+    store: &Store,
+    decl: &TableDecl,
+    parts: &[String],
+    ctx: &RunContext,
+    position: &Position,
+    precommit: &dyn Fn() -> Result<()>,
+    commit_point: &dyn Fn(&RunManifest) -> Result<()>,
+) -> Result<RunManifest> {
+    store.check_writable("land")?;
+    let (node_dir, manifest_path) = run_dir(store, &decl.name, ctx)?;
+    let stage_dir = node_dir.join(STAGE_DIR);
+    let _commit_lock = store.lock_commit(&decl.name)?;
+    let _run_lock = lock_run(&node_dir, &manifest_path, ctx)?;
+    for name in parts {
+        if !is_path_segment(name) || !stage_dir.join(name).is_file() {
+            return Err(ContextError::Invalid(format!("run `{}` commits part `{name}`, which no stage wrote on node `{}`", ctx.injection.run_id, ctx.node)));
+        }
+    }
+    let earlier = read_staged_schema(&stage_dir)?;
+    let landing = reconcile(store, decl, &[], ctx, true, earlier.as_ref(), true)?;
+    let commit_seq = store.assign_commit_seq(&decl.name)?;
+    let mut entries = Vec::with_capacity(parts.len());
+    for (i, staged) in parts.iter().enumerate() {
+        let name = part_name(part_ordinal(i)?);
+        let field = parquet_io::field(&Column::new(COMMIT_SEQ, ColumnType::Int64, false));
+        parquet_io::copy_inserting_int64(&stage_dir.join(staged), &landing.node_dir.join(&name), field, ROW_SEQ, commit_seq)?;
+        entries.push(PartEntry { name, key_version: 0 });
+    }
+    let manifest = create_manifest(&landing, decl, ctx, entries, position, commit_seq, precommit, commit_point)?.ok_or_else(|| already_committed(ctx))?;
+    // The run is committed; a staging directory left behind joins no file list and no push.
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    Ok(manifest)
 }

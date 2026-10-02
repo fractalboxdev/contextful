@@ -33,6 +33,9 @@ pub enum RunError {
     /// A connector identity, component world or plan hash moved under a pending owner. (`run.own.pinned-plan-changed`)
     #[error("ExecutionPinMismatch: {0}")]
     ExecutionPinMismatch(String),
+    /// A run whose staged parts pass the per-run staged-bytes bound. (`run.own.staged-bytes`)
+    #[error("RunStagedBytesExceeded: {0}")]
+    RunStagedBytesExceeded(String),
     /// A declared command that is not an executable file. (`run.exec.missing-binary`)
     #[error("DeriveBinaryMissing: {0}")]
     DeriveBinaryMissing(String),
