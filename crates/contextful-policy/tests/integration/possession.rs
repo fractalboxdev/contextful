@@ -326,3 +326,56 @@ fn replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop() {
     contextful_eval::record::emit("possession-replay", admitted as f64, attempts, ADVERSARY_SEED);
     assert_eq!(admitted, 0, "{admitted} of {attempts} adversarial proofs admitted");
 }
+
+/// A holder seed round-trips through its text, signs a local proof under a fresh nonce
+/// per call, and a malformed seed refuses as `PossessionProofInvalid`.
+#[test]
+fn a_holder_seed_signs_local_proofs_its_thumbprint_admits() {
+    use contextful_policy::possession::{local_request, HolderKey, LOCAL_PROOF_METHOD};
+    let key = HolderKey::generate();
+    assert_eq!(HolderKey::from_seed(&key.seed()).unwrap().thumbprint(), key.thumbprint());
+    let bare = key.seed().trim_start_matches("ed25519-private/").to_owned();
+    assert_eq!(HolderKey::from_seed(&bare).unwrap().thumbprint(), key.thumbprint());
+    let seven: String = client(7).to_bytes().iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(HolderKey::from_seed(&seven).unwrap().thumbprint(), cnf(&client(7)).jkt);
+    for bad in ["", "ed25519-private/zz", "ed25519-private/00"] {
+        assert!(matches!(HolderKey::from_seed(bad), Err(AuthorityError::PossessionProofInvalid(_))), "{bad}");
+    }
+
+    let clock = FixedClock(at(NOW));
+    let mut nonces = NonceCache::new();
+    let land = local_request("context land");
+    assert_eq!(land.method, LOCAL_PROOF_METHOD);
+    assert!(land.body.is_empty());
+    for _ in 0..2 {
+        let proof = key.prove(&land, at(NOW));
+        assert_eq!(verify_proof(&key.thumbprint(), &proof, &land, &clock, &mut nonces), Ok(()));
+    }
+    let proof = key.prove(&land, at(NOW));
+    invalid(verify_proof(&key.thumbprint(), &proof, &local_request("mcp"), &clock, &mut nonces));
+}
+
+/// A cache rebuilt from another cache's entries refuses the nonces it retains, and drops
+/// those whose retention ends before the rebuild instant.
+#[test]
+fn a_cache_restored_from_its_entries_refuses_the_nonces_it_retains() {
+    let key = client(7);
+    let jkt = cnf(&key).jkt;
+    let clock = FixedClock(at(NOW));
+    let mut first = NonceCache::new();
+    let old = at("2029-12-31T23:56:00Z");
+    assert_eq!(verify_proof(&jkt, &sign_proof(&key, &request(), old, "old"), &request(), &clock, &mut first), Ok(()));
+    assert_eq!(verify_proof(&jkt, &sign_proof(&key, &request(), at(NOW), "kept"), &request(), &clock, &mut first), Ok(()));
+    let entries: Vec<(String, Instant)> = first.entries().map(|(n, until)| (n.to_owned(), until)).collect();
+    assert_eq!(entries.len(), 2);
+    assert!(entries.contains(&("kept".to_owned(), at(NOW).plus_secs(PROOF_REPLAY_WINDOW_SECS))));
+
+    let mut again = NonceCache::restored(entries.clone(), at(NOW));
+    assert_eq!(again.len(), 2);
+    let replay = verify_proof(&jkt, &sign_proof(&key, &request(), at(NOW), "kept"), &request(), &clock, &mut again);
+    assert!(matches!(replay, Err(ProofRefusal::Refused(AuthorityError::PossessionProofReplayed(_)))), "{replay:?}");
+
+    // Two minutes on, the four-minute-old proof's nonce has left the window.
+    let later = at("2030-01-01T00:02:00Z");
+    assert_eq!(NonceCache::restored(entries, later).len(), 1);
+}

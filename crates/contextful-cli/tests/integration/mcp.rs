@@ -115,8 +115,7 @@ fn a_server_with_no_credential_raises_stdio_credential_missing() {
 }
 
 /// The server admits over the stdio pipe it inherited: a credential binding no key admits
-/// through that pipe, and one binding a holder key refuses, since the pipe carries no
-/// per-request holder proof.
+/// through that pipe, and one binding a holder key and presenting no holder proof refuses.
 #[test]
 fn a_server_admits_over_its_inherited_pipe_only_a_credential_binding_no_key() {
     let (dir, public, token) = project();

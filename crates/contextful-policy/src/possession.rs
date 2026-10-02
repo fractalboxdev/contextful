@@ -118,6 +118,64 @@ pub fn sign_proof(key: &SigningKey, request: &ProofRequest<'_>, iat: Instant, no
     format!("{input}.{}", B64.encode(sig.to_bytes()))
 }
 
+/// The method a proof presented over a local transport covers; its target is the verb's
+/// command path and its body is empty (`authority.verify.local-proof-request`).
+pub const LOCAL_PROOF_METHOD: &str = "CLI";
+
+/// The request a local verb's proof covers: [`LOCAL_PROOF_METHOD`], the command path
+/// `verb` as target, and an empty body.
+pub fn local_request(verb: &str) -> ProofRequest<'_> {
+    ProofRequest { method: LOCAL_PROOF_METHOD, target: verb, body: b"" }
+}
+
+/// The text prefix of a holder seed, the form `token keygen` writes an Ed25519 seed in.
+const HOLDER_SEED_PREFIX: &str = "ed25519-private/";
+
+/// A holder's Ed25519 signing key, read from a seed file: `ed25519-private/<64 hex>` or
+/// bare 64 hex (`authority.verify.local-proof-channel`).
+pub struct HolderKey(SigningKey);
+
+impl std::fmt::Debug for HolderKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("HolderKey").field(&self.thumbprint()).finish()
+    }
+}
+
+impl HolderKey {
+    /// A fresh holder key.
+    pub fn generate() -> HolderKey {
+        HolderKey(SigningKey::from_bytes(&rand::random::<[u8; 32]>()))
+    }
+
+    /// The key a seed text names. A malformed seed yields no proof, so it refuses as
+    /// `PossessionProofInvalid`.
+    pub fn from_seed(text: &str) -> Result<HolderKey, AuthorityError> {
+        let text = text.trim();
+        let hex_text = text.strip_prefix(HOLDER_SEED_PREFIX).unwrap_or(text);
+        let seed: [u8; 32] = hex::decode(hex_text).ok().and_then(|b| b.try_into().ok()).ok_or_else(|| {
+            AuthorityError::PossessionProofInvalid(format!(
+                "a holder seed is `{HOLDER_SEED_PREFIX}<64 hex>` or 64 hex characters naming an Ed25519 seed"
+            ))
+        })?;
+        Ok(HolderKey(SigningKey::from_bytes(&seed)))
+    }
+
+    /// The seed text [`HolderKey::from_seed`] reads back.
+    pub fn seed(&self) -> String {
+        format!("{HOLDER_SEED_PREFIX}{}", hex::encode(self.0.to_bytes()))
+    }
+
+    /// The RFC 7638 thumbprint a credential binds as its confirmation claim.
+    pub fn thumbprint(&self) -> String {
+        jwk_thumbprint(self.0.verifying_key().as_bytes())
+    }
+
+    /// A proof for `request` issued at `iat` under a fresh random nonce.
+    pub fn prove(&self, request: &ProofRequest<'_>, iat: Instant) -> String {
+        sign_proof(&self.0, request, iat, &B64.encode(rand::random::<[u8; 16]>()))
+    }
+}
+
 fn invalid(why: impl std::fmt::Display) -> ProofRefusal {
     ProofRefusal::Refused(AuthorityError::PossessionProofInvalid(why.to_string()))
 }
@@ -252,6 +310,25 @@ impl NonceCache {
     /// A cache holding up to `capacity` nonces, clamped to [`NONCE_CACHE_ENTRIES`].
     pub fn with_capacity(capacity: usize) -> NonceCache {
         NonceCache { capacity: capacity.min(NONCE_CACHE_ENTRIES), expiry: HashMap::new(), by_expiry: BTreeSet::new() }
+    }
+
+    /// A full-bound cache holding `entries`, each a nonce and the instant its retention
+    /// ends, less those ending before `now`: the cache a process rebuilds from a store that
+    /// outlives it (`authority.verify.local-nonce-store`).
+    pub fn restored(entries: impl IntoIterator<Item = (String, Instant)>, now: Instant) -> NonceCache {
+        let mut cache = NonceCache::new();
+        for (nonce, until) in entries {
+            if until >= now && !cache.expiry.contains_key(&nonce) {
+                cache.by_expiry.insert((until, nonce.clone()));
+                cache.expiry.insert(nonce, until);
+            }
+        }
+        cache
+    }
+
+    /// Each retained nonce and the instant its retention ends.
+    pub fn entries(&self) -> impl Iterator<Item = (&str, Instant)> {
+        self.by_expiry.iter().map(|(until, nonce)| (nonce.as_str(), *until))
     }
 
     pub fn capacity(&self) -> usize {

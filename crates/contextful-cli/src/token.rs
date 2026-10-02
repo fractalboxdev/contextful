@@ -18,6 +18,7 @@ use contextful_core::exchange::ExchangePolicy;
 use contextful_policy::attenuate::{attenuate, Derivation};
 use contextful_policy::exchange::{redeem, Exchange};
 use contextful_policy::issue::{mint, MintClaims, SeedSigner, DEFAULT_SEED_PATH};
+use contextful_policy::possession::HolderKey;
 use contextful_policy::keyset::KeySource;
 use contextful_policy::possession::ProofChecker;
 use crate::admit::LedgerFile;
@@ -28,18 +29,23 @@ use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
 pub enum TokenCmd {
-    /// Generate an issuer signing key; print its public key as a verifier pin.
+    /// Generate an issuer signing key and print its public key as a verifier pin; with
+    /// `--holder`, an Ed25519 holder key and its thumbprint for `token mint --holder`.
     Keygen {
         /// Seed file to write; absent, `.contextful/issuer.seed` under the project root. An
         /// existing file is never overwritten.
         #[arg(long)]
         out: Option<PathBuf>,
         /// `Ed25519` (default) or `ES256`.
-        #[arg(long, default_value = "Ed25519")]
+        #[arg(long, default_value = "Ed25519", conflicts_with = "holder")]
         algorithm: String,
         /// The instant the key begins signing (RFC 3339); absent reads the system clock.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "holder")]
         now: Option<String>,
+        /// Write a holder seed to `--out` and print its RFC 7638 thumbprint
+        /// (`authority.verify.holder-keygen`).
+        #[arg(long, requires = "out")]
+        holder: bool,
     },
     /// Write or lower the project's persisted issuance policy.
     #[command(subcommand)]
@@ -205,7 +211,13 @@ pub enum PolicyCmd {
 
 pub fn run(cmd: TokenCmd) -> Result<()> {
     match cmd {
-        TokenCmd::Keygen { out, algorithm, now } => keygen(&Root::find()?, out.as_deref(), &algorithm, now.as_deref()),
+        TokenCmd::Keygen { out: Some(out), holder: true, .. } => {
+            let key = HolderKey::generate();
+            write_seed(&out, &key.seed())?;
+            println!("{}", key.thumbprint());
+            Ok(())
+        }
+        TokenCmd::Keygen { out, algorithm, now, .. } => keygen(&Root::find()?, out.as_deref(), &algorithm, now.as_deref()),
         TokenCmd::Policy(cmd) => policy(&Root::find()?, cmd),
         TokenCmd::Revoke { audience, tenant, principal_class } => {
             let root = Root::find()?;
@@ -514,15 +526,9 @@ fn keygen(root: &Root, out: Option<&Path>, algorithm: &str, now: Option<&str>) -
         bail!("unknown signature scheme `{algorithm}`; use Ed25519 or ES256");
     };
     let out = out.map_or_else(|| root.seed(), Path::to_path_buf);
-    if out.exists() {
-        bail!("{} exists; a seed file is never overwritten", out.display());
-    }
     let signer = SeedSigner::generate(algorithm);
-    if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
-        std::fs::create_dir_all(dir)?;
-    }
     let since = instant_or_now(now)?;
-    write_private(&out, &signer.seed())?;
+    write_seed(&out, &signer.seed())?;
     // The default seed's key enters the ledger, which dates its rotation.
     if root.is_default_seed(&out) {
         let mut ledger = root.ledger().read()?;
@@ -531,6 +537,17 @@ fn keygen(root: &Root, out: Option<&Path>, algorithm: &str, now: Option<&str>) -
     }
     println!("{}", signer.public_key_text());
     Ok(())
+}
+
+/// Write `seed` to a new owner-only file at `out`; an existing file is never overwritten.
+fn write_seed(out: &Path, seed: &str) -> Result<()> {
+    if out.exists() {
+        bail!("{} exists; a seed file is never overwritten", out.display());
+    }
+    if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir)?;
+    }
+    write_private(out, seed)
 }
 
 #[cfg(unix)]

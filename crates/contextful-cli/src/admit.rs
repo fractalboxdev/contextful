@@ -2,13 +2,17 @@
 //! credential, admitted against pinned keys, and the read face over the project.
 
 use anyhow::{Context, Result};
+use clap::ArgMatches;
 use contextful_core::revoke::KeySetLedger;
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
 use contextful_policy::keyset::StaticPins;
+#[cfg(feature = "read-plane")]
+use contextful_policy::possession::NonceCache;
 use contextful_policy::revoke::{parse_denylist, RevocationState};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 #[cfg(feature = "read-plane")]
 pub use wired::*;
 
@@ -17,6 +21,42 @@ pub const PUBKEY_VAR: &str = "CONTEXTFUL_ISSUER_PUBKEY";
 
 /// The variable `--audience` falls back to (`authority.verify.pin-source`).
 pub const AUDIENCE_VAR: &str = "CONTEXTFUL_AUDIENCE";
+
+/// The variable carrying a presented holder proof, kept out of the process arguments
+/// (`authority.verify.local-proof-channel`).
+#[cfg(feature = "read-plane")]
+pub const DPOP_VAR: &str = "CONTEXTFUL_DPOP";
+
+/// The holder seed path a verb signs with when neither `--holder-key` nor [`DPOP_VAR`]
+/// supplies a proof (`authority.verify.local-proof-channel`).
+#[cfg(feature = "read-plane")]
+pub const HOLDER_KEY_VAR: &str = "CONTEXTFUL_HOLDER_KEY";
+
+/// The command path the process parsed, such as `context land` or `mcp`: the target a
+/// local holder proof covers (`authority.verify.local-proof-request`).
+static COMMAND_PATH: OnceLock<String> = OnceLock::new();
+
+/// Record the command path `matches` parsed, once per process.
+pub fn record_command_path(matches: &ArgMatches) {
+    let mut path = Vec::new();
+    let mut at = matches;
+    while let Some((name, sub)) = at.subcommand() {
+        path.push(name);
+        at = sub;
+    }
+    let _ = COMMAND_PATH.set(path.join(" "));
+}
+
+#[cfg(feature = "read-plane")]
+fn command_path() -> Result<&'static str> {
+    COMMAND_PATH.get().map(String::as_str).context("no command path is recorded, so no holder proof names a verb")
+}
+
+/// The value of the variable `var`, when set and not blank.
+#[cfg(feature = "read-plane")]
+fn env_value(var: &str) -> Option<String> {
+    std::env::var(var).ok().map(|v| v.trim().to_owned()).filter(|v| !v.is_empty())
+}
 
 /// The refusals of admission over the process transport. `Display` begins with the
 /// identifier.
@@ -103,10 +143,74 @@ pub fn revocation_state(denylist: Option<&Path>, ledger: &KeySetLedger) -> Resul
     Ok(revocation)
 }
 
+/// The project's holder-proof nonce store, relative to the project root: one JSON line per
+/// retained nonce (`authority.verify.local-nonce-store`).
+#[cfg(feature = "read-plane")]
+pub const NONCE_STORE: &str = ".contextful/proof-nonces";
+
+/// One retained nonce: the proof's `jti` and the Unix second its retention ends.
+#[cfg(feature = "read-plane")]
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NonceLine {
+    nonce: String,
+    until: i64,
+}
+
+/// The nonce store every invocation on one project checks its holder proof against, so a
+/// proof admits once inside the replay window across processes
+/// (`authority.verify.local-nonce-store`).
+#[cfg(feature = "read-plane")]
+struct NonceStore {
+    path: PathBuf,
+    lock: PathBuf,
+}
+
+#[cfg(feature = "read-plane")]
+impl NonceStore {
+    fn under(root: &Path) -> NonceStore {
+        let path = root.join(NONCE_STORE);
+        let lock = path.with_extension("lock");
+        NonceStore { path, lock }
+    }
+
+    /// Run `check` over the cache the store holds at `now`, holding the store's lock file
+    /// exclusively from read to write; the store is rewritten only when `check` admits. An
+    /// unreadable or malformed store admits nothing.
+    fn check(&self, now: Instant, check: impl FnOnce(&mut NonceCache) -> Result<()>) -> Result<()> {
+        let unavailable = |why: String| anyhow::anyhow!("the proof nonce store {} is unavailable: {why}", self.path.display());
+        let dir = self.path.parent().expect("the store path has a parent");
+        std::fs::create_dir_all(dir).map_err(|e| unavailable(e.to_string()))?;
+        let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&self.lock).map_err(|e| unavailable(e.to_string()))?;
+        lock.lock().map_err(|e| unavailable(e.to_string()))?;
+        let text = match std::fs::read_to_string(&self.path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(unavailable(e.to_string())),
+        };
+        let mut entries = Vec::new();
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            let NonceLine { nonce, until } = serde_json::from_str(line).map_err(|e| unavailable(e.to_string()))?;
+            entries.push((nonce, Instant::from_unix_secs(until).map_err(|e| unavailable(e.to_string()))?));
+        }
+        let mut cache = NonceCache::restored(entries, now);
+        check(&mut cache)?;
+        let mut out = String::new();
+        for (nonce, until) in cache.entries() {
+            let line = NonceLine { nonce: nonce.to_owned(), until: until.unix_secs() };
+            out.push_str(&serde_json::to_string(&line)?);
+            out.push('\n');
+        }
+        let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(|e| unavailable(e.to_string()))?;
+        std::io::Write::write_all(&mut tmp, out.as_bytes()).map_err(|e| unavailable(e.to_string()))?;
+        tmp.persist(&self.path).map_err(|e| unavailable(e.to_string()))?;
+        Ok(())
+    }
+}
+
 /// Admission and the read face, which reach the store and the run path.
 #[cfg(feature = "read-plane")]
 mod wired {
-    use super::{live_pins, revocation_state, AdmitError, LedgerFile, AUDIENCE_VAR, PUBKEY_VAR};
+    use super::{command_path, env_value, live_pins, revocation_state, AdmitError, LedgerFile, NonceStore, AUDIENCE_VAR, DPOP_VAR, HOLDER_KEY_VAR, PUBKEY_VAR};
     use crate::clock::SystemClock;
     use crate::project::Located;
     use anyhow::{Context, Result};
@@ -114,15 +218,17 @@ mod wired {
     use contextful_context::Store;
     #[cfg(feature = "data-plane")]
     use contextful_core::issue::AuthoringPosture;
-    use contextful_core::ports::Clock;
+    use contextful_core::ports::{Clock, FixedClock};
+    use contextful_core::time::Instant;
     use contextful_core::AuthorityError;
     use contextful_policy::enforce::mask::Pepper;
     use contextful_policy::keyset::{KeySet, KeySource, StaticPins};
+    use contextful_policy::possession::{local_request, verify_proof, HolderKey};
     use contextful_policy::revoke::RevocationState;
     #[cfg(feature = "data-plane")]
     use contextful_policy::verify::effect_boundary;
-    use contextful_policy::verify::{verify_inherited_pipe, Admission, AdmittedAuthority};
-    use std::path::PathBuf;
+    use contextful_policy::verify::{no_holder_proof, verify_local, Admission, AdmittedAuthority, LocalTransport};
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
     /// The environment variable carrying the credential, kept out of the process arguments.
@@ -171,6 +277,11 @@ mod wired {
         /// `.contextful/keyset.toml` under the project root.
         #[arg(long)]
         pub keyset: Option<PathBuf>,
+        /// An Ed25519 holder seed file the verb signs its own holder proof with, for a
+        /// credential bound to a holder key. It beats a proof in `CONTEXTFUL_DPOP` and a seed in
+        /// `CONTEXTFUL_HOLDER_KEY`.
+        #[arg(long)]
+        pub holder_key: Option<PathBuf>,
     }
 
     impl AdmitArgs {
@@ -180,11 +291,13 @@ mod wired {
             token().is_some()
         }
 
-        /// Admit the credential in [`TOKEN_VAR`] now, as presented over the stdio pipe the
-        /// process inherited (`authority.verify.local-peer-fallback`), returning it with the
-        /// revocation state later effect boundaries re-read.
-        /// The ledger is the one under the root `--project` resolves to
-        /// (`authority.issue.project-root`).
+        /// Admit the credential in [`TOKEN_VAR`] now, as presented to the parsed command path
+        /// over the stdio pipe the process inherited, returning it with the revocation state
+        /// later effect boundaries re-read. A credential bound to a holder key admits only
+        /// through the proof [`AdmitArgs::holder_proof`] resolves
+        /// (`authority.verify.local-proof-channel`); one bound to none admits through the pipe
+        /// (`authority.verify.local-peer-fallback`). The ledger is the one under the root
+        /// `--project` resolves to (`authority.issue.project-root`).
         pub fn admit(&self, project: Option<&str>, what: &str) -> Result<(AdmittedAuthority, RevocationState)> {
             let Some(token) = token() else {
                 return Err(AdmitError::StdioCredentialMissing(format!(
@@ -193,7 +306,8 @@ mod wired {
                 .into());
             };
             let now = SystemClock.now();
-            let ledger = LedgerFile::at(&crate::root::root(project)?, self.keyset.as_deref()).read()?;
+            let root = crate::root::root(project)?;
+            let ledger = LedgerFile::at(&root, self.keyset.as_deref()).read()?;
             let keys: Arc<KeySet> = live_pins(self.public_key.as_deref(), &ledger, now)?.keys()?;
             let revocation = revocation_state(self.denylist.as_deref(), &ledger)?;
             let authority = {
@@ -201,22 +315,45 @@ mod wired {
                 if let Some(aud) = self.audience.as_deref() {
                     admission = admission.expecting(aud);
                 }
-                verify_inherited_pipe(&token, &keys, &admission)?
+                let holder_proof = |jkt: &str| self.holder_proof(jkt, now, &root);
+                verify_local(&token, &keys, &admission, LocalTransport::InheritedPipe, holder_proof)?.into_authority()
             };
             Ok((authority, revocation))
         }
 
+        /// Check the holder proof presented to the parsed command path at `now` for the
+        /// credential binding `jkt`: one signed with `--holder-key`, else the one [`DPOP_VAR`]
+        /// carries, else one signed with the seed [`HOLDER_KEY_VAR`] names; a blank variable is
+        /// unset.
+        fn holder_proof(&self, jkt: &str, now: Instant, root: &Path) -> Result<()> {
+            let request = local_request(command_path()?);
+            let sign = |path: &Path| -> Result<String> {
+                let seed = std::fs::read_to_string(path).map_err(|e| {
+                    AuthorityError::PossessionProofInvalid(format!("the holder seed {} is unreadable: {e}", path.display()))
+                })?;
+                Ok(HolderKey::from_seed(&seed)?.prove(&request, now))
+            };
+            let proof = match (&self.holder_key, env_value(DPOP_VAR), env_value(HOLDER_KEY_VAR)) {
+                (Some(path), _, _) => sign(path)?,
+                (None, Some(proof), _) => proof,
+                (None, None, Some(path)) => sign(Path::new(&path))?,
+                (None, None, None) => return no_holder_proof(jkt),
+            };
+            NonceStore::under(root).check(now, |nonces| Ok(verify_proof(jkt, &proof, &request, &FixedClock(now), nonces)?))
+        }
+
         /// Who authors a table write verb's rows (`authority.verify.write-verbs`): under the
-        /// manifest's posture, the credential in [`TOKEN_VAR`] when one accompanies the write,
+        /// manifest's posture, the credential in [`TOKEN_VAR`] when one accompanies the verb,
         /// admitted and holding `write` over every table in `tables`; `None` lands unauthored.
         #[cfg(feature = "data-plane")]
-        pub fn author(&self, project: Option<&str>, manifest: &str, tables: &[&str], what: &str) -> Result<Option<Author>> {
+        pub fn author(&self, project: Option<&str>, manifest: &str, tables: &[&str]) -> Result<Option<Author>> {
             let posture = AuthoringPosture::from_manifest(manifest)?;
+            let what = format!("`{}`", command_path()?);
             if token().is_none() {
-                posture.unaccompanied(what)?;
+                posture.unaccompanied(&what)?;
                 return Ok(None);
             }
-            let (authority, _) = self.admit(project, what)?;
+            let (authority, _) = self.admit(project, &what)?;
             for table in tables {
                 authority.require_write(table)?;
             }

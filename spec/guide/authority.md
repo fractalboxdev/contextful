@@ -70,7 +70,10 @@ A checkpoint holds public keys only and calls no service to admit
 that key ({{authority.verify.possession-binding}}); a network checkpoint admits one binding no key
 as a short-lived bearer for its audience ({{authority.verify.network-bearer}},
 {{authority.verify.bearer-lifetime}}), and a local transport admits one binding no key only
-through its operating-system peer ({{authority.verify.local-peer-fallback}}). Verification yields the admitted-authority
+through its operating-system peer ({{authority.verify.local-peer-fallback}}). A command-line verb
+proves a key-bound credential with a presented proof or a holder seed
+({{authority.verify.local-proof-channel}}), each proof once ({{authority.verify.local-nonce-store}}).
+Verification yields the admitted-authority
 value every read and row-landing effect takes as an argument
 ({{authority.verify.admitted-authority}}), and no constructor fabricates one
 ({{authority.verify.no-bypass-constructor}}). Each statement start and commit re-reads expiry,
