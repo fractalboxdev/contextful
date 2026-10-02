@@ -12,17 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 168 | 28 | 22 | 20 | 149 | 0 | 149 |
 | `run` | 3 | 26 | 362 | 96 | 35 | 35 | 245 | 0 | 245 |
-<<<<<<< HEAD
-| `store` | 1 | 17 | 216 | 53 | 12 | 17 | 176 | 0 | 176 |
+| `store` | 1 | 17 | 218 | 54 | 12 | 17 | 178 | 0 | 178 |
 | `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1846 | 558 | 184 | 138 | 1182 | 0 | |
-=======
-| `store` | 1 | 17 | 217 | 54 | 12 | 17 | 177 | 0 | 177 |
-| `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
-| `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 153 | 1826 | 556 | 184 | 137 | 1159 | 0 | |
->>>>>>> ac10556a (store: re-landing a committed run id acknowledges the replay)
+| **total** | 19 | 154 | 1848 | 559 | 184 | 138 | 1184 | 0 | |
 
 Decision records: 18.
 
@@ -34,11 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 232 | 180 | passing | closed |
-<<<<<<< HEAD
-| 2 — The store | 9 | 153 | 118 | passing | closed |
-=======
-| 2 — The store | 9 | 154 | 119 | passing | closed |
->>>>>>> ac10556a (store: re-landing a committed run id acknowledges the replay)
+| 2 — The store | 9 | 155 | 120 | passing | closed |
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
 | 4 — Ingest | 25 | 450 | 263 | passing | open |
 | 5 — The read face under enforcement | 17 | 246 | 183 | passing | open |
