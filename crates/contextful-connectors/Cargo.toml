@@ -59,6 +59,7 @@ authoring-allowlist = [
     "serde_json",
     "sha2",
     "tempfile",
+    "time",
     "url",
     "zip",
 ]
