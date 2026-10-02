@@ -846,7 +846,8 @@ fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str], bou
         );
         let cargo = |extra: &[&str], after: &[String]| {
             let mut cmd = Command::new("cargo");
-            cmd.args(["test", "-q"]).args(extra).arg("--manifest-path").arg(tree.join(&sel.pkg).join("Cargo.toml"));
+            // Every feature, so a test compiled in only behind one still runs against the base.
+            cmd.args(["test", "-q", "--all-features"]).args(extra).arg("--manifest-path").arg(tree.join(&sel.pkg).join("Cargo.toml"));
             match &sel.target {
                 Some(t) => cmd.args(["--test", t]),
                 None => cmd.arg("--tests"),

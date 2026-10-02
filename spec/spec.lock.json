@@ -18776,7 +18776,7 @@
       "operation": "test",
       "subject": "test-first-scope",
       "kind": "behavior",
-      "statement": "The test-first stage builds each changed test file's target against the base source, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.",
+      "statement": "The test-first stage builds each changed test file's target against the base source with every feature enabled, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 93

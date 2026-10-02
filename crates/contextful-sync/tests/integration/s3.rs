@@ -94,6 +94,7 @@ fn a_missing_bucket_answers_no_absent_object() {
     transport(b.put(key, b"{}", Condition::IfNoneMatch).map(|_| ()), "If-None-Match put");
     transport(b.delete(key), "delete");
     transport(b.list("team/").map(|_| ()), "list");
+    transport(b.head(key).map(|_| ()), "head");
     // The bucket that exists still answers a missing key as absent.
     assert_eq!(open(&server).get(key).unwrap(), None);
     assert!(server.keys().is_empty());
@@ -128,10 +129,10 @@ fn a_head_and_a_tagged_listing_answer_etags_without_bytes() {
     let tag = |k: &str| tags.iter().find(|(key, _)| *key == k).unwrap().1.clone();
     let before = server.gets();
     assert_eq!(b.head("feed/01.jsonl").unwrap(), Some(tag("feed/01.jsonl")));
-    assert_eq!(b.head("feed/absent.jsonl").unwrap(), None);
     let listed = b.list_tagged("feed/").unwrap();
     assert_eq!(listed, ["feed/01.jsonl", "feed/02.jsonl", "feed/03.jsonl"].map(|k| (k.to_string(), tag(k))));
     assert_eq!(server.gets(), before, "neither transfers an object");
+    assert_eq!(b.head("feed/absent.jsonl").unwrap(), None, "a missing key in a bucket that exists answers absent");
 
     let missing = S3Bucket::open(&server.endpoint, "us-east-1", "context-typo", credentials(SECRET_KEY)).unwrap();
     assert!(matches!(missing.list_tagged("feed/"), Err(ObjectError::Transport(m)) if m.contains("NoSuchBucket")));

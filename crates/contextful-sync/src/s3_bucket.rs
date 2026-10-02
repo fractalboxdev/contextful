@@ -140,14 +140,14 @@ impl S3Bucket {
     }
 
     /// The ETag of the object under `key`, read by a head request that transfers no bytes. A
-    /// head answer carries no error document, so every `404`, a missing bucket's among them,
-    /// answers `None`.
+    /// head answer carries no error document, so a `404` is settled by a get, whose error
+    /// document tells a missing key from a missing bucket (`store.endpoint.missing-bucket`).
     pub fn head(&self, key: &str) -> Result<Option<String>, ObjectError> {
         let what = format!("HEAD `{key}`");
         let mut response = self.agent.head(&self.presign_head(key)).call().map_err(|e| S3Bucket::transport(&what, e))?;
         match response.status().as_u16() {
             200 => etag(&response).map(Some).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag"))),
-            404 => Ok(None),
+            404 => Ok(self.get(key)?.map(|(_, tag)| tag)),
             status => Err(S3Bucket::failure(&what, status, &read_text(&mut response))),
         }
     }
@@ -177,7 +177,6 @@ impl S3Bucket {
         keys.dedup_by(|a, b| a.0 == b.0);
         Ok(keys)
     }
-
 }
 
 /// The response's `ETag`, as the backend spells it.
