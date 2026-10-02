@@ -9,7 +9,7 @@
 
 use crate::admit::AdmitArgs;
 use crate::context::read_rows;
-use crate::run::SystemClock;
+use crate::clock::SystemClock;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_context::fold::fold;

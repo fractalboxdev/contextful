@@ -11,21 +11,24 @@ name = "contextful"
 path = "src/main.rs"
 
 [dependencies]
-contextful-agent = { path = "../contextful-agent" }
-contextful-connectors = { path = "../contextful-connectors" }
-contextful-context = { path = "../contextful-context", features = ["read"] }
+# The data plane: every adapter a pipeline, a store or a read reaches, the read path's
+# under `read-plane` and the run path's under `data-plane`; the control profile links
+# none of them (`topology.package.profile`).
+contextful-agent = { path = "../contextful-agent", optional = true }
+contextful-connectors = { path = "../contextful-connectors", optional = true }
+contextful-context = { path = "../contextful-context", default-features = false, optional = true }
 contextful-core = { path = "../contextful-core" }
-contextful-engine = { path = "../contextful-engine" }
+contextful-engine = { path = "../contextful-engine", optional = true }
 # The harness core: case loader, stub embedder, metrics, report, floors and baseline gate.
-contextful-eval = { path = "../../tools/eval" }
-contextful-memory = { path = "../contextful-memory" }
+contextful-eval = { path = "../../tools/eval", optional = true }
+contextful-memory = { path = "../contextful-memory", optional = true }
 # The binary wires `authority.exchange.surface`, the one package enabling the policy
 # package's `exchange` feature (`topology.package.exchange-optional`).
 contextful-policy = { path = "../contextful-policy", features = ["exchange"] }
-contextful-outbound = { path = "../contextful-outbound", default-features = false }
+contextful-outbound = { path = "../contextful-outbound", default-features = false, optional = true }
 # The binary is the one package compiling SQLite into the build (`topology.package.sqlite-adapter`).
-contextful-sqlite = { path = "../contextful-sqlite", features = ["bundled"] }
-contextful-sync = { path = "../contextful-sync" }
+contextful-sqlite = { path = "../contextful-sqlite", features = ["bundled"], optional = true }
+contextful-sync = { path = "../contextful-sync", optional = true }
 # The component host (`topology.package.component-host`), linked under `component-host`.
 contextful-wasm = { path = "../contextful-wasm", default-features = false, optional = true }
 anyhow = "1"
@@ -47,18 +50,51 @@ contextful-acceptance = { path = "../acceptance" }
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 
 [features]
-default = ["transport-ureq", "component-host", "s3-sync"]
-transport-ureq = ["contextful-outbound/transport-ureq", "contextful-connectors/transport-ureq", "contextful-wasm?/transport-ureq"]
+# The developer build: the data plane with every adapter but the Drive source.
+default = ["data-plane", "transport-ureq", "component-host", "s3-sync"]
+# The three profiles (`topology.package.profile`), each selected alone with
+# `--no-default-features --features <profile>`. The read replica links the read path
+# alone (`topology.package.edge-profile`).
+contextful-edge = ["read-plane", "transport-ureq", "s3-sync"]
+contextful-full = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host"]
+contextful-control = []
+# The read path: the store, bucket sync, the read face and its tool server. A build
+# without it answers each data-plane subcommand with `ProfileCapabilityAbsent`.
+read-plane = [
+    "dep:contextful-agent",
+    "dep:contextful-context",
+    "contextful-context/read",
+    "dep:contextful-outbound",
+    "dep:contextful-sync",
+]
+# The run path over the read path: the execution core and its scheduler, the connectors,
+# the SQLite run store, memory synthesis and the evaluation runner. A build without it
+# answers each run-path subcommand with `ProfileCapabilityAbsent`.
+data-plane = [
+    "read-plane",
+    "dep:contextful-connectors",
+    "dep:contextful-engine",
+    "dep:contextful-eval",
+    "dep:contextful-memory",
+    "dep:contextful-sqlite",
+]
+transport-ureq = ["read-plane", "contextful-outbound/transport-ureq", "contextful-connectors?/transport-ureq", "contextful-wasm?/transport-ureq"]
 # Component sources run as guests under the component host; without it each refuses as
 # `ComponentHostMissing`.
-component-host = ["dep:contextful-wasm"]
+component-host = ["data-plane", "dep:contextful-wasm"]
 # The interpreted target a component source selects with `--component-target pulley`.
 pulley = ["component-host", "contextful-wasm/pulley"]
 # The Google Drive source and the PDF decode worker behind its process boundary.
-drive = ["contextful-connectors/drive"]
+drive = ["data-plane", "contextful-connectors/drive"]
 # The S3 and R2 bucket adapter behind `s3://`, `r2://` and `https://` sync endpoints
 # (`topology.package.s3-sync-optional`) and the `s3` object source.
-s3-sync = ["contextful-sync/s3-sync", "contextful-connectors/s3"]
+s3-sync = ["read-plane", "contextful-sync/s3-sync", "contextful-connectors?/s3"]
+
+# Feature sets the features stage tests beside none and all
+# (`assurance.build.profile-build`): the bare data plane reaches each compiled-out
+# adapter's refusal, and the read replica refuses the run path by name.
+[package.metadata.contextful]
+feature-runs = ["data-plane", "contextful-edge"]
 
 [[test]]
 name = "integration"

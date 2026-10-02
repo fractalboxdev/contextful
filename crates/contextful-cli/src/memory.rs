@@ -5,7 +5,7 @@
 
 use crate::admit::{face, AdmitArgs};
 use crate::project::locate;
-use crate::run::SystemClock;
+use crate::clock::SystemClock;
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use contextful_context::node;

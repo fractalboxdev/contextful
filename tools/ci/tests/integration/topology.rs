@@ -748,7 +748,7 @@ fn this_repository_crate_map_names_every_crate() {
 #[test]
 fn the_crate_graph_stage_refuses_an_undeclared_crossing() {
     let stages = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
-    assert_eq!(stdout(&stages).lines().last(), Some("crate-graph"), "{}", stdout(&stages));
+    assert!(stdout(&stages).lines().any(|l| l == "crate-graph"), "{}", stdout(&stages));
 
     let r = Repo::init();
     package(&r, "contextful-core", "");
@@ -804,4 +804,142 @@ fn this_repository_store_write_half_links_no_forbidden_package() {
     contextful_eval::record::emit("store-write-package-count", unique as f64, 1, 0);
     assert_eq!(forbidden, 0, "{line}\n{}", stderr(&o));
     assert!(unique > 0, "{line}");
+}
+
+/// A binary `contextful-cli` declaring `deps`, each optional, and the three profile bundles
+/// with the entries `edge`, `full` and `control`.
+fn profiles(r: &Repo, deps: &str, edge: &str, full: &str, control: &str) {
+    package(r, "contextful-cli", "");
+    r.write(
+        "crates/contextful-cli/Cargo.toml",
+        &format!(
+            "{}\n[features]\ncontextful-edge = [{edge}]\ncontextful-full = [{full}]\ncontextful-control = [{control}]\n",
+            manifest("contextful-cli", deps)
+        ),
+    );
+}
+
+/// The component host, the embedded SQL engine and a CRDT library as stubs, each optional on the binary.
+fn profile_stubs(r: &Repo) -> &'static str {
+    stub(r, "wasmtime", "", "");
+    stub(r, "libduckdb-sys", "", "");
+    stub(r, "duckdb", "libduckdb-sys = { path = \"../libduckdb-sys\" }\n", "");
+    stub(r, "automerge", "", "");
+    "wasmtime = { path = \"../../stubs/wasmtime\", optional = true }\n\
+     duckdb = { path = \"../../stubs/duckdb\", optional = true }\n\
+     automerge = { path = \"../../stubs/automerge\", optional = true }\n"
+}
+
+/// A profile resolving a package outside its role raises `ProfileRoleLeak`, naming the profile and the path: a component host, the run path or the evaluation runner in `contextful-edge` or `contextful-control`; the SQL engine in `contextful-control`; build tooling anywhere.
+// spec: topology.package.profile-leak@f1ad3643
+#[test]
+fn a_profile_linking_a_dependency_outside_its_role_is_refused() {
+    let r = Repo::init();
+    let deps = profile_stubs(&r);
+    profiles(&r, deps, "\"dep:duckdb\"", "\"dep:duckdb\", \"dep:wasmtime\"", "\"dep:automerge\"");
+    let out = passes(&r);
+    assert!(out.contains("profiles: `contextful-control`, `contextful-edge`, `contextful-full` hold to their roles"), "{out}");
+
+    profiles(&r, deps, "\"dep:duckdb\", \"dep:wasmtime\"", "\"dep:duckdb\", \"dep:wasmtime\"", "");
+    let err = refused(&topology(&r.root), "ProfileRoleLeak");
+    assert!(err.contains("`contextful-edge` links `wasmtime`, a component host, through contextful-cli -> wasmtime"), "{err}");
+    assert!(!err.contains("`contextful-full` links"), "{err}");
+
+    profiles(&r, deps, "\"dep:duckdb\"", "\"dep:duckdb\", \"dep:wasmtime\"", "\"dep:duckdb\"");
+    let err = refused(&topology(&r.root), "ProfileRoleLeak");
+    assert!(err.contains("`contextful-control` links `duckdb`, the embedded SQL engine, through contextful-cli -> duckdb"), "{err}");
+    assert!(err.contains("`contextful-control` links `libduckdb-sys`, the embedded SQL engine, through contextful-cli -> duckdb -> libduckdb-sys"), "{err}");
+
+    package(&r, "contextful-engine", "");
+    package(&r, "contextful-eval", "");
+    let deps = format!(
+        "{deps}contextful-engine = {{ path = \"../contextful-engine\", optional = true }}\n\
+         contextful-eval = {{ path = \"../contextful-eval\", optional = true }}\n"
+    );
+    profiles(&r, &deps, "\"dep:duckdb\"", "\"dep:duckdb\", \"dep:wasmtime\", \"dep:contextful-engine\", \"dep:contextful-eval\"", "");
+    passes(&r);
+
+    profiles(&r, &deps, "\"dep:duckdb\", \"dep:contextful-engine\"", "\"dep:duckdb\", \"dep:wasmtime\"", "\"dep:contextful-eval\"");
+    let err = refused(&topology(&r.root), "ProfileRoleLeak");
+    assert!(err.contains("`contextful-edge` links `contextful-engine`, the run path, through contextful-cli -> contextful-engine"), "{err}");
+    assert!(err.contains("`contextful-control` links `contextful-eval`, the evaluation runner, through contextful-cli -> contextful-eval"), "{err}");
+}
+
+/// No run-time detection widens a running binary into another profile's feature set. Build, release and automation tooling links into no profile.
+// spec: topology.package.fixed-at-build@e97f9bd0
+#[test]
+fn a_profile_linking_build_tooling_is_refused() {
+    let r = Repo::init();
+    let deps = profile_stubs(&r);
+    package(&r, "contextful-spec", "");
+    let deps = format!("{deps}contextful-spec = {{ path = \"../contextful-spec\", optional = true }}\n");
+    profiles(&r, &deps, "\"dep:duckdb\"", "\"dep:duckdb\", \"dep:wasmtime\"", "");
+    passes(&r);
+
+    profiles(&r, &deps, "\"dep:duckdb\"", "\"dep:duckdb\", \"dep:wasmtime\", \"dep:contextful-spec\"", "");
+    let err = refused(&topology(&r.root), "ProfileRoleLeak");
+    assert!(err.contains("`contextful-full` links `contextful-spec`, build tooling, through contextful-cli -> contextful-spec"), "{err}");
+}
+
+/// The CRDT library in the resolved dependency graph of the edge or full profile raises `ProfileDependencyLeak`, naming the profile and the path that pulled it. A daemon or replica reads materialized text.
+// spec: topology.package.crdt-leak@d30f83fa
+#[test]
+fn a_crdt_library_outside_the_control_profile_is_refused() {
+    let r = Repo::init();
+    let deps = profile_stubs(&r);
+    profiles(&r, deps, "\"dep:duckdb\"", "\"dep:duckdb\", \"dep:wasmtime\"", "\"dep:automerge\"");
+    passes(&r);
+
+    profiles(&r, deps, "\"dep:duckdb\"", "\"dep:duckdb\", \"dep:wasmtime\", \"dep:automerge\"", "\"dep:automerge\"");
+    let err = refused(&topology(&r.root), "ProfileDependencyLeak");
+    assert!(err.contains("`contextful-full` links CRDT library `automerge` through contextful-cli -> automerge"), "{err}");
+    assert!(!err.contains("`contextful-control` links"), "{err}");
+}
+
+/// The normal-dependency package names of this repository's binary built with `profile` alone.
+fn profile_graph(profile: &str) -> Vec<String> {
+    let o = Command::new("cargo")
+        .args(["tree", "-q", "--locked", "-p", "contextful-cli", "--no-default-features", "--features", profile])
+        .args(["-e", "normal", "--prefix", "none", "--format", "{p}"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let mut names: Vec<String> = stdout(&o).lines().filter_map(|l| l.split_whitespace().next()).map(str::to_string).collect();
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
+/// Three profiles compile from the workspace, each a Cargo feature bundle selected at build time: `contextful-edge`, `contextful-full`, `contextful-control`. Each links the dependencies its role names and nothing else.
+// spec: topology.package.profile@f8fabc6b
+#[test]
+fn this_repository_binary_declares_the_three_profiles_each_linking_its_role() {
+    let o = topology(repo_root());
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("profiles: `contextful-control`, `contextful-edge`, `contextful-full` hold to their roles"), "{}", stdout(&o));
+
+    let full = profile_graph("contextful-full");
+    for daemon in ["contextful-engine", "wasmtime", "duckdb", "contextful-agent", "contextful-eval", "rusty-s3", "pdf-extract"] {
+        assert!(full.iter().any(|n| n == daemon), "`contextful-full` links no `{daemon}`");
+    }
+    let control = profile_graph("contextful-control");
+    assert!(control.iter().any(|n| n == "contextful-policy"), "{control:?}");
+    for absent in ["contextful-engine", "contextful-context", "contextful-sync", "duckdb", "wasmtime", "ureq", "libsqlite3-sys"] {
+        assert!(!control.iter().any(|n| n == absent), "`contextful-control` links `{absent}`");
+    }
+}
+
+/// `contextful-edge` is the read replica: it syncs parts and manifests from a bucket and serves a read-only SQL replica. It links no scheduler, run path, script runtime or component host.
+// spec: topology.package.edge-profile@06bc004e
+#[test]
+fn this_repository_edge_profile_serves_reads_and_links_no_component_host() {
+    let edge = profile_graph("contextful-edge");
+    for replica in ["contextful-sync", "rusty-s3", "duckdb", "contextful-context", "contextful-agent"] {
+        assert!(edge.iter().any(|n| n == replica), "`contextful-edge` links no `{replica}`");
+    }
+    let run_path = ["contextful-engine", "contextful-connectors", "contextful-sqlite", "contextful-memory", "contextful-eval", "libsqlite3-sys"];
+    for absent in run_path.into_iter().chain(["contextful-wasm", "wasmtime"]) {
+        assert!(!edge.iter().any(|n| n == absent), "`contextful-edge` links `{absent}`");
+    }
 }

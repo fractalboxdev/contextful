@@ -20,3 +20,11 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+
+# A profile artifact links across crates and strips its symbol table
+# (`assurance.build.release-profile`). Panics unwind: the run keeper survives a panicking
+# job only by unwinding to its guard (`run.cancel.keeper-panic`).
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

@@ -3,6 +3,7 @@
 
 mod measure;
 mod tag;
+mod footprint;
 mod topology;
 
 use anyhow::{bail, Context, Result};
@@ -14,7 +15,7 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 /// Gate stages in run order. The pull-request workflow dispatches each as its own check.
-const STAGES: [&str; 7] = ["schema", "test-first", "workspace", "acceptance", "evaluate", "features", "crate-graph"];
+const STAGES: [&str; 8] = ["schema", "test-first", "workspace", "acceptance", "evaluate", "features", "crate-graph", "budget"];
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
 /// The features stage's own target directory, under the workspace root.
@@ -76,6 +77,24 @@ enum Cmd {
     Mirrors,
     /// Hold the workspace's dependency graph to the topology contract's rules.
     Topology,
+    /// Compress one profile's release artifact and hold it to the profile's budget, and its
+    /// dynamic dependencies to the platform C library. Reads the budget from the fragment
+    /// under the working directory. With `--build`, build each named profile, every profile
+    /// when none is named, as the static-linked Linux target first.
+    Footprint {
+        /// The profile the artifact was built as, e.g. `contextful-full`; repeatable with `--build`.
+        #[arg(long, required_unless_present = "build")]
+        profile: Vec<String>,
+        /// The ELF artifact.
+        #[arg(required_unless_present = "build", conflicts_with = "build")]
+        artifact: Option<PathBuf>,
+        /// Build each profile's static-linked Linux artifact, then hold it to its budget.
+        #[arg(long)]
+        build: bool,
+        /// With `--build`, print each build command and build nothing.
+        #[arg(long, requires = "build")]
+        plan: bool,
+    },
     /// Resolve the target ledger and run its entries, or render their status.
     Measure {
         /// The tier to run; repeatable. Defaults to the gate tier.
@@ -131,6 +150,15 @@ fn main() {
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
+        Cmd::Footprint { profile, artifact, build, plan } => std::env::current_dir().map_err(Into::into).and_then(|root| match artifact {
+            Some(artifact) if profile.len() == 1 => footprint::check(&root, &profile[0], &artifact),
+            Some(_) => bail!("an artifact is measured as exactly one `--profile`"),
+            None if build => {
+                let profiles = if profile.is_empty() { topology::PROFILES.iter().map(|p| p.to_string()).collect() } else { profile };
+                footprint::build(&root, &profiles, plan)
+            }
+            None => bail!("pass an artifact, or `--build`"),
+        }),
         Cmd::Tag { branch, base } => tag::tag(&branch, &base),
         Cmd::Measure { tiers, status, check } => repo_root().and_then(|root| {
             if status {
@@ -191,6 +219,17 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             "crate-graph" => {
                 committed_lock(&root)?;
                 topology::check(&root)?
+            }
+            "budget" => {
+                // The footprint builds run here, apart from the evaluate stage
+                // (`assurance.gate.budget-stage`).
+                let profiles: Vec<String> = topology::declared_profiles(&root)?.into_iter().map(str::to_string).collect();
+                if profiles.is_empty() {
+                    println!("budget: no package declares a profile");
+                } else {
+                    footprint::build(&root, &profiles, false)?;
+                    let _ = std::fs::remove_dir_all(root.join(footprint::TARGET_DIR));
+                }
             }
             _ => unreachable!(),
         }
@@ -254,7 +293,10 @@ fn workspace(root: &Path) -> Result<()> {
 
 /// The feature combinations the workspace stage's unified build does not reach
 /// (`assurance.build.staged-feature-runs`): each workspace package declaring a feature other
-/// than `default` runs its suite alone, once with no features and once with every feature.
+/// than `default` runs its suite alone, once with no features, once with every feature, and
+/// once per feature set its manifest lists under `[package.metadata.contextful]
+/// feature-runs`; then each profile bundle it declares builds alone
+/// (`assurance.build.profile-build`).
 /// `cargo test -p` resolves the selected package's features without its dependents', so the
 /// store adapter's write suites run with the read face off
 /// (`topology.package.store-write-engine-free`) and the policy package's without `exchange`.
@@ -267,16 +309,26 @@ fn features(root: &Path) -> Result<()> {
         eprintln!("features: no workspace package declares a feature");
     }
     let target = root.join(FEATURES_TARGET);
-    for name in &featured {
-        for combination in ["--no-default-features", "--all-features"] {
-            eprintln!("features: {name} {combination}");
+    for package in &featured {
+        let name = &package.name;
+        let mut runs: Vec<Vec<String>> = vec![vec!["--no-default-features".into()], vec!["--all-features".into()]];
+        runs.extend(package.runs.iter().map(|f| vec!["--no-default-features".into(), "--features".into(), f.clone()]));
+        let builds = package.profiles.iter().map(|p| vec!["--no-default-features".to_string(), "--features".into(), p.to_string()]);
+        let steps = runs.into_iter().map(|r| ("test", r)).chain(builds.map(|b| ("build", b)));
+        for (verb, combination) in steps {
+            let shown = combination.join(" ");
+            match verb {
+                "test" => eprintln!("features: {name} {shown}"),
+                _ => eprintln!("features: {name} {verb} {shown}"),
+            }
             let status = Command::new("cargo")
-                .args(["test", "-p", name, combination])
+                .args([verb, "-p", name])
+                .args(&combination)
                 .env("CARGO_TARGET_DIR", &target)
                 .current_dir(root)
                 .status()?;
             if !status.success() {
-                bail!("`cargo test -p {name} {combination}` exited {}", status.code().unwrap_or(-1));
+                bail!("`cargo {verb} -p {name} {shown}` exited {}", status.code().unwrap_or(-1));
             }
         }
     }
@@ -477,20 +529,38 @@ fn acceptance(root: &Path) -> Result<()> {
     run(root, "cargo", &["test", "-p", ACCEPTANCE_PACKAGE])
 }
 
+/// A workspace member declaring a feature other than `default`.
+struct Featured {
+    name: String,
+    /// Feature sets its manifest lists under `[package.metadata.contextful] feature-runs`.
+    runs: Vec<String>,
+    /// The profile bundles it declares.
+    profiles: Vec<&'static str>,
+}
+
 /// Workspace members declaring a feature other than `default`, sorted by name.
-fn featured_packages(root: &Path) -> Result<Vec<String>> {
+fn featured_packages(root: &Path) -> Result<Vec<Featured>> {
     let meta = metadata(root)?;
-    let mut names: Vec<String> = meta["packages"]
+    let mut out: Vec<Featured> = meta["packages"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|p| p["features"].as_object().is_some_and(|f| f.keys().any(|k| k != "default")))
-        .filter_map(|p| p["name"].as_str())
-        .filter(|n| *n != ACCEPTANCE_PACKAGE)
-        .map(str::to_string)
+        .filter_map(|p| {
+            let name = p["name"].as_str().filter(|n| *n != ACCEPTANCE_PACKAGE)?.to_string();
+            let runs = p["metadata"]["contextful"]["feature-runs"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_string)
+                .collect();
+            let profiles = topology::PROFILES.into_iter().filter(|f| p["features"].get(*f).is_some()).collect();
+            Some(Featured { name, runs, profiles })
+        })
         .collect();
-    names.sort_unstable();
-    Ok(names)
+    out.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
 }
 
 /// `cargo metadata` over the workspace members alone.

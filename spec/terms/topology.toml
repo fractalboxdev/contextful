@@ -15,6 +15,8 @@ DomainCrateImpurity         = { clause = "topology.package.domain-impurity", glo
 TopologyDependencyInversion = { clause = "topology.package.dependency-direction", gloss = "A dependency edge runs from the domain crate toward an adapter crate." }
 ComponentHostMissing        = { clause = "topology.package.host-missing", gloss = "A component connector is dispatched on a profile linking no component host." }
 ProfileDependencyLeak       = { clause = "topology.package.crdt-leak", gloss = "The CRDT library appears in the edge or full profile's dependency graph." }
+ProfileRoleLeak             = { clause = "topology.package.profile-leak", gloss = "A profile resolves a component host, the SQL engine or build tooling its role excludes." }
+ProfileCapabilityAbsent     = { clause = "topology.package.capability-absent", gloss = "A subcommand reaches a capability the build's profile does not link." }
 StoreWriteLinksEngine       = { clause = "topology.package.store-write-engine-free", gloss = "The store adapter without its read feature resolves the embedded SQL engine, SQLite, an async runtime or an HTTP or TLS stack." }
 CrateMapDrift               = { clause = "topology.package.crate-map-drift", gloss = "A workspace crate is missing from the crate tree, or the crate-map count disagrees with it." }
 SyncStackLinked             = { clause = "topology.package.s3-sync-optional", gloss = "The sync package without its S3 feature resolves an HTTP stack." }

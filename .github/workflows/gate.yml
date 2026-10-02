@@ -3,7 +3,7 @@
 # Each matrix entry dispatches `contextful-ci gate --stage <stage>` to the org's
 # Dispatcher, which clones the PR head into a Rust-equipped sandbox and reports the
 # verdict as the check-run `flare-dispatch/check:<stage>`. This job goes green once
-# the dispatch is accepted; branch protection requires the seven check-runs:
+# the dispatch is accepted; branch protection requires the eight check-runs:
 #
 #   flare-dispatch/check:schema      secrets of record, mirrors: annotations, contextful-spec lint
 #   flare-dispatch/check:test-first  a test under tests/ fails against the base source
@@ -12,6 +12,7 @@
 #   flare-dispatch/check:evaluate    every gate-tier entry of evals/ledger.toml, held to its target
 #   flare-dispatch/check:features    each package declaring a feature, tested with none and with all
 #   flare-dispatch/check:crate-graph the topology dependency rules over `cargo tree --locked` per package
+#   flare-dispatch/check:budget      each profile built static for Linux, held to its footprint budget
 #
 # Lean is provisioned by the dispatched command, not by a step in this file:
 # `contextful-ci gate` runs `provision_lean` (tools/ci/src/main.rs) before the
@@ -41,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stage: [schema, test-first, workspace, acceptance, evaluate, features, crate-graph]
+        stage: [schema, test-first, workspace, acceptance, evaluate, features, crate-graph, budget]
     steps:
       - uses: fractalboxdev/flare-dispatch/actions/flare-dispatch-action@a5118d6594c8f3e4040bb90afcb02898a6e7b7bd
         with:

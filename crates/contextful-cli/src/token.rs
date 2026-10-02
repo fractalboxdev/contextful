@@ -361,7 +361,7 @@ struct Root {
 
 impl Root {
     fn find() -> Result<Root> {
-        Ok(Root { dir: crate::project::root(None)? })
+        Ok(Root { dir: crate::root::root(None)? })
     }
 
     fn policy_path(&self) -> PathBuf {

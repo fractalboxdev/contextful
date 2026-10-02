@@ -5,7 +5,8 @@
 //! the mediated-request crate's stack-free build without its transport feature, the sync
 //! package's stack-free build without its S3 feature, the
 //! record decoders' network-free graph and the external-assertion stack outside the
-//! binary; and off the manifests, the SQLite binding held to its one adapter package. The
+//! binary; per profile bundle of the binary, the role each profile links; and off the
+//! manifests, the SQLite binding held to its one adapter package. The
 //! same walk holds every workspace package to `assurance.build.licence-field`, and every
 //! `crates/` package to the crate tree of `topology.package.crate-map-drift`.
 
@@ -133,6 +134,26 @@ const EXCHANGE_MODULE: &str = "contextful_policy::exchange";
 /// The external-assertion stack no other `crates/` package resolves
 /// (`topology.package.exchange-optional`).
 const EXCHANGE_STACK: [&str; 2] = ["jsonwebtoken", "rsa"];
+
+/// The profile bundles of the binary, each resolved alone (`topology.package.profile`).
+pub const PROFILES: [&str; 3] = ["contextful-control", "contextful-edge", "contextful-full"];
+
+/// The run path: the execution core with its scheduler and keeper, the connectors it pulls,
+/// its SQLite run store, and memory synthesis over its runs. The read replica and the
+/// control plane link none of it (`topology.package.edge-profile`).
+const PROFILE_RUN_PATH: [&str; 4] = ["contextful-engine", "contextful-connectors", "contextful-sqlite", "contextful-memory"];
+
+/// What a profile resolves through no normal dependency: per rule, the profiles it binds,
+/// the packages, what they are, and the error (`topology.package.profile-leak`,
+/// `topology.package.fixed-at-build`, `topology.package.crdt-leak`).
+const PROFILE_RULES: [(&[&str], &[&str], &str, &str); 6] = [
+    (&["contextful-control", "contextful-edge"], &["wasmtime", "wasmer"], "a component host", "ProfileRoleLeak"),
+    (&["contextful-control", "contextful-edge"], &PROFILE_RUN_PATH, "the run path", "ProfileRoleLeak"),
+    (&["contextful-control", "contextful-edge"], &["contextful-eval"], "the evaluation runner", "ProfileRoleLeak"),
+    (&["contextful-control"], &["duckdb", "libduckdb-sys"], "the embedded SQL engine", "ProfileRoleLeak"),
+    (&PROFILES, &["contextful-ci", "contextful-spec"], "build tooling", "ProfileRoleLeak"),
+    (&["contextful-edge", "contextful-full"], &["automerge", "yrs", "loro", "diamond-types", "crdts"], "CRDT library", "ProfileDependencyLeak"),
+];
 
 /// The page holding the crate-map clause and the crate tree under its `## Shapes`
 /// (`topology.package.crate-map-drift`).
@@ -358,15 +379,22 @@ struct Resolve {
     features_off: bool,
     /// Every target platform, where `false` resolves the host's alone.
     all_targets: bool,
+    /// A feature turned on over the selection above.
+    feature: Option<&'static str>,
 }
 
-const DEFAULT: Resolve = Resolve { features_off: false, all_targets: false };
-const FEATURES_OFF: Resolve = Resolve { features_off: true, all_targets: false };
+const DEFAULT: Resolve = Resolve { features_off: false, all_targets: false, feature: None };
+const FEATURES_OFF: Resolve = Resolve { features_off: true, all_targets: false, feature: None };
 /// The store adapter's write half, resolved alike on every host.
-const WRITE_HALF: Resolve = Resolve { features_off: true, all_targets: true };
+const WRITE_HALF: Resolve = Resolve { features_off: true, all_targets: true, feature: None };
 /// Default features on every target, so a link behind another target's `cfg` resolves on
 /// every host.
-const DEFAULT_ALL_TARGETS: Resolve = Resolve { features_off: false, all_targets: true };
+const DEFAULT_ALL_TARGETS: Resolve = Resolve { features_off: false, all_targets: true, feature: None };
+
+/// One profile bundle alone, as `--no-default-features --features <profile>` builds it.
+const fn profile(name: &'static str) -> Resolve {
+    Resolve { features_off: true, all_targets: false, feature: Some(name) }
+}
 
 /// `cargo tree --locked` over the normal dependencies of `package` alone, one `<depth><name>`
 /// line per node. `cargo metadata` unifies features across the workspace, so a per-package
@@ -375,6 +403,9 @@ fn tree(root: &Path, package: &str, resolve: Resolve) -> Result<String> {
     let mut args = vec!["tree", "-q", "--locked", "-p", package];
     if resolve.features_off {
         args.push("--no-default-features");
+    }
+    if let Some(feature) = resolve.feature {
+        args.extend(["--features", feature]);
     }
     if resolve.all_targets {
         args.extend(["--target", "all"]);
@@ -755,6 +786,43 @@ fn mentions(dir: &Path, needle: &str) -> bool {
 /// `--locked` so a `Cargo.lock` behind its manifests fails before any rule runs
 /// (`assurance.gate.locked-resolve`). The store adapter's write half prints its distinct
 /// package count and how many of them the write half is denied, which the ledger records.
+/// The profile bundles the binary declares, and a finding per package a profile resolves
+/// outside its role.
+fn profile_leaks(root: &Path, g: &Graph) -> Result<(Vec<&'static str>, Vec<(&'static str, String)>)> {
+    let Some(binary) = g.id_of(BINARY).and_then(|id| g.packages.get(id)).filter(|p| p.workspace) else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+    let declared: Vec<&'static str> = PROFILES.into_iter().filter(|p| binary.features.contains_key(*p)).collect();
+    let mut out = Vec::new();
+    for name in &declared {
+        for (bound, packages, what, code) in PROFILE_RULES {
+            if !bound.contains(name) {
+                continue;
+            }
+            for path in tree_paths(root, BINARY, profile(name), packages)? {
+                let dep = path.rsplit(" -> ").next().unwrap_or_default();
+                let message = if code == "ProfileDependencyLeak" {
+                    format!("`{name}` links {what} `{dep}` through {path}")
+                } else {
+                    format!("`{name}` links `{dep}`, {what}, through {path}")
+                };
+                out.push((code, message));
+            }
+        }
+    }
+    Ok((declared, out))
+}
+
+/// The profile bundles the workspace's binary declares, in [`PROFILES`] order; none when
+/// the workspace holds no binary package.
+pub fn declared_profiles(root: &Path) -> Result<Vec<&'static str>> {
+    let g = Graph::load(root)?;
+    let Some(binary) = g.id_of(BINARY).and_then(|id| g.packages.get(id)).filter(|p| p.workspace) else {
+        return Ok(Vec::new());
+    };
+    Ok(PROFILES.into_iter().filter(|p| binary.features.contains_key(*p)).collect())
+}
+
 pub fn check(root: &Path) -> Result<()> {
     let g = Graph::load(root)?;
     if g.id_of(STORE).is_some() {
@@ -765,6 +833,8 @@ pub fn check(root: &Path) -> Result<()> {
     let mut found = findings(root, &g)?;
     found.extend(exchange_leaks(root, &g)?);
     found.extend(crate_map_drift(root, &g)?);
+    let (profiles, leaks) = profile_leaks(root, &g)?;
+    found.extend(leaks);
     for (code, message) in &found {
         eprintln!("{code}: {message}");
     }
@@ -774,6 +844,10 @@ pub fn check(root: &Path) -> Result<()> {
     let n = g.packages.values().filter(|p| p.workspace).count();
     let domain = if g.id_of(DOMAIN).is_some() { format!("; `{DOMAIN}` is pure and depends on no adapter") } else { String::new() };
     println!("topology: {n} workspace package(s) hold to the dependency rules{domain}");
+    if !profiles.is_empty() {
+        let named: Vec<String> = profiles.iter().map(|p| format!("`{p}`")).collect();
+        println!("profiles: {} hold to their roles", named.join(", "));
+    }
     if let Some((_, entries)) = crate_map(root)? {
         println!("crate map: {} crates, every `crates/` package named", entries.len());
     }
