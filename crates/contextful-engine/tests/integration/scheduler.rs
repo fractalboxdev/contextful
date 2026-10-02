@@ -44,15 +44,16 @@ impl Gate {
 
 impl Dispatch for Recording {
     fn fire(&self, id: &str, version: u64) -> Result<String, String> {
-        let n = {
+        // The run row lands before the fire is listed, so a test seeing the fire listed reads
+        // a start time the clock had not yet moved past.
+        {
             let mut fired = self.fired.lock().unwrap();
+            let mut row = crate::support_row(&format!("{id}-{}", fired.len() + 1), RunStatus::Success);
+            row.pipeline_id = id.to_string();
+            row.started_at = self.catalog.now().unwrap();
+            self.catalog.put_run(&row).unwrap();
             fired.push((id.to_string(), version));
-            fired.len()
-        };
-        let mut row = crate::support_row(&format!("{id}-{n}"), RunStatus::Success);
-        row.pipeline_id = id.to_string();
-        row.started_at = self.catalog.now().unwrap();
-        self.catalog.put_run(&row).unwrap();
+        }
         if let Some(gate) = &self.gate {
             gate.entered.lock().unwrap().send(id.to_string()).unwrap();
             gate.release.lock().unwrap().recv().unwrap();
