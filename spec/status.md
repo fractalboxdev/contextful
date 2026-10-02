@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `run` | 3 | 26 | 368 | 98 | 35 | 36 | 252 | 0 | 252 |
 | `store` | 1 | 17 | 229 | 54 | 13 | 19 | 189 | 0 | 189 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
-| `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 33 | 0 | 33 |
-| **total** | 19 | 154 | 1889 | 561 | 187 | 140 | 1240 | 0 | |
+| `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
+| **total** | 19 | 154 | 1890 | 562 | 187 | 139 | 1245 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
 | 8 — Accountability | 5 | 46 | 27 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 55 | 21 | open | open |
+| 10 — Cadence and the operator plane | 11 | 56 | 26 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
@@ -1287,3 +1287,8 @@ Unscheduled operations: 10.
 | `topology.package.store-write-engine-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_linking_the_sql_engine_without_read_is_refused` | performed |
 | `topology.package.transport-optional` | `tools/ci/tests/integration/topology.rs::an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refused` | performed |
 | `topology.package.version-profile` | `crates/contextful-cli/tests/integration/profile.rs::the_version_names_the_workspace_version_and_the_profile` | performed |
+| `topology.publish-hostname.empty-probe` | `tools/ci/tests/integration/probe.rs::a_probe_with_nothing_to_check_is_refused` | performed |
+| `topology.publish-hostname.issuer-key` | `crates/contextful-cli/tests/integration/serve.rs::serve_refuses_to_start_without_its_declarations_or_an_issuer_key` | performed |
+| `topology.publish-hostname.posture-mismatch` | `tools/ci/tests/integration/probe.rs::an_answer_outside_the_declared_gate_or_an_unreachable_hostname_fails_the_probe` | performed |
+| `topology.publish-hostname.probe-table` | `tools/ci/tests/integration/probe.rs::a_probe_table_and_descriptor_set_that_differ_are_refused_before_any_probe` | performed |
+| `topology.publish-hostname.unknown-field` | `tools/ci/tests/integration/probe.rs::a_descriptor_carrying_an_unmodelled_key_is_refused` | performed |
