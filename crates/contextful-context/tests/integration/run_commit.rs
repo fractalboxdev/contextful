@@ -189,6 +189,7 @@ fn fed(cursor: &str) -> Position {
 
 /// A staged part joins no file list; the commit naming the parts publishes them together, each row numbered
 /// across the run and stamped with the commit instant.
+#[cfg(feature = "read")]
 #[test]
 fn staged_parts_join_the_file_list_only_at_their_commit() {
     let f = Fixture::new();
@@ -214,6 +215,7 @@ fn staged_parts_join_the_file_list_only_at_their_commit() {
 /// A staged part carries no `_commit_seq`: the commit assigns it under the table's commit lock and writes it into
 /// every part it names, so a run committing between a stage and its commit takes the lower value.
 // spec: run.own.stage-commit-seq@a75bdfd0
+#[cfg(feature = "read")]
 #[test]
 fn a_staged_run_takes_its_commit_seq_at_its_commit() {
     let f = Fixture::new();
@@ -279,6 +281,7 @@ fn a_staged_run_types_the_table_only_at_its_commit() {
 /// A staged part carries no `_ingested_at`; the commit writes its own instant into every part it names, so of two
 /// runs writing one key the later committer survives the keyed read, whichever staged first.
 // spec: run.own.stage-instant@9305df8b
+#[cfg(feature = "read")]
 #[test]
 fn the_later_committer_wins_a_key_whichever_run_staged_first() {
     let f = Fixture::new();
