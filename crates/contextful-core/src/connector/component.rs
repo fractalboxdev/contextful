@@ -120,8 +120,9 @@ impl ComponentSource {
         Ok(Some(ComponentSource { artifact, allow, attach, guest, memory_bytes, require_pin }))
     }
 
-    /// The pin requirement on this artifact: the manifest flag; no store-wide key is set here.
-    pub fn requirement(&self) -> PinRequirement {
-        PinRequirement { store: false, manifest: self.require_pin }
+    /// The pin requirement on this artifact under the store-wide policy key `store`, composed
+    /// with the manifest flag by disjunction.
+    pub fn requirement(&self, store: bool) -> PinRequirement {
+        PinRequirement { store, manifest: self.require_pin }
     }
 }

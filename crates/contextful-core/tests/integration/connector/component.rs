@@ -45,7 +45,7 @@ fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
     assert!(c.attach[0].1.has_reference());
     assert_eq!(c.guest, Some(json!({ "region": "eu" })));
     assert_eq!(c.memory_bytes, Some(536_870_912));
-    assert!(c.requirement().manifest);
+    assert!(c.requirement(false).manifest);
 
     let https = parse("https://dl.vendor.example/vendor.wasm", json!({ "sha256": PIN })).unwrap().unwrap();
     assert!(matches!(https.artifact.form, Form::Https(_)));
@@ -53,7 +53,8 @@ fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
     assert!(bare.allow.0.is_empty(), "no `allow` reaches no host");
     assert!(!bare.allow.permits("api.vendor.example"));
     assert!(bare.attach.is_empty() && bare.guest.is_none() && bare.memory_bytes.is_none());
-    assert!(!bare.requirement().required());
+    assert!(!bare.requirement(false).required());
+    assert!(bare.requirement(true).required(), "the store-wide key requires a pin without the manifest flag");
 }
 
 #[test]

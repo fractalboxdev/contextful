@@ -95,9 +95,10 @@ mod hosted {
         }
     }
 
-    /// Resolve, admit and compile `decl` for `target`. Bytes off their pin never reach the
-    /// compiler (`connector.package.digest-mismatch`).
-    pub fn load(name: &str, decl: &ComponentSource, base: &Path, target: ComponentTarget) -> Result<Loaded> {
+    /// Resolve, admit and compile `decl` for `target`, under the store-wide pin switch
+    /// `store_pin`. Bytes off their pin never reach the compiler
+    /// (`connector.package.digest-mismatch`).
+    pub fn load(name: &str, decl: &ComponentSource, base: &Path, target: ComponentTarget, store_pin: bool) -> Result<Loaded> {
         let limits = limits(decl)?;
         let target = match target {
             ComponentTarget::Native => Target::Native,
@@ -105,7 +106,7 @@ mod hosted {
         };
         let wasm = resolve(name, decl, base)?;
         let host = ComponentHost::with_target(target).map_err(failure)?;
-        let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, decl.requirement()).map_err(failure)?;
+        let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, decl.requirement(store_pin)).map_err(failure)?;
         let content_hash = content_hash(&digest, decl.guest.as_ref());
         Ok(Loaded { name: name.to_string(), host, connector, limits, content_hash })
     }
@@ -177,7 +178,7 @@ mod absent {
     /// A component this build cannot hold.
     pub enum Loaded {}
 
-    pub fn load(name: &str, _decl: &ComponentSource, _base: &Path, _target: ComponentTarget) -> Result<Loaded> {
+    pub fn load(name: &str, _decl: &ComponentSource, _base: &Path, _target: ComponentTarget, _store_pin: bool) -> Result<Loaded> {
         absent(name).and_then(|()| unreachable!("`absent` refuses on this build"))
     }
 

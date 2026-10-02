@@ -68,9 +68,9 @@ fn bytes_that_do_not_hash_to_the_pin_are_refused() {
     }
 }
 
-/// Two switches require a pin on a local artifact, composed by disjunction: a store-wide policy key and a
-/// per-connector manifest flag.
-// spec: connector.package.pin-requirement@57825a53
+/// Two switches require a pin on a local artifact, composed by disjunction: the store-wide key
+/// `[connector] require_pin` in the store's `config.toml`, and a per-connector manifest flag.
+// spec: connector.package.pin-requirement@1c6805a5
 #[test]
 fn either_switch_requires_a_local_pin() {
     let local = Artifact::parse("connectors/vendor.wasm", None).unwrap();
@@ -82,8 +82,8 @@ fn either_switch_requires_a_local_pin() {
     }
 }
 
-/// `Artifact::admit` raises `ConnectorLocalUnpinned` under either switch, carrying the digest of the bytes found. No
-/// build step calls it, so `connector.package.local-unpinned` stays unpinned here.
+/// `Artifact::admit` raises `ConnectorLocalUnpinned` under either switch, carrying the digest of the bytes found.
+/// `pipeline run` reaches it through both switches in the CLI suite, which pins `connector.package.local-unpinned`.
 #[test]
 fn an_unpinned_local_artifact_under_a_requirement_names_the_digest_found() {
     let local = Artifact::parse("connectors/vendor.wasm", None).unwrap();
