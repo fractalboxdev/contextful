@@ -73,6 +73,29 @@ fn a_conditional_pull_commits_the_validators_alone() {
 }
 
 #[test]
+fn the_scope_probe_precedes_the_conditional_request() {
+    let vendor = Server::start(|r| match r.path() {
+        "/identity" => Response { status: 200, headers: vec![("X-Granted-Scopes".into(), "feed.read".into())], body: Vec::new() },
+        _ if r.header("if-none-match") == Some(ETAG) => Response { status: 304, headers: vec![], body: Vec::new() },
+        _ => Response { status: 200, headers: vec![("ETag".into(), ETAG.into())], body: FEED.as_bytes().to_vec() },
+    });
+    let mut s = source(
+        json!({
+            "endpoint": vendor.url("/news.rss"), "format": "feed", "conditional": true,
+            "headers": {"Authorization": "Bearer ${secret://feed-token}"},
+            "scope_probe": {"endpoint": vendor.url("/identity"), "scopes_header": "X-Granted-Scopes", "expect": ["feed.read"]}
+        }),
+        vec![("feed-token", "tok-1")],
+    );
+    let first = pull(&mut s, None);
+    assert_eq!(first["rows"].as_array().unwrap().len(), 2);
+    let second = pull(&mut s, Some(first["cursor"].clone()));
+    assert_eq!(second["rows"], json!([]));
+    let paths: Vec<String> = vendor.requests.lock().unwrap().iter().map(|r| r.path().to_string()).collect();
+    assert_eq!(paths, ["/identity", "/news.rss", "/news.rss"], "one probe, ahead of the first conditional request");
+}
+
+#[test]
 fn a_response_serving_no_validator_commits_an_empty_position() {
     let vendor = Server::start(|_| Response { status: 200, headers: vec![], body: FEED.as_bytes().to_vec() });
     let mut s = source(json!({"endpoint": vendor.url("/news.rss"), "format": "feed", "conditional": true}), vec![]);
@@ -86,8 +109,8 @@ fn a_response_serving_no_validator_commits_an_empty_position() {
 // spec: connector.source.conditional-rejected@f20042c5
 #[test]
 fn conditional_beside_a_page_walk_or_an_incremental_field_is_refused() {
-    for extra in [json!({"page_param": "p"}), json!({"link_header": true})] {
-        let mut cfg = json!({"endpoint": "https://news.example.test/feed", "format": "feed", "conditional": true});
+    for extra in [json!({"page_param": "p"}), json!({"next_cursor_path": "/next", "cursor_param": "after"}), json!({"next_url_path": "/next"}), json!({"link_header": true})] {
+        let mut cfg = json!({"endpoint": "https://news.example.test/feed", "format": "json", "conditional": true});
         cfg.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
         match HttpConfig::parse(&cfg) {
             Err(ConfigError::Connector(ConnectorError::ConnectorConditionalRejected(m))) => assert!(m.contains("conditional"), "{m}"),

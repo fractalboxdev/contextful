@@ -3,6 +3,7 @@
 use crate::support::{request, resolver, Never, Response, Server};
 use contextful_connectors::http::{ConfigError, HttpConfig, HttpSource};
 use contextful_core::connector::ConnectorError;
+use contextful_core::run::ports::Source;
 use contextful_core::run::RunError;
 use serde_json::{json, Value};
 
@@ -40,6 +41,40 @@ fn every_fetched_row_carries_its_bound_columns() {
         assert_eq!(r["owner"], json!("octocat"));
     }
     assert_eq!(vendor.received("/repos/octocat/Hello-World/issues").len(), 2);
+}
+
+#[test]
+fn a_page_by_page_pull_stamps_its_bound_columns_on_every_page() {
+    let vendor = Server::start(|r| match r.query("page").as_deref() {
+        Some("1") => Response::json(200, r#"[{"number":7},{"number":12}]"#),
+        Some("2") => Response::json(200, r#"[{"number":13}]"#),
+        _ => Response::json(200, "[]"),
+    });
+    let mut s = source(
+        json!({
+            "endpoint": vendor.url("/repos/{owner}/{repo}/issues"),
+            "table_pattern": "{owner}/{repo}",
+            "page_param": "page",
+            "bound_columns": {"repo_full_name": "{owner}/{repo}"}
+        }),
+        "octocat/Hello-World",
+    );
+    let mut position = None;
+    let mut numbers = Vec::new();
+    loop {
+        let out: Value = serde_json::from_slice(&s.pull(&request(position), &Never).unwrap()).unwrap();
+        for r in out["rows"].as_array().unwrap() {
+            assert_eq!(r["repo_full_name"], json!("octocat/Hello-World"), "{r}");
+            numbers.push(r["number"].as_u64().unwrap());
+        }
+        if out["more"] != json!(true) {
+            break;
+        }
+        position = Some(out["cursor"].clone());
+    }
+    assert_eq!(numbers, [7, 12, 13]);
+    let asked: Vec<Option<String>> = vendor.received("/repos/octocat/Hello-World/issues").iter().map(|r| r.query("page")).collect();
+    assert_eq!(asked, [Some("1".into()), Some("2".into()), Some("3".into())], "one page per pull");
 }
 
 #[test]
