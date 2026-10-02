@@ -360,3 +360,137 @@ fn token_commands_below_the_project_root_act_on_the_root_files() {
     // The key keygen dated at the root answers to its cadence from below it.
     assert!(stderr(&run(&sub, &["token", "rotate", "--now", "2030-01-02T00:00:00Z"])).starts_with("IssuerKeyRotationNotDue"));
 }
+
+/// `2030-01-01T00:00:00Z` as a Unix instant.
+const MINTED_UNIX: i64 = 1_893_456_000;
+const EXCHANGE_SECRET: &str = "exchange-shared-secret";
+
+fn exchange_config(dir: &Path, material: &str) {
+    std::fs::create_dir_all(dir.join(".contextful/exchange")).unwrap();
+    std::fs::write(
+        dir.join(".contextful/exchange/policy.toml"),
+        "expected_iss = \"https://login.acme.example/\"\nexpected_aud = \"contextful-console\"\n\
+         role_claim = \"roles\"\n\n[subject_map]\non_behalf_of = { claim = \"sub\", template = \"user://{}\" }\n\n\
+         [[role_grants.analyst]]\nactions = [\"read\"]\ntables = [\"research/*\"]\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join(".contextful/exchange/verify.key"), material).unwrap();
+}
+
+fn assertion(sub: &str, secret: &str) -> String {
+    let claims = serde_json::json!({
+        "iss": "https://login.acme.example/",
+        "aud": "contextful-console",
+        "exp": MINTED_UNIX + 600,
+        "sub": sub,
+        "roles": ["analyst"],
+    });
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .unwrap()
+}
+
+fn exchange(dir: &Path, extra: &[&str], stdin: Option<&str>) -> Output {
+    use std::io::Write;
+    let mut args = vec!["token", "exchange", "--issuer-key", ".contextful/issuer.seed", "--now", MINTED];
+    args.extend_from_slice(extra);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(&args)
+        .current_dir(dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    input.write_all(stdin.unwrap_or_default().as_bytes()).unwrap();
+    drop(input);
+    child.wait_with_output().unwrap()
+}
+
+/// `contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`. The command reads the assertion from `--jwt` or standard input, and a holder proof from `--dpop`.
+// spec: authority.exchange.surface@55c381bb
+#[test]
+fn token_exchange_trades_an_assertion_from_the_flag_or_standard_input_for_a_credential() {
+    let p = project();
+    let public = keygen(p.path());
+    exchange_config(p.path(), EXCHANGE_SECRET);
+    let verify = |token: &str| {
+        stdout(&run(
+            p.path(),
+            &["token", "verify", "--public-key", &public, "--audience", AUD, "--at", "2030-01-01T00:01:00Z", "--token", token],
+        ))
+    };
+
+    // From `--jwt`: the credential admits as the assertion's mapped reader.
+    let token = stdout(&exchange(p.path(), &["--jwt", &assertion("dana@acme.example", EXCHANGE_SECRET)], None));
+    let admitted = verify(&token);
+    assert!(admitted.contains("\"user://dana@acme.example\""), "{admitted}");
+    assert!(admitted.contains("research/*"), "{admitted}");
+
+    // From standard input, with its trailing newline.
+    let piped = format!("{}\n", assertion("eli@acme.example", EXCHANGE_SECRET));
+    let token = stdout(&exchange(p.path(), &[], Some(&piped)));
+    let admitted = verify(&token);
+    assert!(admitted.contains("\"user://eli@acme.example\""), "{admitted}");
+    assert!(!admitted.contains("dana@acme.example"), "{admitted}");
+
+    // No assertion on either path mints nothing.
+    let err = stderr(&exchange(p.path(), &[], Some("  \n")));
+    assert!(err.contains("--jwt") && err.contains("standard input"), "{err}");
+
+    // An assertion under another secret, and an exchange with no material, refuse by name.
+    let err = stderr(&exchange(p.path(), &["--jwt", &assertion("dana@acme.example", "another")], None));
+    assert!(err.contains("ExchangeAssertionInvalid"), "{err}");
+    std::fs::write(p.path().join(".contextful/exchange/verify.key"), "").unwrap();
+    let err = stderr(&exchange(p.path(), &["--jwt", &assertion("dana@acme.example", EXCHANGE_SECRET)], None));
+    assert!(err.contains("ExchangeMaterialMissing"), "{err}");
+
+    // The command answers through the served faces' handler: an assertion past the body
+    // ceiling refuses unparsed.
+    std::fs::write(p.path().join(".contextful/exchange/verify.key"), EXCHANGE_SECRET).unwrap();
+    let err = stderr(&exchange(p.path(), &[], Some(&"x".repeat(64 * 1024))));
+    assert!(err.contains("ExchangeBodyTooLarge"), "{err}");
+
+    // A project declaring no exchange policy names the file that configures one.
+    std::fs::remove_dir_all(p.path().join(".contextful/exchange")).unwrap();
+    let err = stderr(&exchange(p.path(), &["--jwt", &assertion("dana@acme.example", EXCHANGE_SECRET)], None));
+    assert!(err.contains("ExchangeUnconfigured") && err.contains(".contextful/exchange/policy.toml"), "{err}");
+}
+
+/// `contextful token exchange --dpop <proof>` binds the credential to the proof key; with no
+/// proof it mints a bearer living at most an hour; a failing proof mints nothing.
+#[test]
+fn token_exchange_binds_a_proved_holder_key_and_otherwise_mints_a_short_lived_bearer() {
+    use contextful_core::time::Instant;
+    use contextful_policy::possession::{jwk_thumbprint, sign_proof, ProofRequest};
+    use contextful_policy::verify::introspect;
+
+    let p = project();
+    keygen(p.path());
+    exchange_config(p.path(), EXCHANGE_SECRET);
+    let jwt = assertion("dana@acme.example", EXCHANGE_SECRET);
+    // The body the command builds, which the proof covers.
+    let body = serde_json::json!({ "jwt": jwt }).to_string();
+    let key = ed25519_dalek::SigningKey::from_bytes(&[9; 32]);
+    let at = Instant::parse(MINTED).unwrap();
+    let proof = |body: &str, nonce: &str| {
+        sign_proof(&key, &ProofRequest { method: "POST", target: "/auth/exchange", body: body.as_bytes() }, at, nonce)
+    };
+
+    let token = stdout(&exchange(p.path(), &["--jwt", &jwt, "--dpop", &proof(&body, "cli-1")], None));
+    let minted = introspect(&token).unwrap();
+    assert_eq!(minted.authority.cnf.unwrap().jkt, jwk_thumbprint(key.verifying_key().as_bytes()));
+
+    let token = stdout(&exchange(p.path(), &["--jwt", &jwt], None));
+    let minted = introspect(&token).unwrap();
+    assert!(minted.authority.cnf.is_none());
+    assert!(minted.authority.exp - minted.authority.iat <= 3600);
+
+    let other = serde_json::json!({ "jwt": assertion("eli@acme.example", EXCHANGE_SECRET) }).to_string();
+    let err = stderr(&exchange(p.path(), &["--jwt", &jwt, "--dpop", &proof(&other, "cli-2")], None));
+    assert!(err.contains("ExchangeHolderProofInvalid"), "{err}");
+}

@@ -19,7 +19,9 @@ contextful-engine = { path = "../contextful-engine" }
 # The harness core: case loader, stub embedder, metrics, report, floors and baseline gate.
 contextful-eval = { path = "../../tools/eval" }
 contextful-memory = { path = "../contextful-memory" }
-contextful-policy = { path = "../contextful-policy" }
+# The binary wires `authority.exchange.surface`, the one package enabling the policy
+# package's `exchange` feature (`topology.package.exchange-optional`).
+contextful-policy = { path = "../contextful-policy", features = ["exchange"] }
 contextful-outbound = { path = "../contextful-outbound", default-features = false }
 # The binary is the one package compiling SQLite into the build (`topology.package.sqlite-adapter`).
 contextful-sqlite = { path = "../contextful-sqlite", features = ["bundled"] }
@@ -40,6 +42,8 @@ toml_edit = "0.22"
 ed25519-dalek = "2"
 # The loopback S3 server the S3 sync suite pushes and pulls against.
 contextful-acceptance = { path = "../acceptance" }
+# Signing the external assertions `contextful token exchange` verifies.
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 
 [features]
 default = ["transport-ureq", "component-host", "s3-sync"]

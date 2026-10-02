@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 212 | 56 | 22 | 16 | 100 | 0 | 100 |
-| `authority` | 2 | 16 | 252 | 73 | 27 | 10 | 188 | 0 | 188 |
+| `authority` | 2 | 16 | 263 | 77 | 27 | 10 | 200 | 0 | 200 |
 | `connector` | 2 | 13 | 287 | 76 | 19 | 12 | 161 | 0 | 161 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 215 | 53 | 12 | 17 | 175 | 0 | 175 |
 | `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
 | `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 153 | 1779 | 547 | 183 | 137 | 1094 | 0 | |
+| **total** | 19 | 153 | 1790 | 551 | 183 | 137 | 1106 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
-| 1 — The authority core | 14 | 217 | 164 | passing | closed |
+| 1 — The authority core | 14 | 228 | 176 | passing | closed |
 | 2 — The store | 9 | 152 | 117 | passing | closed |
 | 3 — The run path | 11 | 197 | 125 | passing | closed |
 | 4 — Ingest | 24 | 427 | 244 | passing | open |
@@ -161,15 +161,26 @@ Unscheduled operations: 10.
 | `authority.compose.relations-per-session` | `crates/contextful-policy/tests/integration/enforce/compose.rs::a_session_holds_at_most_1024_relations` | performed |
 | `authority.exchange.assertion-invalid` | `crates/contextful-policy/tests/integration/exchange.rs::a_signed_assertion_failing_any_check_is_invalid_and_mints_nothing` | performed |
 | `authority.exchange.audience` | `crates/contextful-core/tests/integration/exchange.rs::the_minted_audience_falls_back_to_the_persisted_default` | performed |
+| `authority.exchange.bearer-mint` | `crates/contextful-policy/tests/integration/exchange.rs::an_exchange_without_a_proof_mints_a_short_lived_bearer` | performed |
+| `authority.exchange.body-ceiling` | `crates/contextful-policy/tests/integration/exchange.rs::a_body_past_64_kib_mints_nothing_and_is_not_parsed` | performed |
+| `authority.exchange.holder-binding` | `crates/contextful-policy/tests/integration/exchange.rs::a_holder_proof_binds_the_minted_credential_to_the_proof_key` | performed |
+| `authority.exchange.holder-proof-invalid` | `crates/contextful-policy/tests/integration/exchange.rs::an_invalid_holder_proof_is_refused_and_mints_nothing` | performed |
 | `authority.exchange.injected-material` | `crates/contextful-policy/tests/integration/exchange.rs::verifying_material_is_a_secret_a_pem_key_or_a_kid_selected_key_set` | performed |
 | `authority.exchange.lifetime-ceiling` | `crates/contextful-core/tests/integration/exchange.rs::a_configured_ttl_clamps_to_3600_seconds_and_the_issuance_ceiling` | performed |
 | `authority.exchange.lifetime-default` | `crates/contextful-core/tests/integration/exchange.rs::a_policy_without_ttl_mints_900_seconds` | performed |
 | `authority.exchange.material-missing` | `crates/contextful-core/tests/integration/exchange.rs::an_exchange_without_verifying_material_mints_nothing` | performed |
 | `authority.exchange.minted-grants` | `crates/contextful-core/tests/integration/exchange.rs::minted_grants_come_from_role_grants_and_default_grants_alone` | performed |
 | `authority.exchange.no-cross-reader` | `crates/contextful-policy/tests/integration/exchange.rs::a_plan_for_one_reader_never_carries_another_readers_principal` | performed |
+| `authority.exchange.no-extension` | `crates/contextful-policy/tests/integration/exchange.rs::neither_the_exchange_nor_attenuation_extends_a_minted_credentials_expiry` | performed |
 | `authority.exchange.per-reader` | `crates/contextful-policy/tests/integration/exchange.rs::each_readers_assertion_mints_that_readers_short_lived_credential` | performed |
 | `authority.exchange.policy` | `crates/contextful-core/tests/integration/exchange.rs::the_exchange_policy_declares_its_fields` | performed |
+| `authority.exchange.refresh` | `crates/contextful-policy/tests/integration/exchange.rs::a_fresh_assertion_renews_the_credential_as_a_new_one` | performed |
+| `authority.exchange.signing-fault` | `crates/contextful-policy/tests/integration/exchange.rs::a_signing_fault_answers_500_naming_its_identifier_and_withholding_its_detail` | performed |
+| `authority.exchange.status-map` | `crates/contextful-policy/tests/integration/exchange.rs::each_exchange_refusal_answers_its_mapped_status_naming_its_identifier` | performed |
+| `authority.exchange.surface` | `crates/contextful-cli/tests/integration/token.rs::token_exchange_trades_an_assertion_from_the_flag_or_standard_input_for_a_credential` | performed |
 | `authority.exchange.tenant` | `crates/contextful-core/tests/integration/exchange.rs::the_tenant_claim_scopes_every_minted_grant` | performed |
+| `authority.exchange.unconfigured` | `crates/contextful-policy/tests/integration/exchange.rs::an_unconfigured_exchange_refuses_before_reading_the_body` | performed |
+| `authority.exchange.wire` | `crates/contextful-policy/tests/integration/exchange.rs::a_jwt_object_answers_a_token_object_and_any_other_body_answers_400` | performed |
 | `authority.filter-rows.default-deny` | `crates/contextful-context/tests/integration/read/retrieve.rs::an_ungranted_table_yields_no_rows` | performed |
 | `authority.filter-rows.exception` | `crates/contextful-policy/tests/integration/enforce/predicate.rs::an_exception_condition_reads_subject_fields_alone` | performed |
 | `authority.filter-rows.grammar` | `crates/contextful-policy/tests/integration/enforce/predicate.rs::the_grammar_admits_its_typed_boolean_subset` | performed |
@@ -207,6 +218,7 @@ Unscheduled operations: 10.
 | `authority.issue.algorithm` | `crates/contextful-core/tests/integration/issue.rs::a_credential_names_the_pinned_keys_scheme_ed25519_by_default` | performed |
 | `authority.issue.algorithm-mismatch` | `crates/contextful-core/tests/integration/issue.rs::a_named_scheme_other_than_the_pinned_keys_refuses` | performed |
 | `authority.issue.authoring-posture` | `crates/contextful-cli/tests/integration/author.rs::per_request_leaves_an_unaccompanied_write_unauthored_and_session_authors_every_write` | performed |
+| `authority.issue.bearer-cap-fixed` | `crates/contextful-policy/tests/integration/exchange.rs::an_exchange_without_a_proof_mints_a_short_lived_bearer` | performed |
 | `authority.issue.ceiling` | `crates/contextful-core/tests/integration/issue.rs::the_persisted_ceiling_holds_at_most_24_hours` | performed |
 | `authority.issue.ceiling-lowering` | `crates/contextful-cli/tests/integration/token.rs::lower_ceiling_records_the_previous_value_and_rotation_grace_answers_to_it` | performed |
 | `authority.issue.default-key` | `crates/contextful-cli/tests/integration/token.rs::a_mint_naming_no_issuer_key_reads_the_default_seed` | performed |

@@ -47,9 +47,21 @@ pub enum AuthorityError {
     /// An external assertion failing any exchange check. (`authority.exchange.assertion-invalid`)
     #[error("ExchangeAssertionInvalid: {0}")]
     ExchangeAssertionInvalid(String),
+    /// An exchange request body past the ceiling. (`authority.exchange.body-ceiling`)
+    #[error("ExchangeBodyTooLarge: {0}")]
+    ExchangeBodyTooLarge(String),
+    /// An exchange request whose holder proof fails verification. (`authority.exchange.holder-proof-invalid`)
+    #[error("ExchangeHolderProofInvalid: {0}")]
+    ExchangeHolderProofInvalid(String),
     /// An exchange configured with no verifying material. (`authority.exchange.material-missing`)
     #[error("ExchangeMaterialMissing: {0}")]
     ExchangeMaterialMissing(String),
+    /// An exchange request body of any shape but `{"jwt": "<assertion>"}`. (`authority.exchange.wire`)
+    #[error("ExchangeRequestMalformed: {0}")]
+    ExchangeRequestMalformed(String),
+    /// An exchange requested of a project declaring no exchange policy. (`authority.exchange.unconfigured`)
+    #[error("ExchangeUnconfigured: {0}")]
+    ExchangeUnconfigured(String),
     /// An action outside the four-verb vocabulary. (`authority.grant.unknown-action`)
     #[error("GrantActionUnknown: {0}")]
     GrantActionUnknown(String),

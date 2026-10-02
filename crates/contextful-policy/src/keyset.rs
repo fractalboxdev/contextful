@@ -336,3 +336,9 @@ impl<C: Clock> KeyCheckpoint<C> {
         verify_proof(cnf_jkt, proof, request, &self.clock, &mut nonces)
     }
 }
+
+impl<C: Clock> crate::possession::ProofVerifier for KeyCheckpoint<C> {
+    fn verify_request(&self, cnf_jkt: &str, proof: &str, request: &ProofRequest<'_>) -> Result<(), ProofRefusal> {
+        KeyCheckpoint::verify_request(self, cnf_jkt, proof, request)
+    }
+}
