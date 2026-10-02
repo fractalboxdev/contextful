@@ -22,7 +22,7 @@ FilePreviewNotATable          = { clause = "read.register.file-preview-target", 
 LedgerNotTenantScoped         = { clause = "read.register.scoped-ledger", gloss = "A tenant-scoped token named the request-ledger child relation." }
 StatementNotReadOnly          = { clause = "read.guard.single-read-only-statement", gloss = "Admitted text did not parse to exactly one read-only SELECT." }
 QueryNotOneStatement          = { clause = "read.query.one-statement", gloss = "Operator text held other than exactly one statement." }
-QueryProjectAbsent            = { clause = "read.query.project-store", gloss = "The named or discovered project held no store on disk." }
+QueryProjectAbsent            = { clause = "read.query.project-store", gloss = "A `--project` named no store on disk." }
 TableFunctionRefused          = { clause = "read.guard.table-function", gloss = "A table function or a schema-qualified catalog reach appeared in caller text." }
 TemplateNamesForeignRelation  = { clause = "read.guard.template-relation-shape", gloss = "A template named a non-store relation or collided with a built-in tool prefix." }
 TemplateArgumentRejected      = { clause = "read.guard.template-binding", gloss = "A template argument was missing, unknown or mistyped." }

@@ -42,7 +42,8 @@ fn manifest(path: &Path, named: bool) -> Result<String> {
 
 /// The verb's project: `--project`, else the one discovery finds
 /// (`read.query.discovered-project`). An undiscovered project is `None` unless a
-/// `--declaration` asks for one (`store.init.undiscovered`).
+/// `--declaration` asks for one (`store.init.undiscovered`); a discovered project whose
+/// store is absent registers nothing.
 fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Option<Located>> {
     let named = declaration.is_some();
     match crate::project::locate(project, declaration) {
@@ -60,9 +61,18 @@ fn undiscovered(e: &anyhow::Error) -> bool {
 pub fn run(args: QueryArgs) -> Result<()> {
     let opts = ReadOptions { limit: args.limit, ..ReadOptions::default() };
     let named = args.declaration.is_some();
-    let response = match locate(args.project.as_deref(), args.declaration)? {
+    let discovered = args.project.is_none();
+    let store = match locate(args.project.as_deref(), args.declaration)? {
         Some(Located { project, declaration }) => {
             let store = Store::open(&project.dir, &project.name)?;
+            // A discovered project's absent store registers nothing; a named one's raises
+            // `QueryProjectAbsent` in the face (`read.query.project-store`).
+            (!discovered || store.root().is_dir()).then_some((store, declaration))
+        }
+        None => None,
+    };
+    let response = match store {
+        Some((store, declaration)) => {
             let face = Face::open(store, &manifest(&declaration, named)?, Pepper::resolve(|k| std::env::var(k).ok()))?;
             face.operator_query(&args.sql, opts)?
         }
