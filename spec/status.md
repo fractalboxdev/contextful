@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 222 | 58 | 22 | 15 | 115 | 0 | 115 |
 | `authority` | 2 | 16 | 263 | 77 | 27 | 10 | 200 | 0 | 200 |
-| `connector` | 2 | 14 | 307 | 80 | 19 | 15 | 175 | 0 | 175 |
+| `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 168 | 28 | 22 | 20 | 149 | 0 | 149 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 228 | 54 | 13 | 19 | 188 | 0 | 188 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1860 | 559 | 185 | 140 | 1196 | 0 | |
+| **total** | 19 | 154 | 1874 | 559 | 187 | 141 | 1216 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 232 | 180 | passing | closed |
 | 2 — The store | 9 | 156 | 121 | passing | closed |
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
-| 4 — Ingest | 25 | 450 | 263 | passing | open |
+| 4 — Ingest | 25 | 464 | 283 | passing | open |
 | 5 — The read face under enforcement | 17 | 246 | 183 | passing | open |
 | 6 — Sync and replicas | 8 | 72 | 67 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
@@ -480,8 +480,14 @@ Unscheduled operations: 10.
 | `connector.source.conditional-get` | `crates/contextful-connectors/tests/integration/conditional.rs::a_not_modified_feed_lands_nothing_and_holds_the_validators` | performed |
 | `connector.source.conditional-position` | `crates/contextful-connectors/tests/integration/conditional.rs::a_conditional_pull_commits_the_validators_alone` | performed |
 | `connector.source.conditional-rejected` | `crates/contextful-connectors/tests/integration/conditional.rs::conditional_beside_a_page_walk_or_an_incremental_field_is_refused` | performed |
+| `connector.source.conversion-required` | `crates/contextful-connectors/tests/integration/file.rs::a_compound_binary_container_refuses_by_extension_or_magic_naming_the_command` | performed |
+| `connector.source.declined-tally` | `crates/contextful-engine/tests/integration/runner.rs::the_run_row_holds_every_pulls_declined_tally_by_extension` | performed |
 | `connector.source.decompression-budget` | `crates/contextful-decode/tests/integration/workbook.rs::an_office_read_decompresses_at_most_64_mib_by_claim_and_by_arrival` | performed |
 | `connector.source.delimited-cell` | `crates/contextful-decode/tests/integration/decode.rs::delimited_cells_land_as_strings_and_empty_unquoted_fields_as_null` | performed |
+| `connector.source.document-columns` | `crates/contextful-connectors/tests/integration/file.rs::a_row_carries_its_columns_and_a_title_from_frontmatter_heading_or_stem` | performed |
+| `connector.source.document-grain` | `crates/contextful-connectors/tests/integration/file.rs::a_note_lands_whole_or_by_heading_and_a_pdf_by_page_each_linked_to_its_anchor` | performed |
+| `connector.source.document-identity` | `crates/contextful-connectors/tests/integration/file.rs::a_note_crossing_the_threshold_keeps_its_first_rows_identity` | performed |
+| `connector.source.document-slug` | `crates/contextful-connectors/tests/integration/file.rs::a_slug_folds_the_path_and_a_collision_names_both_files` | performed |
 | `connector.source.document-unreadable` | `crates/contextful-decode/tests/integration/pdf.rs::an_encrypted_or_textless_document_refuses_whole_naming_it` | performed |
 | `connector.source.drive-bytes` | `crates/contextful-connectors/tests/integration/drive.rs::every_body_read_lands_once_as_the_blob_its_row_names` | performed |
 | `connector.source.drive-export` | `crates/contextful-connectors/tests/integration/drive.rs::docs_sheets_and_slides_export_as_pdf_and_other_files_download` | performed |
@@ -505,9 +511,21 @@ Unscheduled operations: 10.
 | `connector.source.feed-entry-id` | `crates/contextful-decode/tests/integration/feed.rs::an_entry_id_falls_back_to_the_link_and_an_entry_with_neither_refuses` | performed |
 | `connector.source.feed-format` | `crates/contextful-decode/tests/integration/feed.rs::an_atom_and_an_rss_document_land_one_row_per_entry` | performed |
 | `connector.source.feed-published-at` | `crates/contextful-decode/tests/integration/feed.rs::published_at_lands_as_a_utc_instant_or_null_and_an_unreadable_date_refuses` | performed |
+| `connector.source.file-cap` | `crates/contextful-connectors/tests/integration/file.rs::a_file_over_the_cap_is_declined_unread` | performed |
+| `connector.source.file-globs` | `crates/contextful-connectors/tests/integration/file.rs::include_and_exclude_globs_select_root_relative_paths` | performed |
+| `connector.source.file-no-follow` | `crates/contextful-connectors/tests/integration/file.rs::the_walk_follows_no_symbolic_link` | performed |
+| `connector.source.file-pdf-absent` | `crates/contextful-connectors/tests/integration/file.rs::a_pdf_without_a_decoder_names_the_feature_to_rebuild_with` | performed |
+| `connector.source.file-position` | `crates/contextful-connectors/tests/integration/file.rs::a_second_read_relands_what_changed_and_tombstones_what_left` | performed |
+| `connector.source.file-position-owned` | `crates/contextful-cli/tests/integration/document.rs::an_incremental_field_beside_the_file_source_refuses_at_validation` | performed |
+| `connector.source.file-rename` | `crates/contextful-connectors/tests/integration/file.rs::a_rename_onto_the_same_slug_keeps_the_renamed_rows` | performed |
+| `connector.source.file-source` | `crates/contextful-connectors/tests/integration/file.rs::notes_text_and_pdfs_land_and_every_other_extension_is_declined_by_extension` | performed |
+| `connector.source.file-table-unmatched` | `crates/contextful-connectors/tests/integration/file.rs::a_table_other_than_documents_refuses` | performed |
 | `connector.source.format-key-mismatch` | `crates/contextful-connectors/tests/integration/http.rs::a_json_key_on_another_format_is_refused_at_build` | performed |
+| `connector.source.frontmatter-columns` | `crates/contextful-connectors/tests/integration/file.rs::frontmatter_keys_land_as_string_columns_on_every_row` | performed |
+| `connector.source.frontmatter-shape` | `crates/contextful-connectors/tests/integration/file.rs::a_nested_map_block_scalar_or_reserved_key_in_frontmatter_refuses` | performed |
 | `connector.source.github-recipe` | `crates/contextful-connectors/tests/integration/github.rs::the_recipe_lands_issues_without_pull_requests_and_stamps_the_repository` | performed |
 | `connector.source.github-recipe-keys` | `crates/contextful-cli/tests/integration/pipeline.rs::the_github_recipe_lands_one_row_per_key_across_polls` | performed |
+| `connector.source.heading-threshold` | `crates/contextful-connectors/tests/integration/file.rs::a_note_splits_by_heading_only_past_the_threshold` | performed |
 | `connector.source.http-headers` | `crates/contextful-connectors/tests/integration/http.rs::header_templates_hydrate_onto_each_read` | performed |
 | `connector.source.http-limiter` | `crates/contextful-cli/tests/integration/pipeline.rs::a_bound_quota_meters_every_page_of_a_run` | performed |
 | `connector.source.http-page-pull` | `crates/contextful-connectors/tests/integration/http.rs::a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page` | performed |
@@ -528,10 +546,12 @@ Unscheduled operations: 10.
 | `connector.source.page-loop` | `crates/contextful-connectors/tests/integration/http.rs::a_repeated_token_is_a_page_loop` | performed |
 | `connector.source.pagination` | `crates/contextful-connectors/tests/integration/http.rs::each_pagination_shape_walks_to_its_end` | performed |
 | `connector.source.pagination-ambiguity` | `crates/contextful-connectors/tests/integration/http.rs::two_pagination_shapes_are_refused` | performed |
+| `connector.source.parse-containment` | `crates/contextful-connectors/tests/integration/file.rs::a_pdf_decodes_in_a_child_process_and_its_crash_fails_the_read_alone` | performed |
 | `connector.source.placeholder-unbound` | `crates/contextful-connectors/tests/integration/http.rs::a_placeholder_other_than_the_table_is_refused_at_build` | performed |
 | `connector.source.prefix-listing` | `crates/contextful-connectors/tests/integration/object.rs::a_prefix_lands_each_listed_object_in_key_order_and_latest_lands_one` | performed |
 | `connector.source.table-pattern` | `crates/contextful-cli/tests/integration/pipeline.rs::each_table_binds_its_segment_and_keeps_its_own_position` | performed |
 | `connector.source.table-unmatched` | `crates/contextful-connectors/tests/integration/http.rs::a_table_off_the_pattern_is_refused_before_any_request` | performed |
+| `connector.source.walk-boundary` | `crates/contextful-connectors/tests/integration/file.rs::the_walk_stays_under_the_root_skips_dot_entries_and_visits_in_sorted_order` | performed |
 | `connector.source.workbook-cell-typing` | `crates/contextful-decode/tests/integration/workbook.rs::cells_land_as_strings_a_date_as_its_serial_and_a_formula_as_its_cached_value` | performed |
 | `connector.source.workbook-incremental` | `crates/contextful-connectors/tests/integration/workbook.rs::an_incremental_position_against_a_workbook_is_refused` | performed |
 | `connector.source.worksheet-landing` | `crates/contextful-decode/tests/integration/workbook.rs::a_worksheet_lands_at_most_64_mib_of_resolved_text_and_1048576_rows` | performed |
