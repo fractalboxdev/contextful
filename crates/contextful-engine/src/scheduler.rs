@@ -163,14 +163,16 @@ impl Scheduler {
     }
 
     /// The start of `id`'s newest run: this catalog's journal or another node's run state,
-    /// whichever is later (`surface.arm.pulled-history`).
-    fn last_run(&self, id: &str) -> Result<Option<Instant>, Failure> {
-        Ok(self.catalog.last_run_start(id)?.max(self.pulled.get(id).copied()))
+    /// whichever is later (`surface.arm.pulled-history`). A pulled start after `now` counts as
+    /// none (`surface.arm.pulled-future`).
+    fn last_run(&self, id: &str, now: Instant) -> Result<Option<Instant>, Failure> {
+        let pulled = self.pulled.get(id).copied().filter(|at| *at <= now);
+        Ok(self.catalog.last_run_start(id)?.max(pulled))
     }
 
     fn next_of(&self, e: &Entry, now: Instant) -> Result<Instant, Failure> {
         let armed_at = self.armed_at.get(&e.id).copied().unwrap_or(now);
-        Ok(next_fire(&e.schedule, self.last_run(&e.id)?, self.last_dispatch.get(&e.id).copied(), armed_at))
+        Ok(next_fire(&e.schedule, self.last_run(&e.id, now)?, self.last_dispatch.get(&e.id).copied(), armed_at))
     }
 
     /// One evaluation of the armed set.

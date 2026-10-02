@@ -76,7 +76,7 @@ fn a_run_state_of_a_newer_format_contributes_nothing() {
 
 /// A generation pull holds no run state to `store.pull.generation-diverged`: a run state the generation does not
 /// list stays as it is. A project name of several segments reads its run states alike.
-// spec: store.pull.generation-run-state@cfa92451
+// spec: store.pull.generation-run-state@ba323cb2
 #[test]
 fn a_restore_keeps_a_run_state_its_generation_does_not_list() {
     for project in ["research", "acme/research"] {
@@ -87,6 +87,23 @@ fn a_restore_keeps_a_run_state_its_generation_does_not_list() {
         let path = run_state::record(&a.syncer.store, &state(&a, "f1", "2030-01-01T00:00:00Z", None)).unwrap();
         a.syncer.pull(&PullScope { generation: Some(1), ..PullScope::default() }).unwrap_or_else(|e| panic!("{project}: {e}"));
         assert!(path.exists(), "{project}");
+    }
+}
+
+/// A generation pull exempts only `nodes/<node-id>/run-state.json`: any other file under `nodes/` the generation
+/// does not list raises `SyncGenerationDiverged`.
+#[test]
+fn a_restore_refuses_another_file_under_nodes() {
+    for stray in ["nodes/ingest-e/other.json", "nodes/x.json", "nodes/ingest-e/deeper/run-state.json"] {
+        let dir = tempfile::tempdir().unwrap();
+        let a = node("ingest-a", bucket(dir.path()), "");
+        a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+        a.syncer.push(at(NOW)).unwrap();
+        let path = a.syncer.store.root().join(stray);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"{}").unwrap();
+        let err = a.syncer.pull(&PullScope { generation: Some(1), ..PullScope::default() }).unwrap_err();
+        assert!(matches!(err, contextful_sync::SyncError::Store(contextful_core::store::StoreError::SyncGenerationDiverged(_))), "{stray}: {err}");
     }
 }
 

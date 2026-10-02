@@ -525,7 +525,7 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *because a kept unlisted run adds rows the generation never held, and deleting it loses unpushed work*
 - `generation-schema` — A generation pull takes each `schema.json` as the bucket holds it, merged per {{store.pull.schema-merge}}, never refusing on its generation digest.
   *because the lattice keeps every column an earlier generation carried, and the merged copy replaces the old one in the bucket*
-- `generation-run-state` — A generation pull holds no run state to {{store.pull.generation-diverged}}: a run state the generation does not list stays as it is.
+- `generation-run-state` — A generation pull holds no `nodes/<node-id>/run-state.json` to {{store.pull.generation-diverged}}: one the generation does not list stays as it is, and any other unlisted file under `nodes/` meets that refusal.
   *because a run state summarizes history outside the store root, and a restore predating it otherwise refuses every node that pushed since*
 - `run-state-cursor` — A run opening where a pulled run state records a commit marker for its pipeline and table newer than every local one resumes from that marker's cursor.
   *because a collected run takes its manifest's cursor out of the bucket, and a cold node otherwise re-reads the source from its start*

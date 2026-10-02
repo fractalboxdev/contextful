@@ -99,3 +99,20 @@ fn a_cold_node_keeps_the_cadence_another_node_fired() {
     assert_eq!(serve_cycle(b.path(), "2030-01-01T01:00:00Z")["fired"], serde_json::json!(["shop"]));
     assert_eq!(vendor.targets().len(), 2, "{:?}", vendor.targets());
 }
+
+/// A pulled run start later than the scheduler's current instant counts as no start.
+// spec: surface.arm.pulled-future@71e2e5b2
+#[test]
+fn a_future_dated_run_state_leaves_a_cold_nodes_cadence_alone() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"s1\",\"at\":5}]".into()));
+    let bucket = tempfile::tempdir().unwrap();
+    let a = scheduled_shop("ingest-a", bucket.path(), &vendor);
+    fire(a.path(), "f1", "2031-06-01T00:00:00Z");
+    ok(&cf(a.path(), &["sync", "push", "--project", "research"], &[]));
+
+    let b = scheduled_shop("ingest-b", bucket.path(), &vendor);
+    ok(&cf(b.path(), &["sync", "pull", "--project", "research"], &[]));
+    let cycle = serve_cycle(b.path(), "2030-01-02T00:00:00Z");
+    assert_eq!(cycle["fired"], serde_json::json!(["shop"]), "{cycle}");
+    assert_eq!(cycle["next_due"], "2030-01-02T01:00:00Z", "{cycle}");
+}

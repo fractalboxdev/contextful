@@ -7,7 +7,7 @@ use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer};
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
-    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, BucketManifest, Coordination, Entry, SyncConfig,
+    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, run_state_node, BucketManifest, Coordination, Entry, SyncConfig,
     GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
 };
 use contextful_core::store::StoreError;
@@ -537,7 +537,7 @@ impl Syncer {
                 let listed = self.generation_manifest(n)?;
                 let local = self.local_entries()?;
                 // A run state is a summary, not rows: one the generation does not list stays (`store.pull.generation-run-state`).
-                let run_state = |k: &str| k.strip_prefix(&format!("{}/", self.project)).is_some_and(|r| r.starts_with(&format!("{}/", crate::run_state::NODES_DIR)));
+                let run_state = |k: &str| run_state_node(k).is_some_and(|n| k == format!("{}/nodes/{n}/run-state.json", self.project));
                 if let Some(extra) = local.keys().find(|k| in_project(k) && reaches(k) && !run_state(k) && !listed.entries.contains_key(*k)) {
                     return Err(StoreError::SyncGenerationDiverged(format!(
                         "`{extra}` is in this store and generation {n} does not list it; restore generation {n} into a store holding none of its files"

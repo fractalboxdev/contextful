@@ -147,6 +147,20 @@ fn a_run_another_node_started_defers_the_next_fire() {
     s.drain();
 }
 
+/// A pulled run start later than the scheduler's current instant counts as no start.
+#[test]
+fn a_pulled_run_start_in_the_future_defers_nothing() {
+    let (rig, rec) = rig_with(None);
+    rig.clock.advance(600);
+    let mut s = scheduler(&rig, &rec, 4);
+    s.arm(1, vec![hourly("feed")]).unwrap();
+    s.observe_runs([("feed".to_string(), at("2031-06-01T00:00:00Z"))].into());
+    assert_eq!(s.next_due().unwrap(), Some(at(T0).plus_secs(600)));
+    assert_eq!(s.beat().unwrap().started, ["feed"]);
+    s.drain();
+    assert_eq!(s.next_due().unwrap(), Some(at(T0).plus_secs(600 + 3600)));
+}
+
 /// A beat takes the cadence lease before it dispatches, and a held lease dispatches nothing until it lapses.
 #[test]
 fn a_held_cadence_lease_dispatches_nothing() {

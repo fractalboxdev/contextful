@@ -75,6 +75,8 @@ The schedule grammar and cron dialect, the trigger adapter and its durability, t
   *because replaying each missed interval against an incremental source pulls the same delta once per interval*
 - `pulled-history` — A pipeline's last journaled run start is the latest start across this node's catalog and every run state {{store.push.run-state}} carries that records the pipeline.
   *because a cold node's empty catalog otherwise finds every scheduled entry due at once*
+- `pulled-future` — A pulled run start later than the scheduler's current instant counts as no start for {{surface.arm.pulled-history}}.
+  *because one node's fast clock or one bucket writer otherwise defers every replica's cadence until that instant*
 
 Both trigger adapters reach one due-ness function:
 
