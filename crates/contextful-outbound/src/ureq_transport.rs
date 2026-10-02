@@ -1,4 +1,4 @@
-//! The ureq adapter of the transport port, behind the default-on `transport-ureq` feature.
+//! The ureq adapter of the transport port, behind the `transport-ureq` feature.
 //! Its resolver answers only the addresses a send hands it, so a connect uses the address
 //! the client vetted with no second lookup (`connector.attach.resolve-once`).
 
