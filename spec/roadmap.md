@@ -148,8 +148,6 @@ Acceptance: `contextful_acceptance::m09::m09_visibility`
 
 Reach: Due work dispatches into a bounded pool, and a published hostname is probed for the posture it declares.
 
-Depth: operation
-
 Acceptance: `contextful_acceptance::m10::m10_cadence`
 
 ## 11 — The derive tier

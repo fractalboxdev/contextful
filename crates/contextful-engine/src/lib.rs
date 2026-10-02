@@ -6,6 +6,7 @@ pub mod cancel;
 pub mod catalog;
 pub mod command;
 pub mod conformance;
+pub mod control;
 pub mod drive;
 pub mod execution;
 pub mod fsutil;
@@ -13,6 +14,8 @@ pub mod guard;
 pub mod journal;
 pub mod project;
 pub mod runner;
+pub mod scheduler;
+pub mod stop;
 pub mod stores;
 
 pub use catalog::LocalCatalog;

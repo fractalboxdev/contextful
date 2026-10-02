@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS run (
     pipeline_id TEXT NOT NULL,
     row         TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS run_by_pipeline ON run (pipeline_id);
 ";
 
 /// The machine-local catalog in one SQLite file.
@@ -327,15 +328,40 @@ impl Catalog for MachineCatalog {
 
     fn runs(&self, pipeline_id: Option<&str>) -> Result<Vec<RunRow>, Failure> {
         self.with(false, |tx, fail| {
-            let mut stmt = tx
-                .prepare("SELECT row FROM run WHERE ?1 IS NULL OR pipeline_id = ?1 ORDER BY run_id")
-                .map_err(|e| fail(&e))?;
-            let texts = stmt
+            // One statement per shape: `?1 IS NULL OR pipeline_id = ?1` rules out the index.
+            let sql = match pipeline_id {
+                Some(_) => "SELECT row FROM run WHERE pipeline_id = ?1 ORDER BY run_id",
+                None => "SELECT row FROM run ORDER BY run_id",
+            };
+            let mut stmt = tx.prepare(sql).map_err(|e| fail(&e))?;
+            let text = |r: &rusqlite::Row| r.get::<_, String>(0);
+            let texts = match pipeline_id {
+                Some(p) => stmt.query_map(params![p], text),
+                None => stmt.query_map([], text),
+            }
+            .map_err(|e| fail(&e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| fail(&e))?;
+            texts.iter().map(|t| from_text(t, fail)).collect()
+        })
+    }
+
+    fn last_run_start(&self, pipeline_id: &str) -> Result<Option<Instant>, Failure> {
+        self.with(false, |tx, fail| {
+            // Starts compare as instants, not as text: RFC 3339 spells a whole second shorter
+            // than a fractional one, so a string maximum misorders the two.
+            let mut stmt = tx.prepare("SELECT json_extract(row, '$.started_at') FROM run WHERE pipeline_id = ?1").map_err(|e| fail(&e))?;
+            let starts = stmt
                 .query_map(params![pipeline_id], |r| r.get::<_, String>(0))
                 .map_err(|e| fail(&e))?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| fail(&e))?;
-            texts.iter().map(|t| from_text(t, fail)).collect()
+            let mut newest: Option<Instant> = None;
+            for s in starts {
+                let at = Instant::parse(&s).map_err(|e| fail(&e))?;
+                newest = Some(newest.map_or(at, |n| n.max(at)));
+            }
+            Ok(newest)
         })
     }
 

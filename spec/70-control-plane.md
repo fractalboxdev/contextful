@@ -68,6 +68,11 @@ The schedule grammar and cron dialect, the trigger adapter and its durability, t
 - `wake-answer` — A wake answers within 25 s with what fired, what failed, what stays armed and the next due instant, naming each fire still in flight as pending.
   *because a platform request timeout otherwise ends the call before the caller learns anything*
 - `tick-interval` — The in-process adapter evaluates the armed set every 500 ms.
+- `grammar` — A schedule is `every <n><unit>` with unit `s`, `m`, `h` or `d`, or a UTC cron expression of five fields, minute, hour, day of month, month and day of week, each `*`, a value, range, list or `/` step.
+- `next-fire-from-history` — An armed entry's next fire is the first instant its schedule admits after the later of its pipeline's last journaled run start and its last dispatch; an entry with neither is due when armed.
+  *because a restarted daemon then keeps the cadence its run history shows instead of restarting every interval from boot*
+- `catch-up` — A daemon arming an entry whose next fire has passed fires it once, whatever count of intervals elapsed, and arms the following fire from that run.
+  *because replaying each missed interval against an incremental source pulls the same delta once per interval*
 
 Both trigger adapters reach one due-ness function:
 
@@ -108,6 +113,8 @@ The control source, the snapshot pointer and its versions, the pure schedule dif
   *A-surface*
 - `loopback-only` — A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.
   *A-surface*
+- `url-layout` — A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.
+  *because one layout serves a snapshot directory unchanged over loopback HTTP*
 
 One reconciler beat, polled every 30 s by default:
 
@@ -149,6 +156,7 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *A-surface*
 - `store-driven-body` — A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered` at validation.
   *A-surface*
+- `cycle` — `serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.
 
 ## dispatch
 
@@ -164,6 +172,12 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
   *because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely*
 - `heartbeat-beat` — A worker heartbeat runs every 15 s.
 - `heartbeat-lapse` — A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.
+- `pool-bound` — A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.
+  *because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added*
+- `exclusion-key` — A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.
+  *because two fires of one pipeline race for one cursor*
+- `lease-gated` — A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.
+  *because two daemons reading one snapshot otherwise fire every due unit twice*
 
 One step on a worker target, from submit to an accepted or rejected callback:
 
@@ -194,8 +208,6 @@ sequenceDiagram
   end
 ```
 
-unsettled: Is the fire pool's bound one number per deployment or one per exclusion key? owner: control affects: surface.dispatch
-
 ## edit
 
 The configuration document, the records it presents read-only, the structured schedule specification, and connector configuration.
@@ -219,6 +231,8 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
   *A-surface*
 - `uninitialized-store` — An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.
   *P3*
+- `local-claim` — A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.
+  *because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself*
 
 One apply through the engine's store-scoped API:
 
@@ -250,8 +264,6 @@ sequenceDiagram
   end
 ```
 
-unsettled: Can a local control plane validate and claim a version on its own, or does every apply route through a hosted one? owner: control affects: surface.apply
-
 ## reside
 
 Where the data plane runs, the region allow-set gating placement, and operation with no external reach.
@@ -268,8 +280,9 @@ A daemon's own configuration, the control wiring and its operator-local jobs:
 
 ```toml
 [control]
-snapshot_dir = "./.contextful/control"   # or url = "http://127.0.0.1:8787/control"
+snapshot_dir = "./.contextful/control/research"   # or url = "http://127.0.0.1:8787/control"
 poll         = "every 30s"
+pool         = 4
 
 [[job]]
 name     = "nightly-fold"

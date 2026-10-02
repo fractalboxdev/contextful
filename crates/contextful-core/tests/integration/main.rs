@@ -14,6 +14,7 @@ mod read;
 mod revoke;
 mod run;
 mod store;
+mod surface;
 mod time;
 
 /// Record a ledger measure's figure when `contextful-ci measure` collects records. The

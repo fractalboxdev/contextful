@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 83 | 64 | 13 | 13 | 27 | 0 | 27 |
 | `read` | 2 | 15 | 164 | 28 | 22 | 20 | 139 | 0 | 139 |
-| `run` | 3 | 26 | 359 | 96 | 35 | 35 | 240 | 0 | 240 |
+| `run` | 3 | 26 | 359 | 96 | 35 | 35 | 242 | 0 | 242 |
 | `store` | 1 | 17 | 215 | 53 | 12 | 17 | 175 | 0 | 175 |
-| `surface` | 2 | 19 | 64 | 43 | 21 | 9 | 3 | 0 | 3 |
-| `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 23 | 0 | 23 |
-| **total** | 19 | 153 | 1790 | 551 | 183 | 137 | 1106 | 0 | |
+| `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
+| `topology` | 1 | 6 | 66 | 21 | 5 | 5 | 24 | 0 | 24 |
+| **total** | 19 | 153 | 1799 | 551 | 184 | 135 | 1125 | 0 | |
 
 Decision records: 18.
 
@@ -28,14 +28,14 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 228 | 176 | passing | closed |
 | 2 — The store | 9 | 152 | 117 | passing | closed |
-| 3 — The run path | 11 | 197 | 125 | passing | closed |
-| 4 — Ingest | 24 | 427 | 244 | passing | open |
+| 3 — The run path | 11 | 197 | 126 | passing | closed |
+| 4 — Ingest | 24 | 427 | 246 | passing | open |
 | 5 — The read face under enforcement | 17 | 242 | 173 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
 | 8 — Accountability | 5 | 40 | 20 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 44 | 3 | open | open |
+| 10 — Cadence and the operator plane | 11 | 53 | 19 | open | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
@@ -737,9 +737,11 @@ Unscheduled operations: 10.
 | `run.cancel.poll-interval` | `crates/contextful-engine/tests/integration/cancel.rs::the_token_reads_the_catalog_before_the_first_await_and_every_500_ms` | performed |
 | `run.cancel.re-mark` | `crates/contextful-core/tests/integration/run/cancel.rs::a_second_mark_overwrites_the_first` | performed |
 | `run.cancel.storage-blip` | `crates/contextful-engine/tests/integration/cancel.rs::a_failed_poll_keeps_polling` | performed |
+| `run.declare.apply-fires-nothing` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_fires_nothing_and_a_second_apply_is_a_no_op` | performed |
 | `run.declare.config-key` | `crates/contextful-connectors/tests/integration/http.rs::an_unknown_config_key_is_refused_naming_the_accepted_keys` | performed |
 | `run.declare.content-hash` | `crates/contextful-core/tests/integration/pipeline/declare.rs::an_explicit_default_hashes_as_its_absence` | performed |
 | `run.declare.duplicate-id` | `crates/contextful-cli/tests/integration/pipeline.rs::one_id_declared_twice_names_both_declarations` | performed |
+| `run.declare.lifecycle-verbs` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_reconciles_continuously_and_rearms_each_applied_version` | performed |
 | `run.declare.manifest-file` | `crates/contextful-cli/tests/integration/pipeline.rs::specifications_come_from_the_project_manifest_then_the_pipelines_directory` | performed |
 | `run.declare.manifest-missing` | `crates/contextful-cli/tests/integration/pipeline.rs::validate_over_no_manifest_is_refused` | performed |
 | `run.declare.pipeline-spec` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_specification_carries_three_required_and_eleven_optional_keys` | performed |
@@ -1127,13 +1129,30 @@ Unscheduled operations: 10.
 | `store.reserve.table-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_table_inside_a_reserved_namespace_is_refused` | performed |
 | `store.reserve.taint` | `crates/contextful-context/tests/integration/reserve.rs::a_model_output_row_carries_the_engine_taint_and_no_other_row_does` | performed |
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |
+| `surface.apply.local-claim` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_claims_a_version_in_the_local_snapshot_directory` | performed |
+| `surface.apply.validation` | `crates/contextful-cli/tests/integration/pipeline.rs::an_invalid_document_claims_no_version` | performed |
+| `surface.apply.version-race` | `crates/contextful-engine/tests/integration/control.rs::a_lost_claim_conflicts_and_overwrites_nothing` | performed |
+| `surface.arm.catch-up` | `crates/contextful-engine/tests/integration/scheduler.rs::a_daemon_booting_past_missed_intervals_fires_once` | performed |
+| `surface.arm.grammar` | `crates/contextful-core/tests/integration/surface/arm.rs::a_schedule_is_an_interval_or_a_five_field_cron` | performed |
+| `surface.arm.next-fire-from-history` | `crates/contextful-core/tests/integration/surface/arm.rs::the_next_fire_counts_from_the_run_history` | performed |
+| `surface.arm.tick-interval` | `crates/contextful-core/tests/integration/surface/arm.rs::the_tick_is_500_ms` | performed |
+| `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
+| `surface.dispatch.exclusion-key` | `crates/contextful-core/tests/integration/surface/dispatch.rs::a_key_in_flight_starts_no_second_instance` | performed |
+| `surface.dispatch.lease-gated` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_under_a_running_daemon_arms_nothing_and_names_the_holder` | performed |
+| `surface.dispatch.pool-bound` | `crates/contextful-core/tests/integration/surface/dispatch.rs::the_pool_starts_at_most_its_bound` | performed |
+| `surface.fire.cycle` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_fires_what_is_due_once_and_reports_the_next_instant` | performed |
+| `surface.fire.cycle-control-source` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_no_applied_snapshot_is_refused` | performed |
 | `surface.fire.job-kind-unknown` | `crates/contextful-core/tests/integration/job.rs::a_kind_outside_the_union_or_a_command_raises_job_kind_unknown` | performed |
 | `surface.fire.store-driven-body` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered` | performed |
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
+| `surface.reconcile.loopback-only` | `crates/contextful-cli/tests/integration/pipeline.rs::a_control_url_outside_loopback_arms_nothing` | performed |
+| `surface.reconcile.pointer-malformed` | `crates/contextful-core/tests/integration/surface/control.rs::a_pointer_is_wholly_a_version` | performed |
+| `surface.reconcile.url-layout` | `crates/contextful-cli/tests/integration/pipeline.rs::a_loopback_control_url_serves_the_applied_snapshot` | performed |
 | `topology.compose.script-runtime` | `tools/ci/tests/integration/topology.rs::a_crate_linking_a_javascript_runtime_is_refused` | performed |
 | `topology.compose.undeclared-crossing` | `tools/ci/tests/integration/topology.rs::a_run_path_crate_reaching_a_read_path_crate_is_refused` | performed |
 | `topology.compose.vendor-sdk` | `tools/ci/tests/integration/topology.rs::a_crate_declaring_a_model_vendor_sdk_is_refused` | performed |
 | `topology.compose.workspace` | `tools/ci/tests/integration/topology.rs::one_workspace_compiles_every_package_and_ships_one_binary` | performed |
+| `topology.coordinate.cadence-lease-renewal` | `crates/contextful-engine/tests/integration/scheduler.rs::the_cadence_lease_renews_every_30_s` | performed |
 | `topology.coordinate.cadence-lease-ttl` | `crates/contextful-engine/tests/integration/coordinate.rs::a_cadence_lease_lives_90_s` | performed |
 | `topology.coordinate.catalog-clock` | `crates/contextful-engine/tests/integration/coordinate.rs::expiry_is_read_on_the_catalogs_clock` | performed |
 | `topology.coordinate.cursor-cas` | `crates/contextful-engine/tests/integration/coordinate.rs::a_cursor_update_is_predicated_on_the_stored_version` | performed |

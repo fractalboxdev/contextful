@@ -20,6 +20,7 @@ pub mod read;
 pub mod revoke;
 pub mod run;
 pub mod store;
+pub mod surface;
 pub mod time;
 pub mod topology;
 
