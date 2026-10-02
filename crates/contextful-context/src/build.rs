@@ -510,6 +510,7 @@ mod materialize {
             let manifest = SnapshotManifest {
                 snapshot_id: snapshot_id.clone(),
                 parent: parent.clone(),
+                ancestors: SnapshotManifest::ancestors_after(chain.first()),
                 table: spec.id.clone(),
                 created_at: req.started_at,
                 includes_runs: Vec::new(),

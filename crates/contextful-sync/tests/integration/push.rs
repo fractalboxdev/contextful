@@ -1,8 +1,8 @@
 //! `store.push`, `store.probe` and `store.merge` through the syncer.
 
 use crate::support::{at, bucket, node, Script, Scripted};
-use contextful_core::store::object::{ObjectError, ObjectStore, Put};
-use contextful_core::store::sync::{BucketManifest, Coordination};
+use contextful_core::store::object::{Condition, ObjectError, ObjectStore, Put};
+use contextful_core::store::sync::{generation_key, BucketManifest, Coordination};
 use contextful_core::store::StoreError;
 use contextful_sync::{FsBucket, SyncError, VolumeClass};
 use serde_json::json;
@@ -15,9 +15,9 @@ fn manifest(b: &dyn ObjectStore) -> BucketManifest {
 }
 
 /// A push uploads each file it owns, or no node owns, whose digest the bucket lacks under
-/// `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks, staging directories
-/// and table pointers stay local.
-// spec: store.push.wire-format@eee2b392
+/// `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks and staging directories
+/// stay local, and table pointers travel by {{store.push.pointer-carry}}.
+// spec: store.push.wire-format@cc766ab8
 #[test]
 fn a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local() {
     let dir = tempfile::tempdir().unwrap();
@@ -273,4 +273,209 @@ fn exhausted_rounds_refuse_and_report_every_uploaded_object() {
         other => panic!("{other:?}"),
     }
     assert!(inner.get("team/research/tables/filings/data/runs/run-1/ingest-a/part-00000.parquet").unwrap().is_some(), "the object is durable");
+}
+
+const POINTER: &str = "team/research/tables/filings/_pointer.json";
+
+fn bucket_pointer(b: &dyn ObjectStore) -> Option<serde_json::Value> {
+    b.get(POINTER).unwrap().map(|(bytes, _)| serde_json::from_slice(&bytes).unwrap())
+}
+
+fn folded(n: &crate::support::Node, now: &str) -> String {
+    use contextful_core::store::fold::FoldOutcome;
+    let decl = contextful_core::store::declare::TableDecl::named("filings");
+    let FoldOutcome::Folded { snapshot_id, .. } = contextful_context::fold::fold(&n.syncer.store, &decl, at(now)).unwrap() else { panic!("nothing folded") };
+    snapshot_id
+}
+
+fn files(n: &crate::support::Node) -> Vec<String> {
+    let decl = contextful_core::store::declare::TableDecl::named("filings");
+    contextful_context::scan::scan(&n.syncer.store, &decl, Default::default()).unwrap().files
+}
+
+/// After its manifest commit, a push publishes each local table pointer whose snapshot is whole and whose
+/// {{store.lay-out.ancestors}} name the bucket pointer's, or the bucket pointer names none, by a conditional put
+/// keeping the bucket's fence.
+// spec: store.push.pointer-carry@1a90af7f
+#[test]
+fn a_push_carries_a_local_folds_pointer_and_a_second_node_reads_its_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}, {"id": 2}]), "2030-01-01T00:00:00Z");
+    let first = folded(&a, NOW);
+    let report = a.syncer.push(at(NOW)).unwrap();
+    assert_eq!(report.pointers, ["research/tables/filings/_pointer.json"]);
+    assert_eq!(bucket_pointer(b.as_ref()).unwrap(), json!({"snapshot_id": first, "fence": 0}));
+    let m = manifest(b.as_ref());
+    assert_eq!(m.pointers["research/tables/filings/_pointer.json"].snapshot_id.as_deref(), Some(first.as_str()), "the generation names the carried pointer");
+    assert_eq!((report.generation, m.generation), (2, 2), "a second commit records the published pointer");
+    assert_eq!(generation_pointer(b.as_ref(), 1), None, "the first commit precedes the publish");
+    assert_eq!(generation_pointer(b.as_ref(), 2), Some(first.clone()));
+    // A second push carries nothing the bucket already names.
+    assert!(a.syncer.push(at(NOW)).unwrap().pointers.is_empty());
+
+    // A cold node pulls the pointer with the snapshot it names.
+    let c = node("ingest-b", b.clone(), "");
+    let pulled = c.syncer.pull(&contextful_sync::PullScope::default()).unwrap();
+    assert_eq!(pulled.pointers, ["research/tables/filings/_pointer.json"]);
+    assert_eq!(files(&c), [format!("tables/filings/data/snapshots/{first}/part-00000.parquet")]);
+
+    // A later fold descends from the published snapshot and replaces it under the bucket's fence.
+    a.land("run-2", json!([{"id": 3}]), "2030-01-01T02:00:00Z");
+    let second = folded(&a, "2030-01-01T03:00:00Z");
+    assert_eq!(a.syncer.push(at("2030-01-01T03:00:00Z")).unwrap().pointers.len(), 1);
+    assert_eq!(bucket_pointer(b.as_ref()).unwrap()["snapshot_id"], json!(second));
+
+    // A snapshot descending from none the bucket names stays local.
+    let d = node("ingest-d", b.clone(), "");
+    d.land("run-9", json!([{"id": 9}]), "2030-01-01T04:00:00Z");
+    folded(&d, "2030-01-01T05:00:00Z");
+    assert!(d.syncer.push(at("2030-01-01T05:00:00Z")).unwrap().pointers.is_empty());
+    assert_eq!(bucket_pointer(b.as_ref()).unwrap()["snapshot_id"], json!(second));
+}
+
+/// A push publishes no pointer for a table whose compaction lease a holder keeps unexpired; that holder publishes
+/// under its fence.
+// spec: store.push.pointer-leased@3cb569bd
+#[test]
+fn a_push_leaves_a_leased_tables_pointer_to_the_lease_holder() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""));
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    let held = c.syncer.acquire("filings", at(NOW)).unwrap();
+    let snapshot = folded(&a, NOW);
+    assert!(a.syncer.push(at(NOW)).unwrap().pointers.is_empty());
+    assert_eq!(bucket_pointer(b.as_ref()).unwrap(), json!({"snapshot_id": null, "fence": held.lease.fence}));
+    // Released, the lease no longer reserves the publish, and the bucket's fence stays.
+    c.syncer.release("filings").unwrap();
+    assert_eq!(a.syncer.push(at(NOW)).unwrap().pointers.len(), 1);
+    assert_eq!(bucket_pointer(b.as_ref()).unwrap(), json!({"snapshot_id": snapshot, "fence": held.lease.fence}));
+}
+
+/// A local pointer carrying a fence below the bucket pointer's stays local, and the push reports it as a warning
+/// beside its commit.
+// spec: store.push.pointer-fenced@b95542a0
+#[test]
+fn a_local_pointer_under_a_superseded_fence_stays_local() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""));
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    let snapshot = folded(&a, NOW);
+    a.syncer.push(at(NOW)).unwrap();
+    // A pointer published under fence 1 once a later acquisition raised the bucket's to 2.
+    let first = c.syncer.acquire("filings", at(NOW)).unwrap();
+    c.syncer.release("filings").unwrap();
+    c.syncer.acquire("filings", at(NOW)).unwrap();
+    c.syncer.release("filings").unwrap();
+    a.land("run-2", json!([{"id": 2}]), "2030-01-01T02:00:00Z");
+    let later = folded(&a, "2030-01-01T03:00:00Z");
+    let local = json!({"snapshot_id": later, "fence": first.lease.fence});
+    std::fs::write(a.root().join("tables/filings/_pointer.json"), serde_json::to_vec(&local).unwrap()).unwrap();
+    let report = a.syncer.push(at("2030-01-01T03:00:00Z")).unwrap();
+    assert!(report.pointers.is_empty());
+    assert!(report.refused.iter().any(|w| w.contains("research/tables/filings/_pointer.json") && w.contains("fence")), "{:?}", report.refused);
+    assert_eq!(bucket_pointer(b.as_ref()).unwrap(), json!({"snapshot_id": snapshot, "fence": first.lease.fence + 1}));
+}
+
+fn generation(b: &dyn ObjectStore, n: u64) -> BucketManifest {
+    serde_json::from_slice(&b.get(&format!("team/{}", generation_key(n))).unwrap().unwrap().0).unwrap()
+}
+
+fn generation_pointer(b: &dyn ObjectStore, n: u64) -> Option<String> {
+    generation(b, n).pointers.get("research/tables/filings/_pointer.json").and_then(|p| p.snapshot_id.clone())
+}
+
+/// Fold twice between pushes, then let retention collect every superseded snapshot, leaving `a` only the newest.
+fn fold_twice_past_retention(a: &crate::support::Node) -> String {
+    a.land("run-2", json!([{"id": 2}]), "2030-01-01T02:00:00Z");
+    folded(a, "2030-01-01T03:00:00Z");
+    a.land("run-3", json!([{"id": 3}]), "2030-01-01T04:00:00Z");
+    let newest = folded(a, "2030-01-01T05:00:00Z");
+    let decl = contextful_core::store::declare::TableDecl::named("filings");
+    contextful_context::fold::collect(&a.syncer.store, &decl, at(LATER)).unwrap();
+    let snapshots: Vec<String> = std::fs::read_dir(a.root().join("tables/filings/data/snapshots")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(snapshots, std::slice::from_ref(&newest), "retention leaves only the newest snapshot");
+    newest
+}
+
+const LATER: &str = "2030-01-20T00:00:00Z";
+
+/// A snapshot's `_manifest.json` carries `ancestors`, so a push decides descent with every superseded snapshot
+/// collected.
+#[test]
+fn a_pointer_carries_across_folds_whose_snapshots_retention_collected() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    folded(&a, NOW);
+    assert_eq!(a.syncer.push(at(NOW)).unwrap().pointers.len(), 1);
+    let newest = fold_twice_past_retention(&a);
+    let report = a.syncer.push(at(LATER)).unwrap();
+    assert_eq!(report.pointers, ["research/tables/filings/_pointer.json"], "{:?}", report.refused);
+    assert_eq!(bucket_pointer(b.as_ref()).unwrap()["snapshot_id"], json!(newest));
+    // A cold node reads every folded row.
+    let c = node("ingest-e", b.clone(), "");
+    c.syncer.pull(&contextful_sync::PullScope::default()).unwrap();
+    assert_eq!(files(&c), [format!("tables/filings/data/snapshots/{newest}/part-00000.parquet")]);
+}
+
+/// A local pointer whose snapshot's ancestry ends at a collected manifest before reaching the bucket pointer's snapshot
+/// or a root stays local, and the push reports it as a warning beside its commit.
+// spec: store.push.pointer-unrooted@a3860765
+#[test]
+fn a_pointer_whose_ancestry_retention_cut_stays_local_with_a_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    let first = folded(&a, NOW);
+    a.syncer.push(at(NOW)).unwrap();
+    let newest = fold_twice_past_retention(&a);
+    // A manifest written without `ancestors` reaches back by `parent` alone, into a collected snapshot.
+    let path = a.root().join("tables/filings/data/snapshots").join(&newest).join("_manifest.json");
+    let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    m.as_object_mut().unwrap().remove("ancestors");
+    std::fs::write(&path, serde_json::to_vec(&m).unwrap()).unwrap();
+    let report = a.syncer.push(at(LATER)).unwrap();
+    assert!(report.pointers.is_empty());
+    assert!(report.refused.iter().any(|w| w.contains("research/tables/filings/_pointer.json") && w.contains(&first)), "{:?}", report.refused);
+    assert_eq!(bucket_pointer(b.as_ref()).unwrap()["snapshot_id"], json!(first));
+}
+
+/// A push whose pointer publish the bucket took commits the manifest again, so a generation names a carried pointer
+/// only once the bucket's pointer holds it.
+// spec: store.push.pointer-recommit@d2222ae2
+#[test]
+fn a_generation_names_no_pointer_the_bucket_declined() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let raced = inner.clone();
+    let once = std::sync::Mutex::new(true);
+    // Another node publishes an unrelated snapshot between the manifest commit and the pointer's publish.
+    let b: Arc<dyn ObjectStore> = Arc::new(Scripted {
+        inner: inner.clone(),
+        script: Script {
+            on_put: Some(Box::new(move |key, _| {
+                if key.ends_with("/manifest.json") && std::mem::take(&mut *once.lock().unwrap()) {
+                    let foreign = json!({"snapshot_id": "snapshot-09999999999999999999", "fence": 0});
+                    raced.put(POINTER, &serde_json::to_vec(&foreign).unwrap(), Condition::None).unwrap();
+                }
+                None
+            })),
+            ..Script::default()
+        },
+    });
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    let snapshot = folded(&a, NOW);
+    let report = a.syncer.push(at(NOW)).unwrap();
+    assert!(report.pointers.is_empty());
+    assert_eq!(report.generation, 1);
+    assert_ne!(generation_pointer(inner.as_ref(), 1), Some(snapshot.clone()), "gen-1 names no pointer the bucket declined");
+    let live = manifest(inner.as_ref()).pointers.get("research/tables/filings/_pointer.json").and_then(|p| p.snapshot_id.clone());
+    assert_ne!(live, Some(snapshot), "the live manifest names no pointer the bucket declined");
 }

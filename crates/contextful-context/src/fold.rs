@@ -176,6 +176,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     let manifest = SnapshotManifest {
         snapshot_id,
         parent,
+        ancestors: SnapshotManifest::ancestors_after(state.chain.first()),
         table: table.to_string(),
         created_at: now,
         includes_runs: unfolded.clone(),

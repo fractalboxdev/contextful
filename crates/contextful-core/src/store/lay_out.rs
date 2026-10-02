@@ -13,6 +13,9 @@ pub const SNAPSHOT_ID_WIDTH: usize = 20;
 /// Longest node id (`store.lay-out.node-id-shape`).
 pub const NODE_ID_MAX_LEN: usize = 64;
 
+/// Most ancestors a snapshot manifest records (`store.lay-out.ancestors`).
+pub const SNAPSHOT_ANCESTORS_MAX: usize = 256;
+
 /// The node id a machine with no writable state directory takes (`store.lay-out.node-id-local`).
 pub const LOCAL_NODE_ID: &str = "local";
 
@@ -140,6 +143,10 @@ pub struct SnapshotManifest {
     pub snapshot_id: SnapshotId,
     #[serde(default)]
     pub parent: Option<SnapshotId>,
+    /// The parent, then the parent's `ancestors`, at most [`SNAPSHOT_ANCESTORS_MAX`];
+    /// absent when the parent records none (`store.lay-out.ancestors`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ancestors: Option<Vec<SnapshotId>>,
     pub table: String,
     pub created_at: Instant,
     #[serde(default)]
@@ -167,6 +174,16 @@ pub struct SnapshotManifest {
     /// data it publishes (`run.publish.manifest-commit`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publish: Option<crate::pipeline::model::PublishSection>,
+}
+
+impl SnapshotManifest {
+    /// The `ancestors` a snapshot whose parent is `parent` records (`store.lay-out.ancestors`):
+    /// none for a root, absent under a parent recording none, else the parent first.
+    pub fn ancestors_after(parent: Option<&SnapshotManifest>) -> Option<Vec<SnapshotId>> {
+        let Some(parent) = parent else { return Some(Vec::new()) };
+        let inherited = parent.ancestors.as_ref()?;
+        Some(std::iter::once(parent.snapshot_id.clone()).chain(inherited.iter().cloned()).take(SNAPSHOT_ANCESTORS_MAX).collect())
+    }
 }
 
 /// `tables/<t>/_pointer.json`: the current snapshot and the fence that published it

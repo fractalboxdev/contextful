@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 168 | 28 | 22 | 20 | 149 | 0 | 149 |
 | `run` | 3 | 26 | 362 | 96 | 35 | 35 | 245 | 0 | 245 |
-| `store` | 1 | 17 | 222 | 54 | 12 | 18 | 182 | 0 | 182 |
+| `store` | 1 | 17 | 228 | 54 | 13 | 19 | 188 | 0 | 188 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1854 | 559 | 184 | 139 | 1190 | 0 | |
+| **total** | 19 | 154 | 1860 | 559 | 185 | 140 | 1196 | 0 | |
 
 Decision records: 18.
 
@@ -27,11 +27,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 232 | 180 | passing | closed |
-| 2 — The store | 9 | 155 | 120 | passing | closed |
+| 2 — The store | 9 | 156 | 121 | passing | closed |
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
 | 4 — Ingest | 25 | 450 | 263 | passing | open |
 | 5 — The read face under enforcement | 17 | 246 | 183 | passing | open |
-| 6 — Sync and replicas | 8 | 67 | 62 | passing | closed |
+| 6 — Sync and replicas | 8 | 72 | 67 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
 | 8 — Accountability | 5 | 46 | 27 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
@@ -1083,6 +1083,7 @@ Unscheduled operations: 10.
 | `store.init.project-paths` | `crates/contextful-context/tests/integration/init.rs::every_project_path_is_based_on_the_project_directory` | performed |
 | `store.init.repeat` | `crates/contextful-context/tests/integration/init.rs::a_repeated_init_rewrites_nothing` | performed |
 | `store.init.undiscovered` | `crates/contextful-context/tests/integration/init.rs::discovery_without_a_named_declaration_refuses` | performed |
+| `store.lay-out.ancestors` | `crates/contextful-core/tests/integration/store/lay_out.rs::a_snapshot_records_its_ancestors_nearest_first_up_to_the_bound` | performed |
 | `store.lay-out.catalog-ports` | `crates/contextful-sqlite/tests/integration/derived.rs::both_catalogs_are_reached_through_the_core_ports` | performed |
 | `store.lay-out.derived-catalog` | `crates/contextful-cli/tests/integration/context.rs::rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree` | performed |
 | `store.lay-out.immutable-files` | `crates/contextful-context/tests/integration/lay_out.rs::a_fold_writes_a_new_snapshot_and_edits_nothing_published` | performed |
@@ -1146,6 +1147,11 @@ Unscheduled operations: 10.
 | `store.push.in-flight` | `crates/contextful-sync/tests/integration/push.rs::a_second_push_of_one_store_refuses_while_the_first_runs` | performed |
 | `store.push.manifest-commit` | `crates/contextful-sync/tests/integration/push.rs::the_manifest_commits_by_replace_on_the_etag_read` | performed |
 | `store.push.manifest-format` | `crates/contextful-sync/tests/integration/generation.rs::a_manifest_without_a_format_reads_as_format_one` | performed |
+| `store.push.pointer-carry` | `crates/contextful-sync/tests/integration/push.rs::a_push_carries_a_local_folds_pointer_and_a_second_node_reads_its_snapshot` | performed |
+| `store.push.pointer-fenced` | `crates/contextful-sync/tests/integration/push.rs::a_local_pointer_under_a_superseded_fence_stays_local` | performed |
+| `store.push.pointer-leased` | `crates/contextful-sync/tests/integration/push.rs::a_push_leaves_a_leased_tables_pointer_to_the_lease_holder` | performed |
+| `store.push.pointer-recommit` | `crates/contextful-sync/tests/integration/push.rs::a_generation_names_no_pointer_the_bucket_declined` | performed |
+| `store.push.pointer-unrooted` | `crates/contextful-sync/tests/integration/push.rs::a_pointer_whose_ancestry_retention_cut_stays_local_with_a_warning` | performed |
 | `store.push.prefix-escape` | `crates/contextful-core/tests/integration/store/sync.rs::a_key_climbing_out_of_the_prefix_is_refused` | performed |
 | `store.push.prefix-overspecified` | `crates/contextful-core/tests/integration/store/sync.rs::prefix_and_prefix_from_together_refuse` | performed |
 | `store.push.prefix-unbound` | `crates/contextful-core/tests/integration/store/sync.rs::an_unset_prefix_variable_refuses_with_no_root_fallback` | performed |
