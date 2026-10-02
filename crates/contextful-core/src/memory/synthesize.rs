@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 /// Extract attempts per batch, feedback included (`read.synthesize.extract-attempts`).
 pub const EXTRACT_ATTEMPTS: u32 = 3;
@@ -28,16 +29,25 @@ pub trait Inference {
 }
 
 /// A reference from a claim to the landed row it rests on: the row's table and its
-/// injected run and sequence, which identify one landed row in every table.
+/// injected run and sequence, which identify one landed row in every table. On a keyed
+/// table the write landing the claim stamps `key`, the cited row's key columns as text,
+/// and recall resolves the reference through that key (`read.recall.evidence-key`).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceRef {
     pub table: String,
     pub run: String,
     pub seq: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<BTreeMap<String, String>>,
 }
 
 impl EvidenceRef {
+    /// A reference to one landed row, carrying no key.
+    pub fn row(table: impl Into<String>, run: impl Into<String>, seq: i64) -> EvidenceRef {
+        EvidenceRef { table: table.into(), run: run.into(), seq, key: None }
+    }
+
     /// The reference's text form inside a prompt.
     pub fn label(&self) -> String {
         format!("{}#{}:{}", self.table, self.run, self.seq)

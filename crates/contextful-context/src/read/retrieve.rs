@@ -565,26 +565,34 @@ impl Face {
 
     /// How one evidence row reads through the caller's session: its table registered, the
     /// row visible through the relation, and no cell of the table masked or nulled by zone.
+    /// A citation carrying its key resolves through the key's live version, whichever
+    /// version of it the claim cited (`read.recall.evidence-key`).
     pub(crate) fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef) -> EvidenceRead {
         let Some(relation) = session.relation(&r.table) else { return EvidenceRead::UnknownTable };
-        let sql = format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation.name()), ident(RUN_ID), ident(ROW_SEQ));
-        let found = engine
-            .run(&sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), None)
-            .ok()
-            .and_then(|(_, rows)| rows.first().and_then(|row| row.first().cloned()))
-            .is_some_and(|c| matches!(c, Cell::Integer { value, .. } if value > 0));
-        if !found {
-            return EvidenceRead::Unreadable;
+        match self.key_reads(engine, session, r) {
+            Some(EvidenceRead::Readable) => {}
+            Some(other) => return other,
+            None => {
+                if !self.row_reads(engine, relation.name(), r) {
+                    return EvidenceRead::Unreadable;
+                }
+            }
         }
-        let masked = session.policy(&r.table).is_some_and(|p| {
-            p.columns.values().any(|c| c.mask.is_some())
-                || p.columns.keys().any(|c| !p.column_set(c).admits(session.zone()))
-        });
-        if masked {
+        if Face::masked(session, &r.table) {
             EvidenceRead::Masked
         } else {
             EvidenceRead::Readable
         }
+    }
+
+    /// Whether the row a citation's run and sequence name reads through `relation`.
+    fn row_reads(&self, engine: &SqlEngine, relation: &str, r: &EvidenceRef) -> bool {
+        let sql = format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation), ident(RUN_ID), ident(ROW_SEQ));
+        engine
+            .run(&sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), None)
+            .ok()
+            .and_then(|(_, rows)| rows.first().and_then(|row| row.first().cloned()))
+            .is_some_and(|c| matches!(c, Cell::Integer { value, .. } if value > 0))
     }
 }
 

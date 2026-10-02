@@ -6,6 +6,9 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum MemoryError {
+    /// A direct write cites a keyed row that is not its key's live version. (`read.revise.citation-live`)
+    #[error("MemoryCitationNotLive: {0}")]
+    CitationNotLive(String),
     /// A direct write targeted a memory shape other than claims. (`read.revise.direct-write`)
     #[error("MemoryDirectWriteShapeRefused: {0}")]
     DirectWriteShapeRefused(String),
@@ -51,6 +54,7 @@ impl MemoryError {
     /// The error identifier.
     pub fn identifier(&self) -> &'static str {
         match self {
+            MemoryError::CitationNotLive(_) => "MemoryCitationNotLive",
             MemoryError::DirectWriteShapeRefused(_) => "MemoryDirectWriteShapeRefused",
             MemoryError::EdgeEndpointUnresolved(_) => "MemoryEdgeEndpointUnresolved",
             MemoryError::EntityAmbiguous(_) => "MemoryEntityAmbiguous",

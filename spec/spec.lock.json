@@ -5835,6 +5835,17 @@
       "line": 112
     },
     {
+      "id": "read.revise.citation-live",
+      "contract": "read",
+      "operation": "revise",
+      "subject": "citation-live",
+      "kind": "refusal",
+      "statement": "A direct write citing a keyed table's row that does not read as its key's live version through the writer's session raises `MemoryCitationNotLive`, and nothing lands.",
+      "why": "because such a claim rests on a version no reader resolves, and recall withholds it from its first read",
+      "file": "spec/21-memory.md",
+      "line": 114
+    },
+    {
       "id": "read.recall.evidence-unresolved",
       "contract": "read",
       "operation": "recall",
@@ -5843,7 +5854,7 @@
       "statement": "An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 125
+      "line": 127
     },
     {
       "id": "read.recall.evidence-references",
@@ -5854,7 +5865,18 @@
       "statement": "A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 127
+      "line": 129
+    },
+    {
+      "id": "read.recall.evidence-key",
+      "contract": "read",
+      "operation": "recall",
+      "subject": "evidence-key",
+      "kind": "behavior",
+      "statement": "The write landing a claim stamps each citation into a keyed table with the cited row's key columns; recall resolves a stamped citation through the key's live version, so a later version or a fold keeps the claim served.",
+      "why": "because compaction drops superseded versions, and a claim withdrawn by a routine fold is memory the workspace silently forgets",
+      "file": "spec/21-memory.md",
+      "line": 131
     },
     {
       "id": "read.recall.ranked-arm",
@@ -5865,7 +5887,7 @@
       "statement": "A `corpus.retrieve` arm over a `memory_facts` table serves only live claims — no `superseded_by`, and a `valid_to` null or past the read's anchor — whose evidence passes the gate.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 129
+      "line": 133
     },
     {
       "id": "read.recall.suppression-count",
@@ -5876,7 +5898,7 @@
       "statement": "A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.",
       "why": "because a count discloses that a conclusion was withheld, never what it concluded",
       "file": "spec/21-memory.md",
-      "line": 130
+      "line": 134
     },
     {
       "id": "read.recall.keyed",
@@ -5887,7 +5909,7 @@
       "statement": "`memory.recall` takes `table`, `subject`, `observed_at`, `as_of_ingest` and `limit`, and returns the claims whose `subject` equals `subject` exactly and whose `valid_from` and `valid_to` cover `observed_at` as {{store.bound-time.valid-as-of}} does.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 132
+      "line": 136
     },
     {
       "id": "read.recall.keyed-clocks",
@@ -5898,7 +5920,7 @@
       "statement": "`as_of_ingest` bounds the read as {{store.bound-time.as-of}} does; absent, the read takes the latest committed state, and an absent `observed_at` the call's instant. `contextful.bounds` echoes each supplied bound under its argument name, with a per-name `inclusive` map.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 133
+      "line": 137
     },
     {
       "id": "read.recall.keyed-history",
@@ -5909,7 +5931,7 @@
       "statement": "A claim a successor retired still answers an `observed_at` inside its validity; the keyed read filters on validity alone, never on `superseded_by`.",
       "why": "because the question is what held at that instant, and the retired claim is the answer its interval records",
       "file": "spec/21-memory.md",
-      "line": 134
+      "line": 138
     },
     {
       "id": "read.recall.keyed-gate",
@@ -5920,7 +5942,7 @@
       "statement": "Every keyed claim passes {{read.recall.evidence-unresolved}} and {{read.recall.evidence-references}}, and the response carries {{read.recall.suppression-count}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 136
+      "line": 140
     },
     {
       "id": "read.recall.keyed-window",
@@ -5931,7 +5953,7 @@
       "statement": "The keyed read gates claims in order and stops once it keeps one claim past the row ceiling, so the suppression count covers the claims gated before that stop.",
       "why": "because a one-row recall over a subject with thousands of claims otherwise resolves every claim's evidence",
       "file": "spec/21-memory.md",
-      "line": 137
+      "line": 141
     },
     {
       "id": "read.recall.keyed-order",
@@ -5942,7 +5964,7 @@
       "statement": "Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 139
+      "line": 143
     },
     {
       "id": "read.recall.keyed-not-claims",
@@ -5953,7 +5975,7 @@
       "statement": "A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.",
       "why": "because a keyed read answers with a claim's subject, validity and evidence, which no other table carries",
       "file": "spec/21-memory.md",
-      "line": 140
+      "line": 144
     },
     {
       "id": "read.resolve-entity.ambiguous-mention",
@@ -5964,7 +5986,7 @@
       "statement": "A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 159
+      "line": 165
     },
     {
       "id": "read.resolve-entity.edge-endpoint",
@@ -5975,7 +5997,7 @@
       "statement": "A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 161
+      "line": 167
     },
     {
       "id": "read.settle.registration",
@@ -5986,7 +6008,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 172
+      "line": 178
     },
     {
       "id": "read.settle.source-mismatch",
@@ -5997,7 +6019,7 @@
       "statement": "An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 174
+      "line": 180
     },
     {
       "id": "read.settle.settling-citation",
@@ -6008,7 +6030,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 176
+      "line": 182
     },
     {
       "id": "read.settle.grace-window",
@@ -6019,7 +6041,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 178
+      "line": 184
     },
     {
       "id": "run.journal.step-output",
@@ -25126,6 +25148,10 @@
           "LedgerNotTenantScoped": {
             "clause": "read.register.scoped-ledger",
             "gloss": "A tenant-scoped token named the request-ledger child relation."
+          },
+          "MemoryCitationNotLive": {
+            "clause": "read.revise.citation-live",
+            "gloss": "A direct write cites a keyed row that is not its key's live version."
           },
           "MemoryDirectWriteShapeRefused": {
             "clause": "read.revise.direct-write",

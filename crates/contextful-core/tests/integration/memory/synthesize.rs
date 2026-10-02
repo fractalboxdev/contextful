@@ -40,7 +40,7 @@ fn one_claim_validation_serves_every_write_path() {
         object: "Dana".into(),
         scope: None,
         confidence,
-        evidence: vec![contextful_core::memory::synthesize::EvidenceRef { table: "t".into(), run: "r".into(), seq }],
+        evidence: vec![contextful_core::memory::synthesize::EvidenceRef::row("t", "r", seq)],
     };
     assert_eq!(validate_claim(&c("acme", 0.5, 0)), Ok(()));
     assert!(validate_claim(&c(" ", 0.5, 0)).unwrap_err().contains("subject"));

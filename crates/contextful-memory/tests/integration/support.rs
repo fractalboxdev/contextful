@@ -29,6 +29,10 @@ pub const MANIFEST: &str = r#"
 [[pipeline.tables]]
 name = "research/notes"
 
+[[pipeline.tables]]
+name = "research/accounts"
+primary_key = ["account_id"]
+
 [[table]]
 name = "memory/facts"
 shape = "memory_facts"

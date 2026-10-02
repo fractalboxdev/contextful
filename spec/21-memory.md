@@ -111,6 +111,8 @@ Supersession within one validity line, confidence decay, the direct write and it
   *because a retried write restates one observation, while one fact observed twice under two keys keeps two validity intervals*
 - `observed-order` — A direct write whose `valid_from` precedes the `valid_from` of an unsuperseded claim of its subject, predicate and scope with another object raises `MemoryObservationOutOfOrder`, and nothing lands.
   *because retiring the later claim at the earlier instant ends it before it starts, and it then answers at no instant*
+- `citation-live` — A direct write citing a keyed table's row that does not read as its key's live version through the writer's session raises `MemoryCitationNotLive`, and nothing lands.
+  *because such a claim rests on a version no reader resolves, and recall withholds it from its first read*
 
 unsettled: Does a claim observed before a live contradicting claim of its line land beneath it with a bounded end, rather than refuse? owner: memory affects: read.revise
 
@@ -126,6 +128,8 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
   *A-read*
 - `evidence-references` — A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
   *A-read*
+- `evidence-key` — The write landing a claim stamps each citation into a keyed table with the cited row's key columns; recall resolves a stamped citation through the key's live version, so a later version or a fold keeps the claim served.
+  *because compaction drops superseded versions, and a claim withdrawn by a routine fold is memory the workspace silently forgets*
 - `ranked-arm` — A `corpus.retrieve` arm over a `memory_facts` table serves only live claims — no `superseded_by`, and a `valid_to` null or past the read's anchor — whose evidence passes the gate.
 - `suppression-count` — A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.
   *because a count discloses that a conclusion was withheld, never what it concluded*
@@ -149,6 +153,8 @@ flowchart LR
   EV -->|"overflow: MemoryEvidenceOverflow"| HELD["withheld claim"]
   EV -->|"unreadable: MemoryEvidenceUnresolved"| HELD
 ```
+
+unsettled: Does a claim whose cited key has since landed a different version surface that its evidence changed, or re-enter synthesis? owner: memory affects: read.recall
 
 unsettled: What supplies a read-side usage ledger, so retention can ask whether a claim was ever recalled rather than whether something cited it? owner: memory affects: read.recall
 

@@ -15,7 +15,7 @@ fn candidate(object: &str) -> CandidateClaim {
         object: object.into(),
         scope: None,
         confidence: 1.0,
-        evidence: vec![EvidenceRef { table: "research/notes".into(), run: "run-0001".into(), seq: 0 }],
+        evidence: vec![EvidenceRef::row("research/notes", "run-0001", 0)],
     }
 }
 

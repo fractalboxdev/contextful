@@ -24,7 +24,7 @@ fn candidate(subject: &str, object: &str, run: &str) -> CandidateClaim {
         object: object.into(),
         scope: None,
         confidence: 1.0,
-        evidence: vec![EvidenceRef { table: "research/notes".into(), run: run.into(), seq: 0 }],
+        evidence: vec![EvidenceRef::row("research/notes", run, 0)],
     }
 }
 
@@ -176,7 +176,7 @@ fn the_keyed_read_stops_gating_one_claim_past_the_ceiling() {
         confidence: 0.6,
         valid_from: at(from),
         valid_to: None,
-        evidence: vec![EvidenceRef { table: table.into(), run: "run-0001".into(), seq: 0 }],
+        evidence: vec![EvidenceRef::row(table, "run-0001", 0)],
         superseded_by: None,
         grant_id: w.grant_id.clone(),
         agent: w.agent.clone(),
@@ -222,7 +222,7 @@ fn keyed_claims_order_tier_first_and_meet_the_limit() {
         confidence: 0.6,
         valid_from: at(from),
         valid_to: None,
-        evidence: vec![EvidenceRef { table: "research/notes".into(), run: "run-0001".into(), seq: 0 }],
+        evidence: vec![EvidenceRef::row("research/notes", "run-0001", 0)],
         superseded_by: None,
         grant_id: w.grant_id.clone(),
         agent: w.agent.clone(),
