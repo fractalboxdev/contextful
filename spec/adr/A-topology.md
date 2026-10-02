@@ -61,15 +61,15 @@ Consequences: a divergence names the target, the table and the first differing p
 
 ## The posture probe runs in build tooling; the routing hop caches nothing
 
-Context: `topology.publish-hostname` probes every published hostname before a deploy completes, and the routing hop sits in front of a retrieval container that enforces grants per request.
+Context: `topology.publish-hostname` probes every published hostname a deploy declares, and the routing hop sits in front of a retrieval container that enforces grants per request.
 
 Criteria: no profile links a deploy-only HTTP client; a cached answer stays keyed on the whole enforcement subject; profile footprint decided it.
 
-Decision: `contextful-ci deploy probe` reads `deploy/hostnames/*.toml` and `deploy/probe.toml` from the repository beside the deploy workflow and runs no engine code. The routing hop verifies and routes with no result cache; a cached answer comes from `read.cache` inside the retrieval container, after enforcement.
+Decision: `contextful-ci deploy probe` reads `hostnames/*.toml` and `probe.toml` under `--dir` (default `deploy/`) in the deploying organisation's repository, refuses an empty set, and runs no engine code; that repository's deploy pipeline invokes it. The routing hop verifies and routes with no result cache; a cached answer comes from `read.cache` inside the retrieval container, after enforcement.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Probe in `contextful-ci`, no hop cache *(chosen)* | — | Every request crosses to the container; a deploy outside the repository's tooling skips the probe. |
+| Probe in `contextful-ci`, no hop cache *(chosen)* | — | Every request crosses to the container; a pipeline that never invokes the probe goes unprobed. |
 | Probe as an engine subcommand | Footprint | Every profile links a client only a deploy uses. |
 | Probe inside the routing hop at start | Timing | A hop answers traffic before its posture is judged. |
 | A short hop cache keyed on the enforcement subject | Mediation | A grant revoked inside the time to live still answers from the hop. |

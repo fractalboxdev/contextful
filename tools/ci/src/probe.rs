@@ -1,7 +1,9 @@
 //! `contextful-ci deploy probe` — `topology.publish-hostname`'s deploy-time posture check.
 //! Every published hostname carries a descriptor under `deploy/hostnames/`; the deploy's
 //! probe table, `deploy/probe.toml`, names the same hostname-and-gate pairs; each hostname
-//! answers one anonymous `GET /` inside its declared gate, or the deploy fails.
+//! answers one anonymous `GET /` inside its declared gate, or the probe exits nonzero. A
+//! probe with no descriptor directory, no probe table or no hostname is refused, so a
+//! passing probe has checked at least one hostname.
 
 use crate::refuse;
 use anyhow::{bail, Context, Result};
@@ -81,6 +83,9 @@ pub fn run(dir: &Path, resolve: &[String]) -> Result<()> {
         .context("--resolve takes <hostname>=<base url>")?;
     let descriptors = descriptors(&dir.join(DESCRIPTOR_DIR))?;
     let table = probe_table(&dir.join(PROBE_TABLE))?;
+    if descriptors.is_empty() {
+        return Err(refuse("ProbeSetEmpty", format!("{} declares no hostname", dir.join(DESCRIPTOR_DIR).display())));
+    }
     drift(&descriptors, &table)?;
 
     let agent: ureq::Agent = ureq::Agent::config_builder()
@@ -112,11 +117,13 @@ pub fn run(dir: &Path, resolve: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Decode every `*.toml` under `dir`, in file-name order; an absent directory holds none.
+/// Decode every `*.toml` under `dir`, in file-name order; an absent directory is refused.
 fn descriptors(dir: &Path) -> Result<Vec<Descriptor>> {
     let mut paths: Vec<_> = match std::fs::read_dir(dir) {
         Ok(entries) => entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(refuse("ProbeSetEmpty", format!("{} is absent: no published hostname is declared", dir.display())));
+        }
         Err(e) => return Err(e).with_context(|| dir.display().to_string()),
     };
     paths.sort();
@@ -150,12 +157,14 @@ fn descriptors(dir: &Path) -> Result<Vec<Descriptor>> {
     Ok(out)
 }
 
-/// The probe table's `[[probe]]` entries as hostname-and-gate pairs; an absent file holds none.
+/// The probe table's `[[probe]]` entries as hostname-and-gate pairs; an absent file is refused.
 fn probe_table(path: &Path) -> Result<BTreeSet<(String, Gate)>> {
     let shown = path.display().to_string();
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(refuse("ProbeSetEmpty", format!("{shown} is absent: the deploy names no hostname to probe")));
+        }
         Err(e) => return Err(e).context(shown),
     };
     let table: toml::Table = toml::from_str(&text).with_context(|| shown.clone())?;

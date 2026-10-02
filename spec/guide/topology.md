@@ -56,7 +56,7 @@ flowchart LR
 - Rows cross to the read path as parts plus a manifest, and the cursor advances by one compare-and-swap on its stored version ({{topology.coordinate.cursor-cas}}).
 - The store pushes to the bucket. The function-class provider hosts the edge profile alone ({{topology.package.edge-eligibility}}), which pulls the same parts and serves read-only SQL.
 - A pipeline fired on the edge deployment refuses by name, since the replica links no run path ({{topology.package.capability-absent}}); without a component host, a component connector refuses and no native source substitutes ({{topology.package.host-missing}}). A target capping per-invocation wall clock also excludes first-time backfills ({{topology.deploy.wall-clock-cap}}).
-- The deploy probes the replica's hostname anonymously and fails if the answer falls outside the declared gate ({{topology.publish-hostname.posture-mismatch}}). An analyst's request then passes the routing hop to a retrieval container, which reaches readiness before its hydration finishes ({{topology.publish-hostname.container-readiness}}).
+- `contextful-ci deploy probe` requests the replica's hostname anonymously, exiting nonzero if the answer falls outside the declared gate ({{topology.publish-hostname.posture-mismatch}}). An analyst's request then passes the routing hop to a retrieval container, which reaches readiness before its hydration finishes ({{topology.publish-hostname.container-readiness}}).
 
 ## Where to look
 

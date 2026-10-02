@@ -81,7 +81,7 @@ fn m10_cadence() {
     assert_eq!(docs.received("/").len(), 1);
     assert!(docs.received("/")[0].header("authorization").is_none());
 
-    // A hostname declaring `public` that answers 302 fails the deploy, naming all three.
+    // A hostname declaring `public` that answers 302 fails the probe, naming all three.
     let resolve = [format!("docs.example.org={}", admin.url("")), format!("admin.example.org={}", admin.url(""))];
     let refused = probe(&resolve);
     assert!(!refused.status.success());

@@ -77,8 +77,8 @@ fn stdout(o: &Output) -> String {
     String::from_utf8_lossy(&o.stdout).to_string()
 }
 
-/// A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and fails the deploy.
-// spec: topology.publish-hostname.posture-mismatch@f7a60d89
+/// A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and `contextful-ci deploy probe` exits nonzero.
+// spec: topology.publish-hostname.posture-mismatch@d9cacd58
 #[test]
 fn an_answer_outside_the_declared_gate_or_an_unreachable_hostname_fails_the_probe() {
     let r = Repo::init();
@@ -124,8 +124,8 @@ fn each_gate_passes_on_its_answer_to_an_anonymous_get() {
     assert!(!head.contains("authorization:") && !head.contains("cookie:"), "{head}");
 }
 
-/// A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before the deploy runs, naming the hostname and the side missing it.
-// spec: topology.publish-hostname.probe-table@244a9a2e
+/// A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before any hostname is probed, naming the hostname and the side missing it.
+// spec: topology.publish-hostname.probe-table@854eff22
 #[test]
 fn a_probe_table_and_descriptor_set_that_differ_are_refused_before_any_probe() {
     let r = Repo::init();
@@ -161,4 +161,28 @@ fn a_descriptor_carrying_an_unmodelled_key_is_refused() {
     assert!(err.contains("DescriptorUnknownField"), "{err}");
     assert!(err.contains("`cache_ttl`") && err.contains("version 1") && err.contains("store.example.org.toml"), "{err}");
     assert!(open.requests().is_empty());
+}
+
+/// An absent descriptor directory, an absent probe table, or a descriptor set naming no hostname raises `ProbeSetEmpty`, naming the path; a passing probe has checked at least one hostname.
+// spec: topology.publish-hostname.empty-probe@7cfbada0
+#[test]
+fn a_probe_with_nothing_to_check_is_refused() {
+    let r = Repo::init();
+    let o = probe(&r, &[]);
+    assert!(!o.status.success(), "a repository with no deploy tree passed the probe");
+    let err = stderr(&o);
+    assert!(err.contains("ProbeSetEmpty") && err.contains("hostnames"), "{err}");
+
+    r.write("deploy/hostnames/store.toml", &descriptor("store.example.org", "public"));
+    let o = probe(&r, &[]);
+    assert!(!o.status.success(), "a missing probe table passed the probe");
+    let err = stderr(&o);
+    assert!(err.contains("ProbeSetEmpty") && err.contains("probe.toml"), "{err}");
+
+    let r = Repo::init();
+    r.write("deploy/hostnames/README", "no descriptors\n");
+    r.write("deploy/probe.toml", "");
+    let o = probe(&r, &[]);
+    assert!(!o.status.success(), "an empty descriptor set passed the probe");
+    assert!(stderr(&o).contains("ProbeSetEmpty"), "{}", stderr(&o));
 }
