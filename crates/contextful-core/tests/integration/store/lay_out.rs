@@ -3,7 +3,7 @@
 use super::at;
 use contextful_core::store::lay_out::{
     part_name, resolve_node_id, store_root, NodeId, NodeIdSource, Pointer, RunManifest, SnapshotId, SnapshotManifest,
-    NODE_ID_MAX_LEN, SNAPSHOT_ID_WIDTH,
+    NODE_ID_MAX_LEN, SNAPSHOT_ANCESTORS_MAX, SNAPSHOT_ID_WIDTH,
 };
 use contextful_core::store::StoreError;
 
@@ -75,6 +75,43 @@ fn the_snapshot_manifest_and_pointer_decode_in_their_documented_shape() {
 
     let ptr: Pointer = serde_json::from_str(r#"{ "snapshot_id": "snapshot-01742054400000000000", "fence": 12 }"#).unwrap();
     assert_eq!(ptr.snapshot_id, snap.snapshot_id);
+}
+
+/// A snapshot's `_manifest.json` carries `ancestors`: its parent, then the parent's `ancestors`, at most 256 entries; a
+/// root carries none, and a parent without `ancestors` leaves the field absent.
+// spec: store.lay-out.ancestors@24f6ae22
+#[test]
+fn a_snapshot_records_its_ancestors_nearest_first_up_to_the_bound() {
+    assert_eq!(SNAPSHOT_ANCESTORS_MAX, 256);
+    let root = super::snapshot("2030-01-01T00:00:00Z", None, &[]);
+    assert_eq!(SnapshotManifest::ancestors_after(None), Some(vec![]), "a root records an empty ancestry");
+    let mut head = SnapshotManifest { ancestors: SnapshotManifest::ancestors_after(None), ..root };
+    let first = head.snapshot_id.clone();
+    for _ in 0..SNAPSHOT_ANCESTORS_MAX {
+        let next = SnapshotManifest {
+            snapshot_id: SnapshotId::next(head.created_at, Some(&head.snapshot_id)),
+            parent: Some(head.snapshot_id.clone()),
+            ancestors: SnapshotManifest::ancestors_after(Some(&head)),
+            ..head.clone()
+        };
+        let recorded = next.ancestors.as_ref().unwrap();
+        assert_eq!(recorded[0], head.snapshot_id, "the parent comes first");
+        assert!(recorded.len() <= SNAPSHOT_ANCESTORS_MAX);
+        head = next;
+    }
+    let recorded = head.ancestors.as_ref().unwrap();
+    assert_eq!(recorded.len(), SNAPSHOT_ANCESTORS_MAX);
+    assert_eq!(recorded.last(), Some(&first), "256 ancestors still reach the root");
+    let past = SnapshotManifest::ancestors_after(Some(&head)).unwrap();
+    assert_eq!(past.len(), SNAPSHOT_ANCESTORS_MAX, "the oldest falls off past the bound");
+    assert!(!past.contains(&first));
+
+    // A parent written without the field gives its child none.
+    let legacy = super::snapshot("2030-01-02T00:00:00Z", Some(&first), &[]);
+    assert_eq!(legacy.ancestors, None);
+    assert_eq!(SnapshotManifest::ancestors_after(Some(&legacy)), None);
+    let written = serde_json::to_value(&legacy).unwrap();
+    assert!(written.get("ancestors").is_none(), "an absent ancestry writes no field");
 }
 
 /// A field added to a manifest carries a default value.

@@ -108,9 +108,9 @@ fn a_manifest_of_a_newer_format_refuses_push_and_pull() {
 }
 
 /// Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as
-/// read before it and advanced by {{store.push.pointer-carry}}; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under
+/// read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under
 /// `If-None-Match`.
-// spec: store.push.generation@70b37842
+// spec: store.push.generation@083ca1fc
 #[test]
 fn each_push_commits_the_next_generation_and_writes_it_immutably() {
     let dir = tempfile::tempdir().unwrap();

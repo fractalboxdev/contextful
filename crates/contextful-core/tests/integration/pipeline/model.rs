@@ -58,6 +58,7 @@ fn snapshot(created: &str, parent: Option<&SnapshotId>, publish: Option<PublishS
     SnapshotManifest {
         snapshot_id: id.clone(),
         parent: parent.cloned(),
+        ancestors: None,
         table: "daily".into(),
         created_at: at(created),
         includes_runs: vec![],

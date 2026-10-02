@@ -4,7 +4,7 @@ use contextful_context::{ContextError, Store};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::catalog::{DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE};
 use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer, CLOCK_SKEW_SECS};
-use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE};
+use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SNAPSHOT_ANCESTORS_MAX};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
     admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, run_state_node, BucketManifest, Coordination, Entry, SyncConfig,
@@ -234,8 +234,18 @@ enum Carry {
     Publish(BucketPointer),
     /// The bucket already names it, or its snapshot descends from none the bucket names.
     Keep,
-    /// The pointer stays local, for the reason given (`store.push.pointer-fenced`).
+    /// The pointer stays local, for the reason given (`store.push.pointer-fenced`,
+    /// `store.push.pointer-unrooted`).
     Warn(String),
+}
+
+/// How a snapshot relates to the bucket pointer's, by its recorded ancestry.
+enum Ancestry {
+    Descends,
+    /// The recorded ancestry reaches a root without it.
+    Diverges,
+    /// The recorded ancestry ends at a manifest no longer on disk.
+    Unknown,
 }
 
 /// Whether `local` advances the bucket's pointer `remote` (`store.push.pointer-carry`):
@@ -258,27 +268,55 @@ fn carry(local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> 
     if let Some(missing) = missing_parts(&local.table_dir, &snapshot)? {
         return Ok(Carry::Warn(format!("snapshot `{snapshot}` lacks `{missing}`; `{}` stays local", local.key)));
     }
-    if published.is_some_and(|ancestor| !descends(&local.table_dir, &snapshot, ancestor)) {
-        return Ok(Carry::Keep);
+    if let Some(ancestor) = published {
+        match ancestry(&local.table_dir, &snapshot, ancestor) {
+            Ancestry::Descends => {}
+            Ancestry::Diverges => return Ok(Carry::Keep),
+            Ancestry::Unknown => {
+                return Ok(Carry::Warn(format!(
+                    "the ancestry of snapshot `{snapshot}` ends at a collected manifest before reaching `{ancestor}`, which the bucket names; `{}` stays local",
+                    local.key
+                )))
+            }
+        }
     }
     Ok(Carry::Publish(BucketPointer { snapshot_id: Some(snapshot), fence: fence.max(pointer.fence.unwrap_or(0)) }))
 }
 
-/// Whether `ancestor` sits on the `parent` chain of `snapshot` under `table_dir`.
-fn descends(table_dir: &Path, snapshot: &str, ancestor: &str) -> bool {
+/// Whether `ancestor` precedes `snapshot` under `table_dir`, read from each manifest's
+/// `ancestors` (`store.lay-out.ancestors`), else its `parent`, so retention collecting
+/// the snapshots between them leaves the answer intact.
+fn ancestry(table_dir: &Path, snapshot: &str, ancestor: &str) -> Ancestry {
     let mut seen = BTreeSet::new();
     let mut at = snapshot.to_string();
     while seen.insert(at.clone()) {
         let path = table_dir.join("data").join("snapshots").join(&at).join(MANIFEST_FILE);
-        let Some(parent) = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<SnapshotManifest>(&b).ok()).and_then(|m| m.parent) else {
-            return false;
+        let Some(manifest) = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<SnapshotManifest>(&b).ok()) else {
+            return Ancestry::Unknown;
         };
-        at = parent.to_string();
-        if at == ancestor {
-            return true;
-        }
+        let next = match (&manifest.ancestors, &manifest.parent) {
+            (Some(recorded), _) => {
+                if recorded.iter().any(|a| a.to_string() == ancestor) {
+                    return Ancestry::Descends;
+                }
+                // A list short of the bound reaches a root.
+                if recorded.len() < SNAPSHOT_ANCESTORS_MAX {
+                    return Ancestry::Diverges;
+                }
+                recorded.last().map(ToString::to_string)
+            }
+            (None, Some(parent)) => {
+                if parent.to_string() == ancestor {
+                    return Ancestry::Descends;
+                }
+                Some(parent.to_string())
+            }
+            (None, None) => None,
+        };
+        let Some(next) = next else { return Ancestry::Diverges };
+        at = next;
     }
-    false
+    Ancestry::Unknown
 }
 
 /// A bucket or generation manifest read off `key`, its `format` held to the newest this
@@ -305,6 +343,14 @@ pub struct PushReport {
     pub refused: Vec<String>,
     /// Table pointers the push published (`store.push.pointer-carry`).
     pub pointers: Vec<String>,
+}
+
+/// What one manifest commit did.
+struct Commit {
+    entries: usize,
+    generation: u64,
+    rounds: u32,
+    refused: Vec<String>,
 }
 
 /// What a pull did.
@@ -498,8 +544,6 @@ impl Syncer {
                 report.uploaded.push(key.clone());
             }
         }
-        let retries = self.config.push_retries().max(1);
-        let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
         // A table under a standing compaction lease is the holder's to publish (`store.push.pointer-leased`).
         let mut locals = Vec::new();
         for local in local_pointers(&self.store, &self.project)? {
@@ -507,6 +551,35 @@ impl Syncer {
                 locals.push(local);
             }
         }
+        let first = self.commit(&plan, now, &report.uploaded)?;
+        report.entries = first.entries;
+        report.generation = first.generation;
+        report.rounds = first.rounds;
+        report.refused = first.refused;
+        // Pointers after the commit: every object a carried snapshot reaches is listed (`store.push.pointer-carry`).
+        for local in &locals {
+            match self.publish_local(local)? {
+                Carry::Publish(_) => report.pointers.push(local.key.clone()),
+                Carry::Keep => {}
+                Carry::Warn(w) => report.refused.push(w),
+            }
+        }
+        // A generation names a pointer only once the bucket holds it.
+        if !report.pointers.is_empty() {
+            let second = self.commit(&plan, now, &report.uploaded)?;
+            report.entries = second.entries;
+            report.generation = second.generation;
+            report.rounds += second.rounds;
+        }
+        Ok(report)
+    }
+
+    /// Commit the bucket manifest listing `plan` and the project's table pointers as read
+    /// before the commit, then write its generation (`store.push.manifest-commit`,
+    /// `store.push.generation`).
+    fn commit(&self, plan: &ManifestPlan, now: Instant, uploaded: &[String]) -> Result<Commit> {
+        let retries = self.config.push_retries().max(1);
+        let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
         for round in 1..=retries {
             let (remote, etag) = match self.manifest_bytes()? {
                 Some((remote, bytes, etag)) => (Some((remote, bytes)), Some(etag)),
@@ -539,38 +612,22 @@ impl Syncer {
             // A manifest rewritten by a writer predating `generation` reads 0; the files keep the count (`store.push.generation-floor`).
             committed.generation = remote.generation.max(newest) + 1;
             committed.pointers = remote.pointers.iter().filter(|(k, _)| !in_project(k)).map(|(k, p)| (k.clone(), p.clone())).collect();
-            let mut carried = Vec::new();
-            let mut warnings = Vec::new();
-            for local in &locals {
-                match carry(local, pointers.get(&local.key))? {
-                    Carry::Publish(p) => carried.push((local, p)),
-                    Carry::Keep => {}
-                    Carry::Warn(w) => warnings.push(w),
-                }
-            }
             committed.pointers.extend(pointers);
-            committed.pointers.extend(carried.iter().map(|(l, p)| (l.key.clone(), p.clone())));
             let bytes = serde_json::to_vec_pretty(&committed).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&self.key(MANIFEST_KEY)?, &bytes, condition)? {
                 self.put_generation(committed.generation, &bytes)?;
-                report.entries = committed.entries.len();
-                report.generation = committed.generation;
-                report.rounds = round;
-                report.refused = merged.refused.iter().map(ToString::to_string).collect();
-                report.refused.extend(warnings);
-                // Pointers after the commit: every object a carried snapshot reaches is listed.
-                for (local, _) in carried {
-                    if self.publish_local(local)? {
-                        report.pointers.push(local.key.clone());
-                    }
-                }
-                return Ok(report);
+                return Ok(Commit {
+                    entries: committed.entries.len(),
+                    generation: committed.generation,
+                    rounds: round,
+                    refused: merged.refused.iter().map(ToString::to_string).collect(),
+                });
             }
         }
         Err(StoreError::SyncManifestRebaseExhausted(format!(
             "the manifest commit lost {retries} races; every uploaded object is already in the bucket ({}); run the push again",
-            if report.uploaded.is_empty() { "none this push".to_string() } else { report.uploaded.join(", ") }
+            if uploaded.is_empty() { "none this push".to_string() } else { uploaded.join(", ") }
         ))
         .into())
     }
@@ -583,16 +640,17 @@ impl Syncer {
     }
 
     /// Publish `local` as its table's bucket pointer by a conditional put on the pointer as
-    /// read, re-deciding on a lost condition. Returns whether the bucket took it.
-    fn publish_local(&self, local: &LocalPointer) -> Result<bool> {
+    /// read, re-deciding on a lost condition. Returns the decision the bucket's pointer took.
+    fn publish_local(&self, local: &LocalPointer) -> Result<Carry> {
         let key = self.pointer_key(&local.table)?;
         for _ in 0..PUT_ROUNDS {
             let (remote, etag) = self.read_pointer(&local.table)?;
-            let Carry::Publish(next) = carry(local, etag.is_some().then_some(&remote))? else { return Ok(false) };
-            let bytes = serde_json::to_vec_pretty(&next).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let decision = carry(local, etag.is_some().then_some(&remote))?;
+            let Carry::Publish(next) = &decision else { return Ok(decision) };
+            let bytes = serde_json::to_vec_pretty(next).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
-                return Ok(true);
+                return Ok(decision);
             }
         }
         Err(StoreError::SyncManifestRebaseExhausted(format!("`{}` moved under every conditional put; run the push again", local.key)).into())

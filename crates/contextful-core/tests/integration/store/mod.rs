@@ -35,6 +35,7 @@ pub fn snapshot(created: &str, parent: Option<&SnapshotId>, includes: &[&str]) -
     SnapshotManifest {
         snapshot_id: SnapshotId::next(at(created), parent),
         parent: parent.cloned(),
+        ancestors: None,
         table: "filings".into(),
         created_at: at(created),
         includes_runs: includes.iter().map(|s| format!("{s}/ingest-a")).collect(),

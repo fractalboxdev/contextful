@@ -78,6 +78,7 @@ ReplicaSensitiveTable        = { clause = "store.replicate.sensitive-refused", g
 
 [limit]
 store-snapshot-id-width     = { clause = "store.lay-out.snapshot-id", value = 20, unit = "chars", basis = "chosen", gloss = "Width of the zero-padded nanosecond field of a snapshot id." }
+store-snapshot-ancestors    = { clause = "store.lay-out.ancestors", value = 256, unit = "entries", basis = "chosen", gloss = "Most ancestors a snapshot manifest records." }
 store-node-id-length        = { clause = "store.lay-out.node-id-shape", value = 64, unit = "chars", basis = "chosen", gloss = "Longest node id, which is interpolated into paths and keys." }
 store-ledger-retention      = { clause = "store.reserve.ledger-retention", value = 365, unit = "d", basis = "chosen", gloss = "Age at which a request-ledger row is collected." }
 store-compaction-interval   = { clause = "store.fold.triggers", value = 6, unit = "h", basis = "chosen", gloss = "Elapsed time after a table's previous pass that fires the next." }

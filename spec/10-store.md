@@ -97,6 +97,8 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
 - `cursor-in-commit` — A pipeline's committed position is the cursor inside its newest commit: the newest commit-log entry for a leased pipeline, the highest run-manifest cursor otherwise. `machine.sqlite` caches it.
   *because a position committed apart from its rows re-lands the batch after a crash between the two writes*
 - `snapshot-manifest` — A snapshot's `_manifest.json` carries `{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence, commit_seq?}`, and each entry of `parts` and `indexes` carries its `key_version`.
+- `ancestors` — A snapshot's `_manifest.json` carries `ancestors`: its parent, then the parent's `ancestors`, at most 256 entries; a root carries none, and a parent without `ancestors` leaves the field absent.
+  *because retention collects superseded snapshot directories, and a push decides a pointer's descent from the snapshot's own manifest*
 - `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of `parent` links from it reaches it.
   *A-store*
 - `manifest-default` — A field added to a manifest carries a default value.
@@ -460,7 +462,7 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
 - `manifest-format` — The bucket manifest and every generation manifest carry `format`, `1` for this layout; a manifest without `format` reads as `1`.
 - `format-unsupported` — A bucket or generation manifest whose `format` exceeds 1 raises `SyncManifestFormatUnsupported`, naming the key and its format, before the push commits or the pull writes a file.
   *because a reader rewriting a manifest it parses only in part drops the fields a newer writer added*
-- `generation` — Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as read before it and advanced by {{store.push.pointer-carry}}; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.
+- `generation` — Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.
   *because a restore or a pre-push gate names one committed state, and the live manifest and pointers move on*
 - `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
   *because a format-1 writer predating the field drops `generation`, and reusing a taken number collides with its immutable copy*
@@ -471,12 +473,16 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
 - `run-state` — `sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`: each pipeline's newest run and each cursor row with its commit marker.
   *because run history and cursors live outside the store root, and a node starting cold otherwise sees neither*
 - `run-state-format` — A run state carries `format`, `1` for this layout; one whose `format` exceeds 1 contributes no run or cursor to a reader.
-- `pointer-carry` — After its manifest commit, a push publishes each local table pointer whose snapshot is whole and descends from the bucket pointer's, or the bucket pointer names none, by a conditional put keeping the bucket's fence.
+- `pointer-carry` — After its manifest commit, a push publishes each local table pointer whose snapshot is whole and whose {{store.lay-out.ancestors}} name the bucket pointer's, or the bucket pointer names none, by a conditional put keeping the bucket's fence.
   *because a snapshot a local fold or a build publishes reads on no other node until its pointer reaches the bucket*
 - `pointer-leased` — A push publishes no pointer for a table whose compaction lease a holder keeps unexpired; that holder publishes under its fence.
   *because the holder publishes under the fence its acquisition raised, and a publish beside it races that commit*
 - `pointer-fenced` — A local pointer carrying a fence below the bucket pointer's stays local, and the push reports it as a warning beside its commit.
   *A-store*
+- `pointer-unrooted` — A local pointer whose snapshot's ancestry ends at a collected manifest before reaching the bucket pointer's snapshot or a root stays local, and the push reports it as a warning beside its commit.
+  *because a publish over a snapshot it may not descend from drops rows the bucket reaches, and a silent keep leaves every other node reading the older snapshot*
+- `pointer-recommit` — A push whose pointer publish the bucket took commits the manifest again, so a generation names a carried pointer only once the bucket's pointer holds it.
+  *because a generation naming a pointer the bucket never held restores a state no node read*
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 
