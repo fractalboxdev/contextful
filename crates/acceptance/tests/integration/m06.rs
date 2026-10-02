@@ -72,8 +72,13 @@ impl Node<'_> {
 fn node<'a>(cf: &'a Path, bucket: &'a Bucket, id: &str, extra: &str) -> Node<'a> {
     let repo = GitRepo::init();
     repo.write(&format!("{STORE}/config.toml"), &format!("[node]\nid = \"{id}\"\n\n[sync]\n{}{extra}", bucket.sync));
-    repo.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\norder_by = \"revised_at\"\n");
+    repo.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"document_id\"]\norder_by = \"revised_at\"\nretain_runs = \"0s\"\n");
     Node { repo, cf, bucket }
+}
+
+/// A plan firing the `feed` pipeline into `filings` through `script`.
+fn feed(script: &str) -> String {
+    format!("pipeline = \"feed\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"{script}\"]\n[cursor]\nkind = \"opaque-token\"\n")
 }
 
 /// Two nodes land, push at once, pull each other's runs, compact under the bucket lease,
@@ -127,6 +132,11 @@ fn converge(cf: &Path, bucket: &Bucket) {
         ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet", "tables/filings/data/runs/run-1/ingest-b/part-00000.parquet"]
     );
 
+    // B's feed run commits its cursor; the fold below collects the run and its manifest with it.
+    b.repo.write("vendor.sh", "printf '{\"rows\":[{\"document_id\":\"d5\",\"revised_at\":1,\"title\":\"feed\"}],\"cursor\":\"p9\",\"more\":false}'\n");
+    b.repo.write("feed.toml", &feed("vendor.sh"));
+    ok(&b.run(&["run", "start", "--plan", "feed.toml", "--project", "research", "--run-id", "f1", "--site-id", "site", "--now", "2030-01-01T00:30:00Z"]));
+
     // Compaction takes the table's bucket lease; a second node finding it held is skipped.
     ok(&a.sync(&["lease", "acquire", "filings", "--now", "2030-01-01T01:00:00Z"]));
     refused(&b.sync(&["compact", "filings", "--now", "2030-01-01T01:01:00Z"]), "LeaseHeld");
@@ -152,11 +162,19 @@ fn converge(cf: &Path, bucket: &Bucket) {
 
     // A cold node declaring `pull_before_run` starts its first run on the converged snapshot.
     let cold = node(cf, bucket, "ingest-c", "pull_before_run = true\n");
-    cold.repo.write("empty.sh", "printf '{\"rows\":[],\"more\":false}'\n");
-    cold.repo.write("feed.toml", "pipeline = \"feed\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"empty.sh\"]\n");
+    cold.repo.write("empty.sh", "printf '%s' \"${CONTEXTFUL_CURSOR:-start}\" > cursor.log\nprintf '{\"rows\":[],\"more\":false}'\n");
+    cold.repo.write("feed.toml", &feed("empty.sh"));
     ok(&cold.run(&["run", "start", "--plan", "feed.toml", "--project", "research", "--run-id", "c1", "--site-id", "site", "--now", "2030-01-01T03:00:00Z"]));
     assert_eq!(cold.files(), fb, "the cold node reads what the others converged on");
     assert_eq!(cold.pointer(), b.pointer());
+    // The run state each pushing node recorded travels with the store, and the cold node's first
+    // feed run resumes from the cursor B's collected run committed.
+    for id in ["ingest-a", "ingest-b"] {
+        let state: serde_json::Value = serde_json::from_slice(&std::fs::read(cold.repo.root.join(STORE).join(format!("nodes/{id}/run-state.json"))).unwrap()).unwrap();
+        assert_eq!(state["node_id"], id, "{state}");
+    }
+    assert!(!cold.repo.root.join(STORE).join("tables/filings/data/runs/f1").exists(), "the fold collected the feed run");
+    assert_eq!(std::fs::read_to_string(cold.repo.root.join("cursor.log")).unwrap(), "\"p9\"");
 }
 
 #[test]

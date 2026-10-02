@@ -65,6 +65,9 @@ pub struct Scheduler {
     armed: Vec<Entry>,
     armed_at: BTreeMap<String, Instant>,
     last_dispatch: BTreeMap<String, Instant>,
+    /// Each pipeline's newest run start that other nodes' run states record
+    /// (`surface.arm.pulled-history`).
+    pulled: BTreeMap<String, Instant>,
     in_flight: Arc<Mutex<BTreeSet<String>>>,
     ended: Arc<Mutex<Vec<Fired>>>,
     handles: Vec<JoinHandle<()>>,
@@ -84,6 +87,7 @@ impl Scheduler {
             armed: Vec::new(),
             armed_at: BTreeMap::new(),
             last_dispatch: BTreeMap::new(),
+            pulled: BTreeMap::new(),
             in_flight: Arc::default(),
             ended: Arc::default(),
             handles: Vec::new(),
@@ -153,9 +157,15 @@ impl Scheduler {
         self.hold_lease(now)
     }
 
-    /// The start of `id`'s newest journaled run.
+    /// Replace the run starts other nodes record, by pipeline id (`surface.arm.pulled-history`).
+    pub fn observe_runs(&mut self, starts: BTreeMap<String, Instant>) {
+        self.pulled = starts;
+    }
+
+    /// The start of `id`'s newest run: this catalog's journal or another node's run state,
+    /// whichever is later (`surface.arm.pulled-history`).
     fn last_run(&self, id: &str) -> Result<Option<Instant>, Failure> {
-        self.catalog.last_run_start(id)
+        Ok(self.catalog.last_run_start(id)?.max(self.pulled.get(id).copied()))
     }
 
     fn next_of(&self, e: &Entry, now: Instant) -> Result<Instant, Failure> {

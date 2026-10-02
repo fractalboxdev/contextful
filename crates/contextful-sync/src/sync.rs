@@ -536,7 +536,9 @@ impl Syncer {
             Some(n) => {
                 let listed = self.generation_manifest(n)?;
                 let local = self.local_entries()?;
-                if let Some(extra) = local.keys().find(|k| in_project(k) && reaches(k) && !listed.entries.contains_key(*k)) {
+                // A run state is a summary, not rows: one the generation does not list stays (`store.pull.generation-run-state`).
+                let run_state = |k: &str| k.strip_prefix(&format!("{}/", self.project)).is_some_and(|r| r.starts_with(&format!("{}/", crate::run_state::NODES_DIR)));
+                if let Some(extra) = local.keys().find(|k| in_project(k) && reaches(k) && !run_state(k) && !listed.entries.contains_key(*k)) {
                     return Err(StoreError::SyncGenerationDiverged(format!(
                         "`{extra}` is in this store and generation {n} does not list it; restore generation {n} into a store holding none of its files"
                     ))

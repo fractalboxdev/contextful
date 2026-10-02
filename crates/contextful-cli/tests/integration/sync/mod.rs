@@ -1,6 +1,7 @@
 //! `contextful sync` through the built binary: the endpoint a `[sync]` block names, its
 //! credentials, and the pull a run, a pipeline or either tool server takes before it reads.
 
+mod run_state;
 mod s3;
 mod without_s3;
 

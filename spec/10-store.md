@@ -468,6 +468,9 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *because a commit of N+1 landing while `gen-<N>.json` is absent leaves a gap no later push sees*
 - `generation-conflict` — A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.
   *because the immutable copy keeps the first commit, and a push reporting success names a state `pull --generation` does not restore*
+- `run-state` — `sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`: each pipeline's newest run and each cursor row with its commit marker.
+  *because run history and cursors live outside the store root, and a node starting cold otherwise sees neither*
+- `run-state-format` — A run state carries `format`, `1` for this layout; one whose `format` exceeds 1 contributes no run or cursor to a reader.
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 
@@ -522,6 +525,10 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *because a kept unlisted run adds rows the generation never held, and deleting it loses unpushed work*
 - `generation-schema` — A generation pull takes each `schema.json` as the bucket holds it, merged per {{store.pull.schema-merge}}, never refusing on its generation digest.
   *because the lattice keeps every column an earlier generation carried, and the merged copy replaces the old one in the bucket*
+- `generation-run-state` — A generation pull holds no run state to {{store.pull.generation-diverged}}: a run state the generation does not list stays as it is.
+  *because a run state summarizes history outside the store root, and a restore predating it otherwise refuses every node that pushed since*
+- `run-state-cursor` — A run opening where a pulled run state records a commit marker for its pipeline and table newer than every local one resumes from that marker's cursor.
+  *because a collected run takes its manifest's cursor out of the bucket, and a cold node otherwise re-reads the source from its start*
 
 A pull converges on the bucket manifest and writes each table pointer last.
 
@@ -551,6 +558,8 @@ sequenceDiagram
 
 unsettled: What recovers a pull whose retries are exhausted by pushes arriving faster than the re-fetch shrinks the shortfall? owner: store affects: store.pull
 
+unsettled: Does a run state carry the applied control version, and what does a replica verify of a pulled version — apply validation, the admin capability's attestation — before adopting it? owner: control affects: store.pull
+
 ## probe
 
 Measuring a backend's conditional-write behavior with a live sentinel, and the coordination mode that outcome resolves.
@@ -577,7 +586,7 @@ Reconciling one bucket manifest between writers: per-entry ownership, tombstones
   *A-run*
 - `scoped-union` — A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a remote entry it owns and no longer holds leaves with a tombstone.
   *A-store*
-- `ownership` — A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, or a commit log's node directory. Every other key is unowned and propagates no deletion.
+- `ownership` — A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.
   *A-store*
 
 unsettled: Which key signs a tombstone, given a node id carries no key material? owner: store affects: store.merge
@@ -645,6 +654,7 @@ The store tree and its bucket mirror:
   machine.sqlite                         not synced
   config.toml
   cursors/<pipeline-id>/<node-id>/<seq>.json   commit log of a leased pipeline, per node
+  nodes/<node-id>/run-state.json         newest runs, cursor markers
   tables/<t>/
     schema.json
     _pointer.json
