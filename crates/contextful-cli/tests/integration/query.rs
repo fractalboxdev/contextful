@@ -109,7 +109,7 @@ fn operator_text_runs_raw_where_token_text_is_gated() {
 }
 
 /// `--project` registers every table under its bare name; a quiet table reads as zero rows.
-// spec: read.query.project-relations@00e9b3b1
+// spec: read.query.project-relations@239bf3fa
 #[test]
 fn a_project_registers_every_table_under_its_bare_name() {
     let p = project();
@@ -118,10 +118,6 @@ fn a_project_registers_every_table_under_its_bare_name() {
     let quiet = query(p.path(), &["--project", "research", "SELECT * FROM \"research/quiet\""]);
     assert_eq!(quiet["rows"], json!([]));
     assert_eq!(quiet["truncated"], json!(false));
-
-    // Without `--project` no relation registers.
-    let bare = run(p.path(), &["query", "--json", "SELECT * FROM \"research/notes\""]);
-    assert!(!bare.status.success());
 }
 
 /// `--limit` bounds delivered rows and sets `truncated` from the over-fetched probe row.
@@ -180,7 +176,7 @@ fn text_holding_two_statements_runs_none() {
 }
 
 /// A `--project` naming no store on disk is refused rather than answered with quiet tables.
-// spec: read.query.project-store@bb44fa8e
+// spec: read.query.project-store@db671dd1
 #[test]
 fn a_project_with_no_store_is_refused() {
     let p = project();
@@ -192,7 +188,7 @@ fn a_project_with_no_store_is_refused() {
 }
 
 /// `--declaration` names the manifest whose declared tables register beside the store's.
-// spec: read.query.declaration-default@3a32905a
+// spec: read.query.declaration-default@64338b30
 #[test]
 fn a_declaration_path_supplies_the_manifest() {
     let p = project();
@@ -202,4 +198,41 @@ fn a_declaration_path_supplies_the_manifest() {
     assert_eq!(out["rows"], json!([]));
     let absent = run(p.path(), &["query", "--json", "--project", "research", sql]);
     assert!(!absent.status.success());
+}
+
+/// Without `--project`, the project discovery finds registers its tables from any directory
+/// beneath its `contextful.toml`; with none found, the statement runs over no store.
+// spec: read.query.discovered-project@0fd1b6d8
+#[test]
+fn a_discovered_project_registers_its_tables() {
+    let p = project();
+    let notes = "SELECT count(*) AS n FROM \"research/notes\"";
+
+    // A nearest `contextful.toml` naming no project registers nothing.
+    let nameless = run(p.path(), &["query", "--json", notes]);
+    assert!(!nameless.status.success());
+    assert!(stderr(&nameless).contains("Catalog Error"), "{}", stderr(&nameless));
+
+    let declaration = p.path().join("contextful.toml");
+    let text = std::fs::read_to_string(&declaration).unwrap();
+    std::fs::write(&declaration, format!("{text}\n[project]\nname = \"research\"\n")).unwrap();
+    let below = p.path().join("drafts/june");
+    std::fs::create_dir_all(&below).unwrap();
+
+    for dir in [p.path(), below.as_path()] {
+        assert_eq!(query(dir, &[notes])["rows"], json!([["2"]]));
+        // The discovered `contextful.toml` is the manifest: a declared quiet table registers.
+        assert_eq!(query(dir, &["SELECT * FROM \"research/quiet\""])["rows"], json!([]));
+    }
+
+    // `--declaration` names the discovered project's manifest.
+    std::fs::write(below.join("other.toml"), "[[pipeline.tables]]\nname = \"research/elsewhere\"\n").unwrap();
+    assert_eq!(query(&below, &["--declaration", "other.toml", "SELECT * FROM \"research/elsewhere\""])["rows"], json!([]));
+
+    // A literal statement runs where no `contextful.toml` is found.
+    let elsewhere = tempfile::tempdir().unwrap();
+    assert_eq!(query(elsewhere.path(), &["SELECT 1 AS one"])["rows"], json!([[1]]));
+    let refused = run(elsewhere.path(), &["query", "--json", "--declaration", "other.toml", "SELECT 1"]);
+    assert!(!refused.status.success());
+    assert!(stderr(&refused).contains("StoreProjectUndiscovered"), "{}", stderr(&refused));
 }
