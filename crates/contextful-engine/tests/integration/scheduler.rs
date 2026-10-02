@@ -7,13 +7,39 @@ use contextful_core::surface::arm::Schedule;
 use contextful_engine::scheduler::{Dispatch, Entry, LeaseState, Scheduler};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// A dispatch that journals a run row per fire, starting at the catalog's now, and
-/// optionally waits for a release before it returns.
+/// optionally holds at a barrier: it announces each journaled fire on `entered`, then
+/// waits for a release before it returns.
 struct Recording {
     catalog: Arc<dyn Catalog + Send + Sync>,
     fired: Mutex<Vec<(String, u64)>>,
-    gate: Option<Mutex<Receiver<()>>>,
+    gate: Option<Barrier>,
+}
+
+/// The two halves of a dispatch barrier: the unit reports its id once its run row is
+/// journaled, then blocks until the test releases it.
+struct Barrier {
+    entered: Mutex<Sender<String>>,
+    release: Mutex<Receiver<()>>,
+}
+
+/// The test's side of a [`Barrier`].
+struct Gate {
+    entered: Receiver<String>,
+    release: Sender<()>,
+}
+
+impl Gate {
+    /// Wait until a dispatched unit has journaled its run row and is blocked in flight.
+    fn entered(&self) -> String {
+        self.entered.recv_timeout(Duration::from_secs(30)).expect("a dispatched unit enters the barrier")
+    }
+
+    fn release(&self) {
+        self.release.send(()).unwrap();
+    }
 }
 
 impl Dispatch for Recording {
@@ -28,16 +54,23 @@ impl Dispatch for Recording {
         row.started_at = self.catalog.now().unwrap();
         self.catalog.put_run(&row).unwrap();
         if let Some(gate) = &self.gate {
-            gate.lock().unwrap().recv().unwrap();
+            gate.entered.lock().unwrap().send(id.to_string()).unwrap();
+            gate.release.lock().unwrap().recv().unwrap();
         }
         Ok(format!("{id} landed"))
     }
 }
 
-fn rig_with(gate: Option<Receiver<()>>) -> (Rig, Arc<Recording>) {
+fn rig_with(gate: Option<Barrier>) -> (Rig, Arc<Recording>) {
     let rig = Rig::new();
-    let rec = Arc::new(Recording { catalog: rig.engine.catalog.clone(), fired: Mutex::default(), gate: gate.map(Mutex::new) });
+    let rec = Arc::new(Recording { catalog: rig.engine.catalog.clone(), fired: Mutex::default(), gate });
     (rig, rec)
+}
+
+fn barrier() -> (Barrier, Gate) {
+    let (entered_tx, entered_rx) = channel();
+    let (release_tx, release_rx) = channel();
+    (Barrier { entered: Mutex::new(entered_tx), release: Mutex::new(release_rx) }, Gate { entered: entered_rx, release: release_tx })
 }
 
 fn scheduler(rig: &Rig, rec: &Arc<Recording>, pool: usize) -> Scheduler {
@@ -143,25 +176,31 @@ fn the_cadence_lease_renews_every_30_s() {
 }
 
 /// A unit in flight holds its key across beats, and a pool of one reports the rest pending.
+///
+/// The clock moves only by hand and each fire blocks at a barrier, so every beat observes
+/// the in-flight set at a known point: alpha's run row is journaled at T0 before the
+/// clock advances.
 #[test]
 fn in_flight_units_hold_their_key_and_fill_the_pool() {
-    let (tx, rx): (Sender<()>, Receiver<()>) = channel();
-    let (rig, rec) = rig_with(Some(rx));
+    let (barrier, gate) = barrier();
+    let (rig, rec) = rig_with(Some(barrier));
     let mut s = scheduler(&rig, &rec, 1);
     s.arm(1, vec![hourly("alpha"), hourly("beta")]).unwrap();
     let beat = s.beat().unwrap();
     assert_eq!((beat.started.clone(), beat.pending.clone()), (vec!["alpha".to_string()], vec!["beta".to_string()]));
+    assert_eq!(gate.entered(), "alpha");
     // Past alpha's next fire while its first fire still runs: no second instance.
     rig.clock.advance(3600);
     let beat = s.beat().unwrap();
     assert!(beat.started.is_empty());
     assert_eq!(beat.held, ["alpha"]);
     assert_eq!(beat.pending, ["beta"]);
-    tx.send(()).unwrap();
+    gate.release();
     s.drain();
     let beat = s.beat().unwrap();
     assert_eq!(beat.started, ["beta"]);
-    tx.send(()).unwrap();
+    assert_eq!(gate.entered(), "beta");
+    gate.release();
     s.drain();
     assert_eq!(fired(&rec), ["alpha", "beta"]);
 }
