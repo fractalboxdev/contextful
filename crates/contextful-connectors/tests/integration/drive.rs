@@ -216,6 +216,18 @@ fn a_three_level_tree_lands_one_row_per_file_with_its_path_from_the_root() {
     assert_eq!(f.tag, FailureTag::Config, "the root sits in no declared drive: {f}");
     assert!(f.message.contains("not in drive `0AExampleDrive`"), "{f}");
     assert!(shared.received("/drive/v3/files").is_empty(), "the root check comes ahead of any listing");
+    // A root inside the declared drive walks the whole tree, each listing scoped to that drive.
+    shared.overlay("shared.json");
+    let (rows, _, _) = pull(&mut d.source("files").unwrap(), None);
+    assert_eq!(rows.len(), 7);
+    let listings = shared.received("/drive/v3/files");
+    assert_eq!(listings.len(), 4, "the root's two pages, then each subfolder once");
+    for r in &listings {
+        let q = query(r);
+        for pair in [("corpora", "drive"), ("driveId", "0AExampleDrive"), ("supportsAllDrives", "true"), ("includeItemsFromAllDrives", "true")] {
+            assert!(q.contains(&(pair.0.to_string(), pair.1.to_string())), "{pair:?} in {q:?}");
+        }
+    }
 }
 
 /// The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the
