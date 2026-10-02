@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 220 | 56 | 22 | 15 | 111 | 0 | 111 |
 | `authority` | 2 | 16 | 263 | 77 | 27 | 10 | 200 | 0 | 200 |
-| `connector` | 2 | 13 | 299 | 78 | 19 | 14 | 173 | 0 | 173 |
+| `connector` | 2 | 14 | 307 | 80 | 19 | 15 | 175 | 0 | 175 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 165 | 28 | 22 | 20 | 140 | 0 | 140 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 216 | 53 | 12 | 17 | 176 | 0 | 176 |
 | `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 153 | 1833 | 554 | 184 | 137 | 1167 | 0 | |
+| **total** | 19 | 154 | 1841 | 556 | 184 | 138 | 1169 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 232 | 180 | passing | closed |
 | 2 — The store | 9 | 153 | 118 | passing | closed |
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
-| 4 — Ingest | 24 | 442 | 261 | passing | open |
+| 4 — Ingest | 25 | 450 | 263 | passing | open |
 | 5 — The read face under enforcement | 17 | 243 | 174 | passing | open |
 | 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
@@ -531,6 +531,8 @@ Unscheduled operations: 10.
 | `connector.source.workbook-cell-typing` | `crates/contextful-decode/tests/integration/workbook.rs::cells_land_as_strings_a_date_as_its_serial_and_a_formula_as_its_cached_value` | performed |
 | `connector.source.workbook-incremental` | `crates/contextful-connectors/tests/integration/workbook.rs::an_incremental_position_against_a_workbook_is_refused` | performed |
 | `connector.source.worksheet-landing` | `crates/contextful-decode/tests/integration/workbook.rs::a_worksheet_lands_at_most_64_mib_of_resolved_text_and_1048576_rows` | performed |
+| `connector.widen.host-inclusion` | `crates/contextful-core/tests/integration/connector/widen.rs::generated_hosts_agree_with_the_proved_model`, `formal/Contextful/Allowlist.lean::allowlist_includedIn_sound` | performed |
+| `connector.widen.host-witness` | `crates/contextful-core/tests/integration/connector/widen.rs::generated_hosts_agree_with_the_proved_model`, `formal/Contextful/Allowlist.lean::widen_witness_admitted` | performed |
 | `corpus.address.clause-id` | `tools/spec/tests/integration/readable.rs::a_clause_item_takes_its_contract_and_operation_from_its_file_and_section` | performed |
 | `corpus.anatomy.bad-anatomy` | `tools/spec/tests/integration/readable.rs::an_item_outside_the_clause_shape_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.clause-list` | `tools/spec/tests/integration/readable.rs::a_clause_list_split_by_prose_is_an_anatomy_finding` | performed |

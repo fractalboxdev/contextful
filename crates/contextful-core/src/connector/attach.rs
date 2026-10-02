@@ -61,7 +61,31 @@ impl Allowlist {
         let host = host.trim_end_matches('.').to_ascii_lowercase();
         self.0.iter().any(|e| match e {
             HostEntry::Exact(h) => *h == host,
-            HostEntry::Subdomains(d) => host.len() > d.len() + 1 && host.ends_with(&format!(".{d}")),
+            HostEntry::Subdomains(d) => proper_subdomain(&host, d),
+        })
+    }
+
+    /// Sufficient host inclusion check over parsed entries. A false answer alone does
+    /// not establish widening (`connector.widen.host-inclusion`).
+    pub fn included_in(&self, predecessor: &Allowlist) -> bool {
+        self.0.iter().all(|candidate| predecessor.0.iter().any(|parent| match (parent, candidate) {
+            (HostEntry::Exact(p), HostEntry::Exact(c)) => p == c,
+            (HostEntry::Exact(_), HostEntry::Subdomains(_)) => false,
+            (HostEntry::Subdomains(p), HostEntry::Exact(c)) => proper_subdomain(c, p),
+            (HostEntry::Subdomains(p), HostEntry::Subdomains(c)) => p == c || c.ends_with(&format!(".{p}")),
+        }))
+    }
+
+    /// A concrete newly permitted host, replayed through both outbound matchers.
+    /// Absence supplies no inclusion verdict (`connector.widen.host-witness`).
+    pub fn widening_witness(&self, predecessor: &Allowlist) -> Option<String> {
+        // More distinct labels than predecessor entries: exact hosts cannot cover all
+        // probes; a narrower wildcard cannot cover a direct child of this suffix.
+        self.0.iter().find_map(|entry| match entry {
+            HostEntry::Exact(host) => (self.permits(host) && !predecessor.permits(host)).then(|| host.clone()),
+            HostEntry::Subdomains(domain) => (0..=predecessor.0.len())
+                .map(|n| format!("w{n}.{domain}"))
+                .find(|host| self.permits(host) && !predecessor.permits(host)),
         })
     }
 
@@ -75,6 +99,10 @@ impl Allowlist {
             _ => Err(ConnectorError::SecretWildcardHost("a source binding a credential declares more than one host".into())),
         }
     }
+}
+
+fn proper_subdomain(host: &str, domain: &str) -> bool {
+    host.len() > domain.len() + 1 && host.ends_with(&format!(".{domain}"))
 }
 
 /// Parse a configured endpoint. One carrying userinfo refuses (`connector.attach.credential-in-a-url`).

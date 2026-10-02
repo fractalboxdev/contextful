@@ -37,7 +37,7 @@ Every host access and quota draw is named in a file the operator reads and decid
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Declared grants decided at load, fail closed on every degradation *(chosen)* | — | A second host is a file edit and reload; a vendor dropping the scopes header breaks a working pipeline; each permit batch costs a round trip. |
+| Declared grants decided at load, fail closed on every degradation *(chosen)* | — | A second host needs a file edit, widening review and reload; a vendor dropping the scopes header breaks a working pipeline; each permit batch costs a round trip. |
 | A run-time permission request | Reviewability | The grant set is a union over code paths. |
 | Ambient access, denial at the network stack | Timing | Request and credential already exist when the denial fires. |
 | Fail open on an unreachable limiter or missing header | Failure direction | An unmetered burst lands during the unwatched outage. |
@@ -96,3 +96,17 @@ Criteria: one attachment point, no lookup before a refusal, `connector.meter.all
 
 Consequences: `contextful-decode` then holds the record decoders with no edge to `contextful-outbound`, a split needing no section here. Each transport adapter is audited against the attach clauses.
 Revisit: a transport that must resolve remotely, such as a proxy-only deployment.
+
+## Manifest widening binds approval to both declarations
+
+`connector.widen` compares full declarations before publication. Host patterns use syntactic containment; environment names and scope strings use set inclusion, and the clock uses Boolean inclusion. A reported host witness replays through both matchers. The comparison makes no claim about vendor scope implications, DNS, transport mediation or credential bytes.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Compare grants and bind approval to both manifest digests *(chosen)* | — | Additional access needs operator review; opaque scope strings over-report semantic widening. |
+| Treat every reload as approval | Review binding | A program update silently gains access. |
+| Compare textual entries alone | Semantic inclusion | Replacing an exact host with a covering wildcard obscures the newly reachable hosts. |
+| Solve the host grammar with SMT | Dependency budget | Exact hosts and suffix wildcards acquire a solver and a second trusted interpretation. |
+
+Consequences: a concurrent edit invalidates the approval; unresolved comparisons retain the predecessor. A fixed wildcard sample can already belong to an exact predecessor entry, so absence of a replayed witness supplies no inclusion verdict. Approval storage and authorization remain the operation's unsettled boundary.
+Revisit: host grants gain ports, methods, paths or address ranges.

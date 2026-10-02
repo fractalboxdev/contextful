@@ -1,3 +1,4 @@
+import Contextful.Allowlist
 import Reference.Coverage
 import Reference.Narrowing
 import Reference.Placement
@@ -136,11 +137,40 @@ def placed (verdict : String) (z : Zone) : Decision :=
 def coverage (b : Bool) : Decision :=
   { verdict := if b then "covered" else "not_covered" }
 
+/-- Parsed entries from the engine; syntax validation remains at the manifest boundary. -/
+def hostEntries (j : Json) : Decode (List Allowlist.Entry) := do
+  let entries ← grantArray j
+  entries.mapM fun entry => do
+    let kind ← str (← required entry "kind")
+    let value ← str (← required entry "value")
+    match kind with
+    | "exact" => pure (.exact value.toList.reverse)
+    | "subdomains" => pure (.subdomains (value.toList.reverse ++ ['.']))
+    | _ => malformed
+
+/-- The outbound matcher strips trailing dots and folds ASCII case. -/
+def hostName (s : String) : Allowlist.Name :=
+  (s.toList.reverse.dropWhile (· == '.')).map fun c =>
+    if 'A' ≤ c && c ≤ 'Z' then c.toLower else c
+
 /-- Decode a case and decide it. -/
 def decide (j : Json) : Decode Decision := do
   unless isObject j do malformed
   let op ← str (← required j "op")
   match op with
+  | "host_covers" =>
+    let entries ← hostEntries (← required j "entries")
+    let host ← str (← required j "host")
+    pure (coverage (Allowlist.permits entries (hostName host)))
+  | "host_included" =>
+    let candidate ← hostEntries (← required j "candidate")
+    let predecessor ← hostEntries (← required j "predecessor")
+    pure (coverage (Allowlist.includedIn candidate predecessor))
+  | "host_witness" =>
+    let candidate ← hostEntries (← required j "candidate")
+    let predecessor ← hostEntries (← required j "predecessor")
+    let host ← str (← required j "host")
+    pure (coverage ((Allowlist.witness candidate predecessor [hostName host]).isSome))
   | "covers_name" =>
     let p ← str (← required j "pattern")
     let n ← str (← required j "name")
