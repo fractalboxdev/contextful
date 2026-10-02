@@ -22,7 +22,6 @@ fn scheduled(id: &str, endpoint: &str, schedule: &str) -> String {
 }
 
 #[test]
-#[ignore = "milestone 10 is open: no published hostname is probed for the posture it declares"]
 fn m10_cadence() {
     let cf = bin("contextful");
     let vendor = Server::start(|_| Response::json(200, "[{\"id\":\"a\"}]"));
@@ -31,7 +30,7 @@ fn m10_cadence() {
     p.write(
         "contextful.toml",
         &format!(
-            "site_id = \"site-a\"\n\n[control]\npool = 2\n\n{}{}{}",
+            "site_id = \"site-a\"\nauthoring_posture = \"per_request\"\n\n[control]\npool = 2\n\n{}{}{}",
             scheduled("filings", &vendor.url("/v1/filings"), "every 1h"),
             scheduled("orders", &vendor.url("/v1/orders"), "every 1h"),
             scheduled("returns", &vendor.url("/v1/returns"), "0 3 * * *"),
