@@ -509,7 +509,7 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *A-store*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
   *because rows landed locally carry columns the bucket's copy may lack*
-- `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run` and `mcp` pull every table of the bucket into the store before their first read, and a failed pull stops the command.
+- `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the bucket into the store before their first read, and a failed pull stops the command.
   *because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs*
 - `generation` — `contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.
 - `generation-absent` — A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.

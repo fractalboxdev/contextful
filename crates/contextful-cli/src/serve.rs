@@ -1,11 +1,11 @@
 //! `contextful serve --http` — the tool server over MCP Streamable HTTP.
 //!
 //! A thin adapter: it checks the declared audience and in-flight ceiling and the issuer
-//! key, opens the read face over the project's store and manifest and the project's audit
-//! chain unanchored (`disclosure.record.read-chain`), binds the listener,
-//! and hands every request to the network transport, which admits each one on its own
-//! credential. Every value is resolved before the listener binds, so a process that
-//! cannot serve binds nothing.
+//! key, pulls the bucket when `[sync] pull_before_run = true`, opens the read face over
+//! the project's store and manifest and the project's audit chain unanchored
+//! (`disclosure.record.read-chain`), binds the listener, and hands every request to the
+//! network transport, which admits each one on its own credential. Every value is
+//! resolved before the listener binds, so a process that cannot serve binds nothing.
 
 use crate::admit::{face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
 use crate::project::locate;
@@ -91,6 +91,9 @@ pub fn run(args: ServeArgs) -> Result<()> {
     revocation().map_err(anyhow::Error::msg)?;
     let admitting = Admitting { checkpoint: &checkpoint, audience, revocation: &revocation };
     let located = locate(args.project.as_deref(), args.declaration)?;
+    // A cold node pulls the bucket before the face opens; a failed pull binds nothing
+    // (`store.pull.before-run`).
+    crate::sync::pull_before_run(&located)?;
     let face = face(&located)?;
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
     let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling)).map_err(anyhow::Error::msg)?;
