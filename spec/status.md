@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
-| `read` | 2 | 15 | 170 | 28 | 22 | 20 | 151 | 0 | 151 |
+| `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
 | `run` | 3 | 26 | 368 | 98 | 35 | 36 | 252 | 0 | 252 |
 | `store` | 1 | 17 | 229 | 54 | 13 | 19 | 189 | 0 | 189 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1890 | 562 | 187 | 139 | 1245 | 0 | |
+| **total** | 19 | 154 | 1895 | 563 | 187 | 140 | 1250 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 465 | 284 | passing | open |
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
 | 6 — Sync and replicas | 8 | 72 | 67 | passing | closed |
-| 7 — Memory | 6 | 32 | 32 | passing | closed |
+| 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 46 | 27 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 56 | 26 | passing | open |
@@ -684,7 +684,11 @@ Unscheduled operations: 10.
 | `read.rank.retrieval-block` | `crates/contextful-core/tests/integration/read/rank.rs::the_retrieval_block_and_row_fields_carry_their_names` | performed |
 | `read.rank.three-legs` | `crates/contextful-core/tests/integration/read/rank.rs::ranking_fuses_a_cosine_leg_and_a_bm25_leg` | performed |
 | `read.rank.window-anchor-tolerance` | `crates/contextful-core/tests/integration/read/rank.rs::the_anchor_tolerates_24_hours_and_names_the_basis` | performed |
+| `read.recall.evidence-key` | `crates/contextful-memory/tests/integration/evidence.rs::a_fold_superseding_the_cited_version_keeps_the_claim` | performed |
+| `read.recall.evidence-key-masked` | `crates/contextful-memory/tests/integration/evidence.rs::a_writer_zone_nulling_a_non_key_column_still_stamps_the_key` | performed |
+| `read.recall.evidence-no-value` | `crates/contextful-memory/tests/integration/evidence.rs::a_memory_reader_reads_no_source_key_value` | performed |
 | `read.recall.evidence-references` | `crates/contextful-core/tests/integration/memory/recall.rs::evidence_past_256_references_overflows` | performed |
+| `read.recall.evidence-stale` | `crates/contextful-memory/tests/integration/evidence.rs::a_claim_served_past_its_cited_version_counts_stale` | performed |
 | `read.recall.evidence-unresolved` | `crates/contextful-core/tests/integration/memory/recall.rs::unresolvable_evidence_suppresses_the_claim` | performed |
 | `read.recall.keyed` | `crates/contextful-memory/tests/integration/recall.rs::a_keyed_recall_returns_the_subjects_claims_valid_at_the_observed_instant` | performed |
 | `read.recall.keyed-clocks` | `crates/contextful-memory/tests/integration/recall.rs::as_of_ingest_reads_what_was_known_then` | performed |
@@ -775,6 +779,7 @@ Unscheduled operations: 10.
 | `read.retrieve.token-cap` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_token_set_is_capped_and_an_empty_set_omits_the_floor` | performed |
 | `read.retrieve.token-length-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::an_ascii_run_below_the_length_floor_leaves` | performed |
 | `read.retrieve.unsatisfiable-arm-drops` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_filter_binds_named_columns_and_a_table_lacking_one_drops_its_arm` | performed |
+| `read.revise.citation-live` | `crates/contextful-memory/tests/integration/evidence.rs::a_write_citing_a_superseded_version_refuses` | performed |
 | `read.revise.dedup-key` | `crates/contextful-memory/tests/integration/write.rs::a_dedup_key_seeds_the_claim_id_and_a_retry_lands_nothing` | performed |
 | `read.revise.direct-write` | `crates/contextful-core/tests/integration/memory/revise.rs::the_direct_write_accepts_claims_alone` | performed |
 | `read.revise.observed-at` | `crates/contextful-memory/tests/integration/write.rs::an_observed_write_lands_valid_from_its_observed_instant` | performed |
