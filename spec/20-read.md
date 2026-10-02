@@ -60,6 +60,7 @@ flowchart LR
 The relations, tools and templates one connection sees, the engine executing against them, and the network transport carrying the tools.
 
 - `connection-views` — A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.
+- `declaration-set` — The face registers the tables of {{store.declare.declaration-set}}, so a `primary_key` a pipeline file declares reaches {{store.declare.dedup-view}} on the operator verb and the tool server alike.
 - `engine` — The executor is an embedded columnar SQL engine, linked into every profile that serves reads, reading Parquet natively in standard SQL. An external process reads the same files with the engine uninstalled.
   *A-topology*
 - `quiet-table` — A quiet table registers as {{store.declare.empty-run}}. A read of it returns an empty result, never a missing-relation fault.

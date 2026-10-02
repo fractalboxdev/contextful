@@ -4,10 +4,10 @@
 //! calls the store's build or hold, and prints the receipt. No model rule lives here.
 
 use crate::pipeline::manifests;
+use crate::project::open_face;
 use crate::run::{site_id_for, ProjectArgs};
 use anyhow::{Context, Result};
 use contextful_context::build::{build, hold, BuildRequest};
-use contextful_context::read::Face;
 use contextful_context::Store;
 use contextful_core::pipeline::declare::collect;
 use contextful_core::pipeline::model::{collect_models, duration_secs, ModelSpec, Receipt};
@@ -130,8 +130,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
             let text = if l.declaration.exists() { std::fs::read_to_string(&l.declaration)? } else { String::new() };
             let site_id = site_id_for(&text, &l.declaration, args.site_id, args.site_id_env)?;
             let started_at = now(&args.project.now)?;
-            let store = Store::open(&l.project.dir, &l.project.name)?;
-            let face = Face::open(store, &text, Pepper::resolve(|k| std::env::var(k).ok()))
+            let face = open_face(&l.project, &l.declaration, &text, Pepper::resolve(|k| std::env::var(k).ok()))
                 .with_context(|| format!("opening the read face over `{}`", l.declaration.display()))?;
             // An injected instant fixes the build's completion too, so a replayed build is byte-stable.
             let completed_at = match &args.project.now {

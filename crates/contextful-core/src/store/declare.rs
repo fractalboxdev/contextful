@@ -158,6 +158,16 @@ impl FoldCoverage {
     }
 }
 
+/// The tables, each once its retention window and visibility block parse
+/// (`disclosure.declare-fidelity.family-bound`).
+fn checked(tables: Vec<TableDecl>) -> Result<Vec<TableDecl>, crate::disclosure::declare::DeclareError> {
+    for t in &tables {
+        t.retain_runs_secs()?;
+        crate::disclosure::declare::Binding::of(t)?;
+    }
+    Ok(tables)
+}
+
 impl TableDecl {
     /// A table with every key unset.
     pub fn named(name: impl Into<String>) -> TableDecl {
@@ -193,10 +203,31 @@ impl TableDecl {
                 file.pipeline.tables
             }
         };
-        for t in &tables {
-            t.retain_runs_secs()?;
-            crate::disclosure::declare::Binding::of(t)?;
+        checked(tables)
+    }
+
+    /// Every table block of a declaration set (`store.declare.declaration-set`): the
+    /// declaration's under [`TableDecl::parse_pipeline`], then, for each `pipelines/`
+    /// file, the `[[pipeline.tables]]` of a `[pipeline]` table as named and those of each
+    /// specification `run.declare.manifest-file` reads under its destination name.
+    pub fn parse_declaration_set(
+        declaration: &str,
+        pipelines: &[crate::pipeline::declare::ManifestFile],
+    ) -> Result<Vec<TableDecl>, crate::disclosure::declare::DeclareError> {
+        let mut tables = TableDecl::parse_pipeline(declaration)?;
+        let mut declared = Vec::new();
+        for f in pipelines {
+            if f.path.ends_with(".toml") {
+                let value: toml::Value = toml::from_str(&f.text).map_err(|e| DeclarationMalformed(format!("{}: {e}", f.path)))?;
+                if matches!(value.get("pipeline"), Some(toml::Value::Table(_))) {
+                    tables.extend(TableDecl::parse_pipeline(&f.text)?);
+                }
+            }
+            for d in crate::pipeline::declare::read_manifest(f).map_err(|e| DeclarationMalformed(e.to_string()))? {
+                declared.extend(d.spec.tables.iter().map(|t| TableDecl { name: d.spec.table_name(t.name()), ..t.decl() }));
+            }
         }
+        tables.extend(checked(declared)?);
         Ok(tables)
     }
 

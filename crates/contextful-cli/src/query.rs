@@ -4,9 +4,9 @@
 //! read face's one response serializer, and prints that projection. The verb has no
 //! counterpart on the tool protocol or any network face.
 
-use crate::project::Located;
+use crate::project::{open_face, Located};
 use anyhow::{Context, Result};
-use contextful_context::read::{operator_query, Face, ReadOptions};
+use contextful_context::read::{operator_query, ReadOptions};
 use contextful_context::{ContextError, Store};
 use contextful_core::store::StoreError;
 use contextful_policy::enforce::mask::Pepper;
@@ -21,7 +21,8 @@ pub struct QueryArgs {
     /// names; absent registers the project the nearest `contextful.toml` names, if any.
     #[arg(long)]
     project: Option<String>,
-    /// The pipeline manifest; absent reads the project's `contextful.toml` when present.
+    /// The pipeline manifest; absent reads the project's `contextful.toml` when present. The
+    /// `pipelines/` files beside it declare tables too.
     #[arg(long)]
     declaration: Option<PathBuf>,
     /// Deliver at most this many rows, setting `truncated` when more exist.
@@ -62,18 +63,18 @@ pub fn run(args: QueryArgs) -> Result<()> {
     let opts = ReadOptions { limit: args.limit, ..ReadOptions::default() };
     let named = args.declaration.is_some();
     let discovered = args.project.is_none();
-    let store = match locate(args.project.as_deref(), args.declaration)? {
+    let located = match locate(args.project.as_deref(), args.declaration)? {
         Some(Located { project, declaration }) => {
             let store = Store::open(&project.dir, &project.name)?;
             // A discovered project's absent store registers nothing; a named one's raises
             // `QueryProjectAbsent` in the face (`read.query.project-store`).
-            (!discovered || store.root().is_dir()).then_some((store, declaration))
+            (!discovered || store.root().is_dir()).then_some((project, declaration))
         }
         None => None,
     };
-    let response = match store {
-        Some((store, declaration)) => {
-            let face = Face::open(store, &manifest(&declaration, named)?, Pepper::resolve(|k| std::env::var(k).ok()))?;
+    let response = match located {
+        Some((project, declaration)) => {
+            let face = open_face(&project, &declaration, &manifest(&declaration, named)?, Pepper::resolve(|k| std::env::var(k).ok()))?;
             face.operator_query(&args.sql, opts)?
         }
         None => operator_query(&args.sql, opts)?,

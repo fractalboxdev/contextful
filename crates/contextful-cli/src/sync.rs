@@ -4,7 +4,7 @@
 //! The endpoint's scheme selects the adapter: `file://` the filesystem bucket, and
 //! `s3://`, `r2://`, `https://` and loopback `http://` the S3 adapter under `s3-sync`.
 
-use crate::project::{locate, Located};
+use crate::project::{locate, pipeline_files, Located};
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use contextful_context::fold::fold;
@@ -140,10 +140,10 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
     let bucket = bucket(&config)?;
     let prefix = config.resolve_prefix(|k| std::env::var(k).ok())?;
     let (node_id, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
-    let decls = match std::fs::read_to_string(&l.declaration) {
-        Ok(t) => TableDecl::parse_pipeline(&t)?,
-        Err(_) => Vec::new(),
-    };
+    // The declaration set (`store.declare.declaration-set`): `replicate` and `primary_key`
+    // read here match those the read face reads.
+    let text = std::fs::read_to_string(&l.declaration).unwrap_or_default();
+    let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&l.declaration)?)?;
     let syncer = Syncer { store, bucket, config, prefix, project: l.project.name.clone(), node: node_id.to_string() };
     Ok((syncer, decls))
 }

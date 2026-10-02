@@ -212,10 +212,9 @@ impl NonceStore {
 mod wired {
     use super::{command_path, env_value, live_pins, revocation_state, AdmitError, LedgerFile, NonceStore, AUDIENCE_VAR, DPOP_VAR, HOLDER_KEY_VAR, PUBKEY_VAR};
     use crate::clock::SystemClock;
-    use crate::project::Located;
+    use crate::project::{open_face, Located};
     use anyhow::{Context, Result};
     use contextful_context::read::Face;
-    use contextful_context::Store;
     #[cfg(feature = "data-plane")]
     use contextful_core::issue::AuthoringPosture;
     use contextful_core::ports::{Clock, FixedClock};
@@ -397,8 +396,7 @@ mod wired {
         let declaration = &located.declaration;
         let manifest =
             std::fs::read_to_string(declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
-        let store = Store::open(&located.project.dir, &located.project.name)?;
-        let face = Face::open(store, &manifest, pepper.clone())?;
+        let face = open_face(&located.project, declaration, &manifest, pepper.clone())?;
         if let Some(signal) = pepper.signal() {
             eprintln!("{signal}");
         }

@@ -3,6 +3,11 @@
 
 use anyhow::Result;
 use contextful_context::project::{check_name, discover, Project};
+use contextful_context::read::Face;
+use contextful_context::Store;
+use contextful_core::pipeline::declare::ManifestFile;
+use contextful_policy::enforce::mask::Pepper;
+use std::path::Path;
 #[cfg(feature = "data-plane")]
 use anyhow::anyhow;
 #[cfg(feature = "data-plane")]
@@ -50,6 +55,38 @@ pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Loc
         }
     };
     Ok(Located { project, declaration: declaration.unwrap_or(default) })
+}
+
+/// The manifest files, in reading order: the declaration when it is a file, then
+/// `pipelines/` sorted (`run.declare.manifest-file`).
+#[cfg(feature = "data-plane")]
+pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
+    let mut files = Vec::new();
+    if declaration.is_file() {
+        files.push(ManifestFile { path: declaration.display().to_string(), text: std::fs::read_to_string(declaration)? });
+    }
+    files.extend(pipeline_files(declaration)?);
+    Ok(files)
+}
+
+/// Every `pipelines/*.toml` and `pipelines/*.json` beside the declaration, in path order.
+pub(crate) fn pipeline_files(declaration: &Path) -> Result<Vec<ManifestFile>> {
+    let dir = declaration.parent().map(|p| p.join("pipelines")).unwrap_or_else(|| PathBuf::from("pipelines"));
+    let Ok(entries) = std::fs::read_dir(&dir) else { return Ok(Vec::new()) };
+    let mut paths: Vec<PathBuf> =
+        entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml" || x == "json")).collect();
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|p| Ok(ManifestFile { path: p.strip_prefix(".").unwrap_or(&p).display().to_string(), text: std::fs::read_to_string(&p)? }))
+        .collect()
+}
+
+/// Open the read face over the project's store, the declaration's text and the
+/// `pipelines/` files beside it (`read.register.declaration-set`).
+pub(crate) fn open_face(project: &Project, declaration: &Path, manifest: &str, pepper: Pepper) -> Result<Face> {
+    let store = Store::open(&project.dir, &project.name)?;
+    Ok(Face::open_declared(store, manifest, &pipeline_files(declaration)?, pepper)?)
 }
 
 #[cfg(feature = "data-plane")]
