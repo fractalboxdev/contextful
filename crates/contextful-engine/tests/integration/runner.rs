@@ -171,6 +171,84 @@ fn a_run_commits_once_and_a_crash_commits_nothing() {
     // The resumption re-entered only the step the crash cut short.
     assert_eq!(source.calls().iter().filter(|(p, _)| p == &Some(json!("p2"))).count(), 2);
     assert_eq!(source.calls().iter().filter(|(p, _)| p.is_none()).count(), 1);
+    // The crashed run's two staged parts stay under its own name; the commit names run-2's three.
+    assert_eq!(sink.staged.iter().filter(|s| s.run_id == "run-1").count(), 2);
+    assert_eq!(sink.staged.iter().filter(|s| s.run_id == "run-2").map(|s| s.ordinal).collect::<Vec<_>>(), [0, 1, 2]);
+}
+
+/// The runner stages each shaped batch through the destination as one part before its next pull, so a run holds
+/// one pulled batch in memory; the commit names the staged parts.
+// spec: run.own.backpressure@417ad0e7
+#[test]
+fn each_batch_stages_before_the_next_pull() {
+    let rig = Rig::new();
+    let mut source = Pages::new(three_pages());
+    let calls = source.calls.clone();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    let mut sink = Sink { on_stage: Some(Box::new(move |s| log.lock().unwrap().push((s.ordinal, s.row_offset, calls.lock().unwrap().len())))), ..Sink::default() };
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut sink).unwrap();
+    assert_eq!(row.status, RunStatus::Success);
+    // (ordinal, rows staged before it, pulls served when it staged)
+    assert_eq!(*seen.lock().unwrap(), [(0, 0, 1), (1, 2, 2), (2, 3, 3)]);
+    assert_eq!(ids(&sink.commits[0]), [vec!["d1", "d2"], vec!["d3"], vec!["d4"]]);
+}
+
+/// A stage carrying one run's staged parts past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run
+/// commits nothing and retires its owner, so the next fire pulls afresh from the stored position.
+// spec: run.own.staged-bytes@f0b10952
+#[test]
+fn a_run_staging_past_the_bound_commits_nothing() {
+    let rig = Rig::new();
+    let mut source = Pages::new(three_pages());
+    let mut sink = Sink { part_bytes: 400 * 1024 * 1024, ..Sink::default() };
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut sink).unwrap();
+    assert_eq!((row.status, row.error_kind), (RunStatus::Failed, Some(FailureTag::Permanent)));
+    let m = row.error_message.unwrap();
+    assert!(m.starts_with("RunStagedBytesExceeded") && m.contains("1073741824"), "{m}");
+    assert_eq!(sink.staged.len(), 3, "the third part carried the run past 1 GiB");
+    assert!(sink.commits.is_empty());
+    assert_eq!(sink.discarded, [("filings".to_string(), "run-1".to_string())], "the failed run's staged parts are discarded");
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, None, "the position stands");
+    // The failure retires the owner and collects its journal, so the next fire pulls afresh.
+    let failed = rig.row("run-1").execution_id;
+    assert!(rig.catalog().owner("feed", "filings").unwrap().is_none(), "the bound releases the owner");
+    assert_eq!(rig.engine.journal.recorded(&failed).unwrap(), 0);
+    let again = rig.run(&opaque(), "1.0.0", "run-2", &mut source, &mut sink).unwrap();
+    assert_ne!(again.execution_id, failed, "the next fire opens a fresh execution");
+    assert_eq!(source.calls().len(), 6, "the next fire pulls every page again rather than replaying");
+
+    // Two parts of 512 MiB sit at the bound and commit.
+    let rig = Rig::new();
+    let mut sink = Sink { part_bytes: 512 * 1024 * 1024, ..Sink::default() };
+    let two = vec![vec![json!({"id": "d1"})], vec![json!({"id": "d2"})]];
+    assert_eq!(rig.run(&opaque(), "1.0.0", "run-1", &mut Pages::new(two), &mut sink).unwrap().status, RunStatus::Success);
+}
+
+/// A source whose every pull moves the clock 5 s on.
+struct Ticking {
+    inner: Pages,
+    clock: crate::support::SetClock,
+}
+
+impl Source for Ticking {
+    fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        self.clock.advance(5);
+        self.inner.pull(request, cancel)
+    }
+}
+
+/// A run stages its parts with no instant and commits them at the instant after its last pull, which every row
+/// and the marker carry.
+#[test]
+fn a_run_commits_its_parts_at_the_instant_after_its_last_pull() {
+    let rig = Rig::new();
+    let mut source = Ticking { inner: Pages::new(three_pages()), clock: rig.clock.clone() };
+    let mut sink = Sink::default();
+    rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut sink).unwrap();
+    assert_eq!(sink.staged.len(), 3);
+    assert_eq!(sink.commits[0].committed_at, crate::support::at("2030-01-01T00:00:15Z"));
+    assert!(sink.discarded.is_empty(), "a committed run discards nothing");
 }
 
 /// A table's new position rides the run commit marker, {{store.lay-out.run-manifest}}, that publishes the rows
@@ -382,6 +460,23 @@ impl Source for Skipping {
     }
 }
 
+/// A source serving fixed pull bodies in order, each continuing to the next.
+struct Bodies(Vec<Value>);
+
+impl Source for Bodies {
+    fn pull(&mut self, request: &PullRequest, _: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        let n = match &request.position {
+            None => 0,
+            Some(Value::String(p)) => p.trim_start_matches('p').parse::<usize>().unwrap(),
+            Some(other) => panic!("position {other}"),
+        };
+        let mut body = self.0[n].clone();
+        body["cursor"] = json!(format!("p{}", n + 1));
+        body["more"] = json!(n + 1 < self.0.len());
+        Ok(serde_json::to_vec(&body).unwrap())
+    }
+}
+
 /// A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the
 /// run's pulls, replayed pulls included, beside the destination counts.
 // spec: run.record.skipped-count@849043a6
@@ -437,4 +532,32 @@ fn the_run_row_holds_every_pulls_declined_tally_by_extension() {
     let plain = Rig::new();
     let row = plain.run(&opaque(), "1.0.0", "run-1", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
     assert!(row.declined.is_empty(), "a source declaring no tally leaves the row without one");
+}
+
+/// A pull declaring a type for a column an earlier staged batch of its run carried undeclared raises
+/// `PipelineTypeDeclaredLate`, deterministic, naming the column; the run commits nothing and retires its owner.
+// spec: run.land.late-type@ee345c25
+#[test]
+fn a_type_declared_after_its_column_staged_refuses() {
+    let rig = Rig::new();
+    let late = vec![
+        json!({"rows": [{"id": "d1", "ts": "2030-01-01T00:00:00Z"}]}),
+        json!({"rows": [{"id": "d2", "ts": "2030-01-02T00:00:00Z"}], "types": {"ts": "timestamp"}}),
+    ];
+    let mut sink = Sink::default();
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut Bodies(late), &mut sink).unwrap();
+    assert_eq!((row.status, row.error_kind), (RunStatus::Failed, Some(FailureTag::SchemaIncompatible)));
+    let m = row.error_message.unwrap();
+    assert!(m.contains("PipelineTypeDeclaredLate") && m.contains("`ts`"), "{m}");
+    assert_eq!(sink.staged.len(), 1, "the refusal fires before the second stage");
+    assert!(sink.commits.is_empty());
+    assert_eq!(sink.discarded, [("filings".to_string(), "run-1".to_string())]);
+    assert!(rig.catalog().owner("feed", "filings").unwrap().is_none(), "the refusal releases the owner");
+
+    // A type first declared for a column no earlier batch carried stages in it.
+    let rig = Rig::new();
+    let fresh = vec![json!({"rows": [{"id": "d1"}]}), json!({"rows": [{"id": "d2", "ts": "2030-01-02T00:00:00Z"}], "types": {"ts": "timestamp"}})];
+    let mut sink = Sink::default();
+    assert_eq!(rig.run(&opaque(), "1.0.0", "run-1", &mut Bodies(fresh), &mut sink).unwrap().status, RunStatus::Success);
+    assert_eq!(sink.staged[1].types.get("ts").map(|t| t.name()), Some("Timestamp".into()));
 }

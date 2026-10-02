@@ -79,6 +79,83 @@ pub fn read(path: &Path) -> Result<Vec<RecordBatch>> {
     reader.map(|b| b.map_err(|e| pq(e.to_string()))).collect()
 }
 
+/// Where [`copy_inserting`] places an inserted column: beside a column the source file
+/// carries.
+#[derive(Debug, Clone, Copy)]
+pub enum At<'a> {
+    Before(&'a str),
+    After(&'a str),
+}
+
+/// The one value an inserted column holds on every row.
+#[derive(Debug, Clone, Copy)]
+pub enum Fill {
+    Int64(i64),
+    /// Nanoseconds since the epoch, in UTC.
+    Timestamp(i64),
+}
+
+/// One column [`copy_inserting`] adds.
+#[derive(Debug, Clone)]
+pub struct Insert<'a> {
+    pub field: Field,
+    pub at: At<'a>,
+    pub fill: Fill,
+}
+
+/// Copy the Parquet file `from` to `to` with each of `inserts` placed in turn, holding its
+/// fill on every row. One record batch of `from` is in memory at a time; an existing `to`
+/// is replaced.
+pub fn copy_inserting(from: &Path, to: &Path, inserts: &[Insert<'_>]) -> Result<()> {
+    let pq = |path: &Path, m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
+    let file = File::open(from).at(from)?;
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| pq(from, e.to_string()))?;
+    let source = builder.schema().clone();
+    // Each target column is a source column or an insert, by index.
+    enum Src {
+        Column(usize),
+        Inserted(usize),
+    }
+    let mut layout: Vec<(Field, Src)> = source.fields().iter().enumerate().map(|(i, f)| (f.as_ref().clone(), Src::Column(i))).collect();
+    for (k, insert) in inserts.iter().enumerate() {
+        let (anchor, offset) = match insert.at {
+            At::Before(name) => (name, 0),
+            At::After(name) => (name, 1),
+        };
+        let at = layout
+            .iter()
+            .position(|(f, _)| f.name() == anchor)
+            .ok_or_else(|| pq(from, format!("no column `{anchor}` to place `{}` beside", insert.field.name())))?;
+        layout.insert(at + offset, (insert.field.clone(), Src::Inserted(k)));
+    }
+    let target = Arc::new(ArrowSchema::new_with_metadata(layout.iter().map(|(f, _)| f.clone()).collect::<Vec<_>>(), source.metadata().clone()));
+    let reader = builder.build().map_err(|e| pq(from, e.to_string()))?;
+    if to.exists() {
+        std::fs::remove_file(to).at(to)?;
+    }
+    let out = File::create(to).at(to)?;
+    let props = WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())).build();
+    let mut w = ArrowWriter::try_new(out, target.clone(), Some(props)).map_err(|e| pq(to, e.to_string()))?;
+    for batch in reader {
+        let batch = batch.map_err(|e| pq(from, e.to_string()))?;
+        let n = batch.num_rows();
+        let columns: Vec<ArrayRef> = layout
+            .iter()
+            .map(|(_, src)| match src {
+                Src::Column(i) => batch.column(*i).clone(),
+                Src::Inserted(k) => match inserts[*k].fill {
+                    Fill::Int64(v) => Arc::new(arrow_array::Int64Array::from(vec![v; n])) as ArrayRef,
+                    Fill::Timestamp(v) => Arc::new(arrow_array::TimestampNanosecondArray::from(vec![v; n]).with_timezone("UTC")),
+                },
+            })
+            .collect();
+        let batch = RecordBatch::try_new(target.clone(), columns).map_err(|e| pq(to, e.to_string()))?;
+        w.write(&batch).map_err(|e| pq(to, e.to_string()))?;
+    }
+    w.close().map_err(|e| pq(to, e.to_string()))?;
+    Ok(())
+}
+
 /// The column names a Parquet file carries, read from its footer.
 pub fn columns(path: &Path) -> Result<Vec<String>> {
     let file = File::open(path).at(path)?;

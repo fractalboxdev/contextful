@@ -259,11 +259,22 @@ The execution owner a scope holds and the connector build it pins while pending.
   *A-run*
 - `live-owner` — An open under a host scope whose pending owner has an attempt on an unexpired {{run.record.owner-lease}} fails `Transient` naming that attempt, and its run row closes `failed` without joining the owner.
   *because two live handles on one owner share its journal, and either one retiring it strands the other*
-- `pin-release` — `success`, and a failure that wrote no batch, release the owner; every other status holds it.
+- `pin-release` — `success`, a failure that wrote no batch, and a failure a replay reproduces, {{run.own.staged-bytes}} or {{run.land.late-type}}, release the owner; every other status holds it.
 - `admission-pin` — A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.
   *A-connector*
-- `backpressure` — A source yields a stream of batches the runner pulls; the run path holds no unbounded buffer between source and destination.
+- `backpressure` — The runner stages each shaped batch through the destination as one part before its next pull, so a run holds one pulled batch in memory; the commit names the staged parts.
+  *because holding every batch until the commit sizes a run's memory by the sum of its pulls*
 - `one-commit-per-run` — One run produces one atomic commit per table; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step.
+- `staged-bytes` — A stage carrying one run's staged parts past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run commits nothing and retires its owner, so the next fire pulls afresh from the stored cursor.
+  *because a replay of the run's recorded pulls stages the same bytes past the bound and fails identically, holding the table's owner indefinitely*
+- `stage-schema` — A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.
+  *because otherwise rows no commit publishes fix a column's type in the table's schema*
+- `stage-commit-seq` — A staged part carries no `_commit_seq`; the commit assigns it under {{store.reserve.commit-order}} and writes it into each part it names, so a run committing between a stage and that commit takes the lower value.
+  *because a value fixed at the stage orders a run by its first pull, and the readable runs then hold no prefix of the sequence*
+- `stage-instant` — A staged part carries no `_ingested_at`; the commit writes its commit instant into each part it names, so every row of a run carries the instant its marker carries.
+  *because a stage-time instant ranks a run by its first pull, so under {{store.declare.dedup-view}} an earlier committer outranks a later one on a shared key*
+- `stage-discard` — A run that fails removes every part it staged, and a commit failing before its manifest exists removes the parts it copied; a run's crash leaves its staged parts.
+  *because a run id names one attempt, so no later commit names a failed run's staged parts*
 
 ```mermaid
 flowchart LR
@@ -276,7 +287,7 @@ flowchart LR
   PIN -->|"yes"| REPLAY["recorded step replay"]
   REPLAY -->|"replayed run"| CLOSE{"close status"}
   FRESH -->|"new run"| CLOSE
-  CLOSE -->|"success or zero batches"| REL["released owner"]
+  CLOSE -->|"success, no batch, reproducible failure"| REL["released owner"]
   CLOSE -->|"any other status"| HOLD["held owner"]
 ```
 
@@ -285,6 +296,14 @@ flowchart LR
 - `run.own.unclosed-execution`: WHEN a host execution records two steps and its process dies mid-third, THEN the next open under its scope after the lease lapses replays both steps without running their effects.
 - `run.own.live-owner`: WHEN attempt `job-a` holds host scope `index-42` open and `job-b` opens under it, THEN `job-b` fails `Transient` naming `job-a`, and `job-a` alone holds the owner.
 - `run.own.pinned-plan-changed`: WHEN a host scope's pending owner pins plan reference `plan-a` and an open asks for `plan-b`, THEN the open refuses with `ExecutionPinMismatch` and its run row closes `failed`.
+- `run.own.backpressure`: WHEN a source serves three pages, THEN the destination stages part 0 after the first pull, part 1 after the second and part 2 after the third, and one commit names all three.
+- `run.own.staged-bytes`: WHEN each of three pulls stages a 400 MiB part, THEN the third stage fails the run `Permanent` with `RunStagedBytesExceeded`, the cursor stays where it stood, and the next fire pulls all three pages under a fresh execution.
+- `run.own.stage-schema`: WHEN run `run-s` stages `ts` as text and fails, THEN a later run lands `ts` as a timestamp, and `run-s`'s commit refuses with `StoreSchemaIncompatible`.
+- `run.own.stage-commit-seq`: WHEN run `run-s` stages a part, run `run-c` then commits as `_commit_seq` 1, and `run-s` commits after it, THEN every row of `run-s` reads `_commit_seq` 2.
+- `run.own.stage-instant`: WHEN run `run-a` stages key `k` at 00:01, run `run-b` commits `k` at 00:03 and `run-a` commits at 00:05, THEN the keyed read returns `run-a`'s row, `_ingested_at` 00:05.
+- `run.own.stage-discard`: WHEN a run stages its first page and its second pull fails, THEN its run directory holds no staged part.
+
+unsettled: Which pass collects the staged parts of a run that crashed before its commit, and after what age? owner: run-path affects: run.own
 
 
 ## cancel

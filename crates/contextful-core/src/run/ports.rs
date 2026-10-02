@@ -91,17 +91,44 @@ impl<S: Source + ?Sized> Source for &mut S {
     }
 }
 
-/// One run's commit to one table: every batch in pull order, and the position the rows
-/// behind it reach.
+/// The most bytes one run stages before its commit (`run.own.staged-bytes`).
+pub const STAGED_BYTES_PER_RUN: u64 = 1024 * 1024 * 1024;
+
+/// One shaped batch the runner hands the destination to stage as one part of its run,
+/// before its next pull (`run.own.backpressure`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stage {
+    pub pipeline_id: String,
+    pub table: String,
+    pub run_id: String,
+    pub site_id: String,
+    /// The batch's ordinal among the run's staged batches.
+    pub ordinal: u32,
+    /// Rows the run staged before this batch.
+    pub row_offset: u64,
+    pub rows: Vec<Row>,
+    /// The column types the run's pulls declared so far, carried through the shape stages.
+    pub types: Types,
+}
+
+/// A handle on one staged part, measured at the destination. A part joins no file list
+/// until a commit names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Part {
+    pub name: String,
+    pub rows: u64,
+    pub bytes: u64,
+}
+
+/// One run's commit to one table: every part it staged, in pull order, and the position
+/// the rows behind them reach.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
     pub pipeline_id: String,
     pub table: String,
     pub run_id: String,
     pub site_id: String,
-    pub batches: Vec<Vec<Row>>,
-    /// The column types the pulls declared, carried through the shape stages.
-    pub types: Types,
+    pub parts: Vec<Part>,
     pub cursor: Option<Value>,
     pub committed_at: Instant,
     /// The fence of the single-writer lease the commit runs under.
@@ -123,11 +150,18 @@ pub struct Marker {
     pub committed_at: Instant,
 }
 
-/// The land path a run commits through.
+/// The land path a run commits through: each batch stages as a part under the run's own
+/// directory, and one commit publishes the staged parts together.
 pub trait Destination {
-    /// Land every batch as one atomic commit carrying `commit.cursor`. `precommit` runs
+    /// Write `stage.rows` as one part of run `stage.run_id`, joining no file list until a
+    /// commit names it.
+    fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure>;
+    /// Commit `commit.parts` as one atomic commit carrying `commit.cursor`. `precommit` runs
     /// immediately before the commit point; a refusal there lands nothing.
-    fn land(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure>;
+    fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure>;
+    /// Remove every part run `run_id` staged for `table`, which no commit names once the
+    /// run fails (`run.own.stage-discard`). A run with nothing staged discards nothing.
+    fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure>;
     /// Record that a single-writer lease on `table` was taken under `fence`, so a commit
     /// carrying a lower fence loses its condition at the store.
     fn open_fence(&mut self, _pipeline_id: &str, _table: &str, _fence: u64) -> Result<(), Failure> {

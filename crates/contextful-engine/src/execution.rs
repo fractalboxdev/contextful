@@ -119,6 +119,9 @@ pub struct Execution<'e, J: JournalStore = FileJournalStore, B: BlobStore = File
     registration: Option<Registration>,
     owned: bool,
     retired: bool,
+    /// Whether the failure it closes on replays identically, so closing retires the owner
+    /// whatever the journal holds.
+    discarded: bool,
 }
 
 impl<J: JournalStore, B: BlobStore> Engine<J, B> {
@@ -208,6 +211,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             registration: None,
             owned: false,
             retired: false,
+            discarded: false,
         };
         execution.emit(Change::Status { status: RunStatus::Running, at: Some(now), error: None });
         execution.registration = Some(self.keeper.register(self.catalog.clone(), &open.run_id, token, held));
@@ -330,6 +334,12 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         Ok(())
     }
 
+    /// Mark the failure this execution is about to close on as one a replay of its recorded
+    /// steps reproduces, so the close retires the owner and collects its journal.
+    pub(crate) fn discard(&mut self) {
+        self.discarded = true;
+    }
+
     /// Retire the owner and, given a cursor row and the version it was read at, cache the
     /// position in the same transaction (`run.own.retirement`).
     pub(crate) fn retire(&mut self, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> {
@@ -449,7 +459,8 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         let execution_id = self.execution_id.clone();
         // A success that committed retired already; any other releasing status retires
         // unless another live attempt shares the execution.
-        if self.owned && releases(row.status, engine.journal.recorded(&execution_id)?) {
+        let discarded = self.discarded && row.status == RunStatus::Failed;
+        if self.owned && (discarded || releases(row.status, engine.journal.recorded(&execution_id)?)) {
             let retires = if row.status == RunStatus::Success { !self.retired } else { !engine.shared_with_a_live_attempt(&self.scope, &execution_id, &self.run_id)? };
             if retires {
                 self.retire(None, None)?;

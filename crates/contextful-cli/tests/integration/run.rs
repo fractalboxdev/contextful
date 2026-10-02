@@ -233,6 +233,33 @@ fn run_start_journals_and_lands_only_masked_credentials() {
     }
 }
 
+/// A run failing after a stage leaves no staged part under its run directory; a run committing two staged parts
+/// stamps every row with its commit instant, the instant its marker carries.
+// spec: run.own.stage-discard@b8087166
+#[test]
+fn a_failed_run_leaves_no_staged_part_and_a_commit_stamps_its_instant() {
+    let dir = project();
+    let script = "if [ \"$CONTEXTFUL_STEP\" = pull-0 ]; then printf '{\"rows\":[{\"id\":\"d1\"}],\"more\":true}'\n\
+                  elif [ -f ready ]; then printf '{\"rows\":[{\"id\":\"d2\"}],\"more\":false}'\n\
+                  else printf '{\"error\":{\"tag\":\"Permanent\",\"message\":\"feed down\"}}'; exit 1; fi\n";
+    std::fs::write(dir.path().join("paged.sh"), script).unwrap();
+    std::fs::write(dir.path().join("paged.toml"), "pipeline = \"paged\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"paged.sh\"]\n").unwrap();
+    let runs = dir.path().join(".contextful/context/research/tables/filings/data/runs");
+
+    assert!(!start(dir.path(), "paged.toml", "p1", "2030-01-01T00:00:00Z").status.success(), "the second pull fails the run");
+    assert!(!runs.join("p1/ingest-a/stage.staging").exists(), "the failed run's staged part is discarded");
+
+    std::fs::write(dir.path().join("ready"), "").unwrap();
+    ok(&start(dir.path(), "paged.toml", "p2", "2030-01-01T00:01:00Z"));
+    assert!(!runs.join("p2/ingest-a/stage.staging").exists());
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(runs.join("p2/ingest-a/_manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["parts"].as_array().unwrap().len(), 2, "{manifest}");
+    let q = "SELECT id, CAST(_ingested_at AS VARCHAR) FROM filings ORDER BY id";
+    let r: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", q]))).unwrap();
+    let stamp = "2030-01-01 00:01:00+00";
+    assert_eq!(r["rows"], serde_json::json!([["d1", stamp], ["d2", stamp]]), "{r}");
+}
+
 /// A run takes its site id from the manifest's `site_id` or `site_id_env`; `--site-id` replaces it for one run.
 #[test]
 fn a_run_takes_its_site_id_from_the_manifest_unless_the_flag_names_one() {
