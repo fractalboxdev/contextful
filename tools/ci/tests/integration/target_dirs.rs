@@ -29,20 +29,25 @@ fn with_acceptance(r: &Repo) {
 fn each_cargo_stage_builds_in_its_own_target_directory_reclaimed_on_pass() {
     let r = Repo::init();
     with_acceptance(&r);
+    // A package declaring a feature, so the features stage runs cargo.
+    r.write("crates/featured/Cargo.toml", &(manifest("featured", "") + "\n[features]\nextra = []\n"));
+    r.write("crates/featured/src/lib.rs", "");
+    r.write("crates/featured/tests/integration/main.rs", "");
+    r.commit("featured package");
     let log = r.root.join("cargo.log");
+    let target = r.root.canonicalize().unwrap().join("target");
     for stage in ["workspace", "acceptance", "features", "schema"] {
         let _ = std::fs::remove_file(&log);
         let o = r.gate_with_cargo(&recording(&log, 0), &["--stage", stage]);
         assert!(o.status.success(), "{stage}: {}", stderr(&o));
-        let own = r.root.canonicalize().unwrap().join("target").join(stage);
+        let own = target.join(stage);
         let ran = std::fs::read_to_string(&log).unwrap_or_default();
+        assert!(!ran.is_empty(), "{stage} ran no cargo build");
         for line in ran.lines() {
-            let dir = line.split_whitespace().next().unwrap_or_default();
-            let dir = std::path::Path::new(dir).parent().and_then(|p| p.canonicalize().ok()).map(|p| p.join(stage));
-            assert_eq!(dir.as_deref(), Some(own.as_path()), "{stage} ran `{line}` outside its own target directory");
-        }
-        if stage != "features" {
-            assert!(!ran.is_empty(), "{stage} ran no cargo build");
+            let dir = std::path::Path::new(line.split_whitespace().next().unwrap_or_default());
+            let parent = dir.parent().and_then(|p| p.canonicalize().ok());
+            let recorded = parent.zip(dir.file_name()).map(|(p, n)| p.join(n));
+            assert_eq!(recorded.as_deref(), Some(own.as_path()), "{stage} ran `{line}` outside its own target directory");
         }
         assert!(!own.exists(), "{stage} passed and left {}", own.display());
     }
