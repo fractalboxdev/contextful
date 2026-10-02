@@ -84,16 +84,18 @@ impl Residency {
 /// Hold a push to the allow-set the bucket manifest records. `own` is the pushing site's
 /// allow-set, `None` when it declares no `[residency]`. A set recorded by another site that
 /// differs from `own`, a missing one included, raises `ResidencySitesDiverge`, naming both
-/// sites and both sets (`surface.reside.site-regions`).
+/// sites and both sets (`surface.reside.site-regions`). A record the pushing site wrote
+/// itself passes, so the site holding the record changes the policy first.
 pub fn compare_sites(site_id: &str, own: Option<&[String]>, recorded: Option<&SiteRegions>) -> Result<(), SurfaceError> {
     let Some(r) = recorded else { return Ok(()) };
-    if own == Some(r.regions.as_slice()) {
+    if r.site_id == site_id || own == Some(r.regions.as_slice()) {
         return Ok(());
     }
     let shown = own.map(|o| format!("regions [{}]", o.join(", "))).unwrap_or_else(|| "no `[residency]`".into());
     Err(SurfaceError::ResidencySitesDiverge(format!(
-        "site `{site_id}` declares {shown} and the bucket records regions [{}] from site `{}`; one residency policy governs one bucket",
+        "site `{site_id}` declares {shown} and the bucket records regions [{}] from site `{}`; one residency policy governs one bucket, and a policy change starts at site `{}`",
         r.regions.join(", "),
+        r.site_id,
         r.site_id
     )))
 }

@@ -37,10 +37,12 @@ fn a_resource_outside_the_allow_set_refuses_the_start() {
 }
 
 /// A push finding the bucket manifest record another site's differing allow-set raises `ResidencySitesDiverge`;
-/// an equal set, or no record, passes.
+/// an equal set, no record, or a record the pushing site wrote itself passes.
 #[test]
 fn two_sites_declaring_different_sets_diverge() {
     let recorded = SiteRegions { site_id: "site-a".into(), regions: set(&["eu-west-1"]) };
+    compare_sites("site-a", Some(&set(&["eu-west-1", "eu-central-1"])), Some(&recorded)).unwrap();
+    compare_sites("site-a", None, Some(&recorded)).unwrap();
     compare_sites("site-b", Some(&set(&["eu-west-1"])), Some(&recorded)).unwrap();
     compare_sites("site-b", Some(&set(&["us-east-1"])), None).unwrap();
     compare_sites("site-b", None, None).unwrap();

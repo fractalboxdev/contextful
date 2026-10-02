@@ -307,4 +307,10 @@ fn two_sites_declaring_different_residency_diverge_at_push() {
         assert!(err.contains("site-c") && err.contains("eu-west-1"), "{err}");
     }
     assert_eq!(manifest()["residency"]["regions"], json!(["eu-west-1"]));
+
+    // The site holding the record changes its own set; the next push records it.
+    let widened = "\n[residency]\nregions = [\"eu-central-1\", \"eu-west-1\"]\n";
+    ok(&cf(site("ingest-b2", "site-b", widened).path(), &["sync", "push", "--project", "research"], &[]));
+    assert_eq!(manifest()["residency"], json!({ "site_id": "site-b", "regions": ["eu-central-1", "eu-west-1"] }));
+    refused(&cf(a.path(), &["sync", "push", "--project", "research"], &[]), "ResidencySitesDiverge");
 }

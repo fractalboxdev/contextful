@@ -71,10 +71,10 @@ Decision: every push writes its site's sorted allow-set into the bucket manifest
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| The set rides the bucket manifest, checked at push *(chosen)* | — | A site that never pushes is never compared; changing the policy means every site changes it before its next push. |
+| The set rides the bucket manifest, checked at push *(chosen)* | — | A site that never pushes is never compared; a policy change starts at the site holding the record, which the refusal names. |
 | A separate policy object in the bucket | Consistency | A second object commits apart from the manifest and can disagree with it. |
 | Compare at startup by reading the bucket | Air-gapped operation | Startup then needs the bucket reachable, which `topology.coordinate.air-gap` forbids. |
 | A central registry of site policies | Coordination footprint | A service the tree does not ship holds the truth. |
 
-Consequences: a divergence surfaces on the first push after it arises, with both sites and both sets named. The accepted cost: a read-only site holding a different set goes undetected, and a policy change needs every site's push to agree.
+Consequences: a divergence surfaces on the first push after it arises, with both sites and both sets named. The accepted cost: a read-only site holding a different set goes undetected, and a policy change starts at the recording site, and every other site is refused until it adopts the new set.
 

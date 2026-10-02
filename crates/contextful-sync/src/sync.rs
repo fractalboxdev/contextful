@@ -427,11 +427,12 @@ impl SiteResidency {
         Ok(compare_sites(&self.site_id, self.regions.as_deref(), recorded.residency.as_ref())?)
     }
 
-    /// The record this site's push leaves: its own set, or the one already recorded.
+    /// The record this site's push leaves: its own set, none when it held the record and
+    /// dropped its `[residency]`, or the one already recorded.
     fn record(&self, recorded: &BucketManifest) -> Option<SiteRegions> {
         match &self.regions {
             Some(r) => Some(SiteRegions { site_id: self.site_id.clone(), regions: r.clone() }),
-            None => recorded.residency.clone(),
+            None => recorded.residency.clone().filter(|r| r.site_id != self.site_id),
         }
     }
 }
