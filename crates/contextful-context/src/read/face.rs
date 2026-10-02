@@ -16,6 +16,7 @@ use contextful_core::read::template::{bind_query, parse_templates, Bindings, Bou
 use contextful_core::read::ReadError;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::declare::{DeclareError, MemoryDeclarations};
+use contextful_core::pipeline::declare::ManifestFile;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::StoreError;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
@@ -73,7 +74,14 @@ impl Face {
     /// against its table's schema is checked here, once, caller-independently; one
     /// failure refuses the whole manifest (`read.guard.startup-time-check`).
     pub fn open(store: Store, manifest: &str, pepper: Pepper) -> Result<Face, ReadFault> {
-        let mut parsed = TableDecl::parse_pipeline(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
+        Face::open_declared(store, manifest, &[], pepper)
+    }
+
+    /// [`Face::open`] over the declaration set (`read.register.declaration-set`): the
+    /// manifest's tables, then those the `pipelines/` files declare. Memory declarations
+    /// and templates come from the manifest alone.
+    pub fn open_declared(store: Store, manifest: &str, pipelines: &[ManifestFile], pepper: Pepper) -> Result<Face, ReadFault> {
+        let mut parsed = TableDecl::parse_declaration_set(manifest, pipelines).map_err(|e| ReadFault::Policy(e.into()))?;
         let memory = MemoryDeclarations::parse(manifest).map_err(|e| match e {
             DeclareError::Memory(m) => ReadFault::Refused(m.into()),
             DeclareError::Malformed(m) => ReadFault::Policy(m.into()),

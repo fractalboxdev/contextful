@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
-| `read` | 2 | 15 | 169 | 28 | 22 | 20 | 150 | 0 | 150 |
+| `read` | 2 | 15 | 170 | 28 | 22 | 20 | 151 | 0 | 151 |
 | `run` | 3 | 26 | 368 | 98 | 35 | 36 | 252 | 0 | 252 |
 | `store` | 1 | 17 | 228 | 54 | 13 | 19 | 188 | 0 | 188 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1885 | 561 | 187 | 142 | 1228 | 0 | |
+| **total** | 19 | 154 | 1886 | 561 | 187 | 142 | 1229 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 156 | 121 | passing | closed |
 | 3 — The run path | 11 | 205 | 139 | passing | closed |
 | 4 — Ingest | 25 | 465 | 284 | passing | open |
-| 5 — The read face under enforcement | 17 | 247 | 184 | passing | open |
+| 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
 | 6 — Sync and replicas | 8 | 72 | 67 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
 | 8 — Accountability | 5 | 46 | 27 | open | open |
@@ -696,6 +696,7 @@ Unscheduled operations: 10.
 | `read.register.connection-ceiling` | `crates/contextful-agent/tests/integration/http.rs::a_stalled_request_head_holds_a_slot_and_a_connection_past_the_ceiling_is_shed` | performed |
 | `read.register.connection-views` | `crates/contextful-context/tests/integration/read/register.rs::a_session_connection_registers_views_over_the_current_file_lists` | performed |
 | `read.register.credential-missing` | `crates/contextful-agent/tests/integration/http.rs::a_request_without_a_credential_is_refused_401` | performed |
+| `read.register.declaration-set` | `crates/contextful-cli/tests/integration/query.rs::a_pipeline_file_declares_the_key_every_read_face_dedupes_on` | performed |
 | `read.register.describe-zone` | `crates/contextful-context/tests/integration/read/respond.rs::describe_reports_the_session_zone_and_each_tables_admission` | performed |
 | `read.register.engine` | `crates/contextful-context/tests/integration/read/register.rs::the_embedded_engine_reads_the_parquet_an_external_reader_opens` | performed |
 | `read.register.file-listing` | `crates/contextful-context/tests/integration/read/register.rs::file_listing_covers_the_callers_tables_alone` | performed |

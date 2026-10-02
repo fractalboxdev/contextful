@@ -39,10 +39,16 @@ fn project() -> tempfile::TempDir {
 /// Run the tool server with a credential reading `research/*`, and return the answer to
 /// one `context.query` call.
 fn mcp_query(dir: &Path, sql: &str) -> Value {
+    mcp_query_over(dir, "research/*", sql)
+}
+
+/// Run the tool server with a credential reading `tables`, and return the answer to one
+/// `context.query` call.
+fn mcp_query_over(dir: &Path, tables: &str, sql: &str) -> Value {
     let public = stdout(&run(dir, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     let token = stdout(&run(
         dir,
-        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "600"],
+        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", tables, "--ttl", "600"],
     ));
     let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(["mcp", "--project", "research", "--public-key", &public, "--audience", AUD])
@@ -262,4 +268,30 @@ fn a_discovered_project_registers_its_tables() {
     // A malformed `contextful.toml` refuses as discovery does.
     std::fs::write(clone.path().join("contextful.toml"), "[project]\nname = [\n").unwrap();
     assert!(!run(&below, &["query", "--json", "SELECT 1"]).status.success());
+}
+
+/// A `primary_key` a `pipelines/` file declares reaches the dedup view on the operator verb
+/// and the tool server alike, so a key landed in two runs reads as one row.
+// spec: read.register.declaration-set@e0273be3
+#[test]
+fn a_pipeline_file_declares_the_key_every_read_face_dedupes_on() {
+    let p = project();
+    std::fs::create_dir_all(p.path().join("pipelines")).unwrap();
+    std::fs::write(
+        p.path().join("pipelines/feed.toml"),
+        "id = \"feed\"\n[source]\nname = \"http\"\nconfig = { endpoint = \"http://127.0.0.1:9/v1\" }\n\n[[tables]]\nname = \"items\"\nprimary_key = [\"item_id\"]\n",
+    )
+    .unwrap();
+    for (run_id, title) in [("run-0002", "first"), ("run-0003", "second")] {
+        std::fs::write(p.path().join("items.jsonl"), format!("{{\"item_id\":\"i1\",\"title\":\"{title}\"}}\n")).unwrap();
+        stdout(&run(
+            p.path(),
+            &["context", "land", "feed_items", "--project", "research", "--rows", "items.jsonl", "--run-id", run_id, "--site-id", "site-a"],
+        ));
+    }
+    let sql = "SELECT item_id, title FROM feed_items";
+    let cli = query(p.path(), &["--project", "research", sql]);
+    assert_eq!(cli["rows"], json!([["i1", "second"]]), "{cli}");
+    let answer = mcp_query_over(p.path(), "feed_items", sql);
+    assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["i1", "second"]]), "{answer}");
 }

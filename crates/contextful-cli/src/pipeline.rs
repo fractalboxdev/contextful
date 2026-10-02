@@ -116,24 +116,7 @@ pub enum PipelineCmd {
     },
 }
 
-/// The manifest files, in reading order: the project manifest, then `pipelines/` sorted.
-pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
-    let mut files = Vec::new();
-    if declaration.is_file() {
-        files.push(ManifestFile { path: declaration.display().to_string(), text: std::fs::read_to_string(declaration)? });
-    }
-    let dir = declaration.parent().map(|p| p.join("pipelines")).unwrap_or_else(|| PathBuf::from("pipelines"));
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        let mut paths: Vec<PathBuf> =
-            entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml" || x == "json")).collect();
-        paths.sort();
-        for p in paths {
-            let rel = p.strip_prefix(".").unwrap_or(&p).display().to_string();
-            files.push(ManifestFile { path: rel, text: std::fs::read_to_string(&p)? });
-        }
-    }
-    Ok(files)
-}
+pub(crate) use crate::project::manifests;
 
 /// The tables the manifests' scheduled, enabled folds cover (`store.declare.fold-job`).
 fn fold_coverage(files: &[ManifestFile]) -> Result<FoldCoverage> {
