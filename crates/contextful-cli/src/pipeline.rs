@@ -389,6 +389,17 @@ fn plan(spec: &PipelineSpec, table: &str, connector: ConnectorSpec) -> Result<Pl
     Ok(plan)
 }
 
+/// The store as the port a drive source lands each body it reads through.
+#[cfg(feature = "drive")]
+struct StoreBodies(Store);
+
+#[cfg(feature = "drive")]
+impl contextful_connectors::drive::BodyStore for StoreBodies {
+    fn put(&self, sha256: &str, bytes: &[u8]) -> std::result::Result<(), Failure> {
+        self.0.land_blob(sha256, bytes).map_err(|e| Failure::new(FailureTag::Permanent, format!("landing body `{sha256}`: {e}")))
+    }
+}
+
 /// The directory `pipeline run` resolves a declaration's relative paths against
 /// (`store.init.declaration-base`): the located project's, or the working directory when
 /// discovery names no project.
@@ -515,7 +526,9 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 Checked::Drive(config) => {
                     // PDF bodies decode in this binary's worker, behind the process boundary.
                     let worker = contextful_connectors::boundary::Boundary::new(std::env::current_exe()?, &["decode", "pdf"]);
-                    Some(contextful_connectors::drive::Drive::new(config.clone(), resolver.clone(), Arc::new(worker))?)
+                    // Each body read whole lands under the store's `blobs/` (`store.lay-out.landed-blob`).
+                    let bodies = StoreBodies(Store::open(&l.project.dir, &l.project.name)?);
+                    Some(contextful_connectors::drive::Drive::new(config.clone(), resolver.clone(), Arc::new(worker), Arc::new(bodies))?)
                 }
                 _ => None,
             };

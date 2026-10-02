@@ -79,7 +79,7 @@ flowchart LR
 
 The directory tree, run and snapshot manifests, the table pointer, the two catalogs, and node identity.
 
-- `components` — A store holds Parquet table data, JSON run and snapshot manifests, one pointer object per table, and two SQLite catalogs, `derived.sqlite` and `machine.sqlite`. Parquet, manifests and pointers are canonical.
+- `components` — A store holds Parquet table data, JSON run and snapshot manifests, one pointer object per table, landed blobs, and two SQLite catalogs, `derived.sqlite` and `machine.sqlite`. Parquet, manifests and pointers are canonical.
   *because a catalog that is both a rebuildable cache and a commit point resurrects half-published snapshots on rebuild*
 - `store-root` — A project's store sits at `.contextful/context/<project>/`, holding both catalogs, `config.toml`, `cursors/` and one `tables/<t>/` directory per table.
 - `table-directory` — A table directory holds `schema.json`, `_pointer.json`, `data/snapshots/<id>/`, `data/runs/<run-id>/<node-id>/` and `requests/`.
@@ -100,6 +100,8 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *P4*
 - `schema-file` — A table's schema is `schema.json` in Arrow JSON form; each arriving batch's schema merges into it and the merged result replaces it.
 - `immutable-files` — A run file is written once and never edited, a snapshot directory is immutable, and a fold writes a new snapshot.
+- `landed-blob` — A body a source lands by reference is the file `blobs/<sha256>` under the store root, named by the SHA-256 of its bytes and written whole through a rename before the run naming it commits.
+  *because a row names the bytes it came from, and a committed row naming no stored body answers for content nobody can retrieve*
 - `derived-catalog` — `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from the pointers, the manifests they reach, every committed run manifest and every `schema.json`. It is never synced and commits nothing.
   *A-store*
 - `machine-catalog` — `machine.sqlite` holds one machine's journal, cursor cache and lease rows. It is never synced, never rebuilt and never replaced by a pull.

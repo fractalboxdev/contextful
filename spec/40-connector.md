@@ -474,11 +474,14 @@ The declared behavior of each source compiled into the engine.
 - `drive-table-unmatched` — A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any request.
 - `drive-export` — A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.
 - `drive-page-grain` — A PDF body lands one `pages` row per page under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column.
-  *because a page is what retrieval ranks and a citation names, and the digest identifies the bytes without a second copy of the file*
+  *because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table*
+- `drive-bytes` — Every body the drive source reads whole, exported or downloaded, lands as {{store.lay-out.landed-blob}}, and its file row's `sha256` names that blob.
 - `drive-file-cap` — A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap and no pages. No byte past the cap is read, and the read continues.
   *because a row naming the skipped file answers for it, where truncated bytes read as the whole document*
 - `drive-unreadable` — A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.
   *because one unreadable file failing the fire holds back every other file's row and the position behind them*
+- `drive-export-limit` — A Doc, Sheet or Slides deck whose export Drive answers `403 exportSizeLimitExceeded` lands its file row with a `skipped` reason naming Drive's export limit and no pages, and the read continues.
+  *because Drive refuses that export on every fire, so failing the read stalls the whole tree behind one file*
 - `drive-skip-count` — Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.
 - `drive-incremental` — The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.
 - `drive-fire` — One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.

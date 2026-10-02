@@ -371,3 +371,26 @@ fn a_table_name_colliding_with_the_table_layout_refuses() {
     assert_eq!(f.store.committed_runs("a").unwrap().len(), 1);
     assert!(f.store.table_dir("a/database").is_ok());
 }
+
+/// A body a source lands by reference is the file `blobs/<sha256>` under the store root, named by the SHA-256 of its bytes and written whole through a rename before the run naming it commits.
+// spec: store.lay-out.landed-blob@17566f61
+#[test]
+fn a_landed_body_is_one_file_under_blobs_named_by_its_digest() {
+    use sha2::Digest;
+    let f = Fixture::new();
+    let body = b"%PDF-1.4 a quarterly plan".to_vec();
+    let sha: String = sha2::Sha256::digest(&body).iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(f.store.blob(&sha).unwrap(), None, "no body holds the digest before it lands");
+    f.store.land_blob(&sha, &body).unwrap();
+    assert_eq!(f.store.blob_path(&sha), f.store.root().join("blobs").join(&sha));
+    assert_eq!(fs::read(f.store.blob_path(&sha)).unwrap(), body);
+    assert_eq!(f.store.blob(&sha).unwrap(), Some(body.clone()));
+    // A second landing of one body leaves the stored file as it stands.
+    f.store.land_blob(&sha, &body).unwrap();
+    let held: Vec<String> = fs::read_dir(f.store.root().join("blobs")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(held, std::slice::from_ref(&sha), "no staging file survives beside the blob");
+    // A name other than the bytes' digest lands nothing.
+    let wrong = "0".repeat(64);
+    assert!(f.store.land_blob(&wrong, &body).is_err());
+    assert!(!f.store.blob_path(&wrong).exists());
+}
