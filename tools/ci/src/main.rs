@@ -1,6 +1,7 @@
 //! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
 //! pull-request workflow invoke the identical command.
 
+mod deny;
 mod measure;
 mod tag;
 mod footprint;
@@ -100,6 +101,9 @@ enum Cmd {
         #[arg(long, requires = "build")]
         plan: bool,
     },
+    /// Hold `deny.toml` to the profile-wide dependency refusals and run cargo-deny's bans
+    /// over each profile's graph.
+    Deny,
     /// Resolve the target ledger and run its entries, or render their status.
     Measure {
         /// The tier to run; repeatable. Defaults to the gate tier.
@@ -164,6 +168,7 @@ fn main() {
             }
             None => bail!("pass an artifact, or `--build`"),
         }),
+        Cmd::Deny => repo_root().and_then(|root| deny::check(&root)),
         Cmd::Tag { branch, base } => tag::tag(&branch, &base),
         Cmd::Measure { tiers, status, check } => repo_root().and_then(|root| {
             if status {
@@ -225,7 +230,8 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             "features" => features(&root)?,
             "crate-graph" => {
                 committed_lock(&root)?;
-                topology::check(&root)?
+                topology::check(&root)?;
+                deny::check(&root)?
             }
             "budget" => {
                 // The footprint builds run here, apart from the evaluate stage

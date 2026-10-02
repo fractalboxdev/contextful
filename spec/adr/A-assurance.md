@@ -171,3 +171,20 @@ Decision: `assurance.structure-tree.decision-module` is `contextful_policy::deci
 | A gateway reimplementation in TypeScript | One home | Two sources for one verdict. |
 
 Consequences: a divergence between builds surfaces as a disagreement. The accepted cost: the host links imports by the binding generator's names, which a credential-library release may rename, and no reference model checks a credential case.
+
+## Profile graphs answer to cargo-deny bans, one run per profile feature
+
+**Status:** accepted
+
+Context: script runtimes, vendor SDKs, the CRDT library and super-linear matchers are refused per profile, yet one walk over workspace-unified metadata cannot tell which profile pulled a crate. Criteria: a hit names its profile and path; the command is identical locally and remotely; a red check follows a change, not the calendar.
+
+Decision: the crate-graph stage provisions cargo-deny at a pinned release, verified by SHA-256, and runs `check bans` once per `contextful-edge`, `contextful-full` and `contextful-control` feature of the binary. `deny.toml` lists the denied crates, each with its clause id as reason; the control run drops the entries its profile admits. Per-package rules stay with `contextful-ci topology`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| `bans` per profile feature, pinned binary *(chosen)* | — | Three resolutions per run; a download on a cold sandbox. |
+| One run over default features | Profile attribution | The CRDT library in `full` hides behind `control`'s admission. |
+| `bans`, `advisories` and `licenses` together | Change-driven verdicts | An advisory published overnight reds an untouched pull request. |
+| `cargo install` from source | Stage time | Minutes of compilation per cold sandbox. |
+
+Consequences: `licenses` stays out because `assurance.build.licence-field` holds every workspace manifest. The accepted cost: an advisory against a locked crate reds no pull request, and the gate never reports it.

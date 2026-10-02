@@ -11,7 +11,7 @@
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
 #   flare-dispatch/check:evaluate    every gate-tier entry of evals/ledger.toml, held to its target
 #   flare-dispatch/check:features    each package declaring a feature, tested with none and with all
-#   flare-dispatch/check:crate-graph the topology dependency rules over `cargo tree --locked` per package
+#   flare-dispatch/check:crate-graph the topology dependency rules over `cargo tree --locked` per package, and cargo-deny bans per profile
 #   flare-dispatch/check:budget      each profile built static for Linux, held to its footprint budget
 #
 # Lean is provisioned by the dispatched command, not by a step in this file:
