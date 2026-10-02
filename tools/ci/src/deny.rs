@@ -142,7 +142,7 @@ fn binary(root: &Path) -> Result<Option<(PathBuf, Vec<String>)>> {
         .output()
         .context("running cargo metadata")?;
     if !out.status.success() {
-        bail!("cargo metadata: {}", String::from_utf8_lossy(&out.stderr).trim());
+        return Err(crate::exited_output("cargo metadata", &out));
     }
     let meta: Value = serde_json::from_slice(&out.stdout).context("parsing cargo metadata")?;
     Ok(meta["packages"].as_array().into_iter().flatten().find(|p| p["name"] == BINARY).map(|p| {
@@ -195,7 +195,7 @@ fn provision() -> Result<PathBuf> {
     let status = Command::new("curl").args(["-sSfL", "-o"]).arg(&archive).arg(&url).status().context("running curl")?;
     if !status.success() {
         let _ = std::fs::remove_dir_all(&scratch);
-        bail!("fetching {url} exited {}", status.code().unwrap_or(-1));
+        return Err(crate::exited(format!("curl -sSfL {url}"), status));
     }
     let bytes = std::fs::read(&archive)?;
     let got: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
@@ -206,7 +206,7 @@ fn provision() -> Result<PathBuf> {
     let status = Command::new("tar").arg("xzf").arg(&archive).arg("-C").arg(&scratch).status().context("running tar")?;
     if !status.success() {
         let _ = std::fs::remove_dir_all(&scratch);
-        bail!("unpacking {} exited {}", archive.display(), status.code().unwrap_or(-1));
+        return Err(crate::exited(format!("tar xzf {}", archive.display()), status));
     }
     // A concurrent run that renamed first leaves its copy in place; this one is discarded.
     if std::fs::rename(scratch.join(&name), &dir).is_err() && !bin.exists() {
@@ -302,7 +302,8 @@ fn check_profile(cargo_deny: &Path, manifest: &Path, config: &toml::Value, profi
     }
     if hits.is_empty() && !out.status.success() {
         let detail = if faults.is_empty() { String::from_utf8_lossy(&out.stderr).trim().to_string() } else { faults.join("; ") };
-        bail!("cargo-deny over profile `{profile}` exited {}: {detail}", out.status.code().unwrap_or(-1));
+        let what = format!("cargo-deny --features {profile} check bans");
+        return Err(crate::exited(what, out.status).context(format!("cargo-deny over profile `{profile}`: {detail}")));
     }
     Ok(hits)
 }

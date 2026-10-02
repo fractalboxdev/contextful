@@ -301,6 +301,11 @@ fn exited(what: String, status: ExitStatus) -> anyhow::Error {
     Exited { what, code: status.code(), signal }.into()
 }
 
+/// [`exited`] for a captured child, its trimmed stderr leading the diagnostics.
+fn exited_output(what: &str, out: &std::process::Output) -> anyhow::Error {
+    exited(what.to_string(), out.status).context(format!("{what}: {}", String::from_utf8_lossy(&out.stderr).trim()))
+}
+
 /// The exit code a failed run propagates: a child's own code, `128 + n` for a child killed
 /// by signal `n`, 28 for the disk precondition, and 1 otherwise.
 fn exit_code(e: &anyhow::Error) -> i32 {
@@ -323,9 +328,9 @@ fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Re
     for stage in stage::select(&root, named, predecessors)? {
         eprintln!("--- stage {stage}");
         free_disk(&root, stage)?;
-        let mark = stage::mark();
+        let mut mark = stage::mark();
         let outcome = run_stage(&root, stage, base, bound);
-        stage::report(stage, &mark, &outcome);
+        stage::report(stage, &mut mark, &outcome);
         outcome?;
         // A passing stage leaves no build behind (`assurance.build.target-dir-per-stage`); a
         // failing one keeps its directory for diagnosis.
@@ -409,7 +414,7 @@ fn committed_lock(root: &Path) -> Result<()> {
         .output()
         .context("running git")?;
     if !out.status.success() {
-        bail!("git status: {}", String::from_utf8_lossy(&out.stderr).trim());
+        return Err(exited_output("git status", &out));
     }
     let changed = String::from_utf8_lossy(&out.stdout);
     if !changed.trim().is_empty() {
@@ -426,7 +431,7 @@ fn committed_lock(root: &Path) -> Result<()> {
 fn free_disk(root: &Path, stage: &str) -> Result<()> {
     let out = Command::new("df").arg("-Pk").arg(root).output().context("running df")?;
     if !out.status.success() {
-        bail!("df -Pk {}: {}", root.display(), String::from_utf8_lossy(&out.stderr).trim());
+        return Err(exited_output(&format!("df -Pk {}", root.display()), &out));
     }
     let text = String::from_utf8_lossy(&out.stdout);
     // The fourth field of the data line is the available space in KiB.
@@ -764,7 +769,7 @@ fn metadata(root: &Path) -> Result<serde_json::Value> {
         .current_dir(root)
         .output()?;
     if !out.status.success() {
-        bail!("cargo metadata: {}", String::from_utf8_lossy(&out.stderr));
+        return Err(exited_output("cargo metadata", &out));
     }
     serde_json::from_slice(&out.stdout).context("parsing cargo metadata")
 }
@@ -1112,7 +1117,7 @@ fn is_test(p: &str) -> bool {
 fn git(args: &[&str]) -> Result<String> {
     let out = Command::new("git").args(args).output().context("running git")?;
     if !out.status.success() {
-        bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
+        return Err(exited_output(&format!("git {}", args.join(" ")), &out));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
@@ -1121,7 +1126,7 @@ fn git(args: &[&str]) -> Result<String> {
 fn tracked(root: &Path) -> Result<Vec<String>> {
     let out = Command::new("git").args(["ls-files", "-z"]).current_dir(root).output().context("running git")?;
     if !out.status.success() {
-        bail!("git ls-files: {}", String::from_utf8_lossy(&out.stderr).trim());
+        return Err(exited_output("git ls-files", &out));
     }
     Ok(String::from_utf8_lossy(&out.stdout).split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect())
 }

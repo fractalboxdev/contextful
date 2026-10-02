@@ -171,6 +171,40 @@ fn every_stage_reports_its_environment_and_memory_and_a_failure_keeps_its_exit_c
     let err = stderr(&o);
     assert_eq!(o.status.code(), Some(137), "{err}");
     assert!(err.contains("report: a child process was killed by signal 9"), "{err}");
+
+    // Each stage's peak is its own: a later stage never reports an earlier stage's peak.
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    bin.fake("cargo", &format!("if [ \"$1\" = fetch ]; then awk 'BEGIN {{ s = sprintf(\"%200000000s\", \"\") }}'; exit 0; fi\nexec \"{cargo}\" \"$@\"\n"));
+    let o = gate(&r, Some(&bin), &["--stage", "pins", "--stage", "toolchain"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    let peaks: Vec<&str> = err.lines().filter(|l| l.starts_with("report: memory limit ")).collect();
+    assert_eq!(peaks.len(), 2, "{err}");
+    let exact = |line: &str| -> Option<u64> { line.split(", peak ").nth(1)?.split(" bytes").next()?.parse().ok() };
+    assert!(exact(peaks[0]).is_some_and(|b| b >= 200_000_000), "the pins stage reports its own child's peak: {}", peaks[0]);
+    assert!(exact(peaks[1]).is_none_or(|b| b < 200_000_000), "the toolchain stage reports the pins stage's peak: {}", peaks[1]);
+
+    // The budget and crate-graph stages propagate a killed build or cargo-deny as 128 + n.
+    r.write("deny.toml", &std::fs::read_to_string(crate::repo_root().join("deny.toml")).unwrap());
+    r.write(
+        "spec/terms/assurance.toml",
+        "[limit]\nassurance-edge-compressed = { clause = \"assurance.gate.edge-budget\", value = 1, unit = \"MiB\", basis = \"chosen\", gloss = \"Compressed edge-profile artifact.\" }\n",
+    );
+    r.write("crates/contextful-cli/Cargo.toml", &format!("{}\n[features]\ncontextful-edge = []\n", crate::manifest("contextful-cli", "")));
+    r.write("crates/contextful-cli/src/lib.rs", "");
+    r.write("crates/contextful-cli/tests/integration/main.rs", "");
+    std::fs::remove_file(r.root.join("Cargo.lock")).unwrap();
+    r.lock();
+    r.commit("the binary declaring the edge profile");
+    bin.fake("cargo", &format!("if [ \"$1\" = build ]; then kill -9 $$; fi\nexec \"{cargo}\" \"$@\"\n"));
+    bin.fake("docker", "kill -9 $$\n");
+    bin.fake("cargo-deny", "if [ \"$1\" = --version ]; then echo \"cargo-deny 0.20.2\"; exit 0; fi\nkill -9 $$\n");
+    for stage in ["budget", "crate-graph"] {
+        let o = gate(&r, Some(&bin), &["--stage", stage]);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(137), "{stage}: {err}");
+        assert!(err.contains("report: a child process was killed by signal 9"), "{stage}: {err}");
+    }
 }
 
 /// The pins stage resolves every pinned artifact identity a run depends on before any compilation.
@@ -274,6 +308,38 @@ fn native_set() {
     assert!(o.status.success(), "{err}");
     assert!(err.contains("measure: native-golden-floor = 0.75"), "{err}");
     assert!(err.contains("evaluate: floor verdict held"), "{err}");
+    assert!(err.contains("evaluate: baseline verdict held for evals/cases/native.jsonl (native-golden-floor)"), "{err}");
+
+    // The native set missing its floor turns the baseline verdict red.
+    r.write("crates/demo/tests/integration/measured.rs", &MEASURED.replace("0.75", "0.5"));
+    r.commit("the native set under its floor");
+    let o = gate(&r, None, &["--stage", "evaluate"]);
+    let err = stderr(&o);
+    assert!(!o.status.success(), "{err}");
+    assert!(err.contains("measure: native-golden-floor = 0.5"), "{err}");
+    assert!(err.contains("evaluate: floor verdict red"), "{err}");
+    assert!(err.contains("evaluate: baseline verdict red for evals/cases/native.jsonl (native-golden-floor)"), "{err}");
+
+    // The native set's test failing turns it red, and its child's exit code propagates.
+    r.write("crates/demo/tests/integration/measured.rs", &MEASURED.replace("let dir", "panic!(\"no native set\");\n    #[allow(unreachable_code)]\n    let dir"));
+    r.commit("the native set's test fails");
+    let o = gate(&r, None, &["--stage", "evaluate"]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(101), "{err}");
+    assert!(err.contains("evaluate: baseline verdict red for evals/cases/native.jsonl"), "{err}");
+
+    // An earlier gate-tier entry failing leaves the native set run and its own verdict read.
+    let failing = "\n#[test]\nfn a_failing() {\n    panic!(\"an earlier entry\");\n}\n";
+    r.write("crates/demo/tests/integration/measured.rs", &format!("{MEASURED}{failing}"));
+    r.write("spec/spec.lock.json", "{\"clauses\": [{\"id\": \"assurance.baseline.native-gate\"}, {\"id\": \"run.journal.entry-key\"}]}\n");
+    let earlier = "[entry.a-failing]\nclause = \"run.journal.entry-key\"\nmetric = \"effects_per_key.max\"\nkind = \"test\"\ntier = \"gate\"\nmethod = { test = \"demo::measured::a_failing\" }\ntarget = { op = \"<=\", value = 1 }\n\n";
+    r.write("evals/ledger.toml", &format!("{earlier}{entry}"));
+    r.commit("an earlier gate-tier entry that fails");
+    let o = gate(&r, None, &["--stage", "evaluate"]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(101), "{err}");
+    assert!(err.contains("measure: native-golden-floor = 0.75"), "the native set never ran: {err}");
+    assert!(err.contains("evaluate: floor verdict red"), "{err}");
     assert!(err.contains("evaluate: baseline verdict held for evals/cases/native.jsonl (native-golden-floor)"), "{err}");
 }
 

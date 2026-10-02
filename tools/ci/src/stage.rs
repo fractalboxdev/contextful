@@ -70,16 +70,70 @@ pub fn select(root: &Path, named: &[String], predecessors: bool) -> Result<Vec<&
 pub struct Mark {
     env: BTreeMap<String, String>,
     started: Instant,
+    peak: Peak,
 }
 
 pub fn mark() -> Mark {
-    Mark { env: std::env::vars().collect(), started: Instant::now() }
+    Mark { env: std::env::vars().collect(), started: Instant::now(), peak: Peak::start() }
+}
+
+/// Where a stage's own memory peak reads from.
+enum Peak {
+    /// cgroup v2 `memory.peak`, reset through this descriptor, which alone then reads the
+    /// peak since the reset.
+    Reset(std::fs::File),
+    /// cgroup v1 `memory.max_usage_in_bytes`, zeroed at the stage's start.
+    Zeroed,
+    /// A high-water mark no stage resets — the cgroup's lifetime peak, else the largest
+    /// resident set of any finished child — and its value at the stage's start. A rise
+    /// belongs to this stage; without one, that value bounds this stage's peak.
+    Run(Option<u64>),
+}
+
+const PEAK_V2: &str = "/sys/fs/cgroup/memory.peak";
+const PEAK_V1: &str = "/sys/fs/cgroup/memory/memory.max_usage_in_bytes";
+
+impl Peak {
+    fn start() -> Peak {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().read(true).write(true).open(PEAK_V2) {
+            if f.write_all(b"reset\n").is_ok() {
+                return Peak::Reset(f);
+            }
+        }
+        if std::fs::write(PEAK_V1, "0").is_ok() {
+            return Peak::Zeroed;
+        }
+        Peak::Run(run_peak())
+    }
+
+    /// The stage's peak: its own in bytes, or the bound an earlier stage's peak sets on it.
+    fn read(&mut self) -> String {
+        use std::io::{Read, Seek};
+        let own = match self {
+            Peak::Reset(f) => {
+                let mut text = String::new();
+                f.rewind().ok().and_then(|()| f.read_to_string(&mut text).ok()).and_then(|_| text.trim().parse().ok())
+            }
+            Peak::Zeroed => std::fs::read_to_string(PEAK_V1).ok().and_then(|t| t.trim().parse().ok()),
+            Peak::Run(before) => match (run_peak(), *before) {
+                (Some(now), Some(b)) if now <= b => return format!("at most {b} bytes, an earlier stage's peak"),
+                (now, _) => now,
+            },
+        };
+        own.map_or("unmeasured".to_string(), |b| format!("{b} bytes"))
+    }
+}
+
+/// The cgroup's lifetime peak, else the largest resident set any finished child reached.
+fn run_peak() -> Option<u64> {
+    [PEAK_V2, PEAK_V1].iter().find_map(|p| std::fs::read_to_string(p).ok()).and_then(|t| t.trim().parse().ok()).or_else(children_max_rss)
 }
 
 /// Print the stage's report (`assurance.gate.stage-reports`): its verdict and duration, the
 /// environment it leaves, the memory limit, the peak and the memory event counts. A failing
 /// stage prints the exit code it propagates and its diagnostics.
-pub fn report(stage: &str, mark: &Mark, outcome: &Result<()>) {
+pub fn report(stage: &str, mark: &mut Mark, outcome: &Result<()>) {
     let secs = mark.started.elapsed().as_secs_f64();
     match outcome {
         Ok(()) => eprintln!("report: stage `{stage}` passed in {secs:.1} s"),
@@ -94,7 +148,7 @@ pub fn report(stage: &str, mark: &Mark, outcome: &Result<()>) {
         eprintln!("report: environment left {}", left.join(" "));
     }
     let limit = memory_limit().map_or("none".to_string(), |b| format!("{b} bytes"));
-    let peak = peak_memory().map_or("unmeasured".to_string(), |b| format!("{b} bytes"));
+    let peak = mark.peak.read();
     let events = memory_events().map_or("none recorded".to_string(), |ev| ev.iter().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join(", "));
     eprintln!("report: memory limit {limit}, peak {peak}, events {events}");
     if let Err(e) = outcome {
@@ -114,15 +168,6 @@ fn memory_limit() -> Option<u64> {
         .iter()
         .find_map(|p| std::fs::read_to_string(p).ok())
         .and_then(|t| t.trim().parse().ok())
-}
-
-/// The cgroup's peak memory, else the largest resident set any finished child reached.
-fn peak_memory() -> Option<u64> {
-    let cgroup = ["/sys/fs/cgroup/memory.peak", "/sys/fs/cgroup/memory/memory.max_usage_in_bytes"]
-        .iter()
-        .find_map(|p| std::fs::read_to_string(p).ok())
-        .and_then(|t| t.trim().parse().ok());
-    cgroup.or_else(children_max_rss)
 }
 
 #[cfg(unix)]
@@ -299,12 +344,13 @@ pub fn regenerate(root: &Path) -> Result<()> {
     std::fs::create_dir_all(&scratch)?;
     let archive = Command::new("git").args(["archive", "--format=tar", "HEAD"]).current_dir(root).output().context("running git archive")?;
     if !archive.status.success() {
-        bail!("git archive HEAD: {}", String::from_utf8_lossy(&archive.stderr).trim());
+        return Err(crate::exited_output("git archive HEAD", &archive));
     }
     let mut tar = Command::new("tar").args(["-x", "-C"]).arg(&scratch).stdin(std::process::Stdio::piped()).spawn().context("running tar")?;
     std::io::Write::write_all(tar.stdin.as_mut().context("tar stdin")?, &archive.stdout)?;
-    if !tar.wait()?.success() {
-        bail!("tar could not unpack the exported tree");
+    let unpacked = tar.wait()?;
+    if !unpacked.success() {
+        return Err(crate::exited("tar -x".into(), unpacked).context("tar could not unpack the exported tree"));
     }
     let committed: BTreeMap<String, Vec<u8>> = derived(&scratch).into_iter().filter_map(|p| std::fs::read(scratch.join(&p)).ok().map(|b| (p, b))).collect();
     let scratch_arg = scratch.to_string_lossy().to_string();

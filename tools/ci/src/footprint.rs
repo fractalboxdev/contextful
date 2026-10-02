@@ -126,7 +126,8 @@ pub fn build(root: &Path, profiles: &[String], plan: bool) -> Result<()> {
         }
         let status = c.status().with_context(|| format!("running {}", c.get_program().to_string_lossy()))?;
         if !status.success() {
-            bail!("the `{profile}` build exited {}", status.code().unwrap_or(-1));
+            let what = format!("{} {}", c.get_program().to_string_lossy(), args.join(" "));
+            return Err(crate::exited(what, status).context(format!("building `{profile}`")));
         }
         if let Err(e) = check(root, profile, &artifact(root)) {
             eprintln!("{e:#}");

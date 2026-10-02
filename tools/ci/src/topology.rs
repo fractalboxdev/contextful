@@ -224,7 +224,7 @@ impl Graph {
             .output()
             .context("running cargo metadata")?;
         if !out.status.success() {
-            bail!("cargo metadata: {}", String::from_utf8_lossy(&out.stderr).trim());
+            return Err(crate::exited_output("cargo metadata", &out));
         }
         let meta: Value = serde_json::from_slice(&out.stdout).context("parsing cargo metadata")?;
         let ws_root = meta["workspace_root"].as_str().unwrap_or_default().to_string();
@@ -413,7 +413,7 @@ fn tree(root: &Path, package: &str, resolve: Resolve) -> Result<String> {
     args.extend(["-e", "normal", "--prefix", "depth", "--format", "{p}"]);
     let out = Command::new("cargo").args(&args).current_dir(root).output().context("running cargo tree")?;
     if !out.status.success() {
-        bail!("cargo tree -p {package}: {}", String::from_utf8_lossy(&out.stderr).trim());
+        return Err(crate::exited_output(&format!("cargo tree -p {package}"), &out));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
