@@ -272,7 +272,7 @@ fn a_discovered_project_registers_its_tables() {
 
 /// A `primary_key` a `pipelines/` file declares reaches the dedup view on the operator verb
 /// and the tool server alike, so a key landed in two runs reads as one row.
-// spec: read.register.declaration-set@e0273be3
+// spec: read.register.declaration-set@3d9ef931
 #[test]
 fn a_pipeline_file_declares_the_key_every_read_face_dedupes_on() {
     let p = project();
@@ -294,4 +294,22 @@ fn a_pipeline_file_declares_the_key_every_read_face_dedupes_on() {
     assert_eq!(cli["rows"], json!([["i1", "second"]]), "{cli}");
     let answer = mcp_query_over(p.path(), "feed_items", sql);
     assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["i1", "second"]]), "{answer}");
+}
+
+/// A `[pipeline]` store-table block in a `pipelines/` file declares its table's key as the
+/// declaration does, so a key landed in two runs reads as one row.
+#[test]
+fn a_pipeline_file_store_table_block_declares_the_key() {
+    let p = project();
+    std::fs::create_dir_all(p.path().join("pipelines")).unwrap();
+    std::fs::write(p.path().join("pipelines/store.toml"), "[pipeline]\n[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"item_id\"]\n").unwrap();
+    for (run_id, title) in [("run-0002", "first"), ("run-0003", "second")] {
+        std::fs::write(p.path().join("items.jsonl"), format!("{{\"item_id\":\"i1\",\"title\":\"{title}\"}}\n")).unwrap();
+        stdout(&run(
+            p.path(),
+            &["context", "land", "items", "--project", "research", "--rows", "items.jsonl", "--run-id", run_id, "--site-id", "site-a"],
+        ));
+    }
+    let cli = query(p.path(), &["--project", "research", "SELECT item_id, title FROM items"]);
+    assert_eq!(cli["rows"], json!([["i1", "second"]]), "{cli}");
 }

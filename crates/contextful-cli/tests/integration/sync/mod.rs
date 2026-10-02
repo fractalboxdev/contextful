@@ -262,3 +262,19 @@ fn a_cold_http_server_pulls_before_it_listens(bucket: &Path) {
         Err(out) => refused(&out, "SyncEndpointUnsupported"),
     }
 }
+
+/// A replica's `sync pull` reads `replicate = false` from a `pipelines/` file as from the
+/// declaration: a refresh naming the table refuses, and an unscoped one leaves it behind.
+// spec: store.declare.declaration-set@14e776d1
+#[test]
+fn a_pipeline_file_keeps_a_replicate_off_table_off_the_pull() {
+    let bucket = tempfile::tempdir().unwrap();
+    let _a = seed(&file_sync(bucket.path(), ""), &[]);
+    let replica = project("replica-p", &file_sync(bucket.path(), "\n[replica]\nof = \"team/research\"\n"));
+    std::fs::write(replica.path().join("contextful.toml"), "authoring_posture = \"per_request\"\n").unwrap();
+    std::fs::create_dir_all(replica.path().join("pipelines")).unwrap();
+    std::fs::write(replica.path().join("pipelines/store.toml"), "[pipeline]\n[[pipeline.tables]]\nname = \"filings\"\nreplicate = false\n").unwrap();
+    refused(&cf(replica.path(), &["sync", "pull", "--project", "research", "--table", "filings"], &[]), "ReplicaSensitiveTable");
+    ok(&cf(replica.path(), &["sync", "pull", "--project", "research"], &[]));
+    refused(&cf(replica.path(), &["context", "files", "filings", "--project", "research"], &[]), "StoreUnknownTable");
+}

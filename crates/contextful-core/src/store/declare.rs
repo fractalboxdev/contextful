@@ -206,10 +206,10 @@ impl TableDecl {
         checked(tables)
     }
 
-    /// Every table block of a declaration set (`read.register.declaration-set`): the
-    /// declaration's under [`TableDecl::parse_pipeline`], then those of each
-    /// specification in each `pipelines/` file, read as `run.declare.manifest-file` reads
-    /// it, under its destination name.
+    /// Every table block of a declaration set (`store.declare.declaration-set`): the
+    /// declaration's under [`TableDecl::parse_pipeline`], then, for each `pipelines/`
+    /// file, the `[[pipeline.tables]]` of a `[pipeline]` table as named and those of each
+    /// specification `run.declare.manifest-file` reads under its destination name.
     pub fn parse_declaration_set(
         declaration: &str,
         pipelines: &[crate::pipeline::declare::ManifestFile],
@@ -217,6 +217,12 @@ impl TableDecl {
         let mut tables = TableDecl::parse_pipeline(declaration)?;
         let mut declared = Vec::new();
         for f in pipelines {
+            if f.path.ends_with(".toml") {
+                let value: toml::Value = toml::from_str(&f.text).map_err(|e| DeclarationMalformed(format!("{}: {e}", f.path)))?;
+                if matches!(value.get("pipeline"), Some(toml::Value::Table(_))) {
+                    tables.extend(TableDecl::parse_pipeline(&f.text)?);
+                }
+            }
             for d in crate::pipeline::declare::read_manifest(f).map_err(|e| DeclarationMalformed(e.to_string()))? {
                 declared.extend(d.spec.tables.iter().map(|t| TableDecl { name: d.spec.table_name(t.name()), ..t.decl() }));
             }

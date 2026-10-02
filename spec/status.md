@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 170 | 28 | 22 | 20 | 151 | 0 | 151 |
 | `run` | 3 | 26 | 368 | 98 | 35 | 36 | 252 | 0 | 252 |
-| `store` | 1 | 17 | 228 | 54 | 13 | 19 | 188 | 0 | 188 |
+| `store` | 1 | 17 | 229 | 54 | 13 | 19 | 189 | 0 | 189 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1886 | 561 | 187 | 142 | 1229 | 0 | |
+| **total** | 19 | 154 | 1887 | 561 | 187 | 142 | 1230 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
-| 2 — The store | 9 | 156 | 121 | passing | closed |
+| 2 — The store | 9 | 157 | 122 | passing | closed |
 | 3 — The run path | 11 | 205 | 139 | passing | closed |
 | 4 — Ingest | 25 | 465 | 284 | passing | open |
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
@@ -1047,6 +1047,7 @@ Unscheduled operations: 10.
 | `store.bound-time.valid-time-type` | `crates/contextful-core/tests/integration/store/bound_time.rs::a_valid_time_column_not_timestamp_typed_is_refused` | performed |
 | `store.bound-time.valid-time-undeclared` | `crates/contextful-core/tests/integration/store/bound_time.rs::valid_as_of_on_a_table_declaring_no_pair_is_refused` | performed |
 | `store.declare.column-types` | `crates/contextful-context/tests/integration/reconcile.rs::a_declared_column_type_types_a_landing_that_declares_none` | performed |
+| `store.declare.declaration-set` | `crates/contextful-cli/tests/integration/sync/mod.rs::a_pipeline_file_keeps_a_replicate_off_table_off_the_pull` | performed |
 | `store.declare.dedup-view` | `crates/contextful-context/tests/integration/declare.rs::a_keyed_table_reads_one_row_per_key_before_and_after_a_fold` | performed |
 | `store.declare.empty-run` | `crates/contextful-context/tests/integration/declare.rs::a_zero_row_run_commits_no_parts_and_an_empty_table_registers` | performed |
 | `store.declare.fold-coverage` | `crates/contextful-cli/tests/integration/pipeline.rs::a_keyed_table_no_fold_job_covers_warns_and_validates` | performed |
