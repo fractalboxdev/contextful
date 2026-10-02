@@ -387,14 +387,18 @@ mod materialize {
         Ok(())
     }
 
-    /// The statement admission a build runs, over no store (`run.model.validate-statements`):
-    /// the model's `sql`, then each test's, every relation but the model's own id in `sql`
-    /// counting as registered. A refusal names the statement it refuses — `model `<id>`` or
+    /// The statement checks a build runs, over no store (`run.model.validate-statements`):
+    /// the model's `sql`, every relation but the model's own id counting as registered, then
+    /// each input `decl` declares against `run.model.restricted-input`, then each test's
+    /// statement. A refusal names the statement it refuses — `model `<id>`` or
     /// `model `<id>` test `<name>`` — beside the fault.
-    pub fn admit_statements(spec: &ModelSpec) -> std::result::Result<(), (String, ReadFault)> {
+    pub fn admit_statements(spec: &ModelSpec, decl: impl Fn(&str) -> Option<TableDecl>) -> std::result::Result<(), (String, ReadFault)> {
         let model = format!("model `{}`", spec.id);
         let engine = SqlEngine::raw().map_err(|e| (model.clone(), e))?;
-        admit_sql(&engine, spec, |_| true).map_err(|e| (model.clone(), e))?;
+        let admitted = admit_sql(&engine, spec, |_| true).map_err(|e| (model.clone(), e))?;
+        for input in admitted.relations.iter().filter_map(|t| decl(t)) {
+            check_unrestricted(&spec.id, &input).map_err(|e| (model.clone(), e))?;
+        }
         for t in &spec.tests {
             admit_test(&engine, spec, t.sql.trim().trim_end_matches(';'), |_| true).map_err(|e| (format!("{model} test `{}`", t.name), e))?;
         }

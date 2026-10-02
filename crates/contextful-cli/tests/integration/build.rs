@@ -112,14 +112,15 @@ fn build_hold_prints_held_then_renewed() {
     assert!(!bad.status.success() && String::from_utf8_lossy(&bad.stderr).contains("7w"));
 }
 
-/// `pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, and raises the error the build raises.
-// spec: run.model.validate-statements@9a1409dd
+/// `pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to `run.model.restricted-input`, and raises the error the build raises.
+// spec: run.model.validate-statements@a705bcc8
 #[test]
 fn validate_refuses_a_statement_build_refuses() {
     let cases = [
         ("FROM events GROUP BY day", "FROM ref('events') GROUP BY day", "TableFunctionRefused"),
         ("FROM events GROUP BY day", "FROM duckdb_tables() GROUP BY day", "TableFunctionRefused"),
         ("FROM events GROUP BY day", "FROM daily GROUP BY day", "EnforceUnknownRelation"),
+        ("name = \"events\"\n", "name = \"events\"\nclass = \"email\"\n", "ModelInputRestricted"),
     ];
     for (from, to, error) in cases {
         let dir = tempfile::tempdir().unwrap();
