@@ -9,7 +9,7 @@ use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_context::catalog::rebuild;
 use contextful_context::fold::fold;
-use contextful_context::land::{land_batches, Batch, Position, RunContext};
+use contextful_context::land::{land_run, Batch, Position, RunContext};
 use contextful_context::scan::scan;
 use contextful_context::{node, ContextError, Store};
 use contextful_core::store::bound_time::{Bound, Bounds};
@@ -167,8 +167,9 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
                 Some(a) => a.boundary().map_err(|e| ContextError::Invalid(format!("{e:#}"))),
                 None => Ok(()),
             };
-            let m = land_batches(&o.store, &o.decl(&table), std::slice::from_ref(&batch), &ctx, &Position::default(), &precommit)?;
-            println!("{table}: committed {} on {} ({} parts, {} rows)", m.run_id, m.node_id, m.parts.len(), batch.rows.len());
+            let l = land_run(&o.store, &o.decl(&table), std::slice::from_ref(&batch), &ctx, &Position::default(), &precommit)?;
+            let (m, verb) = (&l.manifest, if l.replay { "replayed" } else { "committed" });
+            println!("{table}: {verb} {} on {} ({} parts, {} rows)", m.run_id, m.node_id, m.parts.len(), batch.rows.len());
             Ok(())
         }
         ContextCmd::Files { table, store, as_of } => {

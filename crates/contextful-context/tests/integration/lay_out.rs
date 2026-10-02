@@ -58,6 +58,77 @@ fn a_run_commits_by_creating_its_manifest_once() {
     assert!(matches!(store_err(f.scan(&d, Bounds::default()).unwrap_err()), StoreError::StoreManifestUnreadable(_)));
 }
 
+/// Every file a table directory holds, with its bytes.
+fn tree(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    let mut out = Vec::new();
+    for e in fs::read_dir(dir).unwrap() {
+        let p = e.unwrap().path();
+        if p.is_dir() {
+            out.extend(tree(&p));
+        } else {
+            out.push((p.clone(), fs::read(&p).unwrap()));
+        }
+    }
+    out.sort();
+    out
+}
+
+/// A landing of an unlogged run already committed on its node, carrying equal rows and position, writes nothing and answers the committed manifest as a replay.
+// spec: store.lay-out.run-replay@be05ec54
+#[test]
+fn a_relanded_run_with_equal_rows_answers_the_committed_manifest() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"\nprimary_key = [\"id\"]");
+    let rows = json!([{"id": "a", "n": 1}, {"id": "b", "body": {"k": [1, 2]}}]);
+    let first = f.land(&d, "run-1", rows.clone(), "2030-01-01T00:00:00Z").unwrap();
+    let before = tree(&f.table_dir("filings"));
+
+    // A retry after a lost acknowledgement carries a later clock and the same rows.
+    let again = f.land(&d, "run-1", rows, "2030-01-01T00:05:00Z").unwrap();
+    assert_eq!(again, first);
+    assert_eq!(tree(&f.table_dir("filings")), before);
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), vec![vec![s("2")]]);
+}
+
+/// Any other landing of a run id already committed on its node raises `StoreRunConflict` and changes nothing.
+// spec: store.lay-out.run-conflict@b9255d81
+#[test]
+fn a_relanded_run_with_other_rows_or_a_logged_position_conflicts() {
+    use contextful_context::land::{land_batches, Batch, Position, RunContext};
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::reserve::Injection;
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"");
+    f.land(&d, "run-1", json!([{"id": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+    let before = tree(&f.table_dir("filings"));
+    for rows in [json!([{"id": "b"}]), json!([{"id": "a"}, {"id": "a"}]), json!([{"id": "a", "extra": 1}])] {
+        let e = f.land(&d, "run-1", rows, "2030-01-01T00:01:00Z").unwrap_err();
+        assert!(matches!(store_err(e), StoreError::StoreRunConflict(_)));
+        assert_eq!(tree(&f.table_dir("filings")), before);
+    }
+
+    // A logged run's readability rides its commit-log entry, so its re-landing conflicts even with equal rows.
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-l".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
+        committed_at: at("2030-01-01T00:02:00Z"),
+    };
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: Some(1), logged: true };
+    let batch = Batch { rows: vec![json!({"id": "c"}).as_object().unwrap().clone()], types: Default::default() };
+    land_batches(&f.store, &d, std::slice::from_ref(&batch), &ctx, &position, &|| Ok(())).unwrap();
+    let e = land_batches(&f.store, &d, std::slice::from_ref(&batch), &ctx, &position, &|| Ok(())).unwrap_err();
+    assert!(matches!(store_err(e), StoreError::StoreRunConflict(_)));
+
+    // An unlogged run re-landed at another cursor conflicts.
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: None, logged: false };
+    let ctx = RunContext { injection: Injection { run_id: "run-u".into(), ..ctx.injection.clone() }, ..ctx };
+    land_batches(&f.store, &d, std::slice::from_ref(&batch), &ctx, &position, &|| Ok(())).unwrap();
+    land_batches(&f.store, &d, std::slice::from_ref(&batch), &ctx, &position, &|| Ok(())).unwrap();
+    let moved = Position { cursor: Some(json!("p2")), ..position };
+    let e = land_batches(&f.store, &d, std::slice::from_ref(&batch), &ctx, &moved, &|| Ok(())).unwrap_err();
+    assert!(matches!(store_err(e), StoreError::StoreRunConflict(_)));
+}
+
 /// A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry.
 // spec: store.lay-out.uncommitted-run@4dc939ec
 #[test]

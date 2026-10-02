@@ -36,6 +36,7 @@ StoreReservedTableName       = { clause = "store.reserve.table-name", gloss = "A
 StoreSchemaIncompatible      = { clause = "store.reconcile.incompatible", gloss = "Two observed types for one column have no supertype in the lattice." }
 StoreKeyWidened              = { clause = "store.reconcile.key-widening", gloss = "A primary-key column takes the float promotion." }
 StorePartitionColumnType     = { clause = "store.index.partition-type", gloss = "A `partition_by` column is typed binary or vector." }
+StoreRunConflict             = { clause = "store.lay-out.run-conflict", gloss = "A run id already committed on its node lands again as other than its replay." }
 StorePartialSnapshot         = { clause = "store.fold.partial-snapshot", gloss = "A commit would expose snapshot data without its declared sidecars, or the reverse." }
 StoreIndexColumnAbsent       = { clause = "store.index.column-absent", gloss = "An index is declared over a column the reconciled schema lacks." }
 StoreIndexColumnType         = { clause = "store.index.column-type", gloss = "An indexed column or `id_column` carries a type the sidecar does not read." }

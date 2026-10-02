@@ -161,7 +161,7 @@ fn a_store_on_exfat_commits_a_run_and_its_log_entry() {
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: Some(1), logged: true };
     let d = decl("name = \"filings\"");
     land_batches(&store, &d, &[batch(json!([{"id": "d1"}]))], &ctx, &position, &|| Ok(())).unwrap();
-    let again = land_batches(&store, &d, &[batch(json!([{"id": "d1"}]))], &ctx, &position, &|| Ok(()));
+    let again = land_batches(&store, &d, &[batch(json!([{"id": "d2"}]))], &ctx, &position, &|| Ok(()));
     assert!(again.unwrap_err().to_string().contains("already committed"));
     contextful_context::commit_log::open_fence(&store, "feed", "ingest-a", "filings", 1).unwrap();
     let entry = CommitEntry { kind: Kind::Commit, table: "filings".into(), run_id: Some("run-x".into()), cursor: Some(json!("p1")), fence: 1 };
