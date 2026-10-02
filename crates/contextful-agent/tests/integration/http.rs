@@ -446,6 +446,32 @@ fn past_the_ceiling_a_request_answers_503_with_retry_after() {
     assert_eq!(send(addr, &signed(&query(FAST), &token, &key)).0, 200);
 }
 
+/// An accepted connection holds one of the ceiling's slots from accept until its answer is written; a connection accepted with every slot held answers as {{read.register.past-ceiling}} before its request is parsed, and starts no thread.
+// spec: read.register.connection-ceiling@9e698a3d
+#[test]
+fn a_stalled_request_head_holds_a_slot_and_a_connection_past_the_ceiling_is_shed() {
+    let (_f, addr) = listen(fixture(), 1, &no_revocation);
+    let health = HttpRequest { method: "GET".into(), target: "/health".into(), headers: Vec::new(), body: Vec::new() };
+    let mut stalled = TcpStream::connect(addr).unwrap();
+    stalled.write_all(b"POST /mcp HTTP/1.1\r\n").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let started = std::time::Instant::now();
+    let (status, head, _) = send(addr, &health);
+    assert_eq!(status, 503, "a connection whose head never completes holds the one slot: {head}");
+    assert!(head.contains("Retry-After: 1\r\n") || head.ends_with("Retry-After: 1"), "{head}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5), "the shed answer waits on no read timeout");
+    drop(stalled);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let (status, head, _) = send(addr, &health);
+        if status == 200 {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "the slot frees once the stalled connection closes: {head}");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 /// A serve with no `--audience`, or no positive `--max-in-flight`, raises `ServeDeclarationMissing` naming the flag and binds no listener; neither ships a default.
 // spec: read.register.serve-declaration@39474b03
 #[test]

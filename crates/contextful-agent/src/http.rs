@@ -47,6 +47,14 @@ const REQUEST_HEAD_BYTES: usize = 64 * 1024;
 /// How long a connection may take to deliver its request before it is closed.
 const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long the shedding thread spends on one connection past the ceiling: writing its
+/// `503`, then discarding what the caller sends until it closes.
+const SHED_LINGER: Duration = Duration::from_millis(250);
+
+/// Connections past the ceiling waiting for the shedding thread; one arriving with the
+/// queue full is closed unanswered.
+const SHED_QUEUE: usize = 64;
+
 /// Headers one request head may carry.
 const REQUEST_HEADERS: usize = 64;
 
@@ -235,35 +243,72 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0) })
     }
 
-    /// Accept connections on `listener` until it fails, each served on its own thread.
+    /// Accept connections on `listener` until it fails. Each accepted connection takes a
+    /// slot before its thread starts and holds it until its answer is written, so at most
+    /// the ceiling's count of connection threads run. One accepted with every slot held
+    /// goes, unparsed, to the one shedding thread, and is dropped when
+    /// [`SHED_QUEUE`] connections already wait there (`read.register.connection-ceiling`).
     pub fn serve(&self, listener: TcpListener) -> std::io::Result<()> {
         std::thread::scope(|scope| {
+            let (shed, queue) = std::sync::mpsc::sync_channel::<TcpStream>(SHED_QUEUE);
+            scope.spawn(move || {
+                for stream in queue {
+                    let _ = self.shed(stream);
+                }
+            });
             for stream in listener.incoming() {
                 let stream = match stream {
                     Ok(s) => s,
                     Err(e) if e.kind() == std::io::ErrorKind::ConnectionAborted => continue,
                     Err(e) => return Err(e),
                 };
-                scope.spawn(move || {
-                    let _ = self.connection(stream);
-                });
+                match self.slot() {
+                    Some(slot) => {
+                        scope.spawn(move || {
+                            let _ = self.connection(stream, slot);
+                        });
+                    }
+                    None => {
+                        let _ = shed.try_send(stream);
+                    }
+                }
             }
             Ok(())
         })
     }
 
-    /// Read one request, answer it and close.
-    fn connection(&self, mut stream: TcpStream) -> std::io::Result<()> {
+    /// Read one request under `slot`, answer it and close. The slot frees once the answer
+    /// is written, before the close that ends the caller's read.
+    fn connection(&self, mut stream: TcpStream, slot: Slot<'_>) -> std::io::Result<()> {
         stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT))?;
+        stream.set_write_timeout(Some(REQUEST_READ_TIMEOUT))?;
         let response = match read_request(&mut stream) {
-            Ok(request) => match self.slot() {
-                Some(_slot) => self.answer(&request),
-                None => HttpResponse::unavailable(format!("{} requests are in flight, the declared ceiling", self.ceiling)),
-            },
+            Ok(request) => self.answer(&request),
             Err(response) => response,
         };
-        response.write_to(&mut stream)?;
+        let written = response.write_to(&mut stream);
+        drop(slot);
+        written?;
         stream.shutdown(std::net::Shutdown::Write)
+    }
+
+    /// Answer `503` on a connection past the ceiling without parsing its request, then
+    /// discard what the caller sends until it closes or [`SHED_LINGER`] passes, so the
+    /// close sends no reset ahead of the answer (`read.register.past-ceiling`).
+    fn shed(&self, mut stream: TcpStream) -> std::io::Result<()> {
+        stream.set_write_timeout(Some(SHED_LINGER))?;
+        HttpResponse::unavailable(format!("{} requests are in flight, the declared ceiling", self.ceiling)).write_to(&mut stream)?;
+        stream.shutdown(std::net::Shutdown::Write)?;
+        let deadline = std::time::Instant::now() + SHED_LINGER;
+        let mut discard = [0u8; 4096];
+        while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()).filter(|d| !d.is_zero()) {
+            stream.set_read_timeout(Some(left))?;
+            match stream.read(&mut discard) {
+                Ok(n) if n > 0 => continue,
+                _ => break,
+            }
+        }
+        Ok(())
     }
 
     /// Take a slot under the ceiling, or none when the ceiling's count is in flight
