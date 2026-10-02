@@ -177,6 +177,45 @@ fn converge(cf: &Path, bucket: &Bucket) {
     assert_eq!(std::fs::read_to_string(cold.repo.root.join("cursor.log")).unwrap(), "\"p9\"");
 }
 
+/// The declaration of the carry case: a keyed table and a model over it.
+const NOTES: &str = "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"notes\"\nprimary_key = [\"id\"]\n\n\
+[[model]]\nid = \"note_kinds\"\nsql = \"SELECT kind, CAST(count(*) AS BIGINT) AS n FROM notes GROUP BY kind\"\nunique_key = [\"kind\"]\n\n\
+[model.contract]\nversion = \"1.0.0\"\ncolumns = [{ name = \"kind\", type = \"utf8\", nullable = false }, { name = \"n\", type = \"int64\", nullable = false }]\n";
+
+/// Run `args` against the research project at the instant `now`.
+fn at(n: &Node, args: &[&str], now: &str) -> String {
+    let mut all = args.to_vec();
+    all.extend_from_slice(&["--project", "research", "--now", now]);
+    ok(&n.run(&all))
+}
+
+fn rows(n: &Node, sql: &str) -> serde_json::Value {
+    let read: serde_json::Value = serde_json::from_str(&ok(&n.run(&["query", "--json", "--project", "research", sql]))).unwrap();
+    read["rows"].clone()
+}
+
+/// A built model and a locally folded table, whose runs retention collected, reach a
+/// second node through the bucket: the push carries their pointers, and the pull writes them.
+fn carry(cf: &Path, bucket: &Bucket) {
+    let d = node(cf, bucket, "build-d", "");
+    d.repo.write("contextful.toml", NOTES);
+    d.repo.write("notes.jsonl", "{\"id\":\"n1\",\"kind\":\"a\"}\n{\"id\":\"n2\",\"kind\":\"a\"}\n{\"id\":\"n3\",\"kind\":\"b\"}\n");
+    at(&d, &["context", "land", "notes", "--rows", "notes.jsonl", "--run-id", "n-1", "--site-id", "site"], "2030-02-01T00:00:00Z");
+    at(&d, &["build", "note_kinds", "--site-id", "site"], "2030-02-01T01:00:00Z");
+    let folded = at(&d, &["context", "compact", "notes"], "2030-02-01T02:00:00Z");
+    assert!(folded.contains("folded"), "{folded}");
+    // Past `retain_runs`, the folded run is collected and the snapshot alone holds the rows.
+    at(&d, &["context", "compact", "notes"], "2030-02-09T02:00:00Z");
+    let pushed = ok(&d.sync(&["push"]));
+    assert!(pushed.contains("and 2 pointers"), "{pushed}");
+
+    let e = node(cf, bucket, "read-e", "");
+    e.repo.write("contextful.toml", NOTES);
+    ok(&e.sync(&["pull"]));
+    assert_eq!(rows(&e, "SELECT kind, n FROM note_kinds ORDER BY kind"), serde_json::json!([["a", "2"], ["b", "1"]]));
+    assert_eq!(rows(&e, "SELECT id FROM notes ORDER BY id"), serde_json::json!([["n1"], ["n2"], ["n3"]]));
+}
+
 #[test]
 fn m06_sync() {
     let cf = bin("contextful");
@@ -187,6 +226,7 @@ fn m06_sync() {
         root: Some(dir.path().to_path_buf()),
     };
     converge(&cf, &bucket);
+    carry(&cf, &bucket);
 }
 
 #[test]
@@ -202,6 +242,7 @@ fn m06_sync_over_s3() {
         root: None,
     };
     converge(&cf, &bucket);
+    carry(&cf, &bucket);
     assert!(server.keys().iter().any(|k| k == "team/manifest.json"), "the bucket manifest sits under the prefix");
     assert!(server.keys().iter().all(|k| k.starts_with("team/")), "{:?}", server.keys());
 }

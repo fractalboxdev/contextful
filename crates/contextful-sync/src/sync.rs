@@ -3,7 +3,7 @@
 use contextful_context::{ContextError, Store};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::catalog::{DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE};
-use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer};
+use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer, CLOCK_SKEW_SECS};
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
@@ -187,6 +187,100 @@ pub fn plan_manifest(store: &Store, project: &str, node: &str) -> Result<Manifes
     Ok(plan)
 }
 
+/// One table pointer of the store: its key under the project, its table directory, and
+/// the pointer, or why it reads as none.
+struct LocalPointer {
+    key: String,
+    table: String,
+    table_dir: PathBuf,
+    pointer: std::result::Result<Pointer, String>,
+}
+
+/// Every table pointer under `store`'s `tables/`, a nested table name keeping its `/`.
+fn local_pointers(store: &Store, project: &str) -> Result<Vec<LocalPointer>> {
+    let tables = store.root().join("tables");
+    let mut out = Vec::new();
+    let mut stack = vec![tables.clone()];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(io(&dir, e)),
+        };
+        for entry in entries {
+            let path = entry.map_err(|e| io(&dir, e))?.path();
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if path.is_dir() {
+                if !["data", "requests"].contains(&name.as_str()) && !name.starts_with('.') && !name.ends_with(".staging") {
+                    stack.push(path);
+                }
+                continue;
+            }
+            if name != POINTER_FILE {
+                continue;
+            }
+            let table = dir.strip_prefix(&tables).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            let pointer = std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| serde_json::from_slice::<Pointer>(&b).map_err(|e| e.to_string()));
+            out.push(LocalPointer { key: format!("{project}/tables/{table}/{POINTER_FILE}"), table, table_dir: dir.clone(), pointer });
+        }
+    }
+    out.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok(out)
+}
+
+/// What a push does with one local pointer against the bucket's.
+enum Carry {
+    /// Publish this pointer.
+    Publish(BucketPointer),
+    /// The bucket already names it, or its snapshot descends from none the bucket names.
+    Keep,
+    /// The pointer stays local, for the reason given (`store.push.pointer-fenced`).
+    Warn(String),
+}
+
+/// Whether `local` advances the bucket's pointer `remote` (`store.push.pointer-carry`):
+/// its snapshot is whole here and the bucket's names none or an ancestor of it. The
+/// bucket's fence carries over; a local fence below it keeps the pointer local.
+fn carry(local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> {
+    let pointer = match &local.pointer {
+        Ok(p) => p,
+        Err(e) => return Ok(Carry::Warn(format!("`{}` does not parse ({e}); the pointer stays local", local.key))),
+    };
+    let snapshot = pointer.snapshot_id.to_string();
+    let fence = remote.map_or(0, |r| r.fence);
+    let published = remote.and_then(|r| r.snapshot_id.as_deref());
+    if published == Some(snapshot.as_str()) {
+        return Ok(Carry::Keep);
+    }
+    if let Some(f) = pointer.fence.filter(|f| *f < fence) {
+        return Ok(Carry::Warn(format!("`{}` carries fence {f} and the bucket's pointer fence {fence}; the pointer stays local", local.key)));
+    }
+    if let Some(missing) = missing_parts(&local.table_dir, &snapshot)? {
+        return Ok(Carry::Warn(format!("snapshot `{snapshot}` lacks `{missing}`; `{}` stays local", local.key)));
+    }
+    if published.is_some_and(|ancestor| !descends(&local.table_dir, &snapshot, ancestor)) {
+        return Ok(Carry::Keep);
+    }
+    Ok(Carry::Publish(BucketPointer { snapshot_id: Some(snapshot), fence: fence.max(pointer.fence.unwrap_or(0)) }))
+}
+
+/// Whether `ancestor` sits on the `parent` chain of `snapshot` under `table_dir`.
+fn descends(table_dir: &Path, snapshot: &str, ancestor: &str) -> bool {
+    let mut seen = BTreeSet::new();
+    let mut at = snapshot.to_string();
+    while seen.insert(at.clone()) {
+        let path = table_dir.join("data").join("snapshots").join(&at).join(MANIFEST_FILE);
+        let Some(parent) = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<SnapshotManifest>(&b).ok()).and_then(|m| m.parent) else {
+            return false;
+        };
+        at = parent.to_string();
+        if at == ancestor {
+            return true;
+        }
+    }
+    false
+}
+
 /// A bucket or generation manifest read off `key`, its `format` held to the newest this
 /// build parses before any other field is read (`store.push.format-unsupported`).
 fn parse_manifest(key: &str, bytes: &[u8]) -> Result<BucketManifest> {
@@ -206,8 +300,11 @@ pub struct PushReport {
     pub generation: u64,
     /// Rounds the manifest commit took.
     pub rounds: u32,
-    /// Refusals the merge answered by keeping an entry.
+    /// Refusals the merge answered by keeping an entry, and local pointers the push kept
+    /// local (`store.push.pointer-fenced`).
     pub refused: Vec<String>,
+    /// Table pointers the push published (`store.push.pointer-carry`).
+    pub pointers: Vec<String>,
 }
 
 /// What a pull did.
@@ -403,6 +500,13 @@ impl Syncer {
         }
         let retries = self.config.push_retries().max(1);
         let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
+        // A table under a standing compaction lease is the holder's to publish (`store.push.pointer-leased`).
+        let mut locals = Vec::new();
+        for local in local_pointers(&self.store, &self.project)? {
+            if !self.lease_stands(&local.table, now)? {
+                locals.push(local);
+            }
+        }
         for round in 1..=retries {
             let (remote, etag) = match self.manifest_bytes()? {
                 Some((remote, bytes, etag)) => (Some((remote, bytes)), Some(etag)),
@@ -435,7 +539,17 @@ impl Syncer {
             // A manifest rewritten by a writer predating `generation` reads 0; the files keep the count (`store.push.generation-floor`).
             committed.generation = remote.generation.max(newest) + 1;
             committed.pointers = remote.pointers.iter().filter(|(k, _)| !in_project(k)).map(|(k, p)| (k.clone(), p.clone())).collect();
+            let mut carried = Vec::new();
+            let mut warnings = Vec::new();
+            for local in &locals {
+                match carry(local, pointers.get(&local.key))? {
+                    Carry::Publish(p) => carried.push((local, p)),
+                    Carry::Keep => {}
+                    Carry::Warn(w) => warnings.push(w),
+                }
+            }
             committed.pointers.extend(pointers);
+            committed.pointers.extend(carried.iter().map(|(l, p)| (l.key.clone(), p.clone())));
             let bytes = serde_json::to_vec_pretty(&committed).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&self.key(MANIFEST_KEY)?, &bytes, condition)? {
@@ -444,6 +558,13 @@ impl Syncer {
                 report.generation = committed.generation;
                 report.rounds = round;
                 report.refused = merged.refused.iter().map(ToString::to_string).collect();
+                report.refused.extend(warnings);
+                // Pointers after the commit: every object a carried snapshot reaches is listed.
+                for (local, _) in carried {
+                    if self.publish_local(local)? {
+                        report.pointers.push(local.key.clone());
+                    }
+                }
                 return Ok(report);
             }
         }
@@ -452,6 +573,29 @@ impl Syncer {
             if report.uploaded.is_empty() { "none this push".to_string() } else { report.uploaded.join(", ") }
         ))
         .into())
+    }
+
+    /// Whether a holder keeps `table`'s compaction lease unexpired at `now`, this node included.
+    fn lease_stands(&self, table: &str, now: Instant) -> Result<bool> {
+        let Some((bytes, _)) = self.bucket.get(&self.key(&compaction_key(&self.project, table))?)? else { return Ok(false) };
+        let lease: BucketLease = serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("lease on `{table}`: {e}"))))?;
+        Ok(lease.holder.is_some() && lease.expires_at.is_some_and(|e| now < e.plus_secs(CLOCK_SKEW_SECS)))
+    }
+
+    /// Publish `local` as its table's bucket pointer by a conditional put on the pointer as
+    /// read, re-deciding on a lost condition. Returns whether the bucket took it.
+    fn publish_local(&self, local: &LocalPointer) -> Result<bool> {
+        let key = self.pointer_key(&local.table)?;
+        for _ in 0..PUT_ROUNDS {
+            let (remote, etag) = self.read_pointer(&local.table)?;
+            let Carry::Publish(next) = carry(local, etag.is_some().then_some(&remote))? else { return Ok(false) };
+            let bytes = serde_json::to_vec_pretty(&next).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
+            if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
+                return Ok(true);
+            }
+        }
+        Err(StoreError::SyncManifestRebaseExhausted(format!("`{}` moved under every conditional put; run the push again", local.key)).into())
     }
 
     /// Upload a key this node owns: a create where the bucket holds none, else a replace

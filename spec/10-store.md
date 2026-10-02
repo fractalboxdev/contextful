@@ -452,7 +452,7 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *P3*
 - `in-flight` — A second push of one store on one machine raises `SyncPushInFlight`, naming the holder of the push guard.
   *A-store*
-- `wire-format` — A push uploads each file it owns, or no node owns, whose digest the bucket lacks under `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks, staging directories and table pointers stay local.
+- `wire-format` — A push uploads each file it owns, or no node owns, whose digest the bucket lacks under `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks and staging directories stay local, and table pointers travel by {{store.push.pointer-carry}}.
 - `schema-cas` — A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and replacing it on the ETag read; no copy overwrites another.
   *because two nodes landing different columns into one table both keep them*
 - `manifest-commit` — A push commits when the bucket manifest, `<prefix>/manifest.json` listing each key's sha256, size and owner, replaces the copy it read under `If-Match` on that copy's ETag.
@@ -460,7 +460,7 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
 - `manifest-format` — The bucket manifest and every generation manifest carry `format`, `1` for this layout; a manifest without `format` reads as `1`.
 - `format-unsupported` — A bucket or generation manifest whose `format` exceeds 1 raises `SyncManifestFormatUnsupported`, naming the key and its format, before the push commits or the pull writes a file.
   *because a reader rewriting a manifest it parses only in part drops the fields a newer writer added*
-- `generation` — Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.
+- `generation` — Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as read before it and advanced by {{store.push.pointer-carry}}; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.
   *because a restore or a pre-push gate names one committed state, and the live manifest and pointers move on*
 - `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
   *because a format-1 writer predating the field drops `generation`, and reusing a taken number collides with its immutable copy*
@@ -471,6 +471,12 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
 - `run-state` — `sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`: each pipeline's newest run and each cursor row with its commit marker.
   *because run history and cursors live outside the store root, and a node starting cold otherwise sees neither*
 - `run-state-format` — A run state carries `format`, `1` for this layout; one whose `format` exceeds 1 contributes no run or cursor to a reader.
+- `pointer-carry` — After its manifest commit, a push publishes each local table pointer whose snapshot is whole and descends from the bucket pointer's, or the bucket pointer names none, by a conditional put keeping the bucket's fence.
+  *because a snapshot a local fold or a build publishes reads on no other node until its pointer reaches the bucket*
+- `pointer-leased` — A push publishes no pointer for a table whose compaction lease a holder keeps unexpired; that holder publishes under its fence.
+  *because the holder publishes under the fence its acquisition raised, and a publish beside it races that commit*
+- `pointer-fenced` — A local pointer carrying a fence below the bucket pointer's stays local, and the push reports it as a warning beside its commit.
+  *A-store*
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 
@@ -498,6 +504,8 @@ sequenceDiagram
   end
   Note over W,M: exhausted retries raise SyncManifestRebaseExhausted
 ```
+
+unsettled: Which pointer does the bucket keep when a local fold's snapshot descends from none the bucket pointer names? owner: store affects: store.push
 
 ## pull
 

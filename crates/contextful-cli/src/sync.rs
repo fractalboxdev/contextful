@@ -269,7 +269,14 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             for refusal in &r.refused {
                 eprintln!("warning: {refusal}");
             }
-            println!("pushed {} objects; generation {} lists {} entries after {} round(s)", r.uploaded.len(), r.generation, r.entries, r.rounds);
+            println!(
+                "pushed {} objects and {} pointers; generation {} lists {} entries after {} round(s)",
+                r.uploaded.len(),
+                r.pointers.len(),
+                r.generation,
+                r.entries,
+                r.rounds
+            );
             Ok(())
         }
         SyncCmd::Pull { args, tables, generation } => {
