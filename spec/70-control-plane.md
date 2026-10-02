@@ -77,6 +77,8 @@ The schedule grammar and cron dialect, the trigger adapter and its durability, t
   *because a cold node's empty catalog otherwise finds every scheduled entry due at once*
 - `pulled-future` — A pulled run start later than the scheduler's current instant counts as no start for {{surface.arm.pulled-history}}.
   *because one node's fast clock or one bucket writer otherwise defers every replica's cadence until that instant*
+- `unarmed-named` — An applied pipeline declaring no schedule, or held back by {{surface.arm.unreadable-schedule}}, arms no entry; serve names each such pipeline with its reason once per applied version, and `--cycle` lists them under `unarmed`.
+  *because a pipeline silently left out of the armed set reads as armed until its data goes stale*
 
 Both trigger adapters reach one due-ness function:
 
@@ -161,6 +163,8 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
 - `store-driven-body` — A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered` at validation.
   *A-surface*
 - `cycle` — `serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.
+- `cycle-exit` — `serve --cycle` exits non-zero when any unit it dispatched failed, after printing its answer; a cycle with no failed unit, or one finding the cadence lease held, exits zero.
+  *because a scheduler running the cycle reads the exit status, and a zero over a failed fire reports success*
 
 ## dispatch
 

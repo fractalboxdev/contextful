@@ -331,28 +331,43 @@ impl Dispatch for ChildDispatch {
     }
 }
 
-/// Arm `scheduler` from the applied snapshot: every entry declaring a schedule, an
-/// unreadable one held back by name, after taking the run starts the store's pulled run
-/// states record (`surface.arm.pulled-history`). `false` when no version is applied.
-fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<bool> {
+/// An applied pipeline the scheduler holds no entry for, and why (`surface.arm.unarmed-named`).
+#[derive(Serialize)]
+struct Unarmed {
+    id: String,
+    reason: String,
+}
+
+/// Arm `scheduler` from the applied snapshot: every entry declaring a readable schedule,
+/// after taking the run starts the store's pulled run states record
+/// (`surface.arm.pulled-history`). Each pipeline left out is named on stderr with its reason
+/// and returned, once per applied version; a version already armed returns none. `None`
+/// when no version is applied.
+fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<Option<Vec<Unarmed>>> {
     let store = contextful_context::Store::open(&project.dir, &project.name)?;
     scheduler.observe_runs(contextful_sync::run_state::newest_starts(&store)?);
     let (version, specs) = applied(snaps)?;
-    let Some(version) = version else { return Ok(false) };
-    if version == scheduler.version() && !scheduler.armed().is_empty() {
-        return Ok(true);
+    let Some(version) = version else { return Ok(None) };
+    if version == scheduler.version() {
+        return Ok(Some(Vec::new()));
     }
     let mut entries = Vec::new();
+    let mut unarmed = Vec::new();
     for spec in specs.values() {
-        let Some(text) = &spec.schedule else { continue };
-        match Schedule::parse(text) {
-            Ok(schedule) => entries.push(Entry { id: spec.id.clone(), schedule }),
-            Err(e) => eprintln!("pipeline `{}`: {e}; the entry stays unarmed", spec.id),
-        }
+        let reason = match spec.schedule.as_deref().map(Schedule::parse) {
+            Some(Ok(schedule)) => {
+                entries.push(Entry { id: spec.id.clone(), schedule });
+                continue;
+            }
+            Some(Err(e)) => e.to_string(),
+            None => format!("it declares no `schedule`; `contextful pipeline run {}` fires it", spec.id),
+        };
+        eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
+        unarmed.push(Unarmed { id: spec.id.clone(), reason });
     }
     scheduler.arm(version, entries)?;
-    eprintln!("armed v{version}: {} scheduled pipeline(s)", scheduler.armed().len());
-    Ok(true)
+    eprintln!("armed v{version}: {} scheduled pipeline(s), {} unarmed", scheduler.armed().len(), unarmed.len());
+    Ok(Some(unarmed))
 }
 
 /// `pipeline serve [--cycle]`.
@@ -441,18 +456,21 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
         return held_answer(&holder);
     }
     let armed = match arm(scheduler, &control.source, project) {
-        Ok(true) => Ok(()),
-        Ok(false) => Err(SurfaceError::CycleControlSourceUnresolved(format!(
+        Ok(Some(unarmed)) => Ok(unarmed),
+        Ok(None) => Err(SurfaceError::CycleControlSourceUnresolved(format!(
             "{} holds no applied version; run `contextful pipeline apply` first",
             control.source.describe()
         ))
         .into()),
         Err(e) => Err(e),
     };
-    if let Err(e) = armed {
-        scheduler.release()?;
-        return Err(e);
-    }
+    let unarmed = match armed {
+        Ok(unarmed) => unarmed,
+        Err(e) => {
+            scheduler.release()?;
+            return Err(e);
+        }
+    };
     let beat = scheduler.beat()?;
     if let LeaseState::HeldBy(holder) = &beat.lease {
         return held_answer(holder);
@@ -466,7 +484,20 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
     pending.sort();
     let next_due = scheduler.next_due()?.map(|t| t.to_rfc3339());
     scheduler.release()?;
-    let answer = json!({ "fired": fired, "failed": failed, "pending": pending, "armed": scheduler.armed().len(), "next_due": next_due });
+    let answer = json!({
+        "fired": fired,
+        "failed": failed,
+        "pending": pending,
+        "armed": scheduler.armed().len(),
+        "unarmed": unarmed,
+        "next_due": next_due,
+    });
     println!("{}", serde_json::to_string_pretty(&answer)?);
+    // The answer prints before the exit status, so a caller learns what fired either way
+    // (`surface.fire.cycle-exit`).
+    if !failed.is_empty() {
+        let ids: Vec<String> = failed.iter().map(|id| format!("`{id}`")).collect();
+        bail!("{} dispatched unit(s) failed: {}", failed.len(), ids.join(", "));
+    }
     Ok(())
 }

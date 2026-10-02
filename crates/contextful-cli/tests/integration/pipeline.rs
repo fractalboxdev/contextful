@@ -451,7 +451,13 @@ fn json(out: &Output) -> serde_json::Value {
 }
 
 fn serve_cycle(dir: &Path, now: &str) -> serde_json::Value {
-    json(&cf(dir, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now]))
+    answer(&cf(dir, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now]))
+}
+
+/// A cycle's printed answer, whatever its exit status.
+fn answer(out: &Output) -> serde_json::Value {
+    let text = String::from_utf8_lossy(&out.stdout);
+    serde_json::from_str(text.trim()).unwrap_or_else(|e| panic!("{e}: {text}\n{}", stderr(out)))
 }
 
 fn history(dir: &Path) -> Vec<serde_json::Value> {
@@ -623,6 +629,53 @@ fn an_unreadable_schedule_holds_back_its_entry_alone() {
     assert_eq!(answer["armed"], 1);
     let err = stderr(&out);
     assert!(err.contains("ScheduleUnreadable") && err.contains("odd"), "{err}");
+}
+
+/// An applied pipeline declaring no schedule, or one whose schedule is unreadable, stays unarmed, and serve
+/// names each with its reason.
+// spec: surface.arm.unarmed-named@2311f6c3
+#[test]
+fn serve_names_each_pipeline_it_does_not_arm() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n{}\n{}\n{}",
+        scheduled("orders", &vendor.url("/v1/orders"), "every 1h"),
+        pipeline("manual", &vendor.url("/v1/manual"), "", "tables = [\"items\"]"),
+        scheduled("odd", &vendor.url("/v1/odd"), "0 0 L * *"),
+    ));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
+    let a = json(&out);
+    assert_eq!((a["fired"].clone(), a["armed"].clone()), (serde_json::json!(["orders"]), serde_json::json!(1)));
+    let unarmed = a["unarmed"].as_array().unwrap_or_else(|| panic!("no `unarmed` list: {a}"));
+    let ids: Vec<&str> = unarmed.iter().map(|u| u["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["manual", "odd"]);
+    assert!(unarmed[0]["reason"].as_str().unwrap().contains("no `schedule`"), "{a}");
+    assert!(unarmed[1]["reason"].as_str().unwrap().contains("ScheduleUnreadable"), "{a}");
+    let err = stderr(&out);
+    assert!(err.contains("pipeline `manual` stays unarmed") && err.contains("pipeline `odd` stays unarmed"), "{err}");
+    assert_eq!(vendor.targets(), ["/v1/orders"], "an unarmed pipeline fires only through `pipeline run`");
+}
+
+/// `serve --cycle` exits non-zero when any unit it dispatched fails, after printing its answer.
+// spec: surface.fire.cycle-exit@7f2e29d2
+#[test]
+fn a_cycle_with_a_failed_fire_exits_non_zero() {
+    let vendor = Vendor::start(|t| if t.starts_with("/v1/bad") { (404, "{}".into()) } else { (200, "[{\"id\":\"a\"}]".into()) });
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n{}\n{}",
+        scheduled("orders", &vendor.url("/v1/orders"), "every 1h"),
+        scheduled("bad", &vendor.url("/v1/bad"), "every 1h"),
+    ));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
+    assert!(!out.status.success(), "a failed fire exits non-zero");
+    let a = answer(&out);
+    assert_eq!((a["fired"].clone(), a["failed"].clone()), (serde_json::json!(["orders"]), serde_json::json!(["bad"])));
+    assert!(stderr(&out).contains("`bad`"), "{}", stderr(&out));
+    // A cycle with nothing due fires nothing and exits zero.
+    let quiet = json(&cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]));
+    assert_eq!(quiet["failed"], serde_json::json!([]));
 }
 
 /// A malformed pointer refuses the cycle rather than arming a version nobody applied.
