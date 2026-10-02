@@ -33,6 +33,16 @@ name = "research/notes"
 name = "research/accounts"
 primary_key = ["account_id"]
 
+[[pipeline.tables]]
+name = "research/patients"
+primary_key = ["patient_id"]
+
+[pipeline.tables.policy.zone]
+allow = ["on-prem:*", "public-cloud:*"]
+
+[pipeline.tables.policy.columns]
+case_notes = { class = "phi" }
+
 [[table]]
 name = "memory/facts"
 shape = "memory_facts"
@@ -86,11 +96,16 @@ impl Fixture {
     }
 
     pub fn authority(&self, agent: &str, actions: &[Action], tables: &[&str]) -> AdmittedAuthority {
+        self.authority_in(agent, actions, tables, "on-prem:hq")
+    }
+
+    /// An authority whose credential signs `zone`.
+    pub fn authority_in(&self, agent: &str, actions: &[Action], tables: &[&str], zone: &str) -> AdmittedAuthority {
         let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
         let subject = Subject {
             on_behalf_of: Some("user://dana@acme.example".into()),
             agent: Some(agent.into()),
-            zone: Some("on-prem:hq".into()),
+            zone: Some(zone.into()),
             ..Subject::default()
         };
         let grant = Grant {

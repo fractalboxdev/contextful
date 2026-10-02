@@ -49,8 +49,9 @@ pub fn write_claim(
 /// synthesized claim does, and the writer's authority is re-read just before it lands.
 /// The claim is valid from its observed instant (`read.revise.observed-at`); a dedup key
 /// seeds its `claim_id`, and a `claim_id` the table already holds lands nothing
-/// (`read.revise.dedup-key`). Each citation carries the key of the row it cites, and a
-/// citation into a keyed table naming no live version refuses (`read.revise.citation-live`).
+/// (`read.revise.dedup-key`). Each citation carries the key digest of the row it cites,
+/// and a citation of a keyed row its key has since replaced refuses
+/// (`read.revise.citation-live`); a citation no readable row carries lands unstamped.
 #[allow(clippy::too_many_arguments)]
 pub fn write_observed(
     face: &Face,
@@ -76,7 +77,7 @@ pub fn write_observed(
     if let Some(i) = stamped.iter().position(|s| *s == Stamped::NotLive) {
         let r = &candidate.evidence[i];
         return Err(MemoryError::CitationNotLive(format!(
-            "`{}` row {}:{} is not its key's live version in this session",
+            "`{}` row {}:{} is a version its key has since replaced",
             r.table, r.run, r.seq
         ))
         .into());

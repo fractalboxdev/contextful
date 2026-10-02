@@ -198,7 +198,7 @@ fn a_suppressed_claim_is_counted_and_never_named() {
     let withheld = recall(&f, &outsider);
     assert!(withheld.rows.is_empty());
     let block = &withheld.blocks["contextful.recall"];
-    assert_eq!(block, &json!({ "suppressed": { "MemoryEvidenceUnresolved": 1, "MemoryEvidenceOverflow": 0 } }));
+    assert_eq!(block, &json!({ "suppressed": { "MemoryEvidenceUnresolved": 1, "MemoryEvidenceOverflow": 0 }, "stale": 0 }));
     assert!(!serde_json::to_string(&withheld.to_json()).unwrap().contains("Lee"));
     let reader = f.authority("agent://research-loop", &[Action::Read], &["research/*", "memory/*"]);
     assert_eq!(recall(&f, &reader).blocks["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"], json!(0));

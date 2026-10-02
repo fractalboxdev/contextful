@@ -1,5 +1,5 @@
-//! Evidence into a keyed table: the key a landing write stamps on a citation, and the
-//! lookup recall resolves a stamped citation through.
+//! Evidence into a keyed table: the key digest a landing write stamps on a citation, and
+//! the lookup recall resolves a citation through once its cited row no longer reads.
 
 use super::engine::SqlEngine;
 use super::face::Face;
@@ -8,22 +8,43 @@ use contextful_core::memory::recall::EvidenceRead;
 use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::read::respond::Cell;
 use contextful_core::read::template::{Bindings, Bound};
-use contextful_core::store::relation::ident;
+use contextful_core::store::declare::TableDecl;
+use contextful_core::store::relation::{ident, relation};
 use contextful_core::store::reserve::{ROW_SEQ, RUN_ID};
 use contextful_policy::enforce::session::Session;
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-/// How a citation stamped: on a keyed table, live or not; on any other table, unkeyed.
+/// How a citation stamped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stamped {
-    /// The cited row is its key's live version, and the citation carries its key.
+    /// The cited row is its key's live version in the writer's session.
     Live,
-    /// The table is keyed and the cited row does not read as its key's live version
-    /// through the writer's session.
+    /// The table is keyed, and the cited row reads through the writer's session as a
+    /// version its key has since replaced.
     NotLive,
-    /// The table declares no key, is unknown to the session, or reads masked; the
-    /// citation carries no key and recall resolves its run and sequence.
+    /// The table declares no key or is unknown to the session, or no landed row the
+    /// writer reads carries the citation's run and sequence; the citation carries no
+    /// digest and recall resolves its run and sequence.
     Unkeyed,
+}
+
+/// The digest of a row's key under the secret bound as the statement's first parameter:
+/// each key cell as text, length-prefixed so no two keys share an encoding. A null key
+/// cell makes the digest null.
+fn digest_sql(cols: &[String]) -> String {
+    let cells: Vec<String> = cols
+        .iter()
+        .map(|c| {
+            let text = format!("CAST({} AS VARCHAR)", ident(c));
+            format!("CAST(length({text}) AS VARCHAR) || ':' || {text}")
+        })
+        .collect();
+    format!("sha256(? || {})", cells.join(" || ',' || "))
+}
+
+/// The first cell of a `count(*)` answer, as a positive count or not.
+fn counted(rows: &[Vec<Cell>]) -> bool {
+    rows.first().and_then(|row| row.first()).is_some_and(|c| matches!(c, Cell::Integer { value, .. } if *value > 0))
 }
 
 impl Face {
@@ -49,63 +70,113 @@ impl Face {
         })
     }
 
-    /// Stamp each citation with the key of the row it cites, read through `session`'s
-    /// dedup view, replacing any key the citation carried (`read.recall.evidence-key`).
-    /// Returns how each citation stamped, in order.
-    pub fn stamp_evidence(&self, session: &Session, evidence: &mut [EvidenceRef]) -> Result<Vec<Stamped>, ReadFault> {
-        let engine = self.pool.engine(session)?;
-        Ok(evidence.iter_mut().map(|r| self.stamp(&engine, session, r)).collect())
+    /// Whether one of `cols` of `table` reads masked or nulled by zone in `session`.
+    fn key_masked(session: &Session, table: &str, cols: &[String]) -> bool {
+        session.policy(table).is_some_and(|p| {
+            cols.iter().any(|c| p.columns.get(c).is_some_and(|m| m.mask.is_some() || !p.column_set(c).admits(session.zone())))
+        })
     }
 
-    fn stamp(&self, engine: &SqlEngine, session: &Session, r: &mut EvidenceRef) -> Stamped {
-        r.key = None;
+    /// Stamp each citation with the digest of the key of the row it cites, read through
+    /// `session`'s dedup view, replacing any digest the citation carried
+    /// (`read.recall.evidence-key`). Returns how each citation stamped, in order.
+    pub fn stamp_evidence(&self, session: &Session, evidence: &mut [EvidenceRef]) -> Result<Vec<Stamped>, ReadFault> {
+        let engine = self.pool.engine(session)?;
+        evidence.iter_mut().map(|r| self.stamp(&engine, session, r)).collect()
+    }
+
+    fn stamp(&self, engine: &SqlEngine, session: &Session, r: &mut EvidenceRef) -> Result<Stamped, ReadFault> {
+        r.key_digest = None;
         let cols = self.key_columns(&r.table);
-        let Some(relation) = session.relation(&r.table) else { return Stamped::Unkeyed };
-        if cols.is_empty() || Face::masked(session, &r.table) {
-            return Stamped::Unkeyed;
+        let Some(relation) = session.relation(&r.table) else { return Ok(Stamped::Unkeyed) };
+        if cols.is_empty() {
+            return Ok(Stamped::Unkeyed);
         }
-        let select: Vec<String> = cols.iter().map(|c| format!("CAST({} AS VARCHAR)", ident(c))).collect();
+        let secret = session.pepper().evidence_secret(&r.table, &cols);
         let sql = format!(
             "SELECT {} FROM {} WHERE {} = ? AND {} = ? LIMIT 1",
-            select.join(", "),
+            digest_sql(&cols),
             ident(relation.name()),
             ident(RUN_ID),
             ident(ROW_SEQ)
         );
-        let row = engine
-            .run(&sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), None)
-            .ok()
-            .and_then(|(_, rows)| rows.into_iter().next());
-        let Some(row) = row else { return Stamped::NotLive };
-        let mut key = BTreeMap::new();
-        for (c, v) in cols.iter().zip(row) {
-            // A null key cell partitions with every other null; the citation then
-            // resolves by its run and sequence alone.
-            let Cell::Text(t) = v else { return Stamped::Live };
-            key.insert(c.clone(), t);
+        let params = Bindings::positional([Bound::Text(secret), Bound::Text(r.run.clone()), Bound::Integer(r.seq)]);
+        let (_, rows) = engine.run(&sql, &params, None)?;
+        let Some(row) = rows.into_iter().next() else {
+            return Ok(if self.version_reads(engine, session, &r.table, r)? { Stamped::NotLive } else { Stamped::Unkeyed });
+        };
+        // A key cell read masked or nulled by zone digests a value no other session reads,
+        // and a null key cell partitions with every other null; either citation resolves
+        // by its run and sequence alone.
+        if !Face::key_masked(session, &r.table, &cols) {
+            if let Some(Cell::Text(digest)) = row.into_iter().next() {
+                r.key_digest = Some(digest);
+            }
         }
-        r.key = Some(key);
-        Stamped::Live
+        Ok(Stamped::Live)
     }
 
-    /// Whether the key a citation carries reads through `session`'s dedup view; `None`
-    /// where the citation carries no key or its key names other columns than the table
-    /// keys on now.
-    pub(crate) fn key_reads(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef) -> Option<EvidenceRead> {
-        let key = r.key.as_ref()?;
-        let cols = self.key_columns(&r.table);
-        if cols.len() != key.len() || cols.iter().any(|c| !key.contains_key(c)) {
-            return None;
+    /// Whether a landed row carrying the citation's run and sequence reads through
+    /// `session` under every policy step, before the dedup view keeps one row per key.
+    fn version_reads(&self, engine: &SqlEngine, session: &Session, table: &str, r: &EvidenceRef) -> Result<bool, ReadFault> {
+        let Some(registered) = session.relation(table) else { return Ok(false) };
+        let files = registered.files().to_vec();
+        if files.is_empty() {
+            return Ok(false);
         }
-        let Some(relation) = session.relation(&r.table) else { return Some(EvidenceRead::UnknownTable) };
-        let pred: Vec<String> = cols.iter().map(|c| format!("CAST({} AS VARCHAR) = ?", ident(c))).collect();
-        let sql = format!("SELECT count(*) FROM {} WHERE {}", ident(relation.name()), pred.join(" AND "));
-        let params = Bindings::positional(cols.iter().map(|c| Bound::Text(key[c].clone())));
-        let found = engine
-            .run(&sql, &params, None)
-            .ok()
-            .and_then(|(_, rows)| rows.first().and_then(|row| row.first().cloned()))
-            .is_some_and(|c| matches!(c, Cell::Integer { value, .. } if value > 0));
-        Some(if found { EvidenceRead::Readable } else { EvidenceRead::Unreadable })
+        let schema = self.store.schema(table)?;
+        let mut carried = BTreeSet::new();
+        for f in &files {
+            carried.extend(crate::parquet_io::columns(std::path::Path::new(f))?);
+        }
+        let absent: Vec<_> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
+        let base = relation(&TableDecl::named(table), &files, &schema.columns, &absent, None)?;
+        let Some(all) = session.relation_over(table, &base, files) else { return Ok(false) };
+        let sql = format!("SELECT count(*) FROM ({}) WHERE {} = ? AND {} = ?", all.sql(), ident(RUN_ID), ident(ROW_SEQ));
+        let (_, rows) = engine.run(&sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), None)?;
+        Ok(counted(&rows))
+    }
+
+    /// Whether a live row of the citation's key reads through `relation`, matched by its
+    /// digest; false where the citation carries no digest. A statement fault reads as no
+    /// row, so the claim is withheld rather than served.
+    pub(crate) fn key_reads(&self, engine: &SqlEngine, session: &Session, relation: &str, r: &EvidenceRef) -> bool {
+        let Some(digest) = r.key_digest.as_ref() else { return false };
+        let cols = self.key_columns(&r.table);
+        if cols.is_empty() {
+            return false;
+        }
+        let secret = session.pepper().evidence_secret(&r.table, &cols);
+        let sql = format!("SELECT count(*) FROM {} WHERE {} = ?", ident(relation), digest_sql(&cols));
+        engine
+            .run(&sql, &Bindings::positional([Bound::Text(secret), Bound::Text(digest.clone())]), None)
+            .is_ok_and(|(_, rows)| counted(&rows))
+    }
+
+    /// How one evidence row reads through the caller's session: its table registered, the
+    /// cited row visible through the relation or, failing that, a live row of its key
+    /// (`read.recall.evidence-key`), and no cell of the table masked or nulled by zone.
+    pub(crate) fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef) -> EvidenceRead {
+        let Some(relation) = session.relation(&r.table) else { return EvidenceRead::UnknownTable };
+        let read = if self.row_reads(engine, relation.name(), r) {
+            EvidenceRead::Readable
+        } else if self.key_reads(engine, session, relation.name(), r) {
+            EvidenceRead::Stale
+        } else {
+            return EvidenceRead::Unreadable;
+        };
+        if Face::masked(session, &r.table) {
+            EvidenceRead::Masked
+        } else {
+            read
+        }
+    }
+
+    /// Whether the row a citation's run and sequence name reads through `relation`.
+    fn row_reads(&self, engine: &SqlEngine, relation: &str, r: &EvidenceRef) -> bool {
+        let sql = format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation), ident(RUN_ID), ident(ROW_SEQ));
+        engine
+            .run(&sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), None)
+            .is_ok_and(|(_, rows)| counted(&rows))
     }
 }

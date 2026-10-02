@@ -5,7 +5,7 @@ use super::face::Face;
 use super::fault::ReadFault;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::declare::Shape;
-use contextful_core::memory::recall::gate;
+use contextful_core::memory::recall::{gate, Grounding};
 use contextful_core::memory::revise::Tier;
 use contextful_core::memory::MemoryError;
 use contextful_core::read::respond::{Cell, Response};
@@ -94,7 +94,7 @@ impl Face {
         // (`read.recall.keyed-window`).
         let wanted = Response::fetch_count(Some(ceiling));
         let page = wanted.unwrap_or(UNBOUNDED_PAGE);
-        let mut suppressed: BTreeMap<&'static str, u64> = BTreeMap::new();
+        let mut tally = RecallTally::default();
         let mut kept: Vec<Vec<Value>> = Vec::new();
         let full = |kept: &Vec<Vec<Value>>| wanted.is_some_and(|w| kept.len() as u64 >= w);
         // A table no claim has landed in registers over the injected columns alone.
@@ -114,9 +114,8 @@ impl Face {
                         Cell::Text(t) => Some(t.as_str()),
                         _ => None,
                     };
-                    match gate(evidence, &memory_tables, |r| self.evidence_read(&engine, session, r)) {
-                        Ok(()) => kept.push(row.iter().map(Cell::to_json).collect()),
-                        Err(e) => *suppressed.entry(e.identifier()).or_insert(0) += 1,
+                    if tally.admit(gate(evidence, &memory_tables, |r| self.evidence_read(&engine, session, r))) {
+                        kept.push(row.iter().map(Cell::to_json).collect());
                     }
                 }
                 offset += page;
@@ -130,12 +129,41 @@ impl Face {
             response = response.with_block("bounds", b);
         }
         response = self.restrict(&engine, session, [table], response)?;
-        // Counts per identifier; no suppressed claim is named (`read.recall.suppression-count`).
+        Ok(response.with_block("recall", tally.block()))
+    }
+}
+
+/// What the evidence gate counted over one read: suppressions per error identifier, and
+/// claims served through a key whose cited version no longer reads.
+#[derive(Debug, Default)]
+pub(crate) struct RecallTally {
+    suppressed: BTreeMap<&'static str, u64>,
+    stale: u64,
+}
+
+impl RecallTally {
+    /// Count one gate outcome; true where the claim is served.
+    pub(crate) fn admit(&mut self, outcome: Result<Grounding, MemoryError>) -> bool {
+        match outcome {
+            Ok(grounding) => {
+                self.stale += u64::from(grounding == Grounding::Stale);
+                true
+            }
+            Err(e) => {
+                *self.suppressed.entry(e.identifier()).or_insert(0) += 1;
+                false
+            }
+        }
+    }
+
+    /// The `contextful.recall` block: counts per identifier (`read.recall.suppression-count`)
+    /// and the stale count (`read.recall.evidence-stale`); no claim is named.
+    pub(crate) fn block(&self) -> Value {
         let counts: Map<String, Value> = ["MemoryEvidenceUnresolved", "MemoryEvidenceOverflow"]
             .iter()
-            .map(|id| (id.to_string(), json!(suppressed.get(id).copied().unwrap_or(0))))
+            .map(|id| (id.to_string(), json!(self.suppressed.get(id).copied().unwrap_or(0))))
             .collect();
-        Ok(response.with_block("recall", json!({ "suppressed": counts })))
+        json!({ "suppressed": counts, "stale": self.stale })
     }
 }
 

@@ -111,8 +111,8 @@ Supersession within one validity line, confidence decay, the direct write and it
   *because a retried write restates one observation, while one fact observed twice under two keys keeps two validity intervals*
 - `observed-order` — A direct write whose `valid_from` precedes the `valid_from` of an unsuperseded claim of its subject, predicate and scope with another object raises `MemoryObservationOutOfOrder`, and nothing lands.
   *because retiring the later claim at the earlier instant ends it before it starts, and it then answers at no instant*
-- `citation-live` — A direct write citing a keyed table's row that does not read as its key's live version through the writer's session raises `MemoryCitationNotLive`, and nothing lands.
-  *because such a claim rests on a version no reader resolves, and recall withholds it from its first read*
+- `citation-live` — A direct write citing a keyed table's row that reads through the writer's session as a version its key has since replaced raises `MemoryCitationNotLive`, and nothing lands.
+  *because such a claim rests on a replaced version from its first read, while a citation no readable row carries lands undigested and recall withholds it*
 
 unsettled: Does a claim observed before a live contradicting claim of its line land beneath it with a bounded end, rather than refuse? owner: memory affects: read.revise
 
@@ -128,8 +128,14 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
   *A-read*
 - `evidence-references` — A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
   *A-read*
-- `evidence-key` — The write landing a claim stamps each citation into a keyed table with the cited row's key columns; recall resolves a stamped citation through the key's live version, so a later version or a fold keeps the claim served.
-  *because compaction drops superseded versions, and a claim withdrawn by a routine fold is memory the workspace silently forgets*
+- `evidence-key` — The write landing a claim stamps each citation into a keyed table with a pepper-keyed digest of the cited row's key; recall resolves a citation whose row no longer reads through the digest's live version.
+  *A-read*
+- `evidence-key-masked` — A citation whose key column reads masked or nulled by zone in the writer's session carries no digest; a masked or nulled column outside the key leaves the digest stamped.
+  *because a masked key cell digests a value no other session reads, while a cell outside the key plays no part in matching it*
+- `evidence-no-value` — A citation stored in a memory row carries the cited table, run, sequence and key digest, and no cell value of the cited row.
+  *A-read*
+- `evidence-stale` — A claim served through its key digest while its cited run and sequence no longer read counts under `stale` in the `contextful.recall` block, which names no claim.
+  *A-read*
 - `ranked-arm` — A `corpus.retrieve` arm over a `memory_facts` table serves only live claims — no `superseded_by`, and a `valid_to` null or past the read's anchor — whose evidence passes the gate.
 - `suppression-count` — A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.
   *because a count discloses that a conclusion was withheld, never what it concluded*
@@ -154,7 +160,7 @@ flowchart LR
   EV -->|"unreadable: MemoryEvidenceUnresolved"| HELD
 ```
 
-unsettled: Does a claim whose cited key has since landed a different version surface that its evidence changed, or re-enter synthesis? owner: memory affects: read.recall
+unsettled: Does a claim counted stale re-enter synthesis against its key's live version, rather than serve until a writer retires it? owner: memory affects: read.recall
 
 unsettled: What supplies a read-side usage ledger, so retention can ask whether a claim was ever recalled rather than whether something cited it? owner: memory affects: read.recall
 

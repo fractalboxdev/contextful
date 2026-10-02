@@ -278,6 +278,18 @@ impl Pepper {
         self.mac("hash", value).iter().take(HASH_OUTPUT_WIDTH as usize / 2).map(|b| format!("{b:02x}")).collect()
     }
 
+    /// The secret a citation's key digest is keyed by: HMAC-SHA-256 under the pepper over
+    /// the table and its key columns, 64 hex chars. It never leaves the process, so no
+    /// reader recomputes a digest to test a guessed key (`read.recall.evidence-no-value`).
+    pub fn evidence_secret(&self, table: &str, columns: &[String]) -> String {
+        let mut message = table.as_bytes().to_vec();
+        for c in columns {
+            message.push(0);
+            message.extend_from_slice(c.as_bytes());
+        }
+        self.mac("evidence-key", &message).iter().map(|b| format!("{b:02x}")).collect()
+    }
+
     /// The token: 20 chars of lowercase letters and digits keyed by the pepper.
     pub fn token(&self, value: &str) -> String {
         self.mac("tokenize", value.as_bytes())
