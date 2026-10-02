@@ -1,7 +1,8 @@
 //! A run's commit of several batches: a part per batch, ordinals, and the position on the marker.
 
 use crate::support::{at, decl, s, Fixture};
-use contextful_context::land::{commit_parts, land_batches, stage_part, Batch, Position, RunContext};
+use contextful_context::land::{commit_parts, discard_staged, land_batches, stage_part, Batch, Position, RunContext, StagedPart};
+use contextful_core::store::declare::TableDecl;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::lay_out::NodeId;
 use contextful_core::store::reserve::Injection;
@@ -177,20 +178,23 @@ fn staging(run: &str, now: &str) -> RunContext {
     }
 }
 
+fn stage(f: &Fixture, d: &TableDecl, b: &Batch, ctx: &RunContext, ordinal: u32, row_offset: u64) -> contextful_context::Result<StagedPart> {
+    stage_part(&f.store, d, b, &ctx.node, &ctx.injection, ordinal, row_offset)
+}
+
 fn fed(cursor: &str) -> Position {
     Position { pipeline_id: Some("feed".into()), cursor: Some(json!(cursor)), fence: None, logged: false }
 }
 
 /// A staged part joins no file list; the commit naming the parts publishes them together, each row numbered
-/// across the run and stamped with the staging instant.
-// spec: run.own.stage-instant@79700228
+/// across the run and stamped with the commit instant.
 #[test]
 fn staged_parts_join_the_file_list_only_at_their_commit() {
     let f = Fixture::new();
     let d = decl("name = \"filings\"");
     let ctx = staging("run-s", "2030-01-01T00:01:00Z");
-    let a = stage_part(&f.store, &d, &batch(json!([{"id": "d1", "n": 1}, {"id": "d2", "n": 2}])), &ctx, 0, 0).unwrap();
-    let b = stage_part(&f.store, &d, &batch(json!([{"id": "d3", "n": 2.5}])), &ctx, 1, 2).unwrap();
+    let a = stage(&f, &d, &batch(json!([{"id": "d1", "n": 1}, {"id": "d2", "n": 2}])), &ctx, 0, 0).unwrap();
+    let b = stage(&f, &d, &batch(json!([{"id": "d3", "n": 2.5}])), &ctx, 1, 2).unwrap();
     assert_eq!((a.rows, b.rows), (2, 1));
     assert!(a.bytes > 0 && b.bytes > 0);
     assert!(readable(&f).is_empty(), "staged parts are in flight");
@@ -202,7 +206,7 @@ fn staged_parts_join_the_file_list_only_at_their_commit() {
     assert_eq!(m.parts.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["part-00000.parquet", "part-00001.parquet"]);
     assert_eq!(readable(&f), ["run-s"]);
     let rows = f.query(&d, Bounds::default(), "SELECT id, CAST(n AS DOUBLE), _batch_seq, _row_seq, CAST(_ingested_at AS VARCHAR) FROM t ORDER BY id");
-    let row = |id: &str, n: &str, seq: &str, r: &str| vec![s(id), s(n), s(seq), s(r), s("2030-01-01 00:01:00+00")];
+    let row = |id: &str, n: &str, seq: &str, r: &str| vec![s(id), s(n), s(seq), s(r), s("2030-01-01 00:05:00+00")];
     assert_eq!(rows, [row("d1", "1.0", "0", "0"), row("d2", "2.0", "0", "1"), row("d3", "2.5", "1", "2")]);
 }
 
@@ -213,14 +217,14 @@ fn staged_parts_join_the_file_list_only_at_their_commit() {
 fn a_staged_run_takes_its_commit_seq_at_its_commit() {
     let f = Fixture::new();
     let d = decl("name = \"filings\"");
-    let staged = stage_part(&f.store, &d, &batch(json!([{"id": "s1"}, {"id": "s2"}])), &staging("run-s", "2030-01-01T00:01:00Z"), 0, 0).unwrap();
+    let staged = stage(&f, &d, &batch(json!([{"id": "s1"}, {"id": "s2"}])), &staging("run-s", "2030-01-01T00:01:00Z"), 0, 0).unwrap();
     let between = land_batches(&f.store, &d, &[batch(json!([{"id": "c1"}]))], &staging("run-c", "2030-01-01T00:02:00Z"), &fed("c"), &|| Ok(())).unwrap();
     let m = commit_parts(&f.store, &d, &[staged.name], &staging("run-s", "2030-01-01T00:03:00Z"), &fed("s"), &|| Ok(()), &|_| Ok(())).unwrap();
     assert_eq!((between.commit_seq, m.commit_seq), (Some(1), Some(2)));
     let rows = f.query(&d, Bounds::default(), "SELECT id, _commit_seq FROM t ORDER BY id");
     assert_eq!(rows, [vec![s("c1"), s("1")], vec![s("s1"), s("2")], vec![s("s2"), s("2")]]);
     // The commit point runs once the manifest exists, and a refusal there surfaces.
-    let late = stage_part(&f.store, &d, &batch(json!([{"id": "l1"}])), &staging("run-l", "2030-01-01T00:04:00Z"), 0, 0).unwrap();
+    let late = stage(&f, &d, &batch(json!([{"id": "l1"}])), &staging("run-l", "2030-01-01T00:04:00Z"), 0, 0).unwrap();
     let refused = commit_parts(&f.store, &d, &[late.name], &staging("run-l", "2030-01-01T00:05:00Z"), &fed("l"), &|| Ok(()), &|m| {
         assert_eq!(m.commit_seq, Some(3));
         Err(contextful_context::ContextError::Invalid("LeaseFenced: a later holder took the lease".into()))
@@ -253,11 +257,11 @@ fn a_staged_run_types_the_table_only_at_its_commit() {
     let f = Fixture::new();
     let d = decl("name = \"filings\"");
     let ctx = staging("run-s", "2030-01-01T00:01:00Z");
-    let staged = stage_part(&f.store, &d, &batch(json!([{"id": "d1", "ts": "2030-01-01T00:00:00Z"}])), &ctx, 0, 0).unwrap();
+    let staged = stage(&f, &d, &batch(json!([{"id": "d1", "ts": "2030-01-01T00:00:00Z"}])), &ctx, 0, 0).unwrap();
     assert!(f.store.try_schema("filings").unwrap().is_none(), "a stage writes no schema.json");
     // A later stage of the run reconciles against its earlier ones.
-    stage_part(&f.store, &d, &batch(json!([{"id": "d2", "n": 1}])), &ctx, 1, 1).unwrap();
-    let clash = stage_part(&f.store, &d, &batch(json!([{"id": "d3", "n": "x"}])), &ctx, 2, 2);
+    stage(&f, &d, &batch(json!([{"id": "d2", "n": 1}])), &ctx, 1, 1).unwrap();
+    let clash = stage(&f, &d, &batch(json!([{"id": "d3", "n": "x"}])), &ctx, 2, 2);
     assert!(clash.unwrap_err().to_string().contains("StoreSchemaIncompatible"));
 
     // Another run lands `ts` as a timestamp: the uncommitted run froze no type.
@@ -269,4 +273,48 @@ fn a_staged_run_types_the_table_only_at_its_commit() {
     let refused = commit_parts(&f.store, &d, &[staged.name], &staging("run-s", "2030-01-01T00:03:00Z"), &fed("p1"), &|| Ok(()), &|_| Ok(()));
     assert!(refused.unwrap_err().to_string().contains("StoreSchemaIncompatible"));
     assert_eq!(readable(&f), ["run-c"]);
+}
+
+/// A staged part carries no `_ingested_at`; the commit writes its own instant into every part it names, so of two
+/// runs writing one key the later committer survives the keyed read, whichever staged first.
+// spec: run.own.stage-instant@9305df8b
+#[test]
+fn the_later_committer_wins_a_key_whichever_run_staged_first() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"\nprimary_key = [\"id\"]");
+    let a = stage(&f, &d, &batch(json!([{"id": "k", "v": "from-a"}])), &staging("run-a", "2030-01-01T00:01:00Z"), 0, 0).unwrap();
+    let staged = f.table_dir("filings").join("data/runs/run-a/ingest-a/stage.staging").join(&a.name);
+    let columns = contextful_context::parquet_io::columns(&staged).unwrap();
+    assert!(!columns.iter().any(|c| c == "_ingested_at" || c == "_commit_seq"), "{columns:?}");
+    land_batches(&f.store, &d, &[batch(json!([{"id": "k", "v": "from-b"}]))], &staging("run-b", "2030-01-01T00:03:00Z"), &fed("b"), &|| Ok(())).unwrap();
+    commit_parts(&f.store, &d, &[a.name], &staging("run-a", "2030-01-01T00:05:00Z"), &fed("a"), &|| Ok(()), &|_| Ok(())).unwrap();
+    let rows = f.query(&d, Bounds::default(), "SELECT v, _commit_seq, CAST(_ingested_at AS VARCHAR) FROM t");
+    assert_eq!(rows, [vec![s("from-a"), s("2"), s("2030-01-01 00:05:00+00")]]);
+}
+
+/// A discard removes every part a run staged; a commit that fails before its manifest exists leaves neither the
+/// parts it wrote nor the staged ones.
+#[test]
+fn a_failed_run_leaves_no_staged_part() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"");
+    let node = NodeId::parse("ingest-a").unwrap();
+    let ctx = staging("run-d", "2030-01-01T00:01:00Z");
+    stage(&f, &d, &batch(json!([{"id": "d1"}])), &ctx, 0, 0).unwrap();
+    let stage_dir = f.table_dir("filings").join("data/runs/run-d/ingest-a/stage.staging");
+    assert!(stage_dir.is_dir());
+    discard_staged(&f.store, "filings", &node, "run-d").unwrap();
+    assert!(!stage_dir.exists(), "the discard removes the staged parts");
+    discard_staged(&f.store, "filings", &node, "run-n").unwrap();
+
+    // A precommit refusal follows the copy: the copied parts and the staged ones are gone, and nothing is readable.
+    let ctx = staging("run-p", "2030-01-01T00:02:00Z");
+    let one = stage(&f, &d, &batch(json!([{"id": "p1"}])), &ctx, 0, 0).unwrap();
+    let two = stage(&f, &d, &batch(json!([{"id": "p2"}])), &ctx, 1, 1).unwrap();
+    let refused = commit_parts(&f.store, &d, &[one.name, two.name], &ctx, &fed("p"), &|| Err(contextful_context::ContextError::Invalid("LeaseFenced".into())), &|_| Ok(()));
+    assert!(refused.unwrap_err().to_string().contains("LeaseFenced"));
+    let node_dir = f.table_dir("filings").join("data/runs/run-p/ingest-a");
+    assert!(!node_dir.join("stage.staging").exists());
+    assert!(!node_dir.join("part-00000.parquet").exists() && !node_dir.join("part-00001.parquet").exists());
+    assert!(readable(&f).is_empty());
 }

@@ -208,6 +208,7 @@ fn a_run_staging_past_the_bound_commits_nothing() {
     assert!(m.starts_with("RunStagedBytesExceeded") && m.contains("1073741824"), "{m}");
     assert_eq!(sink.staged.len(), 3, "the third part carried the run past 1 GiB");
     assert!(sink.commits.is_empty());
+    assert_eq!(sink.discarded, [("filings".to_string(), "run-1".to_string())], "the failed run's staged parts are discarded");
     assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, None, "the position stands");
     // The failure retires the owner and collects its journal, so the next fire pulls afresh.
     let failed = rig.row("run-1").execution_id;
@@ -237,17 +238,17 @@ impl Source for Ticking {
     }
 }
 
-/// Every row one run stages carries the instant its pull loop opened as `_ingested_at`; its commit marker carries
-/// the commit instant.
+/// A run stages its parts with no instant and commits them at the instant after its last pull, which every row
+/// and the marker carry.
 #[test]
-fn every_part_of_a_run_carries_one_instant() {
+fn a_run_commits_its_parts_at_the_instant_after_its_last_pull() {
     let rig = Rig::new();
     let mut source = Ticking { inner: Pages::new(three_pages()), clock: rig.clock.clone() };
     let mut sink = Sink::default();
     rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut sink).unwrap();
-    let instants: Vec<_> = sink.staged.iter().map(|s| s.staged_at).collect();
-    assert_eq!(instants, [crate::support::at(crate::support::T0); 3]);
+    assert_eq!(sink.staged.len(), 3);
     assert_eq!(sink.commits[0].committed_at, crate::support::at("2030-01-01T00:00:15Z"));
+    assert!(sink.discarded.is_empty(), "a committed run discards nothing");
 }
 
 /// A table's new position rides the run commit marker, {{store.lay-out.run-manifest}}, that publishes the rows
@@ -550,6 +551,7 @@ fn a_type_declared_after_its_column_staged_refuses() {
     assert!(m.contains("PipelineTypeDeclaredLate") && m.contains("`ts`"), "{m}");
     assert_eq!(sink.staged.len(), 1, "the refusal fires before the second stage");
     assert!(sink.commits.is_empty());
+    assert_eq!(sink.discarded, [("filings".to_string(), "run-1".to_string())]);
     assert!(rig.catalog().owner("feed", "filings").unwrap().is_none(), "the refusal releases the owner");
 
     // A type first declared for a column no earlier batch carried stages in it.

@@ -171,6 +171,12 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         // Every pull passes the secret guard before the journal records it (`run.guard-secrets.placement`).
         let mut source = Guarded { inner: source, report: log_counts };
         let outcome = self.body(spec, &mut execution, &mut source, shape, dest);
+        if outcome.is_err() {
+            // A run id names one attempt, so no later commit names a failed run's staged
+            // parts (`run.own.stage-discard`). The run closes on its own failure; a part the
+            // discard leaves joins no file list.
+            let _ = dest.discard(&plan.spec.table, &spec.run_id);
+        }
         execution.close_with(outcome)
     }
 
@@ -202,7 +208,6 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         };
         // Each shaped batch stages before the next pull, so the run holds one pulled batch
         // in memory; the commit names the staged parts (`run.own.backpressure`).
-        let staged_at = self.catalog.now()?;
         let mut parts: Vec<Part> = Vec::new();
         let (mut staged_rows, mut staged_bytes) = (0u64, 0u64);
         let mut types = Types::new();
@@ -290,7 +295,6 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     row_offset: staged_rows,
                     rows,
                     types: types.clone(),
-                    staged_at,
                 })?;
                 staged_rows += count;
                 staged_bytes = staged_bytes.saturating_add(part.bytes);

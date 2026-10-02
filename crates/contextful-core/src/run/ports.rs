@@ -109,9 +109,6 @@ pub struct Stage {
     pub rows: Vec<Row>,
     /// The column types the run's pulls declared so far, carried through the shape stages.
     pub types: Types,
-    /// The instant the run's pull loop opened, which every row of the run carries
-    /// (`run.own.stage-instant`).
-    pub staged_at: Instant,
 }
 
 /// A handle on one staged part, measured at the destination. A part joins no file list
@@ -162,6 +159,9 @@ pub trait Destination {
     /// Commit `commit.parts` as one atomic commit carrying `commit.cursor`. `precommit` runs
     /// immediately before the commit point; a refusal there lands nothing.
     fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure>;
+    /// Remove every part run `run_id` staged for `table`, which no commit names once the
+    /// run fails (`run.own.stage-discard`). A run with nothing staged discards nothing.
+    fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure>;
     /// Record that a single-writer lease on `table` was taken under `fence`, so a commit
     /// carrying a lower fence loses its condition at the store.
     fn open_fence(&mut self, _pipeline_id: &str, _table: &str, _fence: u64) -> Result<(), Failure> {

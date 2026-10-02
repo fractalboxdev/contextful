@@ -167,6 +167,8 @@ pub struct Sink {
     pub part_bytes: u64,
     /// Observes each stage as it arrives.
     pub on_stage: Option<Box<dyn FnMut(&Stage)>>,
+    /// Every run whose staged parts a discard removed, as `(table, run_id)`.
+    pub discarded: Vec<(String, String)>,
 }
 
 impl Destination for Sink {
@@ -203,6 +205,11 @@ impl Destination for Sink {
             panic!("the process dies after the commit marker lands");
         }
         Ok(self.report.unwrap_or(Landed { rows, bytes }))
+    }
+
+    fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure> {
+        self.discarded.push((table.to_string(), run_id.to_string()));
+        Ok(())
     }
 
     fn open_fence(&mut self, _: &str, _: &str, _: u64) -> Result<(), Failure> {

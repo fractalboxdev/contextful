@@ -11,7 +11,7 @@ use contextful_core::grant::{describe_pipeline, list_pipelines, trace_run, Grant
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use clap::Subcommand;
-use contextful_context::land::{commit_parts, stage_part, Batch, Position, RunContext};
+use contextful_context::land::{commit_parts, discard_staged, stage_part, Batch, Position, RunContext};
 use contextful_context::{commit_log, node, ContextError, Store};
 use contextful_core::store::commit_log::{CommitEntry, Kind};
 use contextful_core::ports::{Clock, FixedClock};
@@ -223,29 +223,33 @@ impl StoreDestination {
         self.decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table))
     }
 
-    fn context(&self, run_id: &str, site_id: &str, at: Instant) -> RunContext {
-        RunContext {
-            node: self.node.clone(),
-            injection: Injection {
-                run_id: run_id.to_string(),
-                site_id: site_id.to_string(),
-                batch_seq: None,
-                authored_by: self.author.as_ref().and_then(Author::on_behalf_of),
-                taint: None,
-            },
-            committed_at: at,
+    fn injection(&self, run_id: &str, site_id: &str) -> Injection {
+        Injection {
+            run_id: run_id.to_string(),
+            site_id: site_id.to_string(),
+            batch_seq: None,
+            authored_by: self.author.as_ref().and_then(Author::on_behalf_of),
+            taint: None,
         }
+    }
+
+    fn context(&self, run_id: &str, site_id: &str, at: Instant) -> RunContext {
+        RunContext { node: self.node.clone(), injection: self.injection(run_id, site_id), committed_at: at }
     }
 }
 
 impl Destination for StoreDestination {
     fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
         let decl = self.decl(&stage.table);
-        let ctx = self.context(&stage.run_id, &stage.site_id, stage.staged_at);
+        let injection = self.injection(&stage.run_id, &stage.site_id);
         // The pulls' declared types type the batch (`run.land.typed-pull`).
         let batch = Batch { rows: stage.rows, types: stage.types.into_iter().collect() };
-        let part = stage_part(&self.store, &decl, &batch, &ctx, stage.ordinal, stage.row_offset).map_err(store_failure)?;
+        let part = stage_part(&self.store, &decl, &batch, &self.node, &injection, stage.ordinal, stage.row_offset).map_err(store_failure)?;
         Ok(Part { name: part.name, rows: part.rows, bytes: part.bytes })
+    }
+
+    fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure> {
+        discard_staged(&self.store, table, &self.node, run_id).map_err(store_failure)
     }
 
     fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
