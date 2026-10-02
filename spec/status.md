@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 222 | 58 | 22 | 15 | 115 | 0 | 115 |
-| `authority` | 2 | 16 | 263 | 77 | 27 | 10 | 200 | 0 | 200 |
+| `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 228 | 54 | 13 | 19 | 188 | 0 | 188 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1874 | 559 | 187 | 141 | 1216 | 0 | |
+| **total** | 19 | 154 | 1878 | 559 | 187 | 141 | 1220 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
-| 1 — The authority core | 14 | 232 | 180 | passing | closed |
+| 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 156 | 121 | passing | closed |
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
 | 4 — Ingest | 25 | 464 | 283 | passing | open |
@@ -342,12 +342,16 @@ Unscheduled operations: 10.
 | `authority.verify.effect-boundary` | `crates/contextful-policy/tests/integration/verify.rs::each_effect_boundary_re_reads_expiry_revocation_and_profile_version` | performed |
 | `authority.verify.expired` | `crates/contextful-policy/tests/integration/verify.rs::a_credential_past_its_expiry_is_refused_at_admission_and_every_later_boundary` | performed |
 | `authority.verify.format-interface` | `crates/contextful-policy/tests/integration/verify.rs::issue_attenuate_verify_and_introspect_run_through_one_interface` | performed |
+| `authority.verify.holder-keygen` | `crates/contextful-cli/tests/integration/holder.rs::holder_keygen_prints_the_thumbprint_a_mint_binds` | performed |
 | `authority.verify.key-set` | `crates/contextful-policy/tests/integration/keyset.rs::a_checkpoint_accepts_comma_separated_pins_or_a_published_key_route` | performed |
 | `authority.verify.key-set-refresh` | `crates/contextful-policy/tests/integration/keyset.rs::a_published_key_set_refreshes_every_300_s_single_flight_and_once_on_signature_failure` | performed |
 | `authority.verify.key-set-stale` | `crates/contextful-policy/tests/integration/keyset.rs::a_last_known_good_set_serves_under_one_hour_then_raises_key_set_stale` | performed |
 | `authority.verify.key-set-unavailable` | `crates/contextful-policy/tests/integration/keyset.rs::an_unobtainable_set_or_a_malformed_pin_raises_key_set_unavailable_and_declines_to_start` | performed |
 | `authority.verify.local-holder-proof` | `crates/contextful-policy/tests/integration/verify.rs::a_key_bound_credential_admits_locally_only_with_its_holder_proof` | performed |
+| `authority.verify.local-nonce-store` | `crates/contextful-cli/tests/integration/holder.rs::a_presented_proof_admits_once_across_invocations` | performed |
 | `authority.verify.local-peer-fallback` | `crates/contextful-policy/tests/integration/verify.rs::a_credential_binding_no_key_admits_through_the_inherited_pipe_or_a_same_uid_socket_peer` | performed |
+| `authority.verify.local-proof-channel` | `crates/contextful-cli/tests/integration/holder.rs::a_key_bound_credential_admits_through_its_holder_seed_or_a_proof_in_the_environment` | performed |
+| `authority.verify.local-proof-request` | `crates/contextful-cli/tests/integration/holder.rs::a_presented_proof_admits_only_the_verb_it_names` | performed |
 | `authority.verify.local-transport` | `crates/contextful-policy/tests/integration/verify.rs::a_local_transport_is_the_inherited_pipe_or_a_unix_socket_reporting_its_peer_uid` | performed |
 | `authority.verify.malformed-timestamp` | `crates/contextful-core/tests/integration/time.rs::a_timestamp_outside_the_grammar_is_malformed` | performed |
 | `authority.verify.network-bearer` | `crates/contextful-policy/tests/integration/verify.rs::a_network_checkpoint_admits_an_audience_bound_bearer_with_no_proof` | performed |

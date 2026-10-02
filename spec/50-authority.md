@@ -330,6 +330,13 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority*
 - `local-holder-proof` — On a local transport, a credential whose confirmation claim holds a thumbprint admits only with a proof as {{authority.verify.possession-binding}}; the peer fallback never applies to it, and a missing or failing proof is refused as {{authority.verify.possession-invalid}}.
   *A-authority*
+- `local-proof-channel` — A credentialed command-line verb and the stdio tool server sign one holder proof at admission with the Ed25519 seed in `--holder-key`, else take the proof in `CONTEXTFUL_DPOP`, else sign with the seed in `CONTEXTFUL_HOLDER_KEY`; a blank variable is unset.
+  *because a bound credential is otherwise unusable off the network face, and a proof on the argument list is readable through the process table*
+- `local-proof-request` — A local proof covers method `CLI`, the verb's command path as target, such as `context land`, `memory write` or `mcp`, and an empty body.
+  *because binding the verb keeps a proof minted for a read from admitting a write*
+- `local-nonce-store` — A command-line verb checks its holder proof against the nonce store `.contextful/proof-nonces` under the project root, shared by every invocation on that project under an exclusive lock, so a repeated nonce raises {{authority.verify.replayed-nonce}}.
+  *because each invocation is a fresh process, and a per-process cache lets a proof copied from the environment replay for the whole window*
+- `holder-keygen` — `token keygen --holder` writes an Ed25519 holder seed and prints its thumbprint, the value `token mint --holder` binds as the confirmation claim.
 - `local-peer-fallback` — On a local transport, a credential with no confirmation claim admits only through the operating system's peer authentication: an inherited stdio pipe, or a socket peer whose kernel-reported uid equals the checkpoint process's uid.
   *A-authority*
 - `peer-mismatch` — A socket peer presenting a credential with no confirmation claim, whose kernel-reported uid differs from the checkpoint process's uid or which the platform cannot report, raises `TransportPeerMismatch` and admits nothing.

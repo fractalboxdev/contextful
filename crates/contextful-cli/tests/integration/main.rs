@@ -26,6 +26,8 @@ mod eval;
 mod export;
 mod formal;
 #[cfg(feature = "data-plane")]
+mod holder;
+#[cfg(feature = "data-plane")]
 mod init;
 #[cfg(feature = "data-plane")]
 mod job;

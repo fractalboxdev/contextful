@@ -42,7 +42,7 @@ mod serve;
 mod sync;
 mod token;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use contextful_core::run::derive::task::Tasks;
 use contextful_core::run::drive::Bodies;
 
@@ -198,7 +198,9 @@ pub fn main_with(tasks: Tasks) {
 pub fn main_host(host: Host) {
     #[cfg_attr(not(feature = "data-plane"), allow(unused_variables))]
     let Host { tasks, bodies } = host;
-    let cli = Cli::parse();
+    let matches = Cli::command().get_matches();
+    admit::record_command_path(&matches);
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.format(&mut Cli::command()).exit());
     let result = match cli.cmd {
         #[cfg(feature = "data-plane")]
         Cmd::Init(c) => project::run(c),

@@ -328,7 +328,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let plan = Plan::compile(&bytes).with_context(|| format!("`{}`", plan.display()))?;
             let cwd = std::env::current_dir()?;
             let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", declaration.display()))?;
-            let author = admit.author(project.project.as_deref(), &text, &[&plan.spec.table], "`run start`")?;
+            let author = admit.author(project.project.as_deref(), &text, &[&plan.spec.table])?;
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let w = wire_at(&l.project, &project.now)?;

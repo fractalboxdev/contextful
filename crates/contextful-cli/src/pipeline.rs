@@ -529,7 +529,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             let spec = d.spec;
             let checked = check(&spec, &declaration, tasks)?;
             let destinations: Vec<String> = spec.tables.iter().map(|t| spec.table_name(t.name())).collect();
-            let author = admit.author(project.project.as_deref(), &text, &destinations.iter().map(String::as_str).collect::<Vec<_>>(), "`pipeline run`")?;
+            let author = admit.author(project.project.as_deref(), &text, &destinations.iter().map(String::as_str).collect::<Vec<_>>())?;
             check_compaction(&spec, &fold_coverage(&manifests(&declaration)?)?)?;
             let w = wire_at(&l.project, &project.now)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
