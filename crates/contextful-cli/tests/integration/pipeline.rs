@@ -480,7 +480,7 @@ fn plan_diffs_apply_converges_and_serve_fires() {
     // `apply <id>` converges that pipeline alone.
     std::fs::write(
         dir.path().join("contextful.toml"),
-        format!("site_id = \"site-a\"\n\n{}\n{}", scheduled("orders", &vendor.url("/v2/orders"), "every 1h"), scheduled("filings", &vendor.url("/v1/filings"), "every 1d")),
+        format!("authoring_posture = \"per_request\"\nsite_id = \"site-a\"\n\n{}\n{}", scheduled("orders", &vendor.url("/v2/orders"), "every 1h"), scheduled("filings", &vendor.url("/v1/filings"), "every 1d")),
     )
     .unwrap();
     ok(&cf(dir.path(), &["pipeline", "apply", "filings", "--project", "research"]));
@@ -726,7 +726,7 @@ fn serve_reconciles_continuously_and_rearms_each_applied_version() {
     assert!(vendor.targets().iter().all(|t| t == "/v1/orders"), "{:?}", vendor.targets());
 
     // An apply while serve runs re-arms the new version on the next poll.
-    std::fs::write(dir.path().join("contextful.toml"), manifest("/v2/orders")).unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest("/v2/orders"))).unwrap();
     assert!(ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"])).contains("applied v2"));
     let rearmed = daemon.wait_for("armed v2: 1 scheduled pipeline(s)", armed);
     daemon.wait_for("fire orders: done", rearmed);
