@@ -42,6 +42,12 @@ pub enum ConnectorError {
     /// A workbook declaration, part or relationship pointing outside the archive. (`connector.source.external-reference`)
     #[error("ConnectorExternalReference: {0}")]
     ConnectorExternalReference(String),
+    /// A compound-binary office container, answered with the conversion command. (`connector.source.conversion-required`)
+    #[error("ConnectorConversionRequired: {0}")]
+    ConnectorConversionRequired(String),
+    /// A nested map, block scalar or reserved-prefix key in a note's frontmatter. (`connector.source.frontmatter-shape`)
+    #[error("ConnectorFrontmatterRejected: {0}")]
+    ConnectorFrontmatterRejected(String),
     /// A record path, pagination shape or decode key the chosen format does not read. (`connector.source.format-key-mismatch`)
     #[error("ConnectorFormatKeyRejected: {0}")]
     ConnectorFormatKeyRejected(String),

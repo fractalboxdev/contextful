@@ -17,6 +17,21 @@ pub const DEADLINE: Duration = Duration::from_secs(60);
 /// Data segment one decode process may map, where the operating system enforces it.
 pub const MEMORY_BYTES: u64 = 1024 * 1024 * 1024;
 
+/// Decodes a PDF body into its pages' text.
+pub trait PageDecoder: Send + Sync {
+    fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure>;
+}
+
+/// The decode process boundary answers a PDF as a JSON array of page texts.
+impl PageDecoder for Boundary {
+    fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure> {
+        let out = self.run(body, input)?;
+        serde_json::from_slice(&out).map_err(|e| {
+            Failure::deterministic(FailureTag::Permanent, RunError::PipelineParseCrashed(format!("decoding `{input}`: the decode process answered no page list: {e}")).to_string())
+        })
+    }
+}
+
 /// A decode command: a program, its arguments, and the bounds its process runs under.
 #[derive(Debug, Clone)]
 pub struct Boundary {
@@ -120,7 +135,7 @@ fn limit_memory(_cmd: &mut Command, _bytes: u64) {}
 
 /// The worker side: decode standard input as `kind`, print the result as JSON on standard
 /// output and exit 0, or print the refusal on standard error and exit [`REFUSED`].
-#[cfg(feature = "drive")]
+#[cfg(feature = "pdf")]
 pub fn worker(kind: &str, label: &str) -> i32 {
     let mut input = Vec::new();
     if let Err(e) = std::io::stdin().read_to_end(&mut input) {

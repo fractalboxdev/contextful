@@ -114,6 +114,8 @@ connector-in-flight             = { clause = "connector.package.session-budget",
 connector-request-body          = { clause = "connector.package.request-body", value = 8, unit = "MiB", basis = "chosen", gloss = "Outbound request body one guest request carries." }
 connector-walk-pages            = { clause = "connector.source.page-cap", value = 1000, unit = "requests", basis = "chosen", gloss = "Requests one paginated walk issues." }
 connector-drive-file-bytes      = { clause = "connector.source.drive-file-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Default body bytes one drive file carries before it is skipped." }
+connector-document-chunk        = { clause = "connector.source.heading-threshold", value = 8192, unit = "B", basis = "chosen", gloss = "Note body bytes past which a note lands one row per heading section." }
+connector-document-file-bytes   = { clause = "connector.source.file-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Bytes one file under a `file` root carries before the walk declines it." }
 connector-expansion-follow-ups  = { clause = "connector.source.expansion-budget", value = 200, unit = "requests", basis = "chosen", gloss = "Follow-up requests one expanding read issues." }
 connector-expansion-buffer      = { clause = "connector.source.expansion-budget", value = 256, unit = "MiB", basis = "chosen", gloss = "Buffered expansion document bytes in one read." }
 connector-expansion-elapsed     = { clause = "connector.source.expansion-budget", value = 600, unit = "s", basis = "chosen", gloss = "Elapsed time one expanding read takes." }

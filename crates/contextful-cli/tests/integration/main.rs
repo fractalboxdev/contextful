@@ -15,6 +15,8 @@ mod context;
 mod derive;
 mod differential;
 #[cfg(feature = "data-plane")]
+mod document;
+#[cfg(feature = "data-plane")]
 mod drive;
 #[cfg(feature = "data-plane")]
 mod drive_absent;

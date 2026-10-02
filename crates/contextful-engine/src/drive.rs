@@ -198,7 +198,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         }
         let tables = merged.len() as u64;
         let landed = land(&merged)?;
-        Ok((landed, Tally { batches: tables, skipped: 0 }))
+        Ok((landed, Tally { batches: tables, ..Tally::default() }))
     }
 
     /// Run the body over `indices`, at most `max_in_flight` rows at once; a failed row

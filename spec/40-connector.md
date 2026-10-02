@@ -427,7 +427,7 @@ The declared behavior of each source compiled into the engine.
   *P1*
 - `walk-boundary` — A directory walk reaches the configured root and nothing outside it, skips dot-entries, and traverses in sorted order. A decode-selecting key narrows nothing.
   *because a sorted walk over an unchanged tree reproduces across hosts*
-- `declined-tally` — A directory walk records on the run record what it declined, tallied by extension.
+- `declined-tally` — A directory walk records on the run record what it declined, tallied by extension, and reports the total as its {{run.record.skipped-count}}.
   *P4*
 - `object-address` — The `s3` source reads one `bucket` by exactly one of `key` or `prefix`; declaring both or neither raises `ConnectorObjectAddressRejected` at build.
   *because a key beside a prefix leaves which objects land to a guess, and neither names no object*
@@ -447,10 +447,28 @@ The declared behavior of each source compiled into the engine.
   *because an identity then survives a document crossing the threshold*
 - `document-unreadable` — An encrypted document, and one with no extractable text on any page, is unreadable input under {{run.land.unreadable-input}} and never lands as empty pages.
   *P2*
-- `frontmatter-shape` — A nested map, a block scalar, or a key carrying the reserved producer prefix in a note's frontmatter raises `ConnectorFrontmatterRejected`.
+- `frontmatter-shape` — A nested map, a block scalar, a key carrying the reserved producer prefix, or, compared without case, a repeated key or a key other than `title` naming a column the source lands, in a note's frontmatter raises `ConnectorFrontmatterRejected`.
   *A-connector*
-- `conversion-required` — A compound-binary office container, detected by magic bytes as well as extension, raises `ConnectorConversionRequired` naming the conversion command.
+- `conversion-required` — A compound-binary office container, detected by an office extension or by magic bytes under an extension the source reads, raises `ConnectorConversionRequired` naming the conversion command.
   *A-connector*
+- `file-source` — The `file` source walks `root`, resolved against the project directory, into one `documents` table: `.md` and `.markdown` as notes, `.txt` as plain text and `.pdf` as PDF pages. Any other extension is declined unopened.
+- `file-globs` — A root-relative path is read when it matches an `include` glob, or none is declared, and matches no `exclude` glob. `*` and `?` match within one segment; a `**` segment matches any number.
+- `file-no-follow` — The `file` walk follows no symbolic link, to a file or a directory.
+  *because a link is the one path out of the root that a sorted walk of names cannot see*
+- `file-table-unmatched` — A `file` table other than `documents` refuses as {{connector.source.table-unmatched}}, ahead of the walk.
+- `document-slug` — A document's slug is its root-relative path without extension, lowercased, each run of characters other than ASCII letters and digits in a segment folded to `-`. Two files folding to one slug fail the read naming both.
+  *because a slug is the identity a link and a citation carry, and two files under one identity overwrite each other's rows*
+- `heading-threshold` — A note whose body past its frontmatter exceeds 8192 B lands one row per heading section, the text before its first heading as its own row; a shorter note and a text file land one row.
+- `document-columns` — A document row carries slug, ordinal, root-relative path, kind, title, heading, text, url, the file's SHA-256 and a `removed` flag. The title is the frontmatter `title`, else the first level-one heading, else the file stem.
+- `frontmatter-columns` — Each other frontmatter key lands lowercased as a string column on every row of its note: a scalar as its text, a list as a JSON array.
+- `document-url` — With `base_url`, a row's url is the base joined with its slug, then `#page=<n>` on a PDF page or the heading's anchor on a heading section; without `base_url` the url is null.
+- `file-position` — The `file` position maps each landed path to its digest and row count. A matching digest lands nothing, a changed file re-lands whole and tombstones ordinals past its new count, and a vanished file tombstones every row.
+- `file-rename` — A file renamed onto its old slug re-lands under its new path, and the old path tombstones only ordinals past the renamed file's row count.
+  *because a tombstone on an identity the read lands live removes the renamed document*
+- `file-cap` — A file over 64 MiB is declined, and none of it past the leading bytes announcing its format is read.
+  *because a row-per-page document past that size is an export, not a note, and one file must not exhaust the read's memory*
+- `file-pdf-absent` — A PDF the walk reaches in a build without the PDF decoder fails the read as a configuration fault naming the feature to rebuild with.
+- `file-position-owned` — `incremental` beside the `file` source refuses as {{connector.package.component-position}} at validation.
 - `parse-containment` — A compiled-in source decodes behind {{run.land.parse-boundary}}.
   *A-connector*
 - `office-part-selection` — An office container is read by exact part name. No other part is opened and no external entity is resolved.
@@ -530,6 +548,8 @@ unsettled: Does a conditional read also carry a watermark in one position, so a 
 
 unsettled: Does a feed entry with an unreadable date land with a null `published_at` rather than refusing the whole document? owner: connector affects: connector.source
 
+unsettled: Does the default build link the PDF decoder, so a document folder holding a PDF lands without a rebuild? owner: connector affects: connector.source
+
 ## Shapes
 
 A drive source, built with the `drive` feature:
@@ -551,6 +571,23 @@ max_file_bytes = 33554432
 refresh_token = "${secret://drive-refresh}"
 client_id     = "${secret://drive-client-id}"
 client_secret = "${secret://drive-client-secret}"
+```
+
+A document folder, its PDF pages decoding in a build with the `pdf` feature:
+
+```toml
+[[pipeline]]
+id = "handbook"
+tables = [{ name = "documents", primary_key = ["slug", "ordinal"] }]
+
+[pipeline.source]
+name = "file"
+
+[pipeline.source.config]
+root     = "handbook"                       # resolved against the project directory
+include  = ["**/*.md", "policies/**"]
+exclude  = ["drafts/**"]
+base_url = "https://handbook.example.org"
 ```
 
 A connector manifest in the adopted posture:

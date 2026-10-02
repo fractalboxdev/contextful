@@ -199,6 +199,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let mut batches: Vec<Vec<Row>> = Vec::new();
         let mut types = Types::new();
         let mut skipped = 0u64;
+        let mut declined: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
         for ordinal in 0.. {
             if execution.token().requested() {
                 return Err(Close::Failed(Failure::canceled("stopped between pulls")));
@@ -209,6 +210,10 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             let resolved = self.step(spec, execution, &key, &request, source)?;
             let pull = Pull::decode(resolved.bytes())?;
             skipped = skipped.saturating_add(pull.skipped);
+            for (extension, n) in &pull.declined {
+                let held = declined.entry(extension.clone()).or_default();
+                *held = held.saturating_add(*n);
+            }
             for (column, ty) in shape.shape_types(pulled_types(&pull)?) {
                 match types.get(&column) {
                     Some(held) if *held != ty => {
@@ -320,7 +325,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             }
         }
         self.journal.collect(&execution_id)?;
-        Ok((landed, Tally { batches: batch_count, skipped }))
+        Ok((landed, Tally { batches: batch_count, skipped, declined }))
     }
 
     /// Resolve one pull through the execution's journal under the plan's retry schedule.

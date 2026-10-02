@@ -33,6 +33,7 @@ pub fn support_row(run_id: &str, status: RunStatus) -> RunRow {
         bytes: 0,
         batches: 0,
         skipped: 0,
+        declined: Default::default(),
         error_kind: None,
         error_message: None,
         connector_id: "vendor".into(),

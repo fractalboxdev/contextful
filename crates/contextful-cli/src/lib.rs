@@ -166,7 +166,7 @@ enum Cmd {
     Formal(formal::FormalCmd),
     /// The decode worker a compiled-in source runs behind the process boundary
     /// (`run.land.parse-boundary`): standard input in, decoded JSON out.
-    #[cfg(feature = "drive")]
+    #[cfg(feature = "pdf")]
     #[command(hide = true)]
     Decode {
         kind: String,
@@ -232,7 +232,7 @@ pub fn main_host(host: Host) {
         Cmd::Formal(c) => formal::run(c),
         #[cfg(not(feature = "data-plane"))]
         Cmd::Absent(argv) => absent(&argv),
-        #[cfg(feature = "drive")]
+        #[cfg(feature = "pdf")]
         Cmd::Decode { kind, input } => std::process::exit(contextful_connectors::boundary::worker(&kind, &input)),
     };
     if let Err(e) = result {

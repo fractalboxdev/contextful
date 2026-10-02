@@ -143,6 +143,10 @@ pub struct RunRow {
     /// Inputs the run's pulls declared skipped, summed (`run.record.skipped-count`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub skipped: u64,
+    /// What the run's directory walks declined, tallied by extension and summed over its
+    /// pulls (`connector.source.declined-tally`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub declined: std::collections::BTreeMap<String, u64>,
     #[serde(default)]
     pub error_kind: Option<FailureTag>,
     #[serde(default)]
