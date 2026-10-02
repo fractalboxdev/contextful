@@ -1,13 +1,14 @@
 //! `contextful formal differential` over the Lean reference binary and over stand-in
 //! reference executables, beside the decision module's native and WebAssembly builds.
 //!
-//! A stand-in is a shell script around `contextful formal differential --decide`, which
-//! prints the native build's decision for one case: it agrees with the engine everywhere,
-//! and a `sed` over its output corrupts it into a reference that disagrees on a known
-//! class of case. Tests reaching the Lean reference skip when `lake` is absent, unless
-//! `CONTEXTFUL_REQUIRE_LEAN` is set; tests reaching the WebAssembly build skip when the
-//! `wasm32-unknown-unknown` target is not installed, unless `CONTEXTFUL_REQUIRE_WASM` is
-//! set. Either variable set turns the skip into a failure.
+//! A stand-in is a shell script around the `decide` example, which links the decision
+//! module alone and prints the native build's decision for one case without the engine
+//! binary's quarter-second start: it agrees with the engine everywhere, and a `sed` over
+//! its output corrupts it into a reference that disagrees on a known class of case. Tests
+//! reaching the Lean reference skip when `lake` is absent, unless `CONTEXTFUL_REQUIRE_LEAN`
+//! is set; tests reaching the WebAssembly build skip when the `wasm32-unknown-unknown`
+//! target is not installed, unless `CONTEXTFUL_REQUIRE_WASM` is set. Either variable set
+//! turns the skip into a failure.
 
 use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
@@ -16,6 +17,18 @@ use std::process::{Command, Output, Stdio};
 use std::sync::OnceLock;
 
 const BIN: &str = env!("CARGO_BIN_EXE_contextful");
+
+/// The `decide` example: the decision module alone, built once per test process.
+/// The stand-in references start it once per case.
+fn decide_exe() -> &'static Path {
+    static BUILT: OnceLock<PathBuf> = OnceLock::new();
+    BUILT.get_or_init(|| {
+        let status =
+            Command::new(env!("CARGO")).args(["build", "-q", "-p", "contextful-cli", "--example", "decide"]).status().unwrap();
+        assert!(status.success(), "building the decide example");
+        Path::new(BIN).parent().unwrap().join("examples").join("decide")
+    })
+}
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
@@ -159,20 +172,21 @@ impl Scratch {
 
     /// A reference that agrees with the engine on every case.
     fn agreeing(&self) -> PathBuf {
-        self.script("agreeing.sh", &format!("exec '{BIN}' formal differential --decide"))
+        let decide = decide_exe().display();
+        self.script("agreeing.sh", &format!("exec '{decide}'"))
     }
 
     /// A reference that reports every covered pattern as not covered.
     fn corrupted(&self) -> PathBuf {
         self.script(
             "corrupted.sh",
-            &format!("'{BIN}' formal differential --decide | sed 's/\"verdict\":\"covered\"/\"verdict\":\"not_covered\"/'"),
+            &format!("'{}' | sed 's/\"verdict\":\"covered\"/\"verdict\":\"not_covered\"/'", decide_exe().display()),
         )
     }
 
     /// An agreeing reference appending every case it receives to `log`.
     fn logging(&self, log: &Path) -> PathBuf {
-        self.script("logging.sh", &format!("tee -a '{}' | '{BIN}' formal differential --decide", log.display()))
+        self.script("logging.sh", &format!("tee -a '{}' | '{}'", log.display(), decide_exe().display()))
     }
 
     fn corpus(&self) -> PathBuf {
@@ -246,6 +260,7 @@ fn decide(exe: &Path, args: &[&str], case: &Value) -> Value {
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
+/// The engine binary's decision on one case.
 fn engine(case: &Value) -> Value {
     decide(Path::new(BIN), &["formal", "differential", "--decide"], case)
 }
@@ -308,6 +323,11 @@ fn shortenings(v: &Value) -> Vec<Value> {
             .collect(),
         _ => Vec::new(),
     }
+}
+
+/// The native build's decision on one case, from the `decide` example.
+fn stand_in(case: &Value) -> Value {
+    decide(decide_exe(), &[], case)
 }
 
 fn line_value<'a>(report: &'a str, key: &str) -> &'a str {
@@ -506,11 +526,12 @@ fn a_recorded_disagreement_is_minimal_under_every_shrinking_step() {
         let case = &entry["case"];
         let original = &entry["original"];
         assert!(err.contains(&case.to_string()), "{err}");
+        assert_eq!(stand_in(case), engine(case), "the stand-in decides as the engine binary");
         assert_ne!(engine(case), decide(&corrupted, &[], case), "the recorded case still disagrees");
         assert_ne!(engine(original), decide(&corrupted, &[], original), "the generated case disagreed");
         for smaller in removals(case).into_iter().chain(shortenings(case)) {
             assert_eq!(
-                engine(&smaller),
+                stand_in(&smaller),
                 decide(&corrupted, &[], &smaller),
                 "shrinking {case} to {smaller} leaves it disagreeing"
             );
@@ -627,14 +648,15 @@ fn the_command_replays_then_generates_and_stops_at_the_first_disagreement() {
     let stopping = s.script(
         "stopping.sh",
         &format!(
-            "tee -a '{}' | '{BIN}' formal differential --decide | sed 's/\"verdict\":\"covered\"/\"verdict\":\"not_covered\"/'",
-            log.display()
+            "tee -a '{}' | '{}' | sed 's/\"verdict\":\"covered\"/\"verdict\":\"not_covered\"/'",
+            log.display(),
+            decide_exe().display()
         ),
     );
     let out = s.run(&stopping, &["--seed", "9", "--cases", "400"]);
     refused(&out, "ReferenceModelDrift");
     let seen = read_jsonl(&log);
-    let first = seen.iter().position(|c| engine(c)["verdict"] == "covered").unwrap();
+    let first = seen.iter().position(|c| stand_in(c)["verdict"] == "covered").unwrap();
     let recorded = s.read_corpus();
     let disagreeing = recorded.last().unwrap().clone();
     // One corpus case replays, then generated cases 0..=index run; the first disagreement is the last.
