@@ -65,6 +65,9 @@ pub struct Scheduler {
     armed: Vec<Entry>,
     armed_at: BTreeMap<String, Instant>,
     last_dispatch: BTreeMap<String, Instant>,
+    /// Each pipeline's newest run start that other nodes' run states record
+    /// (`surface.arm.pulled-history`).
+    pulled: BTreeMap<String, Instant>,
     in_flight: Arc<Mutex<BTreeSet<String>>>,
     ended: Arc<Mutex<Vec<Fired>>>,
     handles: Vec<JoinHandle<()>>,
@@ -84,6 +87,7 @@ impl Scheduler {
             armed: Vec::new(),
             armed_at: BTreeMap::new(),
             last_dispatch: BTreeMap::new(),
+            pulled: BTreeMap::new(),
             in_flight: Arc::default(),
             ended: Arc::default(),
             handles: Vec::new(),
@@ -153,14 +157,22 @@ impl Scheduler {
         self.hold_lease(now)
     }
 
-    /// The start of `id`'s newest journaled run.
-    fn last_run(&self, id: &str) -> Result<Option<Instant>, Failure> {
-        self.catalog.last_run_start(id)
+    /// Replace the run starts other nodes record, by pipeline id (`surface.arm.pulled-history`).
+    pub fn observe_runs(&mut self, starts: BTreeMap<String, Instant>) {
+        self.pulled = starts;
+    }
+
+    /// The start of `id`'s newest run: this catalog's journal or another node's run state,
+    /// whichever is later (`surface.arm.pulled-history`). A pulled start after `now` counts as
+    /// none (`surface.arm.pulled-future`).
+    fn last_run(&self, id: &str, now: Instant) -> Result<Option<Instant>, Failure> {
+        let pulled = self.pulled.get(id).copied().filter(|at| *at <= now);
+        Ok(self.catalog.last_run_start(id)?.max(pulled))
     }
 
     fn next_of(&self, e: &Entry, now: Instant) -> Result<Instant, Failure> {
         let armed_at = self.armed_at.get(&e.id).copied().unwrap_or(now);
-        Ok(next_fire(&e.schedule, self.last_run(&e.id)?, self.last_dispatch.get(&e.id).copied(), armed_at))
+        Ok(next_fire(&e.schedule, self.last_run(&e.id, now)?, self.last_dispatch.get(&e.id).copied(), armed_at))
     }
 
     /// One evaluation of the armed set.

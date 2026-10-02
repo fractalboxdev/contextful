@@ -27,13 +27,18 @@ pub fn bucket(dir: &std::path::Path) -> Arc<dyn ObjectStore> {
 }
 
 pub fn node(id: &str, bucket: Arc<dyn ObjectStore>, extra_config: &str) -> Node {
+    node_in("research", id, bucket, extra_config)
+}
+
+/// A node `id` of `project`, whose name may hold `/`-separated segments.
+pub fn node_in(project: &str, id: &str, bucket: Arc<dyn ObjectStore>, extra_config: &str) -> Node {
     let dir = tempfile::tempdir().unwrap();
-    let root = dir.path().join(".contextful/context/research");
+    let root = dir.path().join(".contextful/context").join(project);
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("config.toml"), format!("[node]\nid = \"{id}\"\n{extra_config}")).unwrap();
-    let store = Store::open(dir.path(), "research").unwrap();
+    let store = Store::open(dir.path(), project).unwrap();
     let config = SyncConfig { endpoint: "file://bucket".into(), bucket: "context-team".into(), prefix: Some("team".into()), coordination: Some("cas".into()), ..SyncConfig::default() };
-    let syncer = Syncer { store, bucket, config, prefix: "team".into(), project: "research".into(), node: id.into() };
+    let syncer = Syncer { store, bucket, config, prefix: "team".into(), project: project.into(), node: id.into() };
     Node { _dir: dir, syncer }
 }
 

@@ -49,20 +49,22 @@ fn prefix_and_prefix_from_together_refuse() {
     assert!(matches!(c.resolve_prefix(|_| Some("x".into())), Err(StoreError::SyncPrefixOverspecified(_))));
 }
 
-/// A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, or a commit
-/// log's node directory. Every other key is unowned and propagates no deletion.
-// spec: store.merge.ownership@4c2db0b5
+/// A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit
+/// log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.
+// spec: store.merge.ownership@8d4f4f07
 #[test]
 fn a_keys_owner_is_read_off_the_key() {
     assert_eq!(owner_of(RUN_A).as_deref(), Some("ingest-a"));
     assert_eq!(owner_of("research/tables/filings/requests/run-1.ingest-b.parquet").as_deref(), Some("ingest-b"));
     assert_eq!(owner_of("research/tables/filings/requests/run.2030.01.ingest-b.parquet").as_deref(), Some("ingest-b"), "a dotted run id");
     assert_eq!(owner_of("research/cursors/feed/ingest-c/00000000000000000001.json").as_deref(), Some("ingest-c"));
+    assert_eq!(owner_of("research/nodes/ingest-e/run-state.json").as_deref(), Some("ingest-e"));
+    assert_eq!(owner_of("acme/research/nodes/ingest-e/run-state.json").as_deref(), Some("ingest-e"), "a project of two segments");
     // A table named `runs`, or nesting `data/runs` in its name, reads its own run directory.
     assert_eq!(owner_of("research/tables/runs/data/runs/run-1/ingest-d/part-00000.parquet").as_deref(), Some("ingest-d"));
     assert_eq!(owner_of("runs/x"), None, "a key opening with `runs` has no underflow");
     assert_eq!(owner_of("research/tables/a/data/runs/run-1/_manifest.json"), None, "a short run path owns nothing");
-    for unowned in [SCHEMA, "research/tables/filings/data/snapshots/snapshot-01/part-00000.parquet", "research/cursors/feed/00000000000000000001.json"] {
+    for unowned in [SCHEMA, "research/tables/filings/data/snapshots/snapshot-01/part-00000.parquet", "research/cursors/feed/00000000000000000001.json", "research/nodes/run-state.json", "research/nodes/ingest-e/other.json"] {
         assert_eq!(owner_of(unowned), None, "{unowned}");
     }
     // An unowned key the writer no longer holds stays listed: it propagates no deletion.

@@ -15,6 +15,12 @@ use contextful_core::store::lay_out::{Pointer, POINTER_FILE};
 use contextful_core::store::object::ObjectStore;
 use contextful_core::store::sync::{Endpoint, SyncConfig};
 use contextful_core::time::Instant;
+#[cfg(feature = "data-plane")]
+use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
+#[cfg(feature = "data-plane")]
+use contextful_sqlite::MachineCatalog;
+#[cfg(feature = "data-plane")]
+use contextful_sync::{run_state, RunState};
 use contextful_sync::{FsBucket, PullScope, Syncer};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -216,10 +222,33 @@ fn open_local(args: &SyncArgs) -> Result<(Store, String, String)> {
     Ok((store, l.project.name, node_id.to_string()))
 }
 
+/// Write this node's run state into the store root from its machine catalog, so the push
+/// carries it (`store.push.run-state`).
+#[cfg(feature = "data-plane")]
+fn record_run_state(store: &Store, node_id: &str) -> Result<()> {
+    let catalog = MachineCatalog::open(&store.root().join(MACHINE_CATALOG_FILE), Arc::new(crate::clock::SystemClock))?;
+    let state = RunState::read(&catalog, node_id)?;
+    run_state::record(store, &state)?;
+    Ok(())
+}
+
+/// A read-plane build fires no runs and holds no machine catalog, so it records no run state.
+#[cfg(not(feature = "data-plane"))]
+fn record_run_state(_store: &Store, _node_id: &str) -> Result<()> {
+    Ok(())
+}
+
+/// Record the run state, then push.
+fn push(s: &Syncer, at: Instant) -> Result<contextful_sync::sync::PushReport> {
+    record_run_state(&s.store, &s.node)?;
+    Ok(s.push(at)?)
+}
+
 pub fn run(cmd: SyncCmd) -> Result<()> {
     match cmd {
         SyncCmd::Manifest { args, emit: _ } => {
             let (store, project, node_id) = open_local(&args)?;
+            record_run_state(&store, &node_id)?;
             let plan = contextful_sync::plan_manifest(&store, &project, &node_id)?;
             println!("{}", serde_json::to_string_pretty(&plan.manifest())?);
             Ok(())
@@ -236,7 +265,7 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
         }
         SyncCmd::Push { args } => {
             let (s, _) = open(&args)?;
-            let r = s.push(now(&args.now)?)?;
+            let r = push(&s, now(&args.now)?)?;
             for refusal in &r.refused {
                 eprintln!("warning: {refusal}");
             }
@@ -290,7 +319,7 @@ fn compact(s: &Syncer, decls: &[TableDecl], table: &str, lease: &contextful_sync
     let before = std::fs::read(&pointer_path).ok();
     let outcome = fold(&s.store, &decl, at)?;
     let FoldOutcome::Folded { snapshot_id, .. } = &outcome else { return Ok(outcome) };
-    let published = s.push(at).and_then(|_| s.publish(table, snapshot_id, lease));
+    let published = push(s, at).and_then(|_| s.publish(table, snapshot_id, lease).map_err(anyhow::Error::from));
     if let Err(e) = published {
         match before {
             Some(b) => contextful_context::store::replace_file(&pointer_path, &b)?,
@@ -298,7 +327,7 @@ fn compact(s: &Syncer, decls: &[TableDecl], table: &str, lease: &contextful_sync
                 let _ = std::fs::remove_file(&pointer_path);
             }
         }
-        return Err(e.into());
+        return Err(e);
     }
     // The local pointer carries the fence it was published under, as a pulled one does.
     let published = Pointer { snapshot_id: serde_json::from_value(serde_json::Value::String(snapshot_id.clone()))?, fence: Some(lease.lease.fence) };

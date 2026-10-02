@@ -332,8 +332,11 @@ impl Dispatch for ChildDispatch {
 }
 
 /// Arm `scheduler` from the applied snapshot: every entry declaring a schedule, an
-/// unreadable one held back by name. `false` when no version is applied.
-fn arm(scheduler: &mut Scheduler, snaps: &Source) -> Result<bool> {
+/// unreadable one held back by name, after taking the run starts the store's pulled run
+/// states record (`surface.arm.pulled-history`). `false` when no version is applied.
+fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<bool> {
+    let store = contextful_context::Store::open(&project.dir, &project.name)?;
+    scheduler.observe_runs(contextful_sync::run_state::newest_starts(&store)?);
     let (version, specs) = applied(snaps)?;
     let Some(version) = version else { return Ok(false) };
     if version == scheduler.version() && !scheduler.armed().is_empty() {
@@ -366,7 +369,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     let holder = format!("{}:{}", boot_id(), std::process::id());
     let mut scheduler = Scheduler::new(w.engine.catalog.clone(), dispatch, &l.project.name, &holder, control.pool);
     if cycle {
-        return serve_cycle(&mut scheduler, &control);
+        return serve_cycle(&mut scheduler, &control, &l.project);
     }
     contextful_engine::stop::install();
     eprintln!("serving `{}` from {} as `{holder}`", l.project.name, control.source.describe());
@@ -390,7 +393,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
                 let now = w.clock.now();
                 if now >= next_poll {
                     // A failed poll leaves the armed set running (`surface.reconcile.fail-static`).
-                    if let Err(e) = arm(&mut scheduler, &control.source) {
+                    if let Err(e) = arm(&mut scheduler, &control.source, &l.project) {
                         eprintln!("{e:#}; the armed set stays in place");
                     }
                     next_poll = control.poll.next_after(now);
@@ -433,11 +436,11 @@ fn held_answer(holder: &str) -> Result<()> {
 
 /// One-shot evaluation (`surface.fire.cycle`). The lease comes first: finding it held,
 /// the cycle arms nothing and answers the holder (`surface.dispatch.lease-gated`).
-fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig) -> Result<()> {
+fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project) -> Result<()> {
     if let LeaseState::HeldBy(holder) = scheduler.hold()? {
         return held_answer(&holder);
     }
-    let armed = match arm(scheduler, &control.source) {
+    let armed = match arm(scheduler, &control.source, project) {
         Ok(true) => Ok(()),
         Ok(false) => Err(SurfaceError::CycleControlSourceUnresolved(format!(
             "{} holds no applied version; run `contextful pipeline apply` first",

@@ -288,13 +288,27 @@ impl Default for BucketManifest {
     }
 }
 
-/// The node owning a key, read off the key itself: a run directory's node segment, or a
-/// request-ledger file's node. Every other key is unowned.
+/// The node a run-state key names: `<project>/nodes/<node-id>/run-state.json`, under a project
+/// of any number of segments. Any other key under `nodes/` names none.
+pub fn run_state_node(key: &str) -> Option<&str> {
+    let segs: Vec<&str> = key.split('/').collect();
+    match segs.as_slice() {
+        [_, .., "nodes", node, "run-state.json"] if !node.is_empty() => Some(*node),
+        _ => None,
+    }
+}
+
+/// The node owning a key, read off the key itself: a run directory's node segment, a
+/// request-ledger file's node, a commit log's or a run state's node directory. Every other
+/// key is unowned.
 pub fn owner_of(key: &str) -> Option<String> {
     let segs: Vec<&str> = key.split('/').collect();
     // `<project>/cursors/<pipeline-id>/<node-id>/<seq>.json`: a node's own commit log.
     if segs.len() == 5 && segs[1] == "cursors" {
         return Some(segs[3].to_string());
+    }
+    if let Some(node) = run_state_node(key) {
+        return Some(node.to_string());
     }
     // The last `data/runs` pair: `.../data/runs/<run-id>/<node-id>/<file>`.
     if let Some(i) = segs.windows(2).rposition(|w| w == ["data", "runs"]) {

@@ -7,13 +7,13 @@ use std::process::{Command, Output};
 use std::sync::{Arc, Mutex};
 
 /// A loopback vendor answering `handler(target)` with `(status, body)`, recording every target.
-struct Vendor {
+pub(crate) struct Vendor {
     port: u16,
     targets: Arc<Mutex<Vec<String>>>,
 }
 
 impl Vendor {
-    fn start(handler: impl Fn(&str) -> (u16, String) + Send + Sync + 'static) -> Vendor {
+    pub(crate) fn start(handler: impl Fn(&str) -> (u16, String) + Send + Sync + 'static) -> Vendor {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let targets: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -46,11 +46,11 @@ impl Vendor {
         Vendor { port, targets }
     }
 
-    fn url(&self, path: &str) -> String {
+    pub(crate) fn url(&self, path: &str) -> String {
         format!("http://127.0.0.1:{}{path}", self.port)
     }
 
-    fn targets(&self) -> Vec<String> {
+    pub(crate) fn targets(&self) -> Vec<String> {
         self.targets.lock().unwrap().clone()
     }
 }

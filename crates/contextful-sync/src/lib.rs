@@ -4,6 +4,7 @@
 //! (`topology.package.s3-sync-optional`).
 
 pub mod fs_bucket;
+pub mod run_state;
 #[cfg(feature = "s3-sync")]
 pub mod s3_bucket;
 pub mod sync;
@@ -11,4 +12,5 @@ pub mod sync;
 pub use fs_bucket::{FsBucket, VolumeClass};
 #[cfg(feature = "s3-sync")]
 pub use s3_bucket::{S3Bucket, S3Credentials};
+pub use run_state::{CursorMark, RunMark, RunState};
 pub use sync::{plan_manifest, Held, ManifestPlan, PullScope, SyncError, Syncer};

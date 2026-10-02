@@ -124,6 +124,43 @@ fn a_daemon_booting_past_missed_intervals_fires_once() {
     s.drain();
 }
 
+/// A pipeline's last journaled run start is the latest start across this node's catalog and every run state
+/// another node's push carries that records the pipeline.
+#[test]
+fn a_run_another_node_started_defers_the_next_fire() {
+    let (rig, rec) = rig_with(None);
+    rig.clock.advance(600);
+    let mut s = scheduler(&rig, &rec, 4);
+    s.arm(1, vec![hourly("feed"), hourly("other")]).unwrap();
+    // Another node fired `feed` ten minutes ago; this catalog journals nothing.
+    s.observe_runs([("feed".to_string(), at(T0))].into());
+    assert_eq!(s.beat().unwrap().started, ["other"]);
+    s.drain();
+    assert_eq!(fired(&rec), ["other"]);
+    // A local run older than the pulled start leaves the pulled start in force.
+    journal_run(&rig, "feed-old", "feed", "2029-12-31T00:00:00Z");
+    assert_eq!(s.next_due().unwrap(), Some(at(T0).plus_secs(3600)));
+    rig.clock.advance(2999);
+    assert!(s.beat().unwrap().started.is_empty());
+    rig.clock.advance(1);
+    assert_eq!(s.beat().unwrap().started, ["feed"]);
+    s.drain();
+}
+
+/// A pulled run start later than the scheduler's current instant counts as no start.
+#[test]
+fn a_pulled_run_start_in_the_future_defers_nothing() {
+    let (rig, rec) = rig_with(None);
+    rig.clock.advance(600);
+    let mut s = scheduler(&rig, &rec, 4);
+    s.arm(1, vec![hourly("feed")]).unwrap();
+    s.observe_runs([("feed".to_string(), at("2031-06-01T00:00:00Z"))].into());
+    assert_eq!(s.next_due().unwrap(), Some(at(T0).plus_secs(600)));
+    assert_eq!(s.beat().unwrap().started, ["feed"]);
+    s.drain();
+    assert_eq!(s.next_due().unwrap(), Some(at(T0).plus_secs(600 + 3600)));
+}
+
 /// A beat takes the cadence lease before it dispatches, and a held lease dispatches nothing until it lapses.
 #[test]
 fn a_held_cadence_lease_dispatches_nothing() {

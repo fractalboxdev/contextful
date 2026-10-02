@@ -278,11 +278,16 @@ impl Destination for StoreDestination {
             return Ok(None);
         }
         let runs = self.store.committed_runs(table).map_err(store_failure)?;
-        Ok(runs
+        let manifests = runs
             .into_iter()
             .filter(|m| m.pipeline_id.as_deref() == Some(pipeline_id))
-            .max_by(|a, b| a.committed_at.cmp(&b.committed_at).then_with(|| a.run_id.cmp(&b.run_id)))
-            .map(|m| Marker { run_id: m.run_id, cursor: m.cursor, committed_at: m.committed_at }))
+            .map(|m| Marker { run_id: m.run_id, cursor: m.cursor, committed_at: m.committed_at });
+        // A pulled run state keeps the marker of a run whose manifest collection removed
+        // (`store.pull.run-state-cursor`).
+        let pulled = contextful_sync::run_state::newest_cursor(&self.store, pipeline_id, table)
+            .map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?
+            .map(|c| Marker { run_id: c.run_id, cursor: c.position, committed_at: c.committed_at });
+        Ok(manifests.chain(pulled).max_by(|a, b| a.committed_at.cmp(&b.committed_at).then_with(|| a.run_id.cmp(&b.run_id))))
     }
 }
 
