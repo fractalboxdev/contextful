@@ -314,8 +314,8 @@ fn two_nodes_writing_one_run_id_land_in_disjoint_files() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t ORDER BY id"), [[s("a")], [s("b")]]);
 }
 
-/// A generated node id persists under `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory, outside the store root.
-// spec: store.lay-out.node-id-state-path@8e582a0b
+/// The host id, a random `node-<8 hex>` generated once, persists under `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory, outside the store root.
+// spec: store.lay-out.node-id-state-path@83cd89ab
 #[test]
 fn a_generated_node_id_persists_in_the_state_directory() {
     let env = |pairs: &'static [(&'static str, &'static str)]| move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string());
@@ -339,6 +339,40 @@ fn a_generated_node_id_persists_in_the_state_directory() {
     let (node, _) = contextful_context::node::resolve(&f.store, |k| (k == "CONTEXTFUL_STATE_DIR").then(|| inside.clone())).unwrap();
     assert_eq!(node.as_str(), "local");
     assert!(!f.store.root().join("state").exists());
+}
+
+/// A project's default node id is `node-<8 hex>` of SHA-256 over the host id and the absolute store root, so two projects or two checkouts on one host write as distinct nodes.
+// spec: store.lay-out.node-id-project@10006aa5
+#[test]
+fn two_projects_on_one_host_take_distinct_node_ids() {
+    let host = tempfile::tempdir().unwrap();
+    let state = host.path().to_string_lossy().into_owned();
+    let env = |k: &str| (k == "CONTEXTFUL_STATE_DIR").then(|| state.clone());
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    let id = |dir: &std::path::Path, project: &str| {
+        let store = contextful_context::store::Store::open(dir, project).unwrap();
+        let (node, src) = contextful_context::node::resolve(&store, env).unwrap();
+        assert_eq!(src, contextful_core::store::lay_out::NodeIdSource::StateDirectory);
+        node.as_str().to_string()
+    };
+    let research = id(a.path(), "research");
+    assert!(research.starts_with("node-") && research.len() == 13 && research[5..].bytes().all(|b| b.is_ascii_hexdigit()), "{research}");
+    // Stable across resolutions, distinct per project and per checkout, none equal to the host id.
+    assert_eq!(id(a.path(), "research"), research);
+    fs::create_dir_all(a.path().join(".contextful/context/research")).unwrap();
+    assert_eq!(id(a.path(), "research"), research);
+    let others = [id(a.path(), "filings"), id(b.path(), "research")];
+    let host_id = persisted_node_id(host.path()).unwrap();
+    assert!(others.iter().all(|o| *o != research && *o != host_id), "{research} {others:?} {host_id}");
+    assert_ne!(others[0], others[1]);
+
+    // A declared `[node] id` still wins over the derived one.
+    let declared = a.path().join(".contextful/context/declared");
+    fs::create_dir_all(&declared).unwrap();
+    fs::write(declared.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    let store = contextful_context::store::Store::open(a.path(), "declared").unwrap();
+    assert_eq!(contextful_context::node::resolve(&store, env).unwrap().0.as_str(), "ingest-a");
 }
 
 #[cfg(feature = "read")]

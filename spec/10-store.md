@@ -117,14 +117,18 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
 - `unknown-table` — A table name no `schema.json` in the tree declares raises `StoreUnknownTable`, never an empty result.
   *P1*
 - `node-segment` — The `<node-id>` run-path segment and the node id in a ledger filename keep two machines writing one logical run id in disjoint files.
-- `node-id-order` — A process resolves its node id once: `CONTEXTFUL_NODE_ID`, then `[node] id`, then a random `node-<8 hex>` generated once and persisted.
-- `node-id-state-path` — A generated node id persists under `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory, outside the store root.
+- `node-id-order` — A process resolves its node id once: `CONTEXTFUL_NODE_ID`, then `[node] id`, then {{store.lay-out.node-id-project}}.
+- `node-id-project` — A project's default node id is `node-<8 hex>` of SHA-256 over the host id and the absolute store root, so two projects or two checkouts on one host write as distinct nodes.
+  *because a pull treats every key under its own node id as already held, skipping a sibling project's run parts*
+- `node-id-state-path` — The host id, a random `node-<8 hex>` generated once, persists under `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory, outside the store root.
   *because a copied store carrying its identity makes two machines one holder*
 - `node-id-shape` — A node id longer than 64 chars or outside `^[A-Za-z0-9._-]+$` raises `StoreNodeIdInvalid` at process start, before any path, key or lease carries it.
   *P3*
 - `node-id-shared` — A node id declared in a control-plane configuration raises `StoreNodeIdShared`.
   *because a control-plane snapshot applies to every machine reconciling it, making one id many holders*
 - `node-id-local` — A machine with no writable state directory takes the reserved node id `local`.
+
+unsettled: Does an unpushed run committed under the bare host id, which no project's default resolves to, push from the project that wrote it? owner: store affects: store.lay-out
 
 unsettled: How does a consumer discover the format version of a run or snapshot manifest, and what does it do with a version newer than it parses? owner: store affects: store.lay-out
 

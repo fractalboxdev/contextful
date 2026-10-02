@@ -153,8 +153,8 @@ fn a_node_id_outside_the_shape_is_invalid() {
     ));
 }
 
-/// A process resolves its node id once: `CONTEXTFUL_NODE_ID`, then `[node] id`, then a random `node-<8 hex>` generated once and persisted.
-// spec: store.lay-out.node-id-order@7b05580f
+/// A process resolves its node id once: `CONTEXTFUL_NODE_ID`, then `[node] id`, then the project default derived from the state directory.
+// spec: store.lay-out.node-id-order@2f6bab1d
 #[test]
 fn the_node_id_resolves_environment_then_configuration_then_state() {
     let never = || -> Option<String> { panic!("the state directory is consulted only when neither source declares an id") };
