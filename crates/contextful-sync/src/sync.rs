@@ -154,6 +154,8 @@ pub struct ManifestPlan {
     pub mine: BTreeMap<String, Entry>,
     /// Unowned mergeable keys, a table's `schema.json`: the push commits the bucket's merged copy.
     pub shared: BTreeMap<String, Entry>,
+    /// Keys another node owns, held locally and never pushed from here.
+    pub foreign: BTreeMap<String, Entry>,
     paths: BTreeMap<String, PathBuf>,
 }
 
@@ -178,7 +180,10 @@ pub fn plan_manifest(store: &Store, project: &str, node: &str) -> Result<Manifes
     let mut plan = ManifestPlan::default();
     for (key, (entry, path)) in local_entries(store, project)? {
         match class(&key, node) {
-            KeyClass::Foreign => continue,
+            KeyClass::Foreign => {
+                plan.foreign.insert(key, entry);
+                continue;
+            }
             KeyClass::Mergeable => plan.shared.insert(key.clone(), entry),
             KeyClass::Owned | KeyClass::Immutable => plan.mine.insert(key.clone(), entry),
         };
@@ -343,6 +348,9 @@ pub struct PushReport {
     pub refused: Vec<String>,
     /// Table pointers the push published (`store.push.pointer-carry`).
     pub pointers: Vec<String>,
+    /// Local keys another node owns that the committed manifest neither lists nor
+    /// tombstones, with their owner (`store.push.stranded`).
+    pub stranded: Vec<(String, String)>,
 }
 
 /// What one manifest commit did.
@@ -351,6 +359,7 @@ struct Commit {
     generation: u64,
     rounds: u32,
     refused: Vec<String>,
+    stranded: Vec<(String, String)>,
 }
 
 /// What a pull did.
@@ -556,6 +565,7 @@ impl Syncer {
         report.generation = first.generation;
         report.rounds = first.rounds;
         report.refused = first.refused;
+        report.stranded = first.stranded;
         // Pointers after the commit: every object a carried snapshot reaches is listed (`store.push.pointer-carry`).
         for local in &locals {
             match self.publish_local(local)? {
@@ -570,6 +580,7 @@ impl Syncer {
             report.entries = second.entries;
             report.generation = second.generation;
             report.rounds += second.rounds;
+            report.stranded = second.stranded;
         }
         Ok(report)
     }
@@ -622,6 +633,12 @@ impl Syncer {
                     generation: committed.generation,
                     rounds: round,
                     refused: merged.refused.iter().map(ToString::to_string).collect(),
+                    stranded: plan
+                        .foreign
+                        .iter()
+                        .filter(|(k, _)| !committed.entries.contains_key(*k) && !committed.tombstones.contains_key(*k))
+                        .map(|(k, e)| (k.clone(), e.owner.clone()))
+                        .collect(),
                 });
             }
         }

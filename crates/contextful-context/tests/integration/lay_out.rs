@@ -341,10 +341,9 @@ fn a_generated_node_id_persists_in_the_state_directory() {
     assert!(!f.store.root().join("state").exists());
 }
 
-/// A project's default node id is `node-<8 hex>` of SHA-256 over the host id and the absolute store root, so two projects or two checkouts on one host write as distinct nodes.
-// spec: store.lay-out.node-id-project@10006aa5
+/// `node::resolve` derives a stable `node-<8 hex>` per store root, distinct from the host id, and a declared `[node] id` wins over it.
 #[test]
-fn two_projects_on_one_host_take_distinct_node_ids() {
+fn two_store_roots_on_one_host_take_distinct_node_ids() {
     let host = tempfile::tempdir().unwrap();
     let state = host.path().to_string_lossy().into_owned();
     let env = |k: &str| (k == "CONTEXTFUL_STATE_DIR").then(|| state.clone());

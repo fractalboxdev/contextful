@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
 | `run` | 3 | 26 | 369 | 98 | 35 | 37 | 253 | 0 | 253 |
-| `store` | 1 | 17 | 229 | 54 | 13 | 19 | 189 | 0 | 189 |
+| `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
 | `surface` | 2 | 19 | 77 | 43 | 22 | 7 | 23 | 0 | 23 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1898 | 563 | 187 | 141 | 1253 | 0 | |
+| **total** | 19 | 154 | 1900 | 563 | 187 | 142 | 1255 | 0 | |
 
 Decision records: 18.
 
@@ -27,11 +27,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
-| 2 — The store | 9 | 157 | 122 | passing | closed |
+| 2 — The store | 9 | 158 | 123 | passing | closed |
 | 3 — The run path | 11 | 205 | 141 | passing | closed |
 | 4 — Ingest | 25 | 466 | 285 | passing | open |
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
-| 6 — Sync and replicas | 8 | 72 | 67 | passing | closed |
+| 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 46 | 27 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
@@ -1140,6 +1140,7 @@ Unscheduled operations: 10.
 | `store.lay-out.manifest-unreadable` | `crates/contextful-context/tests/integration/lay_out.rs::an_unparseable_manifest_refuses_the_table_until_it_parses` | performed |
 | `store.lay-out.node-id-local` | `crates/contextful-core/tests/integration/store/lay_out.rs::no_writable_state_directory_takes_local` | performed |
 | `store.lay-out.node-id-order` | `crates/contextful-core/tests/integration/store/lay_out.rs::the_node_id_resolves_environment_then_configuration_then_state` | performed |
+| `store.lay-out.node-id-project` | `crates/contextful-cli/tests/integration/sync/node_id.rs::a_second_checkout_of_one_project_pulls_the_first_checkouts_run` | performed |
 | `store.lay-out.node-id-shape` | `crates/contextful-core/tests/integration/store/lay_out.rs::a_node_id_outside_the_shape_is_invalid` | performed |
 | `store.lay-out.node-id-state-path` | `crates/contextful-context/tests/integration/lay_out.rs::a_generated_node_id_persists_in_the_state_directory` | performed |
 | `store.lay-out.node-segment` | `crates/contextful-context/tests/integration/lay_out.rs::two_nodes_writing_one_run_id_land_in_disjoint_files` | performed |
@@ -1206,6 +1207,7 @@ Unscheduled operations: 10.
 | `store.push.run-state` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_resumes_the_cursor_a_push_carried` | performed |
 | `store.push.run-state-format` | `crates/contextful-sync/tests/integration/run_state.rs::a_run_state_of_a_newer_format_contributes_nothing` | performed |
 | `store.push.schema-cas` | `crates/contextful-sync/tests/integration/converge.rs::two_nodes_landing_different_columns_both_keep_them` | performed |
+| `store.push.stranded` | `crates/contextful-cli/tests/integration/sync/node_id.rs::a_moved_checkout_names_the_run_it_landed_before_the_move` | performed |
 | `store.push.wire-format` | `crates/contextful-sync/tests/integration/push.rs::a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local` | performed |
 | `store.reconcile.additive` | `crates/contextful-core/tests/integration/store/reconcile.rs::an_unseen_column_joins_nullable` | performed |
 | `store.reconcile.binary-and-vector` | `crates/contextful-core/tests/integration/store/reconcile.rs::binary_and_vector_types_take_no_promotion` | performed |

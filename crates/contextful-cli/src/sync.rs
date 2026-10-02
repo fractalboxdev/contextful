@@ -269,6 +269,17 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             for refusal in &r.refused {
                 eprintln!("warning: {refusal}");
             }
+            let mut stranded: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+            for (key, owner) in &r.stranded {
+                stranded.entry(owner.as_str()).or_default().push(key.as_str());
+            }
+            for (owner, keys) in stranded {
+                eprintln!(
+                    "warning: {} local key(s) owned by node `{owner}` are absent from the bucket manifest and stay unpushed ({}); push them with CONTEXTFUL_NODE_ID={owner}",
+                    keys.len(),
+                    keys.join(", ")
+                );
+            }
             println!(
                 "pushed {} objects and {} pointers; generation {} lists {} entries after {} round(s)",
                 r.uploaded.len(),

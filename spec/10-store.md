@@ -118,8 +118,8 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *P1*
 - `node-segment` — The `<node-id>` run-path segment and the node id in a ledger filename keep two machines writing one logical run id in disjoint files.
 - `node-id-order` — A process resolves its node id once: `CONTEXTFUL_NODE_ID`, then `[node] id`, then {{store.lay-out.node-id-project}}.
-- `node-id-project` — A project's default node id is `node-<8 hex>` of SHA-256 over the host id and the absolute store root, so two projects or two checkouts on one host write as distinct nodes.
-  *because a pull treats every key under its own node id as already held, skipping a sibling project's run parts*
+- `node-id-project` — A project's default node id is `node-<8 hex>` of SHA-256 over the host id and the absolute store root, so two checkouts of one project on one host write as distinct nodes.
+  *because a pull treats every key under its own node id as already held, skipping another checkout's run parts of the same project*
 - `node-id-state-path` — The host id, a random `node-<8 hex>` generated once, persists under `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory, outside the store root.
   *because a copied store carrying its identity makes two machines one holder*
 - `node-id-shape` — A node id longer than 64 chars or outside `^[A-Za-z0-9._-]+$` raises `StoreNodeIdInvalid` at process start, before any path, key or lease carries it.
@@ -128,7 +128,7 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *because a control-plane snapshot applies to every machine reconciling it, making one id many holders*
 - `node-id-local` — A machine with no writable state directory takes the reserved node id `local`.
 
-unsettled: Does an unpushed run committed under the bare host id, which no project's default resolves to, push from the project that wrote it? owner: store affects: store.lay-out
+unsettled: Does a store re-bind the node id it last derived, so runs landed before its root moved, or under the bare host id an earlier build used, push without `CONTEXTFUL_NODE_ID`? owner: store affects: store.lay-out
 
 unsettled: How does a consumer discover the format version of a run or snapshot manifest, and what does it do with a version newer than it parses? owner: store affects: store.lay-out
 
@@ -489,6 +489,8 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *because a publish over a snapshot it may not descend from drops rows the bucket reaches, and a silent keep leaves every other node reading the older snapshot*
 - `pointer-recommit` — A push whose pointer publish the bucket took commits the manifest again, so a generation names a carried pointer only once the bucket's pointer holds it.
   *because a generation naming a pointer the bucket never held restores a state no node read*
+- `stranded` — A push names on stderr, per owning node, each local key another node owns that the committed bucket manifest neither lists nor tombstones, with the `CONTEXTFUL_NODE_ID` that pushes it.
+  *because a moved store root re-derives the node id, and runs landed under the old one otherwise stay local without a message*
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 
