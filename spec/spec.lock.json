@@ -3591,6 +3591,28 @@
       "line": 469
     },
     {
+      "id": "store.push.run-state",
+      "contract": "store",
+      "operation": "push",
+      "subject": "run-state",
+      "kind": "behavior",
+      "statement": "`sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`: each pipeline's newest run and each cursor row with its commit marker.",
+      "why": "because run history and cursors live outside the store root, and a node starting cold otherwise sees neither",
+      "file": "spec/10-store.md",
+      "line": 471
+    },
+    {
+      "id": "store.push.run-state-format",
+      "contract": "store",
+      "operation": "push",
+      "subject": "run-state-format",
+      "kind": "behavior",
+      "statement": "A run state carries `format`, `1` for this layout; one whose `format` exceeds 1 contributes no run or cursor to a reader.",
+      "why": "",
+      "file": "spec/10-store.md",
+      "line": 473
+    },
+    {
       "id": "store.pull.digest-mismatch",
       "contract": "store",
       "operation": "pull",
@@ -3599,7 +3621,7 @@
       "statement": "A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 503
+      "line": 506
     },
     {
       "id": "store.pull.convergence",
@@ -3610,7 +3632,7 @@
       "statement": "When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 505
+      "line": 508
     },
     {
       "id": "store.pull.unconverged",
@@ -3621,7 +3643,7 @@
       "statement": "Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 506
+      "line": 509
     },
     {
       "id": "store.pull.pointer-last",
@@ -3632,7 +3654,7 @@
       "statement": "A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 508
+      "line": 511
     },
     {
       "id": "store.pull.tombstone-applied",
@@ -3643,7 +3665,7 @@
       "statement": "A pull deletes the local copy of each key a tombstone names and no entry lists.",
       "why": "because a deletion that never reaches a consumer resurrects once its tombstone ages out",
       "file": "spec/10-store.md",
-      "line": 510
+      "line": 513
     },
     {
       "id": "store.pull.pointer-advance",
@@ -3654,7 +3676,7 @@
       "statement": "A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a later snapshot, and verifies every advancing table before writing any pointer.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 512
+      "line": 515
     },
     {
       "id": "store.pull.schema-merge",
@@ -3665,7 +3687,7 @@
       "statement": "A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.",
       "why": "because rows landed locally carry columns the bucket's copy may lack",
       "file": "spec/10-store.md",
-      "line": 514
+      "line": 517
     },
     {
       "id": "store.pull.before-run",
@@ -3676,7 +3698,7 @@
       "statement": "With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the bucket into the store before their first read, and a failed pull stops the command.",
       "why": "because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs",
       "file": "spec/10-store.md",
-      "line": 516
+      "line": 519
     },
     {
       "id": "store.pull.generation",
@@ -3687,7 +3709,7 @@
       "statement": "`contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 518
+      "line": 521
     },
     {
       "id": "store.pull.generation-absent",
@@ -3698,7 +3720,7 @@
       "statement": "A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.",
       "why": "because a restore falling back to another generation reads a state nobody named",
       "file": "spec/10-store.md",
-      "line": 519
+      "line": 522
     },
     {
       "id": "store.pull.generation-diverged",
@@ -3709,7 +3731,7 @@
       "statement": "A generation pull into a store holding a syncable file in scope that the generation does not list raises `SyncGenerationDiverged`, naming the file, and writes nothing.",
       "why": "because a kept unlisted run adds rows the generation never held, and deleting it loses unpushed work",
       "file": "spec/10-store.md",
-      "line": 521
+      "line": 524
     },
     {
       "id": "store.pull.generation-schema",
@@ -3720,7 +3742,29 @@
       "statement": "A generation pull takes each `schema.json` as the bucket holds it, merged per {{store.pull.schema-merge}}, never refusing on its generation digest.",
       "why": "because the lattice keeps every column an earlier generation carried, and the merged copy replaces the old one in the bucket",
       "file": "spec/10-store.md",
-      "line": 523
+      "line": 526
+    },
+    {
+      "id": "store.pull.generation-run-state",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "generation-run-state",
+      "kind": "behavior",
+      "statement": "A generation pull holds no `nodes/<node-id>/run-state.json` to {{store.pull.generation-diverged}}: one the generation does not list stays as it is, and any other unlisted file under `nodes/` meets that refusal.",
+      "why": "because a run state summarizes history outside the store root, and a restore predating it otherwise refuses every node that pushed since",
+      "file": "spec/10-store.md",
+      "line": 528
+    },
+    {
+      "id": "store.pull.run-state-cursor",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "run-state-cursor",
+      "kind": "behavior",
+      "statement": "A run opening where a pulled run state records a commit marker for its pipeline and table newer than every local one resumes from that marker's cursor.",
+      "why": "because a collected run takes its manifest's cursor out of the bucket, and a cold node otherwise re-reads the source from its start",
+      "file": "spec/10-store.md",
+      "line": 530
     },
     {
       "id": "store.probe.inconclusive",
@@ -3731,7 +3775,7 @@
       "statement": "An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 558
+      "line": 567
     },
     {
       "id": "store.probe.unproven",
@@ -3742,7 +3786,7 @@
       "statement": "Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 560
+      "line": 569
     },
     {
       "id": "store.probe.sentinel",
@@ -3753,7 +3797,7 @@
       "statement": "The probe creates a sentinel under `_contextful/cas-probe/` and demonstrates `cas` when a second create and a stale `If-Match` both fail and a current `If-Match` replaces it, deleting the sentinel after.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 562
+      "line": 571
     },
     {
       "id": "store.probe.network-volume",
@@ -3764,7 +3808,7 @@
       "statement": "A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves `single-writer` without the sentinel, naming the mount type, and a declared `cas` there meets {{store.probe.unproven}}.",
       "why": "because the bucket's advisory lock is not a guarantee across the clients of a network share, and a sentinel run from one client cannot observe another",
       "file": "spec/10-store.md",
-      "line": 563
+      "line": 572
     },
     {
       "id": "store.merge.tombstone-owner",
@@ -3775,7 +3819,7 @@
       "statement": "A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 570
+      "line": 579
     },
     {
       "id": "store.merge.tombstone-ttl",
@@ -3786,7 +3830,7 @@
       "statement": "A tombstone leaves the manifest 30 d after its `deleted_at`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 572
+      "line": 581
     },
     {
       "id": "store.merge.retries",
@@ -3797,7 +3841,7 @@
       "statement": "`[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 573
+      "line": 582
     },
     {
       "id": "store.merge.exhausted",
@@ -3808,7 +3852,7 @@
       "statement": "Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 574
+      "line": 583
     },
     {
       "id": "store.merge.cursor-recency",
@@ -3819,7 +3863,7 @@
       "statement": "Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 576
+      "line": 585
     },
     {
       "id": "store.merge.scoped-union",
@@ -3830,7 +3874,7 @@
       "statement": "A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a remote entry it owns and no longer holds leaves with a tombstone.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 578
+      "line": 587
     },
     {
       "id": "store.merge.ownership",
@@ -3838,10 +3882,10 @@
       "operation": "merge",
       "subject": "ownership",
       "kind": "behavior",
-      "statement": "A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, or a commit log's node directory. Every other key is unowned and propagates no deletion.",
+      "statement": "A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 580
+      "line": 589
     },
     {
       "id": "store.lease.ttl",
@@ -3852,7 +3896,7 @@
       "statement": "A lease is granted for 10 min.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 589
+      "line": 598
     },
     {
       "id": "store.lease.renewal",
@@ -3863,7 +3907,7 @@
       "statement": "A holder renews every 200 s by `If-Match` replace on the ETag it holds.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 590
+      "line": 599
     },
     {
       "id": "store.lease.clock-skew",
@@ -3874,7 +3918,7 @@
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
       "why": "because correctness rests on the fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
-      "line": 591
+      "line": 600
     },
     {
       "id": "store.lease.held",
@@ -3885,7 +3929,7 @@
       "statement": "A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 593
+      "line": 602
     },
     {
       "id": "store.lease.stale-fence",
@@ -3896,7 +3940,7 @@
       "statement": "A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 595
+      "line": 604
     },
     {
       "id": "store.lease.not-held",
@@ -3907,7 +3951,7 @@
       "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 597
+      "line": 606
     },
     {
       "id": "store.lease.cursor-kind",
@@ -3918,7 +3962,7 @@
       "statement": "A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 599
+      "line": 608
     },
     {
       "id": "store.lease.local-node",
@@ -3929,7 +3973,7 @@
       "statement": "A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 601
+      "line": 610
     },
     {
       "id": "store.lease.acquire",
@@ -3940,7 +3984,7 @@
       "statement": "Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-Match` on its ETag, the fence one past the object's.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 603
+      "line": 612
     },
     {
       "id": "store.lease.pointer-fence",
@@ -3951,7 +3995,7 @@
       "statement": "Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 605
+      "line": 614
     },
     {
       "id": "store.lease.network-volume",
@@ -3962,7 +4006,7 @@
       "statement": "Taking a compaction lease on a bucket {{store.probe.network-volume}} resolves to `single-writer` meets {{store.probe.unproven}} naming the mount type, and writes no lease object and no pointer fence.",
       "why": "because a conditional put holding on one machine only lets two machines each take the lease",
       "file": "spec/10-store.md",
-      "line": 607
+      "line": 616
     },
     {
       "id": "store.lease.commit-log",
@@ -3973,7 +4017,7 @@
       "statement": "Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 609
+      "line": 618
     },
     {
       "id": "store.replicate.write-refused",
@@ -3984,7 +4028,7 @@
       "statement": "A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 627
+      "line": 636
     },
     {
       "id": "store.replicate.partial-parquet",
@@ -3995,7 +4039,7 @@
       "statement": "A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 629
+      "line": 638
     },
     {
       "id": "store.replicate.missing-index",
@@ -4006,7 +4050,7 @@
       "statement": "A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 631
+      "line": 640
     },
     {
       "id": "store.replicate.sensitive-refused",
@@ -4017,7 +4061,7 @@
       "statement": "A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 633
+      "line": 642
     },
     {
       "id": "read.register.connection-views",
@@ -17221,6 +17265,28 @@
       "line": 74
     },
     {
+      "id": "surface.arm.pulled-history",
+      "contract": "surface",
+      "operation": "arm",
+      "subject": "pulled-history",
+      "kind": "behavior",
+      "statement": "A pipeline's last journaled run start is the latest start across this node's catalog and every run state {{store.push.run-state}} carries that records the pipeline.",
+      "why": "because a cold node's empty catalog otherwise finds every scheduled entry due at once",
+      "file": "spec/70-control-plane.md",
+      "line": 76
+    },
+    {
+      "id": "surface.arm.pulled-future",
+      "contract": "surface",
+      "operation": "arm",
+      "subject": "pulled-future",
+      "kind": "behavior",
+      "statement": "A pulled run start later than the scheduler's current instant counts as no start for {{surface.arm.pulled-history}}.",
+      "why": "because one node's fast clock or one bucket writer otherwise defers every replica's cadence until that instant",
+      "file": "spec/70-control-plane.md",
+      "line": 78
+    },
+    {
       "id": "surface.reconcile.poll-cadence",
       "contract": "surface",
       "operation": "reconcile",
@@ -17229,7 +17295,7 @@
       "statement": "`poll` takes a schedule string, and a `[control]` block declaring none polls every 30 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 109
+      "line": 113
     },
     {
       "id": "surface.reconcile.pointer-malformed",
@@ -17240,7 +17306,7 @@
       "statement": "A pointer body that is not wholly a version raises `ControlPointerMalformed`.",
       "why": "because an integer read out of leading bytes arms a version nobody applied",
       "file": "spec/70-control-plane.md",
-      "line": 110
+      "line": 114
     },
     {
       "id": "surface.reconcile.fail-static",
@@ -17251,7 +17317,7 @@
       "statement": "An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 112
+      "line": 116
     },
     {
       "id": "surface.reconcile.loopback-only",
@@ -17262,7 +17328,7 @@
       "statement": "A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 114
+      "line": 118
     },
     {
       "id": "surface.reconcile.url-layout",
@@ -17273,7 +17339,7 @@
       "statement": "A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.",
       "why": "because one layout serves a snapshot directory unchanged over loopback HTTP",
       "file": "spec/70-control-plane.md",
-      "line": 116
+      "line": 120
     },
     {
       "id": "surface.fire.job-kind-unknown",
@@ -17284,7 +17350,7 @@
       "statement": "A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 149
+      "line": 153
     },
     {
       "id": "surface.fire.target-unbound",
@@ -17295,7 +17361,7 @@
       "statement": "A `fold` target naming no produced table, or a `build` target naming no declared model, raises `JobTargetUnbound` at validation.",
       "why": "P1",
       "file": "spec/70-control-plane.md",
-      "line": 151
+      "line": 155
     },
     {
       "id": "surface.fire.cycle-control-source",
@@ -17306,7 +17372,7 @@
       "statement": "A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 153
+      "line": 157
     },
     {
       "id": "surface.fire.store-driven-concurrency",
@@ -17317,7 +17383,7 @@
       "statement": "A `store-driven` block declaring no positive integer `max_in_flight` raises `JobConcurrencyUnset` at validation; no default applies.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 155
+      "line": 159
     },
     {
       "id": "surface.fire.store-driven-body",
@@ -17328,7 +17394,7 @@
       "statement": "A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 157
+      "line": 161
     },
     {
       "id": "surface.fire.cycle",
@@ -17339,7 +17405,7 @@
       "statement": "`serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 159
+      "line": 163
     },
     {
       "id": "surface.dispatch.not-a-head",
@@ -17350,7 +17416,7 @@
       "statement": "Where entries are landing steps of one dependent run, the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 165
+      "line": 169
     },
     {
       "id": "surface.dispatch.step-result",
@@ -17361,7 +17427,7 @@
       "statement": "A checkpointed step returns a pointer, an object-store key or a catalog row id, under a 1 MiB step-result cap.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 167
+      "line": 171
     },
     {
       "id": "surface.dispatch.in-band-tool-error",
@@ -17372,7 +17438,7 @@
       "statement": "A step driving the engine over the tool protocol judges the tool result, not transport status: a `200` carrying a protocol error or a result flagged `isError` raises `StepToolError`.",
       "why": "P2",
       "file": "spec/70-control-plane.md",
-      "line": 168
+      "line": 172
     },
     {
       "id": "surface.dispatch.callback-skew",
@@ -17383,7 +17449,7 @@
       "statement": "The relay accepts a callback timestamp within 300 s of its own clock.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 170
+      "line": 174
     },
     {
       "id": "surface.dispatch.callback-rejected",
@@ -17394,7 +17460,7 @@
       "statement": "A callback whose attempt is below the step's current attempt, or whose timestamp falls outside {{surface.dispatch.callback-skew}}, raises `DispatchCallbackRejected` and changes no step.",
       "why": "because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely",
       "file": "spec/70-control-plane.md",
-      "line": 171
+      "line": 175
     },
     {
       "id": "surface.dispatch.heartbeat-beat",
@@ -17405,7 +17471,7 @@
       "statement": "A worker heartbeat runs every 15 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 173
+      "line": 177
     },
     {
       "id": "surface.dispatch.heartbeat-lapse",
@@ -17416,7 +17482,7 @@
       "statement": "A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 174
+      "line": 178
     },
     {
       "id": "surface.dispatch.pool-bound",
@@ -17427,7 +17493,7 @@
       "statement": "A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.",
       "why": "because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added",
       "file": "spec/70-control-plane.md",
-      "line": 175
+      "line": 179
     },
     {
       "id": "surface.dispatch.exclusion-key",
@@ -17438,7 +17504,7 @@
       "statement": "A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.",
       "why": "because two fires of one pipeline race for one cursor",
       "file": "spec/70-control-plane.md",
-      "line": 177
+      "line": 181
     },
     {
       "id": "surface.dispatch.lease-gated",
@@ -17449,7 +17515,7 @@
       "statement": "A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.",
       "why": "because two daemons reading one snapshot otherwise fire every due unit twice",
       "file": "spec/70-control-plane.md",
-      "line": 179
+      "line": 183
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -17460,7 +17526,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 215
+      "line": 219
     },
     {
       "id": "surface.edit.connector-upload",
@@ -17471,7 +17537,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 217
+      "line": 221
     },
     {
       "id": "surface.apply.version-race",
@@ -17482,7 +17548,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 224
+      "line": 228
     },
     {
       "id": "surface.apply.validation",
@@ -17493,7 +17559,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 226
+      "line": 230
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -17504,7 +17570,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 228
+      "line": 232
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -17515,7 +17581,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 230
+      "line": 234
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -17526,7 +17592,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 232
+      "line": 236
     },
     {
       "id": "surface.apply.local-claim",
@@ -17537,7 +17603,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 234
+      "line": 238
     },
     {
       "id": "surface.reside.region-entries",
@@ -17548,7 +17614,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 271
+      "line": 275
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -17559,7 +17625,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 272
+      "line": 276
     },
     {
       "id": "surface.register-store.registry-unreadable",
@@ -20899,6 +20965,10 @@
       "store.pull.schema-merge"
     ],
     [
+      "store.pull.generation-run-state",
+      "store.pull.generation-diverged"
+    ],
+    [
       "store.probe.network-volume",
       "store.probe.unproven"
     ],
@@ -21577,6 +21647,14 @@
     [
       "disclosure.erase.physical-removal",
       "store.fold.retention"
+    ],
+    [
+      "surface.arm.pulled-history",
+      "store.push.run-state"
+    ],
+    [
+      "surface.arm.pulled-future",
+      "surface.arm.pulled-history"
     ],
     [
       "surface.dispatch.callback-rejected",

@@ -15,9 +15,13 @@ use contextful_core::store::lay_out::{Pointer, POINTER_FILE};
 use contextful_core::store::object::ObjectStore;
 use contextful_core::store::sync::{Endpoint, SyncConfig};
 use contextful_core::time::Instant;
+#[cfg(feature = "data-plane")]
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
+#[cfg(feature = "data-plane")]
 use contextful_sqlite::MachineCatalog;
-use contextful_sync::{run_state, FsBucket, PullScope, RunState, Syncer};
+#[cfg(feature = "data-plane")]
+use contextful_sync::{run_state, RunState};
+use contextful_sync::{FsBucket, PullScope, Syncer};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -220,10 +224,17 @@ fn open_local(args: &SyncArgs) -> Result<(Store, String, String)> {
 
 /// Write this node's run state into the store root from its machine catalog, so the push
 /// carries it (`store.push.run-state`).
+#[cfg(feature = "data-plane")]
 fn record_run_state(store: &Store, node_id: &str) -> Result<()> {
-    let catalog = MachineCatalog::open(&store.root().join(MACHINE_CATALOG_FILE), Arc::new(crate::run::SystemClock))?;
+    let catalog = MachineCatalog::open(&store.root().join(MACHINE_CATALOG_FILE), Arc::new(crate::clock::SystemClock))?;
     let state = RunState::read(&catalog, node_id)?;
     run_state::record(store, &state)?;
+    Ok(())
+}
+
+/// A read-plane build fires no runs and holds no machine catalog, so it records no run state.
+#[cfg(not(feature = "data-plane"))]
+fn record_run_state(_store: &Store, _node_id: &str) -> Result<()> {
     Ok(())
 }
 

@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 168 | 28 | 22 | 20 | 149 | 0 | 149 |
 | `run` | 3 | 26 | 362 | 96 | 35 | 35 | 245 | 0 | 245 |
-| `store` | 1 | 17 | 218 | 54 | 12 | 17 | 178 | 0 | 178 |
-| `surface` | 2 | 19 | 73 | 43 | 22 | 7 | 19 | 0 | 19 |
+| `store` | 1 | 17 | 222 | 54 | 12 | 18 | 182 | 0 | 182 |
+| `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
 | `topology` | 1 | 6 | 69 | 23 | 5 | 6 | 31 | 0 | 31 |
-| **total** | 19 | 154 | 1848 | 559 | 184 | 138 | 1184 | 0 | |
+| **total** | 19 | 154 | 1854 | 559 | 184 | 139 | 1190 | 0 | |
 
 Decision records: 18.
 
@@ -31,11 +31,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 11 | 200 | 133 | passing | closed |
 | 4 — Ingest | 25 | 450 | 263 | passing | open |
 | 5 — The read face under enforcement | 17 | 246 | 183 | passing | open |
-| 6 — Sync and replicas | 8 | 63 | 58 | passing | closed |
+| 6 — Sync and replicas | 8 | 67 | 62 | passing | closed |
 | 7 — Memory | 6 | 32 | 32 | passing | closed |
 | 8 — Accountability | 5 | 46 | 27 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 53 | 19 | open | open |
+| 10 — Cadence and the operator plane | 11 | 55 | 21 | open | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
@@ -1130,9 +1130,11 @@ Unscheduled operations: 10.
 | `store.pull.generation` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_restores_exactly_that_generation` | performed |
 | `store.pull.generation-absent` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_the_bucket_lacks_refuses` | performed |
 | `store.pull.generation-diverged` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_into_a_store_holding_unlisted_files_refuses` | performed |
+| `store.pull.generation-run-state` | `crates/contextful-sync/tests/integration/run_state.rs::a_restore_keeps_a_run_state_its_generation_does_not_list` | performed |
 | `store.pull.generation-schema` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_takes_the_current_schema` | performed |
 | `store.pull.pointer-advance` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies` | performed |
 | `store.pull.pointer-last` | `crates/contextful-sync/tests/integration/pull.rs::a_pointer_is_written_only_once_its_snapshot_is_home` | performed |
+| `store.pull.run-state-cursor` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_resumes_the_cursor_a_push_carried` | performed |
 | `store.pull.schema-merge` | `crates/contextful-sync/tests/integration/pull.rs::a_pulled_schema_merges_into_the_local_one` | performed |
 | `store.pull.tombstone-applied` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_deletes_the_copy_a_tombstone_names` | performed |
 | `store.pull.unconverged` | `crates/contextful-sync/tests/integration/pull.rs::a_key_that_keeps_moving_refuses_and_writes_no_pointer` | performed |
@@ -1147,6 +1149,8 @@ Unscheduled operations: 10.
 | `store.push.prefix-escape` | `crates/contextful-core/tests/integration/store/sync.rs::a_key_climbing_out_of_the_prefix_is_refused` | performed |
 | `store.push.prefix-overspecified` | `crates/contextful-core/tests/integration/store/sync.rs::prefix_and_prefix_from_together_refuse` | performed |
 | `store.push.prefix-unbound` | `crates/contextful-core/tests/integration/store/sync.rs::an_unset_prefix_variable_refuses_with_no_root_fallback` | performed |
+| `store.push.run-state` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_resumes_the_cursor_a_push_carried` | performed |
+| `store.push.run-state-format` | `crates/contextful-sync/tests/integration/run_state.rs::a_run_state_of_a_newer_format_contributes_nothing` | performed |
 | `store.push.schema-cas` | `crates/contextful-sync/tests/integration/converge.rs::two_nodes_landing_different_columns_both_keep_them` | performed |
 | `store.push.wire-format` | `crates/contextful-sync/tests/integration/push.rs::a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local` | performed |
 | `store.reconcile.additive` | `crates/contextful-core/tests/integration/store/reconcile.rs::an_unseen_column_joins_nullable` | performed |
@@ -1187,6 +1191,8 @@ Unscheduled operations: 10.
 | `surface.arm.catch-up` | `crates/contextful-engine/tests/integration/scheduler.rs::a_daemon_booting_past_missed_intervals_fires_once` | performed |
 | `surface.arm.grammar` | `crates/contextful-core/tests/integration/surface/arm.rs::a_schedule_is_an_interval_or_a_five_field_cron` | performed |
 | `surface.arm.next-fire-from-history` | `crates/contextful-core/tests/integration/surface/arm.rs::the_next_fire_counts_from_the_run_history` | performed |
+| `surface.arm.pulled-future` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_future_dated_run_state_leaves_a_cold_nodes_cadence_alone` | performed |
+| `surface.arm.pulled-history` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_keeps_the_cadence_another_node_fired` | performed |
 | `surface.arm.tick-interval` | `crates/contextful-core/tests/integration/surface/arm.rs::the_tick_is_500_ms` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.dispatch.exclusion-key` | `crates/contextful-core/tests/integration/surface/dispatch.rs::a_key_in_flight_starts_no_second_instance` | performed |
