@@ -29,7 +29,6 @@
 [pin]
 "corpus.targets.cap-unrecorded"     = { test = "contextful_spec::targets::a_capped_shape_not_recording_its_exclusions_is_refused" }
 "corpus.targets.function-profile"   = { test = "contextful_spec::targets::a_function_class_shape_hosting_the_full_profile_is_refused" }
-"topology.package.edge-eligibility" = { test = "contextful_spec::targets::a_function_class_shape_hosting_the_full_profile_is_refused" }
 "corpus.targets.incomplete"         = { test = "contextful_spec::targets::a_shape_leaving_a_role_unfilled_is_refused" }
 "corpus.targets.page"               = { test = "contextful_spec::targets::the_targets_page_is_rendered_from_the_files" }
 "corpus.state.lean-tag"             = { test = "contextful_spec::lean::a_tagged_theorem_holding_sorry_is_broken_until_proved" }

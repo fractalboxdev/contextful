@@ -1205,7 +1205,7 @@
       "operation": "package",
       "subject": "full-profile",
       "kind": "behavior",
-      "statement": "`contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars, the tool server, and `pg-catalog`.",
+      "statement": "`contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars and the tool server.",
       "why": "",
       "file": "spec/01-topology.md",
       "line": 109
@@ -1568,7 +1568,7 @@
       "operation": "coordinate",
       "subject": "backends",
       "kind": "behavior",
-      "statement": "Single-node self-hosting uses a local catalog file owned by one process; a self-hosted cluster uses Postgres via `pg-catalog`; a managed edge deployment uses per-object SQLite; a managed cloud deployment uses managed Postgres.",
+      "statement": "Single-node self-hosting uses a local catalog file owned by one process; a self-hosted cluster uses Postgres via `pg-catalog`, linked into the full profile; a managed edge deployment uses per-object SQLite; a managed cloud deployment uses managed Postgres.",
       "why": "A-store",
       "file": "spec/01-topology.md",
       "line": 294
