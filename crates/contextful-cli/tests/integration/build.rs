@@ -111,3 +111,33 @@ fn build_hold_prints_held_then_renewed() {
     let bad = run(p, &["build", "hold", "--for", "7w", "daily", &build_id]);
     assert!(!bad.status.success() && String::from_utf8_lossy(&bad.stderr).contains("7w"));
 }
+
+/// `pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, and raises the error the build raises.
+// spec: run.model.validate-statements@9a1409dd
+#[test]
+fn validate_refuses_a_statement_build_refuses() {
+    let cases = [
+        ("FROM events GROUP BY day", "FROM ref('events') GROUP BY day", "TableFunctionRefused"),
+        ("FROM events GROUP BY day", "FROM duckdb_tables() GROUP BY day", "TableFunctionRefused"),
+        ("FROM events GROUP BY day", "FROM daily GROUP BY day", "EnforceUnknownRelation"),
+    ];
+    for (from, to, error) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("contextful.toml"), DECLARATION.replace(from, to)).unwrap();
+        let e = refused_at(&run(dir.path(), &["pipeline", "validate"]), error);
+        assert!(e.contains("model `daily`"), "{e}");
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let tested = format!("{DECLARATION}\n[[model.test]]\nname = \"peek\"\nsql = \"SELECT * FROM read_csv('x.csv')\"\n");
+    std::fs::write(dir.path().join("contextful.toml"), tested).unwrap();
+    let e = refused_at(&run(dir.path(), &["pipeline", "validate"]), "TableFunctionRefused");
+    assert!(e.contains("model `daily` test `peek`"), "{e}");
+}
+
+/// A refusal under its declaration site: `<file>:<line> <what>: <error>: <detail>`.
+fn refused_at(out: &Output, error: &str) -> String {
+    assert!(!out.status.success(), "expected {error}, got: {}", String::from_utf8_lossy(&out.stdout));
+    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    assert!(stderr.contains(&format!(": {error}:")), "expected {error}, got: {stderr}");
+    stderr
+}
