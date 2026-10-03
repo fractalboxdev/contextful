@@ -333,13 +333,14 @@ fn repo_root() -> Result<PathBuf> {
 /// The stages whose work splits into parts the pull-request workflow dispatches one check
 /// each, so each part fits one stage's wall clock (`assurance.build.profile-build`,
 /// `assurance.gate.budget-stage`).
-const SPLIT: [&str; 2] = ["features", "budget"];
+const SPLIT: [&str; 3] = ["workspace", "features", "budget"];
 
 /// The parts of a split `stage`: the features stage's `packages`, every featured package but
 /// the binary, then `binary-<run>` per run of the binary package; the budget stage's
 /// `<profile>` per profile the binary declares, its name after `contextful-`.
 fn parts(root: &Path, stage: &str) -> Result<Vec<String>> {
     Ok(match stage {
+        "workspace" => ["compile", "foundation", "runtime", "read", "cli"].into_iter().map(str::to_string).collect(),
         "features" => {
             let featured = featured_packages(root)?;
             let binary = featured.iter().filter(|p| p.name == topology::BINARY).flat_map(Featured::runs);
@@ -420,7 +421,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "workspace" => {
             provision_lean(root)?;
             provision_wasm(root)?;
-            workspace(root)?
+            workspace(root, only)?
         }
         "acceptance" => acceptance(root)?,
         "evaluate" => measure::evaluate(root)?,
@@ -517,7 +518,38 @@ fn free_disk(root: &Path, stage: &str) -> Result<()> {
 /// Every workspace package's suite in one cargo invocation over the union of their
 /// features, so the bundled SQL engine compiles once in the stage
 /// (`assurance.build.one-engine-build`).
-fn workspace(root: &Path) -> Result<()> {
+fn workspace_part(package: &str) -> &'static str {
+    match package {
+        "contextful-engine" | "contextful-connectors" | "contextful-memory" | "contextful-sync" | "contextful-wasm" => "runtime",
+        "contextful-context" | "contextful-agent" => "read",
+        "contextful-cli" | "contextful-ci" => "cli",
+        _ => "foundation",
+    }
+}
+
+fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
+    if let Some(only) = only {
+        if only.iter().any(|part| part == "compile") {
+            let mut args = vec!["test", "--workspace"];
+            if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
+                args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
+            }
+            args.push("--no-run");
+            run_staged(root, "workspace", &args)?;
+        }
+        let packages: Vec<String> = workspace_packages(root)?
+            .into_iter()
+            .filter(|package| only.iter().any(|part| part == workspace_part(package)))
+            .collect();
+        if !packages.is_empty() {
+            let mut args = vec!["test"];
+            for package in &packages {
+                args.extend(["--package", package.as_str()]);
+            }
+            run_staged(root, "workspace", &args)?;
+        }
+        return Ok(());
+    }
     let mut args = vec!["test", "--workspace"];
     if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
         args.extend(["--exclude", ACCEPTANCE_PACKAGE]);

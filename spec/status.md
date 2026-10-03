@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 226 | 59 | 22 | 12 | 134 | 0 | 134 |
+| `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
 | `surface` | 2 | 19 | 81 | 44 | 22 | 5 | 40 | 0 | 40 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1917 | 566 | 187 | 137 | 1300 | 0 | |
+| **total** | 19 | 154 | 1918 | 566 | 187 | 137 | 1301 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
-| 14 — Assurance | 7 | 129 | 82 | passing | closed |
+| 14 — Assurance | 7 | 130 | 83 | passing | closed |
 
 Unscheduled operations: 10.
 
@@ -138,6 +138,7 @@ Unscheduled operations: 10.
 | `assurance.gate.stage-subset` | `tools/ci/tests/integration/stages.rs::a_subset_omitting_a_predecessor_whose_output_is_absent_is_refused_before_any_stage` | performed |
 | `assurance.gate.surface-check-failed` | `tools/ci/tests/integration/stages.rs::a_failing_surface_check_is_refused_naming_the_surface_and_the_script` | performed |
 | `assurance.gate.typescript-surfaces` | `tools/ci/tests/integration/stages.rs::the_surfaces_stage_installs_then_runs_each_declared_check` | performed |
+| `assurance.gate.workspace-parts` | `tools/ci/tests/integration/target_dirs.rs::remote_workspace_parts_compile_the_union_and_run_each_package_suite` | performed |
 | `assurance.measure.ledger` | `tools/eval/tests/integration/ledger.rs::an_entry_carries_its_clause_metric_tier_method_and_threshold` | performed |
 | `assurance.measure.open-entry` | `tools/ci/tests/integration/measure.rs::an_issue_entry_is_listed_open_and_gates_nothing` | performed |
 | `assurance.measure.record` | `tools/ci/tests/integration/measure.rs::a_gate_method_writing_no_record_is_refused` | performed |
