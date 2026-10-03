@@ -2,23 +2,29 @@
 
 use contextful_core::store::reconcile::{decode_binary, encode_binary, supertype, Column, ColumnType, FloatItem, Schema};
 use contextful_core::store::StoreError;
+use serde_json::json;
 use ColumnType::*;
 
 fn s(cols: &[(&str, ColumnType)]) -> Schema {
-    Schema { columns: cols.iter().map(|(n, t)| Column::new(*n, *t, true)).collect() }
+    Schema {
+        columns: cols
+            .iter()
+            .map(|(n, t)| Column::new(*n, t.clone(), true))
+            .collect(),
+    }
 }
 
 /// The type lattice holds one promotion, `Int64` with `Float64` to `Float64`; a JSON type absorbs `Utf8`.
 // spec: store.reconcile.lattice@5f16fb55
 #[test]
 fn the_lattice_holds_one_promotion_and_json_absorbs_text() {
-    assert_eq!(supertype(Int64, Float64), Some(Float64));
-    assert_eq!(supertype(Float64, Int64), Some(Float64));
-    assert_eq!(supertype(Json, Utf8), Some(Json));
-    assert_eq!(supertype(Utf8, Json), Some(Json));
+    assert_eq!(supertype(&Int64, &Float64), Some(Float64));
+    assert_eq!(supertype(&Float64, &Int64), Some(Float64));
+    assert_eq!(supertype(&Json, &Utf8), Some(Json));
+    assert_eq!(supertype(&Utf8, &Json), Some(Json));
     for t in [Boolean, Int32, Int64, Float64, Utf8, Json, Timestamp] {
-        assert_eq!(supertype(t, t), Some(t));
-        assert_eq!(supertype(Null, t), Some(t));
+        assert_eq!(supertype(&t, &t), Some(t.clone()));
+        assert_eq!(supertype(&Null, &t), Some(t));
     }
     let promoted = s(&[("n", Int64)]).merge(&s(&[("n", Float64)]), &[]).unwrap();
     assert_eq!(promoted.get("n").unwrap().ty, Float64);
@@ -29,9 +35,13 @@ fn the_lattice_holds_one_promotion_and_json_absorbs_text() {
 #[test]
 fn any_other_pair_is_incompatible() {
     let all = [Boolean, Int32, Int64, Float64, Utf8, Json, Timestamp];
-    for a in all {
-        for b in all {
-            let allowed = a == b || matches!((a, b), (Int64, Float64) | (Float64, Int64) | (Json, Utf8) | (Utf8, Json));
+    for a in &all {
+        for b in &all {
+            let allowed = a == b
+                || matches!(
+                    (a, b),
+                    (Int64, Float64) | (Float64, Int64) | (Json, Utf8) | (Utf8, Json)
+                );
             assert_eq!(supertype(a, b).is_some(), allowed, "{a:?} with {b:?}");
         }
     }
@@ -98,11 +108,11 @@ fn the_arrow_json_form_round_trips_every_type() {
 fn binary_and_vector_types_take_no_promotion() {
     let typed = [Binary, FixedSizeBinary(16), FixedSizeBinary(32), FixedSizeList(FloatItem::Float32, 4), FixedSizeList(FloatItem::Float16, 4), FixedSizeList(FloatItem::Float32, 8)];
     let scalar = [Boolean, Int32, Int64, Float64, Utf8, Json, Timestamp];
-    for a in typed {
-        assert_eq!(supertype(a, a), Some(a));
-        assert_eq!(supertype(Null, a), Some(a));
-        assert_eq!(supertype(a, Null), Some(a));
-        for b in typed.into_iter().chain(scalar).filter(|b| *b != a) {
+    for a in &typed {
+        assert_eq!(supertype(a, a).as_ref(), Some(a));
+        assert_eq!(supertype(&Null, a).as_ref(), Some(a));
+        assert_eq!(supertype(a, &Null).as_ref(), Some(a));
+        for b in typed.iter().chain(&scalar).filter(|b| *b != a) {
             assert_eq!(supertype(a, b), None, "{a:?} with {b:?}");
             assert_eq!(supertype(b, a), None, "{b:?} with {a:?}");
         }
@@ -115,7 +125,7 @@ fn binary_and_vector_types_take_no_promotion() {
         (FixedSizeList(FloatItem::Float32, 4), Json, "FixedSizeList<Float32, 4>", "Json"),
     ];
     for (stored, arriving, stored_name, arriving_name) in cases {
-        match s(&[("v", stored)]).merge(&s(&[("v", arriving)]), &[]) {
+        match s(&[("v", stored.clone())]).merge(&s(&[("v", arriving.clone())]), &[]) {
             Err(StoreError::StoreSchemaIncompatible(m)) => {
                 assert!(m.contains("`v`") && m.contains(stored_name) && m.contains(arriving_name), "{m}")
             }
@@ -165,4 +175,192 @@ fn the_arrow_json_form_round_trips_binary_and_vector_types() {
     assert_eq!(FixedSizeBinary(32).sql(), "BLOB");
     assert_eq!(Binary.sql(), "BLOB");
     assert_eq!(FixedSizeList(FloatItem::Float16, 384).sql(), "FLOAT[384]");
+}
+
+fn events() -> ColumnType {
+    ColumnType::list(ColumnType::structure([
+        ("name", Utf8),
+        ("time", Timestamp),
+        ("attrs", ColumnType::map(Utf8)),
+    ]))
+}
+
+/// A struct gains fields additively, a file without a field reading it as null; list items and map values reconcile by {{store.reconcile.lattice}}; a kind change, scalar against nested or list against map, meets {{store.reconcile.incompatible}} naming the column path.
+// spec: store.reconcile.nested-lattice@34116ab1
+#[test]
+fn nested_types_reconcile_field_by_field() {
+    // A struct gains the arriving side's fields after its own, at any depth.
+    let stored = ColumnType::structure([
+        ("a", Int64),
+        ("inner", ColumnType::structure([("x", Utf8)])),
+    ]);
+    let arriving = ColumnType::structure([
+        ("inner", ColumnType::structure([("y", Boolean)])),
+        ("b", Utf8),
+    ]);
+    assert_eq!(
+        supertype(&stored, &arriving),
+        Some(ColumnType::structure([
+            ("a", Int64),
+            (
+                "inner",
+                ColumnType::structure([("x", Utf8), ("y", Boolean)])
+            ),
+            ("b", Utf8)
+        ]))
+    );
+    // A list item and a map value take the lattice's one promotion, and absorb a null item.
+    assert_eq!(
+        supertype(&ColumnType::list(Int64), &ColumnType::list(Float64)),
+        Some(ColumnType::list(Float64))
+    );
+    assert_eq!(
+        supertype(&ColumnType::map(Utf8), &ColumnType::map(Json)),
+        Some(ColumnType::map(Json))
+    );
+    assert_eq!(
+        supertype(&ColumnType::list(Null), &events()),
+        Some(events())
+    );
+    assert_eq!(
+        supertype(&ColumnType::list(Null), &ColumnType::list(Utf8)),
+        Some(ColumnType::list(Utf8))
+    );
+    // A kind change refuses: scalar against nested, list against map, struct against list.
+    for (a, b) in [
+        (Utf8, ColumnType::list(Utf8)),
+        (Json, ColumnType::structure([("a", Utf8)])),
+        (ColumnType::list(Utf8), ColumnType::map(Utf8)),
+        (ColumnType::structure([("a", Utf8)]), ColumnType::list(Utf8)),
+        (ColumnType::list(Utf8), ColumnType::list(Int64)),
+    ] {
+        assert_eq!(supertype(&a, &b), None, "{a:?} with {b:?}");
+        assert_eq!(supertype(&b, &a), None, "{b:?} with {a:?}");
+    }
+    // The refusal names the column path where the kinds part.
+    match s(&[("events", events())]).merge(
+        &s(&[(
+            "events",
+            ColumnType::list(ColumnType::structure([("attrs", ColumnType::map(Int64))])),
+        )]),
+        &[],
+    ) {
+        Err(StoreError::StoreSchemaIncompatible(m)) => assert!(
+            m.contains("`events[].attrs{}`") && m.contains("Utf8") && m.contains("Int64"),
+            "{m}"
+        ),
+        other => panic!("expected StoreSchemaIncompatible, got {other:?}"),
+    }
+    match s(&[("tags", ColumnType::list(Utf8))])
+        .merge(&s(&[("tags", ColumnType::list(Int64))]), &[])
+    {
+        Err(StoreError::StoreSchemaIncompatible(m)) => assert!(
+            m.contains("`tags[]`") && m.contains("List<Utf8>") && m.contains("List<Int64>"),
+            "{m}"
+        ),
+        other => panic!("expected StoreSchemaIncompatible, got {other:?}"),
+    }
+    // A fold never narrows: a field the arriving side omits stays.
+    let merged = s(&[("e", stored.clone())])
+        .merge(&s(&[("e", ColumnType::structure([("b", Utf8)]))]), &[])
+        .unwrap();
+    assert_eq!(
+        merged.get("e").unwrap().ty,
+        ColumnType::structure([
+            ("a", Int64),
+            ("inner", ColumnType::structure([("x", Utf8)])),
+            ("b", Utf8)
+        ])
+    );
+}
+
+/// A declaration spells a nested type over any column type, and the engine reads it as `STRUCT`, `T[]` or `MAP`.
+#[test]
+fn a_declaration_spells_nested_types() {
+    assert_eq!(
+        ColumnType::parse("list<struct<name: utf8, time: timestamp, attrs: map<utf8, utf8>>>"),
+        Some(events())
+    );
+    assert_eq!(
+        ColumnType::parse(" LIST< Float64 > "),
+        Some(ColumnType::list(Float64))
+    );
+    assert_eq!(
+        ColumnType::parse("struct<spanId: utf8, vec: float16[3], raw: binary(4)>"),
+        Some(ColumnType::structure([
+            ("spanId", Utf8),
+            ("vec", FixedSizeList(FloatItem::Float16, 3)),
+            ("raw", FixedSizeBinary(4)),
+        ]))
+    );
+    for bad in [
+        "list<>",
+        "list<utf8, utf8>",
+        "map<int64, utf8>",
+        "map<utf8>",
+        "struct<>",
+        "struct<a utf8>",
+        "struct<a: utf8, a: int64>",
+        "struct<1a: utf8>",
+        "list<utf8",
+        "list<nope>",
+        "array<utf8>",
+    ] {
+        assert_eq!(ColumnType::parse(bad), None, "{bad}");
+    }
+    for ty in [
+        events(),
+        ColumnType::map(ColumnType::list(Float64)),
+        ColumnType::structure([("x", Json)]),
+    ] {
+        assert_eq!(
+            ColumnType::parse(&ty.spell()),
+            Some(ty.clone()),
+            "{}",
+            ty.spell()
+        );
+    }
+    assert_eq!(
+        events().name(),
+        "List<Struct<name: Utf8, time: Timestamp, attrs: Map<Utf8, Utf8>>>"
+    );
+    assert_eq!(
+        events().sql(),
+        "STRUCT(\"name\" VARCHAR, \"time\" TIMESTAMPTZ, \"attrs\" MAP(VARCHAR, VARCHAR))[]"
+    );
+}
+
+/// The Arrow JSON form carries a nested type's children, a JSON field's extension at any depth included, so `schema.json` round-trips it.
+#[test]
+fn the_arrow_json_form_round_trips_nested_types() {
+    let nested = Schema {
+        columns: vec![
+            Column::new("events", events(), true),
+            Column::new("bounds", ColumnType::list(Float64), true),
+            Column::new(
+                "meta",
+                ColumnType::structure([("doc", Json), ("n", Int64)]),
+                true,
+            ),
+        ],
+    };
+    let doc = nested.to_arrow_json();
+    assert_eq!(doc["fields"][0]["type"], json!({"name": "list"}));
+    assert_eq!(
+        doc["fields"][0]["children"][0]["type"],
+        json!({"name": "struct"})
+    );
+    assert_eq!(
+        doc["fields"][0]["children"][0]["children"][2]["type"],
+        json!({"name": "map", "keysSorted": false})
+    );
+    assert_eq!(
+        doc["fields"][0]["children"][0]["children"][2]["children"][0]["name"],
+        "entries"
+    );
+    assert_eq!(
+        doc["fields"][2]["children"][0]["metadata"][0]["value"],
+        "arrow.json"
+    );
+    assert_eq!(Schema::from_arrow_json(&doc).unwrap(), nested);
 }

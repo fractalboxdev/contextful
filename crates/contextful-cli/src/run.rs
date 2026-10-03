@@ -21,7 +21,9 @@ use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{AwakeableStore, Commit, Destination, Landed, Marker, Part, Stage};
 use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, select_history, RunStatus, Window};
 use contextful_core::run::{Failure, FailureTag};
+use contextful_core::pipeline::normalize::Normalize;
 use contextful_core::store::declare::TableDecl;
+use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::reserve::Injection;
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -216,6 +218,8 @@ pub(crate) struct StoreDestination {
     pub(crate) node: contextful_core::store::lay_out::NodeId,
     /// The admitted credential every commit lands under; `None` lands unauthored.
     pub(crate) author: Option<Author>,
+    /// The pipeline's normalize declaration; `None` lands every object and array as `Json`.
+    pub(crate) normalize: Option<Normalize>,
 }
 
 fn store_failure(e: ContextError) -> Failure {
@@ -251,7 +255,20 @@ impl Destination for StoreDestination {
         let decl = self.decl(&stage.table);
         let injection = self.injection(&stage.run_id, &stage.site_id);
         // The pulls' declared types type the batch (`run.land.typed-pull`).
-        let batch = Batch { rows: stage.rows, types: stage.types.into_iter().collect() };
+        let mut types = stage.types;
+        if let Some(normalize) = &self.normalize {
+            // `native` types each undeclared column of objects and arrays, unless `schema.json`
+            // already holds it as a scalar (`run.normalize.native-store`).
+            let stored = self.store.try_schema(&stage.table).map_err(store_failure)?.unwrap_or_default();
+            let declared = decl.column_types();
+            for (column, ty) in normalize.store_types(&stage.rows) {
+                let scalar = stored.get(&column).is_some_and(|c| !c.ty.is_nested() && c.ty != ColumnType::Null);
+                if !scalar && !declared.contains_key(&column) {
+                    types.entry(column).or_insert(ty);
+                }
+            }
+        }
+        let batch = Batch { rows: stage.rows, types: types.into_iter().collect() };
         let part = stage_part(&self.store, &decl, &batch, &self.node, &injection, stage.ordinal, stage.row_offset).map_err(store_failure)?;
         Ok(Part { name: part.name, rows: part.rows, bytes: part.bytes })
     }
@@ -367,7 +384,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let connector = plan.connector_pin(&artifact_hash(&plan.spec.connector.command, &cwd));
             let spec = RunSpec { connector, plan: plan.clone(), run_id, site_id, pid: std::process::id(), boot_id: boot_id(), trace_id: None };
             let mut source = CommandSource { argv: plan.spec.connector.command.clone(), cwd };
-            let mut dest = StoreDestination { store, decls, node, author };
+            let mut dest = StoreDestination { store, decls, node, author, normalize: None };
             let row = w.engine.run(&spec, &mut source, &mut dest)?;
             if row.status == RunStatus::Success {
                 println!("{}: success · {} rows in {} batches", row.run_id, row.rows, row.batches);

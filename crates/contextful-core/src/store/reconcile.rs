@@ -1,5 +1,6 @@
 //! `store.reconcile`: the column types a table carries, the one-promotion lattice, the
-//! binary and vector types that take no promotion, and the merged schema persisted as
+//! binary and vector types that take no promotion, the struct, list and map types that
+//! reconcile field by field, and the merged schema persisted as
 //! `schema.json` in Arrow JSON form.
 
 use super::StoreError;
@@ -34,8 +35,25 @@ impl FloatItem {
     }
 }
 
+/// One named field of a struct column. Every field is nullable: a file written before a
+/// field joined reads it as null (`store.reconcile.nested-lattice`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StructField {
+    pub name: String,
+    pub ty: ColumnType,
+}
+
+impl StructField {
+    pub fn new(name: impl Into<String>, ty: ColumnType) -> StructField {
+        StructField {
+            name: name.into(),
+            ty,
+        }
+    }
+}
+
 /// The logical type of one column.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ColumnType {
     /// Every observed value was null; any type absorbs it.
     Null,
@@ -54,11 +72,46 @@ pub enum ColumnType {
     FixedSizeBinary(u32),
     /// A vector of one fixed dimension over one float width.
     FixedSizeList(FloatItem, u32),
+    /// Named fields in order, each nullable.
+    Struct(Vec<StructField>),
+    /// A variable-length list of one nullable item type.
+    List(Box<ColumnType>),
+    /// A map from `Utf8` keys to one nullable value type.
+    Map(Box<ColumnType>),
 }
 
+/// The name of a list's item field and of a map's entries, keys and values in the Arrow
+/// JSON form.
+pub const LIST_ITEM: &str = "item";
+pub const MAP_ENTRIES: &str = "entries";
+pub const MAP_KEY: &str = "key";
+pub const MAP_VALUE: &str = "value";
+
 impl ColumnType {
+    /// A list of `item`.
+    pub fn list(item: ColumnType) -> ColumnType {
+        ColumnType::List(Box::new(item))
+    }
+
+    /// A map from `Utf8` keys to `value`.
+    pub fn map(value: ColumnType) -> ColumnType {
+        ColumnType::Map(Box::new(value))
+    }
+
+    /// A struct of `fields`, in order.
+    pub fn structure<N: Into<String>>(
+        fields: impl IntoIterator<Item = (N, ColumnType)>,
+    ) -> ColumnType {
+        ColumnType::Struct(
+            fields
+                .into_iter()
+                .map(|(n, t)| StructField::new(n, t))
+                .collect(),
+        )
+    }
+
     /// The type's name as a refusal reports it.
-    pub fn name(self) -> String {
+    pub fn name(&self) -> String {
         match self {
             ColumnType::Null => "Null".into(),
             ColumnType::Boolean => "Boolean".into(),
@@ -71,11 +124,23 @@ impl ColumnType {
             ColumnType::Binary => "Binary".into(),
             ColumnType::FixedSizeBinary(n) => format!("FixedSizeBinary({n})"),
             ColumnType::FixedSizeList(item, n) => format!("FixedSizeList<{}, {n}>", item.name()),
+            ColumnType::Struct(fields) => {
+                format!(
+                    "Struct<{}>",
+                    fields
+                        .iter()
+                        .map(|f| format!("{}: {}", f.name, f.ty.name()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            ColumnType::List(item) => format!("List<{}>", item.name()),
+            ColumnType::Map(value) => format!("Map<Utf8, {}>", value.name()),
         }
     }
 
     /// The type as a declaration spells it, the inverse of [`ColumnType::parse`].
-    pub fn spell(self) -> String {
+    pub fn spell(&self) -> String {
         match self {
             ColumnType::Null => "null".into(),
             ColumnType::Boolean => "boolean".into(),
@@ -89,25 +154,91 @@ impl ColumnType {
             ColumnType::FixedSizeBinary(n) => format!("binary({n})"),
             ColumnType::FixedSizeList(FloatItem::Float32, n) => format!("float32[{n}]"),
             ColumnType::FixedSizeList(FloatItem::Float16, n) => format!("float16[{n}]"),
+            ColumnType::Struct(fields) => {
+                format!(
+                    "struct<{}>",
+                    fields
+                        .iter()
+                        .map(|f| format!("{}: {}", f.name, f.ty.spell()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            ColumnType::List(item) => format!("list<{}>", item.spell()),
+            ColumnType::Map(value) => format!("map<utf8, {}>", value.spell()),
         }
     }
 
     /// Whether the column carries bytes.
-    pub fn is_binary(self) -> bool {
+    pub fn is_binary(&self) -> bool {
         matches!(self, ColumnType::Binary | ColumnType::FixedSizeBinary(_))
     }
 
     /// Whether the column carries a fixed-size vector.
-    pub fn is_vector(self) -> bool {
+    pub fn is_vector(&self) -> bool {
         matches!(self, ColumnType::FixedSizeList(..))
     }
 
+    /// Whether the column is a struct, a list or a map.
+    pub fn is_nested(&self) -> bool {
+        matches!(
+            self,
+            ColumnType::Struct(_) | ColumnType::List(_) | ColumnType::Map(_)
+        )
+    }
+
+    /// Whether the type holds a fixed-size vector at any depth.
+    pub fn holds_vector(&self) -> bool {
+        match self {
+            ColumnType::FixedSizeList(..) => true,
+            ColumnType::Struct(fields) => fields.iter().any(|f| f.ty.holds_vector()),
+            ColumnType::List(t) | ColumnType::Map(t) => t.holds_vector(),
+            _ => false,
+        }
+    }
+
     /// Parse a type as the command line and declarations spell it: `binary`, `binary(<n>)`
-    /// for a fixed width, and `float32[<n>]` or `float16[<n>]` for a vector.
+    /// for a fixed width, `float32[<n>]` or `float16[<n>]` for a vector, and
+    /// `struct<<name>: <type>, …>`, `list<<type>>` and `map<utf8, <type>>` over any of them.
+    /// Keywords are case-insensitive; a field name keeps its case.
     pub fn parse(s: &str) -> Option<ColumnType> {
-        let lower = s.trim().to_ascii_lowercase();
-        let width = |digits: &str| digits.parse::<u32>().ok().filter(|n| (1..=MAX_WIDTH).contains(n));
-        if let Some(n) = lower.strip_prefix("binary(").and_then(|r| r.strip_suffix(')')) {
+        let s = s.trim();
+        if let Some(open) = s.find('<') {
+            let keyword = s[..open].trim().to_ascii_lowercase();
+            let inner = s[open + 1..].strip_suffix('>')?;
+            let parts = split_top(inner)?;
+            return match (keyword.as_str(), parts.as_slice()) {
+                ("list", [item]) => Some(ColumnType::list(ColumnType::parse(item)?)),
+                ("map", [key, value]) => {
+                    (ColumnType::parse(key)? == ColumnType::Utf8).then_some(())?;
+                    Some(ColumnType::map(ColumnType::parse(value)?))
+                }
+                ("struct", fields) => {
+                    let mut out: Vec<StructField> = Vec::new();
+                    for f in fields {
+                        let (name, ty) = f.split_once(':')?;
+                        let name = name.trim();
+                        if !is_field_name(name) || out.iter().any(|o| o.name == name) {
+                            return None;
+                        }
+                        out.push(StructField::new(name, ColumnType::parse(ty)?));
+                    }
+                    (!out.is_empty()).then_some(ColumnType::Struct(out))
+                }
+                _ => None,
+            };
+        }
+        let lower = s.to_ascii_lowercase();
+        let width = |digits: &str| {
+            digits
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=MAX_WIDTH).contains(n))
+        };
+        if let Some(n) = lower
+            .strip_prefix("binary(")
+            .and_then(|r| r.strip_suffix(')'))
+        {
             return width(n).map(ColumnType::FixedSizeBinary);
         }
         for (prefix, item) in [("float32[", FloatItem::Float32), ("float16[", FloatItem::Float16)] {
@@ -130,8 +261,9 @@ impl ColumnType {
 
     /// The SQL type the engine reads the column as, and a zero-row branch casts a literal
     /// null to: bytes of either width as `BLOB`, a vector as a `FLOAT` array of its
-    /// dimension whatever its stored width.
-    pub fn sql(self) -> String {
+    /// dimension whatever its stored width, a struct as `STRUCT`, a list as `T[]` and a
+    /// map as `MAP(VARCHAR, T)`.
+    pub fn sql(&self) -> String {
         match self {
             ColumnType::Null => "INTEGER".into(),
             ColumnType::Boolean => "BOOLEAN".into(),
@@ -143,10 +275,20 @@ impl ColumnType {
             ColumnType::Timestamp => "TIMESTAMPTZ".into(),
             ColumnType::Binary | ColumnType::FixedSizeBinary(_) => "BLOB".into(),
             ColumnType::FixedSizeList(_, n) => format!("FLOAT[{n}]"),
+            ColumnType::Struct(fields) => format!(
+                "STRUCT({})",
+                fields
+                    .iter()
+                    .map(|f| format!("\"{}\" {}", f.name.replace('"', "\"\""), f.ty.sql()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            ColumnType::List(item) => format!("{}[]", item.sql()),
+            ColumnType::Map(value) => format!("MAP(VARCHAR, {})", value.sql()),
         }
     }
 
-    fn arrow_json(self) -> Value {
+    fn arrow_json(&self) -> Value {
         match self {
             ColumnType::Null => json!({"name": "null"}),
             ColumnType::Boolean => json!({"name": "bool"}),
@@ -158,11 +300,15 @@ impl ColumnType {
             ColumnType::Binary => json!({"name": "binary"}),
             ColumnType::FixedSizeBinary(n) => json!({"name": "fixedsizebinary", "byteWidth": n}),
             ColumnType::FixedSizeList(_, n) => json!({"name": "fixedsizelist", "listSize": n}),
+            ColumnType::Struct(_) => json!({"name": "struct"}),
+            ColumnType::List(_) => json!({"name": "list"}),
+            ColumnType::Map(_) => json!({"name": "map", "keysSorted": false}),
         }
     }
 
-    /// The child fields the Arrow JSON form carries: a vector's one element field.
-    fn arrow_children(self) -> Value {
+    /// The child fields the Arrow JSON form carries: a vector's one element field, a
+    /// struct's fields, a list's item and a map's entries.
+    fn arrow_children(&self) -> Value {
         match self {
             ColumnType::FixedSizeList(item, _) => json!([{
                 "name": VECTOR_ITEM,
@@ -170,13 +316,37 @@ impl ColumnType {
                 "type": {"name": "floatingpoint", "precision": item.arrow_precision()},
                 "children": []
             }]),
+            ColumnType::Struct(fields) => Value::Array(
+                fields
+                    .iter()
+                    .map(|f| field_json(&f.name, &f.ty, true))
+                    .collect(),
+            ),
+            ColumnType::List(item) => json!([field_json(LIST_ITEM, item, true)]),
+            ColumnType::Map(value) => json!([{
+                "name": MAP_ENTRIES,
+                "nullable": false,
+                "type": {"name": "struct"},
+                "children": [field_json(MAP_KEY, &ColumnType::Utf8, false), field_json(MAP_VALUE, value, true)]
+            }]),
             _ => json!([]),
         }
     }
 
     fn from_arrow_json(ty: &Value, children: Option<&Value>, json_extension: bool) -> Option<ColumnType> {
         let name = ty.get("name")?.as_str()?;
-        let width = |key: &str| ty.get(key)?.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=MAX_WIDTH).contains(n));
+        let width = |key: &str| {
+            ty.get(key)?
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .filter(|n| (1..=MAX_WIDTH).contains(n))
+        };
+        let children = || {
+            children
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+        };
         Some(match name {
             "null" => ColumnType::Null,
             "bool" => ColumnType::Boolean,
@@ -192,7 +362,7 @@ impl ColumnType {
             "binary" => ColumnType::Binary,
             "fixedsizebinary" => ColumnType::FixedSizeBinary(width("byteWidth")?),
             "fixedsizelist" => {
-                let [child] = children?.as_array()?.as_slice() else { return None };
+                let [child] = children() else { return None };
                 let item = match child.get("type")?.get("precision")?.as_str()? {
                     "SINGLE" => FloatItem::Float32,
                     "HALF" => FloatItem::Float16,
@@ -200,9 +370,83 @@ impl ColumnType {
                 };
                 ColumnType::FixedSizeList(item, width("listSize")?)
             }
+            "struct" => {
+                let fields = children()
+                    .iter()
+                    .map(|c| field_from_json(c).map(|(n, t, _)| StructField::new(n, t)))
+                    .collect::<Option<Vec<_>>>()?;
+                (!fields.is_empty()).then_some(ColumnType::Struct(fields))?
+            }
+            "list" => {
+                let [child] = children() else { return None };
+                ColumnType::list(field_from_json(child)?.1)
+            }
+            "map" => {
+                let [entries] = children() else { return None };
+                let [key, value] = entries.get("children")?.as_array()?.as_slice() else {
+                    return None;
+                };
+                (field_from_json(key)?.1 == ColumnType::Utf8).then_some(())?;
+                ColumnType::map(field_from_json(value)?.1)
+            }
             _ => return None,
         })
     }
+}
+
+/// Split `s` at the commas outside any `<…>`, trimming each part; `None` for unbalanced
+/// brackets or an empty part.
+fn split_top(s: &str) -> Option<Vec<&str>> {
+    let (mut depth, mut start, mut parts) = (0i32, 0usize, Vec::new());
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(s[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+        if depth < 0 {
+            return None;
+        }
+    }
+    parts.push(s[start..].trim());
+    (depth == 0 && parts.iter().all(|p| !p.is_empty())).then_some(parts)
+}
+
+/// A struct field name a declaration spells: letters, digits and `_`, not starting with a digit.
+fn is_field_name(name: &str) -> bool {
+    name.chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// One field in Arrow JSON form, carrying the JSON extension on a JSON column at any depth.
+fn field_json(name: &str, ty: &ColumnType, nullable: bool) -> Value {
+    let mut f = json!({"name": name, "nullable": nullable, "type": ty.arrow_json(), "children": ty.arrow_children()});
+    if *ty == ColumnType::Json {
+        f["metadata"] = json!([{"key": EXTENSION_NAME, "value": JSON_EXTENSION}]);
+    }
+    f
+}
+
+/// The name, type and nullability one Arrow JSON field carries.
+fn field_from_json(f: &Value) -> Option<(String, ColumnType, bool)> {
+    let json_ext = f
+        .get("metadata")
+        .and_then(Value::as_array)
+        .is_some_and(|m| {
+            m.iter()
+                .any(|kv| kv.get("value").and_then(Value::as_str) == Some(JSON_EXTENSION))
+        });
+    Some((
+        f.get("name")?.as_str()?.to_string(),
+        ColumnType::from_arrow_json(f.get("type")?, f.get("children"), json_ext)?,
+        f.get("nullable")?.as_bool()?,
+    ))
 }
 
 /// Widest fixed width or dimension a declaration spells: Arrow carries it as a signed
@@ -224,16 +468,50 @@ pub fn decode_binary(text: &str) -> Option<Vec<u8>> {
 }
 
 /// The common supertype of two observed types, or `None` where the lattice holds none
-/// (`store.reconcile.lattice`).
-pub fn supertype(a: ColumnType, b: ColumnType) -> Option<ColumnType> {
+/// (`store.reconcile.lattice`, `store.reconcile.nested-lattice`).
+pub fn supertype(a: &ColumnType, b: &ColumnType) -> Option<ColumnType> {
+    reconcile_type(a, b, "").ok()
+}
+
+/// Where two types for one column meet no supertype: the path inside the column, and the
+/// stored and arriving types found there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeClash {
+    /// `` for the column itself; `.field`, `[]` for a list item and `{}` for a map value below it.
+    pub path: String,
+    pub stored: ColumnType,
+    pub arriving: ColumnType,
+}
+
+/// The supertype of `a` and `b` under the lattice, recursing into nested types: a struct
+/// gains the fields of either side, the stored side's first; a list item and a map value
+/// reconcile by the lattice; a kind change refuses at the path where it occurs.
+pub fn reconcile_type(a: &ColumnType, b: &ColumnType, path: &str) -> Result<ColumnType, TypeClash> {
     use ColumnType::*;
-    match (a, b) {
-        _ if a == b => Some(a),
-        (Null, t) | (t, Null) => Some(t),
-        (Int64, Float64) | (Float64, Int64) => Some(Float64),
-        (Json, Utf8) | (Utf8, Json) => Some(Json),
-        _ => None,
-    }
+    let clash = || TypeClash {
+        path: path.to_string(),
+        stored: a.clone(),
+        arriving: b.clone(),
+    };
+    Ok(match (a, b) {
+        _ if a == b => a.clone(),
+        (Null, t) | (t, Null) => t.clone(),
+        (Int64, Float64) | (Float64, Int64) => Float64,
+        (Json, Utf8) | (Utf8, Json) => Json,
+        (List(x), List(y)) => ColumnType::list(reconcile_type(x, y, &format!("{path}[]"))?),
+        (Map(x), Map(y)) => ColumnType::map(reconcile_type(x, y, &format!("{path}{{}}"))?),
+        (Struct(xs), Struct(ys)) => {
+            let mut fields = xs.clone();
+            for y in ys {
+                match fields.iter_mut().find(|f| f.name == y.name) {
+                    Some(f) => f.ty = reconcile_type(&f.ty, &y.ty, &format!("{path}.{}", y.name))?,
+                    None => fields.push(y.clone()),
+                }
+            }
+            Struct(fields)
+        }
+        _ => return Err(clash()),
+    })
 }
 
 /// One column of a table's schema.
@@ -277,12 +555,26 @@ impl Schema {
         for col in &arriving.columns {
             match merged.columns.iter_mut().find(|c| c.name == col.name) {
                 Some(stored) => {
-                    let sup = supertype(stored.ty, col.ty).ok_or_else(|| {
+                    let sup = reconcile_type(&stored.ty, &col.ty, "").map_err(|c| {
+                        let at = if c.path.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" at `{}{}`", col.name, c.path)
+                        };
                         StoreError::StoreSchemaIncompatible(format!(
-                            "column `{}` is stored as {} and arrives as {}",
+                            "column `{}` is stored as {} and arrives as {}{at}{}",
                             col.name,
                             stored.ty.name(),
-                            col.ty.name()
+                            col.ty.name(),
+                            if c.path.is_empty() {
+                                String::new()
+                            } else {
+                                format!(
+                                    ", stored there as {} and arriving as {}",
+                                    c.stored.name(),
+                                    c.arriving.name()
+                                )
+                            }
                         ))
                     })?;
                     if sup == ColumnType::Float64
@@ -301,7 +593,11 @@ impl Schema {
                 }
                 None => {
                     let nullable = col.nullable || !self.columns.is_empty();
-                    merged.columns.push(Column { name: col.name.clone(), ty: col.ty, nullable });
+                    merged.columns.push(Column {
+                        name: col.name.clone(),
+                        ty: col.ty.clone(),
+                        nullable,
+                    });
                 }
             }
         }
@@ -313,13 +609,7 @@ impl Schema {
         let fields: Vec<Value> = self
             .columns
             .iter()
-            .map(|c| {
-                let mut f = json!({"name": c.name, "nullable": c.nullable, "type": c.ty.arrow_json(), "children": c.ty.arrow_children()});
-                if c.ty == ColumnType::Json {
-                    f["metadata"] = json!([{"key": EXTENSION_NAME, "value": JSON_EXTENSION}]);
-                }
-                f
-            })
+            .map(|c| field_json(&c.name, &c.ty, c.nullable))
             .collect();
         json!({ "fields": fields })
     }
@@ -328,15 +618,8 @@ impl Schema {
     pub fn from_arrow_json(v: &Value) -> Option<Schema> {
         let mut columns = Vec::new();
         for f in v.get("fields")?.as_array()? {
-            let json_ext = f
-                .get("metadata")
-                .and_then(Value::as_array)
-                .is_some_and(|m| m.iter().any(|kv| kv.get("value").and_then(Value::as_str) == Some(JSON_EXTENSION)));
-            columns.push(Column {
-                name: f.get("name")?.as_str()?.to_string(),
-                nullable: f.get("nullable")?.as_bool()?,
-                ty: ColumnType::from_arrow_json(f.get("type")?, f.get("children"), json_ext)?,
-            });
+            let (name, ty, nullable) = field_from_json(f)?;
+            columns.push(Column { name, ty, nullable });
         }
         Some(Schema { columns })
     }

@@ -32,6 +32,10 @@ pub enum StoreError {
     /// A `primary_key` names a column neither declared nor injected. (`store.declare.key-unknown`)
     #[error("StoreKeyUnknownColumn: {0}")]
     StoreKeyUnknownColumn(String),
+    /// A struct, list or map column names a key, ordering, clustering, partition or
+    /// valid-time role. (`store.declare.nested-key`)
+    #[error("StoreNestedKeyColumn: {0}")]
+    StoreNestedKeyColumn(String),
     /// A primary-key column takes the float promotion. (`store.reconcile.key-widening`)
     #[error("StoreKeyWidened: {0}")]
     StoreKeyWidened(String),

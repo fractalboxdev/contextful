@@ -315,13 +315,13 @@ fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
 
 impl Mask {
     /// Whether a column of type `ty` admits this mask: a binary column takes `drop` or
-    /// `hash` over its bytes, a vector column `drop` alone, any other column every
-    /// strategy (`authority.mask.typed-strategy`).
-    pub fn admits(&self, ty: ColumnType) -> bool {
+    /// `hash` over its bytes, a vector or nested column `drop` alone, over the whole
+    /// column, and any other column every strategy (`authority.mask.typed-strategy`).
+    pub fn admits(&self, ty: &ColumnType) -> bool {
         match self.primary {
             Strategy::Drop => true,
-            Strategy::Hash => !ty.is_vector(),
-            _ => !ty.is_binary() && !ty.is_vector(),
+            Strategy::Hash => !ty.is_vector() && !ty.is_nested(),
+            _ => !ty.is_binary() && !ty.is_vector() && !ty.is_nested(),
         }
     }
 
@@ -347,10 +347,10 @@ impl Mask {
     /// it; `None` is SQL NULL. A binary input arrives as the padded base64 the row path
     /// carries, and `hash` digests its bytes. Every strategy yields exactly the value
     /// [`Mask::sql`] does.
-    pub fn apply(&self, pepper: &Pepper, value: Option<&str>, ty: ColumnType) -> Option<String> {
+    pub fn apply(&self, pepper: &Pepper, value: Option<&str>, ty: &ColumnType) -> Option<String> {
         let lower = |v: &str, n: u64| v.trim().parse::<f64>().ok().map(|v| ((v / n as f64).floor() * n as f64) as i64);
         let primary = match (self.primary, value) {
-            (Strategy::Drop, _) => return (ty == ColumnType::Utf8).then(String::new),
+            (Strategy::Drop, _) => return (*ty == ColumnType::Utf8).then(String::new),
             (_, None) => return None,
             (Strategy::Hash, Some(v)) if ty.is_binary() => pepper.digest_bytes(&decode_binary(v)?),
             (Strategy::Hash, Some(v)) => pepper.digest(v),
@@ -372,11 +372,11 @@ impl Mask {
     /// pepper-holding scalar functions, so no key material enters the relation text
     /// (`authority.mask.native-digest`). `drop` nulls the cell, or yields an empty string
     /// for a string column (`authority.mask.drop`).
-    pub fn sql(&self, column: &str, ty: ColumnType) -> String {
+    pub fn sql(&self, column: &str, ty: &ColumnType) -> String {
         let c = ident(column);
         let text = format!("CAST({c} AS VARCHAR)");
         let primary = match self.primary {
-            Strategy::Drop if ty == ColumnType::Utf8 => return "CAST('' AS VARCHAR)".to_string(),
+            Strategy::Drop if *ty == ColumnType::Utf8 => return "CAST('' AS VARCHAR)".to_string(),
             Strategy::Drop => return format!("CAST(NULL AS {})", ty.sql()),
             Strategy::Hash if ty.is_binary() => format!("{HASH_BYTES_FUNCTION}({c})"),
             Strategy::Hash => format!("{HASH_FUNCTION}({text})"),

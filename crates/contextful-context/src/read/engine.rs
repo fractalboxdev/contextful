@@ -421,9 +421,14 @@ pub fn cell(v: Engine) -> Cell {
                 .collect();
             match floats {
                 Some(v) => Cell::Vector(v),
-                None => Cell::Container(container_text(&Engine::Array(items))),
+                None => Cell::List(items.into_iter().map(cell).collect()),
             }
         }
+        // A list is an array of its item cells, a struct and a map objects of theirs
+        // (`read.respond.nested-values`).
+        Engine::List(items) => Cell::List(items.into_iter().map(cell).collect()),
+        Engine::Struct(fields) => Cell::Struct(fields.iter().map(|(k, v)| (k.clone(), cell(v.clone()))).collect()),
+        Engine::Map(entries) => Cell::Map(entries.iter().map(|(k, v)| (cell(k.clone()), cell(v.clone()))).collect()),
         other => Cell::Container(container_text(&other)),
     }
 }

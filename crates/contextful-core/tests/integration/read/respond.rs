@@ -4,8 +4,8 @@ use super::at;
 use contextful_core::read::respond::{Cell, Response, ROW_CEILING_OVERFETCH};
 use serde_json::{json, Value};
 
-/// SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; any other container is its text form.
-// spec: read.respond.cell-encoding@6cd6f84c
+/// SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; a union is its text form.
+// spec: read.respond.cell-encoding@96f082b6
 #[test]
 fn cells_encode_by_their_sql_type() {
     assert_eq!(Cell::Null.to_json(), Value::Null);
@@ -18,7 +18,13 @@ fn cells_encode_by_their_sql_type() {
     assert_eq!(Cell::Interval { months: 14, days: 3, nanos: 90_500_000_000 }.to_json(), json!("P14M3DT90.5S"));
     assert_eq!(Cell::Interval { months: 0, days: 0, nanos: 0 }.to_json(), json!("PT0S"));
     assert_eq!(Cell::Enum("shipped".into()).to_json(), json!("shipped"));
-    assert_eq!(Cell::Container("[1, 2]".into()).to_json(), json!("[1, 2]"));
+    assert_eq!(Cell::Container("1".into()).to_json(), json!("1"));
+    // A list, struct and map are arrays and objects of their own cells.
+    let nested = Cell::Struct(vec![
+        ("tags".into(), Cell::List(vec![Cell::Text("a".into()), Cell::Null])),
+        ("attrs".into(), Cell::Map(vec![(Cell::Text("k".into()), Cell::Float(f64::NAN)), (Cell::Integer { value: 7, bits: 64 }, Cell::Boolean(true))])),
+    ]);
+    assert_eq!(nested.to_json(), json!({"tags": ["a", null], "attrs": {"k": "NaN", "7": true}}));
     // Empty text and a false boolean are values, not nulls.
     assert_eq!(Cell::Text(String::new()).to_json(), json!(""));
     assert_eq!(Cell::Boolean(false).to_json(), json!(false));

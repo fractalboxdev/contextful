@@ -1,9 +1,15 @@
 //! Parquet files and the Arrow types behind a store schema.
 
 use crate::error::{ContextError, IoPath, Result};
-use arrow_array::{new_null_array, Array, ArrayRef, RecordBatch, StringArray};
-use arrow_schema::{DataType, Field, Schema as ArrowSchema, TimeUnit};
-use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema, EXTENSION_NAME, JSON_EXTENSION, VECTOR_ITEM};
+use arrow_array::cast::AsArray;
+use arrow_array::{
+    new_null_array, Array, ArrayRef, ListArray, MapArray, RecordBatch, StringArray, StructArray,
+};
+use arrow_schema::{DataType, Field, Fields, Schema as ArrowSchema, TimeUnit};
+use contextful_core::store::reconcile::{
+    Column, ColumnType, FloatItem, Schema, StructField, EXTENSION_NAME, JSON_EXTENSION, LIST_ITEM,
+    MAP_ENTRIES, MAP_KEY, MAP_VALUE, VECTOR_ITEM,
+};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
@@ -14,8 +20,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// The Arrow type a column lands as. A vector is a fixed-size list of non-null floats, so
-/// a half-float column keeps 2 bytes an element in storage.
-pub fn data_type(ty: ColumnType) -> DataType {
+/// a half-float column keeps 2 bytes an element in storage. A struct's fields, a list's
+/// item and a map's value are nullable; a map's keys are non-null text.
+pub fn data_type(ty: &ColumnType) -> DataType {
     match ty {
         ColumnType::Null => DataType::Null,
         ColumnType::Boolean => DataType::Boolean,
@@ -25,8 +32,44 @@ pub fn data_type(ty: ColumnType) -> DataType {
         ColumnType::Utf8 | ColumnType::Json => DataType::Utf8,
         ColumnType::Timestamp => DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into())),
         ColumnType::Binary => DataType::Binary,
-        ColumnType::FixedSizeBinary(n) => DataType::FixedSizeBinary(width(n)),
-        ColumnType::FixedSizeList(item, n) => DataType::FixedSizeList(Arc::new(Field::new(VECTOR_ITEM, data_type_of(item), false)), width(n)),
+        ColumnType::FixedSizeBinary(n) => DataType::FixedSizeBinary(width(*n)),
+        ColumnType::FixedSizeList(item, n) => DataType::FixedSizeList(
+            Arc::new(Field::new(VECTOR_ITEM, data_type_of(*item), false)),
+            width(*n),
+        ),
+        ColumnType::Struct(fields) => DataType::Struct(struct_fields(fields)),
+        ColumnType::List(item) => DataType::List(Arc::new(field_of(LIST_ITEM, item, true))),
+        ColumnType::Map(value) => DataType::Map(Arc::new(map_entries(value)), false),
+    }
+}
+
+/// The Arrow fields of a struct column.
+pub fn struct_fields(fields: &[StructField]) -> Fields {
+    fields
+        .iter()
+        .map(|f| field_of(&f.name, &f.ty, true))
+        .collect()
+}
+
+/// The entries field of a map column: non-null text keys beside nullable values.
+pub fn map_entries(value: &ColumnType) -> Field {
+    let entries = Fields::from(vec![
+        Field::new(MAP_KEY, DataType::Utf8, false),
+        field_of(MAP_VALUE, value, true),
+    ]);
+    Field::new(MAP_ENTRIES, DataType::Struct(entries), false)
+}
+
+/// One Arrow field, carrying the JSON extension on a JSON column at any depth.
+pub fn field_of(name: &str, ty: &ColumnType, nullable: bool) -> Field {
+    let f = Field::new(name, data_type(ty), nullable);
+    if *ty == ColumnType::Json {
+        f.with_metadata(HashMap::from([(
+            EXTENSION_NAME.to_string(),
+            JSON_EXTENSION.to_string(),
+        )]))
+    } else {
+        f
     }
 }
 
@@ -45,12 +88,7 @@ pub fn width(n: u32) -> i32 {
 }
 
 pub fn field(c: &Column) -> Field {
-    let f = Field::new(&c.name, data_type(c.ty), c.nullable);
-    if c.ty == ColumnType::Json {
-        f.with_metadata(HashMap::from([(EXTENSION_NAME.to_string(), JSON_EXTENSION.to_string())]))
-    } else {
-        f
-    }
+    field_of(&c.name, &c.ty, c.nullable)
 }
 
 pub fn arrow_schema(s: &Schema) -> Arc<ArrowSchema> {
@@ -201,6 +239,23 @@ fn column_type(f: &Field) -> Option<ColumnType> {
             };
             ColumnType::FixedSizeList(item, u32::try_from(*n).ok()?)
         }
+        DataType::Struct(fields) if !fields.is_empty() => ColumnType::Struct(
+            fields
+                .iter()
+                .map(|f| Some(StructField::new(f.name(), column_type(f)?)))
+                .collect::<Option<_>>()?,
+        ),
+        DataType::List(item) | DataType::LargeList(item) => ColumnType::list(column_type(item)?),
+        DataType::Map(entries, _) => {
+            let DataType::Struct(kv) = entries.data_type() else {
+                return None;
+            };
+            let [key, value] = kv.iter().collect::<Vec<_>>()[..] else {
+                return None;
+            };
+            (column_type(key)? == ColumnType::Utf8).then_some(())?;
+            ColumnType::map(column_type(value)?)
+        }
         _ => return None,
     })
 }
@@ -230,17 +285,88 @@ pub fn conform(batch: &RecordBatch, target: &Arc<ArrowSchema>) -> Result<RecordB
         )));
     }
     let rows = batch.num_rows();
+    let schema = batch.schema();
     let mut cols = Vec::with_capacity(target.fields().len());
     for f in target.fields() {
-        let col = match batch.column_by_name(f.name()) {
-            Some(c) if is_json(f) && !batch.schema().field_with_name(f.name()).is_ok_and(is_json) => encode_json(c)?,
-            Some(c) if c.data_type() == f.data_type() => c.clone(),
-            Some(c) => arrow_cast::cast(c, f.data_type()).map_err(|e| {
-                ContextError::Invalid(format!("column `{}` does not widen from {} to {}: {e}", f.name(), c.data_type(), f.data_type()))
-            })?,
+        let col = match schema
+            .field_with_name(f.name())
+            .ok()
+            .zip(batch.column_by_name(f.name()))
+        {
+            Some((source, c)) => conform_array(c, source, f)?,
             None => new_null_array(f.data_type(), rows),
         };
         cols.push(col);
     }
     RecordBatch::try_new(target.clone(), cols).map_err(|e| ContextError::Invalid(e.to_string()))
+}
+
+/// Conform one array from its `source` field to the `target` field: a text value promoted
+/// to JSON is encoded, a struct gains each field it predates as nulls, a list item and a
+/// map value conform in place, and any other difference is a widening cast.
+fn conform_array(c: &ArrayRef, source: &Field, target: &Field) -> Result<ArrayRef> {
+    let widen = |e: String| {
+        ContextError::Invalid(format!(
+            "column `{}` does not widen from {} to {}: {e}",
+            target.name(),
+            c.data_type(),
+            target.data_type()
+        ))
+    };
+    if is_json(target) && !is_json(source) {
+        return encode_json(c);
+    }
+    if c.data_type() == target.data_type() {
+        return Ok(c.clone());
+    }
+    Ok(match (source.data_type(), target.data_type()) {
+        (DataType::Null, to) => new_null_array(to, c.len()),
+        (DataType::Struct(from), DataType::Struct(to)) => {
+            let s = c.as_struct();
+            let children = to
+                .iter()
+                .map(|t| match from.iter().position(|f| f.name() == t.name()) {
+                    Some(i) => conform_array(s.column(i), &from[i], t),
+                    None => Ok(new_null_array(t.data_type(), c.len())),
+                })
+                .collect::<Result<Vec<_>>>()?;
+            if let Some(extra) = from
+                .iter()
+                .find(|f| !to.iter().any(|t| t.name() == f.name()))
+            {
+                return Err(widen(format!(
+                    "field `{}` is absent from the merged schema; conforming would drop it",
+                    extra.name()
+                )));
+            }
+            Arc::new(
+                StructArray::try_new(to.clone(), children, s.nulls().cloned())
+                    .map_err(|e| widen(e.to_string()))?,
+            )
+        }
+        (DataType::List(from), DataType::List(to)) => {
+            let l = c.as_list::<i32>();
+            let values = conform_array(l.values(), from, to)?;
+            Arc::new(
+                ListArray::try_new(to.clone(), l.offsets().clone(), values, l.nulls().cloned())
+                    .map_err(|e| widen(e.to_string()))?,
+            )
+        }
+        (DataType::Map(from, _), DataType::Map(to, sorted)) => {
+            let m = c.as_map();
+            let entries: ArrayRef = Arc::new(m.entries().clone());
+            let entries = conform_array(&entries, from, to)?;
+            Arc::new(
+                MapArray::try_new(
+                    to.clone(),
+                    m.offsets().clone(),
+                    entries.as_struct().clone(),
+                    m.nulls().cloned(),
+                    *sorted,
+                )
+                .map_err(|e| widen(e.to_string()))?,
+            )
+        }
+        (_, to) => arrow_cast::cast(c, to).map_err(|e| widen(e.to_string()))?,
+    })
 }

@@ -198,6 +198,9 @@ pub enum RunError {
     /// A read covering part of a multi-part input. (`run.land.partial-parse`)
     #[error("PipelinePartialParse: {0}")]
     PipelinePartialParse(String),
+    /// A normalize mode outside `native` and `relational`. (`run.normalize.mode-unknown`)
+    #[error("PipelineNormalizeModeUnknown: {0}")]
+    PipelineNormalizeModeUnknown(String),
     /// A chain operation emitting more rows than it consumed. (`run.transform.arity`)
     #[error("PipelineTransformArity: {0}")]
     PipelineTransformArity(String),

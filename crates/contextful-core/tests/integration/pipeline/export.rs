@@ -70,7 +70,7 @@ fn each_row_becomes_one_log_record_carrying_its_commit_position() {
         vec![json!("s1"), json!("1200"), json!(true), json!(0.5), json!("{\"a\":1}"), Value::Null, json!("2030-01-01T00:00:00.5Z"), json!("run-1"), json!("0"), json!("3"), json!("site")],
         vec![json!("s2"), json!("15"), json!(false), json!(1.0), Value::Null, json!("late"), json!("2030-01-01T00:00:01Z"), json!("run-2"), json!("4"), json!("9"), json!("site")],
     ];
-    let types: BTreeMap<String, ColumnType> = [("duration_ms", ColumnType::Int64), ("score", ColumnType::Float64)].iter().map(|(c, t)| (c.to_string(), *t)).collect();
+    let types: BTreeMap<String, ColumnType> = [("duration_ms", ColumnType::Int64), ("score", ColumnType::Float64)].iter().map(|(c, t)| (c.to_string(), t.clone())).collect();
     let (body, last) = log_records(e, &columns, &rows, &types).unwrap();
     assert_eq!(last, Some(ExportCursor { commit_seq: 9, row_seq: 4 }));
 

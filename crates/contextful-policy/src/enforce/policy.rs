@@ -172,9 +172,9 @@ impl TablePolicy {
             let Some(column) = schema.iter().find(|s| &s.name == name) else {
                 return Err(EnforceError::MaskOnAbsentColumn(format!("table `{table}` masks `{name}`, which its schema omits")));
             };
-            if !mask.admits(column.ty) {
+            if !mask.admits(&column.ty) {
                 return Err(EnforceError::StrategyOutsideType(format!(
-                    "table `{table}` masks `{name}`, a {} column, by `{}`; a binary column takes drop or hash, a vector column drop alone",
+                    "table `{table}` masks `{name}`, a {} column, by `{}`; a binary column takes drop or hash, a vector or nested column drop alone",
                     column.ty.name(),
                     mask.strategy_name()
                 )));

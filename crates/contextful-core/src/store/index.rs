@@ -525,7 +525,7 @@ impl TableDecl {
     fn check_indexes(&self, schema: &Schema, require: bool) -> Result<(), StoreError> {
         self.check_index_paths()?;
         let Some(id) = self.id_column()? else { return Ok(()) };
-        match schema.get(id).map(|c| c.ty) {
+        match schema.get(id).map(|c| &c.ty) {
             None if require => {
                 return Err(StoreError::StoreIndexColumnAbsent(format!(
                     "table `{}`: `id_column` `{id}` is no column of the table",
@@ -546,7 +546,7 @@ impl TableDecl {
                 IndexKind::Vector => "vector",
                 IndexKind::Fulltext => "full-text",
             };
-            match (idx.kind, schema.get(&idx.column).map(|c| c.ty)) {
+            match (idx.kind, schema.get(&idx.column).map(|c| &c.ty)) {
                 (_, None) if require => {
                     return Err(StoreError::StoreIndexColumnAbsent(format!(
                         "table `{}`: a {kind} sidecar indexes `{}`, which is no column of the table",
@@ -554,7 +554,7 @@ impl TableDecl {
                     )))
                 }
                 (_, None) => {}
-                (IndexKind::Vector, Some(ColumnType::FixedSizeList(_, n))) if n == idx.dim() => {}
+                (IndexKind::Vector, Some(ColumnType::FixedSizeList(_, n))) if *n == idx.dim() => {}
                 (IndexKind::Fulltext, Some(ColumnType::Utf8)) => {}
                 (IndexKind::Vector, Some(ty)) => {
                     return Err(StoreError::StoreIndexColumnType(format!(

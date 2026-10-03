@@ -1,6 +1,7 @@
 //! A table's rows as JSON objects, read off its current file list and projected to the
 //! columns a caller names. Bytes render as padded base64 and a fixed-size float vector as
-//! a number array (`read.respond.bytes-and-vectors`).
+//! a number array (`read.respond.bytes-and-vectors`); a list renders as an array, and a
+//! struct or a map as an object (`read.respond.nested-values`).
 
 use crate::error::{ContextError, Result};
 use crate::parquet_io;
@@ -82,6 +83,33 @@ fn cell(column: &str, array: &dyn Array, i: usize) -> Result<Value> {
             let v = array.as_fixed_size_list().value(i);
             Value::Array((0..v.len()).map(|j| cell(column, v.as_ref(), j)).collect::<Result<_>>()?)
         }
+        DataType::List(_) => {
+            let v = array.as_list::<i32>().value(i);
+            Value::Array((0..v.len()).map(|j| cell(column, v.as_ref(), j)).collect::<Result<_>>()?)
+        }
+        DataType::LargeList(_) => {
+            let v = array.as_list::<i64>().value(i);
+            Value::Array((0..v.len()).map(|j| cell(column, v.as_ref(), j)).collect::<Result<_>>()?)
+        }
+        DataType::Struct(fields) => {
+            let s = array.as_struct();
+            Value::Object(fields.iter().zip(s.columns()).map(|(f, c)| Ok((f.name().clone(), cell(column, c.as_ref(), i)?))).collect::<Result<_>>()?)
+        }
+        DataType::Map(..) => {
+            // An entry's key is non-null text, so each entry is one member of an object.
+            let entries = array.as_map().value(i);
+            let (keys, values) = (entries.column(0), entries.column(1));
+            let mut out = Map::new();
+            for j in 0..entries.len() {
+                let key = match cell(column, keys.as_ref(), j)? {
+                    Value::String(k) => k,
+                    other => other.to_string(),
+                };
+                out.insert(key, cell(column, values.as_ref(), j)?);
+            }
+            Value::Object(out)
+        }
+        DataType::Null => Value::Null,
         other => return Err(ContextError::ColumnType { column: column.to_string(), data_type: other.to_string() }),
     })
 }

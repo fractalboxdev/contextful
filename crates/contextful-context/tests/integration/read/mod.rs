@@ -8,6 +8,7 @@ mod extension;
 mod fulltext;
 mod guard;
 mod latency;
+mod nested;
 mod pin;
 mod pool;
 mod register;

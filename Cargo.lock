@@ -977,6 +977,7 @@ name = "contextful-context"
 version = "0.5.0"
 dependencies = [
  "arrow-array 57.3.1",
+ "arrow-buffer 57.3.1",
  "arrow-cast 57.3.1",
  "arrow-ord 57.3.1",
  "arrow-row 57.3.1",

@@ -1383,3 +1383,137 @@ fn a_resource_outside_the_residency_allow_set_serves_nothing() {
     }
     assert!(vendor.targets().is_empty(), "nothing served");
 }
+
+const SPANS: &str = r#"[
+  {"id": "s1", "resource": {"service": "api", "pod": {"name": "p-1"}}, "events": [{"name": "start", "attrs": {"k": "v"}}, {"name": "end", "attrs": {}}], "bounds": [1, 2.5], "payload": "plain"},
+  {"id": "s2", "resource": {"service": "db"}, "events": [], "bounds": null, "payload": {"k": 1}}
+]"#;
+
+/// The SQL types and values of the spans table's nested columns.
+fn nested_read(dir: &Path, table: &str) -> serde_json::Value {
+    let sql = format!(
+        "SELECT typeof(resource) AS r, typeof(events) AS e, typeof(bounds) AS b, typeof(payload) AS p, resource, events, bounds FROM \"{table}\" ORDER BY id"
+    );
+    serde_json::from_str(&ok(&cf(
+        dir,
+        &["query", "--json", "--project", "research", &sql],
+    )))
+    .unwrap()
+}
+
+/// On the store sink, `native` lands each undeclared column of objects and arrays as a struct or list column inferred over the batch; a column mixing kinds, or one `schema.json` holds as a scalar, lands as `Json`.
+// spec: run.normalize.native-store@6324658d
+#[test]
+fn a_native_pipeline_lands_nested_json_as_one_table_of_nested_columns() {
+    let vendor = Vendor::start(|_| (200, SPANS.to_string()));
+    let dir = project(&pipeline(
+        "otel",
+        &vendor.url("/v1/{table}"),
+        "",
+        "tables = [\"spans\"]",
+    ));
+    ok(&fire(dir.path(), "otel", "r1", "2030-01-01T00:00:00Z"));
+    // One table holds the nesting: no child table lands beside it.
+    let tables: Vec<String> =
+        std::fs::read_dir(dir.path().join(".contextful/context/research/tables"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .filter(|n| !n.starts_with('_') && !n.starts_with('.'))
+            .collect();
+    assert_eq!(tables, ["otel_spans"]);
+    let read = nested_read(dir.path(), "otel_spans");
+    let row = &read["rows"][0];
+    // A struct's fields follow the batch's key order.
+    assert_eq!(
+        row[0], "STRUCT(pod STRUCT(\"name\" VARCHAR), service VARCHAR)",
+        "{read}"
+    );
+    assert_eq!(
+        row[1], "STRUCT(attrs STRUCT(k VARCHAR), \"name\" VARCHAR)[]",
+        "{read}"
+    );
+    assert_eq!(row[2], "DOUBLE[]", "{read}");
+    // A column holding text beside an object keeps its JSON text, as an undeclared column always has.
+    assert_eq!(row[3], "VARCHAR", "{read}");
+    assert_eq!(
+        row[4],
+        serde_json::json!({"service": "api", "pod": {"name": "p-1"}})
+    );
+    assert_eq!(
+        row[5],
+        serde_json::json!([{"name": "start", "attrs": {"k": "v"}}, {"name": "end", "attrs": {"k": null}}])
+    );
+    assert_eq!(row[6], serde_json::json!([1.0, 2.5]));
+    assert_eq!(
+        read["rows"][1][4],
+        serde_json::json!({"service": "db", "pod": null})
+    );
+
+    // `relational` infers nothing on the store sink, so the same objects land as JSON text.
+    let vendor = Vendor::start(|_| (200, SPANS.to_string()));
+    let dir = project(&pipeline(
+        "otel",
+        &vendor.url("/v1/{table}"),
+        "normalize = \"relational\"",
+        "tables = [\"spans\"]",
+    ));
+    ok(&fire(dir.path(), "otel", "r1", "2030-01-01T00:00:00Z"));
+    let read = nested_read(dir.path(), "otel_spans");
+    assert_eq!(
+        read["rows"][0].as_array().unwrap()[..4],
+        ["VARCHAR", "VARCHAR", "VARCHAR", "VARCHAR"],
+        "{read}"
+    );
+    assert_eq!(
+        read["rows"][0][4],
+        serde_json::json!("{\"pod\":{\"name\":\"p-1\"},\"service\":\"api\"}")
+    );
+}
+
+/// Recursion stops at the declared `depth`, default 5 levels, landing a deeper subtree as one `Json` value.
+// spec: run.normalize.nesting-depth@3392c7de
+#[test]
+fn native_nesting_stops_at_the_declared_depth() {
+    let vendor = Vendor::start(|_| (200, SPANS.to_string()));
+    let dir = project(&pipeline(
+        "otel",
+        &vendor.url("/v1/{table}"),
+        "normalize = { mode = \"native\", depth = 1 }",
+        "tables = [\"spans\"]",
+    ));
+    ok(&fire(dir.path(), "otel", "r1", "2030-01-01T00:00:00Z"));
+    let read = nested_read(dir.path(), "otel_spans");
+    let row = &read["rows"][0];
+    assert_eq!(row[0], "STRUCT(pod VARCHAR, service VARCHAR)", "{read}");
+    assert_eq!(row[1], "VARCHAR[]", "{read}");
+    assert_eq!(
+        row[5][0],
+        serde_json::json!("{\"attrs\":{\"k\":\"v\"},\"name\":\"start\"}")
+    );
+    assert_eq!(
+        row[4],
+        serde_json::json!({"service": "api", "pod": "{\"name\":\"p-1\"}"})
+    );
+}
+
+/// A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings.
+// spec: run.normalize.mode-unknown@d2033711
+#[test]
+fn an_unknown_normalize_mode_is_refused_at_validation() {
+    let dir = project(&pipeline(
+        "otel",
+        "https://vendor.example/v1/{table}",
+        "normalize = \"flat\"",
+        "tables = [\"spans\"]",
+    ));
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(
+        err.contains("PipelineNormalizeModeUnknown")
+            && err.contains("`flat`")
+            && err.contains("`native`")
+            && err.contains("`relational`"),
+        "{err}"
+    );
+}

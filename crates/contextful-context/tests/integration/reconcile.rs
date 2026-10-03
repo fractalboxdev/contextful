@@ -149,8 +149,8 @@ fn the_first_batch_creates_the_table() {
 }
 
 #[cfg(feature = "read")]
-/// A fold backfills nulls and widens types; it narrows no type and drops no column.
-// spec: store.reconcile.fold-never-narrows@856e48d3
+/// A fold backfills nulls and widens types, a struct's fields included; it narrows no type and drops no column or field.
+// spec: store.reconcile.fold-never-narrows@993fbab4
 #[test]
 fn a_fold_backfills_and_widens() {
     let f = Fixture::new();
@@ -294,8 +294,8 @@ fn a_typed_batch_lands_bytes_from_base64_and_vectors_from_arrays() {
 }
 
 #[cfg(feature = "read")]
-/// A column `schema.json` holds as a binary or vector type lands a later undeclared JSON value in that type, so a run after the first needs no declaration.
-// spec: store.reconcile.stored-type@baad8450
+/// A column `schema.json` holds as a binary, vector or nested type lands a later undeclared JSON value in that type, so a run after the first needs no declaration.
+// spec: store.reconcile.stored-type@42866563
 #[test]
 fn a_stored_binary_or_vector_column_types_a_later_undeclared_batch() {
     let f = Fixture::new();
@@ -387,4 +387,142 @@ fn half_floats_store_at_half_width_and_read_as_float_arrays() {
     let bound = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2029-12-31T00:00:00Z").unwrap()), valid_as_of: None };
     let rel = f.scan(&d, bound).unwrap().relation;
     assert!(rel.contains("CAST(NULL AS FLOAT[3]) AS \"embedding\"") && rel.contains("CAST(NULL AS BLOB) AS \"digest\""), "{rel}");
+}
+
+fn events() -> ColumnType {
+    ColumnType::list(ColumnType::structure([
+        ("name", ColumnType::Utf8),
+        ("time", ColumnType::Timestamp),
+        ("attrs", ColumnType::map(ColumnType::Utf8)),
+    ]))
+}
+
+/// A producer or declaration types a column `struct<…>`, `list<…>` or `map<utf8, …>`; a JSON batch carries a struct and a map as an object and a list as an array, a struct key naming no field meeting {{store.reconcile.incompatible}}.
+// spec: store.reconcile.nested-landing@d9d6ef37
+#[test]
+fn a_typed_batch_lands_nested_values_and_refuses_a_kind_change_by_path() {
+    let f = Fixture::new();
+    let d = decl("name = \"spans\"");
+    let rows = json!([
+        {"id": "a", "events": [{"name": "start", "time": "2030-01-01T00:00:00Z", "attrs": {"k": "v"}}], "tags": ["x", "y"]},
+        {"id": "b", "events": null, "tags": []},
+    ]);
+    let types = [
+        ("events", events()),
+        ("tags", ColumnType::list(ColumnType::Utf8)),
+    ];
+    f.land_typed(&d, "run-1", rows, "2030-01-01T00:00:00Z", &types)
+        .unwrap();
+    let schema = f.store.schema("spans").unwrap();
+    assert_eq!(schema.get("events").unwrap().ty, events());
+    let read =
+        contextful_context::rows::table_rows(&f.store, &d, &["id", "events", "tags"]).unwrap();
+    let mut read: Vec<_> = read.into_iter().map(serde_json::Value::Object).collect();
+    read.sort_by_key(|r| r["id"].to_string());
+    assert_eq!(
+        read,
+        [
+            json!({"id": "a", "events": [{"name": "start", "time": "2030-01-01T00:00:00.000000000Z", "attrs": {"k": "v"}}], "tags": ["x", "y"]}),
+            json!({"id": "b", "events": null, "tags": []}),
+        ]
+    );
+
+    // A value outside the declared shape refuses before any Parquet: a scalar for a list, a
+    // key no field names, a list for a map, a mistyped item.
+    for (i, row) in [
+        json!({"id": "c", "tags": "x"}),
+        json!({"id": "c", "events": [{"name": "n", "colour": "red"}]}),
+        json!({"id": "c", "events": [{"attrs": ["k"]}]}),
+        json!({"id": "c", "events": [{"attrs": {"k": 1}}]}),
+        json!({"id": "c", "events": [{"time": "yesterday"}]}),
+        json!({"id": "c", "tags": [1]}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let run = format!("run-bad-{i}");
+        let err = f
+            .land_typed(
+                &d,
+                &run,
+                json!([row.clone()]),
+                "2030-01-01T00:01:00Z",
+                &types,
+            )
+            .unwrap_err();
+        assert!(
+            matches!(err.store(), Some(StoreError::StoreSchemaIncompatible(_))),
+            "{row}: {err}"
+        );
+        assert!(
+            !f.table_dir("spans")
+                .join("data/runs")
+                .join(&run)
+                .join("ingest-a/part-00000.parquet")
+                .exists(),
+            "{row}"
+        );
+    }
+
+    // `List<Int64>` landing on the `List<Utf8>` column refuses at the write, naming the path.
+    let err = f
+        .land_typed(
+            &d,
+            "run-2",
+            json!([{"id": "d", "tags": [1, 2]}]),
+            "2030-01-01T00:02:00Z",
+            &[("tags", ColumnType::list(ColumnType::Int64))],
+        )
+        .unwrap_err();
+    match err.store() {
+        Some(StoreError::StoreSchemaIncompatible(m)) => assert!(
+            m.contains("`tags[]`") && m.contains("List<Utf8>") && m.contains("List<Int64>"),
+            "{m}"
+        ),
+        other => panic!("expected StoreSchemaIncompatible, got {other:?}"),
+    }
+    assert!(!f.table_dir("spans").join("data/runs/run-2").exists());
+}
+
+/// A column `schema.json` holds as a binary, vector or nested type lands a later undeclared JSON value in that type, so a run after the first needs no declaration.
+#[test]
+fn a_stored_nested_column_types_a_later_undeclared_batch_and_a_declaration_spells_one() {
+    let f = Fixture::new();
+    let d = decl("name = \"spans\"\ncolumns = { events = \"list<struct<name: utf8, time: timestamp, attrs: map<utf8, utf8>>>\" }");
+    f.land(
+        &d,
+        "run-1",
+        json!([{"id": "a", "events": [{"name": "start"}]}]),
+        "2030-01-01T00:00:00Z",
+    )
+    .unwrap();
+    assert_eq!(
+        f.store.schema("spans").unwrap().get("events").unwrap().ty,
+        events()
+    );
+    // The undeclared table reads the stored type for a later batch.
+    let plain = decl("name = \"spans\"");
+    f.land(
+        &plain,
+        "run-2",
+        json!([{"id": "b", "events": [{"attrs": {"k": "v"}}]}]),
+        "2030-01-01T00:01:00Z",
+    )
+    .unwrap();
+    assert_eq!(
+        f.store.schema("spans").unwrap().get("events").unwrap().ty,
+        events()
+    );
+    // An undeclared column of objects in a table that never typed it lands as JSON text.
+    f.land(
+        &plain,
+        "run-3",
+        json!([{"id": "c", "payload": {"k": [1]}}]),
+        "2030-01-01T00:02:00Z",
+    )
+    .unwrap();
+    assert_eq!(
+        f.store.schema("spans").unwrap().get("payload").unwrap().ty,
+        ColumnType::Json
+    );
 }

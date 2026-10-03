@@ -185,7 +185,7 @@ fn a_digest_from_either_layer_joins_the_other() {
         &TableDecl::parse_pipeline(MANIFEST).unwrap().into_iter().find(|d| d.name == "research/contacts").unwrap(),
     )
     .unwrap();
-    let written = policy.columns["handle"].mask.as_ref().unwrap().apply(&pepper(), Some("h1"), contextful_core::store::reconcile::ColumnType::Utf8).unwrap();
+    let written = policy.columns["handle"].mask.as_ref().unwrap().apply(&pepper(), Some("h1"), &contextful_core::store::reconcile::ColumnType::Utf8).unwrap();
     let joined = contacts(&r, &s, &format!("WHERE handle IN (SELECT '{written}') ORDER BY contact_id"));
     assert_eq!(column(&joined, "contact_id"), [json!("c1"), json!("c2")]);
 }
@@ -211,7 +211,7 @@ fn a_mask_applies_primary_and_combine_together_in_both_layers() {
         &TableDecl::parse_pipeline(MANIFEST).unwrap().into_iter().find(|d| d.name == "research/contacts").unwrap(),
     )
     .unwrap();
-    let written = policy.columns["email"].mask.as_ref().unwrap().apply(&pepper(), Some("dana@acme.example"), contextful_core::store::reconcile::ColumnType::Utf8).unwrap();
+    let written = policy.columns["email"].mask.as_ref().unwrap().apply(&pepper(), Some("dana@acme.example"), &contextful_core::store::reconcile::ColumnType::Utf8).unwrap();
     assert_eq!(written.len(), 5);
     assert_eq!(queried, [json!(written)]);
     assert!(pepper().digest("dana@acme.example").starts_with(&written));
@@ -405,7 +405,7 @@ fn each_strategy_yields_one_value_in_both_layers() {
     let masked = r.query(&s, r#"SELECT * FROM "lab/masks" ORDER BY id"#).unwrap();
     for (i, source) in raw.iter().enumerate() {
         for (column, p) in &policy.columns {
-            let ty = schema.columns.iter().find(|c| &c.name == column).unwrap().ty;
+            let ty = &schema.columns.iter().find(|c| &c.name == column).unwrap().ty;
             let written = p.mask.as_ref().unwrap().apply(&pepper(), source[column].as_str(), ty);
             let queried = column_at(&masked, column, i);
             assert_eq!(queried, written.map_or(Value::Null, Value::String), "{column} row {i}");

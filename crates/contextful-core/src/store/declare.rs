@@ -278,9 +278,35 @@ impl TableDecl {
             .ok_or_else(|| DeclarationMalformed(format!("table `{}`: retain_runs `{s}` is not <n>d, <n>h, <n>m or <n>s", self.name)))
     }
 
+    /// Refuse a struct, list or map column, as the schema holds it or `columns` declares
+    /// it, in a key, ordering, clustering, partition or valid-time role
+    /// (`store.declare.nested-key`).
+    fn check_nested_roles(&self, schema: &Schema) -> Result<(), StoreError> {
+        let declared = self.column_types();
+        let mut roles: Vec<(&str, &str)> = self.primary_key().iter().map(|c| ("keys on", c.as_str())).collect();
+        roles.push(("orders by", self.order_by()));
+        roles.extend(self.cluster_by().iter().map(|c| ("clusters by", c.as_str())));
+        roles.extend(self.partition_by().iter().map(|c| ("partitions by", c.as_str())));
+        if let Some(vt) = &self.valid_time {
+            roles.extend(std::iter::once(&vt.from).chain(vt.to.as_ref()).map(|c| ("bounds valid time by", c.as_str())));
+        }
+        for (role, column) in roles {
+            let ty = schema.get(column).map(|c| &c.ty).or_else(|| declared.get(column));
+            if let Some(ty) = ty.filter(|t| t.is_nested()) {
+                return Err(StoreError::StoreNestedKeyColumn(format!(
+                    "table `{}` {role} `{column}`, typed {}; a struct, list or map column takes no key or ordering role",
+                    self.name,
+                    ty.name()
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// Hold the declaration to the table's reconciled schema, before any Parquet lands.
     pub fn validate(&self, schema: &Schema) -> Result<(), StoreError> {
         check_table_name(&self.name)?;
+        self.check_nested_roles(schema)?;
         let order_by = self.order_by();
         if !is_injected(order_by) && schema.get(order_by).is_none() {
             return Err(StoreError::StoreOrderByUnknownColumn(format!(

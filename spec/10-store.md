@@ -181,6 +181,8 @@ A table's declaration block: its key, ordering column and write mode, and what a
   *because an ordering column absent from every file reads as null and picks survivors arbitrarily*
 - `key-unknown` — A `primary_key` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` at validation, before the first batch.
   *because a key column absent from every file partitions every row into one group and collapses the table to a single row*
+- `nested-key` — A struct, list or map column named by `primary_key`, `order_by`, `cluster_by`, `partition_by` or `valid_time` raises `StoreNestedKeyColumn` at validation, before any Parquet.
+  *A-store*
 - `write-mode` — `write_mode` is `append`, the default, keeping the last write per key and retiring no key, or `replace`.
 - `replace-frontier` — Under `replace`, a read covers the newest run carrying the source's complete state plus every run committed after it.
 - `replace-retains` — A replacing run leaves the runs it displaced on disk until `retain_runs` passes, writes no erasure receipt and walks no lineage.
@@ -254,7 +256,11 @@ Schema evolution across a table's file set: the type lattice, additive columns, 
   *A-store*
 - `typed-landing` — A producer declares these types; a JSON batch carries bytes as padded base64 and a vector as a number array of its dimension, and any other value meets {{store.reconcile.incompatible}}.
   *A-store*
-- `stored-type` — A column `schema.json` holds as a binary or vector type lands a later undeclared JSON value in that type, so a run after the first needs no declaration.
+- `nested-lattice` — A struct gains fields additively, a file without a field reading it as null; list items and map values reconcile by {{store.reconcile.lattice}}; a kind change, scalar against nested or list against map, meets {{store.reconcile.incompatible}} naming the column path.
+  *A-store*
+- `nested-landing` — A producer or declaration types a column `struct<…>`, `list<…>` or `map<utf8, …>`; a JSON batch carries a struct and a map as an object and a list as an array, a struct key naming no field meeting {{store.reconcile.incompatible}}.
+  *A-store*
+- `stored-type` — A column `schema.json` holds as a binary, vector or nested type lands a later undeclared JSON value in that type, so a run after the first needs no declaration.
   *A-store*
 - `half-width` — A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.
   *A-store*
@@ -263,7 +269,7 @@ Schema evolution across a table's file set: the type lattice, additive columns, 
 - `additive` — An unseen column joins the merged schema, and files written before it read it as null.
 - `no-invented-column` — A scan invents no column: an ordering column absent from every file enters through a zero-row branch, and a column added after a table's first rows projects as a literal null.
 - `first-sight` — A destination creates a table on the first schema it sees and merges each later schema into `schema.json`.
-- `fold-never-narrows` — A fold backfills nulls and widens types; it narrows no type and drops no column.
+- `fold-never-narrows` — A fold backfills nulls and widens types, a struct's fields included; it narrows no type and drops no column or field.
 - `no-history` — Reconciliation keeps the current shape alone; a past widening is attributed from the run files.
 - `reserved-set-versioned` — Adding an injected column advances the semantics version, whose fingerprint recipe names the column.
 

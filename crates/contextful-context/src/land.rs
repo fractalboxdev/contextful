@@ -9,10 +9,11 @@ use arrow_array::builder::{
     BinaryBuilder, BooleanBuilder, FixedSizeBinaryBuilder, FixedSizeListBuilder, Float16Builder, Float32Builder, Float64Builder,
     Int32Builder, Int64Builder, StringBuilder, TimestampNanosecondBuilder,
 };
-use arrow_array::{ArrayRef, NullArray, RecordBatch};
+use arrow_array::{ArrayRef, ListArray, MapArray, NullArray, RecordBatch, StringArray, StructArray};
+use arrow_buffer::{NullBuffer, OffsetBuffer};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
-use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, VECTOR_ITEM};
+use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, LIST_ITEM, VECTOR_ITEM};
 use contextful_core::store::reserve::{
     optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, COMMIT_SEQ, INGESTED_AT, ROW_SEQ, TAINT,
     RUN_ID, SITE_ID,
@@ -82,7 +83,7 @@ fn rows_schema<'a>(rows: impl Iterator<Item = &'a Map<String, Value>>, types: &H
                     if types.contains_key(name) {
                         continue;
                     }
-                    c.ty = supertype(c.ty, seen).ok_or_else(|| {
+                    c.ty = supertype(&c.ty, &seen).ok_or_else(|| {
                         StoreError::StoreSchemaIncompatible(format!(
                             "column `{name}` arrives as {} and as {} in one batch",
                             c.ty.name(),
@@ -91,7 +92,7 @@ fn rows_schema<'a>(rows: impl Iterator<Item = &'a Map<String, Value>>, types: &H
                     })?;
                 }
                 None => {
-                    let ty = types.get(name).copied().unwrap_or(seen);
+                    let ty = types.get(name).cloned().unwrap_or(seen);
                     columns.push(Column::new(name.clone(), ty, true));
                 }
             }
@@ -101,16 +102,22 @@ fn rows_schema<'a>(rows: impl Iterator<Item = &'a Map<String, Value>>, types: &H
 }
 
 fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
+    let vals: Vec<Option<&Value>> = rows.iter().map(|r| r.get(&c.name)).collect();
+    typed_array(&c.name, &c.ty, &vals)
+}
+
+/// One array of type `ty` from JSON values, a null or absent value as null. `path` names
+/// the column and, inside a nested one, the place a refusal points at.
+fn typed_array(path: &str, ty: &ColumnType, values: &[Option<&Value>]) -> Result<ArrayRef> {
     let bad = |v: &Value| {
         ContextError::Store(StoreError::StoreSchemaIncompatible(format!(
-            "column `{}` is {} and a value arrives as {v}",
-            c.name,
-            c.ty.name()
+            "column `{path}` is {} and a value arrives as {v}",
+            ty.name()
         )))
     };
-    let vals = rows.iter().map(|r| r.get(&c.name).filter(|v| !v.is_null()));
-    Ok(match c.ty {
-        ColumnType::Null => Arc::new(NullArray::new(rows.len())),
+    let vals = values.iter().map(|v| v.filter(|v| !v.is_null()));
+    Ok(match ty {
+        ColumnType::Null => Arc::new(NullArray::new(values.len())),
         ColumnType::Boolean => {
             let mut b = BooleanBuilder::new();
             for v in vals {
@@ -175,6 +182,7 @@ fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
             Arc::new(b.finish())
         }
         ColumnType::FixedSizeBinary(n) => {
+            let n = *n;
             let mut b = FixedSizeBinaryBuilder::new(parquet_io::width(n));
             for v in vals {
                 match v {
@@ -188,6 +196,7 @@ fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
             Arc::new(b.finish())
         }
         ColumnType::FixedSizeList(item, n) => {
+            let (item, n) = (*item, *n);
             // Each element is a JSON number and the array holds exactly the dimension.
             let elements = |v: &Value| -> Result<Vec<f64>> {
                 let a = v.as_array().filter(|a| a.len() == n as usize).ok_or_else(|| bad(v))?;
@@ -228,6 +237,114 @@ fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
                     Arc::new(b.finish())
                 }
             }
+        }
+        ColumnType::Struct(fields) => {
+            // An object's fields fill the struct; a field it omits is null, and a key no
+            // field names refuses rather than vanishing.
+            let mut nulls = Vec::with_capacity(values.len());
+            for v in vals.clone() {
+                match v {
+                    None => nulls.push(false),
+                    Some(Value::Object(o))
+                        if o.keys().all(|k| fields.iter().any(|f| &f.name == k)) =>
+                    {
+                        nulls.push(true)
+                    }
+                    Some(v) => return Err(bad(v)),
+                }
+            }
+            let children = fields
+                .iter()
+                .map(|f| {
+                    let child: Vec<Option<&Value>> = vals
+                        .clone()
+                        .map(|v| v.and_then(|o| o.get(&f.name)))
+                        .collect();
+                    typed_array(&format!("{path}.{}", f.name), &f.ty, &child)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let array = StructArray::try_new(
+                parquet_io::struct_fields(fields),
+                children,
+                Some(NullBuffer::from(nulls)),
+            )
+            .map_err(|e| ContextError::Invalid(format!("column `{path}`: {e}")))?;
+            Arc::new(array)
+        }
+        ColumnType::List(item) => {
+            let (mut lengths, mut nulls, mut items) = (
+                Vec::with_capacity(values.len()),
+                Vec::with_capacity(values.len()),
+                Vec::new(),
+            );
+            for v in vals {
+                match v {
+                    None => {
+                        lengths.push(0);
+                        nulls.push(false);
+                    }
+                    Some(Value::Array(a)) => {
+                        lengths.push(a.len());
+                        nulls.push(true);
+                        items.extend(a.iter().map(Some));
+                    }
+                    Some(v) => return Err(bad(v)),
+                }
+            }
+            let values = typed_array(&format!("{path}[]"), item, &items)?;
+            let field = Arc::new(parquet_io::field_of(LIST_ITEM, item, true));
+            let array = ListArray::try_new(
+                field,
+                OffsetBuffer::from_lengths(lengths),
+                values,
+                Some(NullBuffer::from(nulls)),
+            )
+            .map_err(|e| ContextError::Invalid(format!("column `{path}`: {e}")))?;
+            Arc::new(array)
+        }
+        ColumnType::Map(value) => {
+            let (mut lengths, mut nulls, mut keys, mut items) = (
+                Vec::with_capacity(values.len()),
+                Vec::with_capacity(values.len()),
+                Vec::new(),
+                Vec::new(),
+            );
+            for v in vals {
+                match v {
+                    None => {
+                        lengths.push(0);
+                        nulls.push(false);
+                    }
+                    Some(Value::Object(o)) => {
+                        lengths.push(o.len());
+                        nulls.push(true);
+                        for (k, v) in o {
+                            keys.push(k.as_str());
+                            items.push(Some(v));
+                        }
+                    }
+                    Some(v) => return Err(bad(v)),
+                }
+            }
+            let entries = parquet_io::map_entries(value);
+            let arrow_schema::DataType::Struct(kv) = entries.data_type() else {
+                unreachable!("map entries are a struct")
+            };
+            let children: Vec<ArrayRef> = vec![
+                Arc::new(StringArray::from(keys)),
+                typed_array(&format!("{path}{{}}"), value, &items)?,
+            ];
+            let entries_array = StructArray::try_new(kv.clone(), children, None)
+                .map_err(|e| ContextError::Invalid(format!("column `{path}`: {e}")))?;
+            let array = MapArray::try_new(
+                Arc::new(entries),
+                OffsetBuffer::from_lengths(lengths),
+                entries_array,
+                Some(NullBuffer::from(nulls)),
+                false,
+            )
+            .map_err(|e| ContextError::Invalid(format!("column `{path}`: {e}")))?;
+            Arc::new(array)
         }
     })
 }
@@ -452,16 +569,16 @@ fn read_staged_schema(stage_dir: &Path) -> Result<Option<Schema>> {
 }
 
 /// A column's type comes from the producer, then the declaration
-/// (`store.declare.column-types`), then a binary or vector type `schema.json` already
-/// holds (`store.reconcile.stored-type`); a JSON value alone carries none of these.
+/// (`store.declare.column-types`), then a binary, vector or nested type `schema.json`
+/// already holds (`store.reconcile.stored-type`); a JSON value alone carries none of these.
 fn column_types(store: &Store, decl: &TableDecl, batches: &[Batch]) -> Result<HashMap<String, ColumnType>> {
     let mut types: HashMap<String, ColumnType> = HashMap::new();
     if let Some(stored) = store.try_schema(&decl.name)? {
-        types.extend(stored.columns.iter().filter(|c| c.ty.is_binary() || c.ty.is_vector()).map(|c| (c.name.clone(), c.ty)));
+        types.extend(stored.columns.into_iter().filter(|c| c.ty.is_binary() || c.ty.is_vector() || c.ty.is_nested()).map(|c| (c.name, c.ty)));
     }
     types.extend(decl.column_types());
     for b in batches {
-        types.extend(b.types.iter().map(|(k, v)| (k.clone(), *v)));
+        types.extend(b.types.iter().map(|(k, v)| (k.clone(), v.clone())));
     }
     Ok(types)
 }

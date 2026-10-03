@@ -132,7 +132,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let decls = TableDecl::parse_pipeline(&text).with_context(|| l.declaration.display().to_string())?;
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
-            let mut dest = StoreDestination { store, decls, node, author: None };
+            let mut dest = StoreDestination { store, decls, node, author: None, normalize: None };
             let engine = &w.engine;
             let mut land = |emitted: &Emitted| -> Result<Landed, Failure> {
                 if let Some(table) = emitted.keys().find(|t| !driven.tables.contains(t)) {

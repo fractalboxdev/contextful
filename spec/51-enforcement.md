@@ -192,7 +192,7 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
   *A-authority*
 - `verbatim-quote` — One citation releases at most 280 chars of a `summarize_only` value verbatim, on every surface.
   *A-authority*
-- `typed-strategy` — A binary column masks by `drop` or by `hash` over its bytes, a vector column by `drop` alone; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.
+- `typed-strategy` — A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.
   *A-store*
 - `absent-column` — A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.
   *because a skipped declaration serves reads under a policy its author believed covered a column*
