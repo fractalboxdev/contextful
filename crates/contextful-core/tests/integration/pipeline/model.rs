@@ -35,6 +35,15 @@ fn model(text: &str) -> ModelSpec {
     models(text).unwrap().remove(0)
 }
 
+#[test]
+fn a_model_reads_its_disclosure_declaration() {
+    let m = model(&model_doc("[model.disclosure]\ngrouping_allowlist = [\"industry\"]\ncontributor_key = \"tenant_id\"\nmin_group_size = 3\n[model.disclosure.metric_bounds]\nrevenue = { lower = 0, upper = 100, quantum = 1 }\n"));
+    let policy = m.disclosure.unwrap();
+    assert_eq!(policy.grouping_allowlist, ["industry"]);
+    assert_eq!(policy.min_group_size, Some(3));
+    assert_eq!(policy.metric_bounds["revenue"].quantum, 1.0);
+}
+
 fn section(build: &str, version: &str, fingerprint: &str, built: &str) -> PublishSection {
     PublishSection {
         contract_version: version.into(),

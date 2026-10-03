@@ -14,6 +14,8 @@ mod build;
 #[cfg(feature = "data-plane")]
 mod context;
 #[cfg(feature = "data-plane")]
+mod disclosure;
+#[cfg(feature = "data-plane")]
 mod derive;
 mod differential;
 #[cfg(feature = "data-plane")]

@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
-| `disclosure` | 3 | 16 | 132 | 66 | 13 | 3 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
-| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
-| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
-| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
+| `disclosure` | 3 | 16 | 132 | 66 | 13 | 5 | 55 | 0 | 55 |
+| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
+| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 259 |
+| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
+| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1966 | 571 | 188 | 129 | 1335 | 0 | |
+| **total** | 19 | 154 | 1966 | 571 | 188 | 131 | 1336 | 0 | |
 
 Decision records: 18.
 
@@ -38,7 +38,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
-| 13 — Disclosure | 5 | 31 | 4 | open | open |
+| 13 — Disclosure | 5 | 31 | 5 | open | open |
 | 14 — Assurance | 7 | 130 | 83 | passing | closed |
 
 Unscheduled operations: 10.
@@ -672,6 +672,7 @@ Unscheduled operations: 10.
 | `disclosure.suppress.contributor-share` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::contributor_share` | performed |
 | `disclosure.suppress.dominance-unverifiable` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::dominance_unverifiable` | performed |
 | `disclosure.suppress.empty-policy` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::empty_policy` | performed |
+| `disclosure.suppress.grouping-allowlist` | `crates/contextful-cli/tests/integration/disclosure.rs::check_rejects_empty_grouping_allowlist` | performed |
 | `disclosure.suppress.min-group-size` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::min_group_size` | performed |
 | `read.cache.budget` | `crates/contextful-context/tests/integration/read/result_cache.rs::filling_past_the_budget_evicts_the_least_recently_used` | performed |
 | `read.cache.cache-is-opt-in` | `crates/contextful-context/tests/integration/read/result_cache.rs::only_opted_in_tables_that_are_not_private_cache_and_entries_expire` | performed |

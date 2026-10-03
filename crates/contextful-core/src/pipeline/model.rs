@@ -144,6 +144,8 @@ pub struct ModelSpec {
     pub id: String,
     pub sql: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disclosure: Option<DisclosureDecl>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub materialized: Option<Materialized>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unique_key: Option<Vec<String>>,
@@ -155,6 +157,35 @@ pub struct ModelSpec {
     pub freshness: Option<FreshnessDecl>,
     #[serde(default, rename = "test", skip_serializing_if = "Vec::is_empty")]
     pub tests: Vec<ModelTest>,
+}
+
+/// The local policy declaration a published model carries (`disclosure.release.model-policy`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DisclosureDecl {
+    #[serde(default)]
+    pub grouping_allowlist: Vec<String>,
+    pub contributor_key: String,
+    #[serde(default)]
+    pub min_group_size: Option<u64>,
+    #[serde(default)]
+    pub max_contributor_share: Option<f64>,
+    #[serde(default)]
+    pub emit_sentinel: bool,
+    #[serde(default)]
+    pub figures: Option<String>,
+    #[serde(default)]
+    pub forbidden_columns: Vec<String>,
+    #[serde(default)]
+    pub metric_bounds: BTreeMap<String, MetricBounds>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricBounds {
+    pub lower: f64,
+    pub upper: f64,
+    pub quantum: f64,
 }
 
 impl ModelSpec {

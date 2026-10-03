@@ -53,6 +53,9 @@ impl VisibilityError {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DisclosureError {
+    /// A grouping allowlist is empty or contains a non-column name. (`disclosure.suppress.grouping-allowlist`)
+    #[error("DisclosureGroupingAllowlistEmpty: {0}")]
+    GroupingAllowlistEmpty(String),
     /// A group under a share constraint arrived without per-contributor masses. (`disclosure.suppress.dominance-unverifiable`)
     #[error("DisclosureDominanceUnverifiable: {0}")]
     DominanceUnverifiable(String),
@@ -71,6 +74,7 @@ impl DisclosureError {
     /// The error identifier.
     pub fn identifier(&self) -> &'static str {
         match self {
+            DisclosureError::GroupingAllowlistEmpty(_) => "DisclosureGroupingAllowlistEmpty",
             DisclosureError::DominanceUnverifiable(_) => "DisclosureDominanceUnverifiable",
             DisclosureError::MinGroupSizeBelowFloor(_) => "DisclosureMinGroupSizeBelowFloor",
             DisclosureError::PolicySuppressesNothing(_) => "DisclosurePolicySuppressesNothing",
