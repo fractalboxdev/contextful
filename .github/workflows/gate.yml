@@ -66,7 +66,7 @@ jobs:
               "repo": "${{ github.repository }}",
               "sha": "${{ github.event.pull_request.head.sha }}",
               "checkLabel": "${{ matrix.stage }}",
-              "command": "cargo run --locked -q -p contextful-ci -- gate --predecessors --stage ${{ matrix.stage }} --base ${{ github.event.pull_request.base.sha }}",
+              "command": "timeout --kill-after=10s 1650s cargo run --locked -q -p contextful-ci -- gate --predecessors --stage ${{ matrix.stage }} --base ${{ github.event.pull_request.base.sha }}",
               "failOnNonZeroExit": true,
               "timeoutSec": 1800
             }
