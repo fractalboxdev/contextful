@@ -54,6 +54,8 @@ The two deployment settings a derived result is computed in, the offline diagnos
 
 The ordered statistics release, the write-time disclosure policy, and the per-unit budget reservation.
 
+- `model-policy` — A published {{run.model.model-block}} declares its disclosure policy in `[model.disclosure]`; `metric_bounds` names each noised sum's lower bound, upper bound and quantum.
+  *A-disclosure*
 - `release-verb` — `contextful disclosure release <model> --project <project>` builds the named model from its declared statement, applies its disclosure policy, and publishes one derived table.
   *A-disclosure*
 - `budget-reservation` — Before computing, a release reserves each contributing unit's declared per-run spend against its lifetime cap in one catalog transaction. A failed reservation raises `DisclosureUnitBudgetExhausted`, and the release publishes nothing.
@@ -135,7 +137,7 @@ The line between a per-person table and a cohort table, and the floor a cohort r
 A disclosure policy on a governed model:
 
 ```toml
-[pipeline.models.revenue_by_industry.disclosure]
+[model.disclosure]
 grouping_allowlist    = ["industry", "region", "quarter"]
 contributor_key       = "tenant_id"
 min_group_size        = 5
@@ -144,7 +146,7 @@ emit_sentinel         = true
 figures               = "noised"   # the default; "exact" only on a cohort table
 forbidden_columns     = ["tenant_id", "subject_id", "account_email"]
 
-[pipeline.models.revenue_by_industry.disclosure.metric_bounds]
+[model.disclosure.metric_bounds]
 revenue = { lower = 0, upper = 1000000, quantum = 1 }
 ```
 
