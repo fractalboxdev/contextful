@@ -2,6 +2,7 @@
 //! credentials, and the pull a run, a pipeline or either tool server takes before it reads.
 
 mod run_state;
+mod node_id;
 mod s3;
 mod without_s3;
 
