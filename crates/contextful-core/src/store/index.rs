@@ -291,6 +291,130 @@ pub struct VectorEntry {
     pub key_version: u32,
 }
 
+/// One entry of a snapshot manifest's `indexes`: a built sidecar of a kind this build
+/// reads, or an entry it does not recognise, kept byte for byte so a newer writer's sidecar
+/// neither refuses the manifest nor vanishes from it on a rewrite.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IndexEntry {
+    Vector(VectorEntry),
+    Fulltext(FulltextEntry),
+    Unrecognized(UnrecognizedEntry),
+}
+
+/// An `indexes` entry this build does not read: its text as the manifest held it, written
+/// back verbatim, and its fields parsed for the probes that name a kind, path or column.
+#[derive(Debug, Clone)]
+pub struct UnrecognizedEntry {
+    raw: Box<serde_json::value::RawValue>,
+    fields: serde_json::Value,
+}
+
+impl UnrecognizedEntry {
+    /// The entry the JSON text `json` spells, kept as written.
+    pub fn parse(json: &str) -> serde_json::Result<UnrecognizedEntry> {
+        let raw = serde_json::value::RawValue::from_string(json.to_string())?;
+        let fields = serde_json::from_str(raw.get())?;
+        Ok(UnrecognizedEntry { raw, fields })
+    }
+
+    /// The field `key`, when the entry is an object carrying it.
+    pub fn get(&self, key: &str) -> Option<&serde_json::Value> {
+        self.fields.get(key)
+    }
+
+    /// The entry's text, byte for byte as read.
+    pub fn as_str(&self) -> &str {
+        self.raw.get()
+    }
+}
+
+impl PartialEq for UnrecognizedEntry {
+    fn eq(&self, other: &UnrecognizedEntry) -> bool {
+        self.raw.get() == other.raw.get()
+    }
+}
+
+impl Eq for UnrecognizedEntry {}
+
+impl std::fmt::Display for UnrecognizedEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.raw.get())
+    }
+}
+
+impl IndexEntry {
+    /// The kind of a recognised entry.
+    pub fn kind(&self) -> Option<IndexKind> {
+        match self {
+            IndexEntry::Vector(_) => Some(IndexKind::Vector),
+            IndexEntry::Fulltext(_) => Some(IndexKind::Fulltext),
+            IndexEntry::Unrecognized(_) => None,
+        }
+    }
+
+    /// The `kind` string the entry carries, recognised or not.
+    pub fn kind_name(&self) -> Option<&str> {
+        match self {
+            IndexEntry::Vector(_) => Some("vector"),
+            IndexEntry::Fulltext(_) => Some("fulltext"),
+            IndexEntry::Unrecognized(v) => v.get("kind").and_then(serde_json::Value::as_str),
+        }
+    }
+
+    /// The sidecar directory, relative to the snapshot directory.
+    pub fn path(&self) -> Option<&str> {
+        match self {
+            IndexEntry::Vector(e) => Some(&e.path),
+            IndexEntry::Fulltext(e) => Some(&e.path),
+            IndexEntry::Unrecognized(v) => v.get("path").and_then(serde_json::Value::as_str),
+        }
+    }
+
+    /// The indexed column.
+    pub fn column(&self) -> Option<&str> {
+        match self {
+            IndexEntry::Vector(e) => Some(&e.column),
+            IndexEntry::Fulltext(e) => Some(&e.column),
+            IndexEntry::Unrecognized(v) => v.get("column").and_then(serde_json::Value::as_str),
+        }
+    }
+}
+
+impl From<VectorEntry> for IndexEntry {
+    fn from(e: VectorEntry) -> IndexEntry {
+        IndexEntry::Vector(e)
+    }
+}
+
+impl From<FulltextEntry> for IndexEntry {
+    fn from(e: FulltextEntry) -> IndexEntry {
+        IndexEntry::Fulltext(e)
+    }
+}
+
+impl Serialize for IndexEntry {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            IndexEntry::Vector(e) => e.serialize(s),
+            IndexEntry::Fulltext(e) => e.serialize(s),
+            IndexEntry::Unrecognized(v) => v.raw.serialize(s),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for IndexEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = Box::<serde_json::value::RawValue>::deserialize(d)?;
+        let fields: serde_json::Value = serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
+        let typed = match fields.get("kind").and_then(serde_json::Value::as_str) {
+            Some("vector") => serde_json::from_value(fields.clone()).ok().map(IndexEntry::Vector),
+            Some("fulltext") => serde_json::from_value(fields.clone()).ok().map(IndexEntry::Fulltext),
+            _ => None,
+        };
+        Ok(typed.unwrap_or(IndexEntry::Unrecognized(UnrecognizedEntry { raw, fields })))
+    }
+}
+
 impl VectorEntry {
     /// The bytes of stored vectors the graph holds, the figure the read path's size cap
     /// compares (`read.retrieve.sidecar-size-cap`).

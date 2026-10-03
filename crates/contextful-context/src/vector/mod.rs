@@ -20,7 +20,7 @@ use contextful_core::read::rank::sidecar_over_cap;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::encrypt::FileCipher;
 use contextful_core::store::index::{
-    IndexDecl, IndexKind, VectorEntry, EMBEDDING_MODEL_COLUMN, VECTOR_BUILDER, VECTOR_BUILDER_VERSION,
+    IndexDecl, IndexEntry, IndexKind, VectorEntry, EMBEDDING_MODEL_COLUMN, VECTOR_BUILDER, VECTOR_BUILDER_VERSION,
 };
 use contextful_core::store::lay_out::{SnapshotId, MANIFEST_FILE};
 use contextful_core::store::StoreError;
@@ -231,8 +231,9 @@ impl VectorSidecar {
     /// Open the sidecar a snapshot manifest's `entry` records, under `snapshot_dir`. Every
     /// precondition failure is a [`Fallback`], never an error: the sidecar accelerates a
     /// read and decides none.
-    pub fn open(snapshot_dir: &Path, table: &str, entry: &serde_json::Value, sealing: &Sealing<'_>) -> std::result::Result<VectorSidecar, Fallback> {
-        let entry: VectorEntry = serde_json::from_value(entry.clone()).map_err(|_| Fallback::ManifestMismatch)?;
+    pub fn open(snapshot_dir: &Path, table: &str, entry: &IndexEntry, sealing: &Sealing<'_>) -> std::result::Result<VectorSidecar, Fallback> {
+        let IndexEntry::Vector(entry) = entry else { return Err(Fallback::ManifestMismatch) };
+        let entry = entry.clone();
         if entry.table != table || entry.builder != VECTOR_BUILDER || entry.builder_version != VECTOR_BUILDER_VERSION {
             return Err(Fallback::ManifestMismatch);
         }
@@ -308,21 +309,25 @@ impl VectorSidecar {
 
 /// The snapshot directory and manifest entry of `table`'s current sidecar over `column`
 /// at `dim`, or why there is none.
-pub fn current_entry(store: &crate::Store, table: &str, column: &str, dim: usize) -> std::result::Result<(std::path::PathBuf, serde_json::Value), Fallback> {
+pub fn current_entry(store: &crate::Store, table: &str, column: &str, dim: usize) -> std::result::Result<(std::path::PathBuf, IndexEntry), Fallback> {
     let (chain, _) = store.chain(table).map_err(|_| Fallback::Unreadable)?;
     let snapshot = chain.first().ok_or(Fallback::NoSnapshot)?;
     let dir = store.snapshot_dir(table, &snapshot.snapshot_id).map_err(|_| Fallback::Unreadable)?;
-    let entries: Vec<&serde_json::Value> = snapshot
+    let entries: Vec<&IndexEntry> = snapshot
         .indexes
         .iter()
-        .filter(|e| e.get("kind").and_then(|k| k.as_str()) == Some("vector") && e.get("column").and_then(|c| c.as_str()) == Some(column))
+        .filter(|e| e.kind_name() == Some("vector") && e.column() == Some(column))
         .collect();
     if entries.is_empty() {
         return Err(Fallback::NoSidecar);
     }
     entries
         .into_iter()
-        .find(|e| e.get("dim").and_then(|d| d.as_u64()) == Some(dim as u64))
+        .find(|e| match e {
+            IndexEntry::Vector(v) => v.dim as usize == dim,
+            IndexEntry::Unrecognized(v) => v.get("dim").and_then(|d| d.as_u64()) == Some(dim as u64),
+            IndexEntry::Fulltext(_) => false,
+        })
         .map(|e| (dir, e.clone()))
         .ok_or(Fallback::DimensionMismatch)
 }

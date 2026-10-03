@@ -16,7 +16,7 @@ use arrow_array::{Array, RecordBatch, StringArray};
 use contextful_core::read::rank::{bm25_idf, bm25_term, fulltext_sealed_over_cap};
 use contextful_core::read::tokens::PLURAL_SUFFIX_FLOOR;
 use contextful_core::store::declare::TableDecl;
-use contextful_core::store::index::{FulltextEntry, IndexDecl, IndexKind, FULLTEXT_BUILDER, FULLTEXT_BUILDER_VERSION};
+use contextful_core::store::index::{FulltextEntry, IndexDecl, IndexEntry, IndexKind, FULLTEXT_BUILDER, FULLTEXT_BUILDER_VERSION};
 use contextful_core::store::lay_out::{SnapshotId, MANIFEST_FILE};
 use contextful_core::store::StoreError;
 use sha2::{Digest, Sha256};
@@ -113,8 +113,9 @@ impl FulltextSidecar {
     /// Open the sidecar a snapshot manifest's `entry` records, under `snapshot_dir`. Every
     /// precondition failure is a [`Fallback`], never an error: the sidecar accelerates a
     /// read and decides none.
-    pub fn open(snapshot_dir: &Path, table: &str, entry: &serde_json::Value, sealing: &Sealing<'_>) -> std::result::Result<FulltextSidecar, Fallback> {
-        let entry: FulltextEntry = serde_json::from_value(entry.clone()).map_err(|_| Fallback::ManifestMismatch)?;
+    pub fn open(snapshot_dir: &Path, table: &str, entry: &IndexEntry, sealing: &Sealing<'_>) -> std::result::Result<FulltextSidecar, Fallback> {
+        let IndexEntry::Fulltext(entry) = entry else { return Err(Fallback::ManifestMismatch) };
+        let entry = entry.clone();
         if entry.table != table
             || entry.kind != IndexKind::Fulltext
             || entry.builder != FULLTEXT_BUILDER
@@ -269,12 +270,11 @@ impl FulltextSidecar {
 
 /// The snapshot directory and full-text manifest entries of `table`'s current snapshot, or
 /// why there is none.
-pub fn current_entries(store: &crate::Store, table: &str) -> std::result::Result<(PathBuf, String, Vec<serde_json::Value>), Fallback> {
+pub fn current_entries(store: &crate::Store, table: &str) -> std::result::Result<(PathBuf, String, Vec<IndexEntry>), Fallback> {
     let (chain, _) = store.chain(table).map_err(|_| Fallback::Unreadable)?;
     let snapshot = chain.first().ok_or(Fallback::NoSnapshot)?;
     let dir = store.snapshot_dir(table, &snapshot.snapshot_id).map_err(|_| Fallback::Unreadable)?;
-    let entries: Vec<serde_json::Value> =
-        snapshot.indexes.iter().filter(|e| e.get("kind").and_then(|k| k.as_str()) == Some("fulltext")).cloned().collect();
+    let entries: Vec<IndexEntry> = snapshot.indexes.iter().filter(|e| e.kind_name() == Some("fulltext")).cloned().collect();
     if entries.is_empty() {
         return Err(Fallback::NoSidecar);
     }

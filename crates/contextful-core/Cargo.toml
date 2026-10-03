@@ -14,7 +14,7 @@ base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 # The decision module parses a case with the same float reader native and on
 # `wasm32-unknown-unknown`, where no other package unifies the feature in.
-serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_json = { version = "1", features = ["float_roundtrip", "raw_value"] }
 serde_path_to_error = "0.1"
 sha2 = "0.10"
 thiserror = "2"

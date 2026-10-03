@@ -171,7 +171,7 @@ fn a_snapshot_missing_a_file_it_names_is_not_published() {
 
     // A declared sidecar absent from the directory refuses the same way.
     let mut st2 = staged(&f, &d, "2030-01-01T02:00:00Z");
-    st2.manifest.indexes.push(json!({"kind": "full-text", "column": "e", "path": "indexes/fts-e", "key_version": 0}));
+    st2.manifest.indexes.push(contextful_core::store::index::IndexEntry::Unrecognized(contextful_core::store::index::UnrecognizedEntry::parse(&json!({"kind": "full-text", "column": "e", "path": "indexes/fts-e", "key_version": 0}).to_string()).unwrap()));
     let err = commit(&f.store, st2).unwrap_err();
     assert!(matches!(err.store(), Some(StoreError::StorePartialSnapshot(_))), "{err}");
     assert!(f.store.pointer("events").unwrap().is_none());

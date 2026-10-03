@@ -12,7 +12,7 @@ use arrow_select::filter::filter_record_batch;
 use arrow_select::take::take_record_batch;
 use contextful_core::store::declare::{TableDecl, WriteMode};
 use contextful_core::store::fold::FoldOutcome;
-use contextful_core::store::index::IndexKind;
+use contextful_core::store::index::{IndexEntry, IndexKind};
 pub use contextful_core::store::lay_out::escape;
 use contextful_core::store::lay_out::{
     part_name, PartEntry, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, STAGING_SUFFIX,
@@ -160,10 +160,10 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     let mut indexes = Vec::new();
     for index in decl.indexes() {
         let entry = match index.kind {
-            IndexKind::Vector => serde_json::to_value(crate::vector::build(&staging, &snapshot_id, &rows, decl, index, &store.sealing())?),
-            IndexKind::Fulltext => serde_json::to_value(crate::fulltext::build(&staging, &snapshot_id, &rows, decl, index, &store.sealing())?),
+            IndexKind::Vector => IndexEntry::Vector(crate::vector::build(&staging, &snapshot_id, &rows, decl, index, &store.sealing())?),
+            IndexKind::Fulltext => IndexEntry::Fulltext(crate::fulltext::build(&staging, &snapshot_id, &rows, decl, index, &store.sealing())?),
         };
-        indexes.push(entry.expect("an entry serializes"));
+        indexes.push(entry);
     }
     let mut parts = Vec::new();
     if rows.num_rows() > 0 {
@@ -210,7 +210,7 @@ pub const CLAIM_ATTEMPTS: usize = 64;
 /// A pass removes no directory it did not create, so two passes computing one id each
 /// stage under their own, and the pointer decides which publishes.
 pub(crate) fn claim(store: &Store, table: &str, first: SnapshotId, now: Instant) -> Result<(SnapshotId, PathBuf, FileLock)> {
-    let snapshots = store.table_dir(table)?.join("data").join("snapshots");
+    let snapshots = store.table_dir(table)?.join(contextful_core::store::lay_out::SNAPSHOTS_DIR);
     fs::create_dir_all(&snapshots).at(&snapshots)?;
     let mut id = first.clone();
     for _ in 0..CLAIM_ATTEMPTS {
@@ -251,7 +251,7 @@ pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
         }
     }
     for idx in &staged.manifest.indexes {
-        let path = idx.get("path").and_then(|p| p.as_str()).unwrap_or_default();
+        let path = idx.path().unwrap_or_default();
         if path.is_empty() || !staged.staging.join(path).exists() {
             return Err(StoreError::StorePartialSnapshot(format!(
                 "table `{table}`: snapshot {} declares a sidecar absent from its directory; nothing was published",
@@ -300,7 +300,7 @@ pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
 fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest], held: &BTreeSet<String>) -> Result<()> {
     let Some(current) = chain.first() else { return Ok(()) };
     let reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
-    let snapshots = store.table_dir(table)?.join("data").join("snapshots");
+    let snapshots = store.table_dir(table)?.join(contextful_core::store::lay_out::SNAPSHOTS_DIR);
     for dir in crate::store::sorted_dirs(&snapshots)? {
         let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         if reachable.contains(&name) || held.contains(&name) {
@@ -338,7 +338,7 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
     let (chain, _) = store.chain(table)?;
     collect_unreachable(store, table, &chain, held)?;
     let runs: BTreeMap<String, RunManifest> = store.committed_runs(table)?.into_iter().map(|r| (r.key(), r)).collect();
-    let runs_dir = store.table_dir(table)?.join("data").join("runs");
+    let runs_dir = store.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
     for pair in chain.windows(2) {
         let (successor, superseded) = (&pair[0], &pair[1]);
         if successor.created_at <= cutoff && !held.contains(&superseded.snapshot_id.to_string()) {
@@ -450,5 +450,5 @@ fn partition(b: &RecordBatch, by: &[String]) -> std::result::Result<Vec<(String,
 
 /// The staging directory for a snapshot id, for callers that inspect a pass in flight.
 pub fn staging_dir(store: &Store, table: &str, id: &SnapshotId) -> Result<PathBuf> {
-    Ok(store.table_dir(table)?.join("data").join("snapshots").join(format!("{id}{STAGING_SUFFIX}")))
+    Ok(store.table_dir(table)?.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(format!("{id}{STAGING_SUFFIX}")))
 }

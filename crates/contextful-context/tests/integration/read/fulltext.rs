@@ -152,7 +152,7 @@ fn a_read_without_its_full_text_sidecar_ranks_the_window_unchanged() {
     let fresh = text_reads("");
     let fs_ = fresh.session(&["lab/*"], None, None);
     let (chain, _) = fresh.store.chain("lab/text").unwrap();
-    let dir = fresh.store.snapshot_dir("lab/text", &chain[0].snapshot_id).unwrap().join(chain[0].indexes[0]["path"].as_str().unwrap());
+    let dir = fresh.store.snapshot_dir("lab/text", &chain[0].snapshot_id).unwrap().join(chain[0].indexes[0].path().unwrap());
     let own = dir.join("_manifest.json");
     let original = std::fs::read_to_string(&own).unwrap();
     std::fs::write(&own, original.replace("\"tokenizer\": \"cjk\"", "\"tokenizer\": \"unicode\"")).unwrap();

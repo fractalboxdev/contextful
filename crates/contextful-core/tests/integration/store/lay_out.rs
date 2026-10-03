@@ -5,6 +5,7 @@ use contextful_core::store::lay_out::{
     part_name, resolve_node_id, store_root, NodeId, NodeIdSource, Pointer, RunManifest, SnapshotId, SnapshotManifest,
     NODE_ID_MAX_LEN, SNAPSHOT_ANCESTORS_MAX, SNAPSHOT_ID_WIDTH,
 };
+use contextful_core::store::index::IndexEntry;
 use contextful_core::store::StoreError;
 
 /// A snapshot id is `snapshot-` followed by a nanosecond value zero-padded to 20 chars, equal to the greater of the commit instant and the previous id plus one.
@@ -41,13 +42,21 @@ fn a_part_name_pads_its_ordinal_to_five_digits() {
 }
 
 /// A project's store sits at `.contextful/context/<project>/`, holding both catalogs, `config.toml`, `cursors/` and one `tables/<t>/` directory per table.
+// spec: store.lay-out.store-root@4ddea405
 #[test]
 fn the_store_root_sits_under_the_project() {
+    use contextful_core::store::catalog::{DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE};
+    use contextful_core::store::lay_out::{commit_log_dir, TableLayout, CONFIG_FILE};
     assert_eq!(store_root("research"), ".contextful/context/research");
+    // Every entry sits directly under the root, each table in its own directory.
+    assert_eq!((DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE, CONFIG_FILE), ("derived.sqlite", "machine.sqlite", "config.toml"));
+    assert!(commit_log_dir("filings-sync", "ingest-a").starts_with("cursors/"));
+    assert_eq!(TableLayout::new("filings").dir(), "tables/filings");
+    assert_ne!(TableLayout::new("filings").dir(), TableLayout::new("issuers").dir());
 }
 
-/// A snapshot's `_manifest.json` carries `{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence, commit_seq?}`, and each entry of `parts` and `indexes` carries its `key_version`.
-// spec: store.lay-out.snapshot-manifest@96d83aac
+/// A snapshot's `_manifest.json` holds a `lay_out::SnapshotManifest`, and each entry of `parts` and `indexes` carries its `key_version`.
+// spec: store.lay-out.snapshot-manifest@cffbf3df
 #[test]
 fn the_snapshot_manifest_and_pointer_decode_in_their_documented_shape() {
     let snap: SnapshotManifest = serde_json::from_str(
@@ -57,13 +66,18 @@ fn the_snapshot_manifest_and_pointer_decode_in_their_documented_shape() {
   "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
   "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12, "commit_seq": 41,
   "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
-  "indexes": [{ "kind": "vector", "column": "embedding", "model": "e5-small", "dim": 384,
-                "metric": "cosine", "m": 16, "ef_construction": 200, "key_version": 3 }] }"#,
+  "indexes": [{ "kind": "vector", "path": "indexes/vec-embedding-e5-small/zone=all", "table": "filings",
+                "snapshot_id": "snapshot-01742054400000000000", "column": "embedding", "id_column": "passage_id",
+                "model": "e5-small", "dim": 384, "metric": "cosine", "m": 16, "ef_construction": 200,
+                "builder": "contextful-hnsw", "builder_version": 1, "row_count": 128400, "key_version": 3 }] }"#,
     )
     .unwrap();
     assert_eq!(snap.includes_runs.len(), 3);
     assert_eq!(snap.parts[0].key_version, 3);
-    assert_eq!(snap.indexes[0]["key_version"], 3);
+    match &snap.indexes[0] {
+        IndexEntry::Vector(e) => assert_eq!(e.key_version, 3),
+        other => panic!("a vector entry reads as {other:?}"),
+    }
     assert_eq!(snap.valid_time.as_ref().unwrap().to.as_deref(), Some("effective_to"));
     assert_eq!(snap.fence, Some(12));
     assert_eq!(snap.commit_seq, Some(41));

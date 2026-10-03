@@ -86,8 +86,8 @@ pub(crate) fn store_state(store: &Store, tables: &[String], granted: &[String]) 
         field(&mut h, t.as_bytes());
         content(&mut h, &dir.join(contextful_core::store::lay_out::SCHEMA_FILE));
         content(&mut h, &dir.join(contextful_core::store::lay_out::POINTER_FILE));
-        tree(&mut h, &dir.join("data").join("runs"), 2)?;
-        tree(&mut h, &dir.join("data").join("snapshots"), 1)?;
+        tree(&mut h, &dir.join(contextful_core::store::lay_out::RUNS_DIR), 2)?;
+        tree(&mut h, &dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR), 1)?;
         for f in crate::ledger::files(store, t)? {
             stamp(&mut h, &f);
         }

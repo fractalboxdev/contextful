@@ -239,7 +239,7 @@ fn battery(table: &str) -> RetrieveRequest {
 fn sidecar_dirs(r: &Reads, table: &str) -> (std::path::PathBuf, std::path::PathBuf) {
     let (chain, _) = r.store.chain(table).unwrap();
     let dir = r.store.snapshot_dir(table, &chain[0].snapshot_id).unwrap();
-    let path = chain[0].indexes[0]["path"].as_str().unwrap().to_string();
+    let path = chain[0].indexes[0].path().unwrap().to_string();
     (dir.clone(), dir.join(path))
 }
 

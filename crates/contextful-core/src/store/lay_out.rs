@@ -24,9 +24,84 @@ pub const POINTER_FILE: &str = "_pointer.json";
 pub const SCHEMA_FILE: &str = "schema.json";
 pub const STAGING_SUFFIX: &str = ".staging";
 
+pub const CONFIG_FILE: &str = "config.toml";
+pub const TABLES_DIR: &str = "tables";
+pub const CURSORS_DIR: &str = "cursors";
+pub const RUNS_DIR: &str = "data/runs";
+pub const SNAPSHOTS_DIR: &str = "data/snapshots";
+pub const REQUESTS_DIR: &str = "requests";
+
 /// A project's store root, relative to the project directory (`store.lay-out.store-root`).
 pub fn store_root(project: &str) -> String {
     format!(".contextful/context/{project}")
+}
+
+/// A leased pipeline's commit-log directory for one node, relative to the store root.
+pub fn commit_log_dir(pipeline_id: &str, node_id: &str) -> String {
+    format!("{CURSORS_DIR}/{pipeline_id}/{node_id}")
+}
+
+/// The paths of one table's directory, relative to the store root
+/// (`store.lay-out.table-directory`). It renders names as given; a caller holds each to
+/// [`is_path_segment`] before it reaches a filesystem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TableLayout<'a> {
+    table: &'a str,
+}
+
+impl<'a> TableLayout<'a> {
+    pub fn new(table: &'a str) -> TableLayout<'a> {
+        TableLayout { table }
+    }
+
+    /// `tables/<t>`.
+    pub fn dir(&self) -> String {
+        format!("{TABLES_DIR}/{}", self.table)
+    }
+
+    pub fn schema(&self) -> String {
+        format!("{}/{SCHEMA_FILE}", self.dir())
+    }
+
+    pub fn pointer(&self) -> String {
+        format!("{}/{POINTER_FILE}", self.dir())
+    }
+
+    /// `data/runs`, under which each run commits per node.
+    pub fn runs(&self) -> String {
+        format!("{}/{RUNS_DIR}", self.dir())
+    }
+
+    /// A run's node directory, `data/runs/<run-id>/<node-id>` (`store.lay-out.node-segment`).
+    pub fn run(&self, run_id: &str, node_id: &str) -> String {
+        format!("{}/{run_id}/{node_id}", self.runs())
+    }
+
+    pub fn run_manifest(&self, run_id: &str, node_id: &str) -> String {
+        format!("{}/{MANIFEST_FILE}", self.run(run_id, node_id))
+    }
+
+    pub fn snapshots(&self) -> String {
+        format!("{}/{SNAPSHOTS_DIR}", self.dir())
+    }
+
+    pub fn snapshot(&self, id: impl std::fmt::Display) -> String {
+        format!("{}/{id}", self.snapshots())
+    }
+
+    pub fn snapshot_manifest(&self, id: impl std::fmt::Display) -> String {
+        format!("{}/{MANIFEST_FILE}", self.snapshot(id))
+    }
+
+    /// Where a fold in flight writes, beside the id it publishes (`store.lay-out.staging`).
+    pub fn staging(&self, id: impl std::fmt::Display) -> String {
+        format!("{}/{id}{STAGING_SUFFIX}", self.snapshots())
+    }
+
+    /// The request-ledger directory (`store.reserve.ledger-path`).
+    pub fn requests(&self) -> String {
+        format!("{}/{REQUESTS_DIR}", self.dir())
+    }
 }
 
 /// Percent-escape every byte outside `[A-Za-z0-9._-]`, rendering a value as one path segment.
@@ -162,7 +237,7 @@ pub struct SnapshotManifest {
     #[serde(default)]
     pub parts: Vec<PartEntry>,
     #[serde(default)]
-    pub indexes: Vec<Value>,
+    pub indexes: Vec<super::index::IndexEntry>,
     #[serde(default)]
     pub fence: Option<u64>,
     /// The highest `_commit_seq` its included runs and its parent record

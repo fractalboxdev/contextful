@@ -159,7 +159,7 @@ fn a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone() {
     let plain = tempfile::tempdir().unwrap();
     let entry = build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap();
     assert_eq!(entry.key_version, 0);
-    let entry = serde_json::to_value(entry).unwrap();
+    let entry = contextful_core::store::index::IndexEntry::from(entry);
     let mapped = VectorSidecar::open(plain.path(), "passages", &entry, &Sealing::Plaintext).unwrap();
     assert!(mapped.is_mapped());
     assert_eq!(mapped.probe(&query, 1).unwrap()[0].id, canary);
@@ -171,7 +171,7 @@ fn a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone() {
     let sealed = tempfile::tempdir().unwrap();
     let entry = build(sealed.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(&cipher)).unwrap();
     assert_eq!(entry.key_version, 7);
-    let entry = serde_json::to_value(entry).unwrap();
+    let entry = contextful_core::store::index::IndexEntry::from(entry);
     let files = tree(sealed.path());
     assert_eq!(files.len(), 2, "{files:?}");
     for (path, bytes) in &files {
@@ -190,7 +190,7 @@ fn a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone() {
     assert_eq!(VectorSidecar::open(sealed.path(), "passages", &entry, &Sealing::Plaintext).err(), Some(Fallback::Unreadable));
     let other = TestCipher { key: 0x11 };
     assert_eq!(VectorSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&other)).err(), Some(Fallback::Unreadable));
-    let plain_entry = serde_json::to_value(build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap()).unwrap();
+    let plain_entry = contextful_core::store::index::IndexEntry::from(build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap());
     assert_eq!(VectorSidecar::open(plain.path(), "passages", &plain_entry, &Sealing::Sealed(&cipher)).err(), Some(Fallback::Unreadable));
 }
 
@@ -228,7 +228,7 @@ fn a_sealed_full_text_sidecar_opens_into_memory_alone() {
     let query = vec!["zephyrine".to_string()];
 
     let plain = tempfile::tempdir().unwrap();
-    let entry = serde_json::to_value(build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap()).unwrap();
+    let entry = contextful_core::store::index::IndexEntry::from(build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap());
     let mapped = FulltextSidecar::open(plain.path(), "passages", &entry, &Sealing::Plaintext).unwrap();
     assert!(mapped.is_mapped());
     assert_eq!(mapped.probe(&query, 1).unwrap().candidates[0].id, canary);
@@ -237,7 +237,7 @@ fn a_sealed_full_text_sidecar_opens_into_memory_alone() {
     let sealed = tempfile::tempdir().unwrap();
     let built = build(sealed.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(&cipher)).unwrap();
     assert_eq!(built.key_version, 7);
-    let entry = serde_json::to_value(built).unwrap();
+    let entry = contextful_core::store::index::IndexEntry::from(built);
     let files = tree(sealed.path());
     assert_eq!(files.len(), 2, "{files:?}");
     for (path, bytes) in &files {
@@ -272,7 +272,7 @@ fn a_sealed_full_text_sidecar_past_256_mib_stays_unopened() {
     let sealed = tempfile::tempdir().unwrap();
     let built = build(sealed.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(&cipher)).unwrap();
     let file = sealed.path().join(&built.path).join(POSTINGS_FILE);
-    let entry = serde_json::to_value(built).unwrap();
+    let entry = contextful_core::store::index::IndexEntry::from(built);
     assert!(FulltextSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&cipher)).is_ok());
     // A sparse file one byte past the cap: its size alone decides, and no byte is read.
     std::fs::OpenOptions::new().write(true).open(&file).unwrap().set_len(FULLTEXT_SEALED_CAP_BYTES + 1).unwrap();
@@ -280,6 +280,6 @@ fn a_sealed_full_text_sidecar_past_256_mib_stays_unopened() {
     // A plaintext sidecar is mapped, never decrypted, and takes no such cap.
     let plain = tempfile::tempdir().unwrap();
     let built = build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap();
-    let entry = serde_json::to_value(built).unwrap();
+    let entry = contextful_core::store::index::IndexEntry::from(built);
     assert!(FulltextSidecar::open(plain.path(), "passages", &entry, &Sealing::Plaintext).is_ok());
 }

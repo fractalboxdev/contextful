@@ -1046,7 +1046,7 @@ impl Syncer {
 
 /// The first part of `snapshot` absent under `table_dir`, or `None` when it is whole.
 fn missing_parts(table_dir: &Path, snapshot: &str) -> Result<Option<String>> {
-    let dir = table_dir.join("data").join("snapshots").join(snapshot);
+    let dir = table_dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(snapshot);
     let manifest_path = dir.join(MANIFEST_FILE);
     let Ok(text) = std::fs::read_to_string(&manifest_path) else { return Ok(Some(MANIFEST_FILE.to_string())) };
     let m: SnapshotManifest = serde_json::from_str(&text).map_err(|e| SyncError::Context(ContextError::Invalid(format!("{}: {e}", manifest_path.display()))))?;

@@ -19,7 +19,7 @@ use contextful_core::read::rank::{
 use contextful_core::read::respond::{Cell, Response};
 use contextful_core::read::tokens::{content_tokens, lexical_score, passes_floor, relevance_floor};
 use contextful_core::store::bound_time::Bounds;
-use contextful_core::store::index::IndexKind;
+use contextful_core::store::index::{IndexEntry, IndexKind};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::relation::ident;
 use contextful_core::store::reserve::{AUTHORED_BY, INGESTED_AT, ROW_SEQ, RUN_ID};
@@ -489,7 +489,8 @@ impl Face {
     /// the table, since it sees none of the restriction (`read.retrieve.sidecar-oversampling`).
     pub fn sidecar_candidates(&self, session: &Session, table: &str, query: &[f32], limit: u64) -> Result<(String, Vec<String>), Fallback> {
         let (dir, entry) = vector::current_entry(&self.store, table, EMBEDDING_COLUMN, query.len())?;
-        let id_column = entry.get("id_column").and_then(|c| c.as_str()).ok_or(Fallback::ManifestMismatch)?.to_string();
+        let IndexEntry::Vector(vector) = &entry else { return Err(Fallback::ManifestMismatch) };
+        let id_column = vector.id_column.clone();
         let policy = session.policy(table);
         if let Some(p) = policy {
             let withheld = |c: &str| p.columns.get(c).is_some_and(|c| c.mask.is_some()) || !p.column_set(c).admits(session.zone());
@@ -522,16 +523,15 @@ impl Face {
         let mut seen = std::collections::HashSet::new();
         for entry in &entries {
             let probed = (|| -> Result<(String, Vec<String>), Fallback> {
-                let field = |k: &str| entry.get(k).and_then(|v| v.as_str()).ok_or(Fallback::ManifestMismatch);
-                let (id, column, path) = (field("id_column")?, field("column")?, field("path")?);
-                let key_version = entry.get("key_version").and_then(|v| v.as_u64()).ok_or(Fallback::ManifestMismatch)?;
+                let IndexEntry::Fulltext(e) = entry else { return Err(Fallback::ManifestMismatch) };
+                let (id, column, path, key_version) = (e.id_column.as_str(), e.column.as_str(), e.path.as_str(), e.key_version);
                 if let Some(p) = policy {
                     let withheld = |c: &str| p.columns.get(c).is_some_and(|c| c.mask.is_some()) || !p.column_set(c).admits(session.zone());
                     if withheld(id) || withheld(column) || p.columns.get(column).is_some_and(|c| c.class.is_some()) {
                         return Err(Fallback::Withheld);
                     }
                 }
-                let key = fulltext::fingerprint(table, &snapshot_id, path, u32::try_from(key_version).unwrap_or(u32::MAX));
+                let key = fulltext::fingerprint(table, &snapshot_id, path, key_version);
                 let sidecar = self.fulltext.get_or_open(&key, || FulltextSidecar::open(&dir, table, entry, &self.store.sealing()))?;
                 Ok((id.to_string(), sidecar.probe(tokens, k)?.candidates.into_iter().map(|c| c.id).collect()))
             })();

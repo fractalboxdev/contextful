@@ -432,7 +432,7 @@ struct RunSite {
 fn run_dir(store: &Store, table: &str, node: &NodeId, run_id: &str) -> Result<(PathBuf, PathBuf)> {
     check_run_id(run_id)?;
     contextful_core::store::reserve::check_table_name(table)?;
-    let node_dir = store.table_dir(table)?.join("data").join("runs").join(run_id).join(node.as_str());
+    let node_dir = store.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR).join(run_id).join(node.as_str());
     let manifest_path = node_dir.join(MANIFEST_FILE);
     Ok((node_dir, manifest_path))
 }

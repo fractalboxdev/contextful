@@ -9,7 +9,7 @@ use contextful_core::store::bound_time::Bounds;
 use serde_json::json;
 use contextful_context::vector::{Sealing, VectorSidecar, GRAPH_FILE};
 use contextful_context::fulltext::{FulltextSidecar, POSTINGS_FILE};
-use contextful_core::store::index::{FulltextEntry, Tokenizer, VectorEntry};
+use contextful_core::store::index::{FulltextEntry, IndexEntry, IndexKind, Tokenizer, VectorEntry};
 use contextful_core::store::lay_out::SnapshotManifest;
 use contextful_core::store::reconcile::{ColumnType, FloatItem};
 use contextful_core::store::StoreError;
@@ -141,7 +141,10 @@ pub fn current(f: &Fixture, table: &str) -> (SnapshotManifest, PathBuf) {
 }
 
 fn entry(m: &SnapshotManifest) -> VectorEntry {
-    serde_json::from_value(m.indexes[0].clone()).unwrap()
+    match &m.indexes[0] {
+        IndexEntry::Vector(e) => e.clone(),
+        other => panic!("a vector entry reads as {other:?}"),
+    }
 }
 
 /// The fold builds each declared vector sidecar over the staged rows holding a non-null identifier and a non-zero vector, from the declared model where the table carries `embedding_model`, and records its entry in the snapshot manifest.
@@ -163,7 +166,7 @@ fn the_fold_builds_each_declared_sidecar_over_identified_nonzero_vectors_of_its_
     assert_eq!((e.path.as_str(), e.id_column.as_str(), e.row_count), ("indexes/vec-embedding-e5/zone=all", "passage_id", 2));
     assert_eq!((e.table.as_str(), e.snapshot_id.as_str(), e.dim, e.m, e.ef_construction), ("passages", m.snapshot_id.to_string().as_str(), 3, 4, 32));
     assert!(dir.join(&e.path).join(GRAPH_FILE).is_file());
-    let own: Value = serde_json::from_slice(&std::fs::read(dir.join(&e.path).join("_manifest.json")).unwrap()).unwrap();
+    let own: IndexEntry = serde_json::from_slice(&std::fs::read(dir.join(&e.path).join("_manifest.json")).unwrap()).unwrap();
     assert_eq!(own, m.indexes[0]);
     let sidecar = VectorSidecar::open(&dir, "passages", &m.indexes[0], &Sealing::Plaintext).unwrap();
     let near: Vec<String> = sidecar.probe(&[0.1, 0.9, 0.0], 5).unwrap().into_iter().map(|c| c.id).collect();
@@ -335,7 +338,13 @@ fn vector_recall_at_10_holds_against_exact_search() {
 pub const FULLTEXT: &str = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";
 
 fn fulltext_entry(m: &SnapshotManifest) -> FulltextEntry {
-    serde_json::from_value(m.indexes.iter().find(|e| e["kind"] == "fulltext").unwrap().clone()).unwrap()
+    m.indexes
+        .iter()
+        .find_map(|e| match e {
+            IndexEntry::Fulltext(e) => Some(e.clone()),
+            _ => None,
+        })
+        .expect("a full-text entry")
 }
 
 fn probe_ids(sidecar: &FulltextSidecar, query: &[&str], k: usize) -> Vec<String> {
@@ -366,7 +375,7 @@ fn the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms() {
     assert!(dir.join(&e.path).join(POSTINGS_FILE).is_file());
     let own: FulltextEntry = serde_json::from_slice(&std::fs::read(dir.join(&e.path).join("_manifest.json")).unwrap()).unwrap();
     assert_eq!(own, e);
-    let entry = m.indexes.iter().find(|x| x["kind"] == "fulltext").unwrap();
+    let entry = m.indexes.iter().find(|x| x.kind() == Some(IndexKind::Fulltext)).unwrap();
     let sidecar = FulltextSidecar::open(&dir, "passages", entry, &Sealing::Plaintext).unwrap();
     assert!(sidecar.is_mapped());
     assert_eq!(probe_ids(&sidecar, &["battery"], 10), ["d1"]);
@@ -376,7 +385,7 @@ fn the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms() {
     let only_vector = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}"));
     v.land_typed(&only_vector, "run-1", json!([{"passage_id": "p1", "body": "battery", "embedding": [1.0, 0.0, 0.0]}]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
     fold(&v.store, &only_vector, at("2030-01-01T01:00:00Z")).unwrap();
-    assert!(current(&v, "passages").0.indexes.iter().all(|x| x["kind"] == "vector"));
+    assert!(current(&v, "passages").0.indexes.iter().all(|x| x.kind() == Some(IndexKind::Vector)));
     // A full-text sidecar over text the staged rows type otherwise refuses before landing.
     let n = Fixture::new();
     let numeric = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{FULLTEXT}"));
@@ -445,7 +454,7 @@ fn superseded_derived_rows_stop_answering_at_the_replacing_landing_and_leave_the
     let marker = |unit: &str, key: &str, status: &str| json!({"row_id": null, "unit_ref": unit, "derivation_key": key, "cue_seq": -1, "kind": "marker", "unit_status": status, "body": null});
     let probe = |words: &[&str]| {
         let (m, dir) = current(&f, "passages");
-        let entry = m.indexes.iter().find(|x| x["kind"] == "fulltext").unwrap().clone();
+        let entry = m.indexes.iter().find(|x| x.kind() == Some(IndexKind::Fulltext)).unwrap().clone();
         let mut ids = probe_ids(&FulltextSidecar::open(&dir, "passages", &entry, &Sealing::Plaintext).unwrap(), words, 10);
         ids.sort();
         ids
