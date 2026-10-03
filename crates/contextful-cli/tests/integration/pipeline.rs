@@ -754,8 +754,7 @@ impl Daemon {
 
     /// Send `SIGTERM` and wait up to 60 s for the exit.
     fn terminate(&mut self) -> std::process::ExitStatus {
-        let sent = Command::new("kill").args(["-TERM", &self.pid().to_string()]).status().unwrap();
-        assert!(sent.success());
+        signal(self.pid(), "TERM");
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         loop {
             if let Some(status) = self.child.try_wait().unwrap() {
@@ -948,6 +947,171 @@ fn the_github_recipe_lands_one_row_per_key_across_polls() {
     assert_eq!(per_sha, serde_json::json!([["553c207", "1"], ["7629413", "1"], ["7fd1a60", "1"]]), "one row per sha");
     let per_issue = counts("SELECT number, count(*) FROM \"github_issues_octocat_hello_world\" GROUP BY number ORDER BY number");
     assert_eq!(per_issue, serde_json::json!([["7", "1"], ["12", "1"]]), "one row per issue");
+}
+
+/// Send `SIG<name>` to process `pid`.
+fn signal(pid: u32, name: &str) {
+    let sent = Command::new("kill").args([&format!("-{name}"), &pid.to_string()]).status().unwrap();
+    assert!(sent.success(), "kill -{name} {pid}");
+}
+
+/// Whether process `pid` exists, by `kill -0`.
+fn alive(pid: u32) -> bool {
+    Command::new("kill").args(["-0", &pid.to_string()]).stderr(std::process::Stdio::null()).status().unwrap().success()
+}
+
+/// The pids whose parent is `parent`, by the process table.
+fn children_of(parent: u32) -> Vec<u32> {
+    let out = Command::new("ps").args(["-A", "-o", "pid=", "-o", "ppid="]).output().unwrap();
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.split_whitespace().map(|n| n.parse::<u32>().ok());
+            match (f.next().flatten(), f.next().flatten()) {
+                (Some(pid), Some(ppid)) if ppid == parent => Some(pid),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// A loopback vendor that accepts every connection and never answers, so a fire against it blocks.
+struct Silent {
+    port: u16,
+    accepted: Arc<Mutex<usize>>,
+}
+
+impl Silent {
+    fn start() -> Silent {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let accepted: Arc<Mutex<usize>> = Arc::default();
+        let count = accepted.clone();
+        std::thread::spawn(move || {
+            let mut held = Vec::new();
+            for stream in listener.incoming().flatten() {
+                held.push(stream);
+                *count.lock().unwrap() += 1;
+            }
+        });
+        Silent { port, accepted }
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!("http://127.0.0.1:{}{path}", self.port)
+    }
+
+    /// The children of `parent` once one of them holds a connection open to this vendor; waits up to 60 s.
+    fn blocked_children(&self, parent: u32) -> Vec<u32> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        loop {
+            let children = children_of(parent);
+            if *self.accepted.lock().unwrap() > 0 && !children.is_empty() {
+                return children;
+            }
+            assert!(std::time::Instant::now() < deadline, "no blocked child of {parent}");
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+}
+
+/// Children a failing assertion leaves behind, killed as the test unwinds.
+struct Strays(Vec<u32>);
+
+impl Drop for Strays {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            for pid in self.0.iter().filter(|p| alive(**p)) {
+                let _ = Command::new("kill").args(["-KILL", &pid.to_string()]).status();
+            }
+        }
+    }
+}
+
+/// Wait up to 20 s, past the 10 s child grace, for `child` to exit.
+fn exits_within_grace(child: &mut std::process::Child) -> std::process::ExitStatus {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            return status;
+        }
+        assert!(std::time::Instant::now() < deadline, "serve outlived its stop signal by 20 s");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// A project whose one scheduled pipeline fires against `vendor`, applied.
+fn blocking_project(vendor: &Silent) -> tempfile::TempDir {
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", &vendor.url("/v1/orders"), "every 1h")));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    dir
+}
+
+fn serve_ends_its_blocked_children_on(name: &str) {
+    let vendor = Silent::start();
+    let dir = blocking_project(&vendor);
+    let mut daemon = Daemon::start(dir.path());
+    daemon.wait_for("fire orders: started", 0);
+    let children = Strays(vendor.blocked_children(daemon.pid()));
+    signal(daemon.pid(), name);
+    let status = exits_within_grace(&mut daemon.child);
+    assert!(status.success(), "{}", daemon.lines().join("\n"));
+    let survivors: Vec<u32> = children.0.iter().copied().filter(|p| alive(*p)).collect();
+    assert!(survivors.is_empty(), "children {survivors:?} outlived serve:\n{}", daemon.lines().join("\n"));
+    daemon.wait_for("fire orders: failed", 0);
+    daemon.wait_for("stopped", 0);
+}
+
+/// A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an
+/// unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.
+// spec: surface.dispatch.children-reaped@9af41d1b
+#[test]
+fn serve_ends_every_child_it_dispatched() {
+    serve_ends_its_blocked_children_on("TERM");
+    serve_ends_its_blocked_children_on("INT");
+    a_signalled_cycle_returns_only_after_its_children_exit();
+    an_external_wake_ends_its_blocked_child_on_stop();
+}
+
+fn an_external_wake_ends_its_blocked_child_on_stop() {
+    let vendor = Silent::start();
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n[control]\ntrigger = \"external\"\n\n{}",
+        scheduled("orders", &vendor.url("/v1/orders"), "every 1h")
+    ));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    let (mut daemon, url) = external(dir.path());
+    let request = std::thread::spawn(move || post(&url));
+    let children = Strays(vendor.blocked_children(daemon.pid()));
+    signal(daemon.pid(), "TERM");
+    let status = exits_within_grace(&mut daemon.child);
+    assert!(status.success(), "{}", daemon.lines().join("\n"));
+    assert!(children.0.iter().all(|pid| !alive(*pid)), "a child outlived the HTTP serve");
+    let _ = request.join();
+}
+
+fn a_signalled_cycle_returns_only_after_its_children_exit() {
+    let vendor = Silent::start();
+    let dir = blocking_project(&vendor);
+    let mut cycle = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "serve", "--cycle", "--project", "research"])
+        .current_dir(dir.path())
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env_remove("CONTEXTFUL_SECRETS_BACKEND")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let children = Strays(vendor.blocked_children(cycle.id()));
+    signal(cycle.id(), "TERM");
+    exits_within_grace(&mut cycle);
+    let survivors: Vec<u32> = children.0.iter().copied().filter(|p| alive(*p)).collect();
+    assert!(survivors.is_empty(), "children {survivors:?} outlived the cycle");
+    let out = cycle.wait_with_output().unwrap();
+    let answer: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", stderr(&out)));
+    assert_eq!(answer["failed"], serde_json::json!(["orders"]), "{answer}");
 }
 
 /// `POST` to `url` on a loopback address, answering the status and the JSON body.

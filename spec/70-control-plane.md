@@ -187,6 +187,8 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
   *because two fires of one pipeline race for one cursor*
 - `lease-gated` — A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.
   *because two daemons reading one snapshot otherwise fire every due unit twice*
+- `children-reaped` — A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.
+  *because a child outliving its serve also outlives the cadence lease, and a second scheduler then fires the same pipeline concurrently*
 
 One step on a worker target, from submit to an accepted or rejected callback:
 

@@ -7,6 +7,10 @@ use std::collections::BTreeSet;
 /// Units one deployment runs at once when `[control] pool` names no bound.
 pub const DEFAULT_POOL: usize = 4;
 
+/// Seconds a stopping serve process waits between `SIGTERM` and `SIGKILL` to its children
+/// (`surface.dispatch.children-reaped`).
+pub const CHILD_GRACE_SECS: u64 = 10;
+
 /// One due unit: its exclusion key, the pipeline id, and the instant it fell due.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Due {

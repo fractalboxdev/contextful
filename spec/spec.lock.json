@@ -18185,6 +18185,17 @@
       "line": 188
     },
     {
+      "id": "surface.dispatch.children-reaped",
+      "contract": "surface",
+      "operation": "dispatch",
+      "subject": "children-reaped",
+      "kind": "limit",
+      "statement": "A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.",
+      "why": "because a child outliving its serve also outlives the cadence lease, and a second scheduler then fires the same pipeline concurrently",
+      "file": "spec/70-control-plane.md",
+      "line": 190
+    },
+    {
       "id": "surface.edit.secret-in-document",
       "contract": "surface",
       "operation": "edit",
@@ -18193,7 +18204,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 224
+      "line": 226
     },
     {
       "id": "surface.edit.connector-upload",
@@ -18204,7 +18215,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 226
+      "line": 228
     },
     {
       "id": "surface.apply.version-race",
@@ -18215,7 +18226,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "surface.apply.validation",
@@ -18226,7 +18237,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 235
+      "line": 237
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -18237,7 +18248,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 237
+      "line": 239
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -18248,7 +18259,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -18259,7 +18270,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "surface.apply.local-claim",
@@ -18270,7 +18281,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "surface.apply.guarded-import",
@@ -18281,7 +18292,7 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "surface.reside.region-entries",
@@ -18292,7 +18303,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 281
+      "line": 283
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -18303,7 +18314,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "surface.reside.site-regions",
@@ -18314,7 +18325,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 284
+      "line": 286
     },
     {
       "id": "surface.register-store.registry-unreadable",
@@ -27340,6 +27351,13 @@
             "unit": "d",
             "basis": "chosen",
             "gloss": "Longest catch-up window the backend serves."
+          },
+          "surface-child-grace": {
+            "clause": "surface.dispatch.children-reaped",
+            "value": 10,
+            "unit": "s",
+            "basis": "chosen",
+            "gloss": "Wait between a stopping serve's SIGTERM and SIGKILL to its children."
           },
           "surface-code-path-rows": {
             "clause": "surface.plan-turn.code-path-bounds",
