@@ -31,11 +31,16 @@ fn stdout(out: &Output) -> String {
 
 /// A project holding one landed table and an issuer; the issuer's public key.
 fn project() -> (tempfile::TempDir, String) {
+    project_declaring("")
+}
+
+/// [`project`], its table block carrying `keys`.
+fn project_declaring(keys: &str) -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path();
     std::fs::create_dir_all(p.join(".contextful")).unwrap();
     std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
-    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", "[[pipeline.tables]]\nname = \"research/notes\"\n")).unwrap();
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"research/notes\"\n{keys}")).unwrap();
     std::fs::write(p.join("notes.jsonl"), "{\"note_id\":\"n1\"}\n").unwrap();
     stdout(&run(p, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
     let public = stdout(&run(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
@@ -315,4 +320,27 @@ fn a_bucket_that_cannot_open_stops_no_face_from_answering() {
     let out = child.wait_with_output().unwrap();
     let answer: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("null")).unwrap();
     assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+/// The result cache holds at most the byte budget its process declares, the least recently used entry evicted first; a face declaring no budget caches nothing.
+#[test]
+fn serve_caches_a_repeated_statement_under_its_declared_budget() {
+    let (dir, public) = project_declaring("result_cache = \"10m\"\n");
+    let p = dir.path();
+    let token = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "900"]));
+    let inspected = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"", "internals": true } } });
+    let base = ["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", public.as_str()];
+    let states = |extra: &[&str]| {
+        let (_listener, addr) = serve(p, &[&base[..], extra].concat());
+        (0..2)
+            .map(|_| {
+                let (status, answer) = post(&addr, &inspected, &token, None);
+                assert_eq!(status, 200, "{answer}");
+                assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]), "{answer}");
+                answer["result"]["structuredContent"]["contextful.internals"]["cache"].clone()
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(states(&["--result-cache-bytes", "65536"]), [json!("miss"), json!("hit")]);
+    assert_eq!(states(&[]), [Value::Null, Value::Null], "no declared budget caches nothing");
 }

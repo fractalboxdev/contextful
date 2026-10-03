@@ -91,6 +91,13 @@ pub struct TableDecl {
     /// row per (`read.retrieve.row-key-dedup`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_hash_column: Option<String>,
+    /// The time to live of a cached read result touching the table, which opts the table
+    /// into the result cache (`read.cache.cache-is-opt-in`), spelled as `retain_runs`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_cache: Option<String>,
+    /// A table whose rows never enter the result cache (`read.cache.cache-is-opt-in`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub private: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -163,6 +170,7 @@ impl FoldCoverage {
 fn checked(tables: Vec<TableDecl>) -> Result<Vec<TableDecl>, crate::disclosure::declare::DeclareError> {
     for t in &tables {
         t.retain_runs_secs()?;
+        t.result_cache_secs()?;
         crate::disclosure::declare::Binding::of(t)?;
     }
     Ok(tables)
@@ -301,6 +309,20 @@ impl TableDecl {
             }
         }
         Ok(())
+    }
+
+    /// The declared result-cache time to live in seconds, or `None` where the table does
+    /// not opt in (`read.cache.cache-is-opt-in`).
+    pub fn result_cache_secs(&self) -> Result<Option<u64>, DeclarationMalformed> {
+        let Some(s) = &self.result_cache else { return Ok(None) };
+        crate::time::duration_secs(s)
+            .map(Some)
+            .ok_or_else(|| DeclarationMalformed(format!("table `{}`: result_cache `{s}` is not <n>d, <n>h, <n>m or <n>s", self.name)))
+    }
+
+    /// Whether the table is tagged `private = true`.
+    pub fn is_private(&self) -> bool {
+        self.private == Some(true)
     }
 
     /// Hold the declaration to the table's reconciled schema, before any Parquet lands.

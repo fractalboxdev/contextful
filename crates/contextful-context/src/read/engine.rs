@@ -94,6 +94,10 @@ pub struct SqlEngine {
     conn: Connection,
 }
 
+/// One catalog entry: its lowercase name, its stability (`None` for a macro) and a
+/// macro's body text.
+pub(crate) type CatalogFunction = (String, Option<String>, Option<String>);
+
 fn fault(e: duckdb::Error) -> ReadFault {
     ReadFault::Engine(e.to_string())
 }
@@ -126,6 +130,16 @@ impl SqlEngine {
         let engine = SqlEngine::connect()?;
         engine.lock(&[])?;
         Ok(engine)
+    }
+
+    /// Every function and macro the engine's catalog lists.
+    pub(crate) fn function_catalog(&self) -> Result<Vec<CatalogFunction>, ReadFault> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT lower(function_name), stability, macro_definition FROM duckdb_functions()")
+            .map_err(fault)?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(fault)?;
+        rows.collect::<Result<_, _>>().map_err(fault)
     }
 
     /// An unlocked connection for operator text, which runs raw

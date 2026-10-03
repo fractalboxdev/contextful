@@ -101,6 +101,8 @@ pub struct Request<'a> {
 /// (`authority.compose.session-build`).
 #[derive(Debug, Clone)]
 pub struct Session {
+    credential: String,
+    epoch: u64,
     grants: Vec<Grant>,
     subject: Vec<(String, Option<String>)>,
     zone: Zone,
@@ -143,6 +145,8 @@ impl Session {
             .into());
         }
         let mut session = Session {
+            credential: authority.credential_id().to_string(),
+            epoch: authority.epoch(),
             grants,
             subject: subject_row,
             zone,
@@ -406,6 +410,16 @@ impl Session {
 
     pub fn incognito(&self) -> bool {
         self.incognito
+    }
+
+    /// The admitted credential's id.
+    pub fn credential_id(&self) -> &str {
+        &self.credential
+    }
+
+    /// The revocation epoch the admitted credential was minted under.
+    pub fn epoch(&self) -> u64 {
+        self.epoch
     }
 
     pub fn grants(&self) -> &[Grant] {

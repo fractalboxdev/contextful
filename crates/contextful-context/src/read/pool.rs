@@ -23,7 +23,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-type Digest32 = [u8; 32];
+pub(crate) type Digest32 = [u8; 32];
 
 /// What the pool has served since its face opened.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -108,7 +108,7 @@ fn same_setup(a: &Session, b: &Session) -> bool {
 }
 
 /// A length-prefixed field, so adjacent fields never run together.
-fn field(h: &mut Sha256, bytes: &[u8]) {
+pub(crate) fn field(h: &mut Sha256, bytes: &[u8]) {
     h.update((bytes.len() as u64).to_be_bytes());
     h.update(bytes);
 }
@@ -122,7 +122,7 @@ fn content(h: &mut Sha256, path: &Path) {
 }
 
 /// A file's path, length and modification time, or its absence.
-fn stamp(h: &mut Sha256, path: &Path) {
+pub(crate) fn stamp(h: &mut Sha256, path: &Path) {
     field(h, path.to_string_lossy().as_bytes());
     match std::fs::metadata(path) {
         Ok(m) => {

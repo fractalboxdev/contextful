@@ -205,4 +205,8 @@ pub struct Internals {
     pub limit: Option<u64>,
     pub row_count: u64,
     pub elapsed_ms: u64,
+    /// `hit` or `miss` where the statement's tables opt into the result cache
+    /// (`read.cache.hit-identical`); absent otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache: Option<&'static str>,
 }

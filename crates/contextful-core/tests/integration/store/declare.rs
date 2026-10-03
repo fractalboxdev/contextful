@@ -22,8 +22,8 @@ from = "effective_from"
 to   = "effective_to"
 "#;
 
-/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries` and `content_hash_column`; an unset key is absent from the canonical serialization.
-// spec: store.declare.table-block@a7c3750f
+/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries`, `content_hash_column`, `result_cache` and `private`; an unset key is absent from the canonical serialization.
+// spec: store.declare.table-block@457586e6
 #[test]
 fn a_table_block_parses_its_keys_and_omits_unset_ones() {
     let t = &TableDecl::parse_pipeline(SPEC_EXAMPLE).unwrap()[0];
@@ -42,7 +42,7 @@ fn a_table_block_parses_its_keys_and_omits_unset_ones() {
 
     let canonical: serde_json::Value = serde_json::from_str(&t.canonical()).unwrap();
     let keys: Vec<&str> = canonical.as_object().unwrap().keys().map(String::as_str).collect();
-    for unset in ["replicate", "subject_id", "class", "policy", "visibility", "agent_description", "agent_hint", "example_queries", "content_hash_column"] {
+    for unset in ["replicate", "subject_id", "class", "policy", "visibility", "agent_description", "agent_hint", "example_queries", "content_hash_column", "result_cache", "private"] {
         assert!(!keys.contains(&unset), "an unset `{unset}` appears in {keys:?}");
     }
     assert_eq!(TableDecl::named("bare").canonical(), r#"{"name":"bare"}"#);
@@ -59,10 +59,18 @@ agent_description = "Meeting notes"
 agent_hint = "Filter by owner"
 example_queries = ["SELECT count(*) FROM notes"]
 content_hash_column = "body_sha256"
+result_cache = "30s"
+private = true
 "#;
     let n = &TableDecl::parse_pipeline(every).unwrap()[0];
     assert_eq!(n.example_queries.as_ref().unwrap().len(), 1);
     assert_eq!(n.content_hash_column(), Some("body_sha256"));
+    assert_eq!(n.result_cache_secs().unwrap(), Some(30));
+    assert!(n.is_private());
+    assert_eq!(TableDecl::named("bare").result_cache_secs().unwrap(), None);
+    assert!(!TableDecl::named("bare").is_private());
+    // A time to live outside the span spellings refuses the declaration.
+    assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nresult_cache = \"soon\"\n").is_err());
     assert_eq!(TableDecl::named("bare").content_hash_column(), None);
     assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nprimary_keys = [\"id\"]\n").is_err());
     // A table defined by SQL is a `[[model]]` block, not a table-block key.
