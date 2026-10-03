@@ -105,7 +105,7 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again*
 - `unwired-capability` — Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work.
   *A-topology*
-- `machine-state` — Journal rows, execution owners and awakeables are machine-local state that a catalog rebuild leaves untouched and the file tree never reconstructs.
+- `machine-state` — Journal rows, execution owners and awakeables live in the host's own stores, never in the derived catalog; a catalog rebuild leaves them untouched and reconstructs none from the file tree.
 
 ```mermaid
 sequenceDiagram
@@ -164,7 +164,7 @@ unsettled: What bounds allowed lateness for an out-of-order source, and does a l
 
 Durable suspension on an external callback, its deadline and its resumption.
 
-- `awakeable` — An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row beside the journal; an external party resumes by posting the token back.
+- `awakeable` — An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row through the awakeable store; an external party resumes by posting the token back.
   *A-run*
 - `resume-is-a-step-output` — A resume payload is recorded as the awaited step's output under key `sha256("awakeable:" + token)`, so a run that resumes and then crashes reads it back without suspending again.
 - `deadline` — A deadline is the creation instant plus a time-to-live, both caller-supplied RFC3339 Zulu strings; the core reads no wall clock.
@@ -178,7 +178,7 @@ Durable suspension on an external callback, its deadline and its resumption.
   *P2*
 - `resume-route` — `POST /awake/:token` answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming. Both authenticate before touching the registry.
 - `payload-offload` — A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it.
-- `survives-restart` — The awakeable registry persists beside the journal; a restart drops no pending callback.
+- `survives-restart` — A durable awakeable store persists every registry row, so a process reopening it over the same location drops no pending callback; an in-process store ends with its process.
 - `row-parks` — A store-driven row awaiting an unresolved awakeable parks and frees its slot; the other rows run on, and the parked row re-enters its body once the awakeable resolves or its deadline passes.
 - `recorded-timeout` — A row's wait past its deadline records a timeout value as that wait's step output, so every re-entry of the body reads the identical value.
   *because a body branching on the clock rather than on a recorded value replays differently after a crash*

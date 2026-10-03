@@ -15,7 +15,7 @@ pub enum RunError {
     /// A resume token with no registry row. (`run.suspend.unknown-token`)
     #[error("AwakeableUnknown: {0}")]
     AwakeableUnknown(String),
-    /// A journal row's blob reference resolves to no file. (`run.journal.missing-blob`)
+    /// A journal row's blob reference resolves to no stored blob. (`run.journal.missing-blob`)
     #[error("BlobMissing: {0}")]
     BlobMissing(String),
     /// A stop matching no pending, running or waiting run. (`run.cancel.not-in-flight`)

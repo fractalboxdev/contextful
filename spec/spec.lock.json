@@ -6434,7 +6434,7 @@
       "operation": "journal",
       "subject": "machine-state",
       "kind": "behavior",
-      "statement": "Journal rows, execution owners and awakeables are machine-local state that a catalog rebuild leaves untouched and the file tree never reconstructs.",
+      "statement": "Journal rows, execution owners and awakeables live in the host's own stores, never in the derived catalog; a catalog rebuild leaves them untouched and reconstructs none from the file tree.",
       "why": "",
       "file": "spec/30-run.md",
       "line": 108
@@ -6599,7 +6599,7 @@
       "operation": "suspend",
       "subject": "awakeable",
       "kind": "behavior",
-      "statement": "An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row beside the journal; an external party resumes by posting the token back.",
+      "statement": "An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row through the awakeable store; an external party resumes by posting the token back.",
       "why": "A-run",
       "file": "spec/30-run.md",
       "line": 167
@@ -6709,7 +6709,7 @@
       "operation": "suspend",
       "subject": "survives-restart",
       "kind": "behavior",
-      "statement": "The awakeable registry persists beside the journal; a restart drops no pending callback.",
+      "statement": "A durable awakeable store persists every registry row, so a process reopening it over the same location drops no pending callback; an in-process store ends with its process.",
       "why": "",
       "file": "spec/30-run.md",
       "line": 181
