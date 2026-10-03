@@ -18,13 +18,14 @@ use std::sync::OnceLock;
 
 const BIN: &str = env!("CARGO_BIN_EXE_contextful");
 
-/// The `decide` example: the decision module alone, built once per test process.
-/// The stand-in references start it once per case.
+/// The `decide` example: the decision module alone, built once per test process with no
+/// feature, so it compiles neither the engine nor the SQL engine under whichever feature set
+/// the suite runs. The stand-in references start it once per case.
 fn decide_exe() -> &'static Path {
     static BUILT: OnceLock<PathBuf> = OnceLock::new();
     BUILT.get_or_init(|| {
-        let status =
-            Command::new(env!("CARGO")).args(["build", "-q", "-p", "contextful-cli", "--example", "decide"]).status().unwrap();
+        let args = ["build", "-q", "-p", "contextful-cli", "--no-default-features", "--example", "decide"];
+        let status = Command::new(env!("CARGO")).args(args).status().unwrap();
         assert!(status.success(), "building the decide example");
         Path::new(BIN).parent().unwrap().join("examples").join("decide")
     })
