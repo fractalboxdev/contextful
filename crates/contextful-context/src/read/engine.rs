@@ -136,6 +136,29 @@ impl SqlEngine {
         SqlEngine::connect()
     }
 
+    /// A locked connection holding one relation computed in memory: `staging` creates
+    /// `table` with `N` text columns, `rows` append to it, and `finish` derives the
+    /// relation a statement reads. No file is reachable from SQL afterwards.
+    pub(crate) fn projection<const N: usize>(
+        staging: &str,
+        table: &str,
+        rows: impl IntoIterator<Item = [Option<String>; N]>,
+        finish: &str,
+    ) -> Result<SqlEngine, ReadFault> {
+        let engine = SqlEngine::connect()?;
+        engine.conn.execute_batch(staging).map_err(fault)?;
+        {
+            let mut appender = engine.conn.appender(table).map_err(fault)?;
+            for row in rows {
+                appender.append_row(duckdb::appender_params_from_iter(row)).map_err(fault)?;
+            }
+            appender.flush().map_err(fault)?;
+        }
+        engine.conn.execute_batch(finish).map_err(fault)?;
+        engine.lock(&[])?;
+        Ok(engine)
+    }
+
     /// The number of statements the engine's parser extracts from `sql`, found on a
     /// private connection that runs none of them. Preparing multi-statement text on a
     /// connection executes every statement but the last, so the count precedes any run.

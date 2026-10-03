@@ -143,6 +143,39 @@ Decision: `disclosure.record.single-writer` holds `audit.lock` per append group.
 Criteria: one linear chain per project, fixed; several read processes per project decided it; one sync per group, kept.
 Consequences: the lock serializes groups across processes, so throughput across processes is bounded by one sync at a time; a read-only handle still verifies without the lock.
 
+## `audit_reads` is a view over the chain, and a refused read appends
+
+**Status:** accepted
+
+Context: an operator answers who read what over a window in SQL, and explanation replays refusals too.
+Decision: `audit query` computes `audit_reads` from the chain's segments on each call, for the store owner alone, and no reserved table holds it (`disclosure.record.reads-view`). A read enforcement refuses appends an entry with `outcome` `refused` and the relations the guard parsed, releasing no rows (`disclosure.record.refused-read`).
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A view computed per query from the segments *(chosen)* | — | Each query parses the whole chain; a longer chain is a slower query. |
+| A reserved table landed beside the chain | One record | A second persisted state model drifts from the chain and needs its own erasure. |
+| A projection in `derived.sqlite` rebuilt on append | One record | Every append pays a second write, and a crash between the two leaves them disagreeing. |
+| A refused read leaves no entry | Typed refusals | A probe of ungranted tables stays invisible to the record and to explanation. |
+
+Criteria: one record decided it; a refusal is typed and recorded (P2); a lookup over 24 h answers within 1 s.
+Consequences: the chain carries refusals, so it grows with probes as well as serves; query cost scales with the chain's length rather than an index, which the projection-latency ledger entry tracks.
+
+## An explanation reads the exchange policy and the chain, and keeps no store
+
+**Status:** accepted
+
+Context: an operator asks why a principal does or does not reach a table, and what it read over a window; the answer must carry no row (P5) and qualify every negative (P2).
+Decision: `audit explain` decides from the project's exchange policy, the grants a role or the default set earns, and the table's declared query-time steps (`disclosure.explain.decision`, `disclosure.explain.path`); it replays the chain for a window (`disclosure.explain.replay`) and writes nothing.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Current grants for the decision, the chain for the replay *(chosen)* | — | A decision states the grants in force at the call, not those a past read held; the replay answers the past. |
+| A decision store snapshotting grants per read | One record | A second persisted state drifts from the chain and needs its own erasure. |
+| Replaying the read itself to decide | No rows | Evaluating the relation touches rows the explanation must never carry. |
+
+Criteria: rows only through the caller's authority (P5); one record; a negative answer names what it covered.
+Consequences: role membership stays outside the store, so a decision names the roles the operator presents rather than resolving a principal's roles, the table's recorded readers stand in for a group's members (`disclosure.explain.groups-not-members`), and a visibility binding's watermark reads empty until a sweep records one.
+
 ## Erasure is a forced rewrite, a bounded cascade and a measured receipt
 
 `disclosure.erase` rewrites columnar files under the complement of the tenant grant filter; an undeclared subject column raises `ErasureSubjectUndeclared`. The cascade walks provenance to 16 hops, else `ErasureCascadeUnbounded` commits nothing; fact reads refuse with `ErasureRestagingRequired` until re-synthesis. Files holding erased rows are rewritten or collected within 24 h. A token-presented purge raises `PurgeRequiresOwner`. `disclosure.receipt` attests rewrite-and-exclude over the canonical store, names exclusions in `coverage`, and widens only with `receipt_version`.

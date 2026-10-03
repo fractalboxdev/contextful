@@ -3,6 +3,8 @@
 //! registers before build (`run.bind.host-task`, `surface.fire.store-driven-body`).
 
 mod admit;
+#[cfg(feature = "read-plane")]
+mod audit;
 #[cfg(feature = "data-plane")]
 mod build;
 #[cfg(feature = "data-plane")]
@@ -119,6 +121,10 @@ enum Cmd {
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
     Context(context::ContextCmd),
+    /// Verify, prove and query the project's audit chain, as its local owner.
+    #[cfg(feature = "read-plane")]
+    #[command(subcommand)]
+    Audit(audit::AuditCmd),
     /// Run one derive engine outside a pipeline.
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
@@ -229,6 +235,8 @@ pub fn main_host(host: Host) {
         Cmd::Serve(c) => serve::run(c),
         #[cfg(feature = "data-plane")]
         Cmd::Derive(c) => derive::run(c),
+        #[cfg(feature = "read-plane")]
+        Cmd::Audit(c) => audit::run(c),
         #[cfg(feature = "data-plane")]
         Cmd::Memory(c) => memory::run(c),
         #[cfg(feature = "data-plane")]

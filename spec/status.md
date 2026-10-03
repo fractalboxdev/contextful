@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
-| `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
+| `disclosure` | 3 | 16 | 100 | 64 | 13 | 11 | 50 | 0 | 50 |
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
 | `run` | 3 | 26 | 369 | 98 | 35 | 37 | 254 | 0 | 254 |
 | `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
 | `surface` | 2 | 19 | 81 | 44 | 22 | 5 | 40 | 0 | 40 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1906 | 565 | 187 | 139 | 1284 | 0 | |
+| **total** | 19 | 154 | 1917 | 566 | 187 | 137 | 1300 | 0 | |
 
 Decision records: 18.
 
@@ -33,7 +33,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
-| 8 — Accountability | 5 | 46 | 27 | open | open |
+| 8 — Accountability | 5 | 57 | 43 | passing | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 62 | 45 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
@@ -618,15 +618,28 @@ Unscheduled operations: 10.
 | `corpus.targets.function-profile` | `spec/pins.toml` | performed |
 | `corpus.targets.incomplete` | `spec/pins.toml` | performed |
 | `corpus.targets.page` | `spec/pins.toml` | performed |
+| `disclosure.attest.anchor-verb` | `crates/contextful-cli/tests/integration/audit.rs::anchor_signs_an_unanchored_chain_so_it_verifies_under_the_issuer_pin` | performed |
 | `disclosure.attest.broken-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken` | performed |
 | `disclosure.attest.inclusion-proof` | `crates/contextful-policy/tests/integration/audit.rs::an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment` | performed |
 | `disclosure.attest.merkle-root` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_segment_root_is_the_rfc_6962_tree_hash_of_its_entry_digests` | performed |
+| `disclosure.attest.owner-only` | `crates/contextful-cli/tests/integration/audit.rs::a_capability_credential_refuses_every_chain_verb` | performed |
 | `disclosure.attest.proof-invalid` | `crates/contextful-policy/tests/integration/audit.rs::a_proof_disagreeing_anywhere_raises_audit_proof_invalid` | performed |
 | `disclosure.attest.proof-unavailable` | `crates/contextful-policy/tests/integration/audit.rs::proving_an_unrooted_or_absent_entry_raises_audit_proof_unavailable` | performed |
+| `disclosure.attest.prove-verb` | `crates/contextful-cli/tests/integration/audit.rs::a_printed_proof_checks_offline_and_an_altered_one_does_not` | performed |
 | `disclosure.attest.root-tag` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_root_names_and_signs_its_algorithm_header_and_segment` | performed |
+| `disclosure.attest.verify-verb` | `crates/contextful-cli/tests/integration/audit.rs::verify_passes_an_intact_chain_and_names_the_rewritten_index` | performed |
 | `disclosure.bound-staleness.budget-grammar` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_budget_outside_the_grammar_is_refused_naming_table_and_text` | performed |
 | `disclosure.declare-fidelity.family-bound` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_level_the_family_does_not_permit_is_refused` | performed |
 | `disclosure.declare-fidelity.family-undeclared` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_block_naming_no_family_is_refused` | performed |
+| `disclosure.explain.audience` | `crates/contextful-cli/tests/integration/explain.rs::the_audience_names_roles_and_counts_principal_classes_without_naming_one` | performed |
+| `disclosure.explain.coverage` | `crates/contextful-cli/tests/integration/explain.rs::coverage_counts_the_chain_and_names_unreached_spans_and_the_binding` | performed |
+| `disclosure.explain.decision` | `crates/contextful-policy/tests/integration/explain.rs::a_role_grant_reading_the_table_admits_and_a_write_grant_or_the_default_set_does_not` | performed |
+| `disclosure.explain.empty-window` | `crates/contextful-cli/tests/integration/explain.rs::a_window_the_chain_holds_no_entry_in_refuses_with_no_claim` | performed |
+| `disclosure.explain.groups-not-members` | `crates/contextful-cli/tests/integration/explain.rs::a_role_named_for_a_reader_of_the_table_is_refused_on_the_path_and_in_the_audience` | performed |
+| `disclosure.explain.no-row` | `crates/contextful-cli/tests/integration/explain.rs::a_replayed_entry_carrying_result_content_is_refused_without_echoing_it` | performed |
+| `disclosure.explain.path` | `crates/contextful-policy/tests/integration/explain.rs::an_admitting_path_runs_role_grant_then_the_declared_steps_and_a_denial_ends_at_default_deny` | performed |
+| `disclosure.explain.replay` | `crates/contextful-cli/tests/integration/explain.rs::a_window_replays_the_subjects_reads_of_the_table_inside_it` | performed |
+| `disclosure.explain.unqualified-assurance` | `crates/contextful-policy/tests/integration/explain.rs::a_denial_without_coverage_is_refused_and_with_coverage_releases` | performed |
 | `disclosure.record.chain-header` | `crates/contextful-policy/tests/integration/audit.rs::a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link` | performed |
 | `disclosure.record.entry-fields` | `crates/contextful-policy/tests/integration/audit.rs::an_entry_carrying_a_field_outside_its_digest_breaks_the_chain_at_that_entry` | performed |
 | `disclosure.record.entry-format` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_entry_digests_the_rfc_8785_form_of_its_whole_entry` | performed |
@@ -635,10 +648,13 @@ Unscheduled operations: 10.
 | `disclosure.record.header-unsupported` | `crates/contextful-policy/tests/integration/audit.rs::a_header_naming_another_format_digest_or_segment_size_raises_audit_header_unsupported` | performed |
 | `disclosure.record.held-under-append` | `crates/contextful-policy/tests/integration/audit.rs::an_unanchored_handle_running_under_a_held_open_refuses_and_writes_nothing` | performed |
 | `disclosure.record.inexact-integer` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_attribute_integer_beyond_2_53_raises_audit_attribute_inexact` | performed |
+| `disclosure.record.projection` | `crates/contextful-context/tests/integration/read/audit.rs::a_lookup_over_a_24_hour_window_answers_within_one_second` | performed |
 | `disclosure.record.read-attributes` | `crates/contextful-agent/tests/integration/audit.rs::a_read_entry_names_tool_credential_subject_and_row_count` | performed |
 | `disclosure.record.read-chain` | `crates/contextful-cli/tests/integration/mcp.rs::the_server_appends_to_the_projects_chain_and_stops_on_one_that_does_not_open` | performed |
 | `disclosure.record.read-entry` | `crates/contextful-agent/tests/integration/audit.rs::each_answered_read_tool_call_appends_one_entry_synced_before_its_result` | performed |
 | `disclosure.record.read-only` | `crates/contextful-policy/tests/integration/audit.rs::a_read_only_handle_verifies_beside_the_writer_and_refuses_appends` | performed |
+| `disclosure.record.reads-view` | `crates/contextful-cli/tests/integration/audit.rs::query_answers_who_read_what_over_a_window` | performed |
+| `disclosure.record.refused-read` | `crates/contextful-agent/tests/integration/audit.rs::a_refused_read_appends_one_refused_entry_naming_its_relations` | performed |
 | `disclosure.record.segment` | `crates/contextful-policy/tests/integration/audit.rs::a_segment_closes_at_4096_entries_under_one_signed_root` | performed |
 | `disclosure.record.segment-open` | `crates/contextful-policy/tests/integration/audit.rs::an_append_group_that_creates_a_segment_adds_one_directory_sync` | performed |
 | `disclosure.record.single-writer` | `crates/contextful-policy/tests/integration/audit.rs::two_writers_on_one_directory_append_into_one_linear_chain` | performed |

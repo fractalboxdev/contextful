@@ -16,7 +16,6 @@ fn ok(out: &Output) -> String {
 }
 
 #[test]
-#[ignore = "milestone 8 is open: no read appends to the audit chain and no audit verb exists"]
 fn m08_accountability() {
     let cf = bin("contextful");
     let p = GitRepo::init();
@@ -45,7 +44,8 @@ fn m08_accountability() {
     assert_ne!(answer["result"]["isError"], json!(true), "{answer}");
     assert!(s.close().success());
 
-    // The read left a verifiable, signed entry.
+    // The read left an entry; the issuer anchors the chain, which then verifies signed.
+    ok(&p.run(&cf, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"]));
     ok(&p.run(&cf, &["audit", "verify", "--project", "research", "--public-key", &public]));
 
     // The operator's answer, in SQL over the store: what Ada could have seen in the last hour.

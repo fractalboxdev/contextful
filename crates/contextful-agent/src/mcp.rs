@@ -14,6 +14,7 @@
 
 use contextful_context::read::{Face, ReadFault, ReadOptions, RecallRequest, RetrieveRequest};
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
+use contextful_core::read::guard::admit;
 use contextful_core::read::pin::{Pins, PIN_ARGUMENT};
 use contextful_core::read::template::READ_ARGUMENTS;
 use contextful_core::read::respond::Response;
@@ -23,7 +24,7 @@ use contextful_core::ports::Clock;
 use contextful_core::time::Instant;
 use contextful_core::ports::SigningPort;
 use contextful_core::AuthorityError;
-use contextful_policy::audit::{AuditError, AuditLog};
+use contextful_policy::audit::{attr, AuditError, AuditLog};
 use contextful_policy::enforce::refuse::{payload, unpersisted};
 use contextful_policy::enforce::session::Request;
 use contextful_policy::verify::AdmittedAuthority;
@@ -71,20 +72,47 @@ impl<S: SigningPort + Send + Sync + 'static> ReadRecord for AuditLog<S> {
     }
 }
 
+/// One read as its audit entry records it.
+pub struct ReadEntry<'r> {
+    pub tool: &'r str,
+    pub authority: &'r AdmittedAuthority,
+    /// The rows the result returns; a refused read returns none.
+    pub rows: u64,
+    pub at: Instant,
+    /// The relations the read names (`disclosure.record.read-attributes`).
+    pub tables: Vec<String>,
+    /// The typed refusal of a read enforcement refused (`disclosure.record.refused-read`).
+    pub refusal: Option<&'r str>,
+}
+
 /// A read's entry attributes (`disclosure.record.read-attributes`): the tool, the
-/// credential, each present subject member and its attestation, and the rows returned.
-pub fn read_attributes(tool: &str, authority: &AdmittedAuthority, rows: u64) -> Value {
+/// credential, each present subject member and its attestation, the rows returned, the
+/// read's instant, its outcome and the relations it names.
+pub fn read_attributes(read: &ReadEntry<'_>) -> Value {
     let mut attributes = Map::new();
-    attributes.insert("contextful.tool".into(), json!(tool));
-    attributes.insert("contextful.credential".into(), json!(authority.credential_id()));
-    let subject = authority.subject();
+    attributes.insert("contextful.tool".into(), json!(read.tool));
+    attributes.insert("contextful.credential".into(), json!(read.authority.credential_id()));
+    let subject = read.authority.subject();
     for (member, attestation) in subject.attestations() {
         let name = member.as_str();
         attributes.insert(format!("contextful.subject.{name}"), json!(subject.get(member)));
         attributes.insert(format!("contextful.subject.attestation.{name}"), json!(attestation));
     }
-    attributes.insert("contextful.result.rows".into(), json!(rows));
+    attributes.insert(attr::ROWS.into(), json!(read.rows));
+    attributes.insert(attr::READ_AT.into(), json!(read.at.to_rfc3339()));
+    attributes.insert(attr::OUTCOME.into(), json!(if read.refusal.is_some() { attr::REFUSED } else { attr::SERVED }));
+    attributes.insert(attr::TABLES.into(), json!(read.tables));
+    if let Some(identifier) = read.refusal {
+        attributes.insert(attr::REFUSAL.into(), json!(identifier));
+    }
     Value::Object(attributes)
+}
+
+/// The answer to a read whose entry did not persist: `AuditEntryUnpersisted` in-band,
+/// carrying no row (`disclosure.record.unpersisted-wire`).
+fn unrecorded(e: &AuditError) -> Value {
+    let p = unpersisted(&e.to_string());
+    json!({ "content": [{ "type": "text", "text": p.to_string() }], "structuredContent": p, "isError": true })
 }
 
 /// The closed read tool set over one read face, shared by every transport.
@@ -302,21 +330,47 @@ impl<'a> Tools<'a> {
             Some(Value::Object(m)) => m.clone(),
             Some(_) => return Err(invalid("`arguments` is an object")),
         };
+        let read = |rows, refusal| ReadEntry {
+            tool: name,
+            authority: caller.authority,
+            rows,
+            at: self.clock.now(),
+            tables: self.relations(name, &args),
+            refusal,
+        };
         match self.dispatch(caller, name, &args) {
             // The result leaves only once its entry is durable; otherwise no row does.
-            Ok(Ok((value, rows))) => match self.record.record(read_attributes(name, caller.authority, rows)) {
+            Ok(Ok((value, rows))) => match self.record.record(read_attributes(&read(rows, None))) {
                 Ok(()) => Ok(result(value)),
-                Err(e) => {
-                    let p = unpersisted(&e.to_string());
-                    Ok(json!({ "content": [{ "type": "text", "text": p.to_string() }], "structuredContent": p, "isError": true }))
-                }
+                Err(e) => Ok(unrecorded(&e)),
             },
+            // A refusal is recorded before it answers (`disclosure.record.refused-read`).
             Ok(Err(fault)) => match fault.refusal() {
-                Some(r) => Ok(refused(r)),
+                Some(r) => match self.record.record(read_attributes(&read(0, Some(r.identifier())))) {
+                    Ok(()) => Ok(refused(r)),
+                    Err(e) => Ok(unrecorded(&e)),
+                },
                 None => Ok(json!({ "content": [{ "type": "text", "text": fault.to_string() }], "isError": true })),
             },
             Err(protocol) => Err(protocol),
         }
+    }
+
+    /// The relations a read names: the base relations its statement's text names, parsed
+    /// without the session's registrations so a refused read names them too, or the
+    /// `table` argument of a tool reading one table.
+    fn relations(&self, name: &str, args: &Map<String, Value>) -> Vec<String> {
+        let template = |id: &str| self.face.templates().iter().find(|t| t.id == id).map(|t| t.sql.clone());
+        let sql = match name {
+            "context.query" => args.get("sql").and_then(Value::as_str).map(str::to_string),
+            "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
+            "context.describe" | "memory.recall" => return args.get("table").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
+            other => template(other),
+        };
+        sql.and_then(|sql| self.face.serialize(&sql).ok())
+            .and_then(|tree| admit(&tree, |_| true).ok())
+            .map(|a| a.relations.into_iter().collect())
+            .unwrap_or_default()
     }
 
     /// Run one tool: its structured result and the rows it returns.

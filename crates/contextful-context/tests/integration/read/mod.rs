@@ -2,6 +2,7 @@
 //! retrieval and the query-time enforcement layer, each through the embedded engine.
 #![cfg(feature = "read")]
 
+mod audit;
 mod enforce;
 mod extension;
 mod fulltext;

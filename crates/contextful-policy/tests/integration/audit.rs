@@ -927,6 +927,10 @@ fn append_latency_under_group_commit_at_one_and_sixteen_writers() {
             appends as f64 / wall.as_secs_f64(),
         );
         contextful_eval::record::emit(id, p99.as_micros() as f64, appends, 0);
+        if writers == 16 {
+            // The sustained rate at which appends, and so audited reads, commit.
+            contextful_eval::record::emit("audit-append-throughput", appends as f64 / wall.as_secs_f64(), appends, 0);
+        }
         assert!(syncs <= appends, "a group issues at most one segment sync");
     }
 }
