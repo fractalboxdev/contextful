@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 100 | 64 | 13 | 11 | 50 | 0 | 50 |
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
-| `run` | 3 | 26 | 370 | 98 | 35 | 37 | 255 | 0 | 255 |
+| `run` | 3 | 26 | 371 | 98 | 35 | 37 | 256 | 0 | 255 |
 | `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
 | `surface` | 2 | 19 | 81 | 44 | 22 | 5 | 40 | 0 | 40 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1919 | 566 | 187 | 137 | 1302 | 0 | |
+| **total** | 19 | 154 | 1920 | 566 | 187 | 137 | 1303 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 158 | 123 | passing | closed |
-| 3 — The run path | 11 | 205 | 141 | passing | closed |
+| 3 — The run path | 11 | 206 | 142 | passing | closed |
 | 4 — Ingest | 25 | 467 | 287 | passing | open |
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
@@ -937,6 +937,7 @@ Unscheduled operations: 10.
 | `run.journal.row-output` | `crates/contextful-cli/tests/integration/job.rs::each_declared_output_table_lands_in_its_own_run_and_a_failed_landing_holds_the_owner` | performed |
 | `run.journal.row-step` | `crates/contextful-engine/tests/integration/drive.rs::a_run_killed_after_forty_paid_calls_resumes_paying_for_the_other_sixty` | performed |
 | `run.journal.sqlite-stores` | `crates/contextful-sqlite/tests/integration/stores.rs::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically` | performed |
+| `run.journal.sqlite-write-lock` | `crates/contextful-sqlite/tests/integration/stores.rs::concurrent_records_of_one_key_across_connections_return_one_value` | performed |
 | `run.journal.step-output` | `crates/contextful-engine/tests/integration/journal.rs::a_crash_before_the_write_re_enters_and_the_record_then_stands` | performed |
 | `run.journal.storage-ports` | `crates/contextful-engine/tests/integration/stores.rs::the_file_and_memory_adapters_pass_every_store_conformance_suite` | performed |
 | `run.journal.store-input` | `crates/contextful-cli/tests/integration/job.rs::a_fire_reads_its_input_at_the_pinned_as_of_and_lands_its_output_table` | performed |
