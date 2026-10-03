@@ -1,7 +1,7 @@
 //! Exclusive create: one winner, an untouched loser, no staging file left behind, on every
 //! backend the primitive chooses between.
 
-use contextful_fs::{create_exclusive, create_exclusive_locked, create_new, names_file, tmp_sibling};
+use contextful_fs::{create_exclusive, create_exclusive_locked, create_new, names_file, open_dir_for_sync, tmp_sibling};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Barrier};
 
@@ -109,6 +109,13 @@ fn a_renamed_open_file_does_not_identify_its_replacement() {
     std::fs::write(&path, b"replacement").unwrap();
     assert!(!names_file(&path, &held).unwrap());
     assert_eq!(std::fs::read(&path).unwrap(), b"replacement");
+}
+
+#[test]
+fn an_open_directory_handle_syncs_its_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("entry"), b"durable").unwrap();
+    open_dir_for_sync(dir.path()).unwrap().sync_all().unwrap();
 }
 
 #[test]

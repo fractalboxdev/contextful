@@ -10,7 +10,7 @@ publish = false
 # exclusive create that publishes a staged file without hard links. It depends on no other
 # workspace package, so both halves link it without crossing between them.
 
-[dependencies]
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
 getrandom = "0.3"
 
 [target.'cfg(unix)'.dependencies]

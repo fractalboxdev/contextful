@@ -18,7 +18,11 @@ pub mod test_volume;
 fn nonce() -> String {
     let mut bytes = [0u8; 8];
     // A platform without a randomness source still yields a distinct name per process.
-    if getrandom::fill(&mut bytes).is_err() {
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    let random = getrandom::fill(&mut bytes).is_ok();
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    let random = false;
+    if !random {
         bytes = u64::from(std::process::id()).to_le_bytes();
     }
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -53,6 +57,20 @@ pub fn create_exclusive(tmp: &Path, path: &Path) -> io::Result<bool> {
         Err(_) => {}
     }
     create_exclusive_locked(tmp, path)
+}
+
+/// Open a directory handle for syncing entries created or renamed inside it.
+pub fn open_dir_for_sync(path: &Path) -> io::Result<fs::File> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+        return fs::OpenOptions::new().read(true).write(true).custom_flags(FILE_FLAG_BACKUP_SEMANTICS).open(path);
+    }
+    #[cfg(not(windows))]
+    {
+        fs::File::open(path)
+    }
 }
 
 /// Whether `path` still names `file`, including after another process renames an open

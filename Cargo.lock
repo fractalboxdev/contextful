@@ -1102,6 +1102,7 @@ dependencies = [
  "blake3",
  "contextful-core",
  "contextful-eval",
+ "contextful-fs",
  "ed25519-dalek",
  "getrandom 0.2.17",
  "hex",
