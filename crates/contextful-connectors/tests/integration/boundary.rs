@@ -20,6 +20,11 @@ fn a_decode_runs_in_a_child_the_parent_kills_at_its_deadline() {
     let f = sh("sleep 30").with_deadline(Duration::from_millis(300)).run(b"%PDF-1.4", "Team/Plan").unwrap_err();
     assert!(started.elapsed() < Duration::from_secs(10), "the child is killed at its deadline, not awaited");
     assert!(f.message.starts_with("PipelineParseCrashed") && f.message.contains("Team/Plan") && f.message.contains("wall clock"), "{f}");
+    // A process the decode started holds its output open past the kill, and dies with it.
+    let started = Instant::now();
+    let f = sh("sleep 30; echo late").with_deadline(Duration::from_millis(300)).run(b"%PDF-1.4", "Team/Plan").unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(10), "a process the decode started outlived the kill");
+    assert!(f.message.contains("wall clock"), "{f}");
     // The parent outlives the killed child and runs the next decode.
     assert_eq!(sh("cat").run(b"[]", "Team/Budget").unwrap(), b"[]");
     // A child growing its data segment past the bound dies of it.
