@@ -9,6 +9,7 @@ use crate::store::declare::{TableDecl, WriteMode};
 use crate::store::index::{IndexDecl, IndexKind, Tokenizer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 /// A connector name beside its free-form configuration object (`run.declare.source-block`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -89,6 +90,10 @@ pub struct PipelineSpec {
     pub destination: Option<SourceBlock>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schedule: Option<String>,
+    /// The entry this one lands after: a landing step of that entry's dependent run
+    /// (`surface.dispatch.not-a-head`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
     /// The stream clock field (`run.declare.incremental-field`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub incremental: Option<String>,
@@ -295,6 +300,49 @@ pub fn check_destinations(declared: &[Declared]) -> Result<(), RunError> {
     Ok(())
 }
 
+/// The dependent runs `after` declares (`surface.dispatch.not-a-head`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DependentRuns {
+    /// Each landing step's head entry.
+    pub head_of: BTreeMap<String, String>,
+    /// Each head's landing steps in run order: by distance from the head, then by id.
+    pub steps: BTreeMap<String, Vec<String>>,
+}
+
+/// Resolve every `after` to its chain's head. An `after` naming no declared entry, or a
+/// chain that returns to itself, raises `PipelineSpecInvalid`.
+pub fn dependent_runs<'a>(specs: impl IntoIterator<Item = &'a PipelineSpec>) -> Result<DependentRuns, RunError> {
+    let after: BTreeMap<&str, Option<&str>> = specs.into_iter().map(|s| (s.id.as_str(), s.after.as_deref())).collect();
+    let mut runs = DependentRuns::default();
+    let mut placed: Vec<(usize, String, String)> = Vec::new();
+    for (&id, &prev) in &after {
+        let Some(mut prev) = prev else { continue };
+        let mut depth = 1;
+        let mut seen = vec![id];
+        loop {
+            if seen.contains(&prev) {
+                return Err(RunError::PipelineSpecInvalid(format!("pipeline `{id}`: `after` returns to `{prev}`; a dependent run has one head")));
+            }
+            seen.push(prev);
+            match after.get(prev) {
+                None => return Err(RunError::PipelineSpecInvalid(format!("pipeline `{id}`: `after = \"{prev}\"` names no declared pipeline"))),
+                Some(None) => break,
+                Some(Some(next)) => {
+                    prev = next;
+                    depth += 1;
+                }
+            }
+        }
+        runs.head_of.insert(id.to_string(), prev.to_string());
+        placed.push((depth, id.to_string(), prev.to_string()));
+    }
+    placed.sort();
+    for (_, id, head) in placed {
+        runs.steps.entry(head).or_default().push(id);
+    }
+    Ok(runs)
+}
+
 /// Collect every specification by `id` across the manifest files, in order. One id
 /// declared twice refuses, naming each file and line (`run.declare.duplicate-id`).
 pub fn collect(files: &[ManifestFile]) -> Result<Vec<Declared>, RunError> {
@@ -311,5 +359,6 @@ pub fn collect(files: &[ManifestFile]) -> Result<Vec<Declared>, RunError> {
         }
     }
     check_destinations(&all)?;
+    dependent_runs(all.iter().map(|d| &d.spec))?;
     Ok(all)
 }

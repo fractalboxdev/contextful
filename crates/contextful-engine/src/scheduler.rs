@@ -6,21 +6,25 @@
 //! or renews the cadence lease first and dispatches nothing without it
 //! (`surface.dispatch.lease-gated`); due-ness counts from history, so a boot past several
 //! intervals fires once (`surface.arm.catch-up`); admission holds a key in flight and caps
-//! the pool (`surface.dispatch.exclusion-key`, `surface.dispatch.pool-bound`).
+//! the pool (`surface.dispatch.exclusion-key`, `surface.dispatch.pool-bound`). A head entry
+//! dispatches its dependent run's landing steps with it, and a due step starts nothing
+//! (`surface.dispatch.not-a-head`).
 
 use contextful_core::coordinate::{Catalog, Lease, LeaseKey, CADENCE_LEASE_RENEWAL_SECS, CADENCE_LEASE_TTL_SECS};
 use contextful_core::run::Failure;
 use contextful_core::surface::arm::{next_fire, Schedule};
 use contextful_core::surface::dispatch::{admit, Due};
+use contextful_core::surface::worker::unit_of;
 use contextful_core::time::Instant;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-/// Where a due unit runs. `fire` blocks until the unit ends, answering its report line or
+/// Where a due unit runs. `fire` runs the head entry `id`, then each of its dependent run's
+/// landing `steps` in order, and blocks until the unit ends, answering its report line or
 /// its failure line.
 pub trait Dispatch: Send + Sync {
-    fn fire(&self, id: &str, version: u64) -> Result<String, String>;
+    fn fire(&self, id: &str, steps: &[String], version: u64) -> Result<String, String>;
 }
 
 /// One armed entry: a pipeline id and its schedule.
@@ -44,6 +48,8 @@ pub struct Beat {
     pub started: Vec<String>,
     pub pending: Vec<String>,
     pub held: Vec<String>,
+    /// Due ids that are landing steps of a dependent run, each with its refusal.
+    pub refused: Vec<(String, String)>,
 }
 
 /// One unit that ended.
@@ -63,6 +69,10 @@ pub struct Scheduler {
     renewed_at: Option<Instant>,
     version: u64,
     armed: Vec<Entry>,
+    /// Each head entry's landing steps, in run order.
+    steps: BTreeMap<String, Vec<String>>,
+    /// Each landing step's head entry.
+    head_of: BTreeMap<String, String>,
     armed_at: BTreeMap<String, Instant>,
     last_dispatch: BTreeMap<String, Instant>,
     /// Each pipeline's newest run start that other nodes' run states record
@@ -85,6 +95,8 @@ impl Scheduler {
             renewed_at: None,
             version: 0,
             armed: Vec::new(),
+            steps: BTreeMap::new(),
+            head_of: BTreeMap::new(),
             armed_at: BTreeMap::new(),
             last_dispatch: BTreeMap::new(),
             pulled: BTreeMap::new(),
@@ -97,6 +109,13 @@ impl Scheduler {
     /// Replace the armed set with `entries` of applied `version`. An entry armed before
     /// keeps its arming instant; a new one takes the catalog's now.
     pub fn arm(&mut self, version: u64, entries: Vec<Entry>) -> Result<(), Failure> {
+        self.arm_runs(version, entries, BTreeMap::new())
+    }
+
+    /// [`Scheduler::arm`] with each head entry's dependent-run landing steps, in run order.
+    pub fn arm_runs(&mut self, version: u64, entries: Vec<Entry>, steps: BTreeMap<String, Vec<String>>) -> Result<(), Failure> {
+        self.head_of = steps.iter().flat_map(|(head, steps)| steps.iter().map(move |s| (s.clone(), head.clone()))).collect();
+        self.steps = steps;
         let now = self.catalog.now()?;
         let ids: BTreeSet<&str> = entries.iter().map(|e| e.id.as_str()).collect();
         self.armed_at.retain(|id, _| ids.contains(id.as_str()));
@@ -180,16 +199,24 @@ impl Scheduler {
         let now = self.catalog.now()?;
         self.reap();
         let lease = self.hold_lease(now)?;
-        let mut beat = Beat { lease, started: Vec::new(), pending: Vec::new(), held: Vec::new() };
+        let mut beat = Beat { lease, started: Vec::new(), pending: Vec::new(), held: Vec::new(), refused: Vec::new() };
         if beat.lease != LeaseState::Held {
             return Ok(beat);
         }
         let mut due = Vec::new();
         for e in &self.armed {
             let at = self.next_of(e, now)?;
-            if at <= now {
-                due.push(Due { key: e.id.clone(), at });
+            if at > now {
+                continue;
             }
+            match unit_of(&e.id, &self.head_of) {
+                Ok(_) => due.push(Due { key: e.id.clone(), at }),
+                Err(refusal) => beat.refused.push((e.id.clone(), refusal.to_string())),
+            }
+        }
+        // A refused step's next fire recomputes from this instant, so it refuses once per due fire.
+        for (id, _) in &beat.refused {
+            self.last_dispatch.insert(id.clone(), now);
         }
         let in_flight = self.in_flight.lock().map(|s| s.clone()).unwrap_or_default();
         let admitted = admit(&due, &in_flight, self.pool);
@@ -207,9 +234,10 @@ impl Scheduler {
             s.insert(id.clone());
         }
         self.last_dispatch.insert(id.clone(), now);
+        let steps = self.steps.get(&id).cloned().unwrap_or_default();
         let (dispatch, in_flight, ended, version) = (self.dispatch.clone(), self.in_flight.clone(), self.ended.clone(), self.version);
         self.handles.push(std::thread::spawn(move || {
-            let result = dispatch.fire(&id, version);
+            let result = dispatch.fire(&id, &steps, version);
             if let Ok(mut e) = ended.lock() {
                 e.push(Fired { id: id.clone(), result });
             }

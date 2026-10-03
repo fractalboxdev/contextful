@@ -6,3 +6,4 @@ mod control;
 mod dispatch;
 mod edit;
 mod reside;
+mod worker;
