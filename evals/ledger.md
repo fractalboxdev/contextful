@@ -2,7 +2,7 @@
 
 # Target ledger
 
-65 entries: 48 gated, 6 recorded, 2 scheduled, 9 open.
+71 entries: 48 gated, 12 recorded, 2 scheduled, 9 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -57,7 +57,13 @@
 | `output-taint` | `connector.infer.output-taint` | `infer.over_trusted_rows` | gate | test `contextful_memory::synthesize::a_synthesized_claim_lands_under_the_label_of_its_inputs` | `== 0` | gated |
 | `policy-no-jwt` | `topology.package.exchange-optional` | `topology.exchange_stack_leaks` | gate | test `contextful_ci::topology::only_the_binary_of_this_workspace_reaches_the_exchange_stack` | `== 0` | gated |
 | `possession-replay` | `authority.verify.replayed-nonce` | `possession.adversarial.admitted` | gate | test `contextful_policy::possession::replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop` | `== 0` | gated |
+| `profile-control-compressed-bytes` | `assurance.gate.footprint` | `footprint.control_compressed_bytes` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
+| `profile-control-needed-entries` | `assurance.gate.footprint` | `footprint.control_needed_entries` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
+| `profile-edge-compressed-bytes` | `assurance.gate.footprint` | `footprint.edge_compressed_bytes` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
+| `profile-edge-needed-entries` | `assurance.gate.footprint` | `footprint.edge_needed_entries` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
 | `profile-footprint` | `assurance.gate.footprint` | `footprint.profiles_over_budget` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | `== 0` | recorded |
+| `profile-full-compressed-bytes` | `assurance.gate.footprint` | `footprint.full_compressed_bytes` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
+| `profile-full-needed-entries` | `assurance.gate.footprint` | `footprint.full_needed_entries` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
 | `pull-no-torn-snapshot` | `store.pull.pointer-last` | `pull.torn_reads` | gate | test `contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot` | `== 0` | gated |
 | `read-session-latency` | `read.cache.session-pool` | `session.warm_p95_ms` | trend | test `contextful_context::read::latency::session_and_statement_latency_at_one_fifty_and_five_hundred_runs` | — | recorded |
 | `read-session-one-engine` | `read.cache.session-pool` | `session.engine_opens` | gate | test `contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine` | `== 1` | gated |

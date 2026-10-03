@@ -436,6 +436,54 @@ direction = "lower_is_better"
 method = { test = "contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets" }
 target = { op = "==", value = 0 }
 
+[entry.profile-control-compressed-bytes]
+clause = "assurance.gate.footprint"
+metric = "footprint.control_compressed_bytes"
+kind   = "size"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets" }
+
+[entry.profile-control-needed-entries]
+clause = "assurance.gate.footprint"
+metric = "footprint.control_needed_entries"
+kind   = "size"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets" }
+
+[entry.profile-edge-compressed-bytes]
+clause = "assurance.gate.footprint"
+metric = "footprint.edge_compressed_bytes"
+kind   = "size"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets" }
+
+[entry.profile-edge-needed-entries]
+clause = "assurance.gate.footprint"
+metric = "footprint.edge_needed_entries"
+kind   = "size"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets" }
+
+[entry.profile-full-compressed-bytes]
+clause = "assurance.gate.footprint"
+metric = "footprint.full_compressed_bytes"
+kind   = "size"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets" }
+
+[entry.profile-full-needed-entries]
+clause = "assurance.gate.footprint"
+metric = "footprint.full_needed_entries"
+kind   = "size"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets" }
+
 # ---------------------------------------------------------------- assurance.build
 
 [entry.edge-wasip2-footprint]

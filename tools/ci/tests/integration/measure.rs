@@ -28,6 +28,20 @@ fn doubles_silently() {
 fn doubles_panics() {
     panic!("trend method failed");
 }
+
+#[test]
+fn doubles_twice() {
+    let dir = std::path::PathBuf::from(std::env::var_os("CONTEXTFUL_MEASURE_DIR").expect("a measure run"));
+    let count = dir.join("invocations");
+    let n = std::fs::read_to_string(&count).unwrap_or_default().parse::<u64>().unwrap_or(0) + 1;
+    std::fs::write(&count, n.to_string()).unwrap();
+    for id in ["demo-doubles", "demo-extra"] {
+        let record = format!(
+            "{{\"id\": \"{id}\", \"value\": 4, \"n\": 1, \"seed\": 7, \"run\": {{\"processor\": \"t\", \"nproc\": 1, \"memory_limit\": null}}}}"
+        );
+        std::fs::write(dir.join(format!("{id}.json")), record).unwrap();
+    }
+}
 "#;
 
 fn entry(id: &str, clause: &str, method: &str, target: &str) -> String {
@@ -96,6 +110,19 @@ fn a_held_target_passes_and_a_missed_one_reds_the_stage() {
     let o = r.gate(&["--stage", "evaluate"]);
     assert!(!o.status.success());
     assert!(stderr(&o).contains("demo-doubles = 4 against >= 5"), "{}", stderr(&o));
+}
+
+#[test]
+fn one_test_measures_two_ledger_entries_in_one_invocation() {
+    let method = "{ test = \"demo::measured::doubles_twice\" }";
+    let ledger = entry("demo-doubles", "run.journal.entry-key", method, "target = { op = \"==\", value = 4 }")
+        + &entry("demo-extra", "run.journal.entry-key", method, "target = { op = \"==\", value = 4 }");
+    let r = repo(&ledger);
+    let o = measure(&r, &[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let count = std::fs::read_to_string(r.root.join("target/evaluate/records/invocations")).unwrap();
+    assert_eq!(count, "1", "one test emits both figures");
+    assert!(stderr(&o).contains("2 held, 0 red, 0 unrecorded"), "{}", stderr(&o));
 }
 
 /// A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.

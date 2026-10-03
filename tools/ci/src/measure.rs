@@ -158,21 +158,25 @@ fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)
     std::fs::create_dir_all(&records)?;
     let (mut held, mut red, mut missing, mut reseeded) = (0usize, Vec::new(), Vec::new(), Vec::new());
     let (mut failed, mut exited) = (BTreeSet::new(), None);
+    let mut ran_tests = BTreeSet::new();
     let started = Instant::now();
     for tier in tiers {
         for (id, e) in l.runnable(*tier) {
             let at = Instant::now();
             match e.method() {
                 Some(Method::Test(t)) => {
-                    if let Err(err) = run_test(root, t, &records) {
-                        eprintln!("measure: {id} ({tier}) failed: {err}");
-                        if *tier == Tier::Trend {
-                            let _ = std::fs::remove_file(record::path(&records, id));
-                        } else {
-                            failed.insert(id.clone());
-                            exited.get_or_insert(err);
+                    if !ran_tests.contains(t) {
+                        if let Err(err) = run_test(root, t, &records) {
+                            eprintln!("measure: {id} ({tier}) failed: {err}");
+                            if *tier == Tier::Trend {
+                                let _ = std::fs::remove_file(record::path(&records, id));
+                            } else {
+                                failed.insert(id.clone());
+                                exited.get_or_insert(err);
+                            }
+                            continue;
                         }
-                        continue;
+                        ran_tests.insert(t.to_string());
                     }
                 }
                 Some(Method::Cases(c)) => bail!("`{id}`: the case-set method `{c}` has no runner in this tree"),
