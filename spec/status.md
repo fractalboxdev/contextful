@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
 | `run` | 3 | 26 | 369 | 98 | 35 | 37 | 253 | 0 | 253 |
 | `store` | 1 | 17 | 229 | 54 | 13 | 19 | 189 | 0 | 189 |
-| `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
+| `surface` | 2 | 19 | 77 | 43 | 22 | 7 | 23 | 0 | 23 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1896 | 563 | 187 | 141 | 1251 | 0 | |
+| **total** | 19 | 154 | 1898 | 563 | 187 | 141 | 1253 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 46 | 27 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 56 | 26 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 58 | 28 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
@@ -1248,12 +1248,14 @@ Unscheduled operations: 10.
 | `surface.arm.pulled-future` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_future_dated_run_state_leaves_a_cold_nodes_cadence_alone` | performed |
 | `surface.arm.pulled-history` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_keeps_the_cadence_another_node_fired` | performed |
 | `surface.arm.tick-interval` | `crates/contextful-core/tests/integration/surface/arm.rs::the_tick_is_500_ms` | performed |
+| `surface.arm.unarmed-named` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_names_each_pipeline_it_does_not_arm` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.dispatch.exclusion-key` | `crates/contextful-core/tests/integration/surface/dispatch.rs::a_key_in_flight_starts_no_second_instance` | performed |
 | `surface.dispatch.lease-gated` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_under_a_running_daemon_arms_nothing_and_names_the_holder` | performed |
 | `surface.dispatch.pool-bound` | `crates/contextful-core/tests/integration/surface/dispatch.rs::the_pool_starts_at_most_its_bound` | performed |
 | `surface.fire.cycle` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_fires_what_is_due_once_and_reports_the_next_instant` | performed |
 | `surface.fire.cycle-control-source` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_no_applied_snapshot_is_refused` | performed |
+| `surface.fire.cycle-exit` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_a_failed_fire_exits_non_zero` | performed |
 | `surface.fire.job-kind-unknown` | `crates/contextful-core/tests/integration/job.rs::a_kind_outside_the_union_or_a_command_raises_job_kind_unknown` | performed |
 | `surface.fire.store-driven-body` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered` | performed |
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
