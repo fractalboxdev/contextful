@@ -73,12 +73,16 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *because an `empty` marker records 1 attempt, so ranking by count lets an older retry revive a settled unit*
 - `key-change` — Rows under the current key landed before the unit's latest `ok` or `empty` landing under another key count for nothing, so a key changed and changed back derives the unit again.
   *A-run*
+- `derive-order` — A tick starts a derive pipeline after the fire of every derive pipeline whose output table its `source_table` names, whatever their declaration order; a parent due, queued or in flight holds the child.
+  *A-run*
+- `derive-cycle` — Derive pipelines whose `source_table` reads chain back to their own output, one naming its own output included, raise `DeriveCycle` at build, naming every pipeline on the cycle.
+  *A-run*
+- `parent-failed` — A derive parent whose fire fails still releases its child, which derives the rows the parent landed before.
+  *A-run*
 
 unsettled: At what parent-table size does the in-memory scan stop fitting, and what replaces it? owner: derive affects: run.select
 
 unsettled: Does a dry run print eligible, already-derived and outstanding counts before a scheduled tick pays for them? owner: derive affects: run.select
-
-unsettled: In what order does one tick run derive pipelines whose source table is another derive pipeline's output, and what refuses a cycle? owner: derive affects: run.select
 
 ## bind
 

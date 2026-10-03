@@ -201,3 +201,85 @@ fn a_content_table_left_without_rows_stops_answering_the_earlier_key() {
         assert!(passages(t).is_empty(), "{t} after fold: {:?}", passages(t));
     }
 }
+
+/// A chain declared child first: `count` tags each `split_stats` row that `split` derives from `documents`. Both
+/// fire hourly from a pool of one, so without an order the child, first by id, fires before its parent.
+fn chained_project() -> tempfile::TempDir {
+    let manifest = "site_id = \"site\"\n\n[control]\npool = 1\n\n\
+         [[pipeline]]\nid = \"count\"\nschedule = \"every 1h\"\ntables = [\n  \
+         { name = \"tags\", primary_key = [\"unit_ref\", \"derivation_key\"] },\n  \
+         { name = \"tag_units\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n]\n\
+         [pipeline.source]\nname = \"derive\"\n\
+         config = { task = \"count-tag\", source_table = \"split_stats\", parent_id_column = \"unit_ref\" }\n\n"
+        .to_string()
+        + &host_manifest("word-split").replace("id = \"split\"\n", "id = \"split\"\nschedule = \"every 1h\"\n").replace(", retain_versions = true", "");
+    host_project(&manifest)
+}
+
+/// The tags `count` answers, by unit.
+fn tags(dir: &std::path::Path) -> Vec<Vec<String>> {
+    select(dir, "SELECT unit_ref, tag FROM \"count_tags\" WHERE kind = 'passage' ORDER BY unit_ref")
+}
+
+fn serve_cycle(bin: &std::path::Path, dir: &std::path::Path, now: &str, env: &[(&str, &str)]) -> serde_json::Value {
+    let out = run_bin(bin, dir, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now], env);
+    let text = String::from_utf8_lossy(&out.stdout);
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{e}: {text}\n{}", String::from_utf8_lossy(&out.stderr)))
+}
+
+/// A tick starts a derive pipeline after the fire of every derive pipeline whose output table its `source_table`
+/// names, whatever their declaration order; a parent due, queued or in flight holds the child.
+// spec: run.select.derive-order@3d656642
+#[test]
+fn chained_derive_pipelines_declared_child_first_derive_both_levels_in_one_tick() {
+    let host = host_binary();
+    let dir = chained_project();
+    let p = dir.path();
+    ok(&run_bin(&host, p, &["pipeline", "import", "--project", "research"], &[]));
+    let answer = serve_cycle(&host, p, "2030-01-01T00:00:00Z", &[]);
+    assert_eq!(answer["fired"], serde_json::json!(["count", "split"]), "{answer}");
+    assert_eq!(answer["pending"], serde_json::json!([]), "{answer}");
+    assert_eq!(tags(p), [["d1", "many"], ["d2", "one"]]);
+}
+
+/// A derive parent whose fire fails still releases its child, which derives the rows the parent landed before.
+// spec: run.select.parent-failed@65baf039
+#[test]
+fn a_failing_parent_fire_leaves_its_child_deriving_the_landed_rows() {
+    let host = host_binary();
+    let dir = chained_project();
+    let p = dir.path();
+    // `split` lands its stats for d1 to d3, then a fourth document arrives.
+    ok(&fire(&host, p, "split-1", "2030-01-01T00:00:00Z", &[]));
+    std::fs::write(p.join("more.jsonl"), "{\"doc_id\":\"d4\",\"body\":\"delta\"}\n").unwrap();
+    ok(&cf(p, &["context", "land", "documents", "--project", "research", "--rows", "more.jsonl", "--run-id", "load-2", "--site-id", "site", "--now", "2030-01-01T00:30:00Z"]));
+    ok(&run_bin(&host, p, &["pipeline", "import", "--project", "research"], &[]));
+    // The parent's fire dies at d4; the child still derives the stats already landed.
+    let answer = serve_cycle(&host, p, "2030-01-01T02:00:00Z", &[("WORD_SPLIT_FAIL", "1")]);
+    assert_eq!((answer["failed"].clone(), answer["fired"].clone()), (serde_json::json!(["split"]), serde_json::json!(["count"])), "{answer}");
+    assert_eq!(tags(p), [["d1", "many"], ["d2", "one"]]);
+}
+
+/// Two derive pipelines reading each other's output, and one reading its own, refuse validation with `DeriveCycle`.
+#[test]
+fn derive_pipelines_reading_each_other_refuse_validation() {
+    let host = host_binary();
+    let block = |id: &str, reads: &str| {
+        format!(
+            "[[pipeline]]\nid = \"{id}\"\ntables = [\n  \
+             {{ name = \"tags\", primary_key = [\"unit_ref\", \"derivation_key\"] }},\n  \
+             {{ name = \"tag_units\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }},\n]\n\
+             [pipeline.source]\nname = \"derive\"\n\
+             config = {{ task = \"count-tag\", source_table = \"{reads}\", parent_id_column = \"unit_ref\" }}\n\n"
+        )
+    };
+    for (manifest, path) in [
+        (format!("{}{}", block("left", "right_tags"), block("right", "left_tags")), "`left` -> `right` -> `left`"),
+        (block("self", "self_tags"), "`self` -> `self`"),
+    ] {
+        let dir = host_project(&manifest);
+        let out = run_bin(&host, dir.path(), &["pipeline", "validate"], &[]);
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success() && err.contains("DeriveCycle") && err.contains(path), "{err}");
+    }
+}

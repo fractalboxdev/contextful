@@ -6,7 +6,9 @@
 //! or renews the cadence lease first and dispatches nothing without it
 //! (`surface.dispatch.lease-gated`); due-ness counts from history, so a boot past several
 //! intervals fires once (`surface.arm.catch-up`); admission holds a key in flight and caps
-//! the pool (`surface.dispatch.exclusion-key`, `surface.dispatch.pool-bound`).
+//! the pool (`surface.dispatch.exclusion-key`, `surface.dispatch.pool-bound`). A due derive
+//! pipeline waits while a derive parent it reads is due, waiting or in flight, and starts once
+//! each parent's fire ends, failed or not (`run.select.derive-order`).
 
 use contextful_core::coordinate::{Catalog, Lease, LeaseKey, CADENCE_LEASE_RENEWAL_SECS, CADENCE_LEASE_TTL_SECS};
 use contextful_core::run::Failure;
@@ -44,6 +46,8 @@ pub struct Beat {
     pub started: Vec<String>,
     pub pending: Vec<String>,
     pub held: Vec<String>,
+    /// Due units waiting for a derive parent's fire to end, sorted (`run.select.derive-order`).
+    pub waiting: Vec<String>,
 }
 
 /// One unit that ended.
@@ -71,6 +75,12 @@ pub struct Scheduler {
     in_flight: Arc<Mutex<BTreeSet<String>>>,
     ended: Arc<Mutex<Vec<Fired>>>,
     handles: Vec<JoinHandle<()>>,
+    /// Each derive pipeline's derive parents (`run.select.derive-order`).
+    parents: BTreeMap<String, BTreeSet<String>>,
+    /// Due units held for a parent, started once every parent's fire ends.
+    waiting: Vec<Due>,
+    /// Units the last beat left pending for want of a pool slot.
+    queued: BTreeSet<String>,
 }
 
 impl Scheduler {
@@ -91,6 +101,49 @@ impl Scheduler {
             in_flight: Arc::default(),
             ended: Arc::default(),
             handles: Vec::new(),
+            parents: BTreeMap::new(),
+            waiting: Vec::new(),
+            queued: BTreeSet::new(),
+        }
+    }
+
+    /// Replace the derive parents of each pipeline, by id: a due pipeline starts only after
+    /// every parent's fire in the same evaluation ends (`run.select.derive-order`).
+    pub fn order(&mut self, parents: BTreeMap<String, BTreeSet<String>>) {
+        self.parents = parents;
+    }
+
+    /// The ids of due units waiting for a derive parent, sorted.
+    pub fn waiting(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.waiting.iter().map(|d| d.key.clone()).collect();
+        ids.sort();
+        ids
+    }
+
+    /// Whether `id` waits: one of its derive parents is due, pending, waiting or in flight.
+    fn blocked(&self, id: &str, due: &BTreeSet<String>, in_flight: &BTreeSet<String>) -> bool {
+        self.parents.get(id).into_iter().flatten().any(|p| {
+            p != id && (due.contains(p) || in_flight.contains(p) || self.queued.contains(p) || self.waiting.iter().any(|w| w.key == *p))
+        })
+    }
+
+    /// Start each waiting unit none of whose parents is still due, waiting or in flight,
+    /// while the pool has a free slot.
+    fn release_waiting(&mut self) {
+        if self.waiting.is_empty() {
+            return;
+        }
+        let Ok(now) = self.catalog.now() else { return };
+        self.waiting.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.key.cmp(&b.key)));
+        loop {
+            let in_flight = self.in_flight.lock().map(|s| s.clone()).unwrap_or_default();
+            if in_flight.len() >= self.pool {
+                return;
+            }
+            let none = BTreeSet::new();
+            let Some(i) = self.waiting.iter().position(|w| !in_flight.contains(&w.key) && !self.blocked(&w.key, &none, &in_flight)) else { return };
+            let unit = self.waiting.remove(i);
+            self.start(unit.key, now);
         }
     }
 
@@ -103,6 +156,7 @@ impl Scheduler {
         for e in &entries {
             self.armed_at.entry(e.id.clone()).or_insert(now);
         }
+        self.waiting.retain(|w| ids.contains(w.key.as_str()));
         self.version = version;
         self.armed = entries;
         Ok(())
@@ -180,19 +234,27 @@ impl Scheduler {
         let now = self.catalog.now()?;
         self.reap();
         let lease = self.hold_lease(now)?;
-        let mut beat = Beat { lease, started: Vec::new(), pending: Vec::new(), held: Vec::new() };
+        let mut beat = Beat { lease, started: Vec::new(), pending: Vec::new(), held: Vec::new(), waiting: Vec::new() };
         if beat.lease != LeaseState::Held {
             return Ok(beat);
         }
         let mut due = Vec::new();
         for e in &self.armed {
             let at = self.next_of(e, now)?;
-            if at <= now {
+            if at <= now && !self.waiting.iter().any(|w| w.key == e.id) {
                 due.push(Due { key: e.id.clone(), at });
             }
         }
         let in_flight = self.in_flight.lock().map(|s| s.clone()).unwrap_or_default();
-        let admitted = admit(&due, &in_flight, self.pool);
+        // A child waits while a derive parent is due this beat, queued, waiting or in flight
+        // (`run.select.derive-order`).
+        let due_ids: BTreeSet<String> = due.iter().map(|d| d.key.clone()).collect();
+        let (ready, deferred): (Vec<Due>, Vec<Due>) = due.into_iter().partition(|d| !self.blocked(&d.key, &due_ids, &in_flight));
+        beat.waiting = deferred.iter().map(|d| d.key.clone()).collect();
+        beat.waiting.sort();
+        self.waiting.extend(deferred);
+        let admitted = admit(&ready, &in_flight, self.pool);
+        self.queued = admitted.pending.iter().map(|d| d.key.clone()).collect();
         beat.pending = admitted.pending.into_iter().map(|d| d.key).collect();
         beat.held = admitted.held.into_iter().map(|d| d.key).collect();
         for unit in admitted.start {
@@ -219,13 +281,14 @@ impl Scheduler {
         }));
     }
 
-    /// Join finished dispatch threads.
+    /// Join finished dispatch threads, then start each waiting unit its parents released.
     fn reap(&mut self) {
         let (done, running): (Vec<_>, Vec<_>) = self.handles.drain(..).partition(|h| h.is_finished());
         self.handles = running;
         for h in done {
             let _ = h.join();
         }
+        self.release_waiting();
     }
 
     /// Units that ended since the last call, without waiting.
@@ -252,10 +315,18 @@ impl Scheduler {
         self.in_flight.lock().map(|s| s.iter().cloned().collect()).unwrap_or_default()
     }
 
-    /// Wait for every dispatched unit, answering each that ended.
+    /// Wait for every dispatched unit, and every waiting unit its parents release, answering
+    /// each that ended.
     pub fn drain(&mut self) -> Vec<Fired> {
-        for h in self.handles.drain(..) {
-            let _ = h.join();
+        loop {
+            let handles: Vec<_> = self.handles.drain(..).collect();
+            if handles.is_empty() {
+                break;
+            }
+            for h in handles {
+                let _ = h.join();
+            }
+            self.release_waiting();
         }
         self.ended()
     }

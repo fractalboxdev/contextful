@@ -74,8 +74,25 @@ Context: `run.exec.engine-id` is written on every row and read by nothing, so a 
 | An operator re-derive command | Freshness | A model upgrade leaves stale passages until someone remembers. |
 | Delete the unit's rows, then re-derive | Empty reads | The unit answers nothing until the engine returns. |
 
-Consequences: a re-derived unit re-indexes its vector and full-text sidecars; ordering between chained derive pipelines is a separate decision.
+Consequences: a re-derived unit re-indexes its vector and full-text sidecars; ordering between chained derive pipelines is the next section.
 Revisit: hashing parent rows dominates tick cost on a real archive.
+
+## Chained derive pipelines run parent-first, and a cycle refuses at build
+
+**Status:** accepted; completes the derivation-key decision above, whose parent key propagates one level per tick without an order.
+
+Context: a `source_table` may name another derive pipeline's output. Unordered, a child pulls before its parent lands, waiting a tick per level, and two pipelines reading each other loop. Criteria: a parent row derives through every level in one tick; no configuration loops.
+
+Decision: the build maps each derive pipeline to the derive pipelines whose output its `source_table` names, and refuses a cycle. The scheduler holds a due child while a parent is due, queued or in flight, and starts it when every parent's fire ends, failed or not.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Scheduler holds a child until its parents' fires end *(chosen)* | — | A child waits for a slow parent; a cyclic set refuses whole. |
+| Unordered fires, a tick per level | Freshness | A chain of depth N lands N ticks after its root. |
+| A parent's landing fires its children | Stranding | A missed event strands the child. |
+| A failed parent holds its child | Availability | One failing engine stops every derived table beneath it. |
+
+Consequences: ordering covers derive parents alone; a child of an ordinary pipeline runs on its own schedule.
 
 ## A derive engine is a machine-bound argv child with a cleared environment
 

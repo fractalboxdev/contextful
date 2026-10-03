@@ -48,6 +48,9 @@ pub enum RunError {
     /// A caption block starting before the one already accepted. (`run.parse-cues.backward-cue`)
     #[error("DeriveCueOutOfOrder: {0}")]
     DeriveCueOutOfOrder(String),
+    /// Derive pipelines whose source tables chain back to their own output. (`run.select.derive-cycle`)
+    #[error("DeriveCycle: {0}")]
+    DeriveCycle(String),
     /// A pinned file whose bytes differ from its digest. (`run.exec.digest-mismatch`)
     #[error("DeriveDigestMismatch: {0}")]
     DeriveDigestMismatch(String),

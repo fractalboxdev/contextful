@@ -15,6 +15,7 @@ use crate::run::{boot_id, wire_at, ProjectArgs};
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use contextful_core::pipeline::declare::{collect, ManifestFile, PipelineSpec};
+use contextful_core::run::derive::order::derive_parents;
 use contextful_core::run::derive::task::Tasks;
 use contextful_core::surface::arm::{Schedule, Trigger, TICK_INTERVAL_MS, WAKE_ANSWER_SECS};
 use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, poll_schedule, snapshot_file, source_file, POINTER_FILE};
@@ -307,6 +308,9 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
             None => target = declared.clone(),
         }
         let changes: Vec<Change> = diff(&target, &base).into_iter().filter(|c| c.action != "unchanged").collect();
+        // The converged set is built whole: one pipeline applied beside the applied rest
+        // must not close a derive cycle (`run.select.derive-cycle`).
+        derive_parents(target.values()).map_err(|e| SurfaceError::ApplyValidationRefused(e.to_string()))?;
         let text = render(&target)?;
         for c in changes.iter().filter(|c| c.action != "remove") {
             let spec = &target[&c.id];
@@ -402,6 +406,8 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
         unarmed.push(Unarmed { id: spec.id.clone(), reason });
     }
     scheduler.arm(version, entries)?;
+    // A derive pipeline fires after each derive parent it reads (`run.select.derive-order`).
+    scheduler.order(derive_parents(specs.values())?);
     eprintln!("armed v{version}: {} scheduled pipeline(s), {} unarmed", scheduler.armed().len(), unarmed.len());
     Ok(Some(unarmed))
 }
@@ -528,7 +534,8 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
     let mut failed: Vec<&str> = ended.iter().filter(|f| f.result.is_err()).map(|f| f.id.as_str()).collect();
     fired.sort();
     failed.sort();
-    let mut pending: Vec<&str> = beat.pending.iter().chain(&beat.held).map(String::as_str).collect();
+    let waiting = scheduler.waiting();
+    let mut pending: Vec<&str> = beat.pending.iter().chain(&beat.held).chain(&waiting).map(String::as_str).collect();
     pending.sort();
     let next_due = scheduler.next_due()?.map(|t| t.to_rfc3339());
     scheduler.release()?;
@@ -659,7 +666,8 @@ fn wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, d
     let mut failed: Vec<&str> = ended.iter().filter(|f| f.result.is_err()).map(|f| f.id.as_str()).collect();
     fired.sort();
     failed.sort();
-    let in_flight = scheduler.in_flight();
+    let mut in_flight = scheduler.in_flight();
+    in_flight.extend(scheduler.waiting());
     let mut pending: Vec<&str> = beat.pending.iter().chain(&beat.held).map(String::as_str).chain(in_flight.iter().map(String::as_str)).collect();
     pending.sort();
     pending.dedup();

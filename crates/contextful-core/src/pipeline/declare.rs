@@ -296,7 +296,8 @@ pub fn check_destinations(declared: &[Declared]) -> Result<(), RunError> {
 }
 
 /// Collect every specification by `id` across the manifest files, in order. One id
-/// declared twice refuses, naming each file and line (`run.declare.duplicate-id`).
+/// declared twice refuses, naming each file and line (`run.declare.duplicate-id`), and
+/// derive pipelines reading each other's output in a cycle raise `DeriveCycle`.
 pub fn collect(files: &[ManifestFile]) -> Result<Vec<Declared>, RunError> {
     let mut all: Vec<Declared> = Vec::new();
     for f in files {
@@ -311,5 +312,7 @@ pub fn collect(files: &[ManifestFile]) -> Result<Vec<Declared>, RunError> {
         }
     }
     check_destinations(&all)?;
+    // Derive pipelines reading each other's output in a cycle refuse (`run.select.derive-cycle`).
+    crate::run::derive::order::derive_parents(all.iter().map(|d| &d.spec))?;
     Ok(all)
 }

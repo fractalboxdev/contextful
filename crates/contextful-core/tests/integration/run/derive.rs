@@ -692,3 +692,59 @@ fn a_changed_engine_rederives_every_unit_and_no_read_between_ticks_is_empty() {
     assert_eq!(empty_reads, 0);
     crate::emit("derivation-freshness", empty_reads as f64, reads, 0);
 }
+
+/// A `[[pipeline]]` block deriving `tables` from `source_table` under a registered task.
+fn derive_block(id: &str, source_table: &str, tables: &[&str]) -> String {
+    let tables: Vec<String> = tables.iter().map(|t| format!("\"{t}\"")).collect();
+    format!(
+        "[[pipeline]]\nid = \"{id}\"\ntables = [{}]\n[pipeline.source]\nname = \"derive\"\nconfig = {{ task = \"split\", source_table = \"{source_table}\", parent_id_column = \"unit_ref\" }}\n",
+        tables.join(", ")
+    )
+}
+
+fn collect_text(text: &str) -> Result<Vec<contextful_core::pipeline::declare::Declared>, RunError> {
+    contextful_core::pipeline::declare::collect(&[contextful_core::pipeline::declare::ManifestFile { path: "contextful.toml".into(), text: text.into() }])
+}
+
+/// Derive pipelines whose `source_table` reads chain back to their own output, one naming its own output
+/// included, raise `DeriveCycle` at build, naming every pipeline on the cycle.
+// spec: run.select.derive-cycle@b41cfc94
+#[test]
+fn derive_reads_chaining_back_to_their_own_output_refuse_naming_every_pipeline() {
+    use contextful_core::run::derive::order::derive_parents;
+    // A chain declared child first maps each pipeline to the derive pipeline it reads.
+    let chain = format!(
+        "{}{}{}",
+        derive_block("tags", "split_stats", &["tags", "tag_units"]),
+        derive_block("split", "documents", &["stats", "units"]),
+        derive_block("loose", "documents", &["notes", "note_units"]),
+    );
+    let declared = collect_text(&chain).unwrap();
+    let parents = derive_parents(declared.iter().map(|d| &d.spec)).unwrap();
+    let of = |id: &str| parents[id].iter().cloned().collect::<Vec<_>>();
+    assert_eq!(of("tags"), ["split"]);
+    assert!(of("split").is_empty() && of("loose").is_empty());
+
+    // Two pipelines reading each other's output refuse, naming both.
+    let mutual = format!("{}{}", derive_block("a", "b_out", &["out", "a_units"]), derive_block("b", "a_out", &["out", "b_units"]));
+    let err = collect_text(&mutual).unwrap_err();
+    assert!(matches!(err, RunError::DeriveCycle(_)), "{err}");
+    let text = err.to_string();
+    assert!(text.contains("`a` -> `b` -> `a`"), "{text}");
+
+    // A three-pipeline cycle names all three; a pipeline feeding it from outside is no member.
+    let ring = format!(
+        "{}{}{}{}",
+        derive_block("x", "z_out", &["out", "x_units"]),
+        derive_block("y", "x_out", &["out", "y_units"]),
+        derive_block("z", "y_out", &["out", "z_units"]),
+        derive_block("w", "x_out", &["w_out", "w_units"]),
+    );
+    let text = collect_text(&ring).unwrap_err().to_string();
+    assert!(text.starts_with("DeriveCycle") && text.contains("`x` -> `z` -> `y` -> `x`"), "{text}");
+    assert!(!text.contains("`w`"), "{text}");
+
+    // A pipeline naming its own output refuses the same way.
+    let text = collect_text(&derive_block("loop", "loop_out", &["out", "loop_units"])).unwrap_err().to_string();
+    assert!(text.starts_with("DeriveCycle") && text.contains("`loop` -> `loop`"), "{text}");
+}

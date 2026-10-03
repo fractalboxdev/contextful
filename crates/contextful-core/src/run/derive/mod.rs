@@ -7,4 +7,5 @@ pub mod config;
 pub mod cues;
 pub mod emit;
 pub mod exec;
+pub mod order;
 pub mod task;

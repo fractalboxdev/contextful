@@ -16,6 +16,8 @@ struct Recording {
     catalog: Arc<dyn Catalog + Send + Sync>,
     fired: Mutex<Vec<(String, u64)>>,
     gate: Option<Barrier>,
+    /// A unit id whose fire fails once it has journaled its run row.
+    failing: Option<String>,
 }
 
 /// The two halves of a dispatch barrier: the unit reports its id once its run row is
@@ -58,13 +60,16 @@ impl Dispatch for Recording {
             gate.entered.lock().unwrap().send(id.to_string()).unwrap();
             gate.release.lock().unwrap().recv().unwrap();
         }
+        if self.failing.as_deref() == Some(id) {
+            return Err(format!("{id} failed"));
+        }
         Ok(format!("{id} landed"))
     }
 }
 
 fn rig_with(gate: Option<Barrier>) -> (Rig, Arc<Recording>) {
     let rig = Rig::new();
-    let rec = Arc::new(Recording { catalog: rig.engine.catalog.clone(), fired: Mutex::default(), gate });
+    let rec = Arc::new(Recording { catalog: rig.engine.catalog.clone(), fired: Mutex::default(), gate, failing: None });
     (rig, rec)
 }
 
@@ -241,4 +246,78 @@ fn in_flight_units_hold_their_key_and_fill_the_pool() {
     gate.release();
     s.drain();
     assert_eq!(fired(&rec), ["alpha", "beta"]);
+}
+
+/// A due derive child waits while its parent is due or in flight, whatever the armed order, and starts in the same
+/// evaluation once the parent's fire ends; a grandchild waits for both.
+#[test]
+fn a_derive_child_starts_after_its_parent_in_one_evaluation() {
+    let (barrier, gate) = barrier();
+    let (rig, rec) = rig_with(Some(barrier));
+    let mut s = scheduler(&rig, &rec, 4);
+    s.arm(1, vec![hourly("grandchild"), hourly("child"), hourly("parent"), hourly("feed")]).unwrap();
+    s.order([("child".to_string(), ["parent".to_string()].into()), ("grandchild".to_string(), ["child".to_string()].into())].into());
+    let beat = s.beat().unwrap();
+    assert_eq!(beat.started, ["feed", "parent"]);
+    assert_eq!(beat.waiting, ["child", "grandchild"]);
+    let mut entered = vec![gate.entered(), gate.entered()];
+    entered.sort();
+    assert_eq!(entered, ["feed", "parent"]);
+    // A later beat neither starts the child nor fires the parent twice.
+    let beat = s.beat().unwrap();
+    assert!(beat.started.is_empty(), "{:?}", beat.started);
+    assert_eq!(s.waiting(), ["child", "grandchild"]);
+    for _ in 0..4 {
+        gate.release();
+    }
+    let ended = s.drain();
+    assert_eq!(ended.len(), 4);
+    assert!(s.waiting().is_empty());
+    let order = fired(&rec);
+    let pos = |id: &str| order.iter().position(|f| f == id).unwrap();
+    assert!(pos("parent") < pos("child") && pos("child") < pos("grandchild"), "{order:?}");
+    // The parent's run journaled before the child's dispatch; nothing further is due this instant.
+    assert!(s.beat().unwrap().started.is_empty());
+    s.drain();
+}
+
+/// A derive parent whose fire fails still releases its child.
+#[test]
+fn a_failed_parent_fire_releases_its_child() {
+    let rig = Rig::new();
+    let rec = Arc::new(Recording { catalog: rig.engine.catalog.clone(), fired: Mutex::default(), gate: None, failing: Some("parent".into()) });
+    let mut s = scheduler(&rig, &rec, 4);
+    s.arm(1, vec![hourly("child"), hourly("parent")]).unwrap();
+    s.order([("child".to_string(), ["parent".to_string()].into())].into());
+    assert_eq!(s.beat().unwrap().waiting, ["child"]);
+    let ended = s.drain();
+    let result = |id: &str| ended.iter().find(|f| f.id == id).map(|f| f.result.clone());
+    assert_eq!(result("parent"), Some(Err("parent failed".to_string())));
+    assert_eq!(result("child"), Some(Ok("child landed".to_string())));
+    assert_eq!(fired(&rec), ["parent", "child"]);
+}
+
+/// A child whose parent waits for a pool slot waits with it, and reports waiting rather than starting first.
+#[test]
+fn a_child_waits_while_its_parent_is_queued_for_a_slot() {
+    let (barrier, gate) = barrier();
+    let (rig, rec) = rig_with(Some(barrier));
+    let mut s = scheduler(&rig, &rec, 1);
+    s.arm(1, vec![hourly("alpha"), hourly("child"), hourly("parent")]).unwrap();
+    s.order([("child".to_string(), ["parent".to_string()].into())].into());
+    let beat = s.beat().unwrap();
+    assert_eq!((beat.started.clone(), beat.pending.clone(), beat.waiting.clone()), (vec!["alpha".to_string()], vec!["parent".to_string()], vec!["child".to_string()]));
+    assert_eq!(gate.entered(), "alpha");
+    gate.release();
+    s.drain();
+    // Alpha's end frees the slot, and the queued parent, not the child, takes it.
+    assert_eq!(fired(&rec), ["alpha"]);
+    assert_eq!(s.beat().unwrap().started, ["parent"]);
+    assert_eq!(gate.entered(), "parent");
+    // The parent's end starts the child within the same drain.
+    gate.release();
+    gate.release();
+    s.drain();
+    assert_eq!(gate.entered(), "child");
+    assert_eq!(fired(&rec), ["alpha", "parent", "child"]);
 }
