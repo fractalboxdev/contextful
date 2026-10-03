@@ -53,6 +53,12 @@ impl VisibilityError {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DisclosureError {
+    /// A published aggregate-shaped model has no policy or opt-out. (`disclosure.set-mode.policy-absent`)
+    #[error("DisclosurePolicyAbsent: {0}")]
+    PolicyAbsent(String),
+    /// A published model's local statement file does not read. (`disclosure.set-mode.model-unreadable`)
+    #[error("DisclosureModelUnreadable: {0}")]
+    ModelUnreadable(String),
     /// A template declaration holds more than one statement. (`disclosure.template.single-statement`)
     #[error("DisclosureTemplateMultiStatement: {0}")]
     TemplateMultiStatement(String),
@@ -77,6 +83,8 @@ impl DisclosureError {
     /// The error identifier.
     pub fn identifier(&self) -> &'static str {
         match self {
+            DisclosureError::PolicyAbsent(_) => "DisclosurePolicyAbsent",
+            DisclosureError::ModelUnreadable(_) => "DisclosureModelUnreadable",
             DisclosureError::TemplateMultiStatement(_) => "DisclosureTemplateMultiStatement",
             DisclosureError::GroupingAllowlistEmpty(_) => "DisclosureGroupingAllowlistEmpty",
             DisclosureError::DominanceUnverifiable(_) => "DisclosureDominanceUnverifiable",

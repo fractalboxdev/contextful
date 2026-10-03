@@ -64,8 +64,9 @@ Fidelity states how closely a table follows its source. The source family caps t
 own sharing engine is queried live rather than mirrored
 ({{disclosure.declare-fidelity.computed-inputs}}).
 
-Disclosure acts at build time. The diagnostic ({{disclosure.set-mode.check-verb}})
-inspects local models. A release ({{disclosure.release.release-verb}}) reserves each unit's budget before computing
+The local diagnostic ({{disclosure.set-mode.check-verb}}) checks {{disclosure.set-mode.aggregate-shape}},
+{{disclosure.set-mode.policy-absent}} and {{disclosure.set-mode.model-unreadable}}.
+A release ({{disclosure.release.release-verb}}) reserves each unit's budget before computing
 ({{disclosure.release.budget-reservation}}), groups only on permitted keys
 ({{disclosure.release.group-key}}), draws bounded noise
 ({{disclosure.release.noise-mechanism}}, {{disclosure.release.metric-bounds}}), then withholds small groups

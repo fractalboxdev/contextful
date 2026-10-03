@@ -203,8 +203,8 @@ fn a_test_reads_the_staged_rows_beside_the_store_tables() {
     assert!(e.contains("TableFunctionRefused"), "{e}");
 }
 
-/// `sql` is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through the table its last build published.
-// spec: run.model.sql@2e944e49
+/// The selected statement is one read-only SELECT over store tables.
+// spec: run.model.sql@4c7d6e3d
 #[test]
 fn model_sql_is_admitted_over_store_tables() {
     let p = Project::new();

@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
-| `disclosure` | 3 | 16 | 132 | 66 | 13 | 5 | 57 | 0 | 57 |
+| `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
-| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 259 |
+| `run` | 3 | 26 | 373 | 98 | 36 | 37 | 260 | 0 | 260 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1966 | 571 | 188 | 131 | 1338 | 0 | |
+| **total** | 19 | 154 | 1969 | 571 | 188 | 129 | 1345 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 468 | 290 | passing | open |
+| 4 — Ingest | 25 | 469 | 291 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -38,7 +38,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
-| 13 — Disclosure | 5 | 31 | 7 | open | open |
+| 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 130 | 83 | passing | closed |
 
 Unscheduled operations: 10.
@@ -669,6 +669,12 @@ Unscheduled operations: 10.
 | `disclosure.record.unpersisted-wire` | `crates/contextful-agent/tests/integration/audit.rs::a_read_whose_entry_does_not_sync_releases_no_rows` | performed |
 | `disclosure.record.unsigned-tip` | `crates/contextful-policy/tests/integration/audit.rs::a_held_open_over_an_unsigned_tip_refuses_until_the_key_holder_anchors_it` | performed |
 | `disclosure.record.v0-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_v0_chain_verifies_and_appends_under_v0_rules` | performed |
+| `disclosure.set-mode.aggregate-shape` | `crates/contextful-context/tests/integration/read/guard.rs::aggregate_shape_follows_the_engine_parse` | performed |
+| `disclosure.set-mode.check-verb` | `crates/contextful-cli/tests/integration/disclosure.rs::check_reports_each_published_model_refusal_by_name` | performed |
+| `disclosure.set-mode.model-unreadable` | `crates/contextful-cli/tests/integration/disclosure.rs::check_reads_sql_file_relative_to_its_manifest` | performed |
+| `disclosure.set-mode.offline-diagnostic` | `crates/contextful-cli/tests/integration/disclosure.rs::check_issues_no_object_store_request` | performed |
+| `disclosure.set-mode.opt-out-record` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_disclosure_opt_out_requires_a_reason_and_no_policy` | performed |
+| `disclosure.set-mode.policy-absent` | `crates/contextful-cli/tests/integration/disclosure.rs::check_requires_policy_or_recorded_opt_out_for_aggregate_sql` | performed |
 | `disclosure.suppress.contributor-share` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::contributor_share` | performed |
 | `disclosure.suppress.dominance-unverifiable` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::dominance_unverifiable` | performed |
 | `disclosure.suppress.empty-policy` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::empty_policy` | performed |
@@ -980,6 +986,7 @@ Unscheduled operations: 10.
 | `run.model.model-id` | `crates/contextful-context/tests/integration/build.rs::a_model_id_naming_a_landed_table_is_refused` | performed |
 | `run.model.restricted-input` | `crates/contextful-context/tests/integration/build.rs::a_build_over_a_restricted_input_is_refused` | performed |
 | `run.model.sql` | `crates/contextful-context/tests/integration/build.rs::model_sql_is_admitted_over_store_tables` | performed |
+| `run.model.statement-source` | `crates/contextful-cli/tests/integration/build.rs::build_and_validate_read_a_local_model_statement_file` | performed |
 | `run.model.test-block` | `crates/contextful-context/tests/integration/build.rs::a_test_reads_the_staged_rows_beside_the_store_tables` | performed |
 | `run.model.test-failed` | `crates/contextful-context/tests/integration/build.rs::a_failing_test_refuses_the_build` | performed |
 | `run.model.top-level-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_top_level_key_outside_the_manifest_blocks_is_refused` | performed |

@@ -27,6 +27,8 @@ mod export;
 mod formal;
 #[cfg(feature = "data-plane")]
 mod job;
+#[cfg(feature = "data-plane")]
+mod model_source;
 #[cfg(feature = "read-plane")]
 mod mcp;
 #[cfg(feature = "data-plane")]

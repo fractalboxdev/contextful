@@ -75,6 +75,22 @@ fn build_publishes_a_model_and_prints_its_receipt() {
     assert!(valid.contains("daily: valid model (0 tests)"), "{valid}");
 }
 
+// spec: run.model.statement-source@e0da375b
+#[test]
+fn build_and_validate_read_a_local_model_statement_file() {
+    let dir = project();
+    let p = dir.path();
+    let statement = "SELECT day, CAST(count(*) AS BIGINT) AS n FROM events GROUP BY day";
+    std::fs::write(p.join("daily.sql"), statement).unwrap();
+    std::fs::write(p.join("contextful.toml"), DECLARATION.replace(&format!("sql = \"{statement}\""), "sql_file = \"daily.sql\"")).unwrap();
+    assert!(stdout(&run(p, &["pipeline", "validate"])).contains("daily: valid model"));
+    assert_eq!(build(p, "2030-01-01T01:00:00Z")["rows"], 2);
+    std::fs::write(p.join("contextful.toml"), DECLARATION.replace(&format!("sql = \"{statement}\""), "sql_file = \"daily.sql\"\nsql = \"SELECT 1\"")).unwrap();
+    let invalid = run(p, &["pipeline", "validate"]);
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("PipelineSpecInvalid: model `daily` declares exactly one"));
+}
+
 /// `pipeline validate` names undeclared relations on stderr while allowing the store to resolve them at build.
 // spec: run.model.validate-undeclared@7dd935aa
 #[test]

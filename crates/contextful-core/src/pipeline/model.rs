@@ -142,7 +142,12 @@ pub struct ModelTest {
 #[serde(deny_unknown_fields)]
 pub struct ModelSpec {
     pub id: String,
+    #[serde(default)]
     pub sql: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sql_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disclosure_opt_out: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disclosure: Option<DisclosureDecl>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -189,6 +194,21 @@ pub struct MetricBounds {
 }
 
 impl ModelSpec {
+    pub fn validate_statement_source(&self) -> Result<(), RunError> {
+        let inline = !self.sql.trim().is_empty();
+        let file = self.sql_file.as_deref().is_some_and(|path| !path.trim().is_empty());
+        if inline == file || self.sql_file.as_deref().is_some_and(|path| path.trim().is_empty()) {
+            return Err(RunError::PipelineSpecInvalid(format!("model `{}` declares exactly one of `sql` and `sql_file`", self.id)));
+        }
+        if self.disclosure_opt_out.as_ref().is_some_and(|reason| reason.trim().is_empty()) {
+            return Err(RunError::PipelineSpecInvalid(format!("model `{}` has an empty `disclosure_opt_out` reason", self.id)));
+        }
+        if self.disclosure.is_some() && self.disclosure_opt_out.is_some() {
+            return Err(RunError::PipelineSpecInvalid(format!("model `{}` declares both `[model.disclosure]` and `disclosure_opt_out`", self.id)));
+        }
+        Ok(())
+    }
+
     pub fn publishes(&self) -> bool {
         self.publish.unwrap_or(true)
     }
@@ -204,6 +224,7 @@ impl ModelSpec {
     /// Hold the block to the rules checked before any row is read.
     pub fn validate(&self) -> Result<(), RunError> {
         check_table_name(&self.id)?;
+        self.validate_statement_source()?;
         if self.publishes() && self.contract.is_none() {
             return Err(RunError::ModelContractUndeclared(format!(
                 "model `{}` publishes and declares no `[model.contract]`; declare one, or `publish = false`",

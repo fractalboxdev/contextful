@@ -221,6 +221,19 @@ fn a_template_with_two_statements_refuses_at_startup() {
     }
 }
 
+// spec: disclosure.set-mode.aggregate-shape@416f20f7
+#[test]
+fn aggregate_shape_follows_the_engine_parse() {
+    let shape = contextful_context::read::aggregate_shape;
+    assert!(shape("SELECT industry, count(*) FROM revenue GROUP BY industry").unwrap());
+    assert!(shape("SELECT sum(revenue) FROM revenue").unwrap());
+    assert!(shape("SELECT DISTINCT industry FROM revenue").unwrap());
+    assert!(!shape("SELECT lower(industry) FROM revenue").unwrap());
+    assert!(!shape("SELECT sum(revenue) OVER () FROM revenue").unwrap());
+    assert!(shape("DELETE FROM revenue").is_err());
+    assert!(shape("SELECT 1; SELECT 2").is_err());
+}
+
 /// `context.query` takes `parameters`, mapping each placeholder name to a `type` among {{read.guard.template-declaration}} types and a `value`. A missing, unused, untyped or mismatched parameter raises `QueryParameterRejected` ahead of execution, with no coercion; bound values reach {{authority.refuse.scope-guard}}.
 // spec: read.guard.query-binding@676487ee
 #[test]

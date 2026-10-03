@@ -39,9 +39,13 @@ The two deployment settings a derived result is computed in, the offline diagnos
 - `check-verb` — `contextful disclosure check --config <path>` diagnoses each published model's disclosure policy and statement from local files and reports every refusal by model name.
   *A-disclosure*
 - `offline-diagnostic` — The single-operator diagnostic reads the manifest and each published model's statement text from local disk and issues 0 requests to the object store.
-- `policy-absent` — A published aggregate-shaped model carrying neither a disclosure policy nor a recorded opt-out fails the diagnostic with `DisclosurePolicyAbsent`.
+- `aggregate-shape` — A statement is aggregate-shaped when its parsed SELECT groups rows, has DISTINCT or HAVING, or calls an aggregate catalog function outside a window expression.
   *A-disclosure*
-- `model-unreadable` — A published model whose referenced statement text does not read raises `DisclosureModelUnreadable`.
+- `policy-absent` — A published model matching {{disclosure.set-mode.aggregate-shape}} and carrying neither a disclosure policy nor a recorded opt-out fails the diagnostic with `DisclosurePolicyAbsent`.
+  *A-disclosure*
+- `opt-out-record` — A model records an opt-out as a nonempty `disclosure_opt_out` reason; combining it with `[model.disclosure]` raises {{run.declare.spec-invalid}}.
+  *A-disclosure*
+- `model-unreadable` — A published model whose `sql_file` under {{run.model.statement-source}} does not read raises `DisclosureModelUnreadable`.
   *A-disclosure*
 - `clean-room-preconditions` — A cross-owner store carries per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys; one missing, checked before any cross-prefix write, raises `DisclosureCleanRoomPreconditionUnmet`.
   *A-disclosure*
@@ -50,15 +54,11 @@ The two deployment settings a derived result is computed in, the offline diagnos
 - `pepper-version` — A cross-owner join accepts only rows carrying its pair's current pepper version; rotation re-lands both owners' join keys before the next release.
   *A-disclosure*
 
-unsettled: Does a model gain a local statement-file field, and how does an inline statement produce the unreadable refusal? owner: disclosure affects: disclosure.set-mode
-
-unsettled: What exact SQL shape makes a published model aggregate-shaped for the policy-absent diagnostic? owner: disclosure affects: disclosure.set-mode
-
 ## release
 
 The ordered statistics release, the write-time disclosure policy, and the per-unit budget reservation.
 
-- `model-policy` — A published {{run.model.model-block}} declares its disclosure policy in `[model.disclosure]`; `metric_bounds` names each noised sum's lower bound, upper bound and quantum.
+- `model-policy` — A published {{run.model.model-block}} governed by aggregate disclosure declares `[model.disclosure]`; `metric_bounds` names each noised sum's lower bound, upper bound and quantum.
   *A-disclosure*
 - `release-verb` — `contextful disclosure release <model> --project <project>` builds the named model from its declared statement, applies its disclosure policy, and publishes one derived table.
   *A-disclosure*
