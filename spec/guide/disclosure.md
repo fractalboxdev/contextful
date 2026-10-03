@@ -49,13 +49,13 @@ flowchart LR
 
 Visibility runs in three steps. A pack lands a source with an access mapping
 ({{disclosure.pack.mapping-absent}}) whose keys the mapping schema defines
-({{disclosure.pack.asserts-access}}). A sweep copies grants into access tables as ordinary
-store data, refusing a grant with no resource ({{disclosure.sweep.orphan-grant}}) and
-advancing its coverage watermark only from streams that detect gaps
+({{disclosure.pack.asserts-access}}). A sweep ({{disclosure.sweep.sweep-verb}}) lands
+grants as reserved `_visibility` rows ({{disclosure.mirror.grants-table}}), refusing a
+grant with no resource ({{disclosure.sweep.orphan-grant}}) and advancing its coverage watermark only from streams that detect gaps
 ({{disclosure.sweep.ungapped-stream}}). At read time, reach resolves the admitted subject
 through a bounded group closure ({{disclosure.reach.closure-walk}}) to a reachable set, and
-the registered view semi-joins content against it. Every served table carries a visibility
-block ({{disclosure.mirror.unbound-table}}) naming a sweep and a staleness budget
+the registered view semi-joins content against it ({{disclosure.reach.semi-join}}).
+Every served table carries a visibility block ({{disclosure.mirror.unbound-table}}) naming a sweep and a staleness budget
 ({{disclosure.mirror.incomplete-binding}}), and a read past that budget refuses
 ({{disclosure.bound-staleness.access-stale}}).
 

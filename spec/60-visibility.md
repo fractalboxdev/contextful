@@ -60,8 +60,11 @@ The three-way conjunction, the access tables as store data, and the binding that
   *P5*
 - `incomplete-binding` — A binding at a servable level lacking a declared sweep for its source or a `max_acl_staleness` raises `VisibilityBindingIncomplete`.
   *P5*
-
-unsettled: What opens a resource whose access list could not be mirrored, who may open it, and does the opening land as an expiring grant row or as manifest policy? owner: disclosure affects: disclosure.mirror
+- `binding-keys` — A table's `visibility` block names its `source`, the `resource_key` column holding each row's `resource_id`, its `resource_kind`, `fidelity`, `family`, `max_acl_staleness`, and `on_stale` of `refuse`, the default, or `public_only`.
+- `grants-table` — A sweep lands a source's access data as ordinary rows of `_visibility/<source>/resources`, `grants`, `principals`, `group_members`, `identity_links`, `tombstones` and `freshness`, through the land path and its write lock.
+  *A-disclosure*
+- `unmirrorable-opening` — A resource whose access list the sweep could not mirror opens only through a grant row the store owner lands carrying `expires_at`; the row confers nothing past that instant, and no manifest key opens a resource.
+  *A-disclosure*
 
 ## sweep
 
@@ -73,16 +76,31 @@ Observation of one source's permission state: sweep kinds, the observation clock
   *A-disclosure*
 - `orphan-grant` — A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set.
   *P5*
+- `sweep-block` — An `[[acl_sweep]]` block declares one source's sweep: `source`, the `enumerate` table whose rows are its governed resources, `full` and `incremental` cadences as `{ every = <budget> }`, and optional `credential` and `events`.
+- `cadence-grammar` — A sweep cadence's `every` takes the grammar of {{disclosure.bound-staleness.budget-grammar}}.
+- `sweep-verb` — `visibility sweep --source <s> --kind full|incremental [--grants <file>]` runs one sweep of a declared source, reading its permission endpoint under `credential`, or the file when `--grants` is given, and commits as one run.
+- `grants-file` — A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line with `resource_id`, `principal`, `principal_kind` and `level`; a resource with no line holds no grant.
+- `full-run` — A full run replaces the source's resource and grant rows with those it read, writes a tombstone per grant it no longer observes, and sets `last_full_sweep_at`.
+- `incremental-run` — An incremental run replaces the grants of each resource it read, tombstoning those withdrawn, leaves every other resource's grants standing, and sets `last_incremental_at`.
+- `watermark-advance` — A run reading every governed resource sets the source's `watermark_at` to the instant it began reading; lag is now minus `watermark_at`.
+- `sweep-epoch` — A committed run advances its source's epoch by one.
+  *A-disclosure*
 
 ## reach
 
 Per-request resolution of a subject to the resources it reaches, the bounded group closure, and the reachable-set cache.
 
+- `subject-principals` — A subject `user://<p>` reaches the `user` principal spelled `<p>` and each principal an `identity_links` row maps to it, then the groups those principals belong to.
 - `closure-walk` — The closure walks the group graph with a visited set, ending any cycle, to a depth of `max_group_depth`, default 8 hops, and a breadth of 10000 nodes.
 - `closure-overflow` — A closure reaching its depth or node bound raises `VisibilityClosureDepth` with the non-retryable HTTP status 422 and returns no set.
   *A-disclosure*
 - `cache-capacity` — The reachable-set cache holds at most 100000 entries and evicts the least recently used.
 - `degraded-uncached` — Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`.
+  *A-disclosure*
+- `semi-join` — The semi-join opening {{authority.compose.relation-order}} admits a row of a bound table when its `resource_key` value names a resource with a read-conferring, unexpired, untombstoned grant in the reader's reachable set.
+- `closure-projection` — The group closure is a projection in `derived.sqlite`, rebuilt from the `_visibility` rows after each sweep and on a replica after each pull; no replica opens closure files.
+  *A-disclosure*
+- `cache-epochs` — The reachable-set cache keys on the subject, the directory epoch and the epoch of each source the read touches, so a sweep invalidates only sets reading its source.
   *A-disclosure*
 
 The per-request resolution of a subject to its reachable set:
@@ -95,10 +113,8 @@ flowchart LR
   DEPTH -->|"yes, read-conferring grants"| RES["resources"]
   RES -->|"known classes only"| RSET["reachable set"]
   TOMB[("tombstones")] -->|"subtracted"| RSET
-  RSET -->|"keyed by three epochs"| CACHE[("reachable-set cache")]
+  RSET -->|"keyed by source epochs"| CACHE[("reachable-set cache")]
 ```
-
-unsettled: Do the epochs keying the reachable-set cache scope per source rather than per access table, and does a materialized closure live in a rebuildable projection or in files a replica opens offline? owner: disclosure affects: disclosure.reach
 
 ## bound-staleness
 
@@ -110,6 +126,9 @@ The declared age budget on mirrored authorization, the refusal past it, and the 
   *A-disclosure*
 - `budget-below-cadence` — A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures.
   *A-disclosure*
+- `clock-offset` — `CONTEXTFUL_NOW_OFFSET_SECS`, a non-negative integer, moves the instant a staleness check reads as now that many seconds later, so it can refuse a read and never extends a budget.
+  *because a test observes a budget elapse without waiting, and an offset that only ages state cannot admit a read*
+- `offset-malformed` — A `CONTEXTFUL_NOW_OFFSET_SECS` value other than a non-negative integer stops the process before it serves, naming the variable.
 
 ## declare-fidelity
 
@@ -123,12 +142,14 @@ The fidelity level a table claims, the source family bounding the claim, and liv
   *A-disclosure*
 - `federated-cache` — Retaining a federated result under a key omitting the subject raises `VisibilityFederatedCacheShared`.
   *A-disclosure*
-- `computed-inputs` — A source that computes access with a sharing engine is queried live. A mapping projecting that engine's inputs into `access_grants` raises `VisibilityComputedInputsMirrored`, naming the source.
+- `computed-inputs` — A source that computes access with a sharing engine is queried live. A mapping projecting that engine's inputs into the `grants` table raises `VisibilityComputedInputsMirrored`, naming the source.
   *A-disclosure*
 - `roster-from-payload` — A mapping deriving grants from a people list inside content — attendees, invitees, recipients, contacts — rather than from the source's permission endpoint raises `VisibilityRosterFromPayload`.
   *A-disclosure*
-
-unsettled: Where does the per-reader delegated credential a federated leg runs under come from, and how does a federated result with no store row carry a citation? owner: disclosure affects: disclosure.declare-fidelity
+- `federated-credential` — A federated leg runs under a credential the read obtains by token exchange for the reader's subject, never under the sweep's `credential` or the store owner's.
+  *A-disclosure*
+- `federated-citation` — A federated result with no store row cites the source URL it fetched and the instant of that fetch.
+  *A-disclosure*
 
 ## pack
 
@@ -145,10 +166,10 @@ The reviewed unit landing one source: a manifest fragment plus a connector pin, 
 
 ## Shapes
 
-The access tables. Every instant is an engine UTC instant taken when the sweep read the source.
+The access tables, each at `_visibility/<source>/<name>`. Every instant is an engine UTC instant taken when the sweep read the source.
 
 ```sql
-CREATE TABLE access_resources (
+CREATE TABLE resources (
   resource_id       VARCHAR NOT NULL,
   source            VARCHAR NOT NULL,
   resource_kind     VARCHAR NOT NULL,
@@ -159,37 +180,38 @@ CREATE TABLE access_resources (
   _acl_sweep_id     VARCHAR NOT NULL
 );
 
-CREATE TABLE access_grants (
+CREATE TABLE grants (
   resource_id       VARCHAR NOT NULL,
   principal         VARCHAR NOT NULL,
   principal_kind    VARCHAR NOT NULL,   -- user | group | team | channel | org | public
   level             VARCHAR NOT NULL,   -- source spelling, projected by the mapping
+  expires_at        TIMESTAMP,          -- set on an operator-landed opening
   _acl_observed_at  TIMESTAMP NOT NULL,
   _acl_sweep_kind   VARCHAR NOT NULL,
   _acl_sweep_id     VARCHAR NOT NULL
 );
 
-CREATE TABLE access_principals (
+CREATE TABLE principals (
   principal         VARCHAR NOT NULL,
   principal_kind    VARCHAR NOT NULL,
   source_label      VARCHAR
 );
 
-CREATE TABLE access_group_members (
+CREATE TABLE group_members (
   "group"           VARCHAR NOT NULL,
   member            VARCHAR NOT NULL,
   member_kind       VARCHAR NOT NULL,
   _acl_observed_at  TIMESTAMP NOT NULL
 );
 
-CREATE TABLE access_identity_links (
+CREATE TABLE identity_links (
   source_principal  VARCHAR NOT NULL,
   subject           VARCHAR NOT NULL,
   method            VARCHAR NOT NULL,   -- scim_email | oidc_sub | operator_asserted
   confidence        DOUBLE
 );
 
-CREATE TABLE access_tombstones (
+CREATE TABLE tombstones (
   scope             VARCHAR NOT NULL,   -- resource | grant | principal
   resource_id       VARCHAR,
   principal         VARCHAR,
@@ -197,7 +219,7 @@ CREATE TABLE access_tombstones (
   revoked_at        TIMESTAMP NOT NULL
 );
 
-CREATE TABLE access_freshness (
+CREATE TABLE freshness (
   source              VARCHAR NOT NULL,
   sweep_kind          VARCHAR NOT NULL,
   watermark_at        TIMESTAMP NOT NULL,
