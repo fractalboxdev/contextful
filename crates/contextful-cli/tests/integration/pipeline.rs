@@ -652,6 +652,7 @@ fn serve_names_each_pipeline_it_does_not_arm() {
         pipeline("manual", &vendor.url("/v1/manual"), "", "tables = [\"items\"]"),
         scheduled("odd", &vendor.url("/v1/odd"), "0 0 L * *"),
     ));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
     ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
     let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
     let a = json(&out);
@@ -676,6 +677,7 @@ fn a_cycle_with_a_failed_fire_exits_non_zero() {
         scheduled("orders", &vendor.url("/v1/orders"), "every 1h"),
         scheduled("bad", &vendor.url("/v1/bad"), "every 1h"),
     ));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
     ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
     let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
     assert!(!out.status.success(), "a failed fire exits non-zero");

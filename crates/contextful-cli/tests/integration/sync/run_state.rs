@@ -71,6 +71,7 @@ fn scheduled_shop(id: &str, bucket: &Path, vendor: &Vendor) -> tempfile::TempDir
     let spec = dir.path().join("pipelines/shop.toml");
     let text = std::fs::read_to_string(&spec).unwrap();
     std::fs::write(&spec, text.replacen("incremental", "schedule = \"every 1h\"\nincremental", 1)).unwrap();
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"], &[]));
     ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"], &[]));
     dir
 }
