@@ -46,9 +46,8 @@ fn root_manifest(version: Option<&str>) -> String {
 
 /// A `gpg` that signs anything: it drains the payload, reports the signature to git on
 /// the status descriptor and prints an armoured block.
-const FAKE_GPG: &str = "#!/bin/sh\nprintf 'ran\\n' > \"${0%/*}/gpg-ran\"\ncat >/dev/null\necho '[GNUPG:] SIG_CREATED D 1 8 00 0 0' >&2\n\
-printf '%s\\n' '-----BEGIN PGP SIGNATURE-----' '' 'ZmFrZQ==' '-----END PGP SIGNATURE-----'\n\
-printf 'done\\n' > \"${0%/*}/gpg-done\"\n";
+const FAKE_GPG: &str = "#!/bin/sh\ncat >/dev/null\nprintf '\\n[GNUPG:] SIG_CREATED D 1 8 00 0 0\\n' >&2\n\
+printf '%s\\n' '-----BEGIN PGP SIGNATURE-----' '' 'ZmFrZQ==' '-----END PGP SIGNATURE-----'\n";
 
 struct Release {
     repo: Repo,
@@ -104,23 +103,14 @@ impl Release {
 
     fn tag(&self, args: &[&str]) -> Output {
         let path = format!("{}:{}", self.bin.path().display(), std::env::var("PATH").unwrap_or_default());
-        let mut out = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
             .args(["tag", "--branch", "main"])
             .args(args)
             .current_dir(&self.repo.root)
             .env_remove("CARGO_TARGET_DIR")
-            .env("GIT_TRACE", "1")
             .env("PATH", path)
             .output()
-            .unwrap();
-        if !out.status.success() {
-            let marker = |name| std::fs::read_to_string(self.bin.path().join(name)).unwrap_or_else(|e| format!("absent: {e}"));
-            out.stderr.extend_from_slice(format!("\nfake GPG: ran={}, done={}\n", marker("gpg-ran"), marker("gpg-done")).as_bytes());
-            if let Ok(version) = Command::new("git").arg("--version").output() {
-                out.stderr.extend_from_slice(&version.stdout);
-            }
-        }
-        out
+            .unwrap()
     }
 
     fn tags(&self) -> String {
