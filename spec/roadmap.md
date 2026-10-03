@@ -135,8 +135,6 @@ Acceptance: `contextful_acceptance::m08::m08_accountability`
 
 Reach: A revoked grant at the source stops answering within a declared bound.
 
-Depth: operation
-
 Acceptance: `contextful_acceptance::m09::m09_visibility`
 
 ## 10 — Cadence and the operator plane

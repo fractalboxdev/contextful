@@ -31,6 +31,24 @@ Revisit: a source offers sequenced delivery with gap reconciliation.
 
 Consequences: one judgment — the family — per source; authorization has one source, the join over observed rows.
 
+## Grants are rows under `_visibility`, and the closure is a rebuilt projection
+
+**Status:** accepted
+
+Context: a sweep's output, the closure a read resolves through, and the openings no sweep can observe each need one home a replica reproduces.
+Decision: a sweep lands grants as ordinary rows of `_visibility/<source>/grants` through the land path (`disclosure.mirror.grants-table`). The closure is a `derived.sqlite` projection rebuilt from those rows (`disclosure.reach.closure-projection`); cache epochs scope per source. An unmirrorable resource opens by an owner-landed expiring grant row. A federated leg runs under a token-exchanged credential and cites its URL and fetch instant.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Grant rows via the land path, closure in `derived.sqlite` *(chosen)* | — | A replica rebuilds the closure after each pull; a sweep rotates every cached set reading its source. |
+| A separate grant store beside the catalog | One write path | A second commit protocol, lock and erasure path. |
+| A closure synced as files a replica opens offline | One authorization source | Closure bytes on a replica drift from the rows they summarize. |
+| Openings as manifest policy | Enforceability | A key no sweep observes answers without expiry or record. |
+| Cache epochs per access table | Invalidation by construction | A sweep touching seven tables races seven counters. |
+
+Criteria: authorization has one source, the join over observed rows, decided it; a replica answers offline; revocation invalidates by construction.
+Consequences: an opening ages out with no revocation step and leaves a run record; a replica pays one closure rebuild per pull; a pipeline declares no table under `_visibility`.
+
 ## Aggregate disclosure is enforced at build with noisy thresholding and an up-front budget reservation
 
 `disclosure.release` stages no breaching cell: `disclosure.suppress` selects partitions by a noisy threshold over distinct-contributor counts, and a published figure carries noise whose strength follows the declared per-run spend. `disclosure.bound-cohort` admits exact figures from a `cohort` table only; a reader entitled to every contributing row reads them as an ordinary read. A release reserves per-unit spend for every contributing unit in one catalog transaction before reading, refusing with `DisclosureUnitBudgetExhausted`. `max_contributor_share` withholds a concentrated group. A table is `per-person` or `cohort`; `DisclosureCohortWidening` and `DisclosureSingletonCohort` guard cohorts.

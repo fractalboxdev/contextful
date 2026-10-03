@@ -80,11 +80,27 @@ fn prompt_hash_is_a_prefixed_sha256() {
     assert!(optional_value_problem("_prompt_hash", "sha256:abc").is_some());
 }
 
+/// The engine reserves two table namespaces: `_runs`, the durable run record, and `_visibility`, under which
+/// {{disclosure.mirror.grants-table}} lands each source's mirrored access tables.
+// spec: store.reserve.table-namespaces@3198fc8b
+#[test]
+fn the_visibility_namespace_holds_each_sources_access_tables() {
+    for bad in ["_visibility", "_visibility/wiki/grants", "_visibility/drive/resources", "_runs"] {
+        match check_table_name(bad) {
+            Err(StoreError::StoreReservedTableName(m)) => assert!(m.contains("reserved for"), "{m}"),
+            other => panic!("{bad}: expected StoreReservedTableName, got {other:?}"),
+        }
+    }
+    for ok in ["_visibilityx", "access/grants", "visibility/grants", "access_grants"] {
+        check_table_name(ok).unwrap();
+    }
+}
+
 /// A pipeline declaring a table inside a reserved namespace raises `StoreReservedTableName` when its manifest is assembled, naming the reservation.
 // spec: store.reserve.table-name@4603a9ec
 #[test]
 fn a_table_inside_a_reserved_namespace_is_refused() {
-    for bad in ["_runs", "_runs/archive", "access/grants"] {
+    for bad in ["_runs", "_runs/archive", "_visibility/wiki/grants"] {
         match check_table_name(bad) {
             Err(StoreError::StoreReservedTableName(m)) => assert!(m.contains("reserved for"), "{m}"),
             other => panic!("{bad}: expected StoreReservedTableName, got {other:?}"),
