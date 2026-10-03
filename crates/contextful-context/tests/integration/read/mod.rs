@@ -13,6 +13,7 @@ mod pin;
 mod pool;
 mod register;
 mod respond;
+mod result_cache;
 mod retrieve;
 mod typed;
 
@@ -31,7 +32,7 @@ use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
 use contextful_policy::enforce::mask::{Pepper, PEPPER_VAR};
 use contextful_policy::enforce::session::{Request, Session};
-use contextful_policy::issue::{mint, MintClaims, SeedSigner};
+use contextful_policy::issue::{mint, mint_seeded, MintClaims, SeedSigner};
 use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_policy::revoke::RevocationState;
 use contextful_policy::verify::{verify_inherited_pipe, Admission, AdmittedAuthority};
@@ -220,12 +221,25 @@ impl Reads {
 
     /// Admit a credential carrying `grants` for `subject`, minted under `claims`.
     pub fn authority_under(&self, subject: Subject, grants: Vec<Grant>, claims: MintClaims) -> AdmittedAuthority {
+        self.admit(subject, grants, claims, None)
+    }
+
+    /// Admit a credential carrying `grants` for `subject`, minted under `claims`, its
+    /// credential id derived from `seed`: one seed names one credential id across mints.
+    pub fn authority_seeded(&self, subject: Subject, grants: Vec<Grant>, claims: MintClaims, seed: [u8; 32]) -> AdmittedAuthority {
+        self.admit(subject, grants, claims, Some(seed))
+    }
+
+    fn admit(&self, subject: Subject, grants: Vec<Grant>, claims: MintClaims, seed: Option<[u8; 32]>) -> AdmittedAuthority {
         let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
         let mut req = MintRequest::custody(subject, grants);
         req.lifetime = Lifetime::Requested(900);
         let clock = FixedClock(at("2030-01-01T00:00:00Z"));
         let plan = policy.check(&req, &MintContext { node: NodeRole::Primary, signer: &self.signer, clock: &clock }).unwrap();
-        let token = mint(&plan, &claims, &self.signer).unwrap();
+        let token = match seed {
+            Some(seed) => mint_seeded(&plan, &claims, &self.signer, &seed).unwrap(),
+            None => mint(&plan, &claims, &self.signer).unwrap(),
+        };
         let keys = StaticPins::parse(&self.signer.public_key_text()).unwrap().keys().unwrap();
         let revocation = RevocationState::default();
         verify_inherited_pipe(&token, &keys, &Admission::new(at("2030-01-01T00:05:00Z"), &revocation).expecting(AUD)).unwrap()

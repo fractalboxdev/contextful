@@ -351,11 +351,18 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
 
 - `hot-local-parquet` — The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.
 - `cold-start` — A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.
-- `result-key` — A cached result keys on the policy subject (token scope, inference zone, incognito state), the token id and revocation epoch, the resolved snapshot ids, the bounds echo, the pin map and the statement hash.
-  *because a hit crossing a restriction, snapshot, bound or revocation serves rows the caller is not owed*
-- `cache-is-opt-in` — The result cache is opt-in per table at a short time to live and off for a table tagged private.
-- `snapshot-invalidates` — A committed snapshot invalidates every entry keyed against the tables it folds. A statement in flight during a fold reads {{store.fold.non-blocking}}.
+- `result-key` — A cached result keys on the token's id, revocation epoch, grants and subject, the session zone and incognito state, each touched relation and the files it reads, the bounds, the statement, its parameter values and the applied row ceiling.
+  *A-read*
+- `cache-is-opt-in` — A statement's result caches only when every table it touches declares `result_cache`, a time to live, and none declares `private = true`; an entry expires at the least time to live among them.
+  *A-read*
+- `volatile-bypasses` — A statement calling a function the engine marks other than consistent across queries, such as `now()`, `current_timestamp` or `random()`, or a macro reaching one, executes uncached.
+  *because such a call answers differently under an unchanged key, and a hit returns its first answer frozen until the entry expires*
+- `frontier-invalidates` — A commit, fold or request-ledger append on a touched table moves its read frontier, the snapshot and runs its relation reads, so an entry filled before it stops matching. A statement in flight during a fold reads {{store.fold.non-blocking}}.
   *P4*
+- `budget` — The result cache holds at most the byte budget its process declares, the least recently used entry evicted first; a face declaring no budget caches nothing.
+  *A-read*
+- `hit-identical` — A hit returns the response byte-identical to the miss that filled it, restriction block included; under `internals: true` the internals object carries `cache` as `hit` or `miss`.
+  *because a reused answer differing from a computed one is a second projection a caller must reconcile*
 - `keep-warm-is-per-deployment` — A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.
 - `session-pool` — `Face` reuses a resolved session and its connections while the whole key holds: admitted authority, token id, revocation epoch, request zone, bounds, pin map, table set, and per granted table its schema digest, pointer, run set and ledger files.
   *A-read*

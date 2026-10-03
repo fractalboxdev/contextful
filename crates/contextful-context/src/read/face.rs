@@ -5,6 +5,7 @@
 use super::engine::{SqlEngine, ENGINE};
 use super::fault::ReadFault;
 use super::pool::{self, SessionPool};
+use super::results::{self, ResultCache};
 use crate::scan::{scan, scan_at};
 use crate::store::Store;
 use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers};
@@ -55,6 +56,9 @@ pub struct Face {
     pub(crate) fulltext: crate::fulltext::SidecarCache<crate::fulltext::FulltextSidecar>,
     /// Resolved sessions and their connections (`read.cache.session-pool`).
     pub(crate) pool: SessionPool,
+    /// Statement results reused under their whole key (`read.cache.result-key`); absent
+    /// where the process declares no budget (`read.cache.budget`).
+    results: Option<ResultCache>,
 }
 
 /// The columns a table with no landed batch registers over: the injected columns every
@@ -105,13 +109,105 @@ impl Face {
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
         let fulltext = crate::fulltext::SidecarCache::new(contextful_core::read::rank::LEXICAL_INDEX_CACHE_ENTRIES);
-        let face = Face { store, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default() };
+        let face = Face { store, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default(), results: None };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {
             t.check(&engine.serialize(&t.sql)?, &tables)?;
         }
         Ok(face)
+    }
+
+    /// The face with a result cache holding at most `budget` bytes (`read.cache.budget`).
+    pub fn with_result_cache(self, budget: u64) -> Face {
+        Face { results: Some(ResultCache::new(budget)), ..self }
+    }
+
+    /// The face's result cache, where the process declares a budget.
+    pub fn results(&self) -> Option<&ResultCache> {
+        self.results.as_ref()
+    }
+
+    /// The least time to live the touched tables declare, or `None` where one declares
+    /// none or is tagged private (`read.cache.cache-is-opt-in`). A request ledger answers
+    /// to its table's declaration.
+    fn cache_ttl(&self, touched: &BTreeSet<String>) -> Option<std::time::Duration> {
+        let mut least: Option<u64> = None;
+        for t in touched {
+            let decl = self.decl(contextful_core::store::ledger::ledger_table(t).unwrap_or(t));
+            if decl.is_private() {
+                return None;
+            }
+            let secs = decl.result_cache_secs().ok().flatten()?;
+            least = Some(least.map_or(secs, |l| l.min(secs)));
+        }
+        least.map(std::time::Duration::from_secs)
+    }
+
+    /// Execute an admitted statement under `ceiling` and attach its restriction block, or
+    /// return the cached response under the same key (`read.cache.hit-identical`). A
+    /// `tree` calling a volatile function executes uncached (`read.cache.volatile-bypasses`).
+    /// The internals object rides outside the cached projection.
+    #[allow(clippy::too_many_arguments)]
+    fn answer(
+        &self,
+        engine: &SqlEngine,
+        session: &Session,
+        touched: &BTreeSet<String>,
+        sql: &str,
+        parameters: &Bindings,
+        ceiling: u64,
+        opts: ReadOptions,
+        tree: &Value,
+    ) -> Result<Response, ReadFault> {
+        let started = std::time::Instant::now();
+        let cache = self.results.as_ref().and_then(|c| Some((c, self.cache_ttl(touched)?))).filter(|_| !results::volatile(tree));
+        if cache.is_none() {
+            if let Some(c) = &self.results {
+                c.bypass();
+            }
+        }
+        let key = cache.map(|_| results::key(session, &results::Statement { touched, text: sql, parameters, ceiling, bounds: opts.bounds }));
+        let (response, state) = match (cache, key) {
+            (Some((c, ttl)), Some(key)) => match c.get(&key) {
+                Some(hit) => (hit, Some("hit")),
+                None => {
+                    let fresh = self.execute(engine, session, touched, sql, parameters, ceiling, opts)?;
+                    c.put(key, &fresh, ttl);
+                    (fresh, Some("miss"))
+                }
+            },
+            _ => (self.execute(engine, session, touched, sql, parameters, ceiling, opts)?, None),
+        };
+        Ok(if opts.internals {
+            let internals = Internals {
+                sql: sql.to_string(),
+                engine: ENGINE,
+                limit: Some(ceiling),
+                row_count: response.rows.len() as u64,
+                elapsed_ms: started.elapsed().as_millis() as u64,
+                cache: state,
+            };
+            response.with_block("internals", serde_json::to_value(internals).expect("internals serialize"))
+        } else {
+            response
+        })
+    }
+
+    /// One admitted statement's projection and restriction block, without internals.
+    #[allow(clippy::too_many_arguments)]
+    fn execute(
+        &self,
+        engine: &SqlEngine,
+        session: &Session,
+        touched: &BTreeSet<String>,
+        sql: &str,
+        parameters: &Bindings,
+        ceiling: u64,
+        opts: ReadOptions,
+    ) -> Result<Response, ReadFault> {
+        let response = respond(engine, sql, parameters, Some(ceiling), ReadOptions { internals: false, ..opts })?;
+        self.restrict(engine, session, touched.iter().map(String::as_str), response)
     }
 
     /// Every table the store holds or the manifest declares, sorted.
@@ -314,8 +410,7 @@ impl Face {
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
-        let response = respond(&engine, sql, &bindings, Some(ceiling), opts)?;
-        self.restrict(&engine, session, admitted.relations.iter().map(String::as_str), response)
+        self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)
     }
 
     /// Run a declared template the credential's allowlist covers. Its body is operator
@@ -334,8 +429,7 @@ impl Face {
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
-        let response = respond(&engine, &template.sql, &parameters, Some(ceiling), opts)?;
-        self.restrict(&engine, session, admitted.relations.iter().map(String::as_str), response)
+        self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)
     }
 
     /// The tools this session sees: the closed built-in set and each declared template
@@ -575,6 +669,7 @@ pub(crate) fn respond(engine: &SqlEngine, sql: &str, parameters: &Bindings, ceil
             limit: ceiling,
             row_count: response.rows.len() as u64,
             elapsed_ms: started.elapsed().as_millis() as u64,
+            cache: None,
         };
         response.with_block("internals", serde_json::to_value(internals).expect("internals serialize"))
     } else {

@@ -34,6 +34,24 @@ Gate: a `contextful-context` benchmark reports cold and warm `Face::query` p50 a
 Criteria: no reuse crosses a snapshot, schema, table set or revocation, fixed; warm latency decides.
 Consequences: `read.register.connection-views` rewords from per statement to per pool entry once the gate admits the pool.
 
+## A result is reused only under the read frontier it was computed at
+
+**Status:** accepted
+
+Context: a dashboard issues one statement per panel over one shared read frontier, and each repeat executes again on the engine.
+Decision: `read.cache` keeps a statement's response behind the guard, masks and zone gate, keyed on the session's principal, each touched relation with the files it reads and its request-ledger stamps, the bounds, the statement, its parameter values and the applied row ceiling. A table opts in with a time to live; a table declaring `private = true` never caches. A process declares a byte budget, least recently used evicted first, with no default.
+Criteria: no hit crosses a restriction, revocation or frontier, fixed; then repeat-read cost.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Key on touched relations and their read frontier *(chosen)* | — | A hit still admits the statement and stamps ledger files; a truncated result caches as truncated. |
+| Key on resolved snapshot ids | Freshness | A run landed before the next fold changes the result under the same ids. |
+| A time to live as the staleness guard | Invalidation by construction | Every commit reads stale until expiry. |
+| Cache outside the face | Enforcement | The cache duplicates the session's policy fingerprint, and one missed field crosses a restriction. |
+| A default budget | Silence | A guessed number meets production memory unreviewed. |
+
+Consequences: a commit on an untouched table leaves an entry live.
+
 ## A zone-withheld relation is named, with one whole-relation count
 
 `read.respond` names each touched relation the session's zone excludes or column-masks in a restriction block that every transport serializes; `context.describe` states the session zone and whether each table admits it. `authority.place` counts the rows the zone step removes over the whole relation, after the tenant and row-policy steps, never over the caller's statement. `authority.compose.before-the-cut` holds: the count is a property of the relation, so no ranked position, filter or requested size moves it.

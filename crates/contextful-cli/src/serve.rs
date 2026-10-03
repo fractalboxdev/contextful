@@ -40,6 +40,10 @@ pub struct ServeArgs {
     /// Requests in flight at once; past it a request answers `503`. Required, with no default.
     #[arg(long)]
     max_in_flight: Option<usize>,
+    /// Bytes the result cache holds, least recently used evicted first; absent, no result
+    /// caches (`read.cache.budget`).
+    #[arg(long)]
+    result_cache_bytes: Option<u64>,
     /// The project whose store root is `.contextful/context/<project>/` under the working
     /// directory; absent, the nearest `contextful.toml` upward names it.
     #[arg(long)]
@@ -99,6 +103,10 @@ pub fn run(args: ServeArgs) -> Result<()> {
     // (`store.pull.before-run`).
     crate::sync::pull_before_run(&located)?;
     let face = face(&located)?;
+    let face = match args.result_cache_bytes {
+        Some(budget) => face.with_result_cache(budget),
+        None => face,
+    };
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
     let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling)).map_err(anyhow::Error::msg)?;
     let listener = TcpListener::bind(&args.http)?;

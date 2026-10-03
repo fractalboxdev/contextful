@@ -10,6 +10,7 @@ mod input;
 mod pin;
 pub mod pool;
 pub mod recall;
+pub mod results;
 pub mod retrieve;
 
 pub use audit::{audit_reads, AUDIT_READS};
@@ -18,4 +19,5 @@ pub use face::{operator_query, Face, ReadOptions};
 pub use fault::ReadFault;
 pub use pool::{PoolCounts, SessionPool};
 pub use recall::RecallRequest;
+pub use results::{ResultCache, ResultCounts};
 pub use retrieve::RetrieveRequest;
