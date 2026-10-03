@@ -319,7 +319,10 @@ impl Pass<'_> {
         let entities = self.entities(session)?;
         let mut live = read_claims(self.face, session, &target.name)?;
         let mut writes: Vec<Claim> = Vec::new();
-        for candidate in extraction.claims {
+        for mut candidate in extraction.claims {
+            // Each citation carries its row's key, so a later version of the key leaves
+            // the claim resolvable (`read.recall.evidence-key`).
+            self.face.stamp_evidence(session, &mut candidate.evidence)?;
             let subject = match resolve_mention(&candidate.subject, &entities) {
                 Ok(Some(id)) => entities.iter().find(|e| e.entity_id == id).map_or(candidate.subject.clone(), |e| e.name.clone()),
                 Ok(None) => candidate.subject.clone(),

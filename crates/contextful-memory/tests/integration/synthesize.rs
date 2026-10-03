@@ -198,7 +198,7 @@ fn a_suppressed_claim_is_counted_and_never_named() {
     let withheld = recall(&f, &outsider);
     assert!(withheld.rows.is_empty());
     let block = &withheld.blocks["contextful.recall"];
-    assert_eq!(block, &json!({ "suppressed": { "MemoryEvidenceUnresolved": 1, "MemoryEvidenceOverflow": 0 } }));
+    assert_eq!(block, &json!({ "suppressed": { "MemoryEvidenceUnresolved": 1, "MemoryEvidenceOverflow": 0 }, "stale": 0 }));
     assert!(!serde_json::to_string(&withheld.to_json()).unwrap().contains("Lee"));
     let reader = f.authority("agent://research-loop", &[Action::Read], &["research/*", "memory/*"]);
     assert_eq!(recall(&f, &reader).blocks["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"], json!(0));
@@ -252,7 +252,7 @@ fn dead_claims_never_starve_a_live_one() {
         confidence: 0.5,
         valid_from: at("2030-01-01T00:00:00Z"),
         valid_to: expired.then(|| at("2030-01-02T00:00:00Z")),
-        evidence: vec![EvidenceRef { table: table.into(), run: "run-0001".into(), seq: 0 }],
+        evidence: vec![EvidenceRef::row(table, "run-0001", 0)],
         superseded_by: retired.then(|| "c-other".to_string()),
         grant_id: w.grant_id.clone(),
         agent: w.agent.clone(),

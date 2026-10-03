@@ -37,6 +37,7 @@ MemoryShapeColumnMissing      = { clause = "read.declare.canonical-column", glos
 MemoryUndeclaredRelation      = { clause = "read.declare.undeclared-relation", gloss = "A candidate edge carries an undeclared relation type." }
 MemoryExtractExhausted        = { clause = "read.synthesize.dead-letter", gloss = "An extract batch exhausted its attempts and was dead-lettered." }
 MemoryDirectWriteShapeRefused = { clause = "read.revise.direct-write", gloss = "A direct write targeted a memory shape other than claims." }
+MemoryCitationNotLive         = { clause = "read.revise.citation-live", gloss = "A direct write cites a keyed row that is not its key's live version." }
 MemoryEvidenceUnresolved      = { clause = "read.recall.evidence-unresolved", gloss = "A claim's evidence does not resolve through the caller's session." }
 MemoryEvidenceOverflow        = { clause = "read.recall.evidence-references", gloss = "A claim names more evidence references than the bound." }
 MemoryObservationOutOfOrder   = { clause = "read.revise.observed-order", gloss = "A claim was observed before a live contradicting claim of its line." }

@@ -106,6 +106,20 @@ Revisit: a caller needs server-initiated messages or resumable streams.
 Consequences: revocation takes effect on the next recall with no invalidation sweep; total recall cost of the evidence join is unmeasured.
 Revisit: recall latency dominated by the evidence join; a suppression channel that names a withheld claim without its content; evidence lists clustering at the 256 cap.
 
+## A citation into a keyed table resolves through a pepper-keyed digest of its key
+
+A fold drops a key's superseded versions, so a citation resolved by run and sequence alone withdraws its claim at the next compaction. The landing write stamps each citation into a keyed table with a digest of the cited key under a secret derived from the mask pepper; recall matches a live row of that key when the cited row no longer reads, and counts the claim stale. The memory row stores no source value, and no caller holds the secret to test a guessed key.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Pepper-keyed digest of the key, stale claims counted *(chosen)* | — | A stale claim may contradict its key's live version, signalled only as a count; a pepper rotation or key change returns citations to run-and-sequence resolution. |
+| Key cells copied into the citation | Containment | Every memory reader reads source key values outside the source table's grants, masks and erasure. |
+| The fold keeps every cited version | Erasure reach | Compaction retains what memory cites, and erasing a key must find each retained version. |
+| Withdraw the claim at the fold | Recall stability | A routine compaction silently forgets memory. |
+
+Consequences: a fold no longer withdraws memory; each recall of a stale citation scans its table for the digest.
+Revisit: stale counts dominating a recall; a reader needing the claim's cited version rather than its key's live one.
+
 ## The store holds nothing a user could not see
 
 Query-time enforcement bounds a read, not the stored bytes, so the ceiling sits at the write path. `authority.refuse` rejects a credential-shaped value per value with `EnforceCredentialShapedValue`, landing the surrounding rows; an operator-declared exemption admits a source that legitimately carries such text. `connector.source` refuses every organization-twin API — security, eDiscovery, legal-hold export — with `ConnectorTwinApiSource`; a sanctioned, paid, disclosed organization-wide export path is admitted.

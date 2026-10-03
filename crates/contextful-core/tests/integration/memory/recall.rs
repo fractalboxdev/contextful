@@ -1,6 +1,6 @@
 //! `read.recall`: the evidence gate.
 
-use contextful_core::memory::recall::{gate, EvidenceRead, EVIDENCE_REFERENCES};
+use contextful_core::memory::recall::{gate, EvidenceRead, Grounding, EVIDENCE_REFERENCES};
 use contextful_core::memory::MemoryError;
 use serde_json::json;
 
@@ -17,7 +17,7 @@ fn readable(_: &contextful_core::memory::synthesize::EvidenceRef) -> EvidenceRea
 #[test]
 fn unresolvable_evidence_suppresses_the_claim() {
     let memory = vec!["memory/facts".to_string()];
-    assert_eq!(gate(Some(&refs(2, "research/notes")), &memory, readable), Ok(()));
+    assert_eq!(gate(Some(&refs(2, "research/notes")), &memory, readable), Ok(Grounding::Cited));
     let mut outcomes = Vec::new();
     for outcome in [EvidenceRead::Unreadable, EvidenceRead::Masked, EvidenceRead::UnknownTable] {
         outcomes.push(gate(Some(&refs(1, "research/notes")), &memory, |_| outcome));
@@ -38,6 +38,6 @@ fn unresolvable_evidence_suppresses_the_claim() {
 #[test]
 fn evidence_past_256_references_overflows() {
     assert_eq!(EVIDENCE_REFERENCES, 256);
-    assert_eq!(gate(Some(&refs(256, "research/notes")), &[], readable), Ok(()));
+    assert_eq!(gate(Some(&refs(256, "research/notes")), &[], readable), Ok(Grounding::Cited));
     assert!(matches!(gate(Some(&refs(257, "research/notes")), &[], readable), Err(MemoryError::EvidenceOverflow(_))));
 }

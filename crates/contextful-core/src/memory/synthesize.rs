@@ -28,16 +28,26 @@ pub trait Inference {
 }
 
 /// A reference from a claim to the landed row it rests on: the row's table and its
-/// injected run and sequence, which identify one landed row in every table.
+/// injected run and sequence, which identify one landed row in every table. On a keyed
+/// table the write landing the claim stamps `key_digest`, a pepper-keyed digest of the cited
+/// row's key, and recall resolves the reference through it (`read.recall.evidence-key`).
+/// The reference carries no cell value of the cited row (`read.recall.evidence-no-value`).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceRef {
     pub table: String,
     pub run: String,
     pub seq: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_digest: Option<String>,
 }
 
 impl EvidenceRef {
+    /// A reference to one landed row, carrying no key digest.
+    pub fn row(table: impl Into<String>, run: impl Into<String>, seq: i64) -> EvidenceRef {
+        EvidenceRef { table: table.into(), run: run.into(), seq, key_digest: None }
+    }
+
     /// The reference's text form inside a prompt.
     pub fn label(&self) -> String {
         format!("{}#{}:{}", self.table, self.run, self.seq)

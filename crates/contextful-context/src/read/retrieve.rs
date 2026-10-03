@@ -6,8 +6,7 @@ use super::engine::{cell, SqlEngine};
 use super::face::Face;
 use super::fault::ReadFault;
 use contextful_core::memory::declare::Shape;
-use contextful_core::memory::recall::{gate, EvidenceRead};
-use contextful_core::memory::synthesize::EvidenceRef;
+use contextful_core::memory::recall::gate;
 use contextful_core::read::embed::cosine;
 use contextful_core::read::filter::{Filter, Scalar};
 use contextful_core::read::template::{Bindings, Bound};
@@ -28,7 +27,6 @@ use contextful_core::time::Instant;
 use contextful_policy::enforce::session::Session;
 use duckdb::types::Value as Engine;
 use serde_json::{json, Map, Value};
-use std::collections::BTreeMap;
 
 /// Default number of rows a ranked read returns.
 pub const DEFAULT_LIMIT: u64 = 10;
@@ -256,7 +254,7 @@ impl Face {
         let engine = self.pool.engine(session)?;
         let anchor = request.anchor;
         let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();
-        let mut suppressed: BTreeMap<&'static str, u64> = BTreeMap::new();
+        let mut tally = super::recall::RecallTally::default();
         let mut recalled = false;
         let mut rows: Vec<Row> = Vec::new();
         for table in &arms {
@@ -334,7 +332,7 @@ impl Face {
                     request,
                     memory_tables: &memory_tables,
                 };
-                self.arm_rows(&cx, &columns, values, &mut kept, &mut rows, &mut suppressed);
+                self.arm_rows(&cx, &columns, values, &mut kept, &mut rows, &mut tally);
                 offset += window;
                 if !claims || page < window || kept >= window {
                     break;
@@ -384,7 +382,7 @@ impl Face {
                     );
                     let parameters = Bindings::positional(chunk.iter().map(|id| Bound::Text(id.clone())).chain(values));
                     let (columns, values) = engine.run_values(&sql, &parameters, None)?;
-                    self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut suppressed);
+                    self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut tally);
                 }
                 rows.extend(recalled_rows.into_iter().filter(|r| !present.contains(&r.id)));
             }
@@ -480,12 +478,7 @@ impl Face {
         // An excluded arm read no candidate; the block names it (`read.retrieve.excluded-arm`).
         response = self.restrict(&engine, session, arms.iter().map(String::as_str), response)?;
         if recalled {
-            // Counts per identifier; no suppressed claim is named (`read.recall.suppression-count`).
-            let counts: Map<String, Value> = ["MemoryEvidenceUnresolved", "MemoryEvidenceOverflow"]
-                .iter()
-                .map(|id| (id.to_string(), json!(suppressed.get(id).copied().unwrap_or(0))))
-                .collect();
-            response = response.with_block("recall", json!({ "suppressed": counts }));
+            response = response.with_block("recall", tally.block());
         }
         Ok(response)
     }
@@ -562,30 +555,6 @@ impl Face {
     pub fn fulltext_cache(&self) -> &SidecarCache<FulltextSidecar> {
         &self.fulltext
     }
-
-    /// How one evidence row reads through the caller's session: its table registered, the
-    /// row visible through the relation, and no cell of the table masked or nulled by zone.
-    pub(crate) fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef) -> EvidenceRead {
-        let Some(relation) = session.relation(&r.table) else { return EvidenceRead::UnknownTable };
-        let sql = format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation.name()), ident(RUN_ID), ident(ROW_SEQ));
-        let found = engine
-            .run(&sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), None)
-            .ok()
-            .and_then(|(_, rows)| rows.first().and_then(|row| row.first().cloned()))
-            .is_some_and(|c| matches!(c, Cell::Integer { value, .. } if value > 0));
-        if !found {
-            return EvidenceRead::Unreadable;
-        }
-        let masked = session.policy(&r.table).is_some_and(|p| {
-            p.columns.values().any(|c| c.mask.is_some())
-                || p.columns.keys().any(|c| !p.column_set(c).admits(session.zone()))
-        });
-        if masked {
-            EvidenceRead::Masked
-        } else {
-            EvidenceRead::Readable
-        }
-    }
 }
 
 /// What one arm's rows are read against.
@@ -612,7 +581,7 @@ impl Face {
         values: Vec<Vec<Engine>>,
         kept: &mut u64,
         rows: &mut Vec<Row>,
-        suppressed: &mut BTreeMap<&'static str, u64>,
+        tally: &mut super::recall::RecallTally,
     ) {
         let at = |name: &str| columns.iter().position(|c| c == name);
         for v in values {
@@ -639,8 +608,7 @@ impl Face {
                     continue;
                 }
                 let evidence = get("evidence").and_then(text_of);
-                if let Err(e) = gate(evidence.as_deref(), cx.memory_tables, |r| self.evidence_read(cx.engine, cx.session, r)) {
-                    *suppressed.entry(e.identifier()).or_insert(0) += 1;
+                if !tally.admit(gate(evidence.as_deref(), cx.memory_tables, |r| self.evidence_read(cx.engine, cx.session, r))) {
                     continue;
                 }
             }

@@ -2,8 +2,10 @@
 
 use super::claims::{read_claims, require, Boundary, Landing, Writer};
 use super::MemoryFault;
+use contextful_context::read::evidence::Stamped;
 use contextful_context::read::Face;
 use contextful_core::grant::Action;
+use contextful_core::memory::MemoryError;
 use contextful_core::memory::revise::{claim_id, direct_write, keyed_claim_id, observed_order, revise, tier, Claim, WritePath};
 use contextful_core::memory::synthesize::{validate_claim, CandidateClaim};
 use contextful_core::store::bound_time::Bounds;
@@ -47,7 +49,9 @@ pub fn write_claim(
 /// synthesized claim does, and the writer's authority is re-read just before it lands.
 /// The claim is valid from its observed instant (`read.revise.observed-at`); a dedup key
 /// seeds its `claim_id`, and a `claim_id` the table already holds lands nothing
-/// (`read.revise.dedup-key`).
+/// (`read.revise.dedup-key`). Each citation carries the key digest of the row it cites,
+/// and a citation of a keyed row its key has since replaced refuses
+/// (`read.revise.citation-live`); a citation no readable row carries lands unstamped.
 #[allow(clippy::too_many_arguments)]
 pub fn write_observed(
     face: &Face,
@@ -68,6 +72,16 @@ pub fn write_observed(
     require(authority, Action::Write, into)?;
     let writer = Writer::of(authority);
     let session = face.session(authority, &Request::default(), Bounds::default())?;
+    let mut candidate = candidate;
+    let stamped = face.stamp_evidence(&session, &mut candidate.evidence)?;
+    if let Some(i) = stamped.iter().position(|s| *s == Stamped::NotLive) {
+        let r = &candidate.evidence[i];
+        return Err(MemoryError::CitationNotLive(format!(
+            "`{}` row {}:{} is a version its key has since replaced",
+            r.table, r.run, r.seq
+        ))
+        .into());
+    }
     let live = read_claims(face, &session, into)?;
     let id = match observation.dedup_key.as_deref() {
         Some(key) if key.trim().is_empty() => return Err(MemoryFault::Invalid("the dedup key is empty".into())),
