@@ -340,7 +340,7 @@ const SPLIT: [&str; 3] = ["workspace", "features", "budget"];
 /// `<profile>` per profile the binary declares, its name after `contextful-`.
 fn parts(root: &Path, stage: &str) -> Result<Vec<String>> {
     Ok(match stage {
-        "workspace" => ["compile", "foundation", "runtime", "read", "cli", "ci"].into_iter().map(str::to_string).collect(),
+        "workspace" => ["compile", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
         "features" => {
             let featured = featured_packages(root)?;
             let binary = featured.iter().filter(|p| p.name == topology::BINARY).flat_map(Featured::runs);
@@ -522,7 +522,7 @@ fn workspace_part(package: &str) -> &'static str {
     match package {
         "contextful-engine" | "contextful-connectors" | "contextful-memory" | "contextful-sync" | "contextful-wasm" => "runtime",
         "contextful-context" | "contextful-agent" => "read",
-        "contextful-cli" => "cli",
+        "contextful-cli" => "compile",
         "contextful-ci" => "ci",
         _ => "foundation",
     }

@@ -13,8 +13,8 @@
 #   flare-dispatch/check:toolchain   the pinned Lean toolchain and the WebAssembly target provisioned
 #   flare-dispatch/check:schema      secrets of record, mirrors: annotations, derived artifacts regenerated, contextful-spec lint
 #   flare-dispatch/check:test-first  a test under tests/ fails against the base source
-#   flare-dispatch/check:workspace.compile       compile every workspace suite over the union of features
-#   flare-dispatch/check:workspace.<group>       run each package suite in one of five groups
+#   flare-dispatch/check:workspace.compile       compile every workspace suite over the union of features, then run the CLI suite
+#   flare-dispatch/check:workspace.<group>       run each other package suite in one of four groups
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
 #   flare-dispatch/check:evaluate    every gate-tier entry of evals/ledger.toml, held to its target
 #   flare-dispatch/check:features.packages      each package but the binary declaring a feature, tested with none, with all and with each listed set
@@ -54,7 +54,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        stage: [pins, toolchain, schema, test-first, workspace.compile, workspace.foundation, workspace.runtime, workspace.read, workspace.cli, workspace.ci, acceptance, evaluate, features.packages, features.binary-none, features.binary-all, features.binary-data-plane, features.binary-contextful-edge, crate-graph, connectors, surfaces, formal, budget.control, budget.edge, budget.full]
+        stage: [pins, toolchain, schema, test-first, workspace.compile, workspace.foundation, workspace.runtime, workspace.read, workspace.ci, acceptance, evaluate, features.packages, features.binary-none, features.binary-all, features.binary-data-plane, features.binary-contextful-edge, crate-graph, connectors, surfaces, formal, budget.control, budget.edge, budget.full]
     steps:
       - id: dispatch
         uses: fractalboxdev/flare-dispatch/actions/flare-dispatch-action@a5118d6594c8f3e4040bb90afcb02898a6e7b7bd
