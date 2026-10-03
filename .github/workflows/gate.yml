@@ -54,7 +54,8 @@ jobs:
       matrix:
         stage: [pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features.packages, features.binary-none, features.binary-all, features.binary-data-plane, features.binary-contextful-edge, crate-graph, connectors, surfaces, formal, budget.control, budget.edge, budget.full]
     steps:
-      - uses: fractalboxdev/flare-dispatch/actions/flare-dispatch-action@a5118d6594c8f3e4040bb90afcb02898a6e7b7bd
+      - if: ${{ matrix.stage == 'workspace' }}
+        uses: fractalboxdev/flare-dispatch/actions/flare-dispatch-action@a5118d6594c8f3e4040bb90afcb02898a6e7b7bd
         with:
           run: check
           endpoint: ${{ vars.FLAREDISPATCH_ENDPOINT }}
