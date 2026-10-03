@@ -1,7 +1,7 @@
 //! Exclusive create: one winner, an untouched loser, no staging file left behind, on every
 //! backend the primitive chooses between.
 
-use contextful_fs::{create_exclusive, create_exclusive_locked, create_new, tmp_sibling};
+use contextful_fs::{create_exclusive, create_exclusive_locked, create_new, names_file, tmp_sibling};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Barrier};
 
@@ -94,6 +94,21 @@ fn create_new_stages_and_publishes_bytes() {
     assert!(!create_new(&path, b"node-2\n").unwrap());
     assert_eq!(std::fs::read(&path).unwrap(), b"node-1\n");
     assert_eq!(entries(dir.path()), ["node-id"]);
+}
+
+#[test]
+fn a_renamed_open_file_does_not_identify_its_replacement() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("commit.lock");
+    let moved = dir.path().join("old.lock");
+    std::fs::write(&path, b"held").unwrap();
+    let held = std::fs::File::open(&path).unwrap();
+    assert!(names_file(&path, &held).unwrap());
+    std::fs::rename(&path, &moved).unwrap();
+    assert!(!names_file(&path, &held).unwrap());
+    std::fs::write(&path, b"replacement").unwrap();
+    assert!(!names_file(&path, &held).unwrap());
+    assert_eq!(std::fs::read(&path).unwrap(), b"replacement");
 }
 
 #[test]

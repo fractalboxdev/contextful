@@ -3,9 +3,9 @@
 //! file or none, and exactly one of several racing creators wins.
 //!
 //! The create renames without replacing (`renameat2(RENAME_NOREPLACE)` on Linux,
-//! `renamex_np(RENAME_EXCL)` on macOS), falls back to a hard link where the volume refuses
-//! the flag, and to a check-then-rename under an advisory lock on the parent directory where
-//! it refuses both, as exFAT and FAT32 do.
+//! `renamex_np(RENAME_EXCL)` on macOS, `MoveFileExW` on Windows), falls back to a hard link
+//! where the volume refuses the flag, and to a check-then-rename under an advisory lock on
+//! the parent directory where it refuses both, as exFAT and FAT32 do.
 
 use std::fs;
 use std::io::{self, ErrorKind};
@@ -53,6 +53,49 @@ pub fn create_exclusive(tmp: &Path, path: &Path) -> io::Result<bool> {
         Err(_) => {}
     }
     create_exclusive_locked(tmp, path)
+}
+
+/// Whether `path` still names `file`, including after another process renames an open
+/// file and creates a replacement at its old path.
+pub fn names_file(path: &Path, file: &fs::File) -> io::Result<bool> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let named = match fs::metadata(path) {
+            Ok(m) => m,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(e),
+        };
+        let held = file.metadata()?;
+        return Ok(named.dev() == held.dev() && named.ino() == held.ino());
+    }
+    #[cfg(windows)]
+    {
+        let named = match fs::File::open(path) {
+            Ok(f) => f,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(e),
+        };
+        return Ok(windows_file_id(&named)? == windows_file_id(file)?);
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (path, file);
+        Err(io::Error::from(ErrorKind::Unsupported))
+    }
+}
+
+#[cfg(windows)]
+fn windows_file_id(file: &fs::File) -> io::Result<(u32, u32, u32)> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION};
+    // SAFETY: the information structure is a plain C value that the call fills.
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: `file` keeps this valid handle open throughout the call, and `info` is writable.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok((info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow))
 }
 
 /// The create for a volume refusing both no-replace renames and hard links: under an
@@ -107,7 +150,12 @@ fn flag_refused(e: &io::Error) -> bool {
     {
         errno_in(e, &[libc::ENOTSUP, libc::EOPNOTSUPP, libc::EINVAL, libc::ENOSYS])
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::{ERROR_INVALID_FUNCTION, ERROR_NOT_SUPPORTED};
+        e.raw_os_error().is_some_and(|c| c == ERROR_INVALID_FUNCTION as i32 || c == ERROR_NOT_SUPPORTED as i32)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         e.kind() == ErrorKind::Unsupported
     }
@@ -120,7 +168,12 @@ fn link_refused(e: &io::Error) -> bool {
     {
         errno_in(e, &[libc::ENOTSUP, libc::EOPNOTSUPP, libc::EPERM, libc::ENOSYS])
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::{ERROR_INVALID_FUNCTION, ERROR_NOT_SUPPORTED};
+        e.raw_os_error().is_some_and(|c| c == ERROR_INVALID_FUNCTION as i32 || c == ERROR_NOT_SUPPORTED as i32)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         e.kind() == ErrorKind::Unsupported
     }
@@ -160,7 +213,29 @@ fn rename_noreplace(from: &Path, to: &Path) -> io::Result<()> {
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios")))]
+#[cfg(windows)]
+fn rename_noreplace(from: &Path, to: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+    let wide = |path: &Path| -> io::Result<Vec<u16>> {
+        let mut value: Vec<u16> = path.as_os_str().encode_wide().collect();
+        if value.contains(&0) {
+            return Err(io::Error::from(ErrorKind::InvalidInput));
+        }
+        value.push(0);
+        Ok(value)
+    };
+    let (from, to) = (wide(from)?, wide(to)?);
+    // No replacement or cross-volume copy flag: a second creator loses on the same volume.
+    // SAFETY: both vectors hold NUL-terminated paths alive throughout the call.
+    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), 0) } != 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios", windows)))]
 fn rename_noreplace(_: &Path, _: &Path) -> io::Result<()> {
     #[cfg(unix)]
     return Err(io::Error::from_raw_os_error(libc::ENOTSUP));
