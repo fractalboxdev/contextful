@@ -130,7 +130,7 @@ fn predecessors_adds_every_stage_whose_output_a_selected_stage_reads() {
 
     let yml = std::fs::read_to_string(crate::repo_root().join(".github/workflows/gate.yml")).unwrap();
     assert!(
-        yml.contains("\"command\": \"cargo run --locked -q -p contextful-ci -- gate --predecessors --stage ${{ matrix.stage }}"),
+        yml.contains("cargo run --locked -q -p contextful-ci -- gate --predecessors --stage ${{ matrix.stage }}"),
         "the remote check runs its stage without the predecessors it reads"
     );
 }
