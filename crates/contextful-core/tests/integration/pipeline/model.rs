@@ -54,6 +54,12 @@ fn a_model_declares_a_local_statement_file_or_inline_sql() {
     assert!(models(&model_doc("sql_file = \"  \"\n")).unwrap().remove(0).validate().is_err());
 }
 
+#[test]
+fn a_model_refuses_an_absolute_statement_file() {
+    let m = model("[[model]]\nid = \"daily\"\nsql_file = \"/tmp/daily.sql\"\n");
+    assert!(m.validate_statement_source().is_err());
+}
+
 // spec: disclosure.set-mode.opt-out-record@ccf54f2d
 #[test]
 fn a_disclosure_opt_out_requires_a_reason_and_no_policy() {

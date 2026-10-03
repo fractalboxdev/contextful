@@ -14,6 +14,7 @@ use crate::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::path::Path;
 
 /// The engine's injected-column semantics a published build carries; it advances when
 /// the engine adds an injected column (`run.publish.semantics-version`).
@@ -199,6 +200,9 @@ impl ModelSpec {
         let file = self.sql_file.as_deref().is_some_and(|path| !path.trim().is_empty());
         if inline == file || self.sql_file.as_deref().is_some_and(|path| path.trim().is_empty()) {
             return Err(RunError::PipelineSpecInvalid(format!("model `{}` declares exactly one of `sql` and `sql_file`", self.id)));
+        }
+        if self.sql_file.as_deref().is_some_and(|path| Path::new(path).is_absolute()) {
+            return Err(RunError::PipelineSpecInvalid(format!("model `{}` declares an absolute `sql_file` path", self.id)));
         }
         if self.disclosure_opt_out.as_ref().is_some_and(|reason| reason.trim().is_empty()) {
             return Err(RunError::PipelineSpecInvalid(format!("model `{}` has an empty `disclosure_opt_out` reason", self.id)));
