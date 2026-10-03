@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 224 | 58 | 22 | 13 | 123 | 0 | 123 |
+| `assurance` | 2 | 15 | 226 | 59 | 22 | 12 | 134 | 0 | 134 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
 | `surface` | 2 | 19 | 81 | 44 | 22 | 5 | 40 | 0 | 40 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1904 | 564 | 187 | 140 | 1273 | 0 | |
+| **total** | 19 | 154 | 1906 | 565 | 187 | 139 | 1284 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
-| 14 — Assurance | 7 | 127 | 71 | open | open |
+| 14 — Assurance | 7 | 129 | 82 | passing | closed |
 
 Unscheduled operations: 10.
 
@@ -120,13 +120,24 @@ Unscheduled operations: 10.
 | `assurance.gate.deny-list` | `tools/ci/tests/integration/deny.rs::a_deny_list_drifting_from_the_refusals_is_refused` | performed |
 | `assurance.gate.deny-profile-graph` | `tools/ci/tests/integration/deny.rs::a_profile_graph_is_the_binary_under_its_feature_alone` | performed |
 | `assurance.gate.dependency-deny` | `tools/ci/tests/integration/deny.rs::the_crate_graph_stage_runs_cargo_deny_over_each_profile` | performed |
+| `assurance.gate.evaluate-stage` | `tools/ci/tests/integration/stages.rs::the_evaluate_stage_runs_the_native_case_set_and_reports_both_verdicts` | performed |
 | `assurance.gate.footprint` | `tools/ci/tests/integration/image.rs::this_repository_profiles_hold_to_their_footprint_budgets` | performed |
 | `assurance.gate.footprint-exceeded` | `tools/ci/tests/integration/image.rs::an_artifact_over_budget_or_linking_beyond_the_c_library_is_refused` | performed |
 | `assurance.gate.fork-dispatch` | `tools/ci/tests/integration/workflow.rs::a_fork_pull_request_dispatches_no_stage` | performed |
+| `assurance.gate.formal-stage` | `tools/ci/tests/integration/stages.rs::the_formal_stage_runs_the_audit_the_differential_and_the_protocol_check` | performed |
 | `assurance.gate.free-disk` | `tools/ci/tests/integration/disk.rs::a_stage_starting_under_two_gib_free_refuses_with_exit_28_before_work` | performed |
 | `assurance.gate.locked-resolve` | `tools/ci/tests/integration/topology.rs::a_lock_file_behind_its_manifests_stops_the_crate_graph` | performed |
+| `assurance.gate.pins-stage` | `tools/ci/tests/integration/stages.rs::the_pins_stage_records_every_pin_fetches_the_locked_crates_and_refuses_a_floating_one` | performed |
+| `assurance.gate.remote-check` | `tools/ci/tests/integration/workflow.rs::the_workflow_dispatches_every_gate_stage` | performed |
+| `assurance.gate.remote-predecessors` | `tools/ci/tests/integration/stages.rs::predecessors_adds_every_stage_whose_output_a_selected_stage_reads` | performed |
+| `assurance.gate.schema-stage` | `tools/ci/tests/integration/stages.rs::the_schema_stage_regenerates_into_scratch_and_refuses_a_stale_committed_copy` | performed |
 | `assurance.gate.secret-ciphertext` | `spec/pins.toml` | performed |
 | `assurance.gate.secret-scope` | `spec/pins.toml` | performed |
+| `assurance.gate.stage-reports` | `tools/ci/tests/integration/stages.rs::every_stage_reports_its_environment_and_memory_and_a_failure_keeps_its_exit_code` | performed |
+| `assurance.gate.stage-sequence` | `tools/ci/tests/integration/stages.rs::the_gate_defines_the_thirteen_stages_in_run_order_and_runs_a_named_subset` | performed |
+| `assurance.gate.stage-subset` | `tools/ci/tests/integration/stages.rs::a_subset_omitting_a_predecessor_whose_output_is_absent_is_refused_before_any_stage` | performed |
+| `assurance.gate.surface-check-failed` | `tools/ci/tests/integration/stages.rs::a_failing_surface_check_is_refused_naming_the_surface_and_the_script` | performed |
+| `assurance.gate.typescript-surfaces` | `tools/ci/tests/integration/stages.rs::the_surfaces_stage_installs_then_runs_each_declared_check` | performed |
 | `assurance.measure.ledger` | `tools/eval/tests/integration/ledger.rs::an_entry_carries_its_clause_metric_tier_method_and_threshold` | performed |
 | `assurance.measure.open-entry` | `tools/ci/tests/integration/measure.rs::an_issue_entry_is_listed_open_and_gates_nothing` | performed |
 | `assurance.measure.record` | `tools/ci/tests/integration/measure.rs::a_gate_method_writing_no_record_is_refused` | performed |

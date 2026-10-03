@@ -5,7 +5,7 @@
 use anyhow::{bail, Context, Result};
 use contextful_eval::ledger::{self, Ledger, Method, Tier, World};
 use contextful_eval::record::{self, MEASURE_DIR_VAR};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
@@ -138,21 +138,36 @@ pub fn status(root: &Path, check: bool) -> Result<()> {
 /// Run every entry of `tiers` whose method is known, each test in its package's
 /// integration binary built under `target/evaluate`, and hold each record to its target.
 pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
+    measure(root, tiers)?.1
+}
+
+/// [`run`], every runnable entry measured before the outcome: the ids of the entries that
+/// failed — a test that failed, a gate-tier record missing, reseeded or red — and the
+/// outcome, which carries the first failed test's exit ahead of the refusals.
+fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)> {
     let Some(l) = resolved(root)? else {
         eprintln!("measure: no {}; nothing to measure", ledger::LEDGER_FILE);
-        return Ok(());
+        return Ok((BTreeSet::new(), Ok(())));
     };
     let open = l.entry.values().filter(|e| matches!(e.method(), Some(Method::Issue(_)))).count();
     let records = root.join(EVALUATE_TARGET).join("records");
     let _ = std::fs::remove_dir_all(&records);
     std::fs::create_dir_all(&records)?;
     let (mut held, mut red, mut missing, mut reseeded) = (0usize, Vec::new(), Vec::new(), Vec::new());
+    let (mut failed, mut exited) = (BTreeSet::new(), None);
     let started = Instant::now();
     for tier in tiers {
         for (id, e) in l.runnable(*tier) {
             let at = Instant::now();
             match e.method() {
-                Some(Method::Test(t)) => run_test(root, t, &records)?,
+                Some(Method::Test(t)) => {
+                    if let Err(err) = run_test(root, t, &records) {
+                        eprintln!("measure: {id} ({tier}) failed: {err}");
+                        failed.insert(id.clone());
+                        exited.get_or_insert(err);
+                        continue;
+                    }
+                }
                 Some(Method::Cases(c)) => bail!("`{id}`: the case-set method `{c}` has no runner in this tree"),
                 Some(Method::Probe(p)) => bail!("`{id}`: the probe method `{p}` has no runner in this tree"),
                 _ => continue,
@@ -162,6 +177,7 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
                 Err(err) if *tier == Tier::Gate => {
                     eprintln!("{err}");
                     missing.push(id.clone());
+                    failed.insert(id.clone());
                 }
                 Err(err) => eprintln!("measure: {id} ({tier}) recorded nothing: {err} [{secs:.1} s]"),
                 // A figure measured under another seed than the ledger declares replays nothing the
@@ -170,6 +186,7 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
                     let declared = e.seed.unwrap_or_default();
                     eprintln!("MeasureSeedMismatch: `{id}` recorded seed {}, the ledger declares {declared} [{secs:.1} s]", r.seed);
                     reseeded.push(id.clone());
+                    failed.insert(id.clone());
                 }
                 Ok(r) => match e.target {
                     Some(t) if t.holds(r.value) => {
@@ -179,6 +196,7 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
                     Some(t) if *tier == Tier::Gate => {
                         eprintln!("measure: {id} = {} (n = {}, seed = {}), target {t}: red [{secs:.1} s]", r.value, r.n, r.seed);
                         red.push(format!("{id} = {} against {t}", r.value));
+                        failed.insert(id.clone());
                     }
                     t => eprintln!(
                         "measure: {id} = {} ({tier}), target {}: recorded [{secs:.1} s]",
@@ -189,22 +207,25 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
             }
         }
     }
+    let broke = failed.len() - red.len() - missing.len() - reseeded.len();
     eprintln!(
-        "measure: {held} held, {} red, {} unrecorded, {open} open, in {:.1} s",
+        "measure: {held} held, {} red, {} unrecorded, {open} open, {broke} failed, in {:.1} s",
         red.len(),
         missing.len(),
         started.elapsed().as_secs_f64()
     );
-    if !missing.is_empty() {
-        return Err(refuse("MeasureRecordMissing", format!("{} gate-tier method(s) wrote no record: {}", missing.len(), missing.join(", "))));
-    }
-    if !reseeded.is_empty() {
-        return Err(refuse("MeasureSeedMismatch", format!("{} record(s) carry another seed than the ledger declares: {}", reseeded.len(), reseeded.join(", "))));
-    }
-    if !red.is_empty() {
-        bail!("{} gate-tier target(s) missed: {}", red.len(), red.join("; "));
-    }
-    Ok(())
+    let outcome = if let Some(err) = exited {
+        Err(err)
+    } else if !missing.is_empty() {
+        Err(refuse("MeasureRecordMissing", format!("{} gate-tier method(s) wrote no record: {}", missing.len(), missing.join(", "))))
+    } else if !reseeded.is_empty() {
+        Err(refuse("MeasureSeedMismatch", format!("{} record(s) carry another seed than the ledger declares: {}", reseeded.len(), reseeded.join(", "))))
+    } else if !red.is_empty() {
+        Err(anyhow::anyhow!("{} gate-tier target(s) missed: {}", red.len(), red.join("; ")))
+    } else {
+        Ok(())
+    };
+    Ok((failed, outcome))
 }
 
 /// Run one integration test by its exact name, collecting records into `records`.
@@ -217,14 +238,40 @@ fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
         .current_dir(root)
         .status()?;
     if !status.success() {
-        bail!("`cargo test -p {package} --test integration -- --exact {name}` exited {}", status.code().unwrap_or(-1));
+        return Err(crate::exited(format!("cargo test -p {package} --test integration -- --exact {name}"), status));
     }
     Ok(())
 }
 
-/// The evaluate stage: every gate-tier entry, then the build directory reclaimed.
+/// The native case set, scored in the deterministic tier against its floors and baseline.
+const NATIVE_CASES: &str = "evals/cases/native.jsonl";
+/// The clause owning the ledger entries that run the native case set.
+const NATIVE_GATE: &str = "assurance.baseline.native-gate";
+
+/// The evaluate stage (`assurance.gate.evaluate-stage`): every gate-tier entry, the native
+/// case set among them, then the floor and baseline verdicts and the build directory
+/// reclaimed. A tree carrying the native case set with no gate-tier entry running it fails.
 pub fn evaluate(root: &Path) -> Result<()> {
-    run(root, &[Tier::Gate])?;
+    let native: Vec<String> = load(root)?
+        .map(|l| {
+            l.entry
+                .iter()
+                .filter(|(_, e)| e.tier == Tier::Gate && e.clause == NATIVE_GATE)
+                .filter(|(_, e)| matches!(e.method(), Some(Method::Test(_))))
+                .map(|(id, _)| id.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    if root.join(NATIVE_CASES).is_file() && native.is_empty() {
+        bail!("the tree carries {NATIVE_CASES}, and no gate-tier ledger entry owned by `{NATIVE_GATE}` runs it");
+    }
+    let (failed, outcome) = measure(root, &[Tier::Gate])?;
+    let baseline_red = native.iter().any(|id| failed.contains(id));
+    eprintln!("evaluate: floor verdict {} over the gate-tier targets", if outcome.is_err() { "red" } else { "held" });
+    if !native.is_empty() {
+        eprintln!("evaluate: baseline verdict {} for {NATIVE_CASES} ({})", if baseline_red { "red" } else { "held" }, native.join(", "));
+    }
+    outcome?;
     let _ = std::fs::remove_dir_all(root.join(EVALUATE_TARGET));
     Ok(())
 }

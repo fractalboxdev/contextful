@@ -6,7 +6,6 @@
 use contextful_acceptance::{bin, GitRepo};
 
 #[test]
-#[ignore = "milestone 14 is open: the gate carries no budget stage"]
 fn m14_assurance() {
     let ci = bin("contextful-ci");
     let r = GitRepo::init();

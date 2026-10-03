@@ -297,7 +297,7 @@ fn a_failing_gate_stage_is_refused_and_creates_no_tag() {
     let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
     r.cargo_exits(101);
     let err = refused(&r.tag(&[]), "TagGateFailed");
-    assert!(err.contains("contextful-spec"), "the refusal names no failing stage command: {err}");
+    assert!(err.contains("`cargo fetch --locked` exited 101"), "the refusal names no failing stage command: {err}");
     assert!(r.cargo_ran());
     assert_eq!(r.tags(), "");
 }

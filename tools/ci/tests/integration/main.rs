@@ -16,6 +16,7 @@ mod probe;
 mod release;
 mod secrets;
 mod target_dirs;
+mod stages;
 mod test_first;
 mod topology;
 mod wasm;
