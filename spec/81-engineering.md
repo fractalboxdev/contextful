@@ -137,7 +137,7 @@ Target directories, the engine-linked invocation, linked query functions, build 
 - `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
   *A-assurance*
-- `windows-target` — Edge and full also build for `x86_64-pc-windows-msvc`.
+- `windows-target` — Edge and full also build for `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`.
 - `wasi-probe` — No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.
   *A-assurance*
 - `release-artifact` — Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
@@ -155,6 +155,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `remote-check` — The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, a split stage one part at a time, each as one status check labelled with its name.
   *A-assurance*
+- `windows-native` — The pull-request workflow checks core, filesystem, policy and store-write packages and exercises directory sync on native x86 and ARM Windows runners.
+  *because native runners provide the target C toolchain and execute directory flushes that cross-compilation cannot verify*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace and run the CLI suite from that build, then run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each remote check runs its stage together with every predecessor whose output that stage reads, so no check reads another check's sandbox.

@@ -135,6 +135,21 @@ fn predecessors_adds_every_stage_whose_output_a_selected_stage_reads() {
     );
 }
 
+#[test]
+fn native_windows_checks_cover_both_targets_and_directory_sync() {
+    let workflow = std::fs::read_to_string(crate::repo_root().join(".github/workflows/gate.yml")).unwrap();
+    for pair in [
+        "runner: windows-2025\n            target: x86_64-pc-windows-msvc",
+        "runner: windows-11-arm\n            target: aarch64-pc-windows-msvc",
+    ] {
+        assert!(workflow.contains(pair), "the native Windows matrix omits {pair}");
+    }
+    assert!(workflow.contains("cargo check --locked --target ${{ matrix.target }} --no-default-features -p contextful-core -p contextful-fs -p contextful-policy -p contextful-context"));
+    for test in ["an_open_directory_handle_syncs_its_entries", "an_audit_append_syncs_its_directories", "a_ledger_append_syncs_its_directory"] {
+        assert!(workflow.contains(test), "the native Windows matrix omits {test}");
+    }
+}
+
 /// Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
 // spec: assurance.gate.stage-reports@e77a2384
 #[test]

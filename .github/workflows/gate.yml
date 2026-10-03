@@ -47,6 +47,25 @@ permissions:
   contents: read
 
 jobs:
+  windows:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: rustup target add ${{ matrix.target }}
+      - run: cargo check --locked --target ${{ matrix.target }} --no-default-features -p contextful-core -p contextful-fs -p contextful-policy -p contextful-context
+      - run: cargo test --locked --target ${{ matrix.target }} -p contextful-fs --test integration an_open_directory_handle_syncs_its_entries
+      - run: cargo test --locked --target ${{ matrix.target }} -p contextful-policy --test integration an_audit_append_syncs_its_directories
+      - run: cargo test --locked --target ${{ matrix.target }} --no-default-features -p contextful-context --test integration a_ledger_append_syncs_its_directory
+
   dispatch:
     if: ${{ vars.FLAREDISPATCH_ENDPOINT != '' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
