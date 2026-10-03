@@ -315,6 +315,7 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
   *because a misspelled block parses as nothing, and its declaration silently never runs*
 - `model-id` — A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.
 - `sql` — `sql` is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through the table its last build published.
+- `validate-statements` — `pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to {{run.model.restricted-input}}, and raises the error the build raises.
 - `restricted-input` — A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
   *because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader*
 - `materialized` — `materialized` is `table`, the default: each build replaces the model's rows whole.
@@ -347,6 +348,8 @@ unsettled: Does a model materialize incrementally, merging each build into its p
 unsettled: Does `build` run the pipelines feeding a model's inputs first? owner: pipeline affects: run.model
 
 unsettled: Does a model over a restricted table declare its own policy, or inherit the strictest policy among its inputs? owner: pipeline affects: run.model
+
+unsettled: Does `pipeline validate` refuse a model relation that names no declared table or model, before any store is read? owner: pipeline affects: run.model
 
 unsettled: Does a validation verb refuse a cycle among models before any build reaches one? owner: pipeline affects: run.model
 

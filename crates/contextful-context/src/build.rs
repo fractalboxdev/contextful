@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "read")]
-pub use materialize::{build, BuildRequest, Built};
+pub use materialize::{admit_statements, build, BuildRequest, Built};
 
 /// The section of the snapshot the model's pointer names, when that build published one.
 pub fn current_section(store: &Store, model: &str) -> Result<Option<PublishSection>> {
@@ -166,7 +166,7 @@ mod materialize {
     use contextful_core::pipeline::model::{
         disclosure_digest, withholds_cells, BuildStatus, InputFrontier, ModelSpec, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
     };
-    use contextful_core::read::guard::admit;
+    use contextful_core::read::guard::{admit, Admitted};
     use contextful_core::read::template::Bindings;
     use contextful_core::store::declare::TableDecl;
     use contextful_core::store::lay_out::{part_name, PartEntry, SnapshotId};
@@ -374,6 +374,37 @@ mod materialize {
         Ok(())
     }
 
+    /// Admit a model's `sql` (`run.model.sql`); the model's own id never names an input.
+    fn admit_sql(engine: &SqlEngine, spec: &ModelSpec, registered: impl Fn(&str) -> bool) -> std::result::Result<Admitted, ReadFault> {
+        let sql = spec.sql.trim().trim_end_matches(';');
+        Ok(admit(&engine.serialize(sql)?, |n| n != spec.id && registered(n))?)
+    }
+
+    /// Admit one `[[model.test]]` statement (`run.model.test-block`): the model's id names
+    /// its staged rows.
+    fn admit_test(engine: &SqlEngine, spec: &ModelSpec, sql: &str, registered: impl Fn(&str) -> bool) -> std::result::Result<(), ReadFault> {
+        admit(&engine.serialize(sql)?, |n| n == spec.id || registered(n))?;
+        Ok(())
+    }
+
+    /// The statement checks a build runs, over no store (`run.model.validate-statements`):
+    /// the model's `sql`, every relation but the model's own id counting as registered, then
+    /// each input `decl` declares against `run.model.restricted-input`, then each test's
+    /// statement. A refusal names the statement it refuses — `model `<id>`` or
+    /// `model `<id>` test `<name>`` — beside the fault.
+    pub fn admit_statements(spec: &ModelSpec, decl: impl Fn(&str) -> Option<TableDecl>) -> std::result::Result<(), (String, ReadFault)> {
+        let model = format!("model `{}`", spec.id);
+        let engine = SqlEngine::raw().map_err(|e| (model.clone(), e))?;
+        let admitted = admit_sql(&engine, spec, |_| true).map_err(|e| (model.clone(), e))?;
+        for input in admitted.relations.iter().filter_map(|t| decl(t)) {
+            check_unrestricted(&spec.id, &input).map_err(|e| (model.clone(), e))?;
+        }
+        for t in &spec.tests {
+            admit_test(&engine, spec, t.sql.trim().trim_end_matches(';'), |_| true).map_err(|e| (format!("{model} test `{}`", t.name), e))?;
+        }
+        Ok(())
+    }
+
     /// Build one model (`run.model.build-verb`): admit its SQL over the store's tables,
     /// materialize its rows into staging, hold them to the contract, run its tests, then
     /// publish the snapshot and, for a published model, its manifest section through the
@@ -406,7 +437,7 @@ mod materialize {
         let engine = SqlEngine::raw()?;
         let tables = face.register_operator(&engine)?;
         let sql = spec.sql.trim().trim_end_matches(';');
-        let admitted = admit(&engine.serialize(sql)?, |n| n != spec.id && tables.iter().any(|t| t == n))?;
+        let admitted = admit_sql(&engine, spec, |n| tables.iter().any(|t| t == n))?;
         for t in &admitted.relations {
             check_unrestricted(&spec.id, &face.decl(t))?;
         }
@@ -473,7 +504,7 @@ mod materialize {
             engine.register(&spec.id, &format!("SELECT * FROM read_parquet({})", literal(&staging.join(&part).to_string_lossy())))?;
             for t in &spec.tests {
                 let test_sql = t.sql.trim().trim_end_matches(';');
-                admit(&engine.serialize(test_sql)?, |n| n == spec.id || tables.iter().any(|x| x == n))?;
+                admit_test(&engine, spec, test_sql, |n| tables.iter().any(|x| x == n))?;
                 let (_, counted) = engine.run_values(&format!("SELECT count(*) FROM ({test_sql}) AS __test"), &Bindings::default(), None)?;
                 let failing = match counted.first().and_then(|r| r.first()) {
                     Some(Engine::BigInt(c)) => *c,

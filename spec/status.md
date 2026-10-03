@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
-| `run` | 3 | 26 | 368 | 98 | 35 | 36 | 252 | 0 | 252 |
+| `run` | 3 | 26 | 369 | 98 | 35 | 37 | 253 | 0 | 253 |
 | `store` | 1 | 17 | 229 | 54 | 13 | 19 | 189 | 0 | 189 |
 | `surface` | 2 | 19 | 75 | 43 | 22 | 7 | 21 | 0 | 21 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1895 | 563 | 187 | 140 | 1250 | 0 | |
+| **total** | 19 | 154 | 1896 | 563 | 187 | 141 | 1251 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 157 | 122 | passing | closed |
 | 3 — The run path | 11 | 205 | 141 | passing | closed |
-| 4 — Ingest | 25 | 465 | 284 | passing | open |
+| 4 — Ingest | 25 | 466 | 285 | passing | open |
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
 | 6 — Sync and replicas | 8 | 72 | 67 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -942,6 +942,7 @@ Unscheduled operations: 10.
 | `run.model.unique-key` | `crates/contextful-context/tests/integration/build.rs::rows_repeating_the_grain_are_refused` | performed |
 | `run.model.unknown-model` | `crates/contextful-cli/tests/integration/build.rs::build_of_an_undeclared_model_is_refused` | performed |
 | `run.model.unpublished` | `crates/contextful-context/tests/integration/build.rs::an_unpublished_model_commits_rows_without_a_section` | performed |
+| `run.model.validate-statements` | `crates/contextful-cli/tests/integration/build.rs::validate_refuses_a_statement_build_refuses` | performed |
 | `run.model.watermark` | `crates/contextful-context/tests/integration/build.rs::the_watermark_names_each_input_frontier` | performed |
 | `run.own.backpressure` | `crates/contextful-engine/tests/integration/runner.rs::each_batch_stages_before_the_next_pull` | performed |
 | `run.own.execution-id-keys-the-journal` | `crates/contextful-engine/tests/integration/runner.rs::a_second_attempt_under_one_owner_replays_the_firsts_recorded_pulls` | performed |

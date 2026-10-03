@@ -481,6 +481,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             }
             for m in contextful_core::pipeline::model::collect_models(&files, &declared)? {
                 m.spec.validate().with_context(|| format!("{}:{}", m.file, m.line))?;
+                contextful_context::build::admit_statements(&m.spec, |t| tables.get(t).cloned())
+                    .map_err(|(what, e)| anyhow::Error::from(e).context(format!("{}:{} {what}", m.file, m.line)))?;
                 println!("{}: valid model ({} tests)", m.spec.id, m.spec.tests.len());
             }
             for t in tables.values().filter(|t| t.is_keyed() && !coverage.covers(&t.name)) {
