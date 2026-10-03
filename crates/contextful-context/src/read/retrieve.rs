@@ -6,7 +6,6 @@ use super::engine::{cell, SqlEngine};
 use super::face::Face;
 use super::fault::ReadFault;
 use contextful_core::memory::declare::Shape;
-use contextful_core::memory::recall::gate;
 use contextful_core::read::embed::cosine;
 use contextful_core::read::filter::{Filter, Scalar};
 use contextful_core::read::template::{Bindings, Bound};
@@ -608,7 +607,7 @@ impl Face {
                     continue;
                 }
                 let evidence = get("evidence").and_then(text_of);
-                if !tally.admit(gate(evidence.as_deref(), cx.memory_tables, |r| self.evidence_read(cx.engine, cx.session, r))) {
+                if !tally.gate(evidence.as_deref(), cx.memory_tables, cx.session, |r| self.evidence_read(cx.engine, cx.session, r)) {
                     continue;
                 }
             }

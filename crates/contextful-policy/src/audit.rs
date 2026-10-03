@@ -161,7 +161,7 @@ pub enum AuditError {
     Io(String),
 }
 
-fn broken(index: u64, reason: impl Into<String>) -> AuditError {
+pub(crate) fn broken(index: u64, reason: impl Into<String>) -> AuditError {
     AuditError::AuditChainBroken { index, reason: reason.into() }
 }
 
@@ -761,7 +761,7 @@ fn segment_of(seq: u64, size: u64) -> u64 {
     (seq - 1) / size + 1
 }
 
-fn first_seq(n: u64, size: u64) -> u64 {
+pub(crate) fn first_seq(n: u64, size: u64) -> u64 {
     (n - 1) * size + 1
 }
 
@@ -791,6 +791,26 @@ fn read_segment(dir: &Path, n: u64, closing: u64) -> Result<Vec<AuditEntry>, Aud
     text.lines()
         .map(|line| serde_json::from_str(line).map_err(|e| broken(closing, format!("segment {n}: a line does not parse: {e}"))))
         .collect()
+}
+
+/// The chain's segment size: its header's, or the v0 size without one.
+pub(crate) fn segment_size(dir: &Path) -> Result<u64, AuditError> {
+    Ok(read_format(dir)?.segment_entries())
+}
+
+/// The segments carrying a signed root file, ascending.
+pub(crate) fn root_segments(dir: &Path) -> Result<BTreeSet<u64>, AuditError> {
+    Ok(listing(dir)?.1)
+}
+
+/// The bytes of segment `n`'s signed root, or `None` where it has none.
+pub(crate) fn read_root(dir: &Path, n: u64) -> Result<Option<Vec<u8>>, AuditError> {
+    let path = root_path(dir, n);
+    match fs::read(&path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(unreadable(&path)(e)),
+    }
 }
 
 /// Segment numbers present as entry files and as root files.

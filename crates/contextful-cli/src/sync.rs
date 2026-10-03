@@ -13,7 +13,8 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
 use contextful_core::store::lay_out::{Pointer, POINTER_FILE};
 use contextful_core::store::object::ObjectStore;
-use contextful_core::store::sync::{Endpoint, SyncConfig};
+use contextful_core::store::sync::{confine, Endpoint, SyncConfig};
+use contextful_policy::replica::RootBucket;
 use contextful_core::time::Instant;
 #[cfg(feature = "data-plane")]
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
@@ -208,6 +209,16 @@ pub fn pull_before_run(l: &Located) -> Result<()> {
     let r = s.pull(&PullScope { tables: Vec::new(), replicate_off, generation: None }).context("`pull_before_run`")?;
     eprintln!("pull_before_run: pulled {} objects and {} pointers", r.downloaded.len(), r.pointers.len());
     Ok(())
+}
+
+/// The project's root keyspace, `<prefix>/<project>/`, in its `[sync]` bucket, or `None`
+/// when the store declares no `[sync]` (`disclosure.attest.root-replication`).
+pub fn root_bucket(l: &Located) -> Result<Option<RootBucket>> {
+    let (Some(config), _) = sync_config(l)? else { return Ok(None) };
+    let bucket = bucket(&config)?;
+    let prefix = config.resolve_prefix(|k| std::env::var(k).ok())?;
+    let base = confine(&prefix, &l.project.name)?;
+    Ok(Some(RootBucket::new(bucket, format!("{base}/"))))
 }
 
 /// The store, project and node a push plan reads: no `[sync]` and no bucket.

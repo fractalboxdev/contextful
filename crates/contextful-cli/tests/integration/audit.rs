@@ -210,3 +210,91 @@ fn a_capability_credential_refuses_every_chain_verb() {
         assert!(err.contains("AuditRequiresOwner"), "{args:?}: {err}");
     }
 }
+
+/// Declare a file-endpoint `[sync]` bucket under `bucket` for the project's store.
+fn declare_bucket(root: &Path, bucket: &Path) {
+    let store = root.join(".contextful/context/research");
+    std::fs::create_dir_all(&store).unwrap();
+    let sync = format!("endpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n", bucket.display());
+    std::fs::write(store.join("config.toml"), format!("[node]\nid = \"ingest-a\"\n\n[sync]\n{sync}")).unwrap();
+}
+
+/// `audit anchor` copies the roots it signs to `<prefix>/<project>/audit/roots/` in the
+/// `[sync]` bucket, and `audit replicate` then finds nothing to send; once the local roots,
+/// `chain.held` and the tip's signature are gone, `audit verify` passes and
+/// `audit verify --bucket` breaks at the first replicated segment.
+// spec: disclosure.attest.replicate-verb@147ee155
+#[test]
+fn verify_against_the_bucket_catches_deleted_roots_and_tip() {
+    let (dir, public) = project();
+    let p = dir.path();
+    let bucket = tempfile::tempdir().unwrap();
+    declare_bucket(p, bucket.path());
+    let options = AuditOptions { header: ChainHeader { segment_entries: 2, ..ChainHeader::default() }, ..AuditOptions::default() };
+    let log = AuditLog::unanchored_with(chain_dir(p), options).unwrap();
+    log.append_all((0..5).map(|i| read(Duration::from_secs(10), "user://ada@acme.example", &["research/notes"], attr::SERVED, i)).collect()).unwrap();
+    drop(log);
+    stdout(&run(p, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"]));
+    let replicated = bucket.path().join("context-team/team/research/audit/roots/000001.json");
+    assert_eq!(std::fs::read(&replicated).unwrap(), std::fs::read(chain_dir(p).join("segments/000001.root.json")).unwrap());
+    let sent: Value = serde_json::from_str(&stdout(&run(p, &["audit", "replicate", "--project", "research"]))).unwrap();
+    assert_eq!(sent["sent"], json!([]));
+    std::fs::remove_file(&replicated).unwrap();
+    let sent: Value = serde_json::from_str(&stdout(&run(p, &["audit", "replicate", "--project", "research"]))).unwrap();
+    assert_eq!(sent["sent"], json!([1]));
+    let end: Value = serde_json::from_str(&stdout(&run(p, &["audit", "verify", "--project", "research", "--bucket", "--public-key", &public]))).unwrap();
+    assert_eq!(end["seq"], 5);
+
+    let audit = chain_dir(p);
+    for f in ["segments/000001.root.json", "segments/000002.root.json", "chain.held"] {
+        std::fs::remove_file(audit.join(f)).unwrap();
+    }
+    let mut tip: Value = serde_json::from_str(&std::fs::read_to_string(audit.join("chain.tip")).unwrap()).unwrap();
+    tip.as_object_mut().unwrap().remove("signature");
+    std::fs::write(audit.join("chain.tip"), tip.to_string()).unwrap();
+    stdout(&run(p, &["audit", "verify", "--project", "research"]));
+    let err = stderr(&run(p, &["audit", "verify", "--project", "research", "--bucket"]));
+    assert!(err.contains("AuditChainBroken: entry 2"), "{err}");
+}
+
+/// `audit verify --bucket` over a store declaring no `[sync]` refuses rather than passing.
+#[test]
+fn verify_against_the_bucket_needs_a_sync_block() {
+    let (dir, _) = project();
+    let p = dir.path();
+    append(p, 4096, vec![read(Duration::from_secs(1), "user://ada@acme.example", &["research/notes"], attr::SERVED, 1)]);
+    let err = stderr(&run(p, &["audit", "verify", "--project", "research", "--bucket"]));
+    assert!(err.contains("[sync]"), "{err}");
+}
+
+/// `audit anchor` over a `[sync]` bucket that cannot open still signs, exports and prints
+/// the chain end, names the failed copy on stderr, and leaves the roots for
+/// `audit replicate`, which refuses until the bucket opens.
+#[test]
+fn anchor_keeps_its_roots_and_exits_zero_when_the_bucket_cannot_open() {
+    let (dir, public) = project();
+    let p = dir.path();
+    let bucket = tempfile::tempdir().unwrap();
+    declare_bucket(p, bucket.path());
+    let config = p.join(".contextful/context/research/config.toml");
+    let text = std::fs::read_to_string(&config).unwrap().replace("prefix = \"team\"", "prefix_from = \"CONTEXTFUL_TEST_UNSET_PREFIX\"");
+    std::fs::write(&config, text).unwrap();
+    let options = AuditOptions { header: ChainHeader { segment_entries: 2, ..ChainHeader::default() }, ..AuditOptions::default() };
+    let log = AuditLog::unanchored_with(chain_dir(p), options).unwrap();
+    log.append_all((0..3).map(|i| read(Duration::from_secs(10), "user://ada@acme.example", &["research/notes"], attr::SERVED, i)).collect()).unwrap();
+    drop(log);
+
+    let out = run(p, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"]);
+    let end: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(end["seq"], 3);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("root replication") && err.contains("SyncPrefixUnbound"), "{err}");
+    assert!(chain_dir(p).join("segments/000001.root.json").is_file());
+    let verified: Value = serde_json::from_str(&stdout(&run(p, &["audit", "verify", "--project", "research", "--public-key", &public]))).unwrap();
+    assert_eq!(verified, end);
+
+    let err = stderr(&run(p, &["audit", "replicate", "--project", "research"]));
+    assert!(err.contains("SyncPrefixUnbound"), "{err}");
+    let sent: Value = serde_json::from_str(&stdout(&run_env(p, &["audit", "replicate", "--project", "research"], &[("CONTEXTFUL_TEST_UNSET_PREFIX", "team")]))).unwrap();
+    assert_eq!(sent["sent"], json!([1]));
+}

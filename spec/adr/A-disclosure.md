@@ -160,6 +160,22 @@ Decision: `audit query` computes `audit_reads` from the chain's segments on each
 Criteria: one record decided it; a refusal is typed and recorded (P2); a lookup over 24 h answers within 1 s.
 Consequences: the chain carries refusals, so it grows with probes as well as serves; query cost scales with the chain's length rather than an index, which the projection-latency ledger entry tracks.
 
+## A lineage attestation elides a withheld table to a count
+
+**Status:** accepted
+
+Context: a claim's evidence can sit in a table outside the caller's authority, and the caller still learns why the claim was not served.
+Decision: the `contextful.recall` block counts the evidence references into tables the caller's session does not register as `withheld`, and no response or refusal names such a table (`disclosure.attest.lineage-elision`).
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Elide the table, count its references *(chosen)* | — | The caller cannot tell which grant to request. |
+| Name the withheld table | P5 | A table's existence and name leak to a caller outside its authority. |
+| Elide the table and its count | Explanation | A withheld lineage reads as an empty one. |
+
+Criteria: the caller learns nothing about a table outside its authority beyond that evidence was withheld (P5); a suppression stays explicable (P2).
+Consequences: a table the store lacks and a table the caller lacks count alike, so the count never confirms a table exists.
+
 ## An explanation reads the exchange policy and the chain, and keeps no store
 
 **Status:** accepted

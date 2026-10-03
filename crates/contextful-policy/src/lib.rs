@@ -11,5 +11,6 @@ pub mod issue;
 pub mod keyset;
 pub mod possession;
 pub mod profile;
+pub mod replica;
 pub mod revoke;
 pub mod verify;

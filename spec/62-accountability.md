@@ -161,14 +161,18 @@ Chain verification, signed segment roots, lineage attestations, and the reach of
   *A-disclosure*
 - `proof-unavailable` — Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises `AuditProofUnavailable`.
   *because an open segment has no signed root yet, and a v0 root commits to no tree*
-- `root-replication` — Signed roots reach the replication bucket asynchronously every 10 min.
+- `root-replication` — `audit anchor` once it signs, and a held chain's replicator at start and every 10 min, copy each signed root the `[sync]` bucket lacks to `<prefix>/<project>/audit/roots/<segment>.json`; a failed copy waits for the next and fails no anchor, append or read.
+  *A-disclosure*
+- `replica-verify` — `audit verify --bucket` also holds the chain to each replicated root: a root failing its signature, closing a segment the chain does not reach, or absent or different locally breaks the chain as {{disclosure.attest.broken-chain}} does.
+  *because deleting the roots, `chain.held` and the tip's signature leaves a chain no local check tells from an unanchored one*
+- `replicate-verb` — `audit replicate` copies the roots {{disclosure.attest.root-replication}} copies, once, and prints the segments it sent.
+- `lineage-elision` — A lineage attestation counts a claim's evidence references into tables the caller's session does not register as `withheld` in the `contextful.recall` block, and names no such table.
+  *A-disclosure*
 - `verify-verb` — `audit verify` opens the chain read-only and prints its end when every check of {{disclosure.attest.broken-chain}} passes, each signature included under `--public-key`.
 - `anchor-verb` — `audit anchor --issuer-key <seed>` signs the chain's missing roots and its tip as {{disclosure.record.unsigned-tip}} anchors them, and prints the chain end.
 - `prove-verb` — `audit prove --seq <n>` prints the proof {{disclosure.attest.inclusion-proof}} returns, and `audit check-proof` verifies one under a public key, reading no store.
 - `owner-only` — An audit verb reading a chain, presented with a capability credential, raises `AuditRequiresOwner` before it reads an audit file.
   *because the chain names every person's reads, and a credential scoped to some tables reaches no record of others*
-
-unsettled: Does a lineage attestation over evidence spanning a withheld table name that table or elide it? owner: disclosure affects: disclosure.attest
 
 ## erase
 

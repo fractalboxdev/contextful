@@ -5,7 +5,8 @@ use super::face::Face;
 use super::fault::ReadFault;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::declare::Shape;
-use contextful_core::memory::recall::{gate, Grounding};
+use contextful_core::memory::recall::{gate, withheld, EvidenceRead, Grounding};
+use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::memory::revise::Tier;
 use contextful_core::memory::MemoryError;
 use contextful_core::read::respond::{Cell, Response};
@@ -114,7 +115,7 @@ impl Face {
                         Cell::Text(t) => Some(t.as_str()),
                         _ => None,
                     };
-                    if tally.admit(gate(evidence, &memory_tables, |r| self.evidence_read(&engine, session, r))) {
+                    if tally.gate(evidence, &memory_tables, session, |r| self.evidence_read(&engine, session, r)) {
                         kept.push(row.iter().map(Cell::to_json).collect());
                     }
                 }
@@ -139,11 +140,19 @@ impl Face {
 pub(crate) struct RecallTally {
     suppressed: BTreeMap<&'static str, u64>,
     stale: u64,
+    withheld: u64,
 }
 
 impl RecallTally {
+    /// Gate one claim through `read`, counting its references into tables `session` does
+    /// not register; true where the claim is served.
+    pub(crate) fn gate(&mut self, evidence: Option<&str>, memory_tables: &[String], session: &Session, read: impl Fn(&EvidenceRef) -> EvidenceRead) -> bool {
+        self.withheld += withheld(evidence, |t| session.relation(t).is_some());
+        self.admit(gate(evidence, memory_tables, read))
+    }
+
     /// Count one gate outcome; true where the claim is served.
-    pub(crate) fn admit(&mut self, outcome: Result<Grounding, MemoryError>) -> bool {
+    fn admit(&mut self, outcome: Result<Grounding, MemoryError>) -> bool {
         match outcome {
             Ok(grounding) => {
                 self.stale += u64::from(grounding == Grounding::Stale);
@@ -156,14 +165,15 @@ impl RecallTally {
         }
     }
 
-    /// The `contextful.recall` block: counts per identifier (`read.recall.suppression-count`)
-    /// and the stale count (`read.recall.evidence-stale`); no claim is named.
+    /// The `contextful.recall` block: counts per identifier (`read.recall.suppression-count`),
+    /// the stale count (`read.recall.evidence-stale`) and the withheld-evidence count
+    /// (`disclosure.attest.lineage-elision`); no claim and no withheld table is named.
     pub(crate) fn block(&self) -> Value {
         let counts: Map<String, Value> = ["MemoryEvidenceUnresolved", "MemoryEvidenceOverflow"]
             .iter()
             .map(|id| (id.to_string(), json!(self.suppressed.get(id).copied().unwrap_or(0))))
             .collect();
-        json!({ "suppressed": counts, "stale": self.stale })
+        json!({ "suppressed": counts, "stale": self.stale, "withheld": self.withheld })
     }
 }
 

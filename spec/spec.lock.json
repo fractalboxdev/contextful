@@ -17673,10 +17673,43 @@
       "operation": "attest",
       "subject": "root-replication",
       "kind": "limit",
-      "statement": "Signed roots reach the replication bucket asynchronously every 10 min.",
-      "why": "",
+      "statement": "`audit anchor` once it signs, and a held chain's replicator at start and every 10 min, copy each signed root the `[sync]` bucket lacks to `<prefix>/<project>/audit/roots/<segment>.json`; a failed copy waits for the next and fails no anchor, append or read.",
+      "why": "A-disclosure",
       "file": "spec/62-accountability.md",
       "line": 164
+    },
+    {
+      "id": "disclosure.attest.replica-verify",
+      "contract": "disclosure",
+      "operation": "attest",
+      "subject": "replica-verify",
+      "kind": "behavior",
+      "statement": "`audit verify --bucket` also holds the chain to each replicated root: a root failing its signature, closing a segment the chain does not reach, or absent or different locally breaks the chain as {{disclosure.attest.broken-chain}} does.",
+      "why": "because deleting the roots, `chain.held` and the tip's signature leaves a chain no local check tells from an unanchored one",
+      "file": "spec/62-accountability.md",
+      "line": 166
+    },
+    {
+      "id": "disclosure.attest.replicate-verb",
+      "contract": "disclosure",
+      "operation": "attest",
+      "subject": "replicate-verb",
+      "kind": "behavior",
+      "statement": "`audit replicate` copies the roots {{disclosure.attest.root-replication}} copies, once, and prints the segments it sent.",
+      "why": "",
+      "file": "spec/62-accountability.md",
+      "line": 168
+    },
+    {
+      "id": "disclosure.attest.lineage-elision",
+      "contract": "disclosure",
+      "operation": "attest",
+      "subject": "lineage-elision",
+      "kind": "behavior",
+      "statement": "A lineage attestation counts a claim's evidence references into tables the caller's session does not register as `withheld` in the `contextful.recall` block, and names no such table.",
+      "why": "A-disclosure",
+      "file": "spec/62-accountability.md",
+      "line": 169
     },
     {
       "id": "disclosure.attest.verify-verb",
@@ -17687,7 +17720,7 @@
       "statement": "`audit verify` opens the chain read-only and prints its end when every check of {{disclosure.attest.broken-chain}} passes, each signature included under `--public-key`.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 165
+      "line": 171
     },
     {
       "id": "disclosure.attest.anchor-verb",
@@ -17698,7 +17731,7 @@
       "statement": "`audit anchor --issuer-key <seed>` signs the chain's missing roots and its tip as {{disclosure.record.unsigned-tip}} anchors them, and prints the chain end.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 166
+      "line": 172
     },
     {
       "id": "disclosure.attest.prove-verb",
@@ -17709,7 +17742,7 @@
       "statement": "`audit prove --seq <n>` prints the proof {{disclosure.attest.inclusion-proof}} returns, and `audit check-proof` verifies one under a public key, reading no store.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 167
+      "line": 173
     },
     {
       "id": "disclosure.attest.owner-only",
@@ -17720,7 +17753,7 @@
       "statement": "An audit verb reading a chain, presented with a capability credential, raises `AuditRequiresOwner` before it reads an audit file.",
       "why": "because the chain names every person's reads, and a credential scoped to some tables reaches no record of others",
       "file": "spec/62-accountability.md",
-      "line": 168
+      "line": 174
     },
     {
       "id": "disclosure.erase.privilege",
@@ -17731,7 +17764,7 @@
       "statement": "Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.",
       "why": "A-read",
       "file": "spec/62-accountability.md",
-      "line": 177
+      "line": 181
     },
     {
       "id": "disclosure.erase.subject-column",
@@ -17742,7 +17775,7 @@
       "statement": "A table names its subject column as `subject_id = \"<column>\"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 179
+      "line": 183
     },
     {
       "id": "disclosure.erase.cascade",
@@ -17753,7 +17786,7 @@
       "statement": "In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 181
+      "line": 185
     },
     {
       "id": "disclosure.erase.cascade-unbounded",
@@ -17764,7 +17797,7 @@
       "statement": "A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 183
+      "line": 187
     },
     {
       "id": "disclosure.erase.physical-removal",
@@ -17775,7 +17808,7 @@
       "statement": "Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 185
+      "line": 189
     },
     {
       "id": "disclosure.erase.restaging-gate",
@@ -17786,7 +17819,7 @@
       "statement": "`--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 187
+      "line": 191
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -17797,7 +17830,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 189
+      "line": 193
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -17808,7 +17841,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 191
+      "line": 195
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -17819,7 +17852,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 193
+      "line": 197
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -17830,7 +17863,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 222
+      "line": 226
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -17841,7 +17874,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 224
+      "line": 228
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -17852,7 +17885,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 226
+      "line": 230
     },
     {
       "id": "disclosure.receipt.no-rewrite-engine",
@@ -17863,7 +17896,7 @@
       "statement": "A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.",
       "why": "because a receipt over a rewrite that did not run states a false claim",
       "file": "spec/62-accountability.md",
-      "line": 228
+      "line": 232
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -22596,6 +22629,14 @@
     [
       "disclosure.explain.path",
       "authority.filter-rows.default-deny"
+    ],
+    [
+      "disclosure.attest.replica-verify",
+      "disclosure.attest.broken-chain"
+    ],
+    [
+      "disclosure.attest.replicate-verb",
+      "disclosure.attest.root-replication"
     ],
     [
       "disclosure.attest.verify-verb",

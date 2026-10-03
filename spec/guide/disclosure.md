@@ -8,8 +8,8 @@ contract: disclosure
 
 A **Contextful** workspace that indexes an organization's wiki, drive and chat answers
 everyone, so it inherits the question those sources already settled: who may see what.
-Visibility mirrors each source's permission state and
-joins it into every read, so a reader sees what the source shows them and nothing more.
+Visibility mirrors source permissions into every read, so a reader sees only what
+the source shows them.
 Disclosure lets a derived figure cross from many contributors to one asker without
 carrying any contributor's rows. Accountability leaves a verifiable trace of every read
 and removes a subject or a tenant on demand.
@@ -80,27 +80,27 @@ roots ({{disclosure.record.segment}}), and verification reports the earliest bre
 ({{disclosure.attest.merkle-root}}), so an audit path proves membership under the
 public key alone ({{disclosure.attest.inclusion-proof}}). A keyless node appends unanchored
 until anchored ({{disclosure.attest.anchor-verb}}); a held chain stays held
-({{disclosure.record.unanchored-over-signed}}). `audit query` answers who read what
+({{disclosure.record.unanchored-over-signed}}); replicas expose truncation
+({{disclosure.attest.replica-verify}}). `audit query` answers who read what
 ({{disclosure.record.reads-view}}), refusals too ({{disclosure.record.refused-read}}).
 
 ## Worked example
 
-A wiki page is shared with the group `planning`, which contains `eng-leads`, which
-contains Ada.
+A wiki page is shared with `planning`, which contains `eng-leads`, which contains Ada.
 
 The wiki pack maps the source's `viewer` level to read, names the `item-exception`
 family, and binds the `pages` table as `mirrored` with a budget written in the grammar of
 {{disclosure.bound-staleness.budget-grammar}}. The sweep lands one resource row, one grant
 to `planning`, and two membership rows.
 
-Ada asks a question touching `pages`. Reach walks `planning`, then `eng-leads`, then Ada,
+Ada's question touches `pages`. Reach walks `planning`, then `eng-leads`, then Ada,
 subtracts tombstones in force, and caches the set ({{disclosure.reach.cache-capacity}}).
 The source lag sits inside the budget, so the semi-join admits the page and the envelope
 reports fidelity and lag. The read appends a chain entry carrying a keyed digest of the
 statement, and rows return after the fsync.
 
-An editor removes `planning` from the page; the budget bounds how long the old grant
-answers. If the sweep stalls past it, Ada's next read refuses instead of serving a
+An editor removes `planning` from the page. The budget bounds how long the old grant
+keeps answering. If the sweep stalls past it, Ada's next read refuses instead of serving a
 revoked grant, and nothing produced in that state is retained
 ({{disclosure.reach.degraded-uncached}}).
 

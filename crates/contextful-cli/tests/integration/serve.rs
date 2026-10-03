@@ -271,3 +271,48 @@ fn a_face_below_the_project_root_reads_the_root_ledger_and_refuses_once_it_vanis
     let out = run(p, &["token", "verify", "--public-key", &public, "--keyset", "absent.toml", "--token", &after]);
     assert!(String::from_utf8_lossy(&out.stderr).contains("KeySetLedgerUnavailable"), "{out:?}");
 }
+
+/// Append a `[sync]` block whose `prefix_from` names an unset variable to the project's
+/// store config: a bucket no process can open.
+fn declare_unopenable_bucket(root: &Path) {
+    let store = root.join(".contextful/context/research");
+    std::fs::create_dir_all(&store).unwrap();
+    let config = store.join("config.toml");
+    let mut text = std::fs::read_to_string(&config).unwrap_or_default();
+    text.push_str(&format!(
+        "\n[sync]\nendpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix_from = \"CONTEXTFUL_TEST_UNSET_PREFIX\"\ncoordination = \"single-writer\"\n",
+        root.join("bucket").display()
+    ));
+    std::fs::write(config, text).unwrap();
+}
+
+/// A `[sync]` bucket that cannot open stops neither face: `serve --http` and `mcp` start
+/// and answer reads (`disclosure.attest.root-replication`).
+#[test]
+fn a_bucket_that_cannot_open_stops_no_face_from_answering() {
+    let (dir, public) = project();
+    let p = dir.path();
+    declare_unopenable_bucket(p);
+    let token = stdout(&run(p, &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "900"]));
+
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, answer) = post(&addr, &query(), &token, None);
+    assert_eq!((status, answer["result"]["structuredContent"]["rows"].clone()), (200, json!([["n1"]])), "{answer}");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["mcp", "--project", "research", "--public-key", &public, "--audience", AUD])
+        .current_dir(p)
+        .env("CONTEXTFUL_TOKEN", &token)
+        .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
+        .env_remove("CONTEXTFUL_AUDIENCE")
+        .env_remove("CONTEXTFUL_TEST_UNSET_PREFIX")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let _ = writeln!(child.stdin.take().unwrap(), "{}", query());
+    let out = child.wait_with_output().unwrap();
+    let answer: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("null")).unwrap();
+    assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]), "{}", String::from_utf8_lossy(&out.stderr));
+}

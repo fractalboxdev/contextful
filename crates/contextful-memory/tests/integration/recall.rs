@@ -151,7 +151,7 @@ fn a_keyed_claim_passes_the_evidence_gate() {
     assert!(withheld.rows.is_empty());
     assert_eq!(
         withheld.blocks["contextful.recall"],
-        json!({ "suppressed": { "MemoryEvidenceUnresolved": 1, "MemoryEvidenceOverflow": 0 }, "stale": 0 })
+        json!({ "suppressed": { "MemoryEvidenceUnresolved": 1, "MemoryEvidenceOverflow": 0 }, "stale": 0, "withheld": 1 })
     );
     assert!(!serde_json::to_string(&withheld.to_json()).unwrap().contains("Dana"));
     let seen = recall(&f, &reader(&f), &keyed("memory/facts", "acme", Some("2030-02-01T00:00:00Z"))).unwrap();

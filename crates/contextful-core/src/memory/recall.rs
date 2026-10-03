@@ -40,6 +40,13 @@ pub fn parse_evidence(text: Option<&str>) -> Result<Vec<EvidenceRef>, MemoryErro
     serde_json::from_str(text).map_err(|e| MemoryError::EvidenceUnresolved(format!("the evidence list is malformed: {e}")))
 }
 
+/// The references of a claim's evidence list into a table the caller's session does not
+/// register, counted and never named (`disclosure.attest.lineage-elision`); a malformed list
+/// counts none, since the gate suppresses it as malformed.
+pub fn withheld(evidence: Option<&str>, registers: impl Fn(&str) -> bool) -> u64 {
+    parse_evidence(evidence).map_or(0, |refs| refs.iter().filter(|r| !registers(&r.table)).count() as u64)
+}
+
 /// Gate one claim: every evidence row reads, unmasked, through the caller's session. A
 /// list past 256 references is suppressed as an overflow
 /// (`read.recall.evidence-references`); an unreadable or masked row, an unknown table, a
