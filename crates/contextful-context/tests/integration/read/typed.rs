@@ -58,9 +58,9 @@ fn a_read_renders_bytes_as_base64_and_vectors_as_number_arrays() {
     let rows = r.query(&s, r#"SELECT id, blob, embedding FROM "lab/embeddings" ORDER BY id"#).unwrap();
     assert_eq!(column(&rows, "blob"), [json!("qgE="), Value::Null]);
     assert_eq!(column(&rows, "embedding"), [json!([0.5, -1.0, 0.25]), Value::Null]);
-    // A caller's own blob and float array encode the same way; a list of text stays a container.
+    // A caller's own blob and float array encode the same way, and a list of text is an array of text cells.
     let own = r.query(&s, "SELECT '\\xAA\\x01'::BLOB AS b, [1.5, 2.0]::FLOAT[2] AS v, ['a', 'b'] AS l").unwrap();
-    assert_eq!(own.rows[0], [json!("qgE="), json!([1.5, 2.0]), json!("[a, b]")]);
+    assert_eq!(own.rows[0], [json!("qgE="), json!([1.5, 2.0]), json!(["a", "b"])]);
     // The rows tool serializes the same projection.
     let all = r.face.rows(&s, "lab/embeddings", None).unwrap();
     assert!(column(&all, "embedding").contains(&json!([0.5, -1.0, 0.25])));
@@ -81,7 +81,7 @@ fn binary_columns_hash_their_bytes_and_vectors_drop() {
     .mask
     .as_ref()
     .unwrap()
-    .apply(&pepper(), Some("dmFsdWU="), ColumnType::FixedSizeBinary(5))
+    .apply(&pepper(), Some("dmFsdWU="), &ColumnType::FixedSizeBinary(5))
     .unwrap();
     assert_eq!(column(&rows, "digest"), [json!(written), Value::Null]);
     assert_eq!(written, pepper().digest("value"));

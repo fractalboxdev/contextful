@@ -47,7 +47,7 @@ fn put(store: &Store, decl: &TableDecl, run: &str, now: &str, rows: Value, types
         injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: at(now),
     };
-    let types = types.iter().map(|(c, t)| (c.to_string(), *t)).collect();
+    let types = types.iter().map(|(c, t)| (c.to_string(), t.clone())).collect();
     land(store, decl, &Batch { rows, types }, &ctx).unwrap();
 }
 

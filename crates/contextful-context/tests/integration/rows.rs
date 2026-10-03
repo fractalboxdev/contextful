@@ -51,13 +51,17 @@ fn every_timestamp_unit_text_integer_float_date_and_decimal_reads_as_a_value() {
 
 #[test]
 fn a_requested_column_of_an_unsupported_type_fails_naming_it_and_an_unrequested_one_is_never_read() {
+    let waited = arrow_array::DurationSecondArray::from(vec![5]);
+    let b = batch(vec![("doc_id", Arc::new(LargeStringArray::from(vec!["d1"])) as ArrayRef), ("waited", Arc::new(waited) as ArrayRef)]);
+    let err = batch_rows(&b, &["doc_id", "waited"]).unwrap_err().to_string();
+    assert!(err.contains("`waited`") && err.contains("Duration"), "{err}");
+    // A list is an array of its items (`read.respond.nested-values`).
     let mut list = ListBuilder::new(StringBuilder::new());
     list.values().append_value("x");
     list.append(true);
     let tags: ListArray = list.finish();
-    let b = batch(vec![("doc_id", Arc::new(LargeStringArray::from(vec!["d1"])) as ArrayRef), ("tags", Arc::new(tags) as ArrayRef)]);
-    let err = batch_rows(&b, &["doc_id", "tags"]).unwrap_err().to_string();
-    assert!(err.contains("`tags`") && err.contains("List"), "{err}");
+    let l = batch(vec![("tags", Arc::new(tags) as ArrayRef)]);
+    assert_eq!(serde_json::Value::Object(batch_rows(&l, &["tags"]).unwrap()[0].clone()), json!({"tags": ["x"]}));
     let rows = batch_rows(&b, &["doc_id"]).unwrap();
     assert_eq!(serde_json::Value::Object(rows[0].clone()), json!({"doc_id": "d1"}));
 }

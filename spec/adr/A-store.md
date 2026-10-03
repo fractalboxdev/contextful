@@ -195,3 +195,20 @@ Decision: a `[[job]]` block of kind `fold` carrying a `schedule`, with `enabled`
 | Refuse every uncovered keyed table | Adoption cost | A project with a hand-run `context compact` stops validating. |
 
 Consequences: a seeded pipeline carries its fold job in the same declaration, and disabling that job refuses the pipeline.
+
+## Struct, list and map columns reconcile field by field
+
+**Status:** accepted
+
+Context: nested values landed as JSON text or child tables, paying a parse or a join per read. Criteria: a record reads with its parent in one scan; the lattice stays the one place a type widens; no landing drops a value silently.
+
+Decision: the lattice adds `Struct`, `List` and `Map` with `Utf8` keys, recursive over every column type. A struct gains fields additively; items and map values reconcile by the scalar lattice; a kind change refuses at the write, naming its path. A nested column takes no key role, masks whole by `drop`, and reads as JSON arrays and objects. `native` normalize infers nested types on the store sink; a direct landing keeps `Json` unless typed.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Nested types, additive structs, path-named refusals *(chosen)* | — | A key outside a typed struct refuses its batch; a dynamic key set widens a struct. |
+| Child tables per list | One scan | A join per nested read. |
+| `Json` text throughout | One scan | Every read parses and casts. |
+| Struct fields fixed at first sight | Silent drops | A later field refuses or vanishes. |
+
+Consequences: a producer with an open key set declares `map<utf8, …>`, and only a union keeps a text form.

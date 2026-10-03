@@ -44,7 +44,7 @@ pub fn relation(
         // the one cast the relation carries restores its dimension (`store.reconcile.half-width`).
         let vectors: Vec<String> = schema_columns
             .iter()
-            .filter(|c| c.ty.is_vector() && !absent.iter().any(|a| a.name == c.name))
+            .filter(|c| c.ty.holds_vector() && !absent.iter().any(|a| a.name == c.name))
             .map(|c| format!("CAST({} AS {}) AS {}", ident(&c.name), c.ty.sql(), ident(&c.name)))
             .collect();
         let replace = if vectors.is_empty() { String::new() } else { format!(" REPLACE ({})", vectors.join(", ")) };

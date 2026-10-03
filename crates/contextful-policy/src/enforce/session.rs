@@ -221,7 +221,7 @@ impl Session {
                 if !t.policy.column_set(&c.name).admits(&self.zone) {
                     format!("CAST(NULL AS {}) AS {}", c.ty.sql(), ident(&c.name))
                 } else if let Some(mask) = t.policy.columns.get(&c.name).and_then(|p| p.mask.as_ref()) {
-                    format!("{} AS {}", mask.sql(&c.name, c.ty), ident(&c.name))
+                    format!("{} AS {}", mask.sql(&c.name, &c.ty), ident(&c.name))
                 } else {
                     ident(&c.name)
                 }

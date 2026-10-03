@@ -57,7 +57,7 @@ impl Fixture {
         types: &[(&str, ColumnType)],
     ) -> Result<RunManifest> {
         let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
-        let batch = Batch { rows, types: types.iter().map(|(c, t)| (c.to_string(), *t)).collect::<HashMap<_, _>>() };
+        let batch = Batch { rows, types: types.iter().map(|(c, t)| (c.to_string(), t.clone())).collect::<HashMap<_, _>>() };
         let ctx = RunContext {
             node: NodeId::parse(node).unwrap(),
             injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },

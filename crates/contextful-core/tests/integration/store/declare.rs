@@ -196,3 +196,66 @@ fn a_scheduled_enabled_fold_job_covers_its_target_or_every_table() {
         assert!(FoldCoverage::parse(&text).is_err(), "{malformed}");
     }
 }
+
+/// A struct, list or map column named by `primary_key`, `order_by`, `cluster_by`, `partition_by` or `valid_time` raises `StoreNestedKeyColumn` at validation, before any Parquet.
+// spec: store.declare.nested-key@77d06256
+#[test]
+fn a_nested_column_in_a_key_or_ordering_role_is_refused() {
+    let nested = [
+        ColumnType::list(ColumnType::Utf8),
+        ColumnType::structure([("a", ColumnType::Int64)]),
+        ColumnType::map(ColumnType::Utf8),
+    ];
+    let blocks = [
+        "primary_key = [\"id\", \"v\"]",
+        "order_by = \"v\"",
+        "cluster_by = [\"v\"]",
+        "partition_by = [\"v\"]",
+        "valid_time = { from = \"v\" }",
+    ];
+    for ty in &nested {
+        let schema = Schema {
+            columns: vec![
+                Column::new("id", ColumnType::Utf8, true),
+                Column::new("v", ty.clone(), true),
+            ],
+        };
+        for block in blocks {
+            let t = TableDecl::parse_pipeline(&format!(
+                "[[pipeline.tables]]\nname = \"spans\"\n{block}\n"
+            ))
+            .unwrap()
+            .remove(0);
+            match t.validate(&schema) {
+                Err(StoreError::StoreNestedKeyColumn(m)) => assert!(
+                    m.contains("`v`") && m.contains("spans") && m.contains(&ty.name()),
+                    "{block}: {m}"
+                ),
+                other => {
+                    panic!("{block} over {ty:?}: expected StoreNestedKeyColumn, got {other:?}")
+                }
+            }
+        }
+        // A declared nested type refuses before any row lands, whatever the schema holds yet.
+        let t = TableDecl::parse_pipeline(&format!("[[pipeline.tables]]\nname = \"spans\"\nprimary_key = [\"v\"]\ncolumns = {{ v = \"{}\" }}\n", ty.spell()))
+            .unwrap()
+            .remove(0);
+        let empty = Schema::default();
+        assert!(
+            matches!(t.validate(&empty), Err(StoreError::StoreNestedKeyColumn(_))),
+            "{ty:?}"
+        );
+    }
+    // A nested column outside every key role validates.
+    let schema = Schema {
+        columns: vec![
+            Column::new("id", ColumnType::Utf8, true),
+            Column::new("v", nested[0].clone(), true),
+        ],
+    };
+    TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"spans\"\nprimary_key = [\"id\"]\n")
+        .unwrap()
+        .remove(0)
+        .validate(&schema)
+        .unwrap();
+}

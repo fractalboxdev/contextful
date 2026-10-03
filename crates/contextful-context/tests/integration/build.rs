@@ -264,7 +264,7 @@ fn a_build_injects_the_five_columns_over_any_the_sql_selects() {
     assert!(rows[0][0].as_str().unwrap().starts_with("2030-01-01 01:00:00"), "{rows:?}");
     assert_eq!(rows[0][1], json!(built.build_id));
     assert_eq!(rows[0][2], json!("site-a"));
-    assert_eq!(p.rows("SELECT list(_row_seq ORDER BY _row_seq) FROM daily"), [[json!("[0, 1, 2]")]]);
+    assert_eq!(p.rows("SELECT list(_row_seq ORDER BY _row_seq) FROM daily"), [[json!(["0", "1", "2"])]]);
     assert_eq!(p.rows("SELECT DISTINCT _commit_seq FROM daily"), [[json!("1")]]);
     let section = p.build(MODEL, "2030-01-01T02:00:00Z").unwrap().section.unwrap();
     assert_eq!(section.semantics_version, Some(2));

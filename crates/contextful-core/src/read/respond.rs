@@ -42,7 +42,13 @@ pub enum Cell {
     Vector(Vec<f64>),
     /// An enum value, by its label.
     Enum(String),
-    /// A list, struct, map or union, by its text form.
+    /// A variable-length list, or a fixed-size array of other than floats.
+    List(Vec<Cell>),
+    /// A struct's fields in order.
+    Struct(Vec<(String, Cell)>),
+    /// A map's entries in order.
+    Map(Vec<(Cell, Cell)>),
+    /// A union, by its text form.
     Container(String),
 }
 
@@ -75,6 +81,20 @@ impl Cell {
             Cell::Text(s) | Cell::Enum(s) | Cell::Container(s) => Value::String(s.clone()),
             Cell::Blob(b) => Value::String(crate::store::reconcile::encode_binary(b)),
             Cell::Vector(v) => Value::Array(v.iter().map(|f| Cell::Float(*f).to_json()).collect()),
+            Cell::List(items) => Value::Array(items.iter().map(Cell::to_json).collect()),
+            Cell::Struct(fields) => Value::Object(fields.iter().map(|(k, v)| (k.clone(), v.to_json())).collect()),
+            Cell::Map(entries) => Value::Object(
+                entries
+                    .iter()
+                    .map(|(k, v)| {
+                        let key = match k.to_json() {
+                            Value::String(s) => s,
+                            other => other.to_string(),
+                        };
+                        (key, v.to_json())
+                    })
+                    .collect(),
+            ),
         }
     }
 }

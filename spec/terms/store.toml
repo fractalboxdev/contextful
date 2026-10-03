@@ -35,6 +35,7 @@ StoreReservedColumnName      = { clause = "store.reserve.column-name", gloss = "
 StoreReservedTableName       = { clause = "store.reserve.table-name", gloss = "A declared table collides with a reserved table namespace." }
 StoreSchemaIncompatible      = { clause = "store.reconcile.incompatible", gloss = "Two observed types for one column have no supertype in the lattice." }
 StoreKeyWidened              = { clause = "store.reconcile.key-widening", gloss = "A primary-key column takes the float promotion." }
+StoreNestedKeyColumn         = { clause = "store.declare.nested-key", gloss = "A struct, list or map column takes a key, ordering, clustering, partition or valid-time role." }
 StorePartitionColumnType     = { clause = "store.index.partition-type", gloss = "A `partition_by` column is typed binary or vector." }
 StoreRunConflict             = { clause = "store.lay-out.run-conflict", gloss = "A run id already committed on its node lands again as other than its replay." }
 StorePartialSnapshot         = { clause = "store.fold.partial-snapshot", gloss = "A commit would expose snapshot data without its declared sidecars, or the reverse." }

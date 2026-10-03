@@ -74,14 +74,14 @@ fn a_binary_or_vector_partition_column_is_refused() {
     ] {
         let f = Fixture::new();
         let d = decl(&format!("name = \"events\"\npartition_by = [\"{column}\"]"));
-        let err = f.land_typed(&d, "run-1", json!([{column: value, "e": 1}]), "2030-01-01T00:00:00Z", &[(column, ty)]).unwrap_err();
+        let err = f.land_typed(&d, "run-1", json!([{column: value, "e": 1}]), "2030-01-01T00:00:00Z", &[(column, ty.clone())]).unwrap_err();
         assert!(matches!(err.store(), Some(StoreError::StorePartitionColumnType(_))), "{column}: {err}");
         assert!(!f.table_dir("events").join("data/runs/run-1").exists(), "{column}");
 
         // A partition declared after the rows landed refuses the fold instead of collapsing values.
         let g = Fixture::new();
         let plain = decl("name = \"events\"");
-        g.land_typed(&plain, "run-1", json!([{column: value, "e": 1}]), "2030-01-01T00:00:00Z", &[(column, ty)]).unwrap();
+        g.land_typed(&plain, "run-1", json!([{column: value, "e": 1}]), "2030-01-01T00:00:00Z", &[(column, ty.clone())]).unwrap();
         let err = fold(&g.store, &d, at("2030-01-01T01:00:00Z")).unwrap_err();
         assert!(matches!(err.store(), Some(StoreError::StorePartitionColumnType(_))), "{column}: {err}");
     }
@@ -267,7 +267,7 @@ fn a_repeated_identifier_refuses_the_pass() {
 fn a_landing_of_an_unreadable_identifier_or_vector_lands_nothing() {
     let f32x2 = ColumnType::FixedSizeList(FloatItem::Float32, 2);
     for (column, value, types) in [
-        ("digest", json!(1.5), vec![("embedding", f32x3()[0].1), ("digest", ColumnType::Float64)]),
+        ("digest", json!(1.5), vec![("embedding", f32x3()[0].1.clone()), ("digest", ColumnType::Float64)]),
         ("embedding", json!([1.0, 0.0]), vec![("embedding", f32x2)]),
     ] {
         let f = Fixture::new();

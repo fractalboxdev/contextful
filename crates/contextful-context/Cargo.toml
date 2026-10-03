@@ -15,6 +15,7 @@ contextful-core = { path = "../contextful-core" }
 contextful-fs = { path = "../contextful-fs" }
 contextful-policy = { path = "../contextful-policy" }
 arrow-array = "57"
+arrow-buffer = "57"
 arrow-cast = "57"
 arrow-ord = "57"
 arrow-row = "57"

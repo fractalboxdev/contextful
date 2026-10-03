@@ -214,7 +214,7 @@ pub fn log_records(export: &Export, columns: &[String], rows: &[Vec<Value>], typ
             .iter()
             .zip(row)
             .filter(|(c, v)| !c.starts_with('_') && !v.is_null())
-            .map(|(c, v)| attribute(c, any_value(v, types.get(c).copied())))
+            .map(|(c, v)| attribute(c, any_value(v, types.get(c).cloned())))
             .collect();
         attributes.push(attribute("contextful.table", string_value(export.table.clone())));
         if let Some(run_id) = run.and_then(|i| row.get(i)).and_then(Value::as_str) {

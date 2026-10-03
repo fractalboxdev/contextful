@@ -226,11 +226,11 @@ mod materialize {
 
     /// Whether an engine result type satisfies a declared type: it lands as that type, or
     /// as the engine's one spelling of a fixed-width byte or half-float vector type.
-    fn satisfies(engine: &str, declared: ColumnType) -> bool {
+    fn satisfies(engine: &str, declared: &ColumnType) -> bool {
         match (engine_type(engine), declared) {
-            (Some(t), d) if t == d => true,
+            (Some(t), d) if t == *d => true,
             (Some(ColumnType::Binary), ColumnType::FixedSizeBinary(_)) => true,
-            (Some(ColumnType::FixedSizeList(FloatItem::Float32, n)), ColumnType::FixedSizeList(FloatItem::Float16, m)) => n == m,
+            (Some(ColumnType::FixedSizeList(FloatItem::Float32, n)), ColumnType::FixedSizeList(FloatItem::Float16, m)) => n == *m,
             _ => false,
         }
     }
@@ -293,7 +293,7 @@ mod materialize {
                         spec.id, c.name, c.ty
                     )))
                 }
-                Some((_, ty)) if !satisfies(ty, declared) => {
+                Some((_, ty)) if !satisfies(ty, &declared) => {
                     return Err(mismatch(format!(
                         "model `{}`: column `{}` is {ty}; contract version {version} declares {}",
                         spec.id, c.name, c.ty
@@ -480,7 +480,7 @@ mod materialize {
                 literal(&raw.to_string_lossy())
             ))?;
             let loose = Arc::new(ArrowSchema::new(
-                cols.iter().map(|c| Field::new(&c.name, parquet_io::data_type(c.ty), true)).collect::<Vec<_>>(),
+                cols.iter().map(|c| Field::new(&c.name, parquet_io::data_type(&c.ty), true)).collect::<Vec<_>>(),
             ));
             let batches: Vec<RecordBatch> =
                 parquet_io::read(&raw)?.iter().map(|b| parquet_io::conform(b, &loose)).collect::<Result<_>>()?;

@@ -17,7 +17,7 @@ fn table(block: &str) -> TableDecl {
 }
 
 fn schema(columns: &[(&str, ColumnType)]) -> Schema {
-    Schema { columns: columns.iter().map(|(n, ty)| Column { name: n.to_string(), ty: *ty, nullable: true }).collect() }
+    Schema { columns: columns.iter().map(|(n, ty)| Column { name: n.to_string(), ty: ty.clone(), nullable: true }).collect() }
 }
 
 /// Manifest validation of a pipeline whose one table carries `block`.
@@ -157,7 +157,7 @@ fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
         (ColumnType::Float64, ColumnType::FixedSizeList(FloatItem::Float32, 4), true),
         (ColumnType::FixedSizeBinary(32), ColumnType::FixedSizeList(FloatItem::Float32, 4), true),
     ] {
-        let s = schema(&[("passage_id", id_ty), ("embedding", vector_ty)]);
+        let s = schema(&[("passage_id", id_ty.clone()), ("embedding", vector_ty.clone())]);
         let got = t.validate_indexes(&s);
         assert_eq!(matches!(got, Err(StoreError::StoreIndexColumnType(_))), refused, "{id_ty:?} {vector_ty:?}: {got:?}");
         if !refused {
@@ -182,7 +182,7 @@ fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
     // A full-text sidecar reads text alone.
     let f = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{FULLTEXT}"));
     for (body_ty, refused) in [(ColumnType::Utf8, false), (ColumnType::Int64, true), (ColumnType::Json, true), (ColumnType::Binary, true)] {
-        let got = f.validate_indexes(&schema(&[("passage_id", ColumnType::Utf8), ("body", body_ty)]));
+        let got = f.validate_indexes(&schema(&[("passage_id", ColumnType::Utf8), ("body", body_ty.clone())]));
         assert_eq!(matches!(got, Err(StoreError::StoreIndexColumnType(_))), refused, "{body_ty:?}: {got:?}");
     }
     for (columns, refused) in [("body = \"text\"", false), ("body = \"int64\"", true), ("body = \"binary\"", true)] {
@@ -233,7 +233,7 @@ fn two_declarations_resolving_to_one_path_are_refused() {
     ] {
         let block = format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{block}");
         let mut cols = vec![("passage_id", ColumnType::Utf8), ("body", ColumnType::Utf8)];
-        cols.extend(columns.iter().map(|c| (*c, v4)));
+        cols.extend(columns.iter().map(|c| (*c, v4.clone())));
         let got = table(&block).validate_indexes(&schema(&cols));
         match got {
             Err(StoreError::StoreIndexPathCollision(m)) => assert!(m.contains("indexes[0]") && m.contains("indexes[1]"), "{m}"),
@@ -249,7 +249,7 @@ fn two_declarations_resolving_to_one_path_are_refused() {
         vector("embedding", "bge", 4)
     );
     table(&block)
-        .validate_indexes(&schema(&[("passage_id", ColumnType::Utf8), ("body", ColumnType::Utf8), ("embedding", v4)]))
+        .validate_indexes(&schema(&[("passage_id", ColumnType::Utf8), ("body", ColumnType::Utf8), ("embedding", v4.clone())]))
         .unwrap();
     validate_manifest(&block).unwrap();
 }

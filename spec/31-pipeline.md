@@ -142,7 +142,9 @@ Canonical nested form, late relational shredding, injected identity columns and 
 - `row-id` — The row id hashes the row's own content, so a re-run of one input emits byte-identical ids.
 - `list-index-missing` — A relational child table emitted without the list index that makes its projection reversible raises `PipelineListIndexMissing`, naming the parent and the list.
   *A-run*
-- `nesting-depth` — Recursion stops at the declared depth, default five levels, landing a deeper subtree as one deferred-typing JSON column.
+- `native-store` — On the store sink, `native` lands each undeclared column of objects and arrays as a struct or list column inferred over the batch; a column mixing kinds, or one `schema.json` holds as a scalar, lands as `Json`.
+  *A-store*
+- `nesting-depth` — Recursion stops at the declared `depth`, default 5 levels, landing a deeper subtree as one `Json` value.
 
 unsettled: Where does a schema-diff event land, given that the store keeps only the reconciled schema? owner: pipeline affects: run.normalize
 

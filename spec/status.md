@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 100 | 64 | 13 | 11 | 50 | 0 | 50 |
-| `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
-| `run` | 3 | 26 | 371 | 98 | 35 | 37 | 256 | 0 | 255 |
-| `store` | 1 | 17 | 232 | 54 | 13 | 20 | 194 | 0 | 194 |
+| `read` | 2 | 15 | 176 | 29 | 22 | 21 | 157 | 0 | 157 |
+| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
+| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 197 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1926 | 568 | 187 | 137 | 1317 | 0 | |
+| **total** | 19 | 154 | 1931 | 569 | 188 | 137 | 1324 | 0 | |
 
 Decision records: 18.
 
@@ -27,10 +27,10 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
-| 2 — The store | 9 | 159 | 126 | passing | closed |
+| 2 — The store | 9 | 162 | 129 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 467 | 287 | passing | open |
-| 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
+| 4 — Ingest | 25 | 468 | 290 | passing | open |
+| 5 — The read face under enforcement | 17 | 249 | 186 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 57 | 43 | passing | open |
@@ -296,7 +296,7 @@ Unscheduled operations: 10.
 | `authority.mask.pseudonymous` | `crates/contextful-policy/tests/integration/enforce/mask.rs::the_digest_is_an_hmac_under_the_pepper` | performed |
 | `authority.mask.token-width` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_token_is_20_chars` | performed |
 | `authority.mask.truncation-ceiling` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_truncation_past_the_class_ceiling_is_refused` | performed |
-| `authority.mask.typed-strategy` | `crates/contextful-policy/tests/integration/enforce/mask.rs::binary_and_vector_columns_admit_their_strategies_alone` | performed |
+| `authority.mask.typed-strategy` | `crates/contextful-policy/tests/integration/enforce/mask.rs::binary_vector_and_nested_columns_admit_their_strategies_alone` | performed |
 | `authority.mask.unknown-class` | `crates/contextful-policy/tests/integration/enforce/mask.rs::an_unknown_class_is_refused` | performed |
 | `authority.place.allow-set-entries` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_allow_set_holds_at_most_32_entries` | performed |
 | `authority.place.allow-set-entry` | `crates/contextful-policy/tests/integration/enforce/zone.rs::allow_set_entries_take_six_forms` | performed |
@@ -770,6 +770,7 @@ Unscheduled operations: 10.
 | `read.respond.face-ceiling` | `crates/contextful-context/tests/integration/read/register.rs::the_face_ceiling_bounds_every_read` | performed |
 | `read.respond.in-band-error` | `crates/contextful-agent/tests/integration/mcp.rs::a_refusal_arrives_in_band` | performed |
 | `read.respond.match-count` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_block_reports_how_many_rows_matched` | performed |
+| `read.respond.nested-values` | `crates/contextful-context/tests/integration/read/nested.rs::a_nested_column_lands_folds_and_reads_back_as_it_arrived` | performed |
 | `read.respond.one-projection` | `crates/contextful-cli/tests/integration/query.rs::the_command_line_and_the_tool_protocol_print_one_projection` | performed |
 | `read.respond.restriction-block` | `crates/contextful-context/tests/integration/read/respond.rs::a_zone_excluded_relation_is_named_beside_its_empty_rows` | performed |
 | `read.respond.row-ceiling` | `crates/contextful-context/tests/integration/read/register.rs::the_row_ceiling_bounds_delivery_with_one_probe_row` | performed |
@@ -975,6 +976,9 @@ Unscheduled operations: 10.
 | `run.model.validate-statements` | `crates/contextful-cli/tests/integration/build.rs::validate_refuses_a_statement_build_refuses` | performed |
 | `run.model.validate-undeclared` | `crates/contextful-cli/tests/integration/build.rs::validate_names_a_relation_no_manifest_declares` | performed |
 | `run.model.watermark` | `crates/contextful-context/tests/integration/build.rs::the_watermark_names_each_input_frontier` | performed |
+| `run.normalize.mode-unknown` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_normalize_mode_is_refused_at_validation` | performed |
+| `run.normalize.native-store` | `crates/contextful-cli/tests/integration/pipeline.rs::a_native_pipeline_lands_nested_json_as_one_table_of_nested_columns` | performed |
+| `run.normalize.nesting-depth` | `crates/contextful-cli/tests/integration/pipeline.rs::native_nesting_stops_at_the_declared_depth` | performed |
 | `run.own.backpressure` | `crates/contextful-engine/tests/integration/runner.rs::each_batch_stages_before_the_next_pull` | performed |
 | `run.own.execution-id-keys-the-journal` | `crates/contextful-engine/tests/integration/runner.rs::a_second_attempt_under_one_owner_replays_the_firsts_recorded_pulls` | performed |
 | `run.own.host-scope` | `crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row` | performed |
@@ -1098,6 +1102,7 @@ Unscheduled operations: 10.
 | `store.declare.fold-coverage` | `crates/contextful-cli/tests/integration/pipeline.rs::a_keyed_table_no_fold_job_covers_warns_and_validates` | performed |
 | `store.declare.fold-job` | `crates/contextful-core/tests/integration/store/declare.rs::a_scheduled_enabled_fold_job_covers_its_target_or_every_table` | performed |
 | `store.declare.key-unknown` | `crates/contextful-context/tests/integration/declare.rs::an_unknown_primary_key_refuses_the_first_batch_before_any_parquet` | performed |
+| `store.declare.nested-key` | `crates/contextful-core/tests/integration/store/declare.rs::a_nested_column_in_a_key_or_ordering_role_is_refused` | performed |
 | `store.declare.order-by-default` | `crates/contextful-core/tests/integration/store/declare.rs::order_by_defaults_to_ingested_at` | performed |
 | `store.declare.order-by-unknown` | `crates/contextful-core/tests/integration/store/declare.rs::an_order_by_naming_no_column_is_refused` | performed |
 | `store.declare.read-side-keys` | `crates/contextful-context/tests/integration/declare.rs::a_key_added_after_rows_land_applies_at_the_next_read` | performed |
@@ -1253,6 +1258,8 @@ Unscheduled operations: 10.
 | `store.reconcile.incompatible` | `crates/contextful-core/tests/integration/store/reconcile.rs::any_other_pair_is_incompatible` | performed |
 | `store.reconcile.key-widening` | `crates/contextful-core/tests/integration/store/reconcile.rs::a_key_column_takes_no_float_promotion` | performed |
 | `store.reconcile.lattice` | `crates/contextful-core/tests/integration/store/reconcile.rs::the_lattice_holds_one_promotion_and_json_absorbs_text` | performed |
+| `store.reconcile.nested-landing` | `crates/contextful-context/tests/integration/reconcile.rs::a_typed_batch_lands_nested_values_and_refuses_a_kind_change_by_path` | performed |
+| `store.reconcile.nested-lattice` | `crates/contextful-core/tests/integration/store/reconcile.rs::nested_types_reconcile_field_by_field` | performed |
 | `store.reconcile.no-history` | `crates/contextful-core/tests/integration/store/reconcile.rs::the_schema_document_keeps_the_current_shape_alone` | performed |
 | `store.reconcile.no-invented-column` | `crates/contextful-context/tests/integration/reconcile.rs::a_scan_invents_no_column` | performed |
 | `store.reconcile.stored-type` | `crates/contextful-context/tests/integration/reconcile.rs::a_stored_binary_or_vector_column_types_a_later_undeclared_batch` | performed |
