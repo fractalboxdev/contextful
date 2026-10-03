@@ -210,6 +210,21 @@ fn the_row_ceiling_bounds_delivery_with_one_probe_row() {
     assert_eq!(asked.blocks["contextful.internals"]["limit"], json!(2));
 }
 
+// spec: disclosure.template.overfetch@bb459353
+#[test]
+fn a_capped_template_reads_one_probe_row_for_truncation() {
+    let r = Reads::new();
+    let mut grant = read(&["research/*"], Some(("research/notes", "acme")));
+    grant.templates = Some(vec!["notes_for".into()]);
+    let s = r.session_for(loop_subject("agent://research-loop"), vec![grant], None);
+    let args: Map<String, Value> = [("tenant".to_string(), json!("acme"))].into_iter().collect();
+    assert_eq!(contextful_core::read::respond::Response::fetch_count(Some(2)), Some(3));
+    let capped = r.face.execute_template(&s, "notes_for", &args, ReadOptions { limit: Some(2), ..ReadOptions::default() }).unwrap();
+    assert_eq!((capped.rows.len(), capped.truncated), (2, true));
+    let exact = r.face.execute_template(&s, "notes_for", &args, ReadOptions { limit: Some(3), ..ReadOptions::default() }).unwrap();
+    assert_eq!((exact.rows.len(), exact.truncated), (3, false));
+}
+
 /// Every read on every face, `corpus.retrieve` included, delivers at most 10000 rows: the face ceiling is always a component of {{authority.grant.row-ceiling}}, declared or not, and bounds the candidate window.
 // spec: read.respond.face-ceiling@2dfe8ba4
 #[test]

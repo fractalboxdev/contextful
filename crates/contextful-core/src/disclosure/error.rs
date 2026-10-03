@@ -53,6 +53,9 @@ impl VisibilityError {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DisclosureError {
+    /// A template declaration holds more than one statement. (`disclosure.template.single-statement`)
+    #[error("DisclosureTemplateMultiStatement: {0}")]
+    TemplateMultiStatement(String),
     /// A grouping allowlist is empty or contains a non-column name. (`disclosure.suppress.grouping-allowlist`)
     #[error("DisclosureGroupingAllowlistEmpty: {0}")]
     GroupingAllowlistEmpty(String),
@@ -74,6 +77,7 @@ impl DisclosureError {
     /// The error identifier.
     pub fn identifier(&self) -> &'static str {
         match self {
+            DisclosureError::TemplateMultiStatement(_) => "DisclosureTemplateMultiStatement",
             DisclosureError::GroupingAllowlistEmpty(_) => "DisclosureGroupingAllowlistEmpty",
             DisclosureError::DominanceUnverifiable(_) => "DisclosureDominanceUnverifiable",
             DisclosureError::MinGroupSizeBelowFloor(_) => "DisclosureMinGroupSizeBelowFloor",

@@ -211,6 +211,16 @@ fn template_checks_run_once_when_the_face_opens() {
     assert_eq!(r.face.templates().len(), 1);
 }
 
+// spec: disclosure.template.single-statement@383da38c
+#[test]
+fn a_template_with_two_statements_refuses_at_startup() {
+    for sql in ["SELECT 1; SELECT 2", "SELECT 1; DELETE FROM research_notes"] {
+        let tail = format!("[[query_templates]]\nid = \"two\"\nsql = \"{sql}\"\n");
+        let refused = refused_template(&tail);
+        assert!(refused.starts_with("DisclosureTemplateMultiStatement"), "{sql}: {refused}");
+    }
+}
+
 /// `context.query` takes `parameters`, mapping each placeholder name to a `type` among {{read.guard.template-declaration}} types and a `value`. A missing, unused, untyped or mismatched parameter raises `QueryParameterRejected` ahead of execution, with no coercion; bound values reach {{authority.refuse.scope-guard}}.
 // spec: read.guard.query-binding@676487ee
 #[test]

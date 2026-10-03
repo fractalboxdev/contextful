@@ -16,6 +16,7 @@ use contextful_core::read::respond::{Cell, Internals, Response};
 use contextful_core::read::template::{bind_query, parse_templates, Bindings, Bound, ParamType, QueryTemplate};
 use contextful_core::read::ReadError;
 use contextful_core::enforce::EnforceError;
+use contextful_core::disclosure::DisclosureError;
 use contextful_core::memory::declare::{DeclareError, MemoryDeclarations};
 use contextful_core::pipeline::declare::ManifestFile;
 use contextful_core::store::bound_time::Bounds;
@@ -113,6 +114,10 @@ impl Face {
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {
+            let statements = SqlEngine::statement_count(&t.sql)?;
+            if statements > 1 {
+                return Err(ReadFault::Refused(DisclosureError::TemplateMultiStatement(format!("template `{}` holds {statements} statements", t.id)).into()));
+            }
             t.check(&engine.serialize(&t.sql)?, &tables)?;
         }
         Ok(face)
