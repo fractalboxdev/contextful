@@ -19895,8 +19895,8 @@
       "operation": "build",
       "subject": "profile-build",
       "kind": "behavior",
-      "statement": "The features stage builds the binary under each profile bundle alone and tests each package under every feature set its manifest lists in `feature-runs`; a failing build or test reds the stage.",
-      "why": "because a bundle compiles a feature set no other stage resolves, so a defect it alone reaches ships unseen",
+      "statement": "The features stage tests each package under every feature set its manifest lists in `feature-runs`, in parts dispatched as one check each: the other packages, and each binary run — none, all and each listed set.",
+      "why": "because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss",
       "file": "spec/81-engineering.md",
       "line": 135
     },
@@ -20005,7 +20005,7 @@
       "operation": "gate",
       "subject": "remote-check",
       "kind": "behavior",
-      "statement": "The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, each as one status check labelled with the stage's name.",
+      "statement": "The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, a split stage one part at a time, each as one status check labelled with its name.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 156
@@ -20291,8 +20291,8 @@
       "operation": "gate",
       "subject": "budget-stage",
       "kind": "behavior",
-      "statement": "The budget stage runs {{assurance.gate.footprint}} over every profile, and the evaluate stage builds no profile.",
-      "why": "because three link-time-optimized release builds beside the gate-tier ledger outlast one stage's wall clock",
+      "statement": "The budget stage runs {{assurance.gate.footprint}} over every profile, in one part per profile dispatched as its own check, and the evaluate stage builds no profile.",
+      "why": "because one link-time-optimized release build of the full profile fills most of one stage's wall clock",
       "file": "spec/81-engineering.md",
       "line": 200
     },

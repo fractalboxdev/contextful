@@ -102,6 +102,11 @@ impl Repo {
             .unwrap()
     }
 
+    /// `contextful-ci` run with `args` at the repository root.
+    pub fn run_ci(&self, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(args).current_dir(&self.root).env_remove("CARGO_TARGET_DIR").output().unwrap()
+    }
+
     /// The gate with `cargo` answered by `script`, a POSIX shell script placed first on PATH.
     pub fn gate_with_cargo(&self, script: &str, args: &[&str]) -> Output {
         let bin = tempfile::tempdir().unwrap();
