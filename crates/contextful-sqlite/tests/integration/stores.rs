@@ -107,6 +107,44 @@ fn a_claim_is_exclusive_across_connections_to_one_file() {
     assert_eq!(others[2].journal.record(&key("x-1"), &Stored::place(b"w")).unwrap(), Some(Stored::place(b"v")), "the first record stands on every connection");
 }
 
+/// Eight connections to one file record one key at once, over 16 keys: each write opens
+/// an immediate transaction, so one value stands and no read upgrades into a busy snapshot.
+// spec: run.journal.sqlite-write-lock@1ad72e8a
+#[test]
+fn concurrent_records_of_one_key_across_connections_return_one_value() {
+    let mut dirs = Vec::new();
+    let first = fresh(&mut dirs);
+    let path = first.path().to_path_buf();
+    let stores: Vec<SqliteRunStores> = std::iter::once(first).chain((0..7).map(|_| SqliteRunStores::open(&path).unwrap())).collect();
+    for round in 0..16 {
+        let k = key(&format!("x-{round}"));
+        let barrier = std::sync::Barrier::new(stores.len());
+        let (k, barrier) = (&k, &barrier);
+        let results: Vec<Result<Option<Stored>, Failure>> = std::thread::scope(|s| {
+            let handles: Vec<_> = stores
+                .iter()
+                .enumerate()
+                .map(|(i, stores)| {
+                    s.spawn(move || {
+                        barrier.wait();
+                        stores.journal.record(k, &Stored::place(format!("v-{i}").as_bytes()))
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let failed: Vec<String> = results.iter().filter_map(|r| r.as_ref().err().map(|e| format!("{e:?}"))).collect();
+        assert!(failed.is_empty(), "round {round}: no record fails: {failed:?}");
+        let winners: Vec<usize> = results.iter().enumerate().filter(|(_, r)| matches!(r, Ok(None))).map(|(i, _)| i).collect();
+        assert_eq!(winners.len(), 1, "round {round}: one record lands: {results:?}");
+        let standing = Stored::place(format!("v-{}", winners[0]).as_bytes());
+        for (i, r) in results.iter().enumerate().filter(|(i, _)| *i != winners[0]) {
+            assert_eq!(r.as_ref().unwrap().as_ref(), Some(&standing), "round {round}: connection {i} returns the standing value");
+        }
+        assert_eq!(stores[0].journal.read(k).unwrap(), Some(Row::Recorded { key: k.clone(), value: standing }));
+    }
+}
+
 #[test]
 fn a_reopened_file_holds_every_row_and_blob() {
     let mut dirs = Vec::new();
