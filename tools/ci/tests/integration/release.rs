@@ -108,6 +108,7 @@ impl Release {
             .args(args)
             .current_dir(&self.repo.root)
             .env_remove("CARGO_TARGET_DIR")
+            .env("GIT_TRACE", "1")
             .env("PATH", path)
             .output()
             .unwrap()
