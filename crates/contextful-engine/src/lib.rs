@@ -17,6 +17,7 @@ pub mod runner;
 pub mod scheduler;
 pub mod stop;
 pub mod stores;
+pub mod worker;
 
 pub use catalog::LocalCatalog;
 pub use execution::Execution;

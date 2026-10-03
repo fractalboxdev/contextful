@@ -78,3 +78,19 @@ Decision: every push writes its site's sorted allow-set into the bucket manifest
 
 Consequences: a divergence surfaces on the first push after it arises, with both sites and both sets named. The accepted cost: a read-only site holding a different set goes undetected, and a policy change starts at the recording site, and every other site is refused until it adopts the new set.
 
+## Workers reach the orchestrator only through the awakeable route
+
+**Status:** accepted
+
+Context: a landing step runs on a remote worker, which reports liveness and outcome back to the operator plane. Criteria: no crossing beyond the three the topology names; a late result never overwrites its successor's; one pool bound per deployment.
+
+Decision: `surface.dispatch` submits each step to a worker's `POST /submit`, keyed by run, step and attempt. The worker heartbeats with a signed `GET /awake/:token` and posts its outcome with a signed `POST` there, the HMAC covering run, step, attempt and timestamp under one deployment key. The orchestrator signs each submission under the same key, and a worker calls back only to its configured relay. The relay fences attempt and skew, closed steps included; a lapse moves the step under the next attempt. The pool bound stays per deployment, one unit in flight per exclusion key.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| The awakeable route, attempt-fenced and signed *(chosen)* | — | A worker needs a route back to the relay; one key signs every worker's messages. |
+| A worker-pull queue on the orchestrator | Crossing count | A fourth inbound surface with its own authentication. |
+| Unfenced callbacks, last writer wins | Successor safety | A partitioned worker's late result replaces its successor's. |
+| A pool bound per exclusion key | Concurrency cap | Adding pipelines raises concurrent pulls unseen. |
+
+Consequences: a silent worker costs one lapse before its step moves. The accepted cost: a worker that cannot reach the relay runs steps it cannot report.

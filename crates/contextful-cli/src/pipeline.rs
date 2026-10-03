@@ -125,6 +125,17 @@ pub enum PipelineCmd {
         #[arg(long)]
         http: Option<String>,
     },
+    /// Run steps a `serve` submits: take `POST /submit`, run each step as `run --applied`,
+    /// heartbeat and call back through the step's awakeable route under `CONTEXTFUL_WORKER_KEY`.
+    Worker {
+        #[command(flatten)]
+        project: ProjectArgs,
+        #[arg(long)]
+        declaration: Option<PathBuf>,
+        /// The address the worker listens on, such as `127.0.0.1:9001`.
+        #[arg(long)]
+        listen: String,
+    },
 }
 
 pub(crate) use crate::project::manifests;
@@ -513,6 +524,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
         PipelineCmd::Apply { id, project, declaration } => crate::cadence::apply(&project, declaration, id.as_deref(), tasks),
         PipelineCmd::Import { project, declaration } => crate::cadence::import(&project, declaration, tasks),
         PipelineCmd::Serve { project, declaration, cycle, http } => crate::cadence::serve(&project, declaration, cycle, http.as_deref()),
+        PipelineCmd::Worker { project, declaration, listen } => crate::worker::serve_worker(&project, declaration, &listen),
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied } => {
             let l = project.locate(declaration)?;
             crate::sync::pull_before_run(&l)?;

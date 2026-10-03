@@ -14,7 +14,7 @@ use crate::project::Located;
 use crate::run::{boot_id, wire_at, ProjectArgs};
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
-use contextful_core::pipeline::declare::{collect, ManifestFile, PipelineSpec};
+use contextful_core::pipeline::declare::{collect, dependent_runs, ManifestFile, PipelineSpec};
 use contextful_core::run::derive::task::Tasks;
 use contextful_core::surface::arm::{Schedule, Trigger, TICK_INTERVAL_MS, WAKE_ANSWER_SECS};
 use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, poll_schedule, snapshot_file, source_file, POINTER_FILE};
@@ -22,7 +22,8 @@ use contextful_core::surface::edit::check_document;
 use contextful_core::surface::dispatch::{CHILD_GRACE_SECS, DEFAULT_POOL};
 use contextful_core::surface::SurfaceError;
 use contextful_engine::control::{ControlError, SnapshotDir};
-use contextful_engine::scheduler::{Dispatch, Entry, Fired, LeaseState, Scheduler};
+use contextful_engine::scheduler::{Beat, Dispatch, Entry, Fired, LeaseState, Scheduler};
+use contextful_engine::worker::{Relay, WorkerDispatch};
 use contextful_outbound::egress::{system, Outbound, Transport};
 use serde::Serialize;
 use serde_json::json;
@@ -131,6 +132,55 @@ struct ControlConfig {
     pool: usize,
     poll: Schedule,
     trigger: Trigger,
+    /// Worker base URLs; empty, each unit runs as a child process.
+    workers: Vec<String>,
+    /// The URL whose `/awake/:token` route `serve` binds for its workers.
+    relay: Option<Url>,
+}
+
+/// Read `[control] workers` and `[control] relay`: a relay is required once a worker is listed.
+fn worker_config(block: &toml::value::Table) -> Result<(Vec<String>, Option<Url>)> {
+    let workers = match block.get("workers") {
+        Some(v) => v
+            .as_array()
+            .context("`[control] workers` is an array of worker URLs")?
+            .iter()
+            .map(|w| {
+                let text = w.as_str().context("`[control] workers` is an array of worker URLs")?;
+                let url = Url::parse(text).with_context(|| format!("`[control] workers` entry `{text}` is a URL"))?;
+                if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+                    bail!("`[control] workers` entry `{text}` is an http or https URL with a host");
+                }
+                Ok(text.trim_end_matches('/').to_string())
+            })
+            .collect::<Result<Vec<_>>>()?,
+        None => Vec::new(),
+    };
+    let relay = block
+        .get("relay")
+        .map(|v| {
+            let text = v.as_str().context("`[control] relay` is a URL string")?;
+            let url = Url::parse(text).with_context(|| format!("`[control] relay` `{text}` is a URL"))?;
+            if url.scheme() != "http" || url.host_str().is_none() || url.port().is_none() {
+                bail!("`[control] relay` `{text}` is an http URL naming a host and a port");
+            }
+            Ok(url)
+        })
+        .transpose()?;
+    if !workers.is_empty() && relay.is_none() {
+        bail!("`[control] workers` reach `serve` only through the awakeable route: set `[control] relay` to the URL it binds");
+    }
+    Ok((workers, relay))
+}
+
+/// The declaration's `[control] relay`: the one route a worker calls back to
+/// (`surface.dispatch.submit-signed`).
+pub(crate) fn declared_relay(text: &str) -> Result<Option<Url>> {
+    let value: toml::Value = if text.is_empty() { toml::Value::Table(Default::default()) } else { toml::from_str(text)? };
+    match value.get("control") {
+        Some(block) => Ok(worker_config(block.as_table().context("`[control]` is a table")?)?.1),
+        None => Ok(None),
+    }
 }
 
 fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
@@ -151,8 +201,9 @@ fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
         None => DEFAULT_POOL,
     };
     let poll = block.get("poll").map(|v| v.as_str().context("`[control] poll` is a schedule string")).transpose()?;
+    let (workers, relay) = worker_config(block)?;
     let trigger = block.get("trigger").map(|v| v.as_str().context("`[control] trigger` is a string")).transpose()?;
-    Ok(ControlConfig { source, pool, poll: poll_schedule(poll)?, trigger: Trigger::parse(trigger)? })
+    Ok(ControlConfig { source, pool, poll: poll_schedule(poll)?, trigger: Trigger::parse(trigger)?, workers, relay })
 }
 
 fn located(project: &ProjectArgs, declaration: Option<PathBuf>) -> Result<(Located, String, ControlConfig)> {
@@ -466,7 +517,18 @@ fn drain_pipe(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHand
 }
 
 impl Dispatch for ChildDispatch {
-    fn fire(&self, id: &str, version: u64) -> Result<String, String> {
+    fn fire(&self, id: &str, steps: &[String], version: u64) -> Result<String, String> {
+        let mut lines = Vec::new();
+        for step in std::iter::once(id).chain(steps.iter().map(String::as_str)) {
+            lines.push(self.step(step, version)?);
+        }
+        Ok(lines.join("; "))
+    }
+}
+
+impl ChildDispatch {
+    /// Run one landing step as a child `pipeline run --applied <N>`.
+    fn step(&self, id: &str, version: u64) -> Result<String, String> {
         let mut cmd = Command::new(&self.exe);
         cmd.args(["pipeline", "run", id, "--applied", &version.to_string(), "--project", &self.project]);
         if let Some(d) = &self.declaration {
@@ -494,6 +556,31 @@ impl Dispatch for ChildDispatch {
     }
 }
 
+/// Bind the relay's awakeable route and dispatch onto `workers` through it
+/// (`surface.dispatch.heartbeat-beat`). Heartbeats and callbacks are timed on the system
+/// clock whatever `--now` reads.
+fn worker_dispatch(relay: &Url, workers: &[String]) -> Result<Arc<dyn Dispatch>> {
+    let key = crate::worker::worker_key()?;
+    let addr = format!("{}:{}", relay.host_str().unwrap_or_default(), relay.port().unwrap_or_default());
+    let listener = std::net::TcpListener::bind(&addr).with_context(|| format!("binding the relay at `{addr}`"))?;
+    eprintln!("relay on http://{}/awake/:token for {} worker(s)", listener.local_addr()?, workers.len());
+    let r = Arc::new(Relay::new(key.clone(), workers.to_vec(), Arc::new(crate::clock::SystemClock)));
+    crate::worker::serve_relay(r.clone(), listener);
+    Ok(Arc::new(WorkerDispatch {
+        relay: r,
+        client: Arc::new(crate::worker::HttpWorkers { transport: system(), key: key.clone() }),
+        callback_base: relay.as_str().trim_end_matches('/').to_string(),
+        check: Duration::from_secs(1),
+    }))
+}
+
+/// Report each due step a beat refused (`surface.dispatch.not-a-head`).
+fn report_refused(beat: &Beat) {
+    for (id, refusal) in &beat.refused {
+        eprintln!("fire {id}: refused · {refusal}");
+    }
+}
+
 /// An applied pipeline the scheduler holds no entry for, and why (`surface.arm.unarmed-named`).
 #[derive(Serialize)]
 struct Unarmed {
@@ -514,6 +601,7 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
     if version == scheduler.version() {
         return Ok(Some(Vec::new()));
     }
+    let runs = dependent_runs(specs.values()).map_err(|e| SurfaceError::ControlSnapshotUnreadable(format!("{}: {e}", snapshot_file(version))))?;
     let mut entries = Vec::new();
     let mut unarmed = Vec::new();
     for spec in specs.values() {
@@ -523,12 +611,15 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
                 continue;
             }
             Some(Err(e)) => e.to_string(),
-            None => format!("it declares no `schedule`; `contextful pipeline run {}` fires it", spec.id),
+            None => match runs.head_of.get(&spec.id) {
+                Some(head) => format!("it lands as a step of the dependent run headed by `{head}`"),
+                None => format!("it declares no `schedule`; `contextful pipeline run {}` fires it", spec.id),
+            },
         };
         eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
         unarmed.push(Unarmed { id: spec.id.clone(), reason });
     }
-    scheduler.arm(version, entries)?;
+    scheduler.arm_runs(version, entries, runs.steps)?;
     eprintln!("armed v{version}: {} scheduled pipeline(s), {} unarmed", scheduler.armed().len(), unarmed.len());
     Ok(Some(unarmed))
 }
@@ -549,13 +640,16 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     let w = wire_at(&l.project, &project.now)?;
     let children = Arc::new(Children::default());
     let reaper = Reaper(children.clone());
-    let dispatch = Arc::new(ChildDispatch {
-        exe: std::env::current_exe()?,
-        project: l.project.name.clone(),
-        declaration: explicit,
-        now: project.now.clone(),
-        children: children.clone(),
-    });
+    let dispatch: Arc<dyn Dispatch> = match &control.relay {
+        Some(relay) if !control.workers.is_empty() => worker_dispatch(relay, &control.workers)?,
+        _ => Arc::new(ChildDispatch {
+            exe: std::env::current_exe()?,
+            project: l.project.name.clone(),
+            declaration: explicit,
+            now: project.now.clone(),
+            children: children.clone(),
+        }),
+    };
     let holder = format!("{}:{}", boot_id(), std::process::id());
     let mut scheduler = Scheduler::new(w.engine.catalog.clone(), dispatch, &l.project.name, &holder, control.pool);
     contextful_engine::stop::install();
@@ -607,6 +701,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
                 }
                 match scheduler.beat() {
                     Ok(beat) => {
+                        report_refused(&beat);
                         for id in &beat.started {
                             eprintln!("fire {id}: started");
                         }
@@ -668,9 +763,11 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
     if let LeaseState::HeldBy(holder) = &beat.lease {
         return held_answer(holder);
     }
+    report_refused(&beat);
     let ended = scheduler.drain();
+    report(ended.clone());
     let mut fired: Vec<&str> = ended.iter().filter(|f| f.result.is_ok()).map(|f| f.id.as_str()).collect();
-    let mut failed: Vec<&str> = ended.iter().filter(|f| f.result.is_err()).map(|f| f.id.as_str()).collect();
+    let mut failed: Vec<&str> = ended.iter().filter(|f| f.result.is_err()).map(|f| f.id.as_str()).chain(beat.refused.iter().map(|(id, _)| id.as_str())).collect();
     fired.sort();
     failed.sort();
     let mut pending: Vec<&str> = beat.pending.iter().chain(&beat.held).map(String::as_str).collect();
@@ -803,13 +900,14 @@ fn wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, d
     if let LeaseState::HeldBy(holder) = &beat.lease {
         return Ok(json!({ "fired": [], "failed": [], "pending": [], "held_by": holder }));
     }
+    report_refused(&beat);
     for id in &beat.started {
         eprintln!("fire {id}: started");
     }
     let ended = scheduler.settle(deadline);
     report(ended.clone());
     let mut fired: Vec<&str> = ended.iter().filter(|f| f.result.is_ok()).map(|f| f.id.as_str()).collect();
-    let mut failed: Vec<&str> = ended.iter().filter(|f| f.result.is_err()).map(|f| f.id.as_str()).collect();
+    let mut failed: Vec<&str> = ended.iter().filter(|f| f.result.is_err()).map(|f| f.id.as_str()).chain(beat.refused.iter().map(|(id, _)| id.as_str())).collect();
     fired.sort();
     failed.sort();
     let in_flight = scheduler.in_flight();

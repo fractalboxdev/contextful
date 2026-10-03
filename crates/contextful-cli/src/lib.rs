@@ -45,6 +45,8 @@ mod serve;
 #[cfg(feature = "read-plane")]
 mod sync;
 mod token;
+#[cfg(feature = "data-plane")]
+mod worker;
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use contextful_core::run::derive::task::Tasks;

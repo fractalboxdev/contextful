@@ -18080,7 +18080,7 @@
       "operation": "dispatch",
       "subject": "not-a-head",
       "kind": "refusal",
-      "statement": "Where entries are landing steps of one dependent run, the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing.",
+      "statement": "A `[[pipeline]]` block naming `after = \"<id>\"` is a landing step of that entry's dependent run; the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
       "line": 174
@@ -18090,9 +18090,9 @@
       "contract": "surface",
       "operation": "dispatch",
       "subject": "step-result",
-      "kind": "limit",
-      "statement": "A checkpointed step returns a pointer, an object-store key or a catalog row id, under a 1 MiB step-result cap.",
-      "why": "",
+      "kind": "refusal",
+      "statement": "A completion callback carries a pointer, an object-store key or a catalog row id, or the failed step's last error line, as JSON of at most 1 MiB; any other callback body raises `StepResultRefused` and records nothing.",
+      "why": "because a step result rides one journal row, and bulk output belongs in the object store it points into",
       "file": "spec/70-control-plane.md",
       "line": 176
     },
@@ -18105,7 +18105,7 @@
       "statement": "A step driving the engine over the tool protocol judges the tool result, not transport status: a `200` carrying a protocol error or a result flagged `isError` raises `StepToolError`.",
       "why": "P2",
       "file": "spec/70-control-plane.md",
-      "line": 177
+      "line": 178
     },
     {
       "id": "surface.dispatch.callback-skew",
@@ -18116,7 +18116,7 @@
       "statement": "The relay accepts a callback timestamp within 300 s of its own clock.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 179
+      "line": 180
     },
     {
       "id": "surface.dispatch.callback-rejected",
@@ -18124,10 +18124,10 @@
       "operation": "dispatch",
       "subject": "callback-rejected",
       "kind": "refusal",
-      "statement": "A callback whose attempt is below the step's current attempt, or whose timestamp falls outside {{surface.dispatch.callback-skew}}, raises `DispatchCallbackRejected` and changes no step.",
+      "statement": "A heartbeat or callback whose signature fails, whose attempt is not the step's current attempt, whose timestamp falls outside {{surface.dispatch.callback-skew}}, or whose step has closed, raises `DispatchCallbackRejected` and changes no step.",
       "why": "because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely",
       "file": "spec/70-control-plane.md",
-      "line": 180
+      "line": 181
     },
     {
       "id": "surface.dispatch.heartbeat-beat",
@@ -18135,10 +18135,54 @@
       "operation": "dispatch",
       "subject": "heartbeat-beat",
       "kind": "limit",
-      "statement": "A worker heartbeat runs every 15 s.",
+      "statement": "A worker heartbeats every 15 s with a signed `GET` on its step's awakeable route, and posts its outcome to that route with a signed `POST`.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 183
+    },
+    {
+      "id": "surface.dispatch.worker-target",
+      "contract": "surface",
+      "operation": "dispatch",
+      "subject": "worker-target",
+      "kind": "behavior",
+      "statement": "`[control] workers` lists worker URLs and `[control] relay` the URL whose `/awake/:token` route `serve` binds; with workers listed, each landing step posts to a worker's `POST /submit`, keyed by run, step and attempt.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 185
+    },
+    {
+      "id": "surface.dispatch.worker-key",
+      "contract": "surface",
+      "operation": "dispatch",
+      "subject": "worker-key",
+      "kind": "behavior",
+      "statement": "Heartbeats and callbacks sign under the key `CONTEXTFUL_WORKER_KEY` holds; `serve` listing workers without a relay or without that key refuses at startup and binds nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 182
+      "line": 187
+    },
+    {
+      "id": "surface.dispatch.submit-signed",
+      "contract": "surface",
+      "operation": "dispatch",
+      "subject": "submit-signed",
+      "kind": "refusal",
+      "statement": "A worker admits a `POST /submit` only when it carries an HMAC under the worker key over its timestamp and body, within {{surface.dispatch.callback-skew}}, naming a callback under its own `[control] relay`; any other submission raises `DispatchSubmitRejected` and starts nothing.",
+      "why": "because an unsigned submission lets any caller start a step and have the worker sign heartbeats and callbacks for a route of its choosing",
+      "file": "spec/70-control-plane.md",
+      "line": 188
+    },
+    {
+      "id": "surface.dispatch.submit-exhausted",
+      "contract": "surface",
+      "operation": "dispatch",
+      "subject": "submit-exhausted",
+      "kind": "behavior",
+      "statement": "A step every listed worker refuses in turn at `POST /submit` fails its unit naming the last refusal, each worker tried once.",
+      "why": "because a step bouncing between refusing workers holds its pool slot and exclusion key while never running",
+      "file": "spec/70-control-plane.md",
+      "line": 190
     },
     {
       "id": "surface.dispatch.heartbeat-lapse",
@@ -18149,7 +18193,7 @@
       "statement": "A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 183
+      "line": 192
     },
     {
       "id": "surface.dispatch.pool-bound",
@@ -18160,7 +18204,7 @@
       "statement": "A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.",
       "why": "because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added",
       "file": "spec/70-control-plane.md",
-      "line": 184
+      "line": 193
     },
     {
       "id": "surface.dispatch.exclusion-key",
@@ -18171,7 +18215,7 @@
       "statement": "A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.",
       "why": "because two fires of one pipeline race for one cursor",
       "file": "spec/70-control-plane.md",
-      "line": 186
+      "line": 195
     },
     {
       "id": "surface.dispatch.lease-gated",
@@ -18182,7 +18226,7 @@
       "statement": "A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.",
       "why": "because two daemons reading one snapshot otherwise fire every due unit twice",
       "file": "spec/70-control-plane.md",
-      "line": 188
+      "line": 197
     },
     {
       "id": "surface.dispatch.children-reaped",
@@ -18193,7 +18237,7 @@
       "statement": "A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.",
       "why": "because a child outliving its serve also outlives the cadence lease, and a second scheduler then fires the same pipeline concurrently",
       "file": "spec/70-control-plane.md",
-      "line": 190
+      "line": 199
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -18204,7 +18248,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 226
+      "line": 235
     },
     {
       "id": "surface.edit.connector-upload",
@@ -18215,7 +18259,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 228
+      "line": 237
     },
     {
       "id": "surface.apply.version-race",
@@ -18226,7 +18270,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 235
+      "line": 244
     },
     {
       "id": "surface.apply.validation",
@@ -18237,7 +18281,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 237
+      "line": 246
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -18248,7 +18292,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 239
+      "line": 248
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -18259,7 +18303,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 241
+      "line": 250
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -18270,7 +18314,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 243
+      "line": 252
     },
     {
       "id": "surface.apply.local-claim",
@@ -18281,7 +18325,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 245
+      "line": 254
     },
     {
       "id": "surface.apply.guarded-import",
@@ -18292,7 +18336,7 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 247
+      "line": 256
     },
     {
       "id": "surface.reside.region-entries",
@@ -18303,7 +18347,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 283
+      "line": 292
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -18314,7 +18358,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 284
+      "line": 293
     },
     {
       "id": "surface.reside.site-regions",
@@ -18325,7 +18369,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 286
+      "line": 295
     },
     {
       "id": "surface.register-store.registry-unreadable",
@@ -22505,6 +22549,10 @@
     ],
     [
       "surface.dispatch.callback-rejected",
+      "surface.dispatch.callback-skew"
+    ],
+    [
+      "surface.dispatch.submit-signed",
       "surface.dispatch.callback-skew"
     ],
     [
@@ -27232,7 +27280,11 @@
           },
           "DispatchCallbackRejected": {
             "clause": "surface.dispatch.callback-rejected",
-            "gloss": "A completion callback carrying a superseded attempt or a skewed timestamp."
+            "gloss": "A heartbeat or callback carrying a bad signature, a superseded attempt, a skewed timestamp or a closed step."
+          },
+          "DispatchSubmitRejected": {
+            "clause": "surface.dispatch.submit-signed",
+            "gloss": "A worker submission unsigned, skewed, or naming a callback off the worker's relay."
           },
           "DispatchUnitNotAHead": {
             "clause": "surface.dispatch.not-a-head",
@@ -27277,6 +27329,10 @@
           "StdioCredentialMissing": {
             "clause": "surface.package.stdio-credential",
             "gloss": "A process-transport client with no credential."
+          },
+          "StepResultRefused": {
+            "clause": "surface.dispatch.step-result",
+            "gloss": "A step callback body that is no pointer, object-store key, catalog row id or failure line, or passes the cap."
           },
           "StepToolError": {
             "clause": "surface.dispatch.in-band-tool-error",

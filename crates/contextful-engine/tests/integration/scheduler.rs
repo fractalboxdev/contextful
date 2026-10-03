@@ -15,6 +15,8 @@ use std::time::Duration;
 struct Recording {
     catalog: Arc<dyn Catalog + Send + Sync>,
     fired: Mutex<Vec<(String, u64)>>,
+    /// The landing steps each fire carried.
+    steps: Mutex<Vec<(String, Vec<String>)>>,
     gate: Option<Barrier>,
 }
 
@@ -43,7 +45,8 @@ impl Gate {
 }
 
 impl Dispatch for Recording {
-    fn fire(&self, id: &str, version: u64) -> Result<String, String> {
+    fn fire(&self, id: &str, steps: &[String], version: u64) -> Result<String, String> {
+        self.steps.lock().unwrap().push((id.to_string(), steps.to_vec()));
         // The run row lands before the fire is listed, so a test seeing the fire listed reads
         // a start time the clock had not yet moved past.
         {
@@ -64,7 +67,7 @@ impl Dispatch for Recording {
 
 fn rig_with(gate: Option<Barrier>) -> (Rig, Arc<Recording>) {
     let rig = Rig::new();
-    let rec = Arc::new(Recording { catalog: rig.engine.catalog.clone(), fired: Mutex::default(), gate });
+    let rec = Arc::new(Recording { catalog: rig.engine.catalog.clone(), fired: Mutex::default(), steps: Mutex::default(), gate });
     (rig, rec)
 }
 
@@ -241,4 +244,28 @@ fn in_flight_units_hold_their_key_and_fill_the_pool() {
     gate.release();
     s.drain();
     assert_eq!(fired(&rec), ["alpha", "beta"]);
+}
+
+/// A `[[pipeline]]` block naming `after = "<id>"` is a landing step of that entry's dependent run; the run is
+/// the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and
+/// starts nothing.
+// spec: surface.dispatch.not-a-head@3ff3a914
+#[test]
+fn a_head_fires_its_steps_as_one_unit_and_a_due_step_starts_nothing() {
+    let (rig, rec) = rig_with(None);
+    let mut s = scheduler(&rig, &rec, 4);
+    let steps = [("orders".to_string(), vec!["orders-enrich".to_string(), "orders-score".to_string()])].into();
+    s.arm_runs(3, vec![hourly("orders"), hourly("orders-enrich")], steps).unwrap();
+    let beat = s.beat().unwrap();
+    assert_eq!(beat.started, ["orders"]);
+    assert_eq!(beat.refused.len(), 1);
+    let (id, refusal) = &beat.refused[0];
+    assert_eq!(id, "orders-enrich");
+    assert!(refusal.starts_with("DispatchUnitNotAHead:") && refusal.contains("`orders`"), "{refusal}");
+    s.drain();
+    assert_eq!(fired(&rec), ["orders"], "the step started nothing of its own");
+    assert_eq!(*rec.steps.lock().unwrap(), [("orders".to_string(), vec!["orders-enrich".to_string(), "orders-score".to_string()])]);
+    // The refusal is once per due fire, not once per beat.
+    assert!(s.beat().unwrap().refused.is_empty());
+    s.drain();
 }

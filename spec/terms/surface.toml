@@ -34,8 +34,10 @@ JobBodyUnregistered           = { clause = "surface.fire.store-driven-body", glo
 JobTargetUnbound              = { clause = "surface.fire.target-unbound", gloss = "A job target binding to no produced table or declared model." }
 CycleControlSourceUnresolved  = { clause = "surface.fire.cycle-control-source", gloss = "A control source that does not resolve under one-shot evaluation." }
 DispatchUnitNotAHead          = { clause = "surface.dispatch.not-a-head", gloss = "A due id that is a step of a dependent run rather than its head." }
+StepResultRefused             = { clause = "surface.dispatch.step-result", gloss = "A step callback body that is no pointer, object-store key, catalog row id or failure line, or passes the cap." }
 StepToolError                 = { clause = "surface.dispatch.in-band-tool-error", gloss = "An in-band tool error on a step driving the engine over the tool protocol." }
-DispatchCallbackRejected      = { clause = "surface.dispatch.callback-rejected", gloss = "A completion callback carrying a superseded attempt or a skewed timestamp." }
+DispatchCallbackRejected      = { clause = "surface.dispatch.callback-rejected", gloss = "A heartbeat or callback carrying a bad signature, a superseded attempt, a skewed timestamp or a closed step." }
+DispatchSubmitRejected        = { clause = "surface.dispatch.submit-signed", gloss = "A worker submission unsigned, skewed, or naming a callback off the worker's relay." }
 SecretMaterialInDocument      = { clause = "surface.edit.secret-in-document", gloss = "A credential value written into the configuration document." }
 ConnectorUploadRefused        = { clause = "surface.edit.connector-upload", gloss = "A connector artifact offered through the operator surface." }
 ManifestVersionConflict       = { clause = "surface.apply.version-race", gloss = "An apply whose pointer compare-and-swap lost to a concurrent apply." }

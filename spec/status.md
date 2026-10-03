@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
 | `run` | 3 | 26 | 371 | 98 | 35 | 37 | 256 | 0 | 255 |
 | `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
-| `surface` | 2 | 19 | 82 | 44 | 23 | 5 | 41 | 0 | 41 |
+| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1921 | 566 | 188 | 137 | 1304 | 0 | |
+| **total** | 19 | 154 | 1925 | 568 | 187 | 137 | 1314 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 57 | 43 | passing | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 63 | 46 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
@@ -1291,10 +1291,20 @@ Unscheduled operations: 10.
 | `surface.arm.unknown-trigger` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_trigger_arms_nothing` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.arm.wake-answer` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_answers_within_its_bound_naming_what_still_runs` | performed |
+| `surface.dispatch.callback-rejected` | `crates/contextful-core/tests/integration/surface/worker.rs::a_superseded_or_skewed_callback_changes_no_step` | performed |
+| `surface.dispatch.callback-skew` | `crates/contextful-core/tests/integration/surface/worker.rs::the_relay_accepts_a_timestamp_within_the_skew` | performed |
 | `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |
 | `surface.dispatch.exclusion-key` | `crates/contextful-core/tests/integration/surface/dispatch.rs::a_key_in_flight_starts_no_second_instance` | performed |
+| `surface.dispatch.heartbeat-beat` | `crates/contextful-engine/tests/integration/worker.rs::a_beating_worker_keeps_its_step_and_its_callback_completes_it` | performed |
+| `surface.dispatch.heartbeat-lapse` | `crates/contextful-engine/tests/integration/worker.rs::killing_a_worker_mid_step_reschedules_it_once_and_fences_the_late_callback` | performed |
 | `surface.dispatch.lease-gated` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_under_a_running_daemon_arms_nothing_and_names_the_holder` | performed |
+| `surface.dispatch.not-a-head` | `crates/contextful-engine/tests/integration/scheduler.rs::a_head_fires_its_steps_as_one_unit_and_a_due_step_starts_nothing` | performed |
 | `surface.dispatch.pool-bound` | `crates/contextful-core/tests/integration/surface/dispatch.rs::the_pool_starts_at_most_its_bound` | performed |
+| `surface.dispatch.step-result` | `crates/contextful-core/tests/integration/surface/worker.rs::a_step_result_is_a_pointer_under_the_cap` | performed |
+| `surface.dispatch.submit-exhausted` | `crates/contextful-engine/tests/integration/worker.rs::a_step_every_worker_refuses_fails_after_one_try_each` | performed |
+| `surface.dispatch.submit-signed` | `crates/contextful-cli/tests/integration/worker.rs::a_worker_runs_only_signed_submissions_calling_back_to_its_relay` | performed |
+| `surface.dispatch.worker-key` | `crates/contextful-cli/tests/integration/worker.rs::workers_need_a_relay_and_a_key` | performed |
+| `surface.dispatch.worker-target` | `crates/contextful-cli/tests/integration/worker.rs::a_killed_worker_s_step_moves_once_and_its_late_callback_is_rejected` | performed |
 | `surface.edit.connector-upload` | `crates/contextful-cli/tests/integration/pipeline.rs::an_artifact_in_the_document_is_refused` | performed |
 | `surface.edit.secret-in-document` | `crates/contextful-cli/tests/integration/pipeline.rs::a_credential_in_the_document_is_refused` | performed |
 | `surface.fire.cycle` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_fires_what_is_due_once_and_reports_the_next_instant` | performed |
