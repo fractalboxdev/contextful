@@ -20016,7 +20016,7 @@
       "operation": "gate",
       "subject": "workspace-parts",
       "kind": "behavior",
-      "statement": "Remote workspace checks compile the feature-unified workspace, then run each non-acceptance package suite in exactly one of four groups.",
+      "statement": "Remote workspace checks compile the feature-unified workspace, then run each non-acceptance package suite in exactly one of five groups.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 158

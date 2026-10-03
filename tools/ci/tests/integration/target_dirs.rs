@@ -84,13 +84,13 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
     }
 }
 
-/// Remote workspace checks compile the feature-unified workspace, then run each non-acceptance package suite in exactly one of four groups.
-// spec: assurance.gate.workspace-parts@4cf8df74
+/// Remote workspace checks compile the feature-unified workspace, then run each non-acceptance package suite in exactly one of five groups.
+// spec: assurance.gate.workspace-parts@e7534dc7
 #[test]
 fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let r = Repo::init();
     with_acceptance(&r);
-    for name in ["sample", "contextful-engine", "contextful-context", "contextful-cli"] {
+    for name in ["sample", "contextful-engine", "contextful-context", "contextful-cli", "contextful-ci"] {
         r.write(&format!("crates/{name}/Cargo.toml"), &manifest(name, ""));
         r.write(&format!("crates/{name}/src/lib.rs"), "");
         r.write(&format!("crates/{name}/tests/integration/main.rs"), "");
@@ -109,7 +109,7 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     assert!(tested.status.success(), "{}", stderr(&tested));
     let calls = std::fs::read_to_string(&log).unwrap();
     assert!(calls.contains("--package sample") && calls.contains("--package demo"), "{calls}");
-    for name in ["contextful-acceptance", "contextful-engine", "contextful-context", "contextful-cli"] {
+    for name in ["contextful-acceptance", "contextful-engine", "contextful-context", "contextful-cli", "contextful-ci"] {
         assert!(!calls.contains(name), "{calls}");
     }
     for (part, package) in [("runtime", "contextful-engine"), ("read", "contextful-context"), ("cli", "contextful-cli")] {
@@ -120,6 +120,12 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
         assert!(calls.contains(&format!("test --package {package}")), "{part}: {calls}");
         assert_eq!(calls.matches("--package").count(), 1, "{part}: {calls}");
     }
+    std::fs::remove_file(&log).unwrap();
+    let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.ci"]);
+    assert!(tested.status.success(), "{}", stderr(&tested));
+    let calls = std::fs::read_to_string(&log).unwrap();
+    assert!(calls.contains("test --package contextful-ci"), "{calls}");
+    assert_eq!(calls.matches("--package").count(), 1, "{calls}");
 }
 
 /// Development and test profiles carry line-tables-only debug information for workspace code and none for dependencies.
