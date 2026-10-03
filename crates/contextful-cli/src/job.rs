@@ -12,7 +12,7 @@ use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_connectors::derive::Staged;
 use contextful_context::{node, Store};
-use contextful_core::job::{parse_jobs, JobKind, StoreDriven};
+use contextful_core::job::{bind_targets, parse_jobs, Job, JobKind, StoreDriven, Targets};
 use contextful_core::run::advance::CursorKind;
 use contextful_core::run::drive::{Bodies, Emitted, InputSet};
 use contextful_core::run::journal::sha256_hex;
@@ -88,7 +88,9 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
     match cmd {
         JobCmd::Validate { declaration } => {
             let text = std::fs::read_to_string(&declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
-            for job in parse_jobs(&text, &registered).with_context(|| declaration.display().to_string())? {
+            let jobs = parse_jobs(&text, &registered).with_context(|| declaration.display().to_string())?;
+            bind(&jobs, &declaration)?;
+            for job in jobs {
                 match &job.kind {
                     JobKind::StoreDriven(d) => {
                         println!("{}: valid ({}, body {}, max_in_flight {}, plan {})", job.name, job.kind_name(), d.input.body, d.max_in_flight, &d.input.plan_ref()[..16])
@@ -102,6 +104,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let l = project.locate(declaration)?;
             let text = std::fs::read_to_string(&l.declaration).with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
             let jobs = parse_jobs(&text, &registered).with_context(|| l.declaration.display().to_string())?;
+            bind(&jobs, &l.declaration)?;
             let job = jobs.into_iter().find(|j| j.name == name).with_context(|| format!("no job `{name}` is declared"))?;
             let JobKind::StoreDriven(driven) = &job.kind else {
                 bail!("job `{name}` is kind `{}`; `job fire` fires a store-driven job", job.kind_name());
@@ -176,4 +179,12 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             }
         }
     }
+}
+
+/// Bind each job's target to the tables the manifest's pipelines and store-driven jobs
+/// produce (`surface.fire.target-unbound`).
+fn bind(jobs: &[Job], declaration: &std::path::Path) -> Result<()> {
+    let specs: Vec<_> = contextful_core::pipeline::declare::collect(&crate::pipeline::manifests(declaration)?)?.into_iter().map(|d| d.spec).collect();
+    bind_targets(jobs, &Targets::new(&specs, jobs)).with_context(|| declaration.display().to_string())?;
+    Ok(())
 }

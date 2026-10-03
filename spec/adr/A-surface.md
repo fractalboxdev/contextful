@@ -60,3 +60,21 @@ Decision: one store-driven kind joins the fire union. Its per-row body resolves 
 | A default `max_in_flight` | Spend visibility | Paid concurrency rises with no line in the manifest. |
 
 Consequences: a job over store rows resumes without paying twice. The accepted cost: the operator states concurrency for every such job, and the closed union grows to seven kinds.
+
+## Residency divergence is detected at push, from the bucket manifest
+
+**Status:** accepted
+
+Context: each site resolves its own `[residency]`, so two sites sharing a bucket can declare different allow-sets and each start cleanly under `surface.reside.region-mismatch`. Criteria: detection before a divergent write lands; no coordination service; no new artifact to keep consistent.
+
+Decision: every push writes its site's sorted allow-set into the bucket manifest it already commits by compare-and-set, and a push finding a differing set recorded by another site, or none of its own against a recorded one, raises `ResidencySitesDiverge` before its manifest commit.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| The set rides the bucket manifest, checked at push *(chosen)* | — | A site that never pushes is never compared; a policy change starts at the site holding the record, which the refusal names. |
+| A separate policy object in the bucket | Consistency | A second object commits apart from the manifest and can disagree with it. |
+| Compare at startup by reading the bucket | Air-gapped operation | Startup then needs the bucket reachable, which `topology.coordinate.air-gap` forbids. |
+| A central registry of site policies | Coordination footprint | A service the tree does not ship holds the truth. |
+
+Consequences: a divergence surfaces on the first push after it arises, with both sites and both sets named. The accepted cost: a read-only site holding a different set goes undetected, and a policy change starts at the recording site, and every other site is refused until it adopts the new set.
+

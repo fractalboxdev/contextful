@@ -104,6 +104,14 @@ pub enum PipelineCmd {
         #[arg(long)]
         declaration: Option<PathBuf>,
     },
+    /// Take the snapshot directory's guarded import: claim v1 from the declared pipelines while
+    /// no version exists. Apply refuses until a directory has taken it.
+    Import {
+        #[command(flatten)]
+        project: ProjectArgs,
+        #[arg(long)]
+        declaration: Option<PathBuf>,
+    },
     /// Arm the applied snapshot's schedules and dispatch each due pipeline under the cadence lease.
     Serve {
         #[command(flatten)]
@@ -113,6 +121,9 @@ pub enum PipelineCmd {
         /// Evaluate due-ness once, wait for the dispatched units, print the answer and exit.
         #[arg(long)]
         cycle: bool,
+        /// The address the external trigger's `POST /wake` listens on, such as `127.0.0.1:8788`.
+        #[arg(long)]
+        http: Option<String>,
     },
 }
 
@@ -495,7 +506,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
         }
         PipelineCmd::Plan { project, declaration, json } => crate::cadence::plan(&project, declaration, json),
         PipelineCmd::Apply { id, project, declaration } => crate::cadence::apply(&project, declaration, id.as_deref(), tasks),
-        PipelineCmd::Serve { project, declaration, cycle } => crate::cadence::serve(&project, declaration, cycle),
+        PipelineCmd::Import { project, declaration } => crate::cadence::import(&project, declaration, tasks),
+        PipelineCmd::Serve { project, declaration, cycle, http } => crate::cadence::serve(&project, declaration, cycle, http.as_deref()),
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied } => {
             let l = project.locate(declaration)?;
             crate::sync::pull_before_run(&l)?;

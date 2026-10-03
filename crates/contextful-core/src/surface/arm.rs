@@ -11,6 +11,54 @@ use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 /// The in-process adapter's evaluation interval (`surface.arm.tick-interval`).
 pub const TICK_INTERVAL_MS: u64 = 500;
 
+/// Longest a wake holds its request before answering (`surface.arm.wake-answer`).
+pub const WAKE_ANSWER_SECS: u64 = 25;
+
+/// The adapter supplying the wake. The engine decides what is due either way; the adapter
+/// decides only when it looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Trigger {
+    /// The serve process's own tick, every [`TICK_INTERVAL_MS`]; it advances only while the
+    /// process is awake.
+    InProcess,
+    /// A platform wake calling `POST /wake` on the deployment's HTTP face.
+    External,
+}
+
+impl Trigger {
+    /// Read `[control] trigger`; absent, the in-process adapter. Any other value raises
+    /// `TriggerAdapterUnknown` and selects no adapter (`surface.arm.unknown-trigger`): a
+    /// misspelled `external` falling back to the tick would arm a wake that stops whenever
+    /// the platform suspends the process.
+    pub fn parse(value: Option<&str>) -> Result<Trigger, SurfaceError> {
+        match value.map(str::trim) {
+            None | Some("in-process") => Ok(Trigger::InProcess),
+            Some("external") => Ok(Trigger::External),
+            Some(other) => Err(SurfaceError::TriggerAdapterUnknown(format!(
+                "`[control] trigger = \"{other}\"` names no adapter; the adapters are `in-process` and `external`"
+            ))),
+        }
+    }
+
+    /// Hold the adapter to the faces the deployment serves: `external` needs the HTTP face
+    /// its wake arrives on (`surface.arm.trigger-face-missing`).
+    pub fn require_face(self, serves_http: bool) -> Result<(), SurfaceError> {
+        if self == Trigger::External && !serves_http {
+            return Err(SurfaceError::TriggerFaceMissing(
+                "`[control] trigger = \"external\"` arms on a wake to `POST /wake`, and this deployment serves no HTTP face; pass `--http <address>`".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Trigger::InProcess => "in-process",
+            Trigger::External => "external",
+        }
+    }
+}
+
 /// Days a cron search walks before it gives up: 28 years, one full weekday-and-leap-year
 /// cycle, so any expression that fires at all fires inside it.
 const SEARCH_DAYS: u32 = 28 * 366;

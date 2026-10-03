@@ -21,7 +21,7 @@ use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_sqlite::MachineCatalog;
 #[cfg(feature = "data-plane")]
 use contextful_sync::{run_state, RunState};
-use contextful_sync::{FsBucket, PullScope, Syncer};
+use contextful_sync::{FsBucket, PullScope, SiteResidency, Syncer};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -124,7 +124,7 @@ fn open(args: &SyncArgs) -> Result<(Syncer, Vec<TableDecl>)> {
 
 /// The store's `[sync]` block, absent when the store root holds no `config.toml` or the
 /// file declares none, and the path read.
-fn sync_config(l: &Located) -> Result<(Option<SyncConfig>, PathBuf)> {
+pub(crate) fn sync_config(l: &Located) -> Result<(Option<SyncConfig>, PathBuf)> {
     let config_path = l.project.store_root().join("config.toml");
     let text = match std::fs::read_to_string(&config_path) {
         Ok(t) => t,
@@ -144,7 +144,9 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
     // read here match those the read face reads.
     let text = std::fs::read_to_string(&l.declaration).unwrap_or_default();
     let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&l.declaration)?)?;
-    let syncer = Syncer { store, bucket, config, prefix, project: l.project.name.clone(), node: node_id.to_string() };
+    let site_id = crate::project::site_id_for(&text, &l.declaration, None, None).unwrap_or_else(|_| node_id.to_string());
+    let residency = Some(SiteResidency { site_id, regions: crate::reside::declared(&text)?.map(|r| r.entries()) });
+    let syncer = Syncer { store, bucket, config, prefix, project: l.project.name.clone(), node: node_id.to_string(), residency };
     Ok((syncer, decls))
 }
 

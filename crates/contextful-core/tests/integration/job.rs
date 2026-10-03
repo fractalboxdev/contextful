@@ -67,3 +67,45 @@ fn a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered
         other => panic!("expected JobBodyUnregistered, got {other:?}"),
     }
 }
+
+fn targets(manifest: &str) -> contextful_core::job::Targets {
+    use contextful_core::pipeline::declare::{collect, ManifestFile};
+    let specs: Vec<_> = collect(&[ManifestFile { path: "contextful.toml".into(), text: manifest.into() }]).unwrap().into_iter().map(|d| d.spec).collect();
+    contextful_core::job::Targets::new(&specs, &parse_jobs(manifest, &registered).unwrap())
+}
+
+const PIPELINES: &str = "[[pipeline]]\nid = \"meta_ads\"\ntables = [\"insights\", { name = \"spend\", columns = { day = \"timestamp\", usd = \"double\" } }]\n\
+                         [pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://api.vendor.example/v1\" }\n\n";
+
+/// A `fold` target naming no produced table, or a `build` target naming no produced table declaring its `columns`,
+/// raises `JobTargetUnbound`; a target the manifest produces binds.
+#[test]
+fn a_job_target_binds_to_a_produced_table() {
+    use contextful_core::job::bind_targets;
+    let bound = format!(
+        "{PIPELINES}[[job]]\nname = \"f\"\nkind = \"fold\"\ntarget = \"meta_ads_insights\"\n[[job]]\nname = \"b\"\nkind = \"build\"\ntarget = \"meta_ads_spend\"\n\
+         [[job]]\nname = \"s\"\nkind = \"fold\"\ntarget = \"scores\"\n{}",
+        store_driven("max_in_flight = 1\n")
+    );
+    bind_targets(&parse_jobs(&bound, &registered).unwrap(), &targets(&bound)).unwrap();
+    for (job, target) in [("fold", "meta_ads_clicks"), ("build", "meta_ads_insights"), ("build", "warehouse")] {
+        let m = format!("{PIPELINES}[[job]]\nname = \"j\"\nkind = \"{job}\"\ntarget = \"{target}\"\n");
+        match bind_targets(&parse_jobs(&m, &registered).unwrap(), &targets(&m)) {
+            Err(JobError::JobTargetUnbound(msg)) => assert!(msg.contains(target) && msg.contains(job), "{msg}"),
+            other => panic!("{job} {target}: expected JobTargetUnbound, got {other:?}"),
+        }
+    }
+}
+
+/// A job target naming a destination table in a spelling the fold does not produce raises
+/// `PipelineUnboundTableName`, printing the expected spelling.
+// spec: run.declare.unbound-table-name@c61fdcef
+#[test]
+fn a_misspelled_target_names_the_produced_spelling() {
+    use contextful_core::job::bind_targets;
+    let m = format!("{PIPELINES}[[job]]\nname = \"f\"\nkind = \"fold\"\ntarget = \"Meta-Ads.Insights\"\n");
+    match bind_targets(&parse_jobs(&m, &registered).unwrap(), &targets(&m)) {
+        Err(JobError::PipelineUnboundTableName(msg)) => assert!(msg.contains("`meta_ads_insights`"), "{msg}"),
+        other => panic!("expected PipelineUnboundTableName, got {other:?}"),
+    }
+}

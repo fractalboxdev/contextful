@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 89 | 63 | 13 | 13 | 34 | 0 | 34 |
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
-| `run` | 3 | 26 | 369 | 98 | 35 | 37 | 253 | 0 | 253 |
+| `run` | 3 | 26 | 369 | 98 | 35 | 37 | 254 | 0 | 254 |
 | `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
-| `surface` | 2 | 19 | 77 | 43 | 22 | 7 | 23 | 0 | 23 |
+| `surface` | 2 | 19 | 81 | 44 | 22 | 5 | 40 | 0 | 40 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1900 | 563 | 187 | 142 | 1255 | 0 | |
+| **total** | 19 | 154 | 1904 | 564 | 187 | 140 | 1273 | 0 | |
 
 Decision records: 18.
 
@@ -29,13 +29,13 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 158 | 123 | passing | closed |
 | 3 — The run path | 11 | 205 | 141 | passing | closed |
-| 4 — Ingest | 25 | 466 | 285 | passing | open |
+| 4 — Ingest | 25 | 466 | 286 | passing | open |
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 46 | 27 | open | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 58 | 28 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 62 | 45 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
@@ -838,6 +838,7 @@ Unscheduled operations: 10.
 | `run.declare.table-error` | `crates/contextful-cli/tests/integration/pipeline.rs::abort_halts_at_the_first_failure_and_continue_runs_the_rest` | performed |
 | `run.declare.table-name` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_destination_table_folds_the_pipeline_and_table_names` | performed |
 | `run.declare.table-name-collision` | `crates/contextful-core/tests/integration/pipeline/declare.rs::tables_folding_to_one_destination_name_are_refused` | performed |
+| `run.declare.unbound-table-name` | `crates/contextful-core/tests/integration/job.rs::a_misspelled_target_names_the_produced_spelling` | performed |
 | `run.emit.attempts` | `crates/contextful-core/tests/integration/run/derive.rs::attempts_count_up_from_the_prior_and_an_empty_unit_takes_one` | performed |
 | `run.emit.canceled-unit` | `crates/contextful-connectors/tests/integration/derive.rs::a_stopped_chain_lands_no_row_and_the_pull_ends_canceled` | performed |
 | `run.emit.content-empty` | `crates/contextful-cli/tests/integration/derive.rs::a_content_table_left_without_rows_stops_answering_the_earlier_key` | performed |
@@ -1241,29 +1242,46 @@ Unscheduled operations: 10.
 | `store.reserve.table-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_table_inside_a_reserved_namespace_is_refused` | performed |
 | `store.reserve.taint` | `crates/contextful-context/tests/integration/reserve.rs::a_model_output_row_carries_the_engine_taint_and_no_other_row_does` | performed |
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |
+| `surface.apply.guarded-import` | `crates/contextful-cli/tests/integration/pipeline.rs::the_import_claims_the_first_version_once` | performed |
 | `surface.apply.local-claim` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_claims_a_version_in_the_local_snapshot_directory` | performed |
+| `surface.apply.owner-unconfigured` | `crates/contextful-cli/tests/integration/pipeline.rs::an_owner_with_nothing_behind_it_is_refused` | performed |
+| `surface.apply.uninitialized-store` | `crates/contextful-cli/tests/integration/pipeline.rs::an_apply_before_the_import_is_refused` | performed |
 | `surface.apply.validation` | `crates/contextful-cli/tests/integration/pipeline.rs::an_invalid_document_claims_no_version` | performed |
 | `surface.apply.version-race` | `crates/contextful-engine/tests/integration/control.rs::a_lost_claim_conflicts_and_overwrites_nothing` | performed |
+| `surface.apply.weak-conditional-backend` | `crates/contextful-core/tests/integration/surface/control.rs::a_conditional_write_owner_refuses_a_network_filesystem` | performed |
 | `surface.arm.catch-up` | `crates/contextful-engine/tests/integration/scheduler.rs::a_daemon_booting_past_missed_intervals_fires_once` | performed |
 | `surface.arm.grammar` | `crates/contextful-core/tests/integration/surface/arm.rs::a_schedule_is_an_interval_or_a_five_field_cron` | performed |
 | `surface.arm.next-fire-from-history` | `crates/contextful-core/tests/integration/surface/arm.rs::the_next_fire_counts_from_the_run_history` | performed |
 | `surface.arm.pulled-future` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_future_dated_run_state_leaves_a_cold_nodes_cadence_alone` | performed |
 | `surface.arm.pulled-history` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_keeps_the_cadence_another_node_fired` | performed |
 | `surface.arm.tick-interval` | `crates/contextful-core/tests/integration/surface/arm.rs::the_tick_is_500_ms` | performed |
+| `surface.arm.trigger-face-missing` | `crates/contextful-cli/tests/integration/pipeline.rs::the_external_trigger_without_an_http_face_refuses_to_start` | performed |
+| `surface.arm.trigger-select` | `crates/contextful-cli/tests/integration/pipeline.rs::the_external_trigger_answers_wakes_and_runs_no_tick` | performed |
 | `surface.arm.unarmed-named` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_names_each_pipeline_it_does_not_arm` | performed |
+| `surface.arm.unknown-trigger` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_trigger_arms_nothing` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
+| `surface.arm.wake-answer` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_answers_within_its_bound_naming_what_still_runs` | performed |
 | `surface.dispatch.exclusion-key` | `crates/contextful-core/tests/integration/surface/dispatch.rs::a_key_in_flight_starts_no_second_instance` | performed |
 | `surface.dispatch.lease-gated` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_under_a_running_daemon_arms_nothing_and_names_the_holder` | performed |
 | `surface.dispatch.pool-bound` | `crates/contextful-core/tests/integration/surface/dispatch.rs::the_pool_starts_at_most_its_bound` | performed |
+| `surface.edit.connector-upload` | `crates/contextful-cli/tests/integration/pipeline.rs::an_artifact_in_the_document_is_refused` | performed |
+| `surface.edit.secret-in-document` | `crates/contextful-cli/tests/integration/pipeline.rs::a_credential_in_the_document_is_refused` | performed |
 | `surface.fire.cycle` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_fires_what_is_due_once_and_reports_the_next_instant` | performed |
 | `surface.fire.cycle-control-source` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_no_applied_snapshot_is_refused` | performed |
 | `surface.fire.cycle-exit` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_a_failed_fire_exits_non_zero` | performed |
 | `surface.fire.job-kind-unknown` | `crates/contextful-core/tests/integration/job.rs::a_kind_outside_the_union_or_a_command_raises_job_kind_unknown` | performed |
 | `surface.fire.store-driven-body` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered` | performed |
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
+| `surface.fire.target-unbound` | `crates/contextful-cli/tests/integration/job.rs::a_job_target_naming_nothing_produced_is_refused_at_validation` | performed |
+| `surface.reconcile.fail-static` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unreadable_snapshot_leaves_the_armed_set_running` | performed |
+| `surface.reconcile.learns-by-reading` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_reads_the_applied_version_from_the_control_source` | performed |
 | `surface.reconcile.loopback-only` | `crates/contextful-cli/tests/integration/pipeline.rs::a_control_url_outside_loopback_arms_nothing` | performed |
 | `surface.reconcile.pointer-malformed` | `crates/contextful-core/tests/integration/surface/control.rs::a_pointer_is_wholly_a_version` | performed |
+| `surface.reconcile.poll-cadence` | `crates/contextful-core/tests/integration/surface/control.rs::a_poll_takes_a_schedule_and_defaults_to_thirty_seconds` | performed |
 | `surface.reconcile.url-layout` | `crates/contextful-cli/tests/integration/pipeline.rs::a_loopback_control_url_serves_the_applied_snapshot` | performed |
+| `surface.reside.region-entries` | `crates/contextful-core/tests/integration/surface/reside.rs::an_allow_set_holds_sixteen_entries` | performed |
+| `surface.reside.region-mismatch` | `crates/contextful-cli/tests/integration/pipeline.rs::a_resource_outside_the_residency_allow_set_serves_nothing` | performed |
+| `surface.reside.site-regions` | `crates/contextful-cli/tests/integration/sync/mod.rs::two_sites_declaring_different_residency_diverge_at_push` | performed |
 | `topology.compose.script-runtime` | `tools/ci/tests/integration/topology.rs::a_crate_linking_a_javascript_runtime_is_refused` | performed |
 | `topology.compose.undeclared-crossing` | `tools/ci/tests/integration/topology.rs::a_run_path_crate_reaching_a_read_path_crate_is_refused` | performed |
 | `topology.compose.vendor-sdk` | `tools/ci/tests/integration/topology.rs::a_crate_declaring_a_model_vendor_sdk_is_refused` | performed |

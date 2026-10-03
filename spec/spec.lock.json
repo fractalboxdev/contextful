@@ -17712,6 +17712,17 @@
       "line": 70
     },
     {
+      "id": "surface.arm.trigger-select",
+      "contract": "surface",
+      "operation": "arm",
+      "subject": "trigger-select",
+      "kind": "behavior",
+      "statement": "`[control] trigger` selects `in-process`, the default, or `external`, under which `pipeline serve --http <address>` answers `POST /wake` and runs no tick of its own.",
+      "why": "",
+      "file": "spec/70-control-plane.md",
+      "line": 71
+    },
+    {
       "id": "surface.arm.grammar",
       "contract": "surface",
       "operation": "arm",
@@ -17720,7 +17731,7 @@
       "statement": "A schedule is `every <n><unit>` with unit `s`, `m`, `h` or `d`, or a UTC cron expression of five fields, minute, hour, day of month, month and day of week, each `*`, a value, range, list or `/` step.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 71
+      "line": 72
     },
     {
       "id": "surface.arm.next-fire-from-history",
@@ -17731,7 +17742,7 @@
       "statement": "An armed entry's next fire is the first instant its schedule admits after the later of its pipeline's last journaled run start and its last dispatch; an entry with neither is due when armed.",
       "why": "because a restarted daemon then keeps the cadence its run history shows instead of restarting every interval from boot",
       "file": "spec/70-control-plane.md",
-      "line": 72
+      "line": 73
     },
     {
       "id": "surface.arm.catch-up",
@@ -17742,7 +17753,7 @@
       "statement": "A daemon arming an entry whose next fire has passed fires it once, whatever count of intervals elapsed, and arms the following fire from that run.",
       "why": "because replaying each missed interval against an incremental source pulls the same delta once per interval",
       "file": "spec/70-control-plane.md",
-      "line": 74
+      "line": 75
     },
     {
       "id": "surface.arm.pulled-history",
@@ -17753,7 +17764,7 @@
       "statement": "A pipeline's last journaled run start is the latest start across this node's catalog and every run state {{store.push.run-state}} carries that records the pipeline.",
       "why": "because a cold node's empty catalog otherwise finds every scheduled entry due at once",
       "file": "spec/70-control-plane.md",
-      "line": 76
+      "line": 77
     },
     {
       "id": "surface.arm.pulled-future",
@@ -17764,7 +17775,7 @@
       "statement": "A pulled run start later than the scheduler's current instant counts as no start for {{surface.arm.pulled-history}}.",
       "why": "because one node's fast clock or one bucket writer otherwise defers every replica's cadence until that instant",
       "file": "spec/70-control-plane.md",
-      "line": 78
+      "line": 79
     },
     {
       "id": "surface.arm.unarmed-named",
@@ -17775,7 +17786,7 @@
       "statement": "An applied pipeline declaring no schedule, or held back by {{surface.arm.unreadable-schedule}}, arms no entry; serve names each such pipeline with its reason once per applied version, and `--cycle` lists them under `unarmed`.",
       "why": "because a pipeline silently left out of the armed set reads as armed until its data goes stale",
       "file": "spec/70-control-plane.md",
-      "line": 80
+      "line": 81
     },
     {
       "id": "surface.reconcile.poll-cadence",
@@ -17786,7 +17797,7 @@
       "statement": "`poll` takes a schedule string, and a `[control]` block declaring none polls every 30 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 115
+      "line": 116
     },
     {
       "id": "surface.reconcile.pointer-malformed",
@@ -17797,7 +17808,7 @@
       "statement": "A pointer body that is not wholly a version raises `ControlPointerMalformed`.",
       "why": "because an integer read out of leading bytes arms a version nobody applied",
       "file": "spec/70-control-plane.md",
-      "line": 116
+      "line": 117
     },
     {
       "id": "surface.reconcile.fail-static",
@@ -17808,7 +17819,7 @@
       "statement": "An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 118
+      "line": 119
     },
     {
       "id": "surface.reconcile.loopback-only",
@@ -17819,7 +17830,7 @@
       "statement": "A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 120
+      "line": 121
     },
     {
       "id": "surface.reconcile.url-layout",
@@ -17830,7 +17841,18 @@
       "statement": "A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.",
       "why": "because one layout serves a snapshot directory unchanged over loopback HTTP",
       "file": "spec/70-control-plane.md",
-      "line": 122
+      "line": 123
+    },
+    {
+      "id": "surface.reconcile.learns-by-reading",
+      "contract": "surface",
+      "operation": "reconcile",
+      "subject": "learns-by-reading",
+      "kind": "behavior",
+      "statement": "A daemon learns of a new snapshot only by reading its control source, on each poll and on each wake; nothing pushes a snapshot to it.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 125
     },
     {
       "id": "surface.fire.job-kind-unknown",
@@ -17841,7 +17863,7 @@
       "statement": "A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 155
+      "line": 156
     },
     {
       "id": "surface.fire.target-unbound",
@@ -17849,10 +17871,10 @@
       "operation": "fire",
       "subject": "target-unbound",
       "kind": "refusal",
-      "statement": "A `fold` target naming no produced table, or a `build` target naming no declared model, raises `JobTargetUnbound` at validation.",
+      "statement": "A `fold` target naming no produced table, or a `build` target naming no produced table declaring its `columns`, raises `JobTargetUnbound` at validation.",
       "why": "P1",
       "file": "spec/70-control-plane.md",
-      "line": 157
+      "line": 158
     },
     {
       "id": "surface.fire.cycle-control-source",
@@ -17863,7 +17885,7 @@
       "statement": "A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 159
+      "line": 160
     },
     {
       "id": "surface.fire.store-driven-concurrency",
@@ -17874,7 +17896,7 @@
       "statement": "A `store-driven` block declaring no positive integer `max_in_flight` raises `JobConcurrencyUnset` at validation; no default applies.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 161
+      "line": 162
     },
     {
       "id": "surface.fire.store-driven-body",
@@ -17885,7 +17907,7 @@
       "statement": "A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 163
+      "line": 164
     },
     {
       "id": "surface.fire.cycle",
@@ -17896,7 +17918,7 @@
       "statement": "`serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 165
+      "line": 166
     },
     {
       "id": "surface.fire.cycle-exit",
@@ -17907,7 +17929,7 @@
       "statement": "`serve --cycle` exits non-zero when any unit it dispatched failed, after printing its answer; a cycle with no failed unit, or one finding the cadence lease held, exits zero.",
       "why": "because a scheduler running the cycle reads the exit status, and a zero over a failed fire reports success",
       "file": "spec/70-control-plane.md",
-      "line": 166
+      "line": 167
     },
     {
       "id": "surface.dispatch.not-a-head",
@@ -17918,7 +17940,7 @@
       "statement": "Where entries are landing steps of one dependent run, the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 173
+      "line": 174
     },
     {
       "id": "surface.dispatch.step-result",
@@ -17929,7 +17951,7 @@
       "statement": "A checkpointed step returns a pointer, an object-store key or a catalog row id, under a 1 MiB step-result cap.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 175
+      "line": 176
     },
     {
       "id": "surface.dispatch.in-band-tool-error",
@@ -17940,7 +17962,7 @@
       "statement": "A step driving the engine over the tool protocol judges the tool result, not transport status: a `200` carrying a protocol error or a result flagged `isError` raises `StepToolError`.",
       "why": "P2",
       "file": "spec/70-control-plane.md",
-      "line": 176
+      "line": 177
     },
     {
       "id": "surface.dispatch.callback-skew",
@@ -17951,7 +17973,7 @@
       "statement": "The relay accepts a callback timestamp within 300 s of its own clock.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 178
+      "line": 179
     },
     {
       "id": "surface.dispatch.callback-rejected",
@@ -17962,7 +17984,7 @@
       "statement": "A callback whose attempt is below the step's current attempt, or whose timestamp falls outside {{surface.dispatch.callback-skew}}, raises `DispatchCallbackRejected` and changes no step.",
       "why": "because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely",
       "file": "spec/70-control-plane.md",
-      "line": 179
+      "line": 180
     },
     {
       "id": "surface.dispatch.heartbeat-beat",
@@ -17973,7 +17995,7 @@
       "statement": "A worker heartbeat runs every 15 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 181
+      "line": 182
     },
     {
       "id": "surface.dispatch.heartbeat-lapse",
@@ -17984,7 +18006,7 @@
       "statement": "A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 182
+      "line": 183
     },
     {
       "id": "surface.dispatch.pool-bound",
@@ -17995,7 +18017,7 @@
       "statement": "A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.",
       "why": "because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added",
       "file": "spec/70-control-plane.md",
-      "line": 183
+      "line": 184
     },
     {
       "id": "surface.dispatch.exclusion-key",
@@ -18006,7 +18028,7 @@
       "statement": "A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.",
       "why": "because two fires of one pipeline race for one cursor",
       "file": "spec/70-control-plane.md",
-      "line": 185
+      "line": 186
     },
     {
       "id": "surface.dispatch.lease-gated",
@@ -18017,7 +18039,7 @@
       "statement": "A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.",
       "why": "because two daemons reading one snapshot otherwise fire every due unit twice",
       "file": "spec/70-control-plane.md",
-      "line": 187
+      "line": 188
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -18028,7 +18050,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 223
+      "line": 224
     },
     {
       "id": "surface.edit.connector-upload",
@@ -18039,7 +18061,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 225
+      "line": 226
     },
     {
       "id": "surface.apply.version-race",
@@ -18050,7 +18072,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 232
+      "line": 233
     },
     {
       "id": "surface.apply.validation",
@@ -18061,7 +18083,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 234
+      "line": 235
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -18072,7 +18094,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 236
+      "line": 237
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -18083,7 +18105,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 238
+      "line": 239
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -18094,7 +18116,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 240
+      "line": 241
     },
     {
       "id": "surface.apply.local-claim",
@@ -18105,7 +18127,18 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 242
+      "line": 243
+    },
+    {
+      "id": "surface.apply.guarded-import",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "guarded-import",
+      "kind": "behavior",
+      "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.",
+      "why": "",
+      "file": "spec/70-control-plane.md",
+      "line": 245
     },
     {
       "id": "surface.reside.region-entries",
@@ -18116,7 +18149,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 279
+      "line": 281
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -18127,7 +18160,18 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 280
+      "line": 282
+    },
+    {
+      "id": "surface.reside.site-regions",
+      "contract": "surface",
+      "operation": "reside",
+      "subject": "site-regions",
+      "kind": "refusal",
+      "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 284
     },
     {
       "id": "surface.register-store.registry-unreadable",
@@ -27002,6 +27046,10 @@
           "ManifestVersionConflict": {
             "clause": "surface.apply.version-race",
             "gloss": "An apply whose pointer compare-and-swap lost to a concurrent apply."
+          },
+          "ResidencySitesDiverge": {
+            "clause": "surface.reside.site-regions",
+            "gloss": "A push whose residency allow-set differs from the one another site recorded in the bucket manifest."
           },
           "ScheduleUnreadable": {
             "clause": "surface.arm.unreadable-schedule",

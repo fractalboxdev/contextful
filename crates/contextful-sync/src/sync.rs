@@ -11,6 +11,8 @@ use contextful_core::store::sync::{
     GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
 };
 use contextful_core::store::StoreError;
+use contextful_core::surface::reside::{compare_sites, SiteRegions};
+use contextful_core::surface::SurfaceError;
 use contextful_core::time::Instant;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -22,6 +24,7 @@ pub enum SyncError {
     Store(StoreError),
     Object(ObjectError),
     Context(ContextError),
+    Surface(SurfaceError),
 }
 
 impl std::fmt::Display for SyncError {
@@ -30,11 +33,18 @@ impl std::fmt::Display for SyncError {
             SyncError::Store(e) => e.fmt(f),
             SyncError::Object(e) => write!(f, "bucket: {e}"),
             SyncError::Context(e) => e.fmt(f),
+            SyncError::Surface(e) => e.fmt(f),
         }
     }
 }
 
 impl std::error::Error for SyncError {}
+
+impl From<SurfaceError> for SyncError {
+    fn from(e: SurfaceError) -> SyncError {
+        SyncError::Surface(e)
+    }
+}
 
 impl From<StoreError> for SyncError {
     fn from(e: StoreError) -> SyncError {
@@ -400,6 +410,31 @@ pub struct Syncer {
     pub project: String,
     /// This node's id.
     pub node: String,
+    /// The pushing site and its residency allow-set; `None` skips the cross-site check.
+    pub residency: Option<SiteResidency>,
+}
+
+/// A site's id and the allow-set it declares, `None` when it declares no `[residency]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SiteResidency {
+    pub site_id: String,
+    pub regions: Option<Vec<String>>,
+}
+
+impl SiteResidency {
+    /// Hold a push to the set `recorded` in the bucket manifest (`surface.reside.site-regions`).
+    fn check(&self, recorded: &BucketManifest) -> Result<()> {
+        Ok(compare_sites(&self.site_id, self.regions.as_deref(), recorded.residency.as_ref())?)
+    }
+
+    /// The record this site's push leaves: its own set, none when it held the record and
+    /// dropped its `[residency]`, or the one already recorded.
+    fn record(&self, recorded: &BucketManifest) -> Option<SiteRegions> {
+        match &self.regions {
+            Some(r) => Some(SiteRegions { site_id: self.site_id.clone(), regions: r.clone() }),
+            None => recorded.residency.clone().filter(|r| r.site_id != self.site_id),
+        }
+    }
 }
 
 impl Syncer {
@@ -531,6 +566,9 @@ impl Syncer {
         })?;
         let plan = self.plan_manifest()?;
         let remote = self.manifest()?.0;
+        if let Some(r) = &self.residency {
+            r.check(&remote)?;
+        }
         let mut report = PushReport::default();
         // A copy of a key another node owns is never pushed; a shared mergeable key commits by its merge.
         for (key, entry) in &plan.mine {
@@ -618,12 +656,18 @@ impl Syncer {
             // Entries of other projects in the bucket pass through untouched.
             let others = remote.entries.iter().filter(|(k, _)| !in_project(k)).map(|(k, e)| (k.clone(), e.clone()));
             entries.extend(others);
+            if let Some(r) = &self.residency {
+                r.check(&remote)?;
+            }
             let merged = merge(&remote, &entries, &self.node, now)?;
             let mut committed = merged.manifest;
             // A manifest rewritten by a writer predating `generation` reads 0; the files keep the count (`store.push.generation-floor`).
             committed.generation = remote.generation.max(newest) + 1;
             committed.pointers = remote.pointers.iter().filter(|(k, _)| !in_project(k)).map(|(k, p)| (k.clone(), p.clone())).collect();
             committed.pointers.extend(pointers);
+            if let Some(r) = &self.residency {
+                committed.residency = r.record(&remote);
+            }
             let bytes = serde_json::to_vec_pretty(&committed).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&self.key(MANIFEST_KEY)?, &bytes, condition)? {

@@ -16,8 +16,9 @@ use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use contextful_core::pipeline::declare::{collect, ManifestFile, PipelineSpec};
 use contextful_core::run::derive::task::Tasks;
-use contextful_core::surface::arm::{Schedule, TICK_INTERVAL_MS};
-use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, snapshot_file, source_file, DEFAULT_POLL, POINTER_FILE};
+use contextful_core::surface::arm::{Schedule, Trigger, TICK_INTERVAL_MS, WAKE_ANSWER_SECS};
+use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, poll_schedule, snapshot_file, source_file, POINTER_FILE};
+use contextful_core::surface::edit::check_document;
 use contextful_core::surface::dispatch::DEFAULT_POOL;
 use contextful_core::surface::SurfaceError;
 use contextful_engine::control::{ControlError, SnapshotDir};
@@ -124,6 +125,7 @@ struct ControlConfig {
     source: Source,
     pool: usize,
     poll: Schedule,
+    trigger: Trigger,
 }
 
 fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
@@ -143,8 +145,9 @@ fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
             .context("`[control] pool` is at least 1")?,
         None => DEFAULT_POOL,
     };
-    let poll = block.get("poll").map(|v| v.as_str().context("`[control] poll` is a schedule string")).transpose()?.unwrap_or(DEFAULT_POLL);
-    Ok(ControlConfig { source, pool, poll: Schedule::parse(poll)? })
+    let poll = block.get("poll").map(|v| v.as_str().context("`[control] poll` is a schedule string")).transpose()?;
+    let trigger = block.get("trigger").map(|v| v.as_str().context("`[control] trigger` is a string")).transpose()?;
+    Ok(ControlConfig { source, pool, poll: poll_schedule(poll)?, trigger: Trigger::parse(trigger)? })
 }
 
 fn located(project: &ProjectArgs, declaration: Option<PathBuf>) -> Result<(Located, String, ControlConfig)> {
@@ -177,6 +180,10 @@ fn render(specs: &BTreeMap<String, PipelineSpec>) -> Result<String> {
     }
     let body = toml::to_string(&Doc { pipeline: specs.values().collect() })
         .map_err(|e| SurfaceError::ApplyValidationRefused(format!("a specification holds a value a snapshot cannot carry: {e}")))?;
+    // The document carries references alone (`surface.edit.secret-in-document`,
+    // `surface.edit.connector-upload`).
+    let value: toml::Value = toml::from_str(&body).map_err(|e| SurfaceError::ApplyValidationRefused(format!("the rendered snapshot does not read back: {e}")))?;
+    check_document(&value)?;
     Ok(format!("# An applied snapshot, claimed by `contextful pipeline apply`; immutable once claimed.\n\n{body}"))
 }
 
@@ -235,21 +242,49 @@ pub(crate) fn plan(project: &ProjectArgs, declaration: Option<PathBuf>, as_json:
     Ok(())
 }
 
+/// The snapshot directory an edit or apply claims in. A `[control] url` names a remote owner
+/// this process holds no storage or credential for, so it raises `ConfigOwnerUnconfigured`
+/// (`surface.apply.owner-unconfigured`); a directory on a filesystem without linearizable
+/// conditional writes raises `ConditionalWriteUnsupported` (`surface.apply.weak-conditional-backend`).
+fn owner(control: &ControlConfig) -> Result<&SnapshotDir> {
+    match &control.source {
+        Source::Dir(d) => {
+            d.admit()?;
+            Ok(d)
+        }
+        Source::Url(u) => Err(SurfaceError::ConfigOwnerUnconfigured(format!(
+            "`[control] url` names `{}` as the configuration owner, and this process holds no storage or credential for it; no local writer substitutes for it",
+            u.base
+        ))
+        .into()),
+    }
+}
+
+/// `pipeline import`: the guarded import, claiming v1 from every declared pipeline while the
+/// directory holds no version (`surface.apply.uninitialized-store`).
+pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks: &Tasks) -> Result<()> {
+    let (l, _, control) = located(project, declaration)?;
+    let snapshots = owner(&control)?;
+    let declared = declared(&l.declaration)?;
+    let text = render(&declared)?;
+    for spec in declared.values() {
+        check(spec, &l.declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
+    }
+    let v = snapshots.import(&text)?;
+    for id in declared.keys() {
+        println!("+ {id}");
+    }
+    println!("imported v{v}");
+    Ok(())
+}
+
 /// `pipeline apply [id]`: validate what converges, then claim the next version. Losing the
 /// pointer's compare-and-swap reloads the winner and reapplies onto it
 /// (`surface.apply.version-race`).
 pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Option<&str>, tasks: &Tasks) -> Result<()> {
     let (l, _, control) = located(project, declaration)?;
-    let snapshots = match &control.source {
-        Source::Dir(d) => d,
-        Source::Url(u) => {
-            return Err(SurfaceError::ConfigOwnerUnconfigured(format!(
-                "`[control] url` names `{}` as the configuration owner; an apply claims through that plane, and no local writer substitutes for it",
-                u.base
-            ))
-            .into())
-        }
-    };
+    let snapshots = owner(&control)?;
+    snapshots.initialized()?;
     let source = &control.source;
     let declared = declared(&l.declaration)?;
     if let Some(id) = id {
@@ -272,6 +307,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
             None => target = declared.clone(),
         }
         let changes: Vec<Change> = diff(&target, &base).into_iter().filter(|c| c.action != "unchanged").collect();
+        let text = render(&target)?;
         for c in changes.iter().filter(|c| c.action != "remove") {
             let spec = &target[&c.id];
             check(spec, &l.declaration, tasks)
@@ -284,7 +320,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
             }
             return Ok(());
         }
-        match snapshots.claim(version, &render(&target)?) {
+        match snapshots.claim(version, &text) {
             Ok(v) => {
                 for c in &changes {
                     println!("{} {}", sigil(c.action), c.id);
@@ -371,9 +407,18 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
 }
 
 /// `pipeline serve [--cycle]`.
-pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: bool) -> Result<()> {
+pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: bool, http: Option<&str>) -> Result<()> {
     let explicit = declaration.clone();
-    let (l, _, control) = located(project, declaration)?;
+    let (l, text, control) = located(project, declaration)?;
+    if !cycle {
+        control.trigger.require_face(http.is_some())?;
+        if http.is_some() && control.trigger == Trigger::InProcess {
+            bail!("`--http` serves the external trigger's `POST /wake`; set `[control] trigger = \"external\"`");
+        }
+    }
+    // Every configured resource resolves inside the residency allow-set before anything
+    // serves (`surface.reside.region-mismatch`).
+    crate::reside::enforce(&l, &text)?;
     let w = wire_at(&l.project, &project.now)?;
     let dispatch = Arc::new(ChildDispatch {
         exe: std::env::current_exe()?,
@@ -387,6 +432,9 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
         return serve_cycle(&mut scheduler, &control, &l.project);
     }
     contextful_engine::stop::install();
+    if let Some(addr) = http {
+        return serve_wakes(&mut scheduler, &control, addr, &l.project);
+    }
     eprintln!("serving `{}` from {} as `{holder}`", l.project.name, control.source.describe());
     let tick = Duration::from_millis(TICK_INTERVAL_MS);
     let mut next_poll = w.clock.now();
@@ -500,4 +548,137 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
         bail!("{} dispatched unit(s) failed: {}", failed.len(), ids.join(", "));
     }
     Ok(())
+}
+
+/// `pipeline serve --http` under the external trigger: no tick runs, and each `POST /wake`
+/// evaluates the armed set once and answers (`surface.arm.wake-answer`).
+fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, project: &Project) -> Result<()> {
+    let listener = std::net::TcpListener::bind(addr)?;
+    listener.set_nonblocking(true)?;
+    eprintln!("wake on http://{}/wake", listener.local_addr()?);
+    while !contextful_engine::stop::requested() {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                if let Err(e) = answer_wake(scheduler, control, project, stream) {
+                    eprintln!("wake: {e:#}");
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(50)),
+            Err(e) => eprintln!("wake: accept: {e}"),
+        }
+    }
+    eprintln!("stopping: waiting for dispatched units, then releasing the cadence lease");
+    report(scheduler.drain());
+    scheduler.release()?;
+    eprintln!("stopped");
+    Ok(())
+}
+
+/// Largest request head a wake reads.
+const WAKE_HEAD_MAX: usize = 16 * 1024;
+
+/// Read one request's method and path from `stream`.
+fn request_line(stream: &mut std::net::TcpStream) -> Result<(String, String)> {
+    use std::io::Read;
+    stream.set_nonblocking(false)?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    let mut head = Vec::new();
+    let mut buf = [0u8; 1024];
+    while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+        let n = stream.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        head.extend_from_slice(&buf[..n]);
+        if head.len() > WAKE_HEAD_MAX {
+            bail!("the request head passes {WAKE_HEAD_MAX} bytes");
+        }
+    }
+    let text = String::from_utf8_lossy(&head);
+    let mut parts = text.lines().next().unwrap_or_default().split_whitespace();
+    Ok((parts.next().unwrap_or_default().to_string(), parts.next().unwrap_or_default().to_string()))
+}
+
+fn respond(stream: &mut std::net::TcpStream, status: u16, body: &serde_json::Value) -> Result<()> {
+    use std::io::Write;
+    let reason = match status {
+        200 => "OK",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        409 => "Conflict",
+        422 => "Unprocessable Content",
+        503 => "Service Unavailable",
+        _ => "Internal Server Error",
+    };
+    let body = serde_json::to_vec(body)?;
+    write!(stream, "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len())?;
+    stream.write_all(&body)?;
+    Ok(())
+}
+
+fn answer_wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, mut stream: std::net::TcpStream) -> Result<()> {
+    let (method, path) = request_line(&mut stream)?;
+    if path != "/wake" {
+        return respond(&mut stream, 404, &json!({ "error": format!("no route `{path}`; the wake is `POST /wake`") }));
+    }
+    if method != "POST" {
+        return respond(&mut stream, 405, &json!({ "error": "the wake is `POST /wake`" }));
+    }
+    match wake(scheduler, control, project, std::time::Instant::now() + Duration::from_secs(WAKE_ANSWER_SECS)) {
+        Ok(answer) => respond(&mut stream, 200, &answer),
+        Err(e) => {
+            let status = e.downcast_ref::<SurfaceError>().map_or(500, SurfaceError::status);
+            respond(&mut stream, status, &json!({ "error": format!("{e:#}") }))
+        }
+    }
+}
+
+/// One wake: take the cadence lease, reconcile the applied snapshot, evaluate due-ness once,
+/// and wait for the units it dispatched until `deadline`. A unit still running at the deadline
+/// reports pending; a failed reconcile leaves the armed set running and reports its
+/// diagnostic (`surface.reconcile.fail-static`).
+fn wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, deadline: std::time::Instant) -> Result<serde_json::Value> {
+    if let LeaseState::HeldBy(holder) = scheduler.hold()? {
+        return Ok(json!({ "fired": [], "failed": [], "pending": [], "held_by": holder }));
+    }
+    let mut diagnostics = Vec::new();
+    if let Err(e) = arm(scheduler, &control.source, project) {
+        eprintln!("{}; the armed set stays in place", one_line(&e));
+        diagnostics.push(one_line(&e));
+    }
+    let beat = scheduler.beat()?;
+    if let LeaseState::HeldBy(holder) = &beat.lease {
+        return Ok(json!({ "fired": [], "failed": [], "pending": [], "held_by": holder }));
+    }
+    for id in &beat.started {
+        eprintln!("fire {id}: started");
+    }
+    let ended = scheduler.settle(deadline);
+    report(ended.clone());
+    let mut fired: Vec<&str> = ended.iter().filter(|f| f.result.is_ok()).map(|f| f.id.as_str()).collect();
+    let mut failed: Vec<&str> = ended.iter().filter(|f| f.result.is_err()).map(|f| f.id.as_str()).collect();
+    fired.sort();
+    failed.sort();
+    let in_flight = scheduler.in_flight();
+    let mut pending: Vec<&str> = beat.pending.iter().chain(&beat.held).map(String::as_str).chain(in_flight.iter().map(String::as_str)).collect();
+    pending.sort();
+    pending.dedup();
+    let next_due = scheduler.next_due()?.map(|t| t.to_rfc3339());
+    if in_flight.is_empty() {
+        scheduler.release()?;
+    }
+    Ok(json!({
+        "fired": fired,
+        "failed": failed,
+        "pending": pending,
+        "armed": scheduler.armed().len(),
+        "next_due": next_due,
+        "diagnostics": diagnostics,
+    }))
+}
+
+/// An error as one log line: a parser's multi-line report joins with `; `, so the
+/// diagnostic and its disposition read together.
+fn one_line(e: &anyhow::Error) -> String {
+    format!("{e:#}").lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("; ")
 }

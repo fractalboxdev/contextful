@@ -202,3 +202,23 @@ fn a_fire_killed_mid_input_resumes_paying_only_for_unrecorded_calls() {
     }
     assert_eq!(select(p, "SELECT count(*) FROM scores"), vec![vec!["3".to_string()]]);
 }
+
+/// A `fold` target naming no produced table, or a `build` target naming no produced table declaring its `columns`,
+/// raises `JobTargetUnbound` at validation.
+// spec: surface.fire.target-unbound@1ad27792
+#[test]
+fn a_job_target_naming_nothing_produced_is_refused_at_validation() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    let pipelines = "[[pipeline]]\nid = \"meta_ads\"\ntables = [\"insights\", { name = \"spend\", columns = { day = \"timestamp\" } }]\n\
+                     [pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://api.vendor.example/v1\" }\n\n";
+    let with = |jobs: &str| std::fs::write(p.join("contextful.toml"), format!("{pipelines}{jobs}")).unwrap();
+    with("[[job]]\nname = \"nightly-fold\"\nkind = \"fold\"\ntarget = \"meta_ads_insights\"\n[[job]]\nname = \"spend\"\nkind = \"build\"\ntarget = \"meta_ads_spend\"\n");
+    let out = ok(&cf(p, &["job", "validate"]));
+    assert!(out.contains("nightly-fold: valid (fold)") && out.contains("spend: valid (build)"), "{out}");
+    for (kind, target) in [("fold", "meta_ads_clicks"), ("build", "meta_ads_insights")] {
+        with(&format!("[[job]]\nname = \"j\"\nkind = \"{kind}\"\ntarget = \"{target}\"\n"));
+        let e = err(&cf(p, &["job", "validate"]));
+        assert!(e.contains("JobTargetUnbound") && e.contains(target), "{e}");
+    }
+}

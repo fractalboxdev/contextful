@@ -5,8 +5,8 @@
 //! next version file and the pointer replace, so the pointer's compare-and-swap is
 //! linearizable among processes on one machine (`surface.apply.version-race`).
 
-use crate::fsutil::{create_new, replace, FileLock};
-use contextful_core::surface::control::{parse_pointer, snapshot_file, POINTER_FILE};
+use crate::fsutil::{create_new, filesystem_kind, replace, FileLock};
+use contextful_core::surface::control::{admit_conditional, parse_pointer, snapshot_file, POINTER_FILE};
 use contextful_core::surface::SurfaceError;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -36,6 +36,35 @@ impl SnapshotDir {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// Refuse a directory on a filesystem whose exclusive create and lock are not
+    /// linearizable (`surface.apply.weak-conditional-backend`).
+    pub fn admit(&self) -> Result<(), ControlError> {
+        let kind = filesystem_kind(&self.root);
+        Ok(admit_conditional("the snapshot directory", &self.root.display().to_string(), kind.as_deref())?)
+    }
+
+    /// The applied version of a directory that took its guarded import. A directory holding
+    /// no pointer, an empty one included, raises `StoreNotInitialized`
+    /// (`surface.apply.uninitialized-store`).
+    pub fn initialized(&self) -> Result<u64, ControlError> {
+        self.current()?.ok_or_else(|| {
+            SurfaceError::StoreNotInitialized(format!(
+                "`{}` has taken no import; run `contextful pipeline import` once, then edit and apply",
+                self.root.display()
+            ))
+            .into()
+        })
+    }
+
+    /// The guarded import: claim v1 holding `text` only while the directory holds no pointer.
+    /// A second import finds the pointer and claims nothing.
+    pub fn import(&self, text: &str) -> Result<u64, ControlError> {
+        if let Some(v) = self.current()? {
+            return Err(ControlError::Storage(format!("`{}` took its import and stands at v{v}; `contextful pipeline apply` edits it", self.root.display())));
+        }
+        self.claim(None, text)
     }
 
     /// The applied version, or `None` while no apply has claimed one. An unreadable pointer

@@ -68,6 +68,7 @@ The schedule grammar and cron dialect, the trigger adapter and its durability, t
 - `wake-answer` — A wake answers within 25 s with what fired, what failed, what stays armed and the next due instant, naming each fire still in flight as pending.
   *because a platform request timeout otherwise ends the call before the caller learns anything*
 - `tick-interval` — The in-process adapter evaluates the armed set every 500 ms.
+- `trigger-select` — `[control] trigger` selects `in-process`, the default, or `external`, under which `pipeline serve --http <address>` answers `POST /wake` and runs no tick of its own.
 - `grammar` — A schedule is `every <n><unit>` with unit `s`, `m`, `h` or `d`, or a UTC cron expression of five fields, minute, hour, day of month, month and day of week, each `*`, a value, range, list or `/` step.
 - `next-fire-from-history` — An armed entry's next fire is the first instant its schedule admits after the later of its pipeline's last journaled run start and its last dispatch; an entry with neither is due when armed.
   *because a restarted daemon then keeps the cadence its run history shows instead of restarting every interval from boot*
@@ -121,6 +122,8 @@ The control source, the snapshot pointer and its versions, the pure schedule dif
   *A-surface*
 - `url-layout` — A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.
   *because one layout serves a snapshot directory unchanged over loopback HTTP*
+- `learns-by-reading` — A daemon learns of a new snapshot only by reading its control source, on each poll and on each wake; nothing pushes a snapshot to it.
+  *A-surface*
 
 One reconciler beat, polled every 30 s by default:
 
@@ -146,15 +149,13 @@ sequenceDiagram
   end
 ```
 
-unsettled: Does a daemon reach a non-loopback control source, carrying bearer authentication, TLS and producer signing over version and content hash, and does it learn of a new snapshot by poll or by push? owner: control affects: surface.reconcile
-
 ## fire
 
 Job declaration, the closed kind union, same-tick order, the fire watermark, and one-shot evaluation.
 
 - `job-kind-unknown` — A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation.
   *A-surface*
-- `target-unbound` — A `fold` target naming no produced table, or a `build` target naming no declared model, raises `JobTargetUnbound` at validation.
+- `target-unbound` — A `fold` target naming no produced table, or a `build` target naming no produced table declaring its `columns`, raises `JobTargetUnbound` at validation.
   *P1*
 - `cycle-control-source` — A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.
   *P3*
@@ -241,6 +242,7 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
   *P3*
 - `local-claim` — A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.
   *because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself*
+- `guarded-import` — `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.
 
 One apply through the engine's store-scoped API:
 
@@ -279,8 +281,8 @@ Where the data plane runs, the region allow-set gating placement, and operation 
 - `region-entries` — A residency allow-set holds at most 16 entries.
 - `region-mismatch` — A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.
   *P3*
-
-unsettled: How is a residency region declared differently by two sites detected, given that each resolves its own configuration? owner: control affects: surface.reside
+- `site-regions` — A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.
+  *A-surface*
 
 ## Shapes
 
@@ -291,6 +293,10 @@ A daemon's own configuration, the control wiring and its operator-local jobs:
 snapshot_dir = "./.contextful/control/research"   # or url = "http://127.0.0.1:8787/control"
 poll         = "every 30s"
 pool         = 4
+trigger      = "in-process"                         # or "external", with `pipeline serve --http`
+
+[residency]
+regions = ["eu-west-1", "eu-central-1"]
 
 [[job]]
 name     = "nightly-fold"

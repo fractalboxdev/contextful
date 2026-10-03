@@ -33,6 +33,8 @@ mod pipeline;
 mod project;
 #[cfg(feature = "read-plane")]
 mod query;
+#[cfg(feature = "read-plane")]
+mod reside;
 #[cfg(feature = "data-plane")]
 mod run;
 mod root;

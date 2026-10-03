@@ -1,11 +1,18 @@
 //! The snapshot store's names and the pointer grammar (`surface.reconcile`).
 
+use super::arm::Schedule;
 use super::SurfaceError;
 use std::net::SocketAddr;
 use url::Url;
 
 /// The poll schedule of a `[control]` block declaring none (`surface.reconcile.poll-cadence`).
 pub const DEFAULT_POLL: &str = "every 30s";
+
+/// The poll schedule of `[control] poll`: any schedule string, or every 30 s when the block
+/// declares none (`surface.reconcile.poll-cadence`).
+pub fn poll_schedule(declared: Option<&str>) -> Result<Schedule, SurfaceError> {
+    Schedule::parse(declared.unwrap_or(DEFAULT_POLL))
+}
 
 /// The pointer file naming the applied version.
 pub const POINTER_FILE: &str = "manifest@current";
@@ -62,4 +69,20 @@ pub fn admit_loopback(host: &str, addrs: &[SocketAddr]) -> Result<(), SurfaceErr
         )));
     }
     Ok(())
+}
+
+/// Filesystem kinds whose exclusive create and advisory lock are not linearizable across
+/// clients: network and user-space filesystems that cache or emulate either.
+pub const WEAK_FILESYSTEMS: [&str; 13] = ["nfs", "nfs4", "smbfs", "cifs", "smb2", "smb3", "afpfs", "webdav", "davfs", "9p", "sshfs", "fuse.sshfs", "fuse"];
+
+/// Admit the filesystem holding `role`'s conditional writes (a snapshot directory's claim, a
+/// catalog's lease rows) only when its conditional replacement is linearizable; a kind in
+/// [`WEAK_FILESYSTEMS`] raises `ConditionalWriteUnsupported` (`surface.apply.weak-conditional-backend`).
+pub fn admit_conditional(role: &str, path: &str, fs_kind: Option<&str>) -> Result<(), SurfaceError> {
+    match fs_kind {
+        Some(kind) if WEAK_FILESYSTEMS.contains(&kind.to_ascii_lowercase().as_str()) => Err(SurfaceError::ConditionalWriteUnsupported(format!(
+            "{role} `{path}` sits on a `{kind}` filesystem, whose exclusive create and lock are not linearizable across clients; place it on a local filesystem"
+        ))),
+        _ => Ok(()),
+    }
 }

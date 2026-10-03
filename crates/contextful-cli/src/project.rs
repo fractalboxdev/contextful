@@ -1,7 +1,7 @@
 //! `contextful init`, and the project a command acts on: `--project` under the working
 //! directory, or the nearest `contextful.toml` upward (`store.init.discovery`).
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use contextful_context::project::{check_name, discover, Project};
 use contextful_context::read::Face;
 use contextful_context::Store;
@@ -14,6 +14,7 @@ use anyhow::anyhow;
 use contextful_context::project::{declare_posture, declared_posture, init, Initialized, DECLARATION_FILE};
 #[cfg(feature = "data-plane")]
 use contextful_core::issue::AuthoringPosture;
+use contextful_core::run::record::{resolve_site_id, SiteIdSources};
 use std::path::PathBuf;
 
 #[cfg(feature = "data-plane")]
@@ -59,7 +60,6 @@ pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Loc
 
 /// The manifest files, in reading order: the declaration when it is a file, then
 /// `pipelines/` sorted (`run.declare.manifest-file`).
-#[cfg(feature = "data-plane")]
 pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
     let mut files = Vec::new();
     if declaration.is_file() {
@@ -109,4 +109,12 @@ pub fn run(args: InitArgs) -> Result<()> {
         None => println!("no authoring posture: every table write refuses until one is declared (init --authoring-posture session|per_request)"),
     }
     Ok(())
+}
+
+/// The site id of one run: the command line's declaration when it makes one, else the
+/// manifest's (`run.record.site-id-unresolved`).
+pub(crate) fn site_id_for(manifest: &str, path: &Path, id: Option<String>, env: Option<String>) -> Result<String> {
+    let var = |k: &str| std::env::var(k).ok();
+    let declared = SiteIdSources::from_manifest(manifest, var).with_context(|| format!("`{}`", path.display()))?;
+    Ok(resolve_site_id(&SiteIdSources::declared(id, env, var).over(declared))?)
 }

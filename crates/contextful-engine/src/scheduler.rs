@@ -234,6 +234,24 @@ impl Scheduler {
         self.ended.lock().map(|mut e| std::mem::take(&mut *e)).unwrap_or_default()
     }
 
+    /// Wait for dispatched units until each ended or `deadline` passes, answering each that
+    /// ended; a unit still running stays in flight (`surface.arm.wake-answer`).
+    pub fn settle(&mut self, deadline: std::time::Instant) -> Vec<Fired> {
+        loop {
+            self.reap();
+            if self.handles.is_empty() || std::time::Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        self.ended()
+    }
+
+    /// The ids of units dispatched and not yet ended, sorted.
+    pub fn in_flight(&self) -> Vec<String> {
+        self.in_flight.lock().map(|s| s.iter().cloned().collect()).unwrap_or_default()
+    }
+
     /// Wait for every dispatched unit, answering each that ended.
     pub fn drain(&mut self) -> Vec<Fired> {
         for h in self.handles.drain(..) {

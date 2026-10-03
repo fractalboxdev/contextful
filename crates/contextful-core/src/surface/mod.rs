@@ -1,10 +1,13 @@
-//! The operator plane's pure rules: the schedule grammar and an entry's next fire
-//! (`surface.arm`), the snapshot pointer (`surface.reconcile`), and pool admission
-//! (`surface.dispatch`).
+//! The operator plane's pure rules: the schedule grammar, the trigger and an entry's next
+//! fire (`surface.arm`), the snapshot pointer (`surface.reconcile`), pool admission
+//! (`surface.dispatch`), the control document's refusals (`surface.edit`) and the residency
+//! allow-set (`surface.reside`).
 
 pub mod arm;
 pub mod control;
 pub mod dispatch;
+pub mod edit;
+pub mod reside;
 
 /// The operator plane's refusals. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -33,4 +36,57 @@ pub enum SurfaceError {
     /// (`surface.apply.validation`)
     #[error("ApplyValidationRefused: {0}")]
     ApplyValidationRefused(String),
+    /// (`surface.arm.unknown-trigger`)
+    #[error("TriggerAdapterUnknown: {0}")]
+    TriggerAdapterUnknown(String),
+    /// (`surface.arm.trigger-face-missing`)
+    #[error("TriggerFaceMissing: {0}")]
+    TriggerFaceMissing(String),
+    /// (`surface.edit.secret-in-document`)
+    #[error("SecretMaterialInDocument: {0}")]
+    SecretMaterialInDocument(String),
+    /// (`surface.edit.connector-upload`)
+    #[error("ConnectorUploadRefused: {0}")]
+    ConnectorUploadRefused(String),
+    /// (`surface.apply.weak-conditional-backend`)
+    #[error("ConditionalWriteUnsupported: {0}")]
+    ConditionalWriteUnsupported(String),
+    /// (`surface.apply.uninitialized-store`)
+    #[error("StoreNotInitialized: {0}")]
+    StoreNotInitialized(String),
+    /// (`surface.reside.region-mismatch`)
+    #[error("EnforceRegionMismatch: {0}")]
+    EnforceRegionMismatch(String),
+    /// (`surface.reside.site-regions`)
+    #[error("ResidencySitesDiverge: {0}")]
+    ResidencySitesDiverge(String),
+    /// A `[control]` or `[residency]` block that does not parse, or a bound it exceeds.
+    #[error("{0}")]
+    Invalid(String),
+}
+
+impl SurfaceError {
+    /// The HTTP status an operator route answers the refusal with: `503` for an owner with
+    /// nothing behind it (`surface.apply.owner-unconfigured`) or a control source it cannot
+    /// read, `409` for a store taking no guarded import (`surface.apply.uninitialized-store`)
+    /// or a lost claim, and `422` for a document the plane refuses.
+    pub fn status(&self) -> u16 {
+        match self {
+            SurfaceError::ConfigOwnerUnconfigured(_)
+            | SurfaceError::ControlSnapshotUnreadable(_)
+            | SurfaceError::ControlPointerMalformed(_)
+            | SurfaceError::ControlSourceNotLoopback(_)
+            | SurfaceError::CycleControlSourceUnresolved(_)
+            | SurfaceError::ConditionalWriteUnsupported(_) => 503,
+            SurfaceError::StoreNotInitialized(_) | SurfaceError::ManifestVersionConflict(_) => 409,
+            SurfaceError::EnforceRegionMismatch(_) | SurfaceError::ResidencySitesDiverge(_) => 503,
+            SurfaceError::ScheduleUnreadable(_)
+            | SurfaceError::ApplyValidationRefused(_)
+            | SurfaceError::TriggerAdapterUnknown(_)
+            | SurfaceError::TriggerFaceMissing(_)
+            | SurfaceError::SecretMaterialInDocument(_)
+            | SurfaceError::ConnectorUploadRefused(_)
+            | SurfaceError::Invalid(_) => 422,
+        }
+    }
 }
