@@ -75,6 +75,24 @@ fn build_publishes_a_model_and_prints_its_receipt() {
     assert!(valid.contains("daily: valid model (0 tests)"), "{valid}");
 }
 
+/// `pipeline validate` names undeclared relations on stderr while allowing the store to resolve them at build.
+// spec: run.model.validate-undeclared@7dd935aa
+#[test]
+fn validate_names_a_relation_no_manifest_declares() {
+    let dir = project();
+    let p = dir.path();
+    std::fs::write(p.join("contextful.toml"), DECLARATION.replace("FROM events", "FROM evnts")).unwrap();
+    refused(&run(p, &["build", "daily", "--site-id", "site-a", "--now", "2030-01-01T01:00:00Z"]), "EnforceUnknownRelation");
+    let v = run(p, &["pipeline", "validate"]);
+    assert!(stdout(&v).contains("daily: valid model (0 tests)"));
+    let stderr = String::from_utf8_lossy(&v.stderr);
+    assert!(stderr.contains("model `daily` reads `evnts`, which no manifest declares"), "{stderr}");
+    std::fs::write(p.join("contextful.toml"), DECLARATION).unwrap();
+    let v = run(p, &["pipeline", "validate"]);
+    stdout(&v);
+    assert!(!String::from_utf8_lossy(&v.stderr).contains("no manifest declares"));
+}
+
 /// `build` naming no declared model raises `ModelUndeclared`, naming the declared models.
 // spec: run.model.unknown-model@28046609
 #[test]

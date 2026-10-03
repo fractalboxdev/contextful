@@ -316,6 +316,8 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
 - `model-id` — A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.
 - `sql` — `sql` is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through the table its last build published.
 - `validate-statements` — `pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to {{run.model.restricted-input}}, and raises the error the build raises.
+- `validate-undeclared` — `pipeline validate` names on stderr each relation a model's `sql` or test reads that no manifest table, pipeline destination or model declares, and still validates the model; `build` resolves that relation against the store.
+  *because a table landed without a manifest declaration is a legal input, while a misspelled name otherwise surfaces only at `build`*
 - `restricted-input` — A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
   *because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader*
 - `materialized` — `materialized` is `table`, the default: each build replaces the model's rows whole.

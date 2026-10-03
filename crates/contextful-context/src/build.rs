@@ -382,9 +382,8 @@ mod materialize {
 
     /// Admit one `[[model.test]]` statement (`run.model.test-block`): the model's id names
     /// its staged rows.
-    fn admit_test(engine: &SqlEngine, spec: &ModelSpec, sql: &str, registered: impl Fn(&str) -> bool) -> std::result::Result<(), ReadFault> {
-        admit(&engine.serialize(sql)?, |n| n == spec.id || registered(n))?;
-        Ok(())
+    fn admit_test(engine: &SqlEngine, spec: &ModelSpec, sql: &str, registered: impl Fn(&str) -> bool) -> std::result::Result<Admitted, ReadFault> {
+        Ok(admit(&engine.serialize(sql)?, |n| n == spec.id || registered(n))?)
     }
 
     /// The statement checks a build runs, over no store (`run.model.validate-statements`):
@@ -392,17 +391,20 @@ mod materialize {
     /// each input `decl` declares against `run.model.restricted-input`, then each test's
     /// statement. A refusal names the statement it refuses — `model `<id>`` or
     /// `model `<id>` test `<name>`` — beside the fault.
-    pub fn admit_statements(spec: &ModelSpec, decl: impl Fn(&str) -> Option<TableDecl>) -> std::result::Result<(), (String, ReadFault)> {
+    pub fn admit_statements(spec: &ModelSpec, decl: impl Fn(&str) -> Option<TableDecl>) -> std::result::Result<BTreeSet<String>, (String, ReadFault)> {
         let model = format!("model `{}`", spec.id);
         let engine = SqlEngine::raw().map_err(|e| (model.clone(), e))?;
         let admitted = admit_sql(&engine, spec, |_| true).map_err(|e| (model.clone(), e))?;
         for input in admitted.relations.iter().filter_map(|t| decl(t)) {
             check_unrestricted(&spec.id, &input).map_err(|e| (model.clone(), e))?;
         }
+        let mut reads = admitted.relations;
         for t in &spec.tests {
-            admit_test(&engine, spec, t.sql.trim().trim_end_matches(';'), |_| true).map_err(|e| (format!("{model} test `{}`", t.name), e))?;
+            let checked = admit_test(&engine, spec, t.sql.trim().trim_end_matches(';'), |_| true)
+                .map_err(|e| (format!("{model} test `{}`", t.name), e))?;
+            reads.extend(checked.relations.into_iter().filter(|name| name != &spec.id));
         }
-        Ok(())
+        Ok(reads)
     }
 
     /// Build one model (`run.model.build-verb`): admit its SQL over the store's tables,
