@@ -229,6 +229,6 @@ fn explain(q: Question) -> Result<serde_json::Value> {
             e.replay = Some(explain::replay(&entries, who, &name, w)?);
         }
     }
-    // No membership source reaches the store, so no group on the path resolves to members.
-    Ok(e.seal(&|_| Vec::new())?)
+    let members = explain::readers(&entries, &name);
+    Ok(e.seal(&|_| members.clone())?)
 }

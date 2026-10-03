@@ -23,6 +23,19 @@ actions = ["write"]
 tables  = ["research/notes"]
 "#;
 
+/// A role whose grant list is empty earns nothing, so the exchange mints the default set.
+const EMPTY_ROLE: &str = r#"
+expected_iss = "https://login.acme.example/"
+role_claim   = "roles"
+
+[role_grants]
+guest = []
+
+[[default_grants]]
+actions = ["read"]
+tables  = ["public/*"]
+"#;
+
 const MANIFEST: &str = r#"
 [[pipeline.tables]]
 name = "research/notes"
@@ -77,6 +90,12 @@ fn a_role_grant_reading_the_table_admits_and_a_write_grant_or_the_default_set_do
     assert_eq!(decide(Some(&p), &roles(&["visitor"]), "public/faq", Vec::new()).verdict, Verdict::Admit);
     assert_eq!(decide(Some(&p), &[], "research/notes", Vec::new()).verdict, Verdict::Deny);
     assert_eq!(decide(None, &roles(&["analyst"]), "research/notes", Vec::new()).verdict, Verdict::Deny);
+
+    // A role declared with no grant matches nothing, as the exchange flattens it.
+    let empty = ExchangePolicy::parse(EMPTY_ROLE).unwrap();
+    let d = decide(Some(&empty), &roles(&["guest"]), "public/faq", Vec::new());
+    assert_eq!(d.verdict, Verdict::Admit, "{d:?}");
+    assert_eq!(layers(&d), ["default-grants", "grant"]);
 }
 
 /// A decision's path names the role or default set, the covering grant, then each step
@@ -126,7 +145,6 @@ fn a_denial_without_coverage_is_refused_and_with_coverage_releases() {
 
 /// A reader-facing explanation rendering the member identities of a group on the path
 /// raises `VisibilityIndividualNamed`.
-// spec: disclosure.explain.groups-not-members@bc65beeb
 #[test]
 fn a_rendering_carrying_a_member_of_a_role_on_the_path_is_refused() {
     let members = |g: &str| {

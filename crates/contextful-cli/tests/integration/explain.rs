@@ -274,3 +274,43 @@ fn the_audience_names_roles_and_counts_principal_classes_without_naming_one() {
     assert_eq!(out["decision"]["verdict"], "admit", "{out}");
     assert_eq!(out["decision"]["path"][0], json!({ "layer": "role", "name": "analyst" }));
 }
+
+/// A reader-facing explanation rendering the member identities of a group on the path
+/// raises `VisibilityIndividualNamed`.
+// spec: disclosure.explain.groups-not-members@bc65beeb
+#[test]
+fn a_role_named_for_a_reader_of_the_table_is_refused_on_the_path_and_in_the_audience() {
+    const BO: &str = "user://bo@acme.example";
+    let dir = project(
+        NOTES,
+        vec![read(-600, ADA, &["research/notes"], attr::SERVED), read(-500, BO, &["research/notes"], attr::SERVED)],
+    );
+    std::fs::create_dir_all(dir.path().join(".contextful/exchange")).unwrap();
+    std::fs::write(
+        dir.path().join(".contextful/exchange/policy.toml"),
+        format!(
+            "expected_iss = \"https://login.acme.example/\"\nrole_claim = \"roles\"\n\n[[role_grants.analyst]]\nactions = [\"read\"]\ntables = [\"research/*\"]\n\n[[role_grants.\"{BO}\"]]\nactions = [\"read\"]\ntables = [\"research/notes\"]\n"
+        ),
+    )
+    .unwrap();
+
+    // The audience lists the role named for the reader `bo`.
+    let err = refusal(&run(dir.path(), &["audit", "explain", "--project", "research", "--audience", "research/notes"]));
+    assert!(err.contains("VisibilityIndividualNamed"), "{err}");
+    assert!(!err.contains("bo@"), "{err}");
+
+    // The decision's path names that role.
+    let err = refusal(&run(
+        dir.path(),
+        &["audit", "explain", "--project", "research", "--table", "research/notes", "--subject", ADA, "--role", BO],
+    ));
+    assert!(err.contains("VisibilityIndividualNamed"), "{err}");
+
+    // A group renders by name alone, and the subject the caller named echoes back.
+    let out = answer(&run(
+        dir.path(),
+        &["audit", "explain", "--project", "research", "--table", "research/notes", "--subject", BO, "--role", "analyst"],
+    ));
+    assert_eq!(out["decision"]["path"][0], json!({ "layer": "role", "name": "analyst" }));
+    assert_eq!(out["subject"], BO);
+}

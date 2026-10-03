@@ -174,7 +174,7 @@ Decision: `audit explain` decides from the project's exchange policy, the grants
 | Replaying the read itself to decide | No rows | Evaluating the relation touches rows the explanation must never carry. |
 
 Criteria: rows only through the caller's authority (P5); one record; a negative answer names what it covered.
-Consequences: role membership stays outside the store, so a decision names the roles the operator presents rather than resolving a principal's roles, and a visibility binding's watermark reads empty until a sweep records one.
+Consequences: role membership stays outside the store, so a decision names the roles the operator presents rather than resolving a principal's roles, the table's recorded readers stand in for a group's members (`disclosure.explain.groups-not-members`), and a visibility binding's watermark reads empty until a sweep records one.
 
 ## Erasure is a forced rewrite, a bounded cascade and a measured receipt
 

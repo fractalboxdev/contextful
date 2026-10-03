@@ -271,12 +271,15 @@ fn covering<'g>(grants: impl IntoIterator<Item = &'g Grant>, table: &str) -> Opt
 }
 
 /// Decide whether the grants `policy` issues for `roles` read `table`: the matching roles'
-/// grants, or the default set where no role matches, as the exchange mints them. An
+/// grants, or the default set where no role earns a grant, as the exchange mints them. An
 /// admitting path continues through `steps`; a denial ends at the default deny.
 pub fn decide(policy: Option<&ExchangePolicy>, roles: &[String], table: &str, steps: Vec<Step>) -> Decision {
     let mut path = Vec::new();
-    let matched: Vec<&String> =
-        policy.map(|p| roles.iter().filter(|r| p.role_grants.contains_key(*r)).collect()).unwrap_or_default();
+    // A role declared with no grant earns nothing, so it matches nothing, as in
+    // `ExchangePolicy::mint_request`.
+    let matched: Vec<&String> = policy
+        .map(|p| roles.iter().filter(|r| p.role_grants.get(*r).is_some_and(|g| !g.is_empty())).collect())
+        .unwrap_or_default();
     let mut found = None;
     if let Some(p) = policy {
         if matched.is_empty() {
@@ -315,6 +318,19 @@ fn text<'e>(e: &'e AuditEntry, key: &str) -> Option<&'e str> {
 
 fn names_table(e: &AuditEntry, table: &str) -> bool {
     e.attributes.get(attr::TABLES).and_then(Value::as_array).is_some_and(|t| t.iter().any(|v| v.as_str() == Some(table)))
+}
+
+/// The members [`Explanation::seal`] holds a group on the path to: every principal the
+/// chain records reading `table`, under any outcome. Role membership stays outside the
+/// store, so the table's recorded readers stand in for each group's members.
+pub fn readers(entries: &[AuditEntry], table: &str) -> Vec<String> {
+    let who: BTreeSet<&str> = entries
+        .iter()
+        .filter(|e| names_table(e, table))
+        .filter_map(|e| text(e, attr::ON_BEHALF_OF))
+        .filter(|p| !p.is_empty())
+        .collect();
+    who.into_iter().map(str::to_string).collect()
 }
 
 /// Refuse a window no chain entry falls in.
