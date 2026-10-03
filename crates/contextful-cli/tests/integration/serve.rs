@@ -102,6 +102,7 @@ fn query() -> Value {
 }
 
 /// The network transport refuses to start without its audience, its ceiling, or an issuer key that resolves and parses.
+// spec: topology.publish-hostname.issuer-key@a7736a7f
 #[test]
 fn serve_refuses_to_start_without_its_declarations_or_an_issuer_key() {
     let (dir, public) = project();
@@ -121,7 +122,7 @@ fn serve_refuses_to_start_without_its_declarations_or_an_issuer_key() {
         let out = run(p, &args);
         assert!(!out.status.success());
         let err = String::from_utf8_lossy(&out.stderr);
-        assert!(err.starts_with("IssuerKeyUnusable") && err.contains("--public-key"), "{err}");
+        assert!(err.starts_with("IssuerKeyUnusable") && err.contains("--public-key") && !err.contains("listening"), "{err}");
     }
 }
 

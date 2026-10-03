@@ -1381,7 +1381,7 @@
       "operation": "publish-hostname",
       "subject": "posture-mismatch",
       "kind": "refusal",
-      "statement": "A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and fails the deploy.",
+      "statement": "A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and `contextful-ci deploy probe` exits nonzero.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
       "line": 218
@@ -1392,10 +1392,21 @@
       "operation": "publish-hostname",
       "subject": "probe-table",
       "kind": "refusal",
-      "statement": "A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before the deploy runs, naming the hostname and the side missing it.",
+      "statement": "A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before any hostname is probed, naming the hostname and the side missing it.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
       "line": 220
+    },
+    {
+      "id": "topology.publish-hostname.empty-probe",
+      "contract": "topology",
+      "operation": "publish-hostname",
+      "subject": "empty-probe",
+      "kind": "refusal",
+      "statement": "An absent descriptor directory, an absent probe table, or a descriptor set naming no hostname raises `ProbeSetEmpty`, naming the path; a passing probe has checked at least one hostname.",
+      "why": "because a probe that checks nothing and exits zero reads as a proven posture to the pipeline that invoked it.",
+      "file": "spec/01-topology.md",
+      "line": 222
     },
     {
       "id": "topology.publish-hostname.unknown-field",
@@ -1406,7 +1417,7 @@
       "statement": "A descriptor decodes with excess properties refused; an unmodelled key raises `DescriptorUnknownField`, naming the key and the contract version.",
       "why": "P1",
       "file": "spec/01-topology.md",
-      "line": 222
+      "line": 224
     },
     {
       "id": "topology.publish-hostname.unconfigured-gateway",
@@ -1417,7 +1428,7 @@
       "statement": "A routing hop with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.",
       "why": "P3",
       "file": "spec/01-topology.md",
-      "line": 224
+      "line": 226
     },
     {
       "id": "topology.publish-hostname.issuer-key",
@@ -1428,7 +1439,7 @@
       "statement": "The engine's HTTP face refuses to start without a verification key that resolves and parses, raising `IssuerKeyUnusable` and naming the input; no generated key substitutes.",
       "why": "P3",
       "file": "spec/01-topology.md",
-      "line": 226
+      "line": 228
     },
     {
       "id": "topology.publish-hostname.container-readiness",
@@ -1439,7 +1450,7 @@
       "statement": "A retrieval container reaches readiness within 8 s of a cold start, before its snapshot-set hydration completes.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 228
+      "line": 230
     },
     {
       "id": "topology.coordinate.primitive",
@@ -27154,6 +27165,10 @@
           "ParityDivergence": {
             "clause": "topology.deploy.parity-divergence",
             "gloss": "A target's table parts differ byte-wise from the reference target's."
+          },
+          "ProbeSetEmpty": {
+            "clause": "topology.publish-hostname.empty-probe",
+            "gloss": "A probe with no descriptor directory, no probe table or no declared hostname."
           },
           "ProbeTableDrift": {
             "clause": "topology.publish-hostname.probe-table",

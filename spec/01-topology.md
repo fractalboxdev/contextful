@@ -215,10 +215,12 @@ unsettled: Which role hosts heavy compute on a provider exposing neither a conta
 
 A published hostname's descriptor, gate and posture probe, and the two hops a published store answers through.
 
-- `posture-mismatch` — A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and fails the deploy.
+- `posture-mismatch` — A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and `contextful-ci deploy probe` exits nonzero.
   *A-topology*
-- `probe-table` — A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before the deploy runs, naming the hostname and the side missing it.
+- `probe-table` — A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before any hostname is probed, naming the hostname and the side missing it.
   *A-topology*
+- `empty-probe` — An absent descriptor directory, an absent probe table, or a descriptor set naming no hostname raises `ProbeSetEmpty`, naming the path; a passing probe has checked at least one hostname.
+  *because a probe that checks nothing and exits zero reads as a proven posture to the pipeline that invoked it.*
 - `unknown-field` — A descriptor decodes with excess properties refused; an unmodelled key raises `DescriptorUnknownField`, naming the key and the contract version.
   *P1*
 - `unconfigured-gateway` — A routing hop with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.
@@ -243,14 +245,14 @@ sequenceDiagram
   alt answer matches the descriptor gate
     H-->>D: access 302 · adminToken non-5xx · public 200
   else outside the gate or unreachable
-    H-->>D: HostnamePostureMismatch, deploy fails
+    H-->>D: HostnamePostureMismatch, probe exits nonzero
   end
 
   C->>H: request + credential
   alt no store configuration
     H-->>C: 503 GatewayUnconfigured
   else configured
-    H->>H: verify credential, route, cache
+    H->>H: verify credential, route
     H->>R: same credential bytes, unchanged
     R->>R: re-verify, enforce grants, run query
     alt warming
@@ -262,8 +264,6 @@ sequenceDiagram
   Note over R: ready within 8 s of a cold start
   O-->>R: snapshot-set hydration completes after readiness
 ```
-
-unsettled: Does the routing hop hold a short result cache of its own, keyed on the whole enforcement subject? owner: topology affects: topology.publish-hostname
 
 ## coordinate
 
