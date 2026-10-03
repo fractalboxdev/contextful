@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
-| `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
+| `disclosure` | 3 | 16 | 131 | 66 | 13 | 3 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
 | `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1965 | 571 | 188 | 129 | 1335 | 0 | |
 
 Decision records: 18.
 
@@ -38,7 +38,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
-| 13 — Disclosure | 5 | 21 | 4 | open | open |
+| 13 — Disclosure | 5 | 30 | 4 | open | open |
 | 14 — Assurance | 7 | 130 | 83 | passing | closed |
 
 Unscheduled operations: 10.

@@ -15,7 +15,9 @@ contributor_key       = \"tenant_id\"\n\
 min_group_size        = 3\n\
 max_contributor_share = 0.4\n\
 emit_sentinel         = true\n\
-forbidden_columns     = [\"tenant_id\"]\n";
+forbidden_columns     = [\"tenant_id\"]\n\
+[pipeline.models.revenue_by_industry.disclosure.metric_bounds]\n\
+revenue = { lower = 0, upper = 10000, quantum = 1 }\n";
 
 fn ok(out: &Output) -> String {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));

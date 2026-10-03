@@ -36,6 +36,8 @@ flowchart LR
 
 The two deployment settings a derived result is computed in, the offline diagnostic, and the cross-owner hashed join.
 
+- `check-verb` — `contextful disclosure check --config <path>` diagnoses each published model's disclosure policy and statement from local files and reports every refusal by model name.
+  *A-disclosure*
 - `offline-diagnostic` — The single-operator diagnostic reads the manifest and each published model's statement text from local disk and issues 0 requests to the object store.
 - `policy-absent` — A published aggregate-shaped model carrying neither a disclosure policy nor a recorded opt-out fails the diagnostic with `DisclosurePolicyAbsent`.
   *A-disclosure*
@@ -45,14 +47,24 @@ The two deployment settings a derived result is computed in, the offline diagnos
   *A-disclosure*
 - `hashed-join` — Two owners match on a key each hashes at write time under a per-pair pepper re-randomized per join; matched rows leave as an aggregate under a group-size floor. A static pepper raises `DisclosureStaticPepper`.
   *A-disclosure*
-
-unsettled: How does a pepper rotate when rows already written keep the prior pepper, and at what risk does private set intersection replace the per-pair pepper? owner: disclosure affects: disclosure.set-mode
+- `pepper-version` — A cross-owner join accepts only rows carrying its pair's current pepper version; rotation re-lands both owners' join keys before the next release.
+  *A-disclosure*
 
 ## release
 
 The ordered statistics release, the write-time disclosure policy, and the per-unit budget reservation.
 
+- `release-verb` — `contextful disclosure release <model> --project <project>` builds the named model from its declared statement, applies its disclosure policy, and publishes one derived table.
+  *A-disclosure*
 - `budget-reservation` — Before computing, a release reserves each contributing unit's declared per-run spend against its lifetime cap in one catalog transaction. A failed reservation raises `DisclosureUnitBudgetExhausted`, and the release publishes nothing.
+  *A-disclosure*
+- `noise-mechanism` — A noised release draws exact two-sided geometric noise scaled to each statistic's sensitivity for distinct-contributor counts and fixed-point sums; the per-run epsilon is divided among released statistics.
+  *A-disclosure*
+- `metric-bounds` — A noised sum folds each contributor to one value, clips that total to declared finite bounds and rounds it to a positive quantum; absent bounds or quantum raise `DisclosureMetricBoundsAbsent`.
+  *A-disclosure*
+- `release-envelope` — A release reports its published table, policy hash, reserved per-run spend, suppressed-group presence and row count without carrying a contributor key.
+  *A-disclosure*
+- `lookalike-refusal` — A release requesting an activation handle or lookalike segment raises `DisclosureLookalikeUnsupported` and publishes nothing.
   *A-disclosure*
 - `duplicate-grain` — A non-numeric, non-grain column rides the grouping, and one not constant within its group raises `DisclosureDuplicateGrain`.
   *A-disclosure*
@@ -62,12 +74,6 @@ The ordered statistics release, the write-time disclosure policy, and the per-un
   *A-disclosure*
 - `forbidden-column` — A contract declaring a forbidden column, or a materialization producing one, raises `DisclosureForbiddenColumnPublished`. The check runs after the contributor key leaves the published columns.
   *A-disclosure*
-
-unsettled: Which noise mechanism turns a unit's reserved per-run spend into the noise on a noised count and a published metric? owner: disclosure affects: disclosure.release
-
-unsettled: Does the engine release lookalike segments — identifier, size, coarse composition and an activation handle, never members — and under which audience floor, readback rule and cross-party consent contract? owner: disclosure affects: disclosure.release
-
-unsettled: Does a policy hash sort a grouping allowlist nested inside a sub-table, or only top-level sets? owner: disclosure affects: disclosure.release
 
 ## suppress
 
@@ -82,6 +88,8 @@ The group-size floor, the contributor-share ceiling, and the single signal a wit
 - `empty-policy` — A policy setting neither threshold, or only a share ceiling at a whole group's mass, raises `DisclosurePolicySuppressesNothing`.
   *A-disclosure*
 - `grouping-allowlist` — An empty permitted-grouping list, or a permitted name that is not column-shaped, raises `DisclosureGroupingAllowlistEmpty`.
+  *A-disclosure*
+- `sentinel-row` — A release with `emit_sentinel = true` represents every suppressed group together as one `__suppressed__` row carrying no group key or exact figure.
   *A-disclosure*
 
 The decision over one group:
@@ -106,6 +114,8 @@ Query templates a releasing principal calls by name: the single-statement rule, 
 - `single-statement` — A declaration holding more than one statement raises `DisclosureTemplateMultiStatement`.
   *A-authority*
 - `overfetch` — A capped result sets the envelope's truncation flag by reading exactly 1 rows past the effective ceiling.
+- `read-envelope` — A template read returns rows, truncation, row ceiling, suppression presence and the disclosure policy hash; set-valued policy fields follow {{run.publish.disclosure-digest}} at every nesting depth.
+  *A-disclosure*
 
 ## bound-cohort
 
@@ -133,6 +143,9 @@ max_contributor_share = 0.4
 emit_sentinel         = true
 figures               = "noised"   # the default; "exact" only on a cohort table
 forbidden_columns     = ["tenant_id", "subject_id", "account_email"]
+
+[pipeline.models.revenue_by_industry.disclosure.metric_bounds]
+revenue = { lower = 0, upper = 1000000, quantum = 1 }
 ```
 
 The breakdown a governed statement emits, and the rows published from it:

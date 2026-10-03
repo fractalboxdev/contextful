@@ -17250,6 +17250,17 @@
       "line": 164
     },
     {
+      "id": "disclosure.set-mode.check-verb",
+      "contract": "disclosure",
+      "operation": "set-mode",
+      "subject": "check-verb",
+      "kind": "behavior",
+      "statement": "`contextful disclosure check --config <path>` diagnoses each published model's disclosure policy and statement from local files and reports every refusal by model name.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 39
+    },
+    {
       "id": "disclosure.set-mode.offline-diagnostic",
       "contract": "disclosure",
       "operation": "set-mode",
@@ -17258,7 +17269,7 @@
       "statement": "The single-operator diagnostic reads the manifest and each published model's statement text from local disk and issues 0 requests to the object store.",
       "why": "",
       "file": "spec/61-disclosure.md",
-      "line": 39
+      "line": 41
     },
     {
       "id": "disclosure.set-mode.policy-absent",
@@ -17269,7 +17280,7 @@
       "statement": "A published aggregate-shaped model carrying neither a disclosure policy nor a recorded opt-out fails the diagnostic with `DisclosurePolicyAbsent`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 40
+      "line": 42
     },
     {
       "id": "disclosure.set-mode.model-unreadable",
@@ -17280,7 +17291,7 @@
       "statement": "A published model whose referenced statement text does not read raises `DisclosureModelUnreadable`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 42
+      "line": 44
     },
     {
       "id": "disclosure.set-mode.clean-room-preconditions",
@@ -17291,7 +17302,7 @@
       "statement": "A cross-owner store carries per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys; one missing, checked before any cross-prefix write, raises `DisclosureCleanRoomPreconditionUnmet`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 44
+      "line": 46
     },
     {
       "id": "disclosure.set-mode.hashed-join",
@@ -17302,7 +17313,29 @@
       "statement": "Two owners match on a key each hashes at write time under a per-pair pepper re-randomized per join; matched rows leave as an aggregate under a group-size floor. A static pepper raises `DisclosureStaticPepper`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 46
+      "line": 48
+    },
+    {
+      "id": "disclosure.set-mode.pepper-version",
+      "contract": "disclosure",
+      "operation": "set-mode",
+      "subject": "pepper-version",
+      "kind": "behavior",
+      "statement": "A cross-owner join accepts only rows carrying its pair's current pepper version; rotation re-lands both owners' join keys before the next release.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 50
+    },
+    {
+      "id": "disclosure.release.release-verb",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "release-verb",
+      "kind": "behavior",
+      "statement": "`contextful disclosure release <model> --project <project>` builds the named model from its declared statement, applies its disclosure policy, and publishes one derived table.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 57
     },
     {
       "id": "disclosure.release.budget-reservation",
@@ -17313,7 +17346,51 @@
       "statement": "Before computing, a release reserves each contributing unit's declared per-run spend against its lifetime cap in one catalog transaction. A failed reservation raises `DisclosureUnitBudgetExhausted`, and the release publishes nothing.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 55
+      "line": 59
+    },
+    {
+      "id": "disclosure.release.noise-mechanism",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "noise-mechanism",
+      "kind": "behavior",
+      "statement": "A noised release draws exact two-sided geometric noise scaled to each statistic's sensitivity for distinct-contributor counts and fixed-point sums; the per-run epsilon is divided among released statistics.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 61
+    },
+    {
+      "id": "disclosure.release.metric-bounds",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "metric-bounds",
+      "kind": "refusal",
+      "statement": "A noised sum folds each contributor to one value, clips that total to declared finite bounds and rounds it to a positive quantum; absent bounds or quantum raise `DisclosureMetricBoundsAbsent`.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 63
+    },
+    {
+      "id": "disclosure.release.release-envelope",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "release-envelope",
+      "kind": "behavior",
+      "statement": "A release reports its published table, policy hash, reserved per-run spend, suppressed-group presence and row count without carrying a contributor key.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 65
+    },
+    {
+      "id": "disclosure.release.lookalike-refusal",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "lookalike-refusal",
+      "kind": "refusal",
+      "statement": "A release requesting an activation handle or lookalike segment raises `DisclosureLookalikeUnsupported` and publishes nothing.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 67
     },
     {
       "id": "disclosure.release.duplicate-grain",
@@ -17324,7 +17401,7 @@
       "statement": "A non-numeric, non-grain column rides the grouping, and one not constant within its group raises `DisclosureDuplicateGrain`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 57
+      "line": 69
     },
     {
       "id": "disclosure.release.group-key",
@@ -17335,7 +17412,7 @@
       "statement": "A group key not a subset of the permitted grouping columns raises `DisclosureGroupKeyNotPermitted`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 59
+      "line": 71
     },
     {
       "id": "disclosure.release.contributor-key",
@@ -17346,7 +17423,7 @@
       "statement": "A governed statement omitting the contributor key raises `DisclosureContributorKeyAbsent`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 61
+      "line": 73
     },
     {
       "id": "disclosure.release.forbidden-column",
@@ -17357,7 +17434,7 @@
       "statement": "A contract declaring a forbidden column, or a materialization producing one, raises `DisclosureForbiddenColumnPublished`. The check runs after the contributor key leaves the published columns.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 63
+      "line": 75
     },
     {
       "id": "disclosure.suppress.min-group-size",
@@ -17368,7 +17445,7 @@
       "statement": "`min_group_size` counts distinct contributors and is at least 2 subjects. A group whose noised distinct-contributor count falls under it is suppressed, and a smaller declared value raises `DisclosureMinGroupSizeBelowFloor`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 76
+      "line": 82
     },
     {
       "id": "disclosure.suppress.contributor-share",
@@ -17379,7 +17456,7 @@
       "statement": "`max_contributor_share` lies above 0 percent and at most 100 percent of a group's sign-insensitive metric mass; a value outside raises `DisclosureShareOutOfRange`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 78
+      "line": 84
     },
     {
       "id": "disclosure.suppress.dominance-unverifiable",
@@ -17390,7 +17467,7 @@
       "statement": "A group under a share constraint whose per-contributor masses are unavailable raises `DisclosureDominanceUnverifiable` and is suppressed.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 80
+      "line": 86
     },
     {
       "id": "disclosure.suppress.empty-policy",
@@ -17401,7 +17478,7 @@
       "statement": "A policy setting neither threshold, or only a share ceiling at a whole group's mass, raises `DisclosurePolicySuppressesNothing`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 82
+      "line": 88
     },
     {
       "id": "disclosure.suppress.grouping-allowlist",
@@ -17412,7 +17489,18 @@
       "statement": "An empty permitted-grouping list, or a permitted name that is not column-shaped, raises `DisclosureGroupingAllowlistEmpty`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 84
+      "line": 90
+    },
+    {
+      "id": "disclosure.suppress.sentinel-row",
+      "contract": "disclosure",
+      "operation": "suppress",
+      "subject": "sentinel-row",
+      "kind": "behavior",
+      "statement": "A release with `emit_sentinel = true` represents every suppressed group together as one `__suppressed__` row carrying no group key or exact figure.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 92
     },
     {
       "id": "disclosure.template.single-statement",
@@ -17423,7 +17511,7 @@
       "statement": "A declaration holding more than one statement raises `DisclosureTemplateMultiStatement`.",
       "why": "A-authority",
       "file": "spec/61-disclosure.md",
-      "line": 106
+      "line": 114
     },
     {
       "id": "disclosure.template.overfetch",
@@ -17434,7 +17522,18 @@
       "statement": "A capped result sets the envelope's truncation flag by reading exactly 1 rows past the effective ceiling.",
       "why": "",
       "file": "spec/61-disclosure.md",
-      "line": 108
+      "line": 116
+    },
+    {
+      "id": "disclosure.template.read-envelope",
+      "contract": "disclosure",
+      "operation": "template",
+      "subject": "read-envelope",
+      "kind": "behavior",
+      "statement": "A template read returns rows, truncation, row ceiling, suppression presence and the disclosure policy hash; set-valued policy fields follow {{run.publish.disclosure-digest}} at every nesting depth.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 117
     },
     {
       "id": "disclosure.bound-cohort.cohort-widening",
@@ -17445,7 +17544,7 @@
       "statement": "A read recovering an under-floor group by merging it into a coarser key raises `DisclosureCohortWidening`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 114
+      "line": 124
     },
     {
       "id": "disclosure.bound-cohort.per-individual-row",
@@ -17456,7 +17555,7 @@
       "statement": "Reading a per-individual row from a cohort table without an explicit grant on the reader's token raises `DisclosurePerIndividualUngranted`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 116
+      "line": 126
     },
     {
       "id": "disclosure.bound-cohort.singleton-cohort",
@@ -17467,7 +17566,7 @@
       "statement": "A cohort key whose grain resolves to one person raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 118
+      "line": 128
     },
     {
       "id": "disclosure.bound-cohort.exact-figures",
@@ -17478,7 +17577,7 @@
       "statement": "A policy declaring `figures = \"exact\"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `\"noised\"`, and exact figures publish only from a `cohort` table.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 120
+      "line": 130
     },
     {
       "id": "disclosure.record.segment",
@@ -22849,6 +22948,10 @@
       "authority.compose.relation-order"
     ],
     [
+      "disclosure.template.read-envelope",
+      "run.publish.disclosure-digest"
+    ],
+    [
       "disclosure.record.header-unsupported",
       "disclosure.record.chain-header"
     ],
@@ -25538,6 +25641,14 @@
           "DisclosureGroupingAllowlistEmpty": {
             "clause": "disclosure.suppress.grouping-allowlist",
             "gloss": "A grouping allowlist is empty or names a non-column."
+          },
+          "DisclosureLookalikeUnsupported": {
+            "clause": "disclosure.release.lookalike-refusal",
+            "gloss": "A release requests an activation handle or lookalike segment."
+          },
+          "DisclosureMetricBoundsAbsent": {
+            "clause": "disclosure.release.metric-bounds",
+            "gloss": "A noised sum has no finite contributor bounds or positive quantum."
           },
           "DisclosureMinGroupSizeBelowFloor": {
             "clause": "disclosure.suppress.min-group-size",
