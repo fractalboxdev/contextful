@@ -68,8 +68,9 @@ struct Cli {
 enum Cmd {
     /// Run every stage in order, or the named stages.
     Gate {
-        /// A stage to run; repeatable. Defaults to every stage. A subset runs in run order.
-        #[arg(long = "stage", value_parser = clap::builder::PossibleValuesParser::new(STAGES))]
+        /// A stage, or a part `<stage>.<part>` of a split stage, as `contextful-ci stages
+        /// --parts` prints it; repeatable. Defaults to every stage. A subset runs in run order.
+        #[arg(long = "stage")]
         stages: Vec<String>,
         /// Also run every stage whose output a selected stage reads.
         #[arg(long)]
@@ -82,7 +83,12 @@ enum Cmd {
         base_bound_secs: u64,
     },
     /// Print the stage names, one per line, in run order.
-    Stages,
+    Stages {
+        /// Print what the pull-request workflow dispatches instead: each stage, a split stage
+        /// as its parts.
+        #[arg(long)]
+        parts: bool,
+    },
     /// Hold every key in a git-tracked `.env*` file to ciphertext under a scope comment.
     Secrets,
     /// Resolve every `mirrors:` comment under crates/, tools/ and apps/ to a clause id.
@@ -214,10 +220,11 @@ fn refuse(code: &'static str, message: String) -> anyhow::Error {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.cmd {
-        Cmd::Stages => {
+        Cmd::Stages { parts: false } => {
             STAGES.iter().for_each(|s| println!("{s}"));
             Ok(())
         }
+        Cmd::Stages { parts: true } => repo_root().and_then(|root| dispatched(&root)).map(|all| all.iter().for_each(|s| println!("{s}"))),
         Cmd::Gate { stages, predecessors, base, base_bound_secs } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs)),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
@@ -323,13 +330,68 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(git(&["rev-parse", "--show-toplevel"])?))
 }
 
+/// The stages whose work splits into parts the pull-request workflow dispatches one check
+/// each, so each part fits one stage's wall clock (`assurance.build.profile-build`,
+/// `assurance.gate.budget-stage`).
+const SPLIT: [&str; 3] = ["workspace", "features", "budget"];
+
+/// The parts of a split `stage`: the features stage's `packages`, every featured package but
+/// the binary, then `binary-<run>` per run of the binary package; the budget stage's
+/// `<profile>` per profile the binary declares, its name after `contextful-`.
+fn parts(root: &Path, stage: &str) -> Result<Vec<String>> {
+    Ok(match stage {
+        "workspace" => ["compile", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
+        "features" => {
+            let featured = featured_packages(root)?;
+            let binary = featured.iter().filter(|p| p.name == topology::BINARY).flat_map(Featured::runs);
+            std::iter::once("packages".to_string()).chain(binary.map(|(label, _)| format!("binary-{label}"))).collect()
+        }
+        "budget" => topology::declared_profiles(root)?.iter().map(|p| p.strip_prefix("contextful-").unwrap_or(p).to_string()).collect(),
+        _ => Vec::new(),
+    })
+}
+
+/// What the pull-request workflow dispatches, in run order: each stage, a split stage as
+/// `<stage>.<part>` per part.
+fn dispatched(root: &Path) -> Result<Vec<String>> {
+    let mut out = Vec::new();
+    for stage in STAGES {
+        if SPLIT.contains(&stage) {
+            out.extend(parts(root, stage)?.into_iter().map(|p| format!("{stage}.{p}")));
+        } else {
+            out.push(stage.to_string());
+        }
+    }
+    Ok(out)
+}
+
 fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Result<()> {
     let root = repo_root()?;
-    for stage in stage::select(&root, named, predecessors)? {
+    // A named part selects its stage and narrows it to the named parts; a stage named whole
+    // runs whole.
+    let mut stages: Vec<String> = Vec::new();
+    let mut whole: Vec<&str> = Vec::new();
+    let mut narrowed: std::collections::BTreeMap<&str, Vec<String>> = Default::default();
+    for name in named {
+        let (stage, part) = name.split_once('.').map_or((name.as_str(), None), |(s, p)| (s, Some(p)));
+        let Some(stage) = STAGES.iter().copied().find(|s| *s == stage) else {
+            bail!("no stage `{stage}`; the stages are {}", STAGES.join(", "));
+        };
+        stages.push(stage.to_string());
+        match part {
+            None => whole.push(stage),
+            Some(part) if SPLIT.contains(&stage) && parts(&root, stage)?.iter().any(|p| p == part) => {
+                narrowed.entry(stage).or_default().push(part.to_string())
+            }
+            Some(_) => bail!("no part `{name}`; the parts are {}", dispatched(&root)?.join(", ")),
+        }
+    }
+    narrowed.retain(|stage, _| !whole.contains(stage));
+    for stage in stage::select(&root, &stages, predecessors)? {
         eprintln!("--- stage {stage}");
         free_disk(&root, stage)?;
         let mut mark = stage::mark();
-        let outcome = run_stage(&root, stage, base, bound);
+        let outcome = run_stage(&root, stage, narrowed.get(stage).map(Vec::as_slice), base, bound);
         stage::report(stage, &mut mark, &outcome);
         outcome?;
         // A passing stage leaves no build behind (`assurance.build.target-dir-per-stage`); a
@@ -339,8 +401,9 @@ fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Re
     Ok(())
 }
 
-/// One stage's work, apart from the disk precondition and its report.
-fn run_stage(root: &Path, stage: &str, base: &str, bound: Duration) -> Result<()> {
+/// One stage's work, apart from the disk precondition and its report; `only` the named parts
+/// of a split stage.
+fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, bound: Duration) -> Result<()> {
     match stage {
         "pins" => stage::pins(root)?,
         "toolchain" => stage::toolchain(root)?,
@@ -358,11 +421,11 @@ fn run_stage(root: &Path, stage: &str, base: &str, bound: Duration) -> Result<()
         "workspace" => {
             provision_lean(root)?;
             provision_wasm(root)?;
-            workspace(root)?
+            workspace(root, only)?
         }
         "acceptance" => acceptance(root)?,
         "evaluate" => measure::evaluate(root)?,
-        "features" => features(root)?,
+        "features" => features(root, only)?,
         "crate-graph" => {
             committed_lock(root)?;
             topology::check(root)?;
@@ -372,7 +435,9 @@ fn run_stage(root: &Path, stage: &str, base: &str, bound: Duration) -> Result<()
         "budget" => {
             // The footprint builds run here, apart from the evaluate stage
             // (`assurance.gate.budget-stage`).
-            let profiles: Vec<String> = topology::declared_profiles(root)?.into_iter().map(str::to_string).collect();
+            let declared = topology::declared_profiles(root)?.into_iter();
+            let short = |p: &str| p.strip_prefix("contextful-").unwrap_or(p).to_string();
+            let profiles: Vec<String> = declared.filter(|p| only.is_none_or(|o| o.contains(&short(p)))).map(str::to_string).collect();
             if profiles.is_empty() {
                 println!("budget: no package declares a profile");
             } else {
@@ -453,7 +518,39 @@ fn free_disk(root: &Path, stage: &str) -> Result<()> {
 /// Every workspace package's suite in one cargo invocation over the union of their
 /// features, so the bundled SQL engine compiles once in the stage
 /// (`assurance.build.one-engine-build`).
-fn workspace(root: &Path) -> Result<()> {
+fn workspace_part(package: &str) -> &'static str {
+    match package {
+        "contextful-engine" | "contextful-connectors" | "contextful-memory" | "contextful-sync" | "contextful-wasm" => "runtime",
+        "contextful-context" | "contextful-agent" => "read",
+        "contextful-cli" => "compile",
+        "contextful-ci" => "ci",
+        _ => "foundation",
+    }
+}
+
+fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
+    if let Some(only) = only {
+        if only.iter().any(|part| part == "compile") {
+            let mut args = vec!["test", "--workspace"];
+            if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
+                args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
+            }
+            args.push("--no-run");
+            run_staged(root, "workspace", &args)?;
+        }
+        let packages: Vec<String> = workspace_packages(root)?
+            .into_iter()
+            .filter(|package| only.iter().any(|part| part == workspace_part(package)))
+            .collect();
+        if !packages.is_empty() {
+            let mut args = vec!["test"];
+            for package in &packages {
+                args.extend(["--package", package.as_str()]);
+            }
+            run_staged(root, "workspace", &args)?;
+        }
+        return Ok(());
+    }
     let mut args = vec!["test", "--workspace"];
     if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
         args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
@@ -465,15 +562,15 @@ fn workspace(root: &Path) -> Result<()> {
 /// (`assurance.build.staged-feature-runs`): each workspace package declaring a feature other
 /// than `default` runs its suite alone, once with no features, once with every feature, and
 /// once per feature set its manifest lists under `[package.metadata.contextful]
-/// feature-runs`; then each profile bundle it declares builds alone
-/// (`assurance.build.profile-build`).
+/// feature-runs` (`assurance.build.profile-build`). `only` narrows the stage to its named
+/// parts: `packages`, every package but the binary, and `binary-<run>`, one run of the binary.
 /// `cargo test -p` resolves the selected package's features without its dependents', so the
 /// store adapter's write suites run with the read face off
 /// (`topology.package.store-write-engine-free`) and the policy package's without `exchange`.
 /// The stage builds into `target/features`, reclaimed once it passes, because a
 /// different feature unification shares no artifacts with the workspace build
 /// (`assurance.build.target-dir-per-stage`).
-fn features(root: &Path) -> Result<()> {
+fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
     let featured = featured_packages(root)?;
     if featured.is_empty() {
         eprintln!("features: no workspace package declares a feature");
@@ -481,24 +578,21 @@ fn features(root: &Path) -> Result<()> {
     let target = root.join(FEATURES_TARGET);
     for package in &featured {
         let name = &package.name;
-        let mut runs: Vec<Vec<String>> = vec![vec!["--no-default-features".into()], vec!["--all-features".into()]];
-        runs.extend(package.runs.iter().map(|f| vec!["--no-default-features".into(), "--features".into(), f.clone()]));
-        let builds = package.profiles.iter().map(|p| vec!["--no-default-features".to_string(), "--features".into(), p.to_string()]);
-        let steps = runs.into_iter().map(|r| ("test", r)).chain(builds.map(|b| ("build", b)));
-        for (verb, combination) in steps {
+        let binary = name == topology::BINARY;
+        let selected = |label: &str| {
+            only.is_none_or(|o| o.iter().any(|p| if binary { p.strip_prefix("binary-") == Some(label) } else { p == "packages" }))
+        };
+        for (_, combination) in package.runs().into_iter().filter(|(label, _)| selected(label)) {
             let shown = combination.join(" ");
-            match verb {
-                "test" => eprintln!("features: {name} {shown}"),
-                _ => eprintln!("features: {name} {verb} {shown}"),
-            }
+            eprintln!("features: {name} {shown}");
             let status = Command::new("cargo")
-                .args([verb, "-p", name])
+                .args(["test", "-p", name])
                 .args(&combination)
                 .env("CARGO_TARGET_DIR", &target)
                 .current_dir(root)
                 .status()?;
             if !status.success() {
-                return Err(exited(format!("cargo {verb} -p {name} {shown}"), status));
+                return Err(exited(format!("cargo test -p {name} {shown}"), status));
             }
         }
     }
@@ -732,9 +826,20 @@ fn acceptance(root: &Path) -> Result<()> {
 struct Featured {
     name: String,
     /// Feature sets its manifest lists under `[package.metadata.contextful] feature-runs`.
-    runs: Vec<String>,
-    /// The profile bundles it declares.
-    profiles: Vec<&'static str>,
+    listed: Vec<String>,
+}
+
+impl Featured {
+    /// Each feature combination the package's suite runs under, labelled `none`, `all` or
+    /// the listed set with every character outside `[a-z0-9-]` written `-`.
+    fn runs(&self) -> Vec<(String, Vec<String>)> {
+        let mut out = vec![("none".to_string(), vec!["--no-default-features".to_string()]), ("all".to_string(), vec!["--all-features".to_string()])];
+        for set in &self.listed {
+            let label = set.chars().map(|c| if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' { c } else { '-' }).collect();
+            out.push((label, vec!["--no-default-features".into(), "--features".into(), set.clone()]));
+        }
+        out
+    }
 }
 
 /// Workspace members declaring a feature other than `default`, sorted by name.
@@ -747,15 +852,14 @@ fn featured_packages(root: &Path) -> Result<Vec<Featured>> {
         .filter(|p| p["features"].as_object().is_some_and(|f| f.keys().any(|k| k != "default")))
         .filter_map(|p| {
             let name = p["name"].as_str().filter(|n| *n != ACCEPTANCE_PACKAGE)?.to_string();
-            let runs = p["metadata"]["contextful"]["feature-runs"]
+            let listed = p["metadata"]["contextful"]["feature-runs"]
                 .as_array()
                 .into_iter()
                 .flatten()
                 .filter_map(serde_json::Value::as_str)
                 .map(str::to_string)
                 .collect();
-            let profiles = topology::PROFILES.into_iter().filter(|f| p["features"].get(*f).is_some()).collect();
-            Some(Featured { name, runs, profiles })
+            Some(Featured { name, listed })
         })
         .collect();
     out.sort_unstable_by(|a, b| a.name.cmp(&b.name));

@@ -132,8 +132,8 @@ Target directories, the engine-linked invocation, linked query functions, build 
   *because every engine-linked test binary embeds the bundled engine, and full debug information multiplies each past a sandbox's disk*
 - `release-profile` — Release builds compile with thin link-time optimization, one codegen unit per crate and symbols stripped, and unwind on panic.
   *because the run keeper survives a panicking job only by unwinding to its guard*
-- `profile-build` — The features stage builds the binary under each profile bundle alone and tests each package under every feature set its manifest lists in `feature-runs`; a failing build or test reds the stage.
-  *because a bundle compiles a feature set no other stage resolves, so a defect it alone reaches ships unseen*
+- `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`, in parts dispatched as one check each: the other packages, and each binary run — none, all and each listed set.
+  *because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss*
 - `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
   *A-assurance*
@@ -153,7 +153,9 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
   *A-assurance*
-- `remote-check` — The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, each as one status check labelled with the stage's name.
+- `remote-check` — The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, a split stage one part at a time, each as one status check labelled with its name.
+  *A-assurance*
+- `workspace-parts` — Remote workspace checks compile the feature-unified workspace and run the CLI suite from that build, then run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each remote check runs its stage together with every predecessor whose output that stage reads, so no check reads another check's sandbox.
   *A-assurance*
@@ -197,8 +199,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `control-budget` — The control profile holds to 60 MiB compressed and 80 MiB idle resident set.
 - `footprint` — Per change and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
   *P7*
-- `budget-stage` — The budget stage runs {{assurance.gate.footprint}} over every profile, and the evaluate stage builds no profile.
-  *because three link-time-optimized release builds beside the gate-tier ledger outlast one stage's wall clock*
+- `budget-stage` — The budget stage runs {{assurance.gate.footprint}} over every profile, in one part per profile dispatched as its own check, and the evaluate stage builds no profile.
+  *because one link-time-optimized release build of the full profile fills most of one stage's wall clock*
 - `footprint-exceeded` — An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.
   *P7*
 - `typescript-surfaces` — The TypeScript surfaces run typecheck, unit tests and framework build in one stage, and a surface declaring no script for a check skips that check.

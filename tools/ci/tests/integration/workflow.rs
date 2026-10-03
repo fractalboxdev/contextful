@@ -3,14 +3,19 @@
 use crate::repo_root;
 use std::process::Command;
 
-/// The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, each as one status check labelled with the stage's name.
-// spec: assurance.gate.remote-check@feec2cdf
+/// The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, a split stage one part at a time, each as one status check labelled with its name.
+// spec: assurance.gate.remote-check@1a47dbaa
 #[test]
 fn the_workflow_dispatches_every_gate_stage() {
-    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts"]).current_dir(repo_root()).output().unwrap();
     assert!(out.status.success());
     let stages: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect();
     assert!(!stages.is_empty());
+    let whole = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
+    for stage in String::from_utf8_lossy(&whole.stdout).lines() {
+        let dispatched = stages.iter().any(|s| s == stage || s.strip_prefix(stage).is_some_and(|p| p.starts_with('.')));
+        assert!(dispatched, "stage `{stage}` is not dispatched: {stages:?}");
+    }
 
     let yml = std::fs::read_to_string(repo_root().join(".github/workflows/gate.yml")).unwrap();
     let matrix = yml

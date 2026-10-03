@@ -105,10 +105,13 @@ The gate measures commits, so commit before running it.
 reports as its own check-run on the pull request:
 `flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`, `test-first`,
 `workspace`, `acceptance`, `evaluate`, `features`, `crate-graph`, `connectors`,
-`surfaces`, `formal` and `budget`. A selected subset runs in that order and refuses a
+`surfaces`, `formal` and `budget`. The features and budget stages dispatch one check per
+part, `flare-dispatch/check:features.<part>` and `flare-dispatch/check:budget.<profile>`, so
+each fits the sandbox's wall clock; `contextful-ci stages --parts` prints the list, and
+`--stage <stage>.<part>` runs one part. A selected subset runs in that order and refuses a
 stage whose predecessor's output is absent; `--predecessors` runs those too. A local run and
 the remote check invoke the identical command; `contextful-ci`'s suite fails when the
-workflow's stage matrix and the subcommand's stage list differ.
+workflow's matrix and the subcommand's part list differ.
 
 The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
 under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays

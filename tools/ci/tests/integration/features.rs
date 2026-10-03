@@ -119,25 +119,69 @@ fn bundled(r: &Repo, lib_edge: &str, runs: &str) {
     r.write("crates/gated/tests/integration/main.rs", "#[test]\nfn builds() {}\n");
 }
 
-/// The features stage builds the binary under each profile bundle alone and tests each package under every feature set its manifest lists in `feature-runs`; a failing build or test reds the stage.
-// spec: assurance.build.profile-build@4e7803a1
+/// The features stage tests each package under every feature set its manifest lists in `feature-runs`, in parts dispatched as one check each: the other packages, and each binary run — none, all and each listed set.
+// spec: assurance.build.profile-build@5854cf3a
 #[test]
-fn the_features_stage_builds_each_profile_bundle_alone_and_tests_each_listed_run() {
+fn the_features_stage_tests_each_listed_run_in_parts_one_per_binary_run() {
     let r = Repo::init();
     bundled(&r, "pub fn edge() {}", "\"edge\"");
+    r.write(
+        "crates/contextful-cli/Cargo.toml",
+        &format!("{}\n[features]\nextra = []\n\n[package.metadata.contextful]\nfeature-runs = [\"extra\"]\n", manifest("contextful-cli", "")),
+    );
+    r.write("crates/contextful-cli/src/lib.rs", "");
+    r.write("crates/contextful-cli/tests/integration/main.rs", "#[test]\nfn builds() {}\n");
+    r.lock();
+    r.commit("a binary with a listed run");
+
+    let listed = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts"]).stdout).into_owned();
+    let parts: Vec<&str> = listed.lines().collect();
+    let at = |s: &str| parts.iter().position(|x| *x == s).unwrap_or_else(|| panic!("no `{s}` part: {listed}"));
+    assert!(at("evaluate") < at("features.packages") && at("features.packages") < at("features.binary-none"), "{listed}");
+    assert!(at("features.binary-none") < at("features.binary-all") && at("features.binary-all") < at("features.binary-extra"), "{listed}");
+    assert!(at("features.binary-extra") < at("crate-graph") && !parts.contains(&"features"), "{listed}");
+
+    // The whole stage runs every part.
     let o = features(&r);
     let err = stderr(&o);
     assert!(o.status.success(), "{err}");
-    assert!(err.contains("features: gated build --no-default-features --features contextful-edge"), "{err}");
     assert!(err.contains("features: gated --no-default-features --features edge"), "{err}");
-    assert!(!err.contains("--features contextful-full"), "a bundle the package does not declare is built: {err}");
+    assert!(err.contains("features: contextful-cli --no-default-features --features extra"), "{err}");
+    assert!(!err.contains(" build "), "the features stage builds a profile bundle, which the budget stage builds: {err}");
 
-    // A defect reached by the bundle alone reds the stage, though no and all features pass.
-    bundled(&r, "compile_error!(\"the edge bundle alone\");", "");
-    let o = features(&r);
+    let o = r.gate(&["--stage", "features.packages"]);
     let err = stderr(&o);
-    assert!(!o.status.success(), "{err}");
-    assert!(err.contains("`cargo build -p gated --no-default-features --features contextful-edge` exited"), "{err}");
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("features: gated --all-features") && !err.contains("features: contextful-cli"), "{err}");
+
+    let o = r.gate(&["--stage", "features.binary-extra"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("features: contextful-cli --no-default-features --features extra"), "{err}");
+    assert!(!err.contains("--all-features") && !err.contains("features: gated"), "the part ran beyond its one run: {err}");
+    assert!(!r.root.join("target/features").exists(), "the part left its target directory behind");
+
+    // A defect reached by the listed run alone reds that run's part and no other.
+    r.write("crates/contextful-cli/tests/integration/main.rs", "#[test]\nfn builds() {\n    assert!(!cfg!(feature = \"extra\"), \"extra alone\");\n}\n");
+    r.commit("a defect under extra");
+    let o = r.gate(&["--stage", "features.binary-extra"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("`cargo test -p contextful-cli --no-default-features --features extra` exited"), "{}", stderr(&o));
+    let o = r.gate(&["--stage", "features.binary-none"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+}
+
+#[test]
+fn an_unknown_stage_or_part_is_refused_by_name() {
+    let r = Repo::init();
+    r.lock();
+    r.commit("lock");
+    let o = r.gate(&["--stage", "nope"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("no stage `nope`"), "{}", stderr(&o));
+    let o = r.gate(&["--stage", "features.nope"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("no part `features.nope`"), "{}", stderr(&o));
 }
 
 #[test]

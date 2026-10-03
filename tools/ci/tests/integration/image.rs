@@ -218,24 +218,30 @@ fn this_repository_profiles_hold_to_their_footprint_budgets() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
-/// The budget stage runs the footprint step over every profile, and the evaluate stage builds no profile.
-// spec: assurance.gate.budget-stage@a70aacda
+/// The budget stage runs the footprint step over every profile, in one part per profile dispatched as its own check, and the evaluate stage builds no profile.
+// spec: assurance.gate.budget-stage@a77562d2
 #[test]
-fn the_budget_stage_builds_every_profile_and_the_evaluate_stage_none() {
+fn the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none() {
     let stages = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
-    let listed = String::from_utf8_lossy(&stages.stdout).into_owned();
-    assert_eq!(listed.lines().last(), Some("budget"), "{listed}");
+    assert_eq!(String::from_utf8_lossy(&stages.stdout).lines().last(), Some("budget"));
+    let parts = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts"]).current_dir(repo_root()).output().unwrap();
+    let listed = String::from_utf8_lossy(&parts.stdout).into_owned();
+    let tail: Vec<&str> = listed.lines().rev().take(3).collect();
+    assert_eq!(tail, ["budget.full", "budget.edge", "budget.control"], "{listed}");
 
-    // A tree whose binary declares no profile builds nothing.
+    // A tree whose binary declares no profile builds nothing, and has no budget part.
     let r = Repo::init();
     r.lock();
     r.commit("lock");
     let o = r.gate(&["--stage", "budget"]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(String::from_utf8_lossy(&o.stdout).contains("budget: no package declares a profile"), "{}", stderr(&o));
+    let listed = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts"]).stdout).into_owned();
+    assert!(!listed.lines().any(|l| l.starts_with("budget")), "{listed}");
 
-    // A binary declaring the three profiles under a fragment budgeting the edge alone stops
-    // the stage at the first profile, before it builds.
+    // A binary declaring the three profiles under a fragment budgeting the edge alone: the
+    // control part stops before it builds and reaches no other profile, and the whole stage
+    // stops at the first profile.
     let r = budgeted();
     let features = "[features]\ncontextful-control = []\ncontextful-edge = []\ncontextful-full = []\n";
     r.write("crates/contextful-cli/Cargo.toml", &format!("{}{features}", crate::manifest("contextful-cli", "")));
@@ -243,6 +249,10 @@ fn the_budget_stage_builds_every_profile_and_the_evaluate_stage_none() {
     r.write("crates/contextful-cli/tests/integration/main.rs", "");
     r.lock();
     r.commit("a binary declaring the profiles");
+    let o = r.gate(&["--stage", "budget.control"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("no `assurance-control-compressed` bound"), "{}", stderr(&o));
+    assert!(!String::from_utf8_lossy(&o.stdout).contains("`contextful-edge`"), "the control part reached the edge profile");
     let o = r.gate(&["--stage", "budget"]);
     assert!(!o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("no `assurance-control-compressed` bound"), "{}", stderr(&o));

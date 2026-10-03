@@ -62,6 +62,7 @@ impl Boundary {
         let mut cmd = Command::new(&self.program);
         cmd.args(&self.args).arg("--input").arg(label).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         limit_memory(&mut cmd, self.memory_bytes);
+        own_group(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| crashed(format!("the decode process did not start: {e}")))?;
         let mut stdin = child.stdin.take().ok_or_else(|| crashed("no standard input".into()))?;
         let body = input.to_vec();
@@ -77,7 +78,7 @@ impl Boundary {
                 break status;
             }
             if started.elapsed() >= self.deadline {
-                let _ = child.kill();
+                kill_group(&mut child);
                 let _ = child.wait();
                 let _ = (feed.join(), out.join(), err.join());
                 return Err(crashed(format!("the decode ran past its {} s wall clock and was killed", self.deadline.as_secs())));
@@ -132,6 +133,37 @@ fn limit_memory(cmd: &mut Command, bytes: u64) {
 
 #[cfg(not(target_os = "linux"))]
 fn limit_memory(_cmd: &mut Command, _bytes: u64) {}
+
+/// Start the decode as the leader of a process group of its own, so the deadline reaches
+/// every process it starts.
+#[cfg(unix)]
+fn own_group(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    cmd.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn own_group(_cmd: &mut Command) {}
+
+/// Kill the decode's whole process group: a process it started holding the output pipe
+/// open would otherwise keep the parent reading past the deadline.
+#[cfg(unix)]
+fn kill_group(child: &mut std::process::Child) {
+    match libc::pid_t::try_from(child.id()) {
+        // SAFETY: `kill` takes no pointers; the negated pid names the group `own_group` made.
+        Ok(pid) => unsafe {
+            libc::kill(-pid, libc::SIGKILL);
+        },
+        Err(_) => {
+            let _ = child.kill();
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn kill_group(child: &mut std::process::Child) {
+    let _ = child.kill();
+}
 
 /// The worker side: decode standard input as `kind`, print the result as JSON on standard
 /// output and exit 0, or print the refusal on standard error and exit [`REFUSED`].

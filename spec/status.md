@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 226 | 59 | 22 | 12 | 134 | 0 | 134 |
+| `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
 | `surface` | 2 | 19 | 81 | 44 | 22 | 5 | 40 | 0 | 40 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1917 | 566 | 187 | 137 | 1300 | 0 | |
+| **total** | 19 | 154 | 1918 | 566 | 187 | 137 | 1301 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
-| 14 — Assurance | 7 | 129 | 82 | passing | closed |
+| 14 — Assurance | 7 | 130 | 83 | passing | closed |
 
 Unscheduled operations: 10.
 
@@ -73,7 +73,7 @@ Unscheduled operations: 10.
 | `assurance.build.licence-field` | `tools/ci/tests/integration/topology.rs::a_workspace_package_without_the_apache_licence_is_refused` | performed |
 | `assurance.build.linked-query-functions` | `crates/contextful-context/tests/integration/read/extension.rs::columnar_reading_and_statement_serialization_are_statically_linked_and_loaded` | performed |
 | `assurance.build.one-engine-build` | `tools/ci/tests/integration/target_dirs.rs::the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_without_read` | performed |
-| `assurance.build.profile-build` | `tools/ci/tests/integration/features.rs::the_features_stage_builds_each_profile_bundle_alone_and_tests_each_listed_run` | performed |
+| `assurance.build.profile-build` | `tools/ci/tests/integration/features.rs::the_features_stage_tests_each_listed_run_in_parts_one_per_binary_run` | performed |
 | `assurance.build.release-artifact` | `tools/ci/tests/integration/artifact.rs::a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae` | performed |
 | `assurance.build.release-profile` | `tools/ci/tests/integration/image.rs::the_release_profile_optimizes_across_crates_strips_and_unwinds` | performed |
 | `assurance.build.runtime-extension-load` | `crates/contextful-context/tests/integration/read/extension.rs::an_explicit_load_or_install_refuses` | performed |
@@ -115,7 +115,7 @@ Unscheduled operations: 10.
 | `assurance.evaluate.stub-embedder` | `crates/contextful-cli/tests/integration/eval.rs::rows_and_questions_without_an_embedding_take_the_seeded_stub` | performed |
 | `assurance.evaluate.through-the-store` | `crates/contextful-cli/tests/integration/eval.rs::a_ranking_that_loses_its_sidecars_goes_red_against_the_baseline` | performed |
 | `assurance.evaluate.unlabeled-corpus` | `crates/contextful-cli/tests/integration/eval.rs::an_unlabeled_corpus_refuses_without_a_local_zone` | performed |
-| `assurance.gate.budget-stage` | `tools/ci/tests/integration/image.rs::the_budget_stage_builds_every_profile_and_the_evaluate_stage_none` | performed |
+| `assurance.gate.budget-stage` | `tools/ci/tests/integration/image.rs::the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none` | performed |
 | `assurance.gate.crate-graph` | `tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing` | performed |
 | `assurance.gate.deny-list` | `tools/ci/tests/integration/deny.rs::a_deny_list_drifting_from_the_refusals_is_refused` | performed |
 | `assurance.gate.deny-profile-graph` | `tools/ci/tests/integration/deny.rs::a_profile_graph_is_the_binary_under_its_feature_alone` | performed |
@@ -138,6 +138,7 @@ Unscheduled operations: 10.
 | `assurance.gate.stage-subset` | `tools/ci/tests/integration/stages.rs::a_subset_omitting_a_predecessor_whose_output_is_absent_is_refused_before_any_stage` | performed |
 | `assurance.gate.surface-check-failed` | `tools/ci/tests/integration/stages.rs::a_failing_surface_check_is_refused_naming_the_surface_and_the_script` | performed |
 | `assurance.gate.typescript-surfaces` | `tools/ci/tests/integration/stages.rs::the_surfaces_stage_installs_then_runs_each_declared_check` | performed |
+| `assurance.gate.workspace-parts` | `tools/ci/tests/integration/target_dirs.rs::remote_workspace_parts_compile_the_union_and_run_each_package_suite` | performed |
 | `assurance.measure.ledger` | `tools/eval/tests/integration/ledger.rs::an_entry_carries_its_clause_metric_tier_method_and_threshold` | performed |
 | `assurance.measure.open-entry` | `tools/ci/tests/integration/measure.rs::an_issue_entry_is_listed_open_and_gates_nothing` | performed |
 | `assurance.measure.record` | `tools/ci/tests/integration/measure.rs::a_gate_method_writing_no_record_is_refused` | performed |

@@ -46,8 +46,8 @@ fn root_manifest(version: Option<&str>) -> String {
 
 /// A `gpg` that signs anything: it drains the payload, reports the signature to git on
 /// the status descriptor and prints an armoured block.
-const FAKE_GPG: &str = "#!/bin/sh\ncat >/dev/null\necho '[GNUPG:] SIG_CREATED D 1 8 00 0 0' >&2\n\
-printf -- '-----BEGIN PGP SIGNATURE-----\\n\\nZmFrZQ==\\n-----END PGP SIGNATURE-----\\n'\n";
+const FAKE_GPG: &str = "#!/bin/sh\ncat >/dev/null\nprintf '\\n[GNUPG:] SIG_CREATED D 1 8 00 0 0\\n' >&2\n\
+printf '%s\\n' '-----BEGIN PGP SIGNATURE-----' '' 'ZmFrZQ==' '-----END PGP SIGNATURE-----'\n";
 
 struct Release {
     repo: Repo,
