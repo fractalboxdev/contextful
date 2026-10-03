@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
 | `run` | 3 | 26 | 371 | 98 | 35 | 37 | 256 | 0 | 255 |
 | `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
-| `surface` | 2 | 19 | 81 | 44 | 22 | 5 | 40 | 0 | 40 |
+| `surface` | 2 | 19 | 82 | 44 | 23 | 5 | 41 | 0 | 41 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1920 | 566 | 187 | 137 | 1303 | 0 | |
+| **total** | 19 | 154 | 1921 | 566 | 188 | 137 | 1304 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 57 | 43 | passing | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 62 | 45 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 63 | 46 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
@@ -1291,6 +1291,7 @@ Unscheduled operations: 10.
 | `surface.arm.unknown-trigger` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_trigger_arms_nothing` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.arm.wake-answer` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_answers_within_its_bound_naming_what_still_runs` | performed |
+| `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |
 | `surface.dispatch.exclusion-key` | `crates/contextful-core/tests/integration/surface/dispatch.rs::a_key_in_flight_starts_no_second_instance` | performed |
 | `surface.dispatch.lease-gated` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_under_a_running_daemon_arms_nothing_and_names_the_holder` | performed |
 | `surface.dispatch.pool-bound` | `crates/contextful-core/tests/integration/surface/dispatch.rs::the_pool_starts_at_most_its_bound` | performed |

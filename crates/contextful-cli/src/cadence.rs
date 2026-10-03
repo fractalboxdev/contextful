@@ -19,7 +19,7 @@ use contextful_core::run::derive::task::Tasks;
 use contextful_core::surface::arm::{Schedule, Trigger, TICK_INTERVAL_MS, WAKE_ANSWER_SECS};
 use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, poll_schedule, snapshot_file, source_file, POINTER_FILE};
 use contextful_core::surface::edit::check_document;
-use contextful_core::surface::dispatch::DEFAULT_POOL;
+use contextful_core::surface::dispatch::{CHILD_GRACE_SECS, DEFAULT_POOL};
 use contextful_core::surface::SurfaceError;
 use contextful_engine::control::{ControlError, SnapshotDir};
 use contextful_engine::scheduler::{Dispatch, Entry, Fired, LeaseState, Scheduler};
@@ -29,8 +29,10 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::Arc;
+use std::io::Read;
+use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use url::Url;
 
@@ -42,6 +44,9 @@ const CONTROL_READ_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Largest pointer or snapshot body a control-URL read takes.
 const CONTROL_READ_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Interval at which a dispatch thread and a stopping serve poll a child's exit.
+const CHILD_POLL: Duration = Duration::from_millis(20);
 
 /// A loopback control plane serving the pointer and each version beneath one URL.
 struct ControlUrl {
@@ -335,12 +340,129 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
     bail!("{} claims in a row lost to concurrent applies", CLAIM_ATTEMPTS)
 }
 
+/// Every live child a serve process dispatched, each the leader of its own process group
+/// (`surface.dispatch.children-reaped`). A child stays here, unreaped, until its exit status
+/// is read under the lock, so a group signal never reaches a recycled pid.
+#[derive(Default)]
+struct Children {
+    live: Mutex<BTreeMap<u32, Child>>,
+    closed: AtomicBool,
+}
+
+impl Children {
+    /// Start `cmd` as a tracked child in its own process group; refused once [`Children::end_all`] has run.
+    fn spawn(&self, cmd: &mut Command) -> std::io::Result<(u32, Option<ChildStdout>, Option<ChildStderr>)> {
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(cmd, 0);
+        let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(std::io::Error::other("serve is stopping and starts no child"));
+        }
+        let mut child = cmd.spawn()?;
+        let (pid, out, err) = (child.id(), child.stdout.take(), child.stderr.take());
+        live.insert(pid, child);
+        Ok((pid, out, err))
+    }
+
+    /// Block until child `pid` exits, polling under the lock, then forget it.
+    fn wait(&self, pid: u32) -> std::io::Result<ExitStatus> {
+        loop {
+            {
+                let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+                let Some(child) = live.get_mut(&pid) else { return Err(std::io::Error::other("the child is untracked")) };
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        live.remove(&pid);
+                        return Ok(status);
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        live.remove(&pid);
+                        return Err(e);
+                    }
+                }
+            }
+            std::thread::sleep(CHILD_POLL);
+        }
+    }
+
+    /// Signal each child still running; answers how many were.
+    fn signal(&self, kill: bool) -> usize {
+        let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+        let mut running = 0;
+        for (pid, child) in live.iter_mut() {
+            if !matches!(child.try_wait(), Ok(None)) {
+                continue;
+            }
+            running += 1;
+            #[cfg(unix)]
+            let sent = contextful_engine::stop::signal_group(*pid, kill);
+            #[cfg(not(unix))]
+            let sent = if kill { child.kill() } else { Ok(()) };
+            if let Err(e) = sent {
+                eprintln!("signalling child {pid}: {e}");
+            }
+            if kill {
+                let _ = child.wait();
+            }
+        }
+        running
+    }
+
+    /// Refuse further children, send `SIGTERM` to every live child's group, wait up to
+    /// `grace`, then `SIGKILL` the remainder and wait each out.
+    fn end_all(&self, grace: Duration) {
+        self.closed.store(true, Ordering::SeqCst);
+        if self.signal(false) == 0 {
+            return;
+        }
+        let deadline = std::time::Instant::now() + grace;
+        while std::time::Instant::now() < deadline {
+            std::thread::sleep(CHILD_POLL);
+            if self.all_ended() {
+                return;
+            }
+        }
+        let killed = self.signal(true);
+        if killed > 0 {
+            eprintln!("killed {killed} child run(s) still alive {}s after SIGTERM", grace.as_secs());
+        }
+    }
+
+    /// Whether no tracked child is still running.
+    fn all_ended(&self) -> bool {
+        let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+        live.values_mut().all(|c| !matches!(c.try_wait(), Ok(None)))
+    }
+}
+
+/// Ends every live child when serve returns or unwinds (`surface.dispatch.children-reaped`).
+struct Reaper(Arc<Children>);
+
+impl Drop for Reaper {
+    fn drop(&mut self) {
+        self.0.end_all(Duration::from_secs(CHILD_GRACE_SECS));
+    }
+}
+
 /// A unit dispatched as a child `pipeline run --applied <N>` of this binary.
 struct ChildDispatch {
     exe: PathBuf,
     project: String,
     declaration: Option<PathBuf>,
     now: Option<String>,
+    children: Arc<Children>,
+}
+
+/// Read `pipe` to its end on a thread of its own.
+fn drain_pipe(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<String> {
+    std::thread::spawn(move || {
+        let mut text = Vec::new();
+        if let Some(mut p) = pipe {
+            let _ = p.read_to_end(&mut text);
+        }
+        String::from_utf8_lossy(&text).into_owned()
+    })
 }
 
 impl Dispatch for ChildDispatch {
@@ -353,14 +475,19 @@ impl Dispatch for ChildDispatch {
         if let Some(now) = &self.now {
             cmd.args(["--now", now]);
         }
-        let out = cmd.output().map_err(|e| format!("{id}: starting `{}`: {e}", self.exe.display()))?;
-        let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let (pid, out, err) = self.children.spawn(&mut cmd).map_err(|e| format!("{id}: starting `{}`: {e}", self.exe.display()))?;
+        let (out, err) = (drain_pipe(out), drain_pipe(err));
+        let status = self.children.wait(pid).map_err(|e| format!("{id}: waiting on child {pid}: {e}"))?;
+        let (stdout, stderr) = (out.join().unwrap_or_default(), err.join().unwrap_or_default());
         for line in stdout.lines().chain(stderr.lines()) {
             eprintln!("[{id}] {line}");
         }
         let last = |t: &str| t.lines().last().unwrap_or_default().to_string();
-        if out.status.success() {
+        if status.success() {
             Ok(last(&stdout))
+        } else if stderr.trim().is_empty() {
+            Err(format!("child {pid} ended: {status}"))
         } else {
             Err(last(&stderr))
         }
@@ -420,20 +547,37 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     // serves (`surface.reside.region-mismatch`).
     crate::reside::enforce(&l, &text)?;
     let w = wire_at(&l.project, &project.now)?;
+    let children = Arc::new(Children::default());
+    let reaper = Reaper(children.clone());
     let dispatch = Arc::new(ChildDispatch {
         exe: std::env::current_exe()?,
         project: l.project.name.clone(),
         declaration: explicit,
         now: project.now.clone(),
+        children: children.clone(),
     });
     let holder = format!("{}:{}", boot_id(), std::process::id());
     let mut scheduler = Scheduler::new(w.engine.catalog.clone(), dispatch, &l.project.name, &holder, control.pool);
-    if cycle {
-        return serve_cycle(&mut scheduler, &control, &l.project);
-    }
     contextful_engine::stop::install();
+    if cycle {
+        // A stop signal ends the cycle's children, so its drain returns.
+        let watched = children.clone();
+        std::thread::spawn(move || {
+            while !contextful_engine::stop::requested() {
+                std::thread::sleep(CHILD_POLL);
+            }
+            watched.end_all(Duration::from_secs(CHILD_GRACE_SECS));
+        });
+        let answered = serve_cycle(&mut scheduler, &control, &l.project);
+        drop(reaper);
+        answered?;
+        if contextful_engine::stop::requested() {
+            bail!("a stop signal ended the cycle's dispatched units");
+        }
+        return Ok(());
+    }
     if let Some(addr) = http {
-        return serve_wakes(&mut scheduler, &control, addr, &l.project);
+        return serve_wakes(&mut scheduler, &control, addr, &l.project, reaper);
     }
     eprintln!("serving `{}` from {} as `{holder}`", l.project.name, control.source.describe());
     let tick = Duration::from_millis(TICK_INTERVAL_MS);
@@ -475,7 +619,8 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
         report(scheduler.ended());
         std::thread::sleep(tick);
     }
-    eprintln!("stopping: waiting for dispatched units, then releasing the cadence lease");
+    eprintln!("stopping: ending dispatched children, then releasing the cadence lease");
+    drop(reaper);
     report(scheduler.drain());
     scheduler.release()?;
     eprintln!("stopped");
@@ -552,10 +697,17 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
 
 /// `pipeline serve --http` under the external trigger: no tick runs, and each `POST /wake`
 /// evaluates the armed set once and answers (`surface.arm.wake-answer`).
-fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, project: &Project) -> Result<()> {
+fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, project: &Project, reaper: Reaper) -> Result<()> {
     let listener = std::net::TcpListener::bind(addr)?;
     listener.set_nonblocking(true)?;
     eprintln!("wake on http://{}/wake", listener.local_addr()?);
+    let watched = reaper.0.clone();
+    std::thread::spawn(move || {
+        while !contextful_engine::stop::requested() {
+            std::thread::sleep(CHILD_POLL);
+        }
+        watched.end_all(Duration::from_secs(CHILD_GRACE_SECS));
+    });
     while !contextful_engine::stop::requested() {
         match listener.accept() {
             Ok((stream, _)) => {
@@ -567,7 +719,8 @@ fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, p
             Err(e) => eprintln!("wake: accept: {e}"),
         }
     }
-    eprintln!("stopping: waiting for dispatched units, then releasing the cadence lease");
+    eprintln!("stopping: ending dispatched children, then releasing the cadence lease");
+    drop(reaper);
     report(scheduler.drain());
     scheduler.release()?;
     eprintln!("stopped");
