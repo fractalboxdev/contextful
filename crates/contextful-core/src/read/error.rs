@@ -51,6 +51,9 @@ pub enum ReadError {
     /// A network transport request carried no credential. (`read.register.credential-missing`)
     #[error("HttpCredentialMissing: {0}")]
     HttpCredentialMissing(String),
+    /// A read reached for a query-engine extension the binary does not link. (`assurance.build.runtime-extension-load`)
+    #[error("ExtensionAutoloadRefused: {0}")]
+    ExtensionAutoloadRefused(String),
 }
 
 impl ReadError {
@@ -71,6 +74,7 @@ impl ReadError {
             ReadError::TemplateNamesForeignRelation(_) => "TemplateNamesForeignRelation",
             ReadError::ServeDeclarationMissing(_) => "ServeDeclarationMissing",
             ReadError::HttpCredentialMissing(_) => "HttpCredentialMissing",
+            ReadError::ExtensionAutoloadRefused(_) => "ExtensionAutoloadRefused",
         }
     }
 }

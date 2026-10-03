@@ -1,7 +1,9 @@
 //! `store.index`: clustering and partitioning of a snapshot's parts, and the vector and
 //! full-text sidecars the fold builds beside them.
 
-use crate::support::{at, decl, query, s, Fixture};
+use crate::support::{at, decl, s, Fixture};
+#[cfg(feature = "read")]
+use crate::support::query;
 use contextful_context::fold::{escape, fold};
 use contextful_core::store::bound_time::Bounds;
 use serde_json::json;
@@ -14,6 +16,7 @@ use contextful_core::store::StoreError;
 use serde_json::Value;
 use std::path::PathBuf;
 
+#[cfg(feature = "read")]
 /// `cluster_by` sorts rows within a file lexicographically over its columns in declared order; zone maps then skip row groups with no manifest entry and no sidecar.
 // spec: store.index.clustering@43fe730c
 #[test]
@@ -35,6 +38,7 @@ fn cluster_by_sorts_rows_within_a_file_in_declared_order() {
     assert_eq!(stats, [[s("a"), s("b")]]);
 }
 
+#[cfg(feature = "read")]
 /// Partitioning is off unless `partition_by` declares it.
 // spec: store.index.partitioning@20bc2134
 #[test]
@@ -83,6 +87,7 @@ fn a_binary_or_vector_partition_column_is_refused() {
     }
 }
 
+#[cfg(feature = "read")]
 /// A tenant value is written and compared byte for byte, with no trimming, case folding or Unicode normalization; a percent-escaped directory name is representation alone.
 // spec: store.index.tenant-verbatim@4f788f5f
 #[test]
@@ -102,6 +107,7 @@ fn a_tenant_value_is_kept_byte_for_byte() {
     assert_eq!(escape(".."), "%2E%2E");
 }
 
+#[cfg(feature = "read")]
 /// `indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names.
 // spec: store.index.not-in-file-set@dfccb5dd
 #[test]
@@ -427,6 +433,7 @@ fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
     assert!(contextful_context::fulltext::postings::Layout::parse(b"CFHNSW01").is_none());
 }
 
+#[cfg(feature = "read")]
 /// A unit's rows landed under another key before its latest `ok` or `empty` landing are superseded: each answers until that landing, and the next fold drops it and rebuilds the table's sidecars without it.
 // spec: run.emit.stale-supersedes@85750284
 #[test]

@@ -1,4 +1,5 @@
-//! A scratch store, a landing helper, and DuckDB to execute the relation a scan resolves.
+//! A scratch store, a landing helper, and, under `read`, the read engine to execute the
+//! relation a scan resolves.
 
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::scan::{scan, Scan};
@@ -70,44 +71,30 @@ impl Fixture {
     }
 
     /// Execute `select` over the table's relation, bound as `t`; every column is read as text.
+    #[cfg(feature = "read")]
     pub fn query(&self, d: &TableDecl, bounds: Bounds, select: &str) -> Vec<Vec<Option<String>>> {
         let s = self.scan(d, bounds).unwrap();
         query(&format!("WITH t AS ({}) {select}", s.relation))
     }
 }
 
-/// Run a statement in an in-memory DuckDB, reading every column as text.
+/// Run operator text on the store adapter's own read engine, every cell as text. The
+/// write suites assert without it; a test reaching it runs in the build linking `read`.
+#[cfg(feature = "read")]
 pub fn query(sql: &str) -> Vec<Vec<Option<String>>> {
-    let conn = duckdb::Connection::open_in_memory().unwrap();
-    let mut stmt = conn.prepare(sql).unwrap_or_else(|e| panic!("{e}\n{sql}"));
-    let mut rows = stmt.query([]).unwrap();
-    let mut out = Vec::new();
-    while let Some(row) = rows.next().unwrap() {
-        let n = row.as_ref().column_count();
-        out.push((0..n).map(|i| text(row.get::<_, duckdb::types::Value>(i).unwrap())).collect());
-    }
-    out
-}
-
-fn text(v: duckdb::types::Value) -> Option<String> {
-    use duckdb::types::Value::*;
-    Some(match v {
-        Null => return None,
-        Boolean(b) => b.to_string(),
-        TinyInt(n) => n.to_string(),
-        SmallInt(n) => n.to_string(),
-        Int(n) => n.to_string(),
-        BigInt(n) => n.to_string(),
-        HugeInt(n) => n.to_string(),
-        UTinyInt(n) => n.to_string(),
-        USmallInt(n) => n.to_string(),
-        UInt(n) => n.to_string(),
-        UBigInt(n) => n.to_string(),
-        Float(n) => format!("{n:?}"),
-        Double(n) => format!("{n:?}"),
-        Text(s) => s,
-        other => format!("{other:?}"),
-    })
+    let r = contextful_context::read::operator_query(sql, Default::default()).unwrap_or_else(|e| panic!("{e}\n{sql}"));
+    r.rows
+        .into_iter()
+        .map(|row| {
+            row.into_iter()
+                .map(|v| match v {
+                    Value::Null => None,
+                    Value::String(s) => Some(s),
+                    other => Some(other.to_string()),
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// Shorthand for an expected text cell.

@@ -930,6 +930,43 @@ fn this_repository_binary_declares_the_three_profiles_each_linking_its_role() {
     }
 }
 
+/// `contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars and the tool server.
+///
+/// The engine crate carries the journal and the scheduler, the component host is
+/// `contextful-wasm` over `wasmtime`, the query face is the store adapter over the SQL
+/// engine with the sidecars beside it, the transform chain runs in the binary's pipeline
+/// module, compiled under the data plane the profile selects, and the tool server is
+/// `contextful-agent`.
+// spec: topology.package.full-profile@1366e642
+#[test]
+fn this_repository_full_profile_links_every_daemon_role() {
+    let full = profile_graph("contextful-full");
+    let roles = [
+        ("durable-execution core and scheduler", "contextful-engine"),
+        ("run store", "contextful-sqlite"),
+        ("component host", "contextful-wasm"),
+        ("component runtime", "wasmtime"),
+        ("query face and sidecars", "contextful-context"),
+        ("SQL engine", "duckdb"),
+        ("memory synthesis", "contextful-memory"),
+        ("tool server", "contextful-agent"),
+    ];
+    for (role, package) in roles {
+        assert!(full.iter().any(|n| n == package), "`contextful-full` links no `{package}` for its {role}");
+    }
+    let src = repo_root().join("crates");
+    for (module, path) in [("scheduler", "contextful-engine/src/scheduler.rs"), ("journal", "contextful-engine/src/journal.rs"), ("full-text sidecar", "contextful-context/src/fulltext/mod.rs"), ("vector sidecar", "contextful-context/src/vector/mod.rs")] {
+        assert!(src.join(path).is_file(), "no {module} at crates/{path}");
+    }
+    let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(src.join("contextful-cli/Cargo.toml")).unwrap()).unwrap();
+    let full_features: Vec<&str> = manifest["features"]["contextful-full"].as_array().unwrap().iter().filter_map(|f| f.as_str()).collect();
+    assert!(full_features.contains(&"data-plane"), "{full_features:?}");
+    let lib = std::fs::read_to_string(src.join("contextful-cli/src/lib.rs")).unwrap();
+    assert!(lib.contains("#[cfg(feature = \"data-plane\")]\nmod pipeline;"), "the transform chain's pipeline module compiles under another feature");
+    let pipeline = std::fs::read_to_string(src.join("contextful-cli/src/pipeline.rs")).unwrap();
+    assert!(pipeline.contains("use contextful_core::pipeline::transform::Chain;"), "the pipeline module applies no transform chain");
+}
+
 /// `contextful-edge` is the read replica: it syncs parts and manifests from a bucket and serves a read-only SQL replica. It links no scheduler, run path, script runtime or component host.
 // spec: topology.package.edge-profile@06bc004e
 #[test]

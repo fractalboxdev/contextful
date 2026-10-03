@@ -2,7 +2,9 @@
 //! pull-request workflow invoke the identical command.
 
 mod deny;
+mod allowlist;
 mod measure;
+mod release;
 mod tag;
 mod footprint;
 mod topology;
@@ -104,6 +106,43 @@ enum Cmd {
     /// Hold `deny.toml` to the profile-wide dependency refusals and run cargo-deny's bans
     /// over each profile's graph.
     Deny,
+    /// Hold the connector authoring dependency allowlist to its required and banned
+    /// entries, and the connector packages' direct dependencies to it.
+    Allowlist,
+    /// Build each profile for a release target and package its archive, checksum and SBOM.
+    Release {
+        /// A profile to build; repeatable. Defaults to every profile shipping for the target.
+        #[arg(long = "profile")]
+        profiles: Vec<String>,
+        /// A release target; repeatable. Defaults to the one this host builds natively.
+        #[arg(long = "target")]
+        targets: Vec<String>,
+        /// The directory the builds compile into.
+        #[arg(long, default_value = release::TARGET_DIR)]
+        target_dir: PathBuf,
+        /// The directory receiving archives, checksums and SBOMs.
+        #[arg(long, default_value = "dist")]
+        out: PathBuf,
+        /// Print every (profile, target) cell of the release matrix and build nothing.
+        #[arg(long)]
+        plan: bool,
+    },
+    /// Build the edge profile for `wasm32-wasip2` and record its compressed size under the
+    /// scheduled ledger entry; a failed build records nothing and exits 0.
+    WasiProbe {
+        /// The directory the build compiles into, removed afterwards.
+        #[arg(long, default_value = release::WASI_TARGET_DIR)]
+        target_dir: PathBuf,
+    },
+    /// Write the package-manager formulae and `SHA256SUMS` over a directory of release archives.
+    Formula {
+        /// The directory `contextful-ci release` packaged every target into.
+        #[arg(long, default_value = "dist")]
+        dist: PathBuf,
+        /// The URL the archives download from.
+        #[arg(long)]
+        base_url: String,
+    },
     /// Resolve the target ledger and run its entries, or render their status.
     Measure {
         /// The tier to run; repeatable. Defaults to the gate tier.
@@ -169,6 +208,17 @@ fn main() {
             None => bail!("pass an artifact, or `--build`"),
         }),
         Cmd::Deny => repo_root().and_then(|root| deny::check(&root)),
+        Cmd::Allowlist => repo_root().and_then(|root| allowlist::check(&root)),
+        Cmd::Release { profiles, targets, target_dir, out, plan } => repo_root().and_then(|root| {
+            if plan {
+                return release::plan(&profiles, &targets);
+            }
+            release::release(&root, &profiles, &targets, &root.join(target_dir), &out)
+        }),
+        Cmd::WasiProbe { target_dir } => repo_root().and_then(|root| release::wasi_probe(&root, &root.join(target_dir))),
+        Cmd::Formula { dist, base_url } => repo_root().and_then(|root| {
+            release::formulae(&root, &dist, &base_url).map(|written| written.iter().for_each(|p| println!("formula: {}", p.display())))
+        }),
         Cmd::Tag { branch, base } => tag::tag(&branch, &base),
         Cmd::Measure { tiers, status, check } => repo_root().and_then(|root| {
             if status {
@@ -213,7 +263,7 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
                 secrets(&root)?;
                 mirrors(&root)?;
                 measure::status(&root, true)?;
-                run(&root, "cargo", &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
+                run_staged(&root, stage, &["run", "-q", "-p", "contextful-spec", "--", "lint"])?
             }
             "test-first" => {
                 provision_lean(&root)?;
@@ -231,7 +281,8 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             "crate-graph" => {
                 committed_lock(&root)?;
                 topology::check(&root)?;
-                deny::check(&root)?
+                deny::check(&root)?;
+                allowlist::check(&root)?
             }
             "budget" => {
                 // The footprint builds run here, apart from the evaluate stage
@@ -246,6 +297,25 @@ fn gate(selected: &[String], base: &str, bound: Duration) -> Result<()> {
             }
             _ => unreachable!(),
         }
+        // A passing stage leaves no build behind (`assurance.build.target-dir-per-stage`); a
+        // failing one keeps its directory for diagnosis.
+        let _ = std::fs::remove_dir_all(stage_target(&root, stage));
+    }
+    Ok(())
+}
+
+/// The target directory `stage` builds into, under the workspace root and apart from every
+/// other stage's (`assurance.build.target-dir-per-stage`): stages under different feature
+/// unification share no artifacts, so peak disk is one stage's.
+fn stage_target(root: &Path, stage: &str) -> PathBuf {
+    root.join("target").join(stage)
+}
+
+/// Run `cargo args` in `stage`'s own target directory.
+fn run_staged(root: &Path, stage: &str, args: &[&str]) -> Result<()> {
+    let status = Command::new("cargo").args(args).env("CARGO_TARGET_DIR", stage_target(root, stage)).current_dir(root).status()?;
+    if !status.success() {
+        bail!("`cargo {}` exited {}", args.join(" "), status.code().unwrap_or(-1));
     }
     Ok(())
 }
@@ -296,12 +366,15 @@ fn free_disk(root: &Path, stage: &str) -> Result<()> {
     Ok(())
 }
 
+/// Every workspace package's suite in one cargo invocation over the union of their
+/// features, so the bundled SQL engine compiles once in the stage
+/// (`assurance.build.one-engine-build`).
 fn workspace(root: &Path) -> Result<()> {
     let mut args = vec!["test", "--workspace"];
     if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
         args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
     }
-    run(root, "cargo", &args)
+    run_staged(root, "workspace", &args)
 }
 
 /// The feature combinations the workspace stage's unified build does not reach
@@ -564,7 +637,7 @@ fn acceptance(root: &Path) -> Result<()> {
             }
         }
     }
-    run(root, "cargo", &["test", "-p", ACCEPTANCE_PACKAGE])
+    run_staged(root, "acceptance", &["test", "-p", ACCEPTANCE_PACKAGE])
 }
 
 /// A workspace member declaring a feature other than `default`.

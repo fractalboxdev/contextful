@@ -1,6 +1,8 @@
 //! `store.reserve`: the injected columns as a reader sees them, and batch validation.
 
-use crate::support::{at, decl, query, s, Fixture};
+use crate::support::{at, decl, s, Fixture};
+#[cfg(feature = "read")]
+use crate::support::query;
 use contextful_context::fold::fold;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_core::connector::infer::Provenance;
@@ -11,6 +13,7 @@ use contextful_core::store::StoreError;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+#[cfg(feature = "read")]
 /// The engine injects `_ingested_at` as a non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_batch_seq` as int32 where a batch scope exists, `_site_id`, and `_authored_by` where an authenticated subject authorized the write, replacing any producer value.
 // spec: store.reserve.injected@a7ade4f8
 #[test]
@@ -41,6 +44,7 @@ fn the_engine_injects_provenance_and_replaces_producer_values() {
     assert_eq!(row, [[s("run-1"), s("site-a"), s("0"), s("1893456000123456000")]]);
 }
 
+#[cfg(feature = "read")]
 /// The engine injects `_taint`, a label under {{connector.infer.provenance-order}}, on each row a model's output lands as, replacing any producer value; a row no model produced omits it.
 // spec: store.reserve.taint@bdb810ae
 #[test]
@@ -72,6 +76,7 @@ fn a_reserved_producer_column_refuses_before_any_parquet() {
     assert!(!f.table_dir("filings").exists());
 }
 
+#[cfg(feature = "read")]
 /// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 #[test]
 fn a_producer_sets_the_optional_columns_and_modality_is_checked() {
@@ -140,6 +145,7 @@ fn injected_columns_stay_non_null_in_the_merged_schema() {
     assert_eq!(nullability(&g), expected, "after an empty first run");
 }
 
+#[cfg(feature = "read")]
 /// The engine injects `_commit_seq`, a non-null int64 its commit assigns above every value the table holds; a run
 /// committing after a read carries a value above every row that read returned, whatever its `_ingested_at`.
 // spec: store.reserve.commit-seq@4bd29584
@@ -172,6 +178,7 @@ fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp(
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(DISTINCT _commit_seq) FROM t WHERE _run_id = 'run-late-stamp'"), [[s("1")]]);
 }
 
+#[cfg(feature = "read")]
 /// Commits of one table serialize from assigning `_commit_seq`, through the part write, to the step that makes the
 /// run readable, so the readable runs of a table always hold a prefix of its commit sequence.
 // spec: store.reserve.commit-order@22d731cc
@@ -212,6 +219,7 @@ fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(DISTINCT _commit_seq), count(*) FROM t"), [[s("7"), s("301")]]);
 }
 
+#[cfg(feature = "read")]
 /// A commit assigns one above the greatest of the node's counter, every run manifest's `commit_seq` and the current
 /// snapshot's, so a store restored by a pull, or holding no counter, never reissues a value.
 // spec: store.reserve.commit-seq-seed@2a3baa75

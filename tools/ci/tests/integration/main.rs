@@ -3,7 +3,10 @@
 
 mod acceptance_surface;
 mod deny;
+mod allowlist;
+mod artifact;
 mod disk;
+mod domain;
 mod features;
 mod image;
 mod lean;
@@ -11,6 +14,7 @@ mod measure;
 mod mirrors;
 mod release;
 mod secrets;
+mod target_dirs;
 mod test_first;
 mod topology;
 mod wasm;

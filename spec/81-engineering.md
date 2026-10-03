@@ -121,29 +121,30 @@ Target directories, the engine-linked invocation, linked query functions, build 
 
 - `target-dir-per-stage` — Each cargo stage builds into a target directory of its own, reclaimed once the stage passes.
   *because stages under different feature unification share no artifacts, and peak disk is then one stage*
-- `one-engine-build` — The engine-linked packages build in one cargo invocation over the union of their features, compiling the bundled SQL engine once per gate run.
+- `one-engine-build` — The workspace stage builds every engine-linked package in one cargo invocation over the union of their features, and the store adapter's suites resolved without `read` link no SQL engine, so the features stage compiles one copy.
   *A-assurance*
 - `staged-feature-runs` — A defect appearing under one feature combination alone is reached by a staged run, one command per container.
 - `linked-query-functions` — Columnar file reading and statement serialization link into every build linking the SQL engine, and the read path loads no extension while serving.
   *A-assurance*
 - `runtime-extension-load` — A read path loading an extension into a binary that statically links the SQL engine raises `ExtensionAutoloadRefused`.
   *A-assurance*
-- `debug-info` — Development and test profiles carry line-tables-only debug information.
+- `debug-info` — Development and test profiles carry line-tables-only debug information for workspace code and none for dependencies.
+  *because every engine-linked test binary embeds the bundled engine, and full debug information multiplies each past a sandbox's disk*
 - `release-profile` — Release builds compile with thin link-time optimization, one codegen unit per crate and symbols stripped, and unwind on panic.
   *because the run keeper survives a panicking job only by unwinding to its guard*
 - `profile-build` — The features stage builds the binary under each profile bundle alone and tests each package under every feature set its manifest lists in `feature-runs`; a failing build or test reds the stage.
   *because a bundle compiles a feature set no other stage resolves, so a defect it alone reaches ships unseen*
 - `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
-- `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin`, `x86_64-apple-darwin` and `x86_64-pc-windows-msvc`; edge also targets `wasm32-wasip2`.
+- `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
+  *A-assurance*
+- `windows-target` — Edge and full also build for `x86_64-pc-windows-msvc`.
+- `wasi-probe` — No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.
+  *A-assurance*
 - `release-artifact` — Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
 - `licence-field` — Every workspace package under `crates/` or `tools/` declares `license = "Apache-2.0"`, inherited from `[workspace.package]`; a package declaring another value or none raises `PackageLicenceMissing`, naming its manifest.
   *because cargo-deny, cargo-about and SBOM generators read the manifest field, not the `LICENSE` file, so an unlicensed package fails a consumer's licence check*
 - `dependency-allowlist` — The connector authoring dependency allowlist carries `regex` and `serde_json` at its depth limit; a profile graph reaching `fancy-regex`, `pcre2`, `onig` or `serde_json`'s `unbounded_depth` feature raises `DependencyAllowlistViolation`, naming the profile and path.
   *because a backtracking matcher or a parser without a depth limit lets one hostile record pin a core or exhaust the stack*
-
-unsettled: Does the edge profile build for `wasm32-wasip2` with the SQL engine inside its footprint budget? owner: build affects: assurance.build
-
-unsettled: Do the store adapter's write suites assert without the SQL engine, so the features stage compiles no second copy of it? owner: build affects: assurance.build
 
 ## gate
 

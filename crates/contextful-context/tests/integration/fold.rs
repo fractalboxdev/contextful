@@ -16,6 +16,7 @@ fn staged(f: &Fixture, d: &contextful_core::store::declare::TableDecl, now: &str
     }
 }
 
+#[cfg(feature = "read")]
 /// A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}.
 // spec: store.fold.pass@65833c40
 #[test]
@@ -41,6 +42,7 @@ fn a_pass_folds_the_omitted_runs_into_one_snapshot() {
     assert_eq!(fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
 }
 
+#[cfg(feature = "read")]
 /// A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line.
 // spec: store.fold.valid-time-line@4db5edf4
 #[test]
@@ -57,6 +59,7 @@ fn a_valid_time_table_keeps_one_row_per_key_and_line() {
     assert_eq!(raw, [[s("1")], [s("3")]]);
 }
 
+#[cfg(feature = "read")]
 /// A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.
 // spec: store.fold.includes-runs@f8549a98
 #[test]
@@ -75,6 +78,7 @@ fn a_snapshot_names_the_runs_it_folded() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT e FROM t ORDER BY e"), [[s("1")], [s("2")], [s("3")]]);
 }
 
+#[cfg(feature = "read")]
 /// `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
 // spec: store.fold.retention@b5065918
 #[test]
@@ -216,6 +220,7 @@ fn the_next_pass_collects_staging_and_unreachable_snapshots() {
     assert_eq!(fs::read_dir(f.table_dir("events").join("data/snapshots")).unwrap().count(), 1);
 }
 
+#[cfg(feature = "read")]
 /// A new snapshot supersedes the previous one without deleting it, and a bounded read reaches the older one until retention collects it.
 // spec: store.fold.supersedes@97cbcf3a
 #[test]
@@ -266,6 +271,7 @@ fn conforming_never_drops_a_column() {
     assert!(err.to_string().contains("`c`"), "{err}");
 }
 
+#[cfg(feature = "read")]
 /// Retention ages from the fold, not from a landing: a table that stops receiving runs
 /// still collects a snapshot the window has passed, on a pass with nothing to fold.
 #[test]
@@ -289,6 +295,7 @@ fn an_idle_table_still_collects_what_retention_allows() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("2")]]);
 }
 
+#[cfg(feature = "read")]
 /// A collection that fails reports its failure: beside `folded` when the pass published, since the snapshot stays published, and as `failed` otherwise; either way the command exits non-zero.
 // spec: store.fold.collection-failed@6ed6a40e
 #[test]
@@ -328,6 +335,7 @@ fn a_failed_collection_does_not_unpublish_the_snapshot() {
     assert!(!run_dir.exists());
 }
 
+#[cfg(feature = "read")]
 /// A pass whose id an earlier lost pass already promoted takes a fresh id and publishes:
 /// what sits at that id is left for collection, never overwritten by the retry.
 #[test]
@@ -353,6 +361,7 @@ fn a_retry_at_the_same_instant_takes_a_fresh_id_over_the_lost_passs_orphan() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("1")]]);
 }
 
+#[cfg(feature = "read")]
 /// Two passes staging one table at one instant compute one candidate id; the second
 /// takes the next id, so neither deletes the other's staging and the pointer decides
 /// which publishes.
