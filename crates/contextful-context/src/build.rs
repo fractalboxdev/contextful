@@ -29,7 +29,7 @@ pub fn current_section(store: &Store, model: &str) -> Result<Option<PublishSecti
 /// Every snapshot manifest on disk for the model, staging excluded, oldest first: the
 /// pointer's chain and any snapshot a hold kept beyond it.
 pub fn manifests(store: &Store, model: &str) -> Result<Vec<SnapshotManifest>> {
-    let dir = store.table_dir(model)?.join("data").join("snapshots");
+    let dir = store.table_dir(model)?.join(contextful_core::store::lay_out::SNAPSHOTS_DIR);
     let mut out = Vec::new();
     for d in sorted_dirs(&dir)? {
         if d.file_name().is_some_and(|n| n.to_string_lossy().ends_with(STAGING_SUFFIX)) {

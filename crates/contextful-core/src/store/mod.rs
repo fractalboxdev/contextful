@@ -5,6 +5,7 @@
 pub mod bound_time;
 pub mod catalog;
 pub mod commit_log;
+pub mod config;
 pub mod declare;
 pub mod encrypt;
 pub mod error;

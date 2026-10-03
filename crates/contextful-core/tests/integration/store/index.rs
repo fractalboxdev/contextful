@@ -4,8 +4,9 @@
 use contextful_core::pipeline::declare::{read_manifest, ManifestFile};
 use contextful_core::run::RunError;
 use contextful_core::store::declare::TableDecl;
+use contextful_core::store::lay_out::SnapshotManifest;
 use contextful_core::store::index::{
-    is_cjk, FulltextEntry, IndexKind, Metric, Tokenizer, VectorEntry, DEFAULT_EF_CONSTRUCTION, DEFAULT_M, FULLTEXT_BUILDER,
+    is_cjk, IndexEntry, IndexKind, Metric, Tokenizer, DEFAULT_EF_CONSTRUCTION, DEFAULT_M, FULLTEXT_BUILDER,
     FULLTEXT_BUILDER_VERSION, VECTOR_BUILDER, VECTOR_BUILDER_VERSION,
 };
 use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema};
@@ -253,35 +254,33 @@ fn two_declarations_resolving_to_one_path_are_refused() {
     validate_manifest(&block).unwrap();
 }
 
-/// The snapshot manifest example in `spec/10-store.md` deserializes: each `indexes` entry
-/// carries every field its entry type writes, and no other.
+/// The snapshot manifest example in `spec/10-store.md` reads each `indexes` entry as the
+/// typed entry its kind names, recorded by this build's builder.
 #[test]
 fn the_spec_snapshot_manifest_example_deserializes_its_index_entries() {
     let spec = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../spec/10-store.md")).unwrap();
-    let after = spec.split("A run manifest, a snapshot manifest and a table pointer:").nth(1).expect("the manifest examples");
+    let after = spec.split("\n## Shapes\n").nth(1).and_then(|s| s.split("`lay_out::SnapshotManifest`").nth(1)).expect("the manifest examples");
     let block = after.split("```json").nth(1).and_then(|b| b.split("```").next()).expect("a json block");
     let manifest = serde_json::Deserializer::from_str(block)
         .into_iter::<serde_json::Value>()
         .map(Result::unwrap)
         .find(|v| v.get("indexes").is_some())
         .expect("a snapshot manifest carrying indexes");
-    let entries = manifest["indexes"].as_array().unwrap();
+    let manifest: SnapshotManifest = serde_json::from_value(manifest).unwrap();
     let (mut vectors, mut fulltexts) = (0, 0);
-    for entry in entries {
-        match entry["kind"].as_str() {
-            Some("vector") => {
-                let e: VectorEntry = serde_json::from_value(entry.clone()).unwrap_or_else(|err| panic!("{entry}: {err}"));
+    for entry in &manifest.indexes {
+        match entry {
+            IndexEntry::Vector(e) => {
                 assert_eq!((e.builder.as_str(), e.builder_version), (VECTOR_BUILDER, VECTOR_BUILDER_VERSION));
-                assert_eq!((e.table.as_str(), e.snapshot_id.as_str()), (manifest["table"].as_str().unwrap(), manifest["snapshot_id"].as_str().unwrap()));
+                assert_eq!((e.table.as_str(), e.snapshot_id.clone()), (manifest.table.as_str(), manifest.snapshot_id.to_string()));
                 vectors += 1;
             }
-            Some("fulltext") => {
-                let e: FulltextEntry = serde_json::from_value(entry.clone()).unwrap_or_else(|err| panic!("{entry}: {err}"));
+            IndexEntry::Fulltext(e) => {
                 assert_eq!((e.builder.as_str(), e.builder_version), (FULLTEXT_BUILDER, FULLTEXT_BUILDER_VERSION));
-                assert_eq!((e.table.as_str(), e.snapshot_id.as_str()), (manifest["table"].as_str().unwrap(), manifest["snapshot_id"].as_str().unwrap()));
+                assert_eq!((e.table.as_str(), e.snapshot_id.clone()), (manifest.table.as_str(), manifest.snapshot_id.to_string()));
                 fulltexts += 1;
             }
-            other => panic!("unknown index kind {other:?}"),
+            IndexEntry::Unrecognized(v) => panic!("an unrecognised entry {v}"),
         }
     }
     assert_eq!((vectors, fulltexts), (1, 1));

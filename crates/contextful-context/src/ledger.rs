@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// The directory holding a table's ledger files.
-const LEDGER_DIR: &str = "requests";
+const LEDGER_DIR: &str = contextful_core::store::lay_out::REQUESTS_DIR;
 /// How long an append waits for another flush of the same run to release the file.
 const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 

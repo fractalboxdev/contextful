@@ -87,7 +87,7 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *because a wall clock that steps backwards breaks lexical order equalling commit order*
 - `part-name` — A data file is `part-<ordinal>.parquet`, the ordinal zero-padded to five digits and unique within its directory.
 - `staging` — A fold in flight writes under `data/snapshots/<id>.staging/`, and no file list resolves inside it.
-- `run-manifest` — A run commits by conditionally creating `_manifest.json` in its node directory, carrying `{run_id, table, node_id, parts, committed_at, pipeline_id?, cursor?, fence?, commit_seq?}`, where `node_id` equals the enclosing segment.
+- `run-manifest` — A run commits by conditionally creating `_manifest.json` in its node directory, holding a `lay_out::RunManifest` whose `node_id` equals the enclosing segment.
 - `run-replay` — A landing of an unlogged run already committed on its node, with the position its manifest holds and rows rebuilding its parts column for column, writes nothing and answers the committed manifest as a replay.
   *because a retry after a lost acknowledgement cannot tell whether its first landing committed*
 - `run-conflict` — Any other landing of a run id already committed on its node raises `StoreRunConflict` and changes nothing.
@@ -96,9 +96,11 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *P4*
 - `cursor-in-commit` — A pipeline's committed position is the cursor inside its newest commit: the newest commit-log entry for a leased pipeline, the highest run-manifest cursor otherwise. `machine.sqlite` caches it.
   *because a position committed apart from its rows re-lands the batch after a crash between the two writes*
-- `snapshot-manifest` — A snapshot's `_manifest.json` carries `{snapshot_id, parent, table, created_at, includes_runs, primary_key, order_by, row_count, valid_time?, indexes, fence, commit_seq?}`, and each entry of `parts` and `indexes` carries its `key_version`.
+- `snapshot-manifest` — A snapshot's `_manifest.json` holds a `lay_out::SnapshotManifest`, and each entry of `parts` and `indexes` carries its `key_version`.
 - `ancestors` — A snapshot's `_manifest.json` carries `ancestors`: its parent, then the parent's `ancestors`, at most 256 entries; a root carries none, and a parent without `ancestors` leaves the field absent.
   *because retention collects superseded snapshot directories, and a push decides a pointer's descent from the snapshot's own manifest*
+- `unrecognised-index-entry` — An `indexes` entry whose kind or fields this build does not read parses as unrecognised: the manifest stays readable, the entry answers no probe, and a rewrite keeps it byte for byte.
+  *because a sidecar a newer builder records must neither refuse the table's reads nor vanish when an older build rewrites the manifest*
 - `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of `parent` links from it reaches it.
   *A-store*
 - `manifest-default` — A field added to a manifest carries a default value.
@@ -668,27 +670,34 @@ unsettled: Where does a replica advertise the sidecars and partitions it holds, 
 
 ## Shapes
 
-The store tree and its bucket mirror:
+Each example names the `contextful_core::store` type it serializes, and reads into that
+type and writes back unchanged.
+
+The store tree and its bucket mirror, drawn by `lay_out::TableLayout`:
 
 ```
 .contextful/context/<project>/          bucket: <prefix>/<project>/
   derived.sqlite                         not synced
   machine.sqlite                         not synced
   config.toml
-  cursors/<pipeline-id>/<node-id>/<seq>.json   commit log of a leased pipeline, per node
+  cursors/<pipeline-id>/<node-id>/       commit log of a leased pipeline, per node
+    <seq>.json
   nodes/<node-id>/run-state.json         newest runs, cursor markers
   tables/<t>/
     schema.json
     _pointer.json
-    data/runs/<run-id>/<node-id>/part-00000.parquet
-    data/runs/<run-id>/<node-id>/_manifest.json
-    data/snapshots/snapshot-01742054400000000000/part-00000.parquet
-    data/snapshots/snapshot-01742054400000000000/_manifest.json
-    data/snapshots/snapshot-01742054400000000000/indexes/vec-<col>-<model>/zone=<label>/
-    data/snapshots/snapshot-01742054400000000000/indexes/fts-<col>-<tokenizer>/
+    data/runs/<run-id>/<node-id>/
+      part-00000.parquet
+      _manifest.json
+    data/snapshots/snapshot-01742054400000000000/
+      part-00000.parquet
+      _manifest.json
+      indexes/vec-<col>-<model>/zone=<label>/
+      indexes/fts-<col>-<tokenizer>/
     data/snapshots/<id>.staging/
-    requests/<run-id>.<node-id>.parquet
-    requests/folded-<snapshot-id>.parquet
+    requests/
+      <run-id>.<node-id>.parquet
+      folded-<snapshot-id>.parquet
 
 <prefix>/manifest.json                   key -> { sha256, size, owner }
 <prefix>/_contextful/cas-probe/<uuid>
@@ -696,7 +705,7 @@ The store tree and its bucket mirror:
 <prefix>/leases/compact/<table>.json
 ```
 
-A table declaration:
+A table declaration, `declare::TableDecl`:
 
 ```toml
 [[pipeline.tables]]
@@ -729,16 +738,16 @@ id_column = "passage_id"
 tokenizer = "cjk"
 ```
 
-A run manifest, a snapshot manifest and a table pointer:
+A run manifest, a snapshot manifest and a table pointer, `lay_out::RunManifest`, `lay_out::SnapshotManifest` and `lay_out::Pointer`:
 
 ```json
 { "run_id": "run-4815", "table": "filings", "node_id": "ingest-a",
   "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
-  "committed_at": "<instant>", "pipeline_id": "filings-sync",
-  "cursor": { "field": "revised_at", "at": "<instant>" }, "fence": null }
+  "committed_at": "2025-03-15T15:58:00Z", "pipeline_id": "filings-sync",
+  "cursor": { "field": "revised_at", "at": "2025-03-15T15:57:41Z" }, "fence": null }
 
 { "snapshot_id": "snapshot-01742054400000000000", "parent": "snapshot-01741968000000000000",
-  "table": "filings", "created_at": "<instant>",
+  "table": "filings", "created_at": "2025-03-15T16:00:00Z",
   "includes_runs": ["run-4812/ingest-a", "run-4813/ingest-a", "run-4814/ingest-b"],
   "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
   "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,
@@ -758,14 +767,23 @@ A run manifest, a snapshot manifest and a table pointer:
 { "snapshot_id": "snapshot-01742054400000000000", "fence": 12 }
 ```
 
-A lease object and a commit-log entry:
+A lease object and a commit-log entry, `lease::BucketLease` and `commit_log::CommitEntry`:
 
 ```json
-{ "holder": "ingest-a", "acquired_at": "<instant>", "expires_at": "<instant>", "fence": 418 }
-{ "run_id": "run-4816", "cursor": { "kind": "opaque-token", "value": "eyJwYWdlIjo0Mn0" }, "fence": 418 }
+{ "holder": "ingest-a", "acquired_at": "2025-03-15T16:00:00Z", "expires_at": "2025-03-15T16:10:00Z", "fence": 418 }
+{ "kind": "commit", "table": "filings", "run_id": "run-4816", "cursor": { "kind": "opaque-token", "value": "eyJwYWdlIjo0Mn0" }, "fence": 418 }
 ```
 
-Sync configuration:
+A bucket manifest, `sync::BucketManifest`:
+
+```json
+{ "format": 1, "generation": 7,
+  "entries": { "filings/tables/filings/_pointer.json": { "sha256": "9f2c41d07be3a5c8e6f1d2b4a7c90e3f5d8b1a6c4e7f2d9b0a3c5e8f1d4b7a2c", "size": 74, "owner": "ingest-a" } },
+  "tombstones": { "filings/tables/filings/data/runs/run-4811/ingest-a/part-00000.parquet": { "owner": "ingest-a", "deleted_at": "2025-03-15T16:00:00Z" } },
+  "pointers": { "filings/tables/filings/_pointer.json": { "snapshot_id": "snapshot-01741968000000000000", "fence": 11 } } }
+```
+
+A store's `config.toml`, `config::StoreConfig`:
 
 ```toml
 [sync]
@@ -783,4 +801,7 @@ id = "ingest-a"
 
 [encryption]
 key_source = "env:CONTEXTFUL_KEY"
+
+[connector]
+require_pin = true
 ```

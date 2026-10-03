@@ -4,7 +4,7 @@
 use crate::error::{ContextError, IoPath, Result};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{
-    is_path_segment, store_root, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
+    is_path_segment, store_root, Pointer, TableLayout, CONFIG_FILE, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
 };
 use contextful_core::store::reconcile::Schema;
 use contextful_core::store::resolve::TableState;
@@ -17,52 +17,7 @@ use contextful_fs::tmp_sibling;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// The store root's `config.toml`.
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StoreConfig {
-    #[serde(default)]
-    pub node: Option<NodeConfig>,
-    #[serde(default)]
-    pub encryption: Option<EncryptionConfig>,
-    /// Bucket sync, read by the sync adapter.
-    #[serde(default)]
-    pub sync: Option<toml::Value>,
-    /// Present on a consuming replica: the canonical store it reads from.
-    #[serde(default)]
-    pub replica: Option<ReplicaConfig>,
-    /// Store-wide connector policy.
-    #[serde(default)]
-    pub connector: Option<ConnectorPolicy>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ConnectorPolicy {
-    /// The store-wide switch of `connector.package.pin-requirement`: every local component
-    /// artifact this store lands from carries a pin.
-    #[serde(default)]
-    pub require_pin: bool,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReplicaConfig {
-    /// The canonical store a replica answers for.
-    pub of: String,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NodeConfig {
-    pub id: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct EncryptionConfig {
-    pub key_source: String,
-}
+pub use contextful_core::store::config::{ConnectorPolicy, EncryptionConfig, NodeConfig, ReplicaConfig, StoreConfig};
 
 /// An opened store root.
 #[derive(Debug, Clone)]
@@ -81,7 +36,7 @@ impl Store {
     pub fn open(project_dir: &Path, project: &str) -> Result<Store> {
         crate::project::check_name(project)?;
         let root = project_dir.join(store_root(project));
-        let config_path = root.join("config.toml");
+        let config_path = root.join(CONFIG_FILE);
         let config: StoreConfig = match fs::read_to_string(&config_path) {
             Ok(text) => toml::from_str(&text)
                 .map_err(|e| ContextError::Invalid(format!("{}: {e}", config_path.display())))?,
@@ -167,7 +122,7 @@ impl Store {
     pub fn table_dir(&self, table: &str) -> Result<PathBuf> {
         check_segment_path(table, "table")?;
         check_table_layout(table)?;
-        Ok(self.root.join("tables").join(table))
+        Ok(self.root.join(TableLayout::new(table).dir()))
     }
 
     /// The table's merged schema. A table no `schema.json` declares refuses
@@ -254,7 +209,7 @@ impl Store {
             Some((ptr, _)) => read(self.snapshot_dir(table, &ptr.snapshot_id)?.join(MANIFEST_FILE))?,
             None => 0,
         };
-        for run_dir in sorted_dirs(&self.table_dir(table)?.join("data").join("runs"))? {
+        for run_dir in sorted_dirs(&self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR))? {
             for node_dir in sorted_dirs(&run_dir)? {
                 high = high.max(read(node_dir.join(MANIFEST_FILE))?);
             }
@@ -303,7 +258,7 @@ impl Store {
     /// `run_id`, `node_id` or `table` disagrees with its path, refuses the table
     /// (`store.lay-out.manifest-unreadable`).
     pub fn committed_runs(&self, table: &str) -> Result<Vec<RunManifest>> {
-        let runs_dir = self.table_dir(table)?.join("data").join("runs");
+        let runs_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
         let mut out = Vec::new();
         // One read of each (pipeline, node) commit log per call.
         let mut logs: std::collections::HashMap<(String, String), Vec<commit_log::CommitEntry>> = std::collections::HashMap::new();
@@ -369,7 +324,7 @@ impl Store {
     }
 
     pub fn snapshot_dir(&self, table: &str, id: &SnapshotId) -> Result<PathBuf> {
-        Ok(self.table_dir(table)?.join("data").join("snapshots").join(id.to_string()))
+        Ok(self.table_dir(table)?.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(id.to_string()))
     }
 
     /// The snapshot the pointer names and its `parent` chain, newest first, and whether

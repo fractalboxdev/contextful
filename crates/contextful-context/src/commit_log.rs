@@ -10,7 +10,7 @@ use std::path::PathBuf;
 fn dir(store: &Store, pipeline_id: &str, node_id: &str) -> Result<PathBuf> {
     use contextful_core::store::lay_out::is_path_segment;
     (is_path_segment(pipeline_id) && is_path_segment(node_id))
-        .then(|| store.root().join("cursors").join(pipeline_id).join(node_id))
+        .then(|| store.root().join(contextful_core::store::lay_out::commit_log_dir(pipeline_id, node_id)))
         .ok_or_else(|| crate::ContextError::Invalid(format!("`{pipeline_id}/{node_id}` is not a pair of path segments")))
 }
 

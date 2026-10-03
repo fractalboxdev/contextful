@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 100 | 64 | 13 | 11 | 50 | 0 | 50 |
 | `read` | 2 | 15 | 175 | 29 | 22 | 21 | 156 | 0 | 156 |
 | `run` | 3 | 26 | 371 | 98 | 35 | 37 | 256 | 0 | 255 |
-| `store` | 1 | 17 | 231 | 54 | 13 | 20 | 191 | 0 | 191 |
+| `store` | 1 | 17 | 232 | 54 | 13 | 20 | 194 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1925 | 568 | 187 | 137 | 1314 | 0 | |
+| **total** | 19 | 154 | 1926 | 568 | 187 | 137 | 1317 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
-| 2 — The store | 9 | 158 | 123 | passing | closed |
+| 2 — The store | 9 | 159 | 126 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
 | 4 — Ingest | 25 | 467 | 287 | passing | open |
 | 5 — The read face under enforcement | 17 | 248 | 185 | passing | open |
@@ -1183,9 +1183,12 @@ Unscheduled operations: 10.
 | `store.lay-out.snapshot-id` | `crates/contextful-core/tests/integration/store/lay_out.rs::snapshot_id_is_the_greater_of_the_commit_instant_and_the_previous_plus_one` | performed |
 | `store.lay-out.snapshot-manifest` | `crates/contextful-core/tests/integration/store/lay_out.rs::the_snapshot_manifest_and_pointer_decode_in_their_documented_shape` | performed |
 | `store.lay-out.staging` | `crates/contextful-context/tests/integration/lay_out.rs::a_staged_snapshot_joins_no_file_list` | performed |
+| `store.lay-out.store-root` | `crates/contextful-core/tests/integration/store/lay_out.rs::the_store_root_sits_under_the_project` | performed |
+| `store.lay-out.table-directory` | `crates/contextful-core/tests/integration/store/shapes.rs::the_table_layout_draws_every_path_of_the_tree` | performed |
 | `store.lay-out.table-pointer` | `crates/contextful-context/tests/integration/lay_out.rs::only_the_pointer_chain_makes_a_snapshot_readable` | performed |
 | `store.lay-out.uncommitted-run` | `crates/contextful-context/tests/integration/lay_out.rs::a_run_without_its_manifest_joins_no_file_list` | performed |
 | `store.lay-out.unknown-table` | `crates/contextful-context/tests/integration/lay_out.rs::a_table_no_schema_declares_is_unknown` | performed |
+| `store.lay-out.unrecognised-index-entry` | `crates/contextful-core/tests/integration/store/shapes.rs::snapshot_index_entries_are_typed_and_an_unrecognised_entry_survives` | performed |
 | `store.lease.acquire` | `crates/contextful-core/tests/integration/store/sync.rs::acquisition_creates_or_replaces_on_the_etag_with_the_next_fence` | performed |
 | `store.lease.commit-log` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_created_before_the_next_acquisition_stands` | performed |
 | `store.lease.local-node` | `crates/contextful-core/tests/integration/store/sync.rs::a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable` | performed |

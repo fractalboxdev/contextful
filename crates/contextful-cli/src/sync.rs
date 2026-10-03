@@ -109,12 +109,6 @@ fn now(flag: &Option<String>) -> Result<Instant> {
     })
 }
 
-#[derive(serde::Deserialize, Default)]
-struct ConfigFile {
-    #[serde(default)]
-    sync: Option<SyncConfig>,
-}
-
 fn open(args: &SyncArgs) -> Result<(Syncer, Vec<TableDecl>)> {
     let l = locate(args.project.as_deref(), args.declaration.clone())?;
     let (config, config_path) = sync_config(&l)?;
@@ -125,13 +119,13 @@ fn open(args: &SyncArgs) -> Result<(Syncer, Vec<TableDecl>)> {
 /// The store's `[sync]` block, absent when the store root holds no `config.toml` or the
 /// file declares none, and the path read.
 pub(crate) fn sync_config(l: &Located) -> Result<(Option<SyncConfig>, PathBuf)> {
-    let config_path = l.project.store_root().join("config.toml");
+    let config_path = l.project.store_root().join(contextful_core::store::lay_out::CONFIG_FILE);
     let text = match std::fs::read_to_string(&config_path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((None, config_path)),
         Err(e) => return Err(e).with_context(|| format!("reading `{}`", config_path.display())),
     };
-    let file: ConfigFile = toml::from_str(&text).with_context(|| format!("`{}`", config_path.display()))?;
+    let file: contextful_core::store::config::StoreConfig = toml::from_str(&text).with_context(|| format!("`{}`", config_path.display()))?;
     Ok((file.sync, config_path))
 }
 

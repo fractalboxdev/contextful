@@ -290,7 +290,7 @@ impl Destination for StoreDestination {
         let names: Vec<String> = commit.parts.iter().map(|p| p.name.clone()).collect();
         let manifest = commit_parts(&self.store, &decl, &names, &ctx, &position, &precommit, &commit_point).map_err(|e| lapsed.take().unwrap_or_else(|| store_failure(e)))?;
         // The committed parts carry `_commit_seq`, so their bytes are measured after the commit.
-        let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join("data").join("runs").join(&commit.run_id).join(&manifest.node_id);
+        let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;
         for p in &manifest.parts {
             bytes += std::fs::metadata(dir.join(&p.name)).map(|m| m.len()).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
