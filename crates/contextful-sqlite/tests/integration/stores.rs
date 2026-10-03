@@ -28,7 +28,7 @@ fn key(execution_id: &str) -> EntryKey {
 
 type Suite = (&'static str, Box<dyn Fn()>);
 
-/// The three conformance suites and the update atomicity cases, over one SQLite file per
+/// The three conformance suites, the restart check and the update atomicity cases, over one SQLite file per
 /// fresh store set.
 fn suites() -> Vec<Suite> {
     vec![
@@ -47,6 +47,14 @@ fn suites() -> Vec<Suite> {
             let mut dirs = Vec::new();
             conformance::awakeable_store("sqlite", &mut || {
                 let s = fresh(&mut dirs);
+                (s.awakeables, s.journal, s.blobs)
+            });
+        })),
+        ("sqlite awakeable restart", Box::new(|| {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(MACHINE_CATALOG_FILE);
+            conformance::awakeable_restart("sqlite", &mut || {
+                let s = SqliteRunStores::open(&path).unwrap();
                 (s.awakeables, s.journal, s.blobs)
             });
         })),

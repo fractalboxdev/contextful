@@ -3,8 +3,8 @@
 //! carries, checked against fresh stores from the adapter's factory. A check panics on the
 //! first divergence, naming the adapter and the rule.
 //!
-//! A factory hands back empty stores on every call; a clone of a store is the same state
-//! reopened, as a restarted process reopens it.
+//! A factory hands back empty stores on every call; a clone of a store shares its state.
+//! The restart check reopens a durable adapter over its location instead of cloning it.
 
 use crate::awake::{resume_key, AwakeError, Awaited, Registry};
 use crate::journal::{Journal, Resolved, StepError};
@@ -157,14 +157,16 @@ pub fn journal_store<J: JournalStore + Clone, B: BlobStore + Clone>(adapter: &st
     let taken = j.step(&key("x-1"), "run-b", &dead, &Never, &always, &mut || Ok(b"taken over".to_vec())).unwrap();
     assert_eq!(taken, Resolved::Recorded(b"taken over".to_vec()), "{adapter}: a dead holder's claim is taken over");
 
-    // A failed effect releases its claim; an unjournaled value leaves no row.
+    // A failed effect releases its claim; an unjournaled value leaves no row, and an
+    // execution whose every claim was released is no execution.
     let j = journal(fresh);
-    let failed = j.step(&key("x-1"), "run-a", &live, &Never, &always, &mut || Err(Failure::new(FailureTag::Transient, "reset")));
+    let failed = j.step(&key("x-2"), "run-a", &live, &Never, &always, &mut || Err(Failure::new(FailureTag::Transient, "reset")));
     assert!(matches!(failed, Err(StepError::Failed(_))), "{adapter}: a failed effect fails the step");
-    assert!(j.row(&key("x-1")).unwrap().is_none(), "{adapter}: a failed effect releases its claim");
+    assert!(j.row(&key("x-2")).unwrap().is_none(), "{adapter}: a failed effect releases its claim");
     let unjournaled = j.step(&key("x-1"), "run-a", &live, &Never, &|_| false, &mut || Ok(b"{}".to_vec())).unwrap();
     assert_eq!(unjournaled, Resolved::Unrecorded(b"{}".to_vec()));
     assert!(j.row(&key("x-1")).unwrap().is_none(), "{adapter}: an unjournaled value leaves no row");
+    assert_eq!(j.row_store().executions().unwrap(), Vec::<String>::new(), "{adapter}: only an execution holding a row lists");
 
     // run.journal.inline-cutoff and missing-blob.
     let j = journal(fresh);
@@ -211,8 +213,7 @@ pub fn journal_store<J: JournalStore + Clone, B: BlobStore + Clone>(adapter: &st
 }
 
 /// The [`AwakeableStore`] suite, run through the registry over the adapter and a journal:
-/// the token's single resolution, its deadline, payload offload and survival across a
-/// reopen.
+/// the token's single resolution, its deadline and payload offload.
 pub fn awakeable_store<A: AwakeableStore + Clone, J: JournalStore + Clone, B: BlobStore + Clone>(adapter: &str, fresh: &mut dyn FnMut() -> (A, J, B)) {
     let (store, rows, blobs) = fresh();
     let r = Registry::over(store.clone(), Journal::over(rows.clone(), blobs.clone()));
@@ -251,10 +252,30 @@ pub fn awakeable_store<A: AwakeableStore + Clone, J: JournalStore + Clone, B: Bl
     assert_eq!(blobs.get(&sha).unwrap().as_deref(), Some(&payload[..]), "{adapter}: the payload is a blob");
     assert!(r.referenced_blobs().unwrap().contains(&sha), "{adapter}: the row references the blob the sweep spares");
 
-    // run.suspend.survives-restart: a reopened registry holds every pending callback.
-    let pending = r.suspend("x-4", "approve", "2030-01-01T00:00:00Z", 60).unwrap();
-    let reopened = Registry::over(store.clone(), Journal::over(rows.clone(), blobs.clone()));
-    assert_eq!(reopened.state(&pending.token, at("2030-01-01T00:00:30Z")).unwrap().state, AwakeableState::Pending, "{adapter}: a reopen drops no pending callback");
-    assert_eq!(reopened.resolve(&pending.token, b"after", at("2030-01-01T00:00:59Z")).unwrap(), b"after");
-    assert_eq!(store.rows().unwrap().len(), 4, "{adapter}: one row per minted token");
+    assert_eq!(store.rows().unwrap().len(), 3, "{adapter}: one row per minted token");
+}
+
+/// The restart check of `run.suspend.survives-restart`, for a durable adapter: each call
+/// of `open` opens the adapter's stores over one fixed location, as a new process does.
+/// An in-process adapter has no location to reopen and runs no restart check.
+pub fn awakeable_restart<A: AwakeableStore, J: JournalStore, B: BlobStore>(adapter: &str, open: &mut dyn FnMut() -> (A, J, B)) {
+    let registry = |open: &mut dyn FnMut() -> (A, J, B)| {
+        let (store, rows, blobs) = open();
+        Registry::over(store, Journal::over(rows, blobs))
+    };
+    let before = registry(open);
+    let pending = before.suspend("x-1", "approve", "2030-01-01T00:00:00Z", 60).unwrap();
+    let resolved = before.suspend("x-2", "approve", "2030-01-01T00:00:00Z", 60).unwrap();
+    let payload = large(b'r');
+    assert_eq!(before.resolve(&resolved.token, &payload, at("2030-01-01T00:00:10Z")).unwrap(), payload);
+    drop(before);
+
+    let after = registry(open);
+    assert_eq!(after.state(&pending.token, at("2030-01-01T00:00:30Z")).unwrap().state, AwakeableState::Pending, "{adapter}: a restart drops no pending callback");
+    assert_eq!(after.awaited("x-2", &resolved.token, at("2030-01-01T00:00:30Z")).unwrap(), Awaited::Resumed(payload.clone()), "{adapter}: a resolution survives a restart");
+    assert_eq!(after.resolve(&pending.token, b"after", at("2030-01-01T00:00:59Z")).unwrap(), b"after");
+    drop(after);
+
+    let last = registry(open);
+    assert_eq!(last.awaited("x-1", &pending.token, at("2030-01-01T00:01:30Z")).unwrap(), Awaited::Resumed(b"after".to_vec()), "{adapter}: a resolution after a restart persists");
 }

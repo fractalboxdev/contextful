@@ -15,7 +15,7 @@ pub enum AwakeableState {
     TimedOut,
 }
 
-/// One registry row, persisted beside the journal.
+/// One registry row, persisted through an awakeable store.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Awakeable {
     pub token: String,

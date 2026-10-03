@@ -34,6 +34,11 @@ fn entries(dir: &Path) -> Result<Vec<(String, PathBuf)>, Failure> {
     Ok(out)
 }
 
+/// Whether a file under an execution directory holds a journal row.
+fn is_row_file(name: &str) -> bool {
+    name.ends_with(".json") && !name.starts_with('.')
+}
+
 /// Journal rows as one JSON file per entry.
 #[derive(Debug, Clone)]
 pub struct FileJournalStore {
@@ -105,7 +110,7 @@ impl JournalStore for FileJournalStore {
     fn rows(&self, execution_id: &str) -> Result<Vec<Row>, Failure> {
         let mut rows = Vec::new();
         for (name, path) in entries(&self.execution_dir(execution_id))? {
-            if name.ends_with(".json") && !name.starts_with('.') {
+            if is_row_file(&name) {
                 rows.extend(read_json(&path)?);
             }
         }
@@ -121,8 +126,18 @@ impl JournalStore for FileJournalStore {
         }
     }
 
+    /// A directory a release emptied keeps its `.lock` files and lists no execution.
     fn executions(&self) -> Result<Vec<String>, Failure> {
-        Ok(entries(&self.root)?.into_iter().filter(|(name, path)| !name.starts_with('.') && path.is_dir()).map(|(name, _)| name).collect())
+        let mut ids = Vec::new();
+        for (name, path) in entries(&self.root)? {
+            if name.starts_with('.') || !path.is_dir() {
+                continue;
+            }
+            if entries(&path)?.iter().any(|(row, _)| is_row_file(row)) {
+                ids.push(name);
+            }
+        }
+        Ok(ids)
     }
 }
 

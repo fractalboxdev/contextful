@@ -28,8 +28,8 @@ fn files(dir: &std::path::Path) -> Vec<String> {
 }
 
 /// An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row
-/// beside the journal; an external party resumes by posting the token back.
-// spec: run.suspend.awakeable@636d4aa2
+/// through the awakeable store; an external party resumes by posting the token back.
+// spec: run.suspend.awakeable@58dd40ee
 #[test]
 fn a_minted_token_persists_a_pending_row_and_resumes_on_post() {
     let dir = tempfile::tempdir().unwrap();
@@ -98,8 +98,9 @@ fn a_payload_above_the_cutoff_lands_in_the_blob_store() {
     assert!(raw.len() < 4096, "the row holds a reference, not the payload");
 }
 
-/// The awakeable registry persists beside the journal; a restart drops no pending callback.
-// spec: run.suspend.survives-restart@0c52f569
+/// A durable awakeable store persists every registry row, so a process reopening it over the same location drops no
+/// pending callback.
+// spec: run.suspend.survives-restart@24a03fda
 #[test]
 fn a_restart_keeps_every_pending_callback() {
     let dir = tempfile::tempdir().unwrap();

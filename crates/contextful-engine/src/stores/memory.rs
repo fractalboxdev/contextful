@@ -1,7 +1,7 @@
 //! In-process adapters: every row and blob in a map behind one mutex per store. A clone
 //! shares its original's state, so a second journal or registry over a clone reads what
-//! the first wrote, as a restarted process reads the file tree. Nothing survives the
-//! process.
+//! the first wrote. Nothing survives the process: these stores are not durable, and
+//! `run.suspend.survives-restart` binds only a durable awakeable store.
 
 use contextful_core::run::journal::{sweepable, EntryKey, Row, Stored};
 use contextful_core::run::ports::{AwakeableStore, BlobStore, JournalStore};
