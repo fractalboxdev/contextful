@@ -60,7 +60,6 @@ pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Loc
 
 /// The manifest files, in reading order: the declaration when it is a file, then
 /// `pipelines/` sorted (`run.declare.manifest-file`).
-#[cfg(feature = "data-plane")]
 pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
     let mut files = Vec::new();
     if declaration.is_file() {
