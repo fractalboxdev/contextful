@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
-| `disclosure` | 3 | 16 | 100 | 64 | 13 | 11 | 50 | 0 | 50 |
+| `disclosure` | 3 | 16 | 103 | 64 | 13 | 10 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 176 | 29 | 22 | 21 | 157 | 0 | 157 |
 | `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 197 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1931 | 569 | 188 | 137 | 1324 | 0 | |
+| **total** | 19 | 154 | 1934 | 569 | 188 | 136 | 1328 | 0 | |
 
 Decision records: 18.
 
@@ -33,7 +33,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 5 — The read face under enforcement | 17 | 249 | 186 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
-| 8 — Accountability | 5 | 57 | 43 | passing | open |
+| 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 22 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
@@ -622,11 +622,15 @@ Unscheduled operations: 10.
 | `disclosure.attest.anchor-verb` | `crates/contextful-cli/tests/integration/audit.rs::anchor_signs_an_unanchored_chain_so_it_verifies_under_the_issuer_pin` | performed |
 | `disclosure.attest.broken-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken` | performed |
 | `disclosure.attest.inclusion-proof` | `crates/contextful-policy/tests/integration/audit.rs::an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment` | performed |
+| `disclosure.attest.lineage-elision` | `crates/contextful-memory/tests/integration/evidence.rs::a_withheld_evidence_table_is_counted_and_never_named` | performed |
 | `disclosure.attest.merkle-root` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_segment_root_is_the_rfc_6962_tree_hash_of_its_entry_digests` | performed |
 | `disclosure.attest.owner-only` | `crates/contextful-cli/tests/integration/audit.rs::a_capability_credential_refuses_every_chain_verb` | performed |
 | `disclosure.attest.proof-invalid` | `crates/contextful-policy/tests/integration/audit.rs::a_proof_disagreeing_anywhere_raises_audit_proof_invalid` | performed |
 | `disclosure.attest.proof-unavailable` | `crates/contextful-policy/tests/integration/audit.rs::proving_an_unrooted_or_absent_entry_raises_audit_proof_unavailable` | performed |
 | `disclosure.attest.prove-verb` | `crates/contextful-cli/tests/integration/audit.rs::a_printed_proof_checks_offline_and_an_altered_one_does_not` | performed |
+| `disclosure.attest.replica-verify` | `crates/contextful-policy/tests/integration/replica.rs::deleted_roots_and_tip_break_against_the_replica` | performed |
+| `disclosure.attest.replicate-verb` | `crates/contextful-cli/tests/integration/audit.rs::verify_against_the_bucket_catches_deleted_roots_and_tip` | performed |
+| `disclosure.attest.root-replication` | `crates/contextful-policy/tests/integration/replica.rs::a_closed_segment_root_lands_within_one_tick` | performed |
 | `disclosure.attest.root-tag` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_root_names_and_signs_its_algorithm_header_and_segment` | performed |
 | `disclosure.attest.verify-verb` | `crates/contextful-cli/tests/integration/audit.rs::verify_passes_an_intact_chain_and_names_the_rewritten_index` | performed |
 | `disclosure.bound-staleness.budget-grammar` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_budget_outside_the_grammar_is_refused_naming_table_and_text` | performed |

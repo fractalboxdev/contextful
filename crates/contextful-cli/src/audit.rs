@@ -1,4 +1,4 @@
-//! `contextful audit` — verify, prove and query a project's audit chain at
+//! `contextful audit` — verify, prove, replicate, explain and query a project's audit chain at
 //! `.contextful/audit/` (`disclosure.record.read-chain`).
 //!
 //! A thin adapter over `contextful_policy::audit` and the `audit_reads` projection. Every
@@ -10,13 +10,14 @@ use crate::admit::{static_pins, TOKEN_VAR};
 use crate::project::{locate, pipeline_files};
 use anyhow::{Context, Result};
 use contextful_context::read::{audit_reads, ReadOptions};
-use contextful_policy::audit::{self, AuditError, AuditLog, InclusionProof};
-use contextful_policy::issue::{SeedSigner, SignerKey};
-use contextful_policy::keyset::KeySource;
 use contextful_core::disclosure::declare::Binding;
 use contextful_core::exchange::ExchangePolicy;
 use contextful_core::store::declare::TableDecl;
+use contextful_policy::audit::{self, AuditError, AuditLog, InclusionProof};
 use contextful_policy::explain::{self, Explanation, Window};
+use contextful_policy::issue::{SeedSigner, SignerKey};
+use contextful_policy::keyset::KeySource;
+use contextful_policy::replica::{verify_replicated, RootBucket};
 use std::path::{Path, PathBuf};
 
 #[derive(clap::Subcommand)]
@@ -29,9 +30,17 @@ pub enum AuditCmd {
         /// Issuer key pins the roots and the tip verify under; absent checks linkage alone.
         #[arg(long)]
         public_key: Option<String>,
+        /// Also check the chain against the roots replicated to the `[sync]` bucket.
+        #[arg(long)]
+        bucket: bool,
+    },
+    /// Copy the chain's signed roots the `[sync]` bucket lacks, and print the segments sent.
+    Replicate {
+        #[arg(long)]
+        project: Option<String>,
     },
     /// Sign an unanchored chain's missing roots and its tip through the issuer's seed,
-    /// and print the chain end.
+    /// copy the roots to the `[sync]` bucket, and print the chain end.
     Anchor {
         #[arg(long)]
         project: Option<String>,
@@ -106,6 +115,12 @@ fn signer_keys(pins: &str) -> Result<Vec<SignerKey>> {
     Ok(set.keys().map(|k| SignerKey { algorithm: k.algorithm(), public_key: k.public_key.to_bytes() }).collect())
 }
 
+/// The project's replicated-root keyspace; a store declaring no `[sync]` refuses.
+fn roots_of(located: &crate::project::Located) -> Result<RootBucket> {
+    crate::sync::root_bucket(located)?
+        .with_context(|| format!("`{}` declares no `[sync]` bucket to hold replicated roots", located.project.store_root().join("config.toml").display()))
+}
+
 /// The chain directory of the located project.
 fn chain(project: Option<String>) -> Result<PathBuf> {
     Ok(locate(project.as_deref(), None)?.project.audit_dir())
@@ -127,22 +142,49 @@ fn under_any<T>(keys: &[SignerKey], check: impl Fn(&SignerKey) -> Result<T, Audi
 
 pub fn run(cmd: AuditCmd) -> Result<()> {
     match cmd {
-        AuditCmd::Verify { project, public_key } => {
+        AuditCmd::Verify { project, public_key, bucket } => {
             owner_only("verify")?;
-            let dir = chain(project)?;
+            let located = locate(project.as_deref(), None)?;
+            let dir = located.project.audit_dir();
+            let replicated = if bucket { Some(roots_of(&located)?.roots()?) } else { None };
+            let check = |key: Option<&SignerKey>| match (&replicated, key) {
+                (Some(r), _) => verify_replicated(&dir, r, key),
+                (None, Some(k)) => audit::verify_signed(&dir, k),
+                (None, None) => audit::verify(&dir),
+            };
             let end = match public_key {
-                Some(pins) => under_any(&signer_keys(&pins)?, |k| audit::verify_signed(&dir, k))?,
-                None => audit::verify(&dir)?,
+                Some(pins) => under_any(&signer_keys(&pins)?, |k| check(Some(k)))?,
+                None => check(None)?,
             };
             println!("{}", serde_json::to_string(&end)?);
         }
+        AuditCmd::Replicate { project } => {
+            owner_only("replicate")?;
+            let located = locate(project.as_deref(), None)?;
+            let sent = roots_of(&located)?.push(&located.project.audit_dir())?;
+            println!("{}", serde_json::json!({ "sent": sent }));
+        }
         AuditCmd::Anchor { project, issuer_key } => {
             owner_only("anchor")?;
-            let dir = chain(project)?;
+            let located = locate(project.as_deref(), None)?;
+            let dir = located.project.audit_dir();
             let log = AuditLog::anchor(&dir, SeedSigner::resolve(Some(&issuer_key))?)?;
             log.export()?;
             drop(log);
-            println!("{}", serde_json::to_string(&audit::verify(&dir)?)?);
+            let end = audit::verify(&dir)?;
+            // The roots just signed copy off-node now. A bucket that cannot open or a copy
+            // that fails leaves them for `audit replicate`, and fails no anchor
+            // (`disclosure.attest.root-replication`).
+            let copy = || -> Result<()> {
+                if let Some(roots) = crate::sync::root_bucket(&located)? {
+                    roots.push(&dir)?;
+                }
+                Ok(())
+            };
+            if let Err(e) = copy() {
+                eprintln!("root replication: {e}; the roots stay local until the next copy");
+            }
+            println!("{}", serde_json::to_string(&end)?);
         }
         AuditCmd::Prove { project, seq } => {
             owner_only("prove")?;
@@ -204,7 +246,6 @@ fn explain(q: Question) -> Result<serde_json::Value> {
     let located = locate(q.project.as_deref(), q.declaration)?;
     let window = q.window.map(|w| Window::parse(&w).map_err(anyhow::Error::msg)).transpose()?;
     let policy = read_if_present(&located.project.dir.join(ExchangePolicy::PATH))?.map(|t| ExchangePolicy::parse(&t)).transpose()?;
-    // The declaration set (`store.declare.declaration-set`), as the read face reads it.
     let text = read_if_present(&located.declaration)?.unwrap_or_default();
     let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&located.declaration)?)
         .with_context(|| format!("`{}`", located.declaration.display()))?;

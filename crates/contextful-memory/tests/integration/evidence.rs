@@ -79,6 +79,23 @@ fn a_fold_superseding_the_cited_version_keeps_the_claim() {
     assert_eq!(served(&recall(&f, &outsider)), (0, json!(1)));
 }
 
+/// A reader outside the cited table's authority is told how many citations were withheld
+/// and never which table holds them; a reader inside it is told none were.
+// spec: disclosure.attest.lineage-elision@3ebee870
+#[test]
+fn a_withheld_evidence_table_is_counted_and_never_named() {
+    let f = Fixture::new();
+    version(&f, "run-a1", "Dana");
+    write(&f, &f.writer(), cites("run-a1")).unwrap();
+    assert_eq!(recall(&f, &reader(&f)).blocks["contextful.recall"]["withheld"], json!(0));
+    let outsider = f.authority("agent://outsider", &[Action::Read], &["memory/*"]);
+    let withheld = recall(&f, &outsider);
+    assert_eq!(served(&withheld), (0, json!(1)));
+    assert_eq!(withheld.blocks["contextful.recall"]["withheld"], json!(1));
+    let text = serde_json::to_string(&withheld.blocks).unwrap();
+    assert!(!text.contains(ACCOUNTS) && !text.contains("accounts"), "{text}");
+}
+
 /// A synthesized claim citing a keyed row survives the fold the same way.
 #[test]
 fn a_synthesized_claim_survives_the_fold_of_its_cited_version() {
