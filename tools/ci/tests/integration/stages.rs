@@ -174,7 +174,7 @@ fn every_stage_reports_its_environment_and_memory_and_a_failure_keeps_its_exit_c
 
     // Each stage's peak is its own: a later stage never reports an earlier stage's peak.
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    bin.fake("cargo", &format!("if [ \"$1\" = fetch ]; then awk 'BEGIN {{ s = sprintf(\"%200000000s\", \"\") }}'; exit 0; fi\nexec \"{cargo}\" \"$@\"\n"));
+    bin.fake("cargo", &format!("if [ \"$1\" = fetch ]; then awk 'BEGIN {{ s = sprintf(\"%200000000s\", \"\"); print length(s) > \"/dev/null\" }}'; exit 0; fi\nexec \"{cargo}\" \"$@\"\n"));
     let o = gate(&r, Some(&bin), &["--stage", "pins", "--stage", "toolchain"]);
     let err = stderr(&o);
     assert!(o.status.success(), "{err}");

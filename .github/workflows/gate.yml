@@ -50,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 8
       matrix:
         stage: [pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features.packages, features.binary-none, features.binary-all, features.binary-data-plane, features.binary-contextful-edge, crate-graph, connectors, surfaces, formal, budget.control, budget.edge, budget.full]
     steps:
