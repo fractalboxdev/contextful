@@ -97,7 +97,7 @@ What crosses inward: the three host imports and the forwarded guest configuratio
   *P1*
 - `config-hashing` — The forwarded table folds into the connector's content hash; with no table forwarded, the artifact digest is that hash verbatim.
 
-unsettled: How is a source's declared configuration key set enumerated, so an unknown key is answered at parse time rather than meaning the default? owner: connector affects: connector.import
+The outer source configuration follows {{run.declare.config-key}}.
 
 ## declare-capability
 

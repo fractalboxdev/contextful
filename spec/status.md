@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 330 | 85 | 21 | 16 | 204 | 0 | 203 |
+| `connector` | 2 | 14 | 330 | 85 | 21 | 15 | 204 | 0 | 203 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1965 | 574 | 188 | 133 | 1344 | 0 | |
+| **total** | 19 | 154 | 1965 | 574 | 188 | 132 | 1344 | 0 | |
 
 Decision records: 18.
 
