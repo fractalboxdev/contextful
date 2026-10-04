@@ -140,10 +140,19 @@ impl SnapshotDir {
                 continue;
             }
             let signed = receipt.map(|sign| sign(version, parent.as_deref())).transpose()?;
-            if create_new(&self.root.join(snapshot_file(version)), text.as_bytes()).map_err(storage)? {
+            let snapshot = self.root.join(snapshot_file(version));
+            if create_new(&snapshot, text.as_bytes()).map_err(storage)? {
                 if let Some(signed) = signed {
-                    if !create_new(&self.root.join(receipt_file(version)), signed.as_bytes()).map_err(storage)? {
-                        return Err(ControlError::Storage(format!("receipt for v{version} already exists")));
+                    let receipt_error = match create_new(&self.root.join(receipt_file(version)), signed.as_bytes()) {
+                        Ok(true) => None,
+                        Ok(false) => Some(ControlError::Storage(format!("receipt for v{version} already exists"))),
+                        Err(e) => Some(storage(e)),
+                    };
+                    if let Some(error) = receipt_error {
+                        std::fs::remove_file(&snapshot).map_err(|cleanup| {
+                            ControlError::Storage(format!("{error}; removing unpublished snapshot {}: {cleanup}", snapshot.display()))
+                        })?;
+                        return Err(error);
                     }
                 }
                 break;

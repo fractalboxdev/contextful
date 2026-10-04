@@ -66,3 +66,17 @@ fn an_attested_claim_commits_the_snapshot_and_receipt_together() {
     assert_eq!(snaps.read(2).unwrap(), "second");
     assert_eq!(std::fs::read_to_string(dir.path().join("receipt@v2.json")).unwrap(), "second receipt");
 }
+
+/// A receipt publication error leaves no snapshot file for the version it refused.
+#[test]
+fn a_failed_receipt_write_removes_its_unpublished_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    let refused = snaps.claim_attested(None, "first", |version, _| {
+        std::fs::create_dir(dir.path().join(format!("receipt@v{version}.json"))).unwrap();
+        Ok("receipt".into())
+    });
+    assert!(refused.is_err());
+    assert_eq!(snaps.current().unwrap(), None);
+    assert!(!dir.path().join("manifest@v1.toml").exists());
+}
