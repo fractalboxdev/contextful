@@ -173,6 +173,9 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         }
         rows = dedupe(&rows, &line, decl.order_by()).map_err(invalid)?;
     }
+    if is_derive_key(decl.primary_key()) {
+        rows = supersede(&rows, decl.retain_versions == Some(true))?;
+    }
     let retention = if let Some(rule) = &decl.retain_rows {
         let cutoff = cutoff.expect("declared retention has a parsed age");
         let column = column(&rows, &rule.column).map_err(invalid)?;
@@ -192,9 +195,6 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         rows = filtered;
         Some(RetentionReport { cutoff, rows_expired: count + footer_expired, partitions_dropped: before.difference(&after).count() as u64 })
     } else { None };
-    if is_derive_key(decl.primary_key()) {
-        rows = supersede(&rows, decl.retain_versions == Some(true))?;
-    }
     if unfolded.is_empty() && retention.as_ref().is_none_or(|r| r.rows_expired == 0) {
         return Ok(Prepared::NothingLanded);
     }

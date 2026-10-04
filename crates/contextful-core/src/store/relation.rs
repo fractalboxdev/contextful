@@ -71,6 +71,10 @@ pub fn relation(
     } else {
         base
     };
+    if is_derive_key(decl.primary_key()) && SUPERSEDE_COLUMNS.iter().all(|n| schema_columns.iter().any(|c| c.name == *n)) {
+        let by_version = decl.retain_versions == Some(true) && schema_columns.iter().any(|c| c.name == TASK_VERSION);
+        rel = unsuperseded(&rel, by_version);
+    }
     if let Some(retention) = &decl.retain_rows {
         let seconds = decl.retain_rows_secs().map_err(|e| StoreError::StoreRetentionColumnInvalid(e.to_string()))?.unwrap_or_default();
         let nanos = u128::from(seconds) * 1_000_000_000;
@@ -78,10 +82,6 @@ pub fn relation(
             "SELECT * FROM ({rel}) WHERE epoch_ns({}) >= CAST(epoch_ns(CURRENT_TIMESTAMP) AS HUGEINT) - CAST({nanos} AS HUGEINT)",
             ident(&retention.column)
         );
-    }
-    if is_derive_key(decl.primary_key()) && SUPERSEDE_COLUMNS.iter().all(|n| schema_columns.iter().any(|c| c.name == *n)) {
-        let by_version = decl.retain_versions == Some(true) && schema_columns.iter().any(|c| c.name == TASK_VERSION);
-        rel = unsuperseded(&rel, by_version);
     }
 
     if let Some(b) = valid_as_of {
