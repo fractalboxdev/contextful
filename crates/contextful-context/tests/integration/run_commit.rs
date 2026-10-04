@@ -265,7 +265,7 @@ fn a_relational_group_becomes_visible_only_after_its_marker() {
     commit_parts_group(&f.store, &root, &[a.name], &ctx, &fed("p1"), "filings", &[], &|| Ok(()), &|_| Ok(())).unwrap();
     assert!(f.store.committed_runs("filings").unwrap().is_empty());
     assert!(f.store.committed_runs("filings_events").unwrap().is_empty());
-    publish_group(&f.store, "filings", &ctx).unwrap();
+    publish_group(&f.store, "filings", &["filings".into(), "filings_events".into()], &ctx).unwrap();
     assert_eq!(f.store.committed_runs("filings").unwrap().len(), 1);
     assert_eq!(f.store.committed_runs("filings_events").unwrap().len(), 1);
 }

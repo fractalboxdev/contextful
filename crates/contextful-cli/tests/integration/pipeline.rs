@@ -1478,6 +1478,34 @@ fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     assert_eq!(child["rows"][1], serde_json::json!([parent_id, "1", "end", null, "BIGINT"]));
 }
 
+#[test]
+fn a_native_downgrade_is_recorded_on_the_commit_and_in_history() {
+    let calls = std::sync::atomic::AtomicUsize::new(0);
+    let vendor = Vendor::start(move |_| {
+        let body = if calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            r#"[{"resource":"old"}]"#
+        } else {
+            r#"[{"resource":{"service":"api"}}]"#
+        };
+        (200, body.into())
+    });
+    let dir = project(&pipeline("otel", &vendor.url("/v1/{table}"), "normalize = \"native\"", "tables = [\"spans\"]"));
+    ok(&fire(dir.path(), "otel", "r1", "2030-01-01T00:00:00Z"));
+    ok(&fire(dir.path(), "otel", "r2", "2030-01-01T00:01:00Z"));
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
+        dir.path().join(".contextful/context/research/tables/otel_spans/data/runs/r2/ingest-a/_manifest.json"),
+    ).unwrap()).unwrap();
+    let event = &manifest["schema_diffs"][0];
+    assert_eq!(event["table"], "otel_spans");
+    assert_eq!(event["column_path"], "resource");
+    assert_eq!(event["landed_type"], "Utf8");
+    let history: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
+        "run", "history", "--project", "research", "--pipeline", "otel",
+    ]))).unwrap();
+    let run = history["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == "r2").unwrap();
+    assert_eq!(run["schema_diffs"][0], *event);
+}
+
 /// Recursion stops at the declared `depth`, default 5 levels, landing a deeper subtree as one `Json` value.
 // spec: run.normalize.nesting-depth@3392c7de
 #[test]
