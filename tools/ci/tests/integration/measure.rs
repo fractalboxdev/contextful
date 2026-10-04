@@ -202,6 +202,31 @@ fn a_trend_report_uses_the_latest_successful_matching_history_without_failing_th
 }
 
 #[test]
+fn a_zero_baseline_report_remains_publishable() {
+    let r = Repo::init();
+    r.write("evals/ledger.toml", "[entry.latency]\nclause = \"run.journal.entry-key\"\nmetric = \"run.latency_ms\"\nkind = \"bench\"\ntier = \"trend\"\ndirection = \"lower_is_better\"\nmethod = { issue = 81 }\n");
+    let old = r.head();
+    let baseline = r#"{"id":"latency","value":0,"n":1,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"#;
+    r.git(&["notes", "--ref=measures", "add", "-m", &format!("{{\"commit\":\"{old}\",\"run_id\":1,\"run_attempt\":1,\"exit_code\":0,\"records\":[{baseline}]}}"), &old]);
+    r.write("README", "next commit\n");
+    let current = r.commit("next");
+    r.write("target/evaluate/records/latency.json", &baseline.replace("\"value\":0", "\"value\":1"));
+    let out = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "2", "--run-attempt", "1", "--exit-code", "0", "--out", "target/measure-report.json"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(r.root.join("target/measure-report.json")).unwrap()).unwrap();
+    assert_eq!(report["annotations"][0]["annotation"], "worse than the zero baseline");
+    assert!(report["annotations"][0]["worse_percent"].is_null());
+
+    let remote = tempfile::tempdir().unwrap();
+    r.git(&["init", "--bare", remote.path().to_str().unwrap()]);
+    r.git(&["remote", "add", "origin", remote.path().to_str().unwrap()]);
+    r.git(&["push", "origin", "HEAD:refs/heads/main"]);
+    r.git(&["push", "origin", "refs/notes/measures"]);
+    let out = r.run_ci(&["measure-publish", "--commit", &current, "--report", "target/measure-report.json", "--remote", "origin"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+}
+
+#[test]
 fn a_report_reads_noted_history_with_bounded_git_processes() {
     let r = Repo::init();
     for n in 1..=4 {
