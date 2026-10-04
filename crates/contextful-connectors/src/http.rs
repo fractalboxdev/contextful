@@ -837,7 +837,7 @@ impl HttpSource {
                             return Err(Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorTemplateRejected("an unclosed placeholder".into()).to_string()));
                         };
                         let name = &rest[open + 1..close];
-                        let value = row.get(name).and_then(scalar).ok_or_else(|| {
+                        let value = row.get(name).and_then(|v| match v { Value::Bool(b) => Some(b.to_string()), other => scalar(other) }).ok_or_else(|| {
                             Failure::deterministic(FailureTag::SchemaIncompatible, ConnectorError::ConnectorPointerColumnMissing(format!("`{name}` is absent or not a scalar value")).to_string())
                         })?;
                         values.insert(name.to_string(), value);
