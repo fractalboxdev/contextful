@@ -621,6 +621,8 @@ pub struct Read {
     pub position: Value,
     /// Files the read lands with a `skipped` reason.
     pub skipped: u64,
+    /// Every selected file was captured; an unchanged or declined file prevents replacement.
+    pub snapshot_complete: bool,
 }
 
 /// The source landing one table of a drive fire.
@@ -712,16 +714,23 @@ impl DriveSource {
         let mut rows = Vec::new();
         let mut after = Map::new();
         let mut skipped = 0u64;
+        let mut snapshot_complete = true;
         for e in entries.iter() {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped between files"));
             }
             let prior = before.get(&e.id);
             let unchanged = !selection_changed && !mode_changed && prior.is_some_and(|h| h.modified == e.modified && h.path == e.path && h.version == e.version && h.resolved_root == e.resolved_root);
+            if unchanged {
+                snapshot_complete = false;
+            }
             let mut pages = prior.map_or(0, |h| h.pages);
             if !unchanged {
                 let f = self.drive.fetch(e)?;
                 skipped += u64::from(f.skipped.is_some());
+                if f.skipped.is_some() {
+                    snapshot_complete = false;
+                }
                 let landed = f.pages.as_ref().map_or(0, |p| p.len() as u64);
                 match self.table {
                     Table::Files => rows.push(Self::file_row(e, &f)),
@@ -744,7 +753,7 @@ impl DriveSource {
                 Table::Pages => rows.extend((1..=h.pages).map(|p| Self::page_row(id, None, &h.path, p, None))),
             }
         }
-        Ok(Read { rows, position: json!({ "files": after, "drive_id": self.drive.config.drive_id, "roots": roots, "mode": self.drive.config.mode.as_str() }), skipped })
+        Ok(Read { rows, position: json!({ "files": after, "drive_id": self.drive.config.drive_id, "roots": roots, "mode": self.drive.config.mode.as_str() }), skipped, snapshot_complete })
     }
 }
 
@@ -753,6 +762,6 @@ impl Source for DriveSource {
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
         let read = self.read(request.position.as_ref(), cancel)?;
         // The skipped files are the pull's tally on the run record (`connector.source.drive-skip-count`).
-        serde_json::to_vec(&json!({ "rows": read.rows, "cursor": read.position, "more": false, "types": self.types(), "skipped": read.skipped })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+        serde_json::to_vec(&json!({ "rows": read.rows, "cursor": read.position, "more": false, "snapshot_complete": read.snapshot_complete, "types": self.types(), "skipped": read.skipped })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }
