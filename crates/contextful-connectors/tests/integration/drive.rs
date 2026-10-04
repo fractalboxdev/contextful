@@ -365,6 +365,18 @@ fn metadata_only_changed_version_updates_digest_and_removed_file() {
     assert!(removed["sha256"].is_null());
 }
 
+/// A download crossing a version change refuses the whole metadata capture.
+#[test]
+fn metadata_only_refuses_a_version_moving_during_capture() {
+    let fake = Fake::start();
+    fake.overlay("version-race.json");
+    let bodies = Arc::new(Held::default());
+    let d = drive_into(fake.config(json!({"mode": "metadata-only"})), Arc::new(InProcess), bodies.clone());
+    let failure = d.source("files").unwrap().pull(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains("ConnectorDriveVersionMoved") && failure.message.contains("doc-plan"), "{failure}");
+    assert_eq!(*bodies.puts.lock().unwrap(), 0);
+}
+
 /// A version or resolved-root change re-reads a file despite an unchanged modification time and path.
 // spec: connector.source.drive-root-reassignment@ab410702
 #[test]

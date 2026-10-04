@@ -534,6 +534,8 @@ The declared behavior of each source compiled into the engine.
 - `drive-capture-record` — Every file row carries `resolved_root`, `export_mime_type`, captured `bytes` and `capture_status`: `captured`, `skipped` or `removed`. A removed row or skipped row without captured bytes has null `sha256`.
 - `drive-metadata-only` — In `metadata-only` mode, the source hashes exact downloaded or exported bytes, then discards the bytes after recording the digest.
   *A-connector*
+- `drive-version-consistency` — After a metadata-only download or export, the source re-reads the file version; a change from the listed version raises `ConnectorDriveVersionMoved` before any row or cursor commits.
+  *because a digest of newer bytes cannot witness the version named by the file row*
 - `drive-named-skip` — A skipped file row names the file and reason; the per-file bound of {{connector.source.drive-file-cap}} applies in both modes.
   *because a skipped row cannot attest to bytes the source did not read*
 - `drive-export` — A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.
@@ -573,6 +575,7 @@ The declared behavior of each source compiled into the engine.
 - `connector.source.drive-page-grain`: WHEN mode is `metadata-only`, THEN no page content row lands.
 - `connector.source.drive-selection-position`: WHEN a configured pipeline changes from `bytes-and-pages` to `metadata-only`, THEN the next read rewalks its roots and rereads retained files.
 - `connector.source.drive-metadata-only`: WHEN the separately retained named version is downloaded, THEN its byte SHA-256 reproduces the `files` row's digest.
+- `connector.source.drive-version-consistency`: WHEN a file changes between listing and download, THEN `ConnectorDriveVersionMoved` refuses the capture without a file row or cursor.
 - `connector.source.drive-named-skip`: WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap.
 - `connector.source.drive-selection-removals`: WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.
 - `connector.source.drive-selection-removals`: WHEN mode changes from `bytes-and-pages` to `metadata-only`, THEN old pages receive tombstones and no page content row remains.
