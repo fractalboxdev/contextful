@@ -7,6 +7,10 @@ use contextful_core::store::commit_log::{self, CommitEntry, Kind};
 use contextful_core::store::lease::{BucketLease, BucketPointer};
 use contextful_core::store::object::Condition;
 use contextful_core::time::Instant;
+use proptest::prelude::{prop_oneof, Just, Strategy};
+use proptest::strategy::ValueTree;
+use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
+use proptest_state_machine::ReferenceStateMachine;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -26,6 +30,9 @@ pub struct Args {
     /// Generated operation sequences after replaying regressions.
     #[arg(long, default_value_t = 64)]
     cases: usize,
+    /// Print generated cases without running the model or the store.
+    #[arg(long, hide = true)]
+    dump_cases: bool,
     /// A prebuilt protocol executable; absent, lake builds the package.
     #[arg(long)]
     reference: Option<PathBuf>,
@@ -117,9 +124,6 @@ impl Store {
         }
     }
 
-    fn fence(&self) -> u64 {
-        self.lease.as_ref().map_or(0, |l| l.fence)
-    }
     fn cursor_fence(&self) -> u64 {
         self.cursor.iter().map(|e| e.fence).max().unwrap_or(0)
     }
@@ -299,47 +303,117 @@ fn option<T: std::fmt::Display>(value: Option<T>) -> String {
         .unwrap_or_else(|| "none".into())
 }
 
-struct Rng(u64);
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-        z ^ (z >> 31)
+#[derive(Clone, Copy, Debug, Default)]
+struct GenerationNode {
+    belief: Option<u64>,
+    paused: bool,
+    pending: Option<(Target, u64)>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct GenerationState {
+    fence: u64,
+    holder: Option<usize>,
+    live: bool,
+    nodes: [GenerationNode; NODES],
+}
+
+struct ProtocolGenerator;
+
+impl ReferenceStateMachine for ProtocolGenerator {
+    type State = GenerationState;
+    type Transition = Step;
+
+    fn init_state() -> proptest::strategy::BoxedStrategy<Self::State> {
+        Just(GenerationState::default()).boxed()
     }
-    fn below(&mut self, n: usize) -> usize {
-        (self.next() % n as u64) as usize
+
+    fn transitions(_state: &Self::State) -> proptest::strategy::BoxedStrategy<Self::Transition> {
+        prop_oneof![
+            (0..NODES).prop_map(|node| Step::Acquire { node }),
+            (0..NODES).prop_map(|node| Step::Renew { node }),
+            Just(Step::Expire),
+            (0..NODES).prop_map(|node| Step::Release { node }),
+            (0..NODES).prop_map(|node| Step::Send {
+                node,
+                target: Target::Catalog
+            }),
+            (0..NODES).prop_map(|node| Step::Send {
+                node,
+                target: Target::Cursor
+            }),
+            (0..NODES).prop_map(|node| Step::Deliver { node }),
+            (0..NODES).prop_map(|node| Step::Pause { node }),
+            (0..NODES).prop_map(|node| Step::Resume { node }),
+            (0..NODES).prop_map(|node| Step::Crash { node }),
+        ]
+        .boxed()
+    }
+
+    fn preconditions(state: &Self::State, transition: &Self::Transition) -> bool {
+        !matches!(transition, Step::Acquire { .. }) || state.fence < GENERATIONS
+    }
+
+    fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
+        match *transition {
+            Step::Acquire { node }
+                if !state.nodes[node].paused && (state.holder.is_none() || !state.live) =>
+            {
+                state.fence += 1;
+                state.holder = Some(node);
+                state.live = true;
+                state.nodes[node].belief = Some(state.fence);
+            }
+            Step::Renew { node }
+                if !state.nodes[node].paused
+                    && state.holder == Some(node)
+                    && state.nodes[node].belief == Some(state.fence) =>
+            {
+                state.live = true;
+            }
+            Step::Expire if state.fence > 0 => state.live = false,
+            Step::Release { node }
+                if !state.nodes[node].paused
+                    && state.holder == Some(node)
+                    && state.nodes[node].belief == Some(state.fence) =>
+            {
+                state.holder = None;
+                state.nodes[node].belief = None;
+            }
+            Step::Send { node, target }
+                if !state.nodes[node].paused && state.nodes[node].pending.is_none() =>
+            {
+                if let Some(fence) = state.nodes[node].belief {
+                    state.nodes[node].pending = Some((target, fence));
+                }
+            }
+            Step::Deliver { node } => state.nodes[node].pending = None,
+            Step::Pause { node } => state.nodes[node].paused = true,
+            Step::Resume { node } => state.nodes[node].paused = false,
+            Step::Crash { node } => {
+                state.nodes[node].belief = None;
+                state.nodes[node].paused = false;
+            }
+            _ => {}
+        }
+        state
     }
 }
 
-fn generate(rng: &mut Rng) -> Vec<Step> {
-    let mut store = Store::new();
-    let mut steps = Vec::with_capacity(STEPS_PER_CASE);
-    for _ in 0..STEPS_PER_CASE {
-        let node = rng.below(NODES);
-        let step = match rng.below(10) {
-            0 if store.fence() < GENERATIONS => Step::Acquire { node },
-            1 => Step::Renew { node },
-            2 => Step::Expire,
-            3 => Step::Release { node },
-            4 => Step::Send {
-                node,
-                target: Target::Catalog,
-            },
-            5 => Step::Send {
-                node,
-                target: Target::Cursor,
-            },
-            6 => Step::Deliver { node },
-            7 => Step::Pause { node },
-            8 => Step::Resume { node },
-            _ => Step::Crash { node },
-        };
-        store.apply(step).expect("generated store step applies");
-        steps.push(step);
-    }
-    steps
+fn generator(seed: u64) -> TestRunner {
+    let bytes = seed.to_le_bytes().repeat(4);
+    TestRunner::new_with_rng(
+        Config::default(),
+        TestRng::from_seed(RngAlgorithm::ChaCha, &bytes),
+    )
+}
+
+fn generate(runner: &mut TestRunner) -> Result<Vec<Step>> {
+    let strategy = ProtocolGenerator::sequential_strategy(STEPS_PER_CASE);
+    let tree = strategy
+        .new_tree(runner)
+        .map_err(|e| anyhow::anyhow!("generating a protocol case: {e}"))?;
+    Ok(tree.current().1)
 }
 
 fn compare(reference: &Path, steps: &[Step]) -> Result<Option<(usize, String, String)>> {
@@ -396,6 +470,13 @@ fn minimize(reference: &Path, mut steps: Vec<Step>) -> Result<Vec<Step>> {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    let mut runner = generator(args.seed);
+    if args.dump_cases {
+        for _ in 0..args.cases {
+            println!("{}", serde_json::to_string(&generate(&mut runner)?)?);
+        }
+        return Ok(());
+    }
     let cwd = std::env::current_dir()?;
     let repo = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -434,9 +515,8 @@ pub fn run(args: Args) -> Result<()> {
         cases.push(serde_json::from_str::<Vec<Step>>(line)?);
     }
     let replayed = cases.len();
-    let mut rng = Rng(args.seed);
     for _ in 0..args.cases {
-        cases.push(generate(&mut rng));
+        cases.push(generate(&mut runner)?);
     }
     for (case, steps) in cases.into_iter().enumerate() {
         if let Some((at, model, store)) = compare(&reference, &steps)? {

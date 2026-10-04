@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 137 | 0 | 137 |
+| `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 138 | 0 | 138 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1337 | 0 | |
+| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1338 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
-| 1 — The authority core | 14 | 236 | 186 | passing | closed |
+| 1 — The authority core | 14 | 236 | 187 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
 | 4 — Ingest | 25 | 468 | 290 | passing | open |
@@ -93,6 +93,7 @@ Unscheduled operations: 10.
 | `assurance.differential-test.harness` | `crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases` | performed |
 | `assurance.differential-test.malformed-bytes` | `crates/contextful-cli/tests/integration/differential.rs::malformed_bytes_reach_every_decider_and_each_decides_them_malformed` | performed |
 | `assurance.differential-test.minimized` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_disagreement_is_minimal_under_every_shrinking_step` | performed |
+| `assurance.differential-test.protocol-cases` | `spec/pins.toml` | performed |
 | `assurance.differential-test.protocol-drift` | `spec/pins.toml` | performed |
 | `assurance.differential-test.protocol-harness` | `spec/pins.toml` | performed |
 | `assurance.differential-test.reference-model` | `crates/contextful-cli/tests/integration/differential.rs::the_reference_binary_reads_one_case_and_prints_one_decision` | performed |

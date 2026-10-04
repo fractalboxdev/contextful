@@ -32,6 +32,8 @@ contextful-sync = { path = "../contextful-sync", optional = true }
 # The component host (`topology.package.component-host`), linked under `component-host`.
 contextful-wasm = { path = "../contextful-wasm", default-features = false, optional = true }
 anyhow = "1"
+proptest = "1.10"
+proptest-state-machine = "0.8"
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
