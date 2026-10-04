@@ -79,6 +79,8 @@ The relations, tools and templates one connection sees, the engine executing aga
 - `advertised-is-enforced` — A table's published `limits` block lists a bound exactly when the engine applies it.
   *because a published number and a delivered guarantee cannot disagree when one derives from the other*
 - `budget-arguments` — Every read tool accepts optional `max_duration_ms` and `max_response_bytes` request fields, each with no default.
+- `duration-no-statement` — A read tool running no SQL statement accepts `max_duration_ms` without triggering {{read.respond.duration-ceiling}}.
+  *because no connection executes a statement for its deadline to interrupt*
 - `budget-advertisement` — `context.describe` lists a table's `limits.max_duration_ms` and `limits.max_response_bytes` under {{read.register.advertised-is-enforced}} and omits each undeclared limit.
 - `template-projection` — Every manifest template projects into a tool named by its identifier, whose declared positional parameters form a typed schema with every field required.
 - `file-listing` — `context.files` returns store-root-relative paths for the tables the caller reads, and a table outside that set contributes no path.
