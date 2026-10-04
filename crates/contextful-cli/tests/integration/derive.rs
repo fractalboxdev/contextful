@@ -84,6 +84,9 @@ fn an_empty_host_content_marker_carries_the_declared_parent_retention_clock() {
     let manifest = host_manifest("word-split").replace(
         "retain_versions = true",
         "columns = { base_arrived_at = \"timestamp\" }, retain_rows = { column = \"base_arrived_at\", age = \"30d\" }",
+    ).replace(
+        "primary_key = [\"unit_ref\", \"derivation_key\", \"word_seq\"]",
+        "primary_key = [\"unit_ref\", \"derivation_key\"]",
     );
     let dir = host_project_with_rows(
         &manifest,
