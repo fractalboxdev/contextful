@@ -181,6 +181,58 @@ fn pages_of(rows: &[serde_json::Map<String, Value>], id: &str) -> Vec<(u64, Valu
     rows.iter().filter(|r| r["file_id"] == id).map(|r| (r["page"].as_u64().unwrap(), r["text"].clone())).collect()
 }
 
+fn selected_roots(fake: &Fake, ids: &[&str]) -> Value {
+    let mut config = fake.config(json!({"folder_ids": ids, "drive_id": "0AExampleDrive"}));
+    config.as_object_mut().unwrap().remove("folder_id");
+    config
+}
+
+/// A bounded root set is validated before any listing.
+#[test]
+fn selected_drive_roots_reject_ambiguous_or_unbounded_configuration() {
+    let fake = Fake::start();
+    for ids in [Vec::<&str>::new(), vec!["root-f", "root-f"], vec!["root-f"; 17]] {
+        let config = selected_roots(&fake, &ids);
+        assert!(DriveConfig::parse(&config).unwrap_err().to_string().starts_with("ConnectorDriveRootsInvalid:"), "{config:?}");
+    }
+    let mut combined = selected_roots(&fake, &["root-f"]);
+    combined["folder_id"] = json!("root-f");
+    assert!(DriveConfig::parse(&combined).unwrap_err().to_string().starts_with("ConnectorDriveRootsInvalid:"));
+    let mut no_drive = selected_roots(&fake, &["root-f"]);
+    no_drive.as_object_mut().unwrap().remove("drive_id");
+    assert!(DriveConfig::parse(&no_drive).unwrap_err().to_string().starts_with("ConnectorDriveRootsInvalid:"));
+    assert!(fake.received("/drive/v3/files").is_empty());
+}
+
+/// An outside-drive selected root refuses before any selected folder is listed.
+#[test]
+fn every_selected_root_is_checked_before_listing() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    let d = drive(selected_roots(&fake, &["root-f", "outside-f"]));
+    let failure = d.source("files").unwrap().pull(&request(None), &Never).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::Config, "{failure}");
+    assert!(failure.message.contains("ConnectorDriveRootRejected") && failure.message.contains("outside-f"), "{failure}");
+    assert!(fake.received("/drive/v3/files").is_empty());
+}
+
+/// Overlapping selected roots land each file once and resolve it to the least selected root id.
+#[test]
+fn overlapping_selected_roots_deduplicate_files_and_resolve_paths() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    let d = drive(selected_roots(&fake, &["root-f", "fin-f"]));
+    let (rows, _, _) = pull(&mut d.source("files").unwrap(), None);
+    assert_eq!(rows.len(), 7);
+    assert_eq!(rows.iter().filter(|r| r["file_id"] == "sheet-budget").count(), 1);
+    assert_eq!((by_id(&rows, "doc-plan")["resolved_root"].clone(), by_id(&rows, "doc-plan")["path"].clone()), (json!("root-f"), json!("Plan")));
+    assert_eq!((by_id(&rows, "sheet-budget")["resolved_root"].clone(), by_id(&rows, "sheet-budget")["path"].clone()), (json!("fin-f"), json!("Budget")));
+    assert_eq!((by_id(&rows, "pdf-report")["resolved_root"].clone(), by_id(&rows, "pdf-report")["path"].clone()), (json!("fin-f"), json!("Board/report.pdf")));
+    let listed = fake.received("/drive/v3/files");
+    assert_eq!(listed.len(), 4, "the overlapping Finance folder is listed once");
+    assert_eq!(listed.iter().filter(|r| query(r).iter().any(|(k, v)| k == "q" && v.contains("'fin-f'"))).count(), 1);
+}
+
 /// The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder,
 /// within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is
 /// followed.
