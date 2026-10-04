@@ -18752,13 +18752,24 @@
       "operation": "apply",
       "subject": "receipt-message",
       "kind": "behavior",
-      "statement": "A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\\n<project>\\n<version>\\n<parent-or-minus>\\n<snapshot-sha256>\\n`; its parent is `-` only for the first version.",
+      "statement": "A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\\n<project>\\n<version>\\n<parent-or-minus>\\n<snapshot-sha256>\\n<signer>\\n`; its parent is `-` only for the first version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
       "line": 267,
       "scenarios": [
         "WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify."
       ]
+    },
+    {
+      "id": "surface.apply.receipt-digest",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "receipt-digest",
+      "kind": "behavior",
+      "statement": "A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 269
     },
     {
       "id": "surface.apply.attestation-unavailable",
@@ -18769,7 +18780,7 @@
       "statement": "A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 269,
+      "line": 271,
       "scenarios": [
         "WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed."
       ]
@@ -18783,7 +18794,7 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 271
+      "line": 273
     },
     {
       "id": "surface.reside.region-entries",
@@ -18794,7 +18805,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 312
+      "line": 314
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -18805,7 +18816,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 313
+      "line": 315
     },
     {
       "id": "surface.reside.site-regions",
@@ -18816,7 +18827,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 315
+      "line": 317
     },
     {
       "id": "surface.register-store.registry-unreadable",
