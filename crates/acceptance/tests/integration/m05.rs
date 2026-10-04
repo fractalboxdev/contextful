@@ -345,9 +345,13 @@ fn post_bearer(addr: &str, message: &Value, token: &str) -> (u16, String, Vec<u8
 }
 
 fn post_with(addr: &str, message: &Value, auth: &str) -> (u16, String, Vec<u8>) {
+    let stream = std::net::TcpStream::connect(addr).unwrap();
+    post_on_stream(stream, addr, message, auth)
+}
+
+fn post_on_stream(mut s: std::net::TcpStream, addr: &str, message: &Value, auth: &str) -> (u16, String, Vec<u8>) {
     use std::io::{Read, Write};
     let body = message.to_string();
-    let mut s = std::net::TcpStream::connect(addr).unwrap();
     write!(s, "POST /mcp HTTP/1.1\r\nHost: {addr}\r\n{auth}Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
     let mut raw = Vec::new();
     s.read_to_end(&mut raw).unwrap();
@@ -486,22 +490,29 @@ fn m05_http_face() {
     let survivor = call(r#"SELECT count(*) AS n FROM "research/nums" a, "research/nums" b, "research/nums" c WHERE c.x < 50 AND a.x * b.x = c.x - 8"#);
     let mut timed = call(r#"SELECT count(*) AS n FROM "research/nums" a, "research/nums" b, "research/nums" c WHERE c.x < 50 AND a.x * b.x = c.x - 9"#);
     timed["params"]["arguments"]["max_duration_ms"] = json!(50);
-    let survivor_done = std::sync::atomic::AtomicBool::new(false);
+    let survivor_stream = std::net::TcpStream::connect(&addr).unwrap();
+    let timed_stream = std::net::TcpStream::connect(&addr).unwrap();
+    let started = std::time::Instant::now();
+    loop {
+        let (status, head, _) = post_mcp(&addr, &fast, None);
+        if status == 503 {
+            assert!(head.contains("Retry-After: 1"), "{head}");
+            break;
+        }
+        assert_eq!(status, 401, "{head}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(5), "both parked requests never occupied the listener");
+        std::thread::yield_now();
+    }
+    let survivor_auth = format!("Authorization: DPoP {}\r\nDPoP: {}\r\n", research.0, research.1.proof(&survivor.to_string()));
+    let timed_auth = format!("Authorization: DPoP {}\r\nDPoP: {}\r\n", research.0, research.1.proof(&timed.to_string()));
     std::thread::scope(|s| {
-        let running = s.spawn(|| {
-            let answer = post_mcp(&addr, &survivor, Some(research));
-            survivor_done.store(true, std::sync::atomic::Ordering::SeqCst);
-            answer
-        });
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        assert!(!survivor_done.load(std::sync::atomic::Ordering::SeqCst), "the survivor finished before the deadline test began");
-        let (status, _, interrupted) = post_mcp(&addr, &timed, Some(research));
+        let running = s.spawn(|| post_on_stream(survivor_stream, &addr, &survivor, &survivor_auth));
+        let (status, _, interrupted) = post_on_stream(timed_stream, &addr, &timed, &timed_auth);
         assert_eq!(status, 200);
         let interrupted = parse(&interrupted);
         assert_eq!(interrupted["result"]["isError"], json!(true), "{interrupted}");
         assert!(interrupted["result"]["structuredContent"].to_string().contains("ReadDurationExceeded"), "{interrupted}");
         assert!(interrupted["result"]["structuredContent"].get("rows").is_none(), "{interrupted}");
-        assert!(!survivor_done.load(std::sync::atomic::Ordering::SeqCst), "the other statement finished before the deadline interrupted its peer");
         let (status, _, survived) = running.join().unwrap();
         assert_eq!(status, 200);
         assert_eq!(rows(&survived), json!([["2159"]]), "{}", String::from_utf8_lossy(&survived));
