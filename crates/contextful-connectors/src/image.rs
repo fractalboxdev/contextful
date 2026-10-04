@@ -122,10 +122,12 @@ fn fault(path: &Path, error: std::io::Error) -> Failure {
 }
 
 fn header(path: &str, bytes: &[u8]) -> Result<(u32, u32), Failure> {
-    let valid = bytes.len() >= 24
+    let valid = bytes.len() >= 33
         && bytes.starts_with(PNG_SIGNATURE)
         && bytes[8..12] == 13u32.to_be_bytes()
-        && &bytes[12..16] == b"IHDR";
+        && &bytes[12..16] == b"IHDR"
+        && u32::from_be_bytes(bytes[29..33].try_into().expect("checked PNG header length"))
+            == png_crc(&bytes[12..29]);
     if !valid {
         return Err(Failure::deterministic(
             FailureTag::Permanent,
@@ -147,6 +149,17 @@ fn header(path: &str, bytes: &[u8]) -> Result<(u32, u32), Failure> {
         ));
     }
     Ok((width, height))
+}
+
+fn png_crc(bytes: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for byte in bytes {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            crc = (crc >> 1) ^ if crc & 1 == 1 { 0xedb8_8320 } else { 0 };
+        }
+    }
+    !crc
 }
 
 fn unreadable(path: &str, why: &str) -> Failure {
@@ -192,12 +205,15 @@ fn jpeg_header(path: &str, file: &mut std::fs::File) -> Result<(u32, u32), Failu
         }
         let frame = matches!(marker, 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf);
         if frame {
-            if len < 7 {
+            if len < 8 {
                 return Err(unreadable(path, "has a short JPEG frame header"));
             }
-            let mut shape = [0u8; 5];
+            let mut shape = vec![0u8; usize::from(len - 2)];
             file.read_exact(&mut shape)
                 .map_err(|_| unreadable(path, "has a truncated JPEG frame header"))?;
+            if shape[5] == 0 || shape.len() != 6 + 3 * usize::from(shape[5]) {
+                return Err(unreadable(path, "has an invalid JPEG frame header"));
+            }
             let height = u16::from_be_bytes([shape[1], shape[2]]) as u32;
             let width = u16::from_be_bytes([shape[3], shape[4]]) as u32;
             if width == 0 || height == 0 {
@@ -223,7 +239,7 @@ impl Source for ImageSource {
             }
             let mut file = std::fs::File::open(&absolute).map_err(|e| fault(&absolute, e))?;
             let (width, height) = if path.to_ascii_lowercase().ends_with(".png") {
-                let mut first = [0u8; 24];
+                let mut first = [0u8; 33];
                 let mut n = 0;
                 while n < first.len() {
                     let count = file
