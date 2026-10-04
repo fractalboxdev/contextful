@@ -169,6 +169,17 @@ fn a_derive_pipeline_journaling_its_pulls_refuses() {
     assert!(cfg(with("journal", json!(false))).is_ok());
 }
 
+#[test]
+fn a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses() {
+    let granted = with("grant", json!("vendor-quota"));
+    assert!(matches!(cfg(granted), Err(RunError::DeriveUnmeteredGrant(m)) if m.contains("doc-text") && m.contains("grant")));
+
+    let link = with("task", json!("link_preview"));
+    let mut link = link;
+    link["grant"] = json!("vendor-quota");
+    assert!(cfg(link).is_ok());
+}
+
 /// Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker under
 /// its current {{run.emit.derivation-key}} in the pipeline's own output table, or, for a host task, its marker table.
 // spec: run.select.anti-join@bb0e90e2
