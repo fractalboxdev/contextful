@@ -8,6 +8,7 @@ use contextful_core::run::ports::{AwakeableStore, BlobStore, JournalStore};
 use contextful_core::run::suspend::{Awakeable, AwakeableState};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
+use contextful_context::encrypt::AesGcmFileCipher;
 use contextful_engine::conformance;
 use contextful_sqlite::{MachineCatalog, SqliteRunStores};
 use std::path::PathBuf;
@@ -20,6 +21,35 @@ fn fresh(dirs: &mut Vec<TempDir>) -> SqliteRunStores {
     let path = dir.path().join(MACHINE_CATALOG_FILE);
     dirs.push(dir);
     SqliteRunStores::open(&path).unwrap()
+}
+
+#[test]
+fn sealed_run_stores_share_catalog_and_keep_journal_bytes_off_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let cipher = || Arc::new(AesGcmFileCipher::new([7; 32], 1));
+    let clock = Arc::new(crate::SetClock::new());
+    let catalog = MachineCatalog::open_sealed(&path, clock.clone(), cipher()).unwrap();
+    catalog.put_run(&crate::run_row("run-1", "feed", contextful_core::run::record::RunStatus::Running)).unwrap();
+    let canary = "sealed-journal-secret-canary-4041";
+    {
+        let stores = SqliteRunStores::open_sealed(&path, cipher()).unwrap();
+        stores.journal.record(&key("x-1"), &Stored::place(canary.as_bytes())).unwrap();
+        stores.blobs.put("blob-1", canary.as_bytes()).unwrap();
+        stores.awakeables.insert(&awakeable("tok-1")).unwrap();
+    }
+    let reopened = SqliteRunStores::open_sealed(&path, cipher()).unwrap();
+    assert_eq!(reopened.journal.read(&key("x-1")).unwrap(), Some(Row::Recorded { key: key("x-1"), value: Stored::place(canary.as_bytes()) }));
+    assert_eq!(reopened.blobs.get("blob-1").unwrap().as_deref(), Some(canary.as_bytes()));
+    assert!(reopened.awakeables.get("tok-1").unwrap().is_some());
+    assert!(catalog.run("run-1").unwrap().is_some());
+    for entry in std::fs::read_dir(dir.path()).unwrap() {
+        let path = entry.unwrap().path();
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()), "{} contains journal plaintext", path.display());
+        assert!(!bytes.starts_with(b"SQLite format 3"), "{} contains a SQLite page", path.display());
+    }
+    assert!(SqliteRunStores::open_sealed(&path, Arc::new(AesGcmFileCipher::new([8; 32], 1))).is_err());
 }
 
 fn key(execution_id: &str) -> EntryKey {
