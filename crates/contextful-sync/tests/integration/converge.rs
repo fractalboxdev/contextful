@@ -39,6 +39,7 @@ fn encrypted_schema_merge_keeps_both_columns_without_plaintext() {
     let clear = codec.open_bytes(path, &merged).unwrap();
     let columns = schema_columns(&clear);
     assert!(columns.contains(&"metadata-canary-5f1e".to_string()) && columns.contains(&"pages".to_string()));
+    assert_eq!(merge_schema_bytes(&codec, path, &merged, &theirs).unwrap(), merged);
     assert!(merge_schema_bytes(&MetadataFiles::sealed(&AesGcmFileCipher::new([0x42; 32], 1)), path, &mine, &theirs).is_err());
 }
 

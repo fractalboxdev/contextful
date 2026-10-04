@@ -71,21 +71,23 @@ impl Store {
         }
     }
 
-    pub(crate) fn metadata(&self) -> MetadataFiles<'_> {
+    pub fn metadata_files(&self) -> MetadataFiles<'_> {
         match &self.encryption {
             Some(keys) => MetadataFiles::sealed(keys.files()),
             None => MetadataFiles::plaintext(),
         }
     }
 
+    pub(crate) fn metadata(&self) -> MetadataFiles<'_> { self.metadata_files() }
+
     /// Decode a synced metadata object's canonical bytes under this store's key.
     pub fn open_metadata_bytes(&self, path: &Path, bytes: &[u8]) -> Result<Vec<u8>> {
-        self.metadata().open_bytes(path, bytes)
+        self.metadata_files().open_bytes(path, bytes)
     }
 
     /// Seal canonical metadata bytes before writing a synced object.
     pub fn seal_metadata_bytes(&self, path: &Path, bytes: &[u8]) -> Result<Vec<u8>> {
-        self.metadata().seal_bytes(path, bytes)
+        self.metadata_files().seal_bytes(path, bytes)
     }
 
     pub(crate) fn parquet_key(&self) -> Option<&[u8; 16]> {
