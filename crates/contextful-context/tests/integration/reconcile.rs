@@ -66,6 +66,32 @@ fn one_variant_column_keeps_each_scalar_kind_through_land_fold_and_read() {
 }
 
 #[cfg(feature = "read")]
+#[test]
+fn pinned_snapshot_footer_keeps_variant_type_at_every_depth() {
+    let f = Fixture::new();
+    let d = decl("name = \"attributes\"\ncolumns = { value = \"variant\", values = \"list<variant>\" }");
+    let variant = ColumnType::parse("variant").expect("variant is a declared column type");
+    f.land_typed(
+        &d,
+        "mixed",
+        json!([{"id": "one", "value": 9007199254740993_i64, "values": ["violet", {"kind": "bytes", "bytes": "/wA="}]}]),
+        "2030-01-01T00:00:00Z",
+        &[("value", variant.clone()), ("values", ColumnType::list(variant.clone()))],
+    )
+    .unwrap();
+    fold(&f.store, &d, at("2030-01-02T00:00:00Z")).unwrap();
+    let (chain, _) = f.store.chain("attributes").unwrap();
+    let snapshot = &chain[0];
+    let part = f.store.snapshot_dir("attributes", &snapshot.snapshot_id).unwrap().join(&snapshot.parts[0].name);
+    let footer = parquet_io::schema(&part).unwrap();
+    assert_eq!(footer.iter().find(|c| c.name == "value").unwrap().ty, variant);
+    assert_eq!(footer.iter().find(|c| c.name == "values").unwrap().ty, ColumnType::list(variant.clone()));
+    let pinned = contextful_context::scan::scan_at(&f.store, &d, Bounds::default(), Some(snapshot)).unwrap();
+    assert_eq!(pinned.columns.iter().find(|c| c.name == "value").unwrap().ty, variant);
+    assert_eq!(pinned.columns.iter().find(|c| c.name == "values").unwrap().ty, ColumnType::list(variant));
+}
+
+#[cfg(feature = "read")]
 /// Every read hands `read_parquet` an explicit sorted file list resolved from the pointer and the manifests, never a glob; a stray file joins nothing.
 // spec: store.reconcile.explicit-file-list@74dc3f17
 #[test]
