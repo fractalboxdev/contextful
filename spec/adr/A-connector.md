@@ -110,3 +110,17 @@ Revisit: a transport that must resolve remotely, such as a proxy-only deployment
 
 Consequences: a concurrent edit invalidates the approval; unresolved comparisons retain the predecessor. A fixed wildcard sample can already belong to an exact predecessor entry, so absence of a replayed witness supplies no inclusion verdict. Approval storage and authorization remain the operation's unsettled boundary.
 Revisit: host grants gain ports, methods, paths or address ranges.
+
+## Drive capture binds bounded roots and mode to the position
+
+One Shared Drive and a bounded selected root set define the capture boundary. Validation precedes listing; file identity deduplicates overlapping trees, and the least selected root id resolves its provenance. The position binds the sorted selection, so a changed selection requires a complete walk before removals. Metadata-only capture hashes complete download or export bytes without retaining bodies.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Bounded roots and explicit capture mode *(chosen)* | — | Every changed selection rewalks its roots; metadata-only still downloads or exports each captured body. |
+| One pipeline per root | Overlap identity | The same file lands in several tables and removal depends on cross-pipeline reconciliation. |
+| Arbitrary roots and shortcuts | Scope review | One declaration reaches unrelated drives or trees outside its selected roots. |
+| Drive's checksum alone | Byte identity | Native exports lack a checksum for the exported representation. |
+
+Consequences: an incomplete walk preserves earlier rows and refuses before inferring removals. A separately retained named version can verify the recorded byte digest.
+Revisit: Drive offers a verifiable export digest without reading bytes, or a tenant needs more roots than the declared ceiling.

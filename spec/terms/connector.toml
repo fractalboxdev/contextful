@@ -72,6 +72,10 @@ ConnectorQuotabilityMismatch    = { clause = "connector.source.marker-body-pairi
 ConnectorProviderOriginRejected = { clause = "connector.source.provider-origin", gloss = "A search call to a non-TLS transport or a host other than the provider's." }
 ConnectorObjectAddressRejected  = { clause = "connector.source.object-address", gloss = "An object source declaring both or neither of a key and a prefix." }
 ConnectorTwinApiSource          = { clause = "connector.source.twin-api", gloss = "A source reading through an API licensed beyond any individual user's view." }
+ConnectorDriveRootsInvalid      = { clause = "connector.source.drive-root-set", gloss = "An empty, oversized, repeated or ambiguous Drive root selection." }
+ConnectorDriveRootRejected      = { clause = "connector.source.drive-root-validation", gloss = "A selected Drive root that does not exist or lies outside the declared Shared Drive." }
+ConnectorDriveModeUnknown       = { clause = "connector.source.drive-mode", gloss = "A Drive capture mode other than bytes-and-pages or metadata-only." }
+ConnectorDriveListingExceeded   = { clause = "connector.source.drive-list-bound", gloss = "A Drive listing reaching its request cap before all selected folders are exhausted." }
 ConnectorPrivateAddress         = { clause = "connector.attach.private-address", gloss = "A permitted host name resolving to a private, link-local, loopback or metadata address." }
 SecretForeignPlaceholder        = { clause = "connector.reference.foreign-placeholder", gloss = "A template carrying `${env://NAME}` or a bare `${NAME}`." }
 SecretMalformedTemplate         = { clause = "connector.reference.malformed-placeholder", gloss = "An unclosed, empty or nested placeholder." }
@@ -113,6 +117,7 @@ connector-session-log           = { clause = "connector.package.session-budget",
 connector-in-flight             = { clause = "connector.package.session-budget", value = 8, unit = "requests", basis = "chosen", gloss = "Outbound requests one session holds open at once." }
 connector-request-body          = { clause = "connector.package.request-body", value = 8, unit = "MiB", basis = "chosen", gloss = "Outbound request body one guest request carries." }
 connector-walk-pages            = { clause = "connector.source.page-cap", value = 1000, unit = "requests", basis = "chosen", gloss = "Requests one paginated walk issues." }
+connector-drive-roots           = { clause = "connector.source.drive-root-set", value = 16, unit = "entries", basis = "chosen", gloss = "Distinct selected folder roots in one Drive source." }
 connector-drive-file-bytes      = { clause = "connector.source.drive-file-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Default body bytes one drive file carries before it is skipped." }
 connector-document-chunk        = { clause = "connector.source.heading-threshold", value = 8192, unit = "B", basis = "chosen", gloss = "Note body bytes past which a note lands one row per heading section." }
 connector-document-file-bytes   = { clause = "connector.source.file-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Bytes one file under a `file` root carries before the walk declines it." }
