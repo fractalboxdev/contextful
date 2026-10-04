@@ -294,6 +294,7 @@ fn malformed_selected_root_listings_refuse_before_removals() {
         let failure = d.source("files").unwrap().pull(&request(Some(prior)), &Never).unwrap_err();
         assert_eq!(failure.tag, FailureTag::Permanent, "{fixture}: {failure}");
         assert!(failure.message.contains("listing") && failure.message.contains("root-f"), "{fixture}: {failure}");
+        assert!(fake.received("/drive/v3/files").iter().all(|request| query(request).iter().any(|(key, value)| key == "fields" && value.contains("incompleteSearch"))));
     }
 }
 
