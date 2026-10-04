@@ -52,7 +52,7 @@ use contextful_outbound::{Intent, Outcome, PreSendHook};
 struct LedgerState {
     next: u64,
     started: Option<(u64, contextful_core::time::Instant, MonotonicInstant)>,
-    error: Option<String>,
+    records: Vec<RequestRecord>,
 }
 
 /// One link-preview run's requests settle into its output table before a pull returns.
@@ -69,16 +69,13 @@ struct DeriveLedger {
 impl DeriveLedger {
     fn new(store: Store, table: String, node: NodeId, run_id: String, clock: Arc<dyn Clock + Send + Sync>) -> DeriveLedger {
         let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|elapsed| elapsed.as_nanos()).unwrap_or_default();
-        DeriveLedger { store, table, node, run_id, clock, nonce, state: Mutex::new(LedgerState { next: 0, started: None, error: None }) }
+        DeriveLedger { store, table, node, run_id, clock, nonce, state: Mutex::new(LedgerState { next: 0, started: None, records: Vec::new() }) }
     }
 }
 
 impl PreSendHook for DeriveLedger {
     fn admit(&self, intent: &Intent) -> Result<(), String> {
         let mut state = self.state.lock().unwrap_or_else(|poison| poison.into_inner());
-        if let Some(error) = &state.error {
-            return Err(format!("request ledger: {error}"));
-        }
         if intent.run_id.as_deref() != Some(self.run_id.as_str()) {
             return Err("request carries no matching run id".into());
         }
@@ -100,19 +97,20 @@ impl PreSendHook for DeriveLedger {
             status_code: outcome.status,
             started_at,
             duration_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
-            batch_seq: Some(0),
+            batch_seq: None,
         };
-        if let Err(error) = contextful_context::ledger::append(&self.store, &self.table, &self.run_id, &self.node, &[record]) {
-            state.error = Some(error.to_string());
-        }
+        state.records.push(record);
     }
 
-    fn finish(&self) -> Result<(), Failure> {
-        let state = self.state.lock().unwrap_or_else(|poison| poison.into_inner());
-        match &state.error {
-            Some(error) => Err(Failure::new(FailureTag::Storage, format!("request ledger: {error}"))),
-            None => Ok(()),
+    fn finish(&self, batch_seq: Option<i32>) -> Result<(), Failure> {
+        let mut state = self.state.lock().unwrap_or_else(|poison| poison.into_inner());
+        for record in &mut state.records {
+            record.batch_seq = batch_seq;
         }
+        contextful_context::ledger::append(&self.store, &self.table, &self.run_id, &self.node, &state.records)
+            .map_err(|error| Failure::new(FailureTag::Storage, format!("request ledger: {error}")))?;
+        state.records.clear();
+        Ok(())
     }
 }
 

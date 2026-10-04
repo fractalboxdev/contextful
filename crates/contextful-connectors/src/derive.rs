@@ -617,8 +617,8 @@ impl DeriveSource {
     }
 }
 
-impl Source for DeriveSource {
-    fn pull(&mut self, _request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+impl DeriveSource {
+    fn pull_once(&self, cancel: &dyn Cancellation) -> Result<(Vec<u8>, bool), Failure> {
         if self.config.task == Task::LinkPreview && (self.mediation.hook.is_none() || self.mediation.run_id.as_deref().is_none_or(str::is_empty)) {
             return Err(refused(RunError::DeriveMeteredClient(format!("pipeline `{}` has no run-bound request ledger hook", self.pipeline_id))));
         }
@@ -681,11 +681,20 @@ impl Source for DeriveSource {
                 None => rows.extend(unit_rows),
             }
         }
-        if let Some(hook) = &self.mediation.hook {
-            hook.finish()?;
-        }
+        let produced = !rows.is_empty();
         serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false, "skipped": sel.incomplete.len() }))
+            .map(|bytes| (bytes, produced))
             .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+    }
+}
+
+impl Source for DeriveSource {
+    fn pull(&mut self, _request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        let result = self.pull_once(cancel);
+        if let Some(hook) = &self.mediation.hook {
+            hook.finish(result.as_ref().ok().and_then(|(_, produced)| produced.then_some(0)))?;
+        }
+        result.map(|(bytes, _)| bytes)
     }
 }
 
