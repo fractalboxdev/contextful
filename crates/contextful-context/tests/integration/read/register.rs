@@ -25,6 +25,7 @@ fn tree(root: &std::path::Path) -> Vec<String> {
     out
 }
 
+// spec: read.register.lexicon-surface@350071e8
 #[test]
 fn describe_reports_the_store_lexicon_on_each_registered_table() {
     let manifest = format!(

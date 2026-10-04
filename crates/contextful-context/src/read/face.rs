@@ -29,6 +29,7 @@ use contextful_policy::enforce::policy::TablePolicy;
 use contextful_policy::enforce::scope;
 use contextful_policy::enforce::session::{Request, Session, TableSource};
 use contextful_policy::verify::AdmittedAuthority;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -47,6 +48,7 @@ pub struct ReadOptions {
 /// The read face over one store and its manifest.
 pub struct Face {
     pub(crate) store: Store,
+    lexicon: Lexicon,
     decls: BTreeMap<String, TableDecl>,
     policies: BTreeMap<String, TablePolicy>,
     templates: Vec<QueryTemplate>,
@@ -59,6 +61,22 @@ pub struct Face {
     /// Statement results reused under their whole key (`read.cache.result-key`); absent
     /// where the process declares no budget (`read.cache.budget`).
     results: Option<ResultCache>,
+}
+
+/// The store's vocabulary carried by table descriptions (`read.register.lexicon-surface`).
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Lexicon {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    numeric_identifiers: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    badges: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct ManifestLexicon {
+    #[serde(default)]
+    lexicon: Lexicon,
 }
 
 /// The columns a table with no landed batch registers over: the injected columns every
@@ -85,6 +103,9 @@ impl Face {
     /// manifest's tables, then those the `pipelines/` files declare. Memory declarations
     /// and templates come from the manifest alone.
     pub fn open_declared(store: Store, manifest: &str, pipelines: &[ManifestFile], pepper: Pepper) -> Result<Face, ReadFault> {
+        let lexicon = toml::from_str::<ManifestLexicon>(manifest)
+            .map_err(|e| ReadFault::Policy(DeclarationMalformed(e.to_string()).into()))?
+            .lexicon;
         let mut parsed = TableDecl::parse_declaration_set(manifest, pipelines).map_err(|e| ReadFault::Policy(e.into()))?;
         let memory = MemoryDeclarations::parse(manifest).map_err(|e| match e {
             DeclareError::Memory(m) => ReadFault::Refused(m.into()),
@@ -109,7 +130,7 @@ impl Face {
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
         let fulltext = crate::fulltext::SidecarCache::new(contextful_core::read::rank::LEXICAL_INDEX_CACHE_ENTRIES);
-        let face = Face { store, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default(), results: None };
+        let face = Face { store, lexicon, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default(), results: None };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {
@@ -511,7 +532,7 @@ impl Face {
             "zone": policy.placement.effective().labels(),
             "session_zone": session.zone().label(),
             "zone_admitted": session.zone_admitted(table),
-            "lexicon": {},
+            "lexicon": self.lexicon,
             "example_queries": decl.example_queries.clone().unwrap_or_default(),
         });
         if let Some(max) = policy.max_rows {
