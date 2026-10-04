@@ -3,6 +3,7 @@
 
 mod attach;
 mod component;
+mod compile;
 mod infer;
 mod lease;
 mod meter;
