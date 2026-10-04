@@ -47,6 +47,61 @@ fn expansion_follows_a_row_pointer() {
     assert_eq!(vendor.received("/detail/1").len(), 1);
 }
 
+/// Both expansion pointer forms refuse at build without issuing a request.
+#[test]
+fn expansion_rejects_two_pointer_forms() {
+    let cfg = json!({"endpoint":"https://api.vendor.example/index", "expansion":{"pointer_column":"url", "url_template":"https://api.vendor.example/{id}", "target_column":"detail"}});
+    assert!(format!("{}", HttpConfig::parse(&cfg).unwrap_err()).contains("ConnectorPointerAmbiguous"));
+}
+
+/// A malformed row pointer and an occupied destination each refuse before detail I/O.
+#[test]
+fn expansion_preflights_every_row_pointer() {
+    for row in [json!({"id": 1}), json!({"id": 1, "url": "/detail/1", "detail": "occupied"})] {
+        let vendor = Server::start(move |r| match r.path() {
+            "/index" => Response::json(200, &json!([{"id": 0, "url": "/detail/0"}, row]).to_string()),
+            _ => Response::json(200, "{\"ok\":true}"),
+        });
+        let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
+        let failure = s.walk(&request(None), &Never).unwrap_err();
+        assert!(failure.message.contains("ConnectorPointerColumnMissing") || failure.message.contains("ConnectorTargetColumnOccupied"), "{failure}");
+        assert_eq!(vendor.requests.lock().unwrap().len(), 1);
+    }
+}
+
+/// A follow-up failure refuses the complete index read.
+#[test]
+fn expansion_fails_the_read_on_a_failed_followup() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":1,\"url\":\"/detail/1\"}]"),
+        _ => Response::json(503, "{}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
+    let failure = s.walk(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains("ConnectorExpansionFailed"), "{failure}");
+}
+
+/// A declared non-UTF-8 label decodes CSV and rejects invalid bytes for that label.
+#[test]
+fn csv_declared_encoding_decodes_and_refuses_invalid_bytes() {
+    let vendor = Server::start(|_| Response { status: 200, headers: vec![], body: b"name\ncaf\xe9\n".to_vec() });
+    let s = source(json!({"endpoint": vendor.url("/rows"), "format":"csv", "encoding":"windows-1252"}), vec![]);
+    assert_eq!(s.walk(&request(None), &Never).unwrap()[0]["name"], "café");
+
+    let invalid = Server::start(|_| Response { status: 200, headers: vec![], body: b"name\n\x81\n".to_vec() });
+    let s = source(json!({"endpoint": invalid.url("/rows"), "format":"csv", "encoding":"shift_jis"}), vec![]);
+    assert!(s.walk(&request(None), &Never).unwrap_err().message.contains("ConnectorEncodingInvalid"));
+}
+
+/// A CSV watermark compares either an RFC 3339 instant or fixed-width decimal digits.
+#[test]
+fn csv_watermark_rejects_variable_width_clocks() {
+    let vendor = Server::start(|_| Response::json(200, "id,at\n1,2025-01-01T00:00:00Z\n2,12\n"));
+    let s = source(json!({"endpoint": vendor.url("/rows"), "format":"csv"}), vec![]).watermarked();
+    let failure = s.walk(&request(Some(json!({"field":"at", "at":"2024-01-01T00:00:00Z"}))), &Never).unwrap_err();
+    assert!(failure.message.contains("ConnectorClockColumnRejected"), "{failure}");
+}
+
 /// The generic HTTP source binds credentials through a `headers` table whose values are templates in the
 /// {{connector.reference.value-template}} grammar, hydrated per read.
 // spec: connector.source.http-headers@7077d7f3
