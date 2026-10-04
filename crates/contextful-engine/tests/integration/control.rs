@@ -37,3 +37,32 @@ fn a_malformed_pointer_refuses_the_read() {
     let e = SnapshotDir::open(dir.path()).current().unwrap_err();
     assert!(e.to_string().starts_with("ControlPointerMalformed"), "{e}");
 }
+
+/// A signed claim writes its receipt before the pointer and passes the predecessor receipt
+/// to the next claim under the same lock.
+// spec: surface.apply.receipt-file@4fca09c6
+#[test]
+fn an_attested_claim_commits_the_snapshot_and_receipt_together() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    let failed = snaps.claim_attested(None, "first", |_, _| Err(ControlError::Storage("signing failed".into())));
+    assert!(failed.unwrap_err().to_string().contains("signing failed"));
+    assert_eq!(snaps.current().unwrap(), None);
+    assert!(!dir.path().join("manifest@v1.toml").exists());
+
+    assert_eq!(snaps.claim_attested(None, "first", |version, parent| {
+        assert_eq!(version, 1);
+        assert_eq!(parent, None);
+        Ok("first receipt".into())
+    }).unwrap(), 1);
+    assert_eq!(std::fs::read_to_string(dir.path().join("receipt@v1.json")).unwrap(), "first receipt");
+    assert_eq!(snaps.current().unwrap(), Some(1));
+
+    assert_eq!(snaps.claim_attested(Some(1), "second", |version, parent| {
+        assert_eq!(version, 2);
+        assert_eq!(parent, Some("first receipt"));
+        Ok("second receipt".into())
+    }).unwrap(), 2);
+    assert_eq!(snaps.read(2).unwrap(), "second");
+    assert_eq!(std::fs::read_to_string(dir.path().join("receipt@v2.json")).unwrap(), "second receipt");
+}

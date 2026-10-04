@@ -71,8 +71,17 @@ fn scheduled_shop(id: &str, bucket: &Path, vendor: &Vendor) -> tempfile::TempDir
     let spec = dir.path().join("pipelines/shop.toml");
     let text = std::fs::read_to_string(&spec).unwrap();
     std::fs::write(&spec, text.replacen("incremental", "schedule = \"every 1h\"\nincremental", 1)).unwrap();
-    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"], &[]));
-    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"], &[]));
+    std::fs::write(dir.path().join(".contextful/issuance.toml"),
+        "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
+    let public = ok(&cf(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"], &[]));
+    let token = ok(&cf(dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://scheduler@example.test", "--ttl", "600", "--action", "admin", "--table", "*"], &[]));
+    let pins = ["--public-key", public.as_str(), "--audience", "contextful://research", "--issuer-key", ".contextful/issuer.seed"];
+    for verb in ["import", "apply"] {
+        let mut args = vec!["pipeline", verb, "--project", "research"];
+        args.extend(pins);
+        ok(&cf(dir.path(), &args, &[("CONTEXTFUL_TOKEN", &token)]));
+    }
     dir
 }
 

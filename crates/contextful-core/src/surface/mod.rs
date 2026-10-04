@@ -37,6 +37,9 @@ pub enum SurfaceError {
     /// (`surface.apply.validation`)
     #[error("ApplyValidationRefused: {0}")]
     ApplyValidationRefused(String),
+    /// (`surface.apply.attestation-unavailable`)
+    #[error("ControlAttestationUnavailable: {0}")]
+    ControlAttestationUnavailable(String),
     /// (`surface.arm.unknown-trigger`)
     #[error("TriggerAdapterUnknown: {0}")]
     TriggerAdapterUnknown(String),
@@ -93,7 +96,8 @@ impl SurfaceError {
             | SurfaceError::ControlPointerMalformed(_)
             | SurfaceError::ControlSourceNotLoopback(_)
             | SurfaceError::CycleControlSourceUnresolved(_)
-            | SurfaceError::ConditionalWriteUnsupported(_) => 503,
+            | SurfaceError::ConditionalWriteUnsupported(_)
+            | SurfaceError::ControlAttestationUnavailable(_) => 503,
             SurfaceError::StoreNotInitialized(_) | SurfaceError::ManifestVersionConflict(_) | SurfaceError::DispatchCallbackRejected(_) => 409,
             SurfaceError::EnforceRegionMismatch(_) | SurfaceError::ResidencySitesDiverge(_) => 503,
             SurfaceError::DispatchSubmitRejected(_) => 401,

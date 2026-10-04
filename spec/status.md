@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 259 |
 | `store` | 1 | 17 | 238 | 56 | 13 | 19 | 198 | 0 | 198 |
-| `surface` | 2 | 19 | 92 | 48 | 22 | 5 | 53 | 0 | 53 |
+| `surface` | 2 | 19 | 93 | 48 | 22 | 5 | 56 | 0 | 53 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1965 | 572 | 188 | 132 | 1337 | 0 | |
+| **total** | 19 | 154 | 1966 | 572 | 188 | 132 | 1340 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 73 | 58 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 74 | 61 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
@@ -1293,11 +1293,14 @@ Unscheduled operations: 10.
 | `store.reserve.table-namespaces` | `crates/contextful-core/tests/integration/store/reserve.rs::the_visibility_namespace_holds_each_sources_access_tables` | performed |
 | `store.reserve.taint` | `crates/contextful-context/tests/integration/reserve.rs::a_model_output_row_carries_the_engine_taint_and_no_other_row_does` | performed |
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |
+| `surface.apply.attestation-unavailable` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.guarded-import` | `crates/contextful-cli/tests/integration/pipeline.rs::the_import_claims_the_first_version_once` | performed |
 | `surface.apply.local-claim` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_claims_a_version_in_the_local_snapshot_directory` | performed |
 | `surface.apply.owner-unconfigured` | `crates/contextful-cli/tests/integration/pipeline.rs::an_owner_with_nothing_behind_it_is_refused` | performed |
 | `surface.apply.receipt-digest` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_receipt_digest_uses_canonical_json_for_its_successor` | performed |
+| `surface.apply.receipt-file` | `crates/contextful-engine/tests/integration/control.rs::an_attested_claim_commits_the_snapshot_and_receipt_together` | performed |
 | `surface.apply.receipt-message` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_control_receipt_binds_every_signed_field_and_the_snapshot_bytes` | performed |
+| `surface.apply.synced-attestation` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.uninitialized-store` | `crates/contextful-cli/tests/integration/pipeline.rs::an_apply_before_the_import_is_refused` | performed |
 | `surface.apply.validation` | `crates/contextful-cli/tests/integration/pipeline.rs::an_invalid_document_claims_no_version` | performed |
 | `surface.apply.version-race` | `crates/contextful-engine/tests/integration/control.rs::a_lost_claim_conflicts_and_overwrites_nothing` | performed |

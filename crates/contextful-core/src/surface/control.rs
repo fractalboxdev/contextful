@@ -22,6 +22,11 @@ pub fn snapshot_file(version: u64) -> String {
     format!("manifest@v{version}.toml")
 }
 
+/// The immutable signed receipt beside applied version `version`.
+pub fn receipt_file(version: u64) -> String {
+    format!("receipt@v{version}.json")
+}
+
 /// Read a pointer body: ASCII digits and at most one trailing newline, nothing else
 /// (`surface.reconcile.pointer-malformed`).
 pub fn parse_pointer(body: &str) -> Result<u64, SurfaceError> {

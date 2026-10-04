@@ -6,13 +6,15 @@
 //! linearizable among processes on one machine (`surface.apply.version-race`).
 
 use crate::fsutil::{create_new, filesystem_kind, replace, FileLock};
-use contextful_core::surface::control::{admit_conditional, parse_pointer, snapshot_file, POINTER_FILE};
+use contextful_core::surface::control::{admit_conditional, parse_pointer, receipt_file, snapshot_file, POINTER_FILE};
 use contextful_core::surface::SurfaceError;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 /// The lock file serializing claims.
 const LOCK_FILE: &str = "manifest.lock";
+
+type ReceiptBuilder<'a> = dyn Fn(u64, Option<&str>) -> Result<String, ControlError> + 'a;
 
 /// A snapshot-directory refusal or a storage failure beneath it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -89,6 +91,26 @@ impl SnapshotDir {
     /// pointer no longer at `expected` raises `ManifestVersionConflict` and writes nothing;
     /// a version file already present is never overwritten, the claim taking the next free one.
     pub fn claim(&self, expected: Option<u64>, text: &str) -> Result<u64, ControlError> {
+        self.claim_inner(expected, text, None)
+    }
+
+    /// Claim a synced version with a receipt written beside its immutable snapshot before
+    /// the applied pointer advances. `receipt` sees the prior receipt under the claim lock.
+    pub fn claim_attested(
+        &self,
+        expected: Option<u64>,
+        text: &str,
+        receipt: impl Fn(u64, Option<&str>) -> Result<String, ControlError>,
+    ) -> Result<u64, ControlError> {
+        self.claim_inner(expected, text, Some(&receipt))
+    }
+
+    fn claim_inner(
+        &self,
+        expected: Option<u64>,
+        text: &str,
+        receipt: Option<&ReceiptBuilder<'_>>,
+    ) -> Result<u64, ControlError> {
         let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
         let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
         let current = self.current()?;
@@ -102,8 +124,30 @@ impl SnapshotDir {
             ))
             .into());
         }
+        let parent = match (receipt, current) {
+            (Some(_), Some(version)) => {
+                let path = self.root.join(receipt_file(version));
+                Some(std::fs::read_to_string(&path).map_err(|e| {
+                    SurfaceError::ControlAttestationUnavailable(format!("previous receipt {}: {e}", path.display()))
+                })?)
+            }
+            _ => None,
+        };
         let mut version = current.unwrap_or(0) + 1;
-        while !create_new(&self.root.join(snapshot_file(version)), text.as_bytes()).map_err(storage)? {
+        loop {
+            if receipt.is_some() && self.root.join(receipt_file(version)).exists() {
+                version += 1;
+                continue;
+            }
+            let signed = receipt.map(|sign| sign(version, parent.as_deref())).transpose()?;
+            if create_new(&self.root.join(snapshot_file(version)), text.as_bytes()).map_err(storage)? {
+                if let Some(signed) = signed {
+                    if !create_new(&self.root.join(receipt_file(version)), signed.as_bytes()).map_err(storage)? {
+                        return Err(ControlError::Storage(format!("receipt for v{version} already exists")));
+                    }
+                }
+                break;
+            }
             version += 1;
         }
         replace(&self.root.join(POINTER_FILE), format!("{version}\n").as_bytes()).map_err(storage)?;

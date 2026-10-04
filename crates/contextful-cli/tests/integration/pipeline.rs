@@ -1285,6 +1285,87 @@ fn the_import_claims_the_first_version_once() {
     assert!(ok(&cf(empty.path(), &["pipeline", "apply", "--project", "research"])).contains("unchanged at v1"));
 }
 
+/// A synced import admits an admin capability and signs the snapshot before it claims v1.
+// spec: surface.apply.synced-attestation@34c2d5b6
+// spec: surface.apply.attestation-unavailable@6e7f76ad
+#[test]
+fn a_synced_import_requires_admin_and_writes_a_verifiable_receipt() {
+    use contextful_policy::control_receipt::ControlReceipt;
+    use contextful_policy::issue::SignerKey;
+
+    let dir = project("site_id = \"site-a\"\n");
+    let bucket = tempfile::tempdir().unwrap();
+    let store = dir.path().join(".contextful/context/research");
+    std::fs::write(store.join("config.toml"), format!(
+        "[node]\nid = \"ingest-a\"\n\n[sync]\nendpoint = \"file://{}\"\nbucket = \"control-test\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n",
+        bucket.path().display()
+    )).unwrap();
+    std::fs::write(dir.path().join(".contextful/issuance.toml"),
+        "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
+    let public = ok(&cf(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let import = || {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_contextful"));
+        command.args(["pipeline", "import", "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+            "--public-key", &public, "--audience", "contextful://research"])
+            .current_dir(dir.path()).env_remove("CONTEXTFUL_TOKEN");
+        command
+    };
+    let missing = import().output().unwrap();
+    assert!(!missing.status.success() && stderr(&missing).contains("ControlAttestationUnavailable"), "{}", stderr(&missing));
+    assert!(!dir.path().join(CONTROL).join("manifest@current").exists());
+    assert!(!dir.path().join(CONTROL).join("receipt@v1.json").exists());
+
+    let token = ok(&cf(dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "admin", "--table", "*"]));
+    let read_only = ok(&cf(dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "read", "--table", "*"]));
+    let denied = import().env("CONTEXTFUL_TOKEN", read_only).output().unwrap();
+    assert!(!denied.status.success() && stderr(&denied).contains("ControlAttestationUnavailable"), "{}", stderr(&denied));
+    let missing_signer = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "import", "--project", "research", "--issuer-key", "missing.seed",
+            "--public-key", &public, "--audience", "contextful://research"])
+        .current_dir(dir.path()).env("CONTEXTFUL_TOKEN", &token).output().unwrap();
+    assert!(!missing_signer.status.success() && stderr(&missing_signer).contains("ControlAttestationUnavailable"),
+        "{}", stderr(&missing_signer));
+    assert!(!dir.path().join(CONTROL).join("manifest@current").exists());
+    let imported = import().env("CONTEXTFUL_TOKEN", &token).output().unwrap();
+    assert!(imported.status.success(), "{}", stderr(&imported));
+    let snapshot = std::fs::read(dir.path().join(CONTROL).join("manifest@v1.toml")).unwrap();
+    let receipt: ControlReceipt = serde_json::from_slice(&std::fs::read(dir.path().join(CONTROL).join("receipt@v1.json")).unwrap()).unwrap();
+    let pin: SignerKey = receipt.signer.parse().unwrap();
+    assert!(receipt.verify("research", &snapshot, &[pin]).is_ok());
+    assert_eq!(receipt.version, 1);
+    assert_eq!(receipt.parent, None);
+
+    std::fs::write(dir.path().join("contextful.toml"),
+        format!("authoring_posture = \"per_request\"\nsite_id = \"site-a\"\n\n{}",
+            scheduled("orders", "https://api.vendor.example/v1", "every 1h"))).unwrap();
+    let apply = || {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_contextful"));
+        command.args(["pipeline", "apply", "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+            "--public-key", &public, "--audience", "contextful://research"])
+            .current_dir(dir.path()).env("CONTEXTFUL_TOKEN", &token);
+        command
+    };
+    let receipt_path = dir.path().join(CONTROL).join("receipt@v1.json");
+    let original_receipt = std::fs::read(&receipt_path).unwrap();
+    let mut corrupted: ControlReceipt = serde_json::from_slice(&original_receipt).unwrap();
+    corrupted.signature = "00".into();
+    std::fs::write(&receipt_path, serde_json::to_vec(&corrupted).unwrap()).unwrap();
+    let refused = apply().output().unwrap();
+    assert!(!refused.status.success() && stderr(&refused).contains("ControlAttestationUnavailable"), "{}", stderr(&refused));
+    assert_eq!(std::fs::read_to_string(dir.path().join(CONTROL).join("manifest@current")).unwrap(), "1\n");
+    assert!(!dir.path().join(CONTROL).join("receipt@v2.json").exists());
+    std::fs::write(&receipt_path, original_receipt).unwrap();
+    let applied = apply().output().unwrap();
+    assert!(applied.status.success(), "{}", stderr(&applied));
+    let second_snapshot = std::fs::read(dir.path().join(CONTROL).join("manifest@v2.toml")).unwrap();
+    let second: ControlReceipt = serde_json::from_slice(&std::fs::read(dir.path().join(CONTROL).join("receipt@v2.json")).unwrap()).unwrap();
+    assert_eq!(second.version, 2);
+    assert_eq!(second.parent.as_deref(), Some(receipt.digest().as_str()));
+    assert!(second.verify("research", &second_snapshot, &[second.signer.parse().unwrap()]).is_ok());
+}
+
 /// An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises
 /// `StoreNotInitialized`, answered `409`.
 // spec: surface.apply.uninitialized-store@d6d5c26a
