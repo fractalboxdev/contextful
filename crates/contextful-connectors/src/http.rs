@@ -79,8 +79,11 @@ fn expansion(value: &Value) -> Result<Expansion, ConfigError> {
         (None, Some(name)) if !name.is_empty() => ExpansionPointer::Column(name),
         (None, Some(_)) => return Err(RunError::Invalid("`expansion.pointer_column` is non-empty".into()).into()),
         (Some(template), None) => {
-            let authority_end = template.find("://").map_or(template.len(), |s| template[s + 3..].find(['/', '?', '#']).map_or(template.len(), |e| s + 3 + e));
-            if !template.contains('{') || template[..authority_end].contains('{') {
+            let binds_authority = template.find("://").is_some_and(|s| {
+                let end = template[s + 3..].find(['/', '?', '#']).map_or(template.len(), |e| s + 3 + e);
+                template[..end].contains('{')
+            });
+            if !template.contains('{') || binds_authority {
                 return Err(ConnectorError::ConnectorTemplateRejected("`url_template` needs a row placeholder in its path or query, outside the URL authority".into()).into());
             }
             let mut rest = template.as_str();
@@ -855,8 +858,13 @@ impl HttpSource {
             if started.elapsed() >= EXPANSION_TIME {
                 return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 600 s"));
             }
+            let remaining_body = EXPANSION_BYTES.saturating_sub(bytes);
+            if remaining_body == 0 {
+                return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 256 MiB"));
+            }
+            let remaining_time = EXPANSION_TIME.saturating_sub(started.elapsed());
             let headers = self.headers(&request.idempotency_key)?;
-            let response = self.client.send("GET", &pointer, &headers, None).map_err(|f| Failure {
+            let response = self.client.send_bounded("GET", &pointer, &headers, None, remaining_body as u64, remaining_time).map_err(|f| Failure {
                 message: ConnectorError::ConnectorExpansionFailed(format!("`{}`: {}", scrub(&pointer), f.message)).to_string(),
                 ..f
             })?;
