@@ -8,7 +8,7 @@ use super::pool::{self, SessionPool};
 use super::results::{self, ResultCache};
 use crate::scan::{scan, scan_at};
 use crate::store::Store;
-use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers};
+use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers, Grant};
 use contextful_core::read::face::TOOLS;
 use contextful_core::read::guard::{admit, Admitted};
 use contextful_core::read::pin::{Pins, Resolved, PIN_ARGUMENT, RESOLVED_BLOCK};
@@ -360,15 +360,24 @@ impl Face {
     /// table's published `limits.max_rows` (`read.respond.row-ceiling`) and the face
     /// ceiling (`read.respond.face-ceiling`). A request ledger answers to its table's ceiling.
     pub(crate) fn ceiling(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>) -> u64 {
-        let grant = session.grants().iter().filter_map(|g| g.max_rows).min();
+        let grant = Self::grant_limit(session, touched, |g| g.max_rows);
         let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
         let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
         least_row_ceiling([grant, request, template, table])
     }
 
-    fn budget(&self, session: &Session, touched: &BTreeSet<String>, field: fn(&contextful_core::grant::Grant) -> Option<u64>, table_field: fn(&TablePolicy) -> Option<u64>, request: Option<u64>) -> Option<(u64, &'static str)> {
+    fn grant_limit(session: &Session, touched: &BTreeSet<String>, field: fn(&Grant) -> Option<u64>) -> Option<u64> {
+        session.grants().iter().filter(|grant| {
+            touched.iter().any(|table| {
+                let owner = contextful_core::store::ledger::ledger_table(table).unwrap_or(table);
+                raw_read_covers(std::slice::from_ref(*grant), owner)
+            })
+        }).filter_map(field).min()
+    }
+
+    fn budget(&self, session: &Session, touched: &BTreeSet<String>, field: fn(&Grant) -> Option<u64>, table_field: fn(&TablePolicy) -> Option<u64>, request: Option<u64>) -> Option<(u64, &'static str)> {
         let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
-        let grant = session.grants().iter().filter_map(field).min();
+        let grant = Self::grant_limit(session, touched, field);
         let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(table_field)).min();
         [(grant, "grant"), (table, "table"), (request, "request")]
             .into_iter().filter_map(|(n, source)| n.map(|n| (n, source))).min_by_key(|(n, _)| *n)
@@ -384,7 +393,7 @@ impl Face {
 
     fn row_source(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>, ceiling: u64) -> &'static str {
         let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
-        let grant = session.grants().iter().filter_map(|g| g.max_rows).min();
+        let grant = Self::grant_limit(session, touched, |g| g.max_rows);
         let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
         [(grant, "grant"), (table, "table"), (request, "request"), (template, "template")]
             .into_iter().find_map(|(n, source)| (n == Some(ceiling)).then_some(source)).unwrap_or("face")
