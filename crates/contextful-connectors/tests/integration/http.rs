@@ -95,6 +95,10 @@ fn expansion_template_binds_row_values_under_the_source_host() {
     let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"url_template": vendor.url("/detail/{id}"), "target_column":"detail"}}), vec![]);
     assert_eq!(s.walk(&request(None), &Never).unwrap()[0]["detail"]["ok"], true);
     assert_eq!(vendor.received("/detail/a%2Fb").len(), 1);
+
+    let relative = source(json!({"endpoint": vendor.url("/index"), "expansion": {"url_template": "/detail/{id}", "target_column":"detail"}}), vec![]);
+    assert_eq!(relative.walk(&request(None), &Never).unwrap()[0]["detail"]["ok"], true);
+    assert_eq!(vendor.received("/detail/a%2Fb").len(), 2);
 }
 
 /// A row below the watermark costs no follow-up request.
