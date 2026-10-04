@@ -225,12 +225,15 @@ impl WorkerDispatch {
 }
 
 impl Dispatch for WorkerDispatch {
-    fn fire(&self, id: &str, steps: &[String], version: u64) -> Result<String, String> {
+    fn fire(&self, id: &str, steps: &[String], derived_children: &BTreeSet<String>, version: u64) -> Result<String, String> {
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
         let run = format!("{id}-{nanos}");
         let mut lines = Vec::new();
         let mut failures = Vec::new();
         for step in std::iter::once(id).chain(steps.iter().map(String::as_str)) {
+            if !failures.is_empty() && !derived_children.contains(step) {
+                break;
+            }
             match self.step(&run, step, version) {
                 Ok(StepOutcome::Done(result)) => lines.push(format!("{step}: {}", String::from_utf8_lossy(&result.encode()))),
                 Ok(StepOutcome::Failed { failed }) => failures.push(format!("{step}: {failed}")),

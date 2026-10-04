@@ -27,7 +27,7 @@ use contextful_engine::worker::{Relay, WorkerDispatch};
 use contextful_outbound::egress::{system, Outbound, Transport};
 use serde::Serialize;
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::io::Read;
@@ -517,10 +517,13 @@ fn drain_pipe(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHand
 }
 
 impl Dispatch for ChildDispatch {
-    fn fire(&self, id: &str, steps: &[String], version: u64) -> Result<String, String> {
+    fn fire(&self, id: &str, steps: &[String], derived_children: &BTreeSet<String>, version: u64) -> Result<String, String> {
         let mut lines = Vec::new();
         let mut failures = Vec::new();
         for step in std::iter::once(id).chain(steps.iter().map(String::as_str)) {
+            if !failures.is_empty() && !derived_children.contains(step) {
+                break;
+            }
             match self.step(step, version) {
                 Ok(line) => lines.push(line),
                 Err(error) => failures.push(error),
@@ -630,7 +633,7 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
         eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
         unarmed.push(Unarmed { id: spec.id.clone(), reason });
     }
-    scheduler.arm_runs(version, entries, runs.steps)?;
+    scheduler.arm_runs_with_derived(version, entries, runs.steps, runs.derived_children)?;
     eprintln!("armed v{version}: {} scheduled pipeline(s), {} unarmed", scheduler.armed().len(), unarmed.len());
     Ok(Some(unarmed))
 }

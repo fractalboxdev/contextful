@@ -689,6 +689,21 @@ fn a_cycle_with_a_failed_fire_exits_non_zero() {
     assert_eq!(quiet["failed"], serde_json::json!([]));
 }
 
+#[test]
+fn an_explicit_after_step_waits_for_its_heads_success() {
+    let vendor = Vendor::start(|t| if t.starts_with("/v1/bad") { (404, "{}".into()) } else { (200, "[{\"id\":\"a\"}]".into()) });
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n{}\n{}",
+        pipeline("bad", &vendor.url("/v1/bad"), "schedule = \"every 1h\"", "tables = [\"items\"]"),
+        pipeline("after-bad", &vendor.url("/v1/after"), "after = \"bad\"", "tables = [\"items\"]"),
+    ));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
+    assert!(!out.status.success());
+    assert_eq!(vendor.targets(), ["/v1/bad"]);
+}
+
 /// A malformed pointer refuses the cycle rather than arming a version nobody applied.
 #[test]
 fn a_malformed_pointer_refuses_the_cycle() {
