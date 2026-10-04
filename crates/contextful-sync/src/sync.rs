@@ -869,7 +869,10 @@ impl Syncer {
         for version in (1..=head.version).rev() {
             let Some(digest) = wanted.as_deref() else { break };
             let receipt_key = format!("{}/control/{}", self.project, receipt_file(version));
-            let Some(entry) = manifest.entries.get(&receipt_key) else { continue };
+            let Some(entry) = manifest.entries.get(&receipt_key) else {
+                if version == head.version { return Ok((keys, Some(receipt_key))); }
+                continue;
+            };
             let Some((bytes, _)) = self.bucket.get(&self.key(&receipt_key)?)? else {
                 return Ok((keys, Some(receipt_key)));
             };
@@ -879,6 +882,9 @@ impl Syncer {
                 Err(e) => return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` holds an unreadable control receipt: {e}")).into()),
             };
             if receipt.digest() != digest {
+                if version == head.version {
+                    return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` differs from the committed control head digest")).into());
+                }
                 continue;
             }
             if sha256_hex(&bytes) != entry.sha256 {

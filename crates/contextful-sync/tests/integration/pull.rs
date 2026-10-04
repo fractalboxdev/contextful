@@ -61,6 +61,31 @@ fn a_cold_pull_stages_only_the_reachable_control_head_without_applying_it() {
     assert!(!cold.syncer.control_dir.as_ref().unwrap().join(CONTROL_POINTER).exists());
 }
 
+#[test]
+fn a_head_version_without_its_receipt_never_stages_an_older_receipt_as_head() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = node("ingest-a", b.clone(), "");
+    let control = writer.syncer.control_dir.as_ref().unwrap();
+    std::fs::create_dir_all(control).unwrap();
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let first = ControlReceipt::sign("research", 1, None, b"first", &signer).unwrap();
+    let second = ControlReceipt::sign("research", 2, Some(&first.digest()), b"second", &signer).unwrap();
+    for (version, snapshot, receipt) in [(1, b"first".as_slice(), &first), (2, b"second".as_slice(), &second)] {
+        std::fs::write(control.join(snapshot_file(version)), snapshot).unwrap();
+        std::fs::write(control.join(receipt_file(version)), serde_json::to_vec(receipt).unwrap()).unwrap();
+    }
+    std::fs::write(control.join(CONTROL_POINTER), "2\n").unwrap();
+    writer.syncer.push(at(NOW)).unwrap();
+    let mut manifest: BucketManifest = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    manifest.control_heads.get_mut("research").unwrap().version = 3;
+    b.put("team/manifest.json", &serde_json::to_vec(&manifest).unwrap(), Condition::None).unwrap();
+
+    let cold = node("ingest-b", b, "");
+    assert!(matches!(cold.syncer.pull(&PullScope::default()), Err(SyncError::Store(StoreError::SyncPullDidNotConverge(_)))));
+    assert!(!cold.root().join("control/head.json").exists());
+}
+
 fn files(n: &crate::support::Node) -> Vec<String> {
     let decl = TableDecl::named("filings");
     let s = contextful_context::scan::scan(&n.syncer.store, &decl, Default::default()).unwrap();
