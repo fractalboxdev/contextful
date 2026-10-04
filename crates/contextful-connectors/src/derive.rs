@@ -479,9 +479,20 @@ pub struct DeriveSource {
 }
 
 impl DeriveSource {
+    fn validate_identity(&self) -> Result<(), RunError> {
+        if self.cwd.as_os_str().is_empty() {
+            return Err(RunError::DeriveNoStoreRoot("store root is absent".into()));
+        }
+        if self.pipeline_id.trim().is_empty() {
+            return Err(RunError::DeriveNoStoreRoot("pipeline id is absent".into()));
+        }
+        Ok(())
+    }
+
     /// What this pipeline's rows derive under on this machine: the resolved chain's id, the
     /// binding's parameters and the output table's declared columns.
     pub fn derivation(&self) -> Result<Derivation, RunError> {
+        self.validate_identity()?;
         match self.config.task {
             Task::LinkPreview => Ok(Derivation {
                 engine_id: format!("fetch:{}", self.config.engine),
@@ -619,6 +630,7 @@ impl DeriveSource {
 
 impl DeriveSource {
     fn pull_once(&self, cancel: &dyn Cancellation) -> Result<(Vec<u8>, bool), Failure> {
+        self.validate_identity().map_err(refused)?;
         if self.config.task == Task::LinkPreview && (self.mediation.hook.is_none() || self.mediation.run_id.as_deref().is_none_or(str::is_empty)) {
             return Err(refused(RunError::DeriveMeteredClient(format!("pipeline `{}` has no run-bound request ledger hook", self.pipeline_id))));
         }
