@@ -240,6 +240,42 @@ fn typed_array(path: &str, ty: &ColumnType, values: &[Option<&Value>]) -> Result
                 }
             }
         }
+        ColumnType::Variant => {
+            let mut tagged = Vec::with_capacity(values.len());
+            for value in vals {
+                let Some(value) = value else {
+                    tagged.push(None);
+                    continue;
+                };
+                let (kind, payload) = match value {
+                    Value::String(_) => ("str", value.clone()),
+                    Value::Number(n) if n.is_i64() => ("int", value.clone()),
+                    Value::Number(_) => ("double", value.clone()),
+                    Value::Bool(_) => ("bool", value.clone()),
+                    Value::Object(fields) => {
+                        let kind = fields.get("kind").and_then(Value::as_str).ok_or_else(|| bad(value))?;
+                        if !["str", "int", "double", "bool", "bytes"].contains(&kind)
+                            || fields.iter().any(|(key, value)| {
+                                key != "kind"
+                                    && (!["str", "int", "double", "bool", "bytes"].contains(&key.as_str())
+                                        || (key != kind && !value.is_null()))
+                            })
+                            || fields.get(kind).is_none_or(Value::is_null)
+                        {
+                            return Err(bad(value));
+                        }
+                        (kind, fields[kind].clone())
+                    }
+                    _ => return Err(bad(value)),
+                };
+                let mut fields = Map::new();
+                fields.insert("kind".into(), Value::String(kind.into()));
+                fields.insert(kind.into(), payload);
+                tagged.push(Some(Value::Object(fields)));
+            }
+            let values: Vec<Option<&Value>> = tagged.iter().map(Option::as_ref).collect();
+            typed_array(path, &ColumnType::Struct(contextful_core::store::reconcile::variant_fields()), &values)?
+        }
         ColumnType::Struct(fields) => {
             // An object's fields fill the struct; a field it omits is null, and a key no
             // field names refuses rather than vanishing.
