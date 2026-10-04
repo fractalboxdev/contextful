@@ -170,14 +170,8 @@ impl Resolver {
 
     fn cached(&self, name: &SecretName, now: Instant) -> Option<Arc<Hydrated>> {
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        match cache.get(name) {
-            Some(cached) if now < cached.retires_at => Some(cached.value.clone()),
-            Some(_) => {
-                cache.remove(name);
-                None
-            }
-            None => None,
-        }
+        cache.retain(|_, cached| now < cached.retires_at);
+        cache.get(name).map(|cached| cached.value.clone())
     }
 
     /// Hydrate `name` for a template. The earliest adapter answering wins and the ones
