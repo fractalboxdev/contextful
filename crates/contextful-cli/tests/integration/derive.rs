@@ -32,7 +32,13 @@ fn a_link_preview_records_each_vendor_request_before_landing() {
     ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
     ok(&cf(dir.path(), &["pipeline", "run", "cards", "--project", "research", "--run-id", "cards-1", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"]));
     server.join().unwrap();
-    assert_eq!(select(dir.path(), "SELECT run_id, connector, method, url_host, status_code, batch_seq FROM cards_cards__requests"), [["cards-1", "derive", "GET", "localhost", "200", "0"]]);
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let files = contextful_context::ledger::files(&store, "cards_cards").unwrap();
+    assert_eq!(files.len(), 1);
+    let calls = contextful_context::ledger::read(&files[0]).unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0, "cards-1");
+    assert_eq!((calls[0].1.connector.as_str(), calls[0].1.method.as_str(), calls[0].1.url_host.as_str(), calls[0].1.status_code, calls[0].1.batch_seq), ("derive", "GET", "localhost", Some(200), Some(0)));
 }
 
 #[test]
@@ -68,7 +74,12 @@ fn a_link_preview_reserves_document_and_image_requests_from_one_shared_quota() {
     ok(&out);
     assert_eq!(vendor.targets(), ["/article", "/cover.jpg"]);
     assert_eq!(limiter.targets().iter().filter(|target| target.as_str() == "/quota/acquire").count(), 2);
-    assert_eq!(select(dir.path(), "SELECT method, url_host, status_code FROM cards_cards__requests ORDER BY request_id"), [["GET", "localhost", "200"], ["GET", "localhost", "200"]]);
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let files = contextful_context::ledger::files(&store, "cards_cards").unwrap();
+    assert_eq!(files.len(), 1);
+    let calls = contextful_context::ledger::read(&files[0]).unwrap();
+    assert_eq!(calls.len(), 2);
+    assert!(calls.iter().all(|(run, call)| run == "cards-2" && call.method == "GET" && call.url_host == "localhost" && call.status_code == Some(200) && call.batch_seq == Some(0)));
 }
 
 #[test]
