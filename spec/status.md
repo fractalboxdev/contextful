@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 180 | 29 | 22 | 21 | 165 | 0 | 165 |
+| `read` | 2 | 15 | 180 | 29 | 22 | 21 | 166 | 0 | 166 |
 | `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1957 | 569 | 188 | 133 | 1337 | 0 | |
+| **total** | 19 | 154 | 1957 | 569 | 188 | 133 | 1338 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
 | 4 — Ingest | 25 | 468 | 290 | passing | open |
-| 5 — The read face under enforcement | 17 | 253 | 194 | passing | open |
+| 5 — The read face under enforcement | 17 | 253 | 195 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
@@ -755,6 +755,7 @@ Unscheduled operations: 10.
 | `read.register.file-preview-target` | `crates/contextful-context/tests/integration/read/register.rs::a_preview_reads_a_run_file_through_its_relation` | performed |
 | `read.register.health` | `crates/contextful-agent/tests/integration/http.rs::health_answers_the_build_identity_without_a_credential` | performed |
 | `read.register.ledger-relation` | `crates/contextful-context/tests/integration/read/register.rs::a_tables_request_ledger_reads_as_its_child_relation` | performed |
+| `read.register.lexicon-surface` | `crates/contextful-context/tests/integration/read/register.rs::describe_reports_the_store_lexicon_on_each_registered_table` | performed |
 | `read.register.network-transport` | `crates/contextful-agent/tests/integration/http.rs::post_mcp_answers_each_message_as_the_stdio_tool_server_does` | performed |
 | `read.register.past-ceiling` | `crates/contextful-agent/tests/integration/http.rs::past_the_ceiling_a_request_answers_503_with_retry_after` | performed |
 | `read.register.per-request-admission` | `crates/contextful-agent/tests/integration/http.rs::one_listener_admits_bearers_and_holder_bound_credentials_each_on_its_own_grants` | performed |
