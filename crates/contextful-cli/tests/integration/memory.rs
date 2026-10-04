@@ -136,3 +136,33 @@ fn a_direct_write_lands_a_claim_and_refuses_another_shape() {
     assert!(!missing.status.success());
     assert!(String::from_utf8_lossy(&missing.stderr).contains("memory/other"));
 }
+
+/// A relation rename replaces the type of each stored edge under its existing key.
+// spec: read.declare.reserved-relations@d88f3e8f
+#[test]
+fn relation_rename_rewrites_stored_edges_before_the_old_name_is_removed() {
+    let (dir, public, token) = project();
+    let manifest = dir.path().join("contextful.toml");
+    let declaration = format!(
+        "{}\n[[table]]\nname = \"memory/edges\"\nshape = \"memory_edges\"\ncolumns = [\"edge_id\", \"rel_type\", \"source_id\", \"target_id\", \"evidence\"]\n\n[relation]\ndeclared = [\"follows\", \"tracks\"]\n",
+        std::fs::read_to_string(&manifest).unwrap()
+    );
+    std::fs::write(&manifest, &declaration).unwrap();
+    std::fs::write(
+        dir.path().join("edges.jsonl"),
+        "{\"edge_id\":\"e1\",\"rel_type\":\"follows\",\"source_id\":\"a\",\"target_id\":\"b\",\"evidence\":\"[]\"}\n{\"edge_id\":\"e2\",\"rel_type\":\"tracks\",\"source_id\":\"a\",\"target_id\":\"c\",\"evidence\":\"[]\"}\n",
+    ).unwrap();
+    stdout(&run(dir.path(), &["context", "land", "memory/edges", "--project", "research", "--rows", "edges.jsonl", "--run-id", "run-edges", "--site-id", "site-a"], &[]));
+
+    let args = ["memory", "relations", "rename", "follows", "tracks", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let report = stdout(&run(dir.path(), &args, &[("CONTEXTFUL_TOKEN", &token)]));
+    assert!(report.contains("1") && report.contains("memory/edges"), "{report}");
+    let query = ["query", "--json", "--project", "research", "SELECT edge_id, rel_type FROM \"memory/edges\" ORDER BY edge_id"];
+    let rows: Value = serde_json::from_str(&stdout(&run(dir.path(), &query, &[]))).unwrap();
+    assert_eq!(rows["rows"], json!([["e1", "tracks"], ["e2", "tracks"]]));
+    assert!(stdout(&run(dir.path(), &args, &[("CONTEXTFUL_TOKEN", &token)])).contains("0"));
+
+    std::fs::write(&manifest, declaration.replace("[\"follows\", \"tracks\"]", "[\"tracks\"]")).unwrap();
+    let rows: Value = serde_json::from_str(&stdout(&run(dir.path(), &query, &[]))).unwrap();
+    assert_eq!(rows["rows"], json!([["e1", "tracks"], ["e2", "tracks"]]));
+}
