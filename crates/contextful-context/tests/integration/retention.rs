@@ -20,8 +20,8 @@ fn land_keyed_retention_revisions(f: &Fixture, d: &TableDecl) {
     f.land_typed(
         d,
         "older",
-        json!([{"id": "same", "rev": 1, "sender_day": "older", "retained_at": "2300-01-01T00:00:00Z"}]),
-        "2200-01-01T00:00:00Z",
+        json!([{"id": "same", "rev": 1, "sender_day": "older", "retained_at": "2100-01-01T00:00:00Z"}]),
+        "2020-01-01T00:00:00Z",
         timestamp,
     )
     .unwrap();
@@ -29,7 +29,7 @@ fn land_keyed_retention_revisions(f: &Fixture, d: &TableDecl) {
         d,
         "newer",
         json!([{"id": "same", "rev": 2, "sender_day": "newer", "retained_at": "2000-01-01T00:00:00Z"}]),
-        "2200-01-02T00:00:00Z",
+        "2020-01-02T00:00:00Z",
         timestamp,
     )
     .unwrap();
@@ -50,7 +50,7 @@ fn an_expired_keyed_winner_does_not_restore_an_older_live_row_after_fold() {
     let f = Fixture::new();
     let d = decl("name = \"events\"\nprimary_key = [\"id\"]\norder_by = \"rev\"\npartition_by = [\"sender_day\"]\ncolumns = { retained_at = \"timestamp\" }\nretain_rows = { column = \"retained_at\", age = \"30d\" }");
     land_keyed_retention_revisions(&f, &d);
-    let outcome = fold(&f.store, &d, at("2200-02-02T00:00:00Z")).unwrap();
+    let outcome = fold(&f.store, &d, at("2030-02-02T00:00:00Z")).unwrap();
     assert!(matches!(outcome, FoldOutcome::Folded { rows: 0, .. }), "{outcome:?}");
     assert!(f.query(&d, Bounds::default(), "SELECT id FROM t").is_empty());
 }
