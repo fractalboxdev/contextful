@@ -6,7 +6,7 @@ use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::time::Instant;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 pub const NAME: &str = "image";
@@ -66,7 +66,9 @@ impl ImageSource {
                 let absolute = entry.path();
                 let meta = std::fs::symlink_metadata(&absolute).map_err(|e| fault(&absolute, e))?;
                 if meta.is_dir() { dirs.push((path, absolute)); }
-                else if meta.is_file() && name.to_ascii_lowercase().ends_with(".png") { files.push((path, absolute)); }
+                else if meta.is_file() && [".png", ".jpg", ".jpeg"].iter().any(|ext| name.to_ascii_lowercase().ends_with(ext)) {
+                    files.push((path, absolute));
+                }
             }
             stack.extend(dirs.into_iter().rev());
         }
@@ -95,22 +97,65 @@ fn header(path: &str, bytes: &[u8]) -> Result<(u32, u32), Failure> {
     Ok((width, height))
 }
 
+fn unreadable(path: &str, why: &str) -> Failure {
+    Failure::deterministic(FailureTag::Permanent,
+        ConnectorError::ConnectorImageHeaderUnreadable(format!("`{path}` {why}")).to_string())
+}
+
+fn jpeg_header(path: &str, file: &mut std::fs::File) -> Result<(u32, u32), Failure> {
+    let mut pair = [0u8; 2];
+    file.read_exact(&mut pair).map_err(|_| unreadable(path, "has no readable JPEG header"))?;
+    if pair != [0xff, 0xd8] { return Err(unreadable(path, "has no JPEG start marker")); }
+    loop {
+        if file.stream_position().map_err(|e| fault(Path::new(path), e))? > 1024 * 1024 {
+            return Err(unreadable(path, "has no frame header within 1 MiB"));
+        }
+        file.read_exact(&mut pair).map_err(|_| unreadable(path, "has no readable JPEG frame header"))?;
+        while pair == [0xff, 0xff] {
+            file.read_exact(&mut pair[1..2]).map_err(|_| unreadable(path, "has no readable JPEG marker"))?;
+        }
+        if pair[0] != 0xff || matches!(pair[1], 0x00 | 0xd9 | 0xda) {
+            return Err(unreadable(path, "has no JPEG frame header"));
+        }
+        if matches!(pair[1], 0xd0..=0xd8 | 0x01) { continue; }
+        let marker = pair[1];
+        file.read_exact(&mut pair).map_err(|_| unreadable(path, "has a truncated JPEG segment"))?;
+        let len = u16::from_be_bytes(pair);
+        if len < 2 { return Err(unreadable(path, "has a short JPEG segment")); }
+        let frame = matches!(marker, 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf);
+        if frame {
+            if len < 7 { return Err(unreadable(path, "has a short JPEG frame header")); }
+            let mut shape = [0u8; 5];
+            file.read_exact(&mut shape).map_err(|_| unreadable(path, "has a truncated JPEG frame header"))?;
+            let height = u16::from_be_bytes([shape[1], shape[2]]) as u32;
+            let width = u16::from_be_bytes([shape[3], shape[4]]) as u32;
+            if width == 0 || height == 0 { return Err(unreadable(path, "has a zero JPEG dimension")); }
+            return Ok((width, height));
+        }
+        file.seek(SeekFrom::Current(i64::from(len - 2))).map_err(|_| unreadable(path, "has a truncated JPEG segment"))?;
+    }
+}
+
 impl Source for ImageSource {
     fn pull(&mut self, _request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
         let mut rows = Vec::new();
         for (path, absolute) in self.files(cancel)? {
             if cancel.requested() { return Err(Failure::canceled("stopped during image read")); }
             let mut file = std::fs::File::open(&absolute).map_err(|e| fault(&absolute, e))?;
-            let mut first = [0u8; 24];
-            let mut n = 0;
-            while n < first.len() {
-                let count = file.read(&mut first[n..]).map_err(|e| fault(&absolute, e))?;
-                if count == 0 { break; }
-                n += count;
-            }
-            let (width, height) = header(&path, &first[..n])?;
+            let (width, height) = if path.to_ascii_lowercase().ends_with(".png") {
+                let mut first = [0u8; 24];
+                let mut n = 0;
+                while n < first.len() {
+                    let count = file.read(&mut first[n..]).map_err(|e| fault(&absolute, e))?;
+                    if count == 0 { break; }
+                    n += count;
+                }
+                header(&path, &first[..n])?
+            } else {
+                jpeg_header(&path, &mut file)?
+            };
+            file.seek(SeekFrom::Start(0)).map_err(|e| fault(&absolute, e))?;
             let mut hash = Sha256::new();
-            hash.update(&first[..n]);
             let mut buffer = [0u8; 8192];
             loop {
                 let n = file.read(&mut buffer).map_err(|e| fault(&absolute, e))?;
