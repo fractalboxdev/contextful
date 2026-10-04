@@ -419,6 +419,55 @@ fn a_bound_store_lands_ciphertext_and_reads_its_row() {
 }
 
 #[test]
+#[ignore = "bound Store::open remains fail-closed until every persistent path seals"]
+fn a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload() {
+    use contextful_context::land::{land, Batch, RunContext};
+    use contextful_context::ledger;
+    use contextful_context::rows::table_rows;
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::ledger::RequestRecord;
+    use contextful_core::store::reserve::Injection;
+    use contextful_core::time::Instant;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+
+    const CANARY: &str = "encrypt-fixed-seed-74-5f1e";
+    let key_var = "CONTEXTFUL_TEST_KEY_74_WHOLE_STORE";
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    let decl = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"documents\"\n").unwrap().remove(0);
+    let node = NodeId::parse("ingest-a").unwrap();
+    let at = Instant::parse("2030-01-01T00:00:00Z").unwrap();
+    let batch = Batch { rows: vec![json!({"doc_id": "d1", "body": CANARY}).as_object().unwrap().clone()], types: Default::default() };
+    let ctx = RunContext {
+        node: node.clone(),
+        injection: Injection { run_id: CANARY.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        committed_at: at,
+    };
+    land(&store, &decl, &batch, &ctx).unwrap();
+    let record = RequestRecord {
+        request_id: CANARY.into(), vendor_request_id: None, connector: "remote".into(),
+        method: "POST".into(), url_host: "example.test".into(), status_code: Some(201),
+        started_at: at, duration_ms: 7, batch_seq: Some(0),
+    };
+    ledger::append(&store, "documents", CANARY, &node, &[record]).unwrap();
+    let digest = format!("{:x}", Sha256::digest(CANARY.as_bytes()));
+    store.land_blob(&digest, CANARY.as_bytes()).unwrap();
+
+    let files = tree(&root);
+    let hits: usize = files.iter().map(|(_, bytes)| bytes.windows(CANARY.len()).filter(|window| *window == CANARY.as_bytes()).count()).sum();
+    contextful_eval::record::emit("encrypt-no-plaintext", hits as f64, files.len() as u64, 0);
+    assert_eq!(hits, 0, "{files:?}");
+    assert_eq!(table_rows(&store, &decl, &["body"]).unwrap()[0]["body"], CANARY);
+    let ledger_path = ledger::files(&store, "documents").unwrap().pop().unwrap();
+    assert_eq!(ledger::read_for_store(&store, &ledger_path).unwrap()[0].1.request_id, CANARY);
+    assert_eq!(store.blob(&digest).unwrap().unwrap(), CANARY.as_bytes());
+}
+
+#[test]
 #[ignore = "the metadata and remaining read paths must seal before bound stores open"]
 fn a_bound_store_seals_its_request_ledger() {
     use contextful_context::ledger;
