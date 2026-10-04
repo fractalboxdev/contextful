@@ -406,7 +406,7 @@ impl Drive {
                 }
                 requests += 1;
                 if requests > LISTING_CAP {
-                    return Err(Failure::new(FailureTag::Permanent, format!("the walk at `{folder}` reached {LISTING_CAP} listing requests")));
+                    return Err(Failure::new(FailureTag::Permanent, ConnectorError::ConnectorDriveListingExceeded(format!("folder `{folder}` remains incomplete at {LISTING_CAP} listing requests")).to_string()));
                 }
                 let mut url = self.config.api("/drive/v3/files");
                 {

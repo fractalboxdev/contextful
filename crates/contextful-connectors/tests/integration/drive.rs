@@ -247,6 +247,7 @@ fn overlapping_selected_roots_deduplicate_files_and_resolve_paths() {
 }
 
 /// A pending next-page token at the shared listing cap refuses without committing removals.
+// spec: connector.source.drive-list-bound@48660c8e
 #[test]
 fn a_selected_root_page_token_at_the_listing_cap_refuses_by_name() {
     let fake = Fake::start();

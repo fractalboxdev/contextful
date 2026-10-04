@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 333 | 84 | 21 | 16 | 199 | 0 | 199 |
+| `connector` | 2 | 14 | 333 | 84 | 21 | 16 | 200 | 0 | 200 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1968 | 573 | 188 | 133 | 1339 | 0 | |
+| **total** | 19 | 154 | 1968 | 573 | 188 | 133 | 1340 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 480 | 294 | passing | open |
+| 4 — Ingest | 25 | 480 | 295 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -519,6 +519,7 @@ Unscheduled operations: 10.
 | `connector.source.drive-file-cap` | `crates/contextful-connectors/tests/integration/drive.rs::a_file_over_the_cap_is_skipped_by_name_and_the_read_succeeds` | performed |
 | `connector.source.drive-fire` | `crates/contextful-cli/tests/integration/drive.rs::a_drive_fire_lands_files_and_pages_then_only_what_changed` | performed |
 | `connector.source.drive-incremental` | `crates/contextful-connectors/tests/integration/drive.rs::a_second_read_relands_the_changed_file_alone_and_tombstones_what_left` | performed |
+| `connector.source.drive-list-bound` | `crates/contextful-connectors/tests/integration/drive.rs::a_selected_root_page_token_at_the_listing_cap_refuses_by_name` | performed |
 | `connector.source.drive-oauth` | `crates/contextful-connectors/tests/integration/drive.rs::the_access_token_is_minted_from_references_and_lands_in_no_row_or_position` | performed |
 | `connector.source.drive-oauth-shape` | `crates/contextful-connectors/tests/integration/drive.rs::each_oauth_value_is_one_reference` | performed |
 | `connector.source.drive-origin` | `crates/contextful-connectors/tests/integration/drive.rs::a_google_credential_goes_to_google_hosts_alone` | performed |

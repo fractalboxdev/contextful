@@ -9,6 +9,9 @@ pub enum ConnectorError {
     /// A selected Drive root that is missing or outside its declared Shared Drive. (`connector.source.drive-root-validation`)
     #[error("ConnectorDriveRootRejected: {0}")]
     ConnectorDriveRootRejected(String),
+    /// A Drive listing reaching its request cap before every folder page completes. (`connector.source.drive-list-bound`)
+    #[error("ConnectorDriveListingExceeded: {0}")]
+    ConnectorDriveListingExceeded(String),
     /// A forwarded guest configuration value that is not a table, over 64 KiB, or carrying a reference. (`connector.import.config-shape`)
     #[error("ConnectorConfigRejected: {0}")]
     ConnectorConfigRejected(String),
