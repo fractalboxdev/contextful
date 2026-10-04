@@ -199,11 +199,11 @@ fn footer_pruning_uses_the_top_level_timestamp_column() {
 #[test]
 fn collection_names_each_removed_directory() {
     let f = Fixture::new();
-    let d = decl("name = \"events\"\nretain_rows = { column = \"_ingested_at\", age = \"30d\" }");
+    let d = decl("name = \"events\"\npartition_by = [\"sender_day\"]\nretain_rows = { column = \"_ingested_at\", age = \"30d\" }");
     f.land(
         &d,
         "first",
-        json!([{"id": "first"}]),
+        json!([{"id": "first", "sender_day": "first"}]),
         "2200-01-01T00:00:00Z",
     )
     .unwrap();
@@ -211,7 +211,7 @@ fn collection_names_each_removed_directory() {
     f.land(
         &d,
         "second",
-        json!([{"id": "second"}]),
+        json!([{"id": "second", "sender_day": "second"}]),
         "2200-01-03T00:00:00Z",
     )
     .unwrap();
@@ -225,16 +225,25 @@ fn collection_names_each_removed_directory() {
     f.land(
         &d,
         "third",
-        json!([{"id": "third"}]),
+        json!([{"id": "third", "sender_day": "third"}]),
         "2200-01-11T00:00:00Z",
     )
     .unwrap();
-    let outcome = fold(&f.store, &d, at("2200-01-20T00:00:00Z")).unwrap();
+    let outcome = fold(&f.store, &d, at("2200-02-05T00:00:00Z")).unwrap();
+    let FoldOutcome::Folded { retention: Some(report), collected, .. } = &outcome else {
+        panic!("{outcome:?}")
+    };
+    assert_eq!(report.cutoff, at("2200-01-06T00:00:00Z"));
+    assert_eq!((report.rows_expired, report.partitions_dropped), (2, 2));
+    assert!(collected.iter().any(|p| p == "data/runs/second/ingest-a"), "{collected:?}");
+    assert!(collected.iter().any(|p| p.starts_with("data/snapshots/")), "{collected:?}");
+    let printed = outcome.to_string();
+    assert!(printed.contains("2200-01-06") && printed.contains("2 rows expired") && printed.contains("2 partitions dropped"), "{printed}");
     assert!(
-        outcome.to_string().contains("data/runs/second/ingest-a"),
+        printed.contains("data/runs/second/ingest-a"),
         "{outcome:?}"
     );
-    assert!(outcome.to_string().contains("data/snapshots/"), "{outcome:?}");
+    assert!(printed.contains("data/snapshots/"), "{outcome:?}");
 }
 
 #[test]
