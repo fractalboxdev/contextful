@@ -649,13 +649,16 @@ pub(crate) fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, Read
 /// distinguishes the caller query's positional form from its supported numbered form.
 fn positional_marker(sql: &str) -> bool {
     let bytes = sql.as_bytes();
-    let (mut i, mut mode, mut block_depth, mut dollar_delimiter) = (0, 0u8, 0usize, 0..0);
+    let (mut i, mut mode, mut block_depth, mut dollar_delimiter, mut escape_quote) = (0, 0u8, 0usize, 0..0, false);
     while i < bytes.len() {
         let next = bytes.get(i + 1).copied();
         match mode {
             0 => match (bytes[i], next) {
                 (b'?', _) => return true,
-                (b'\'', _) => mode = 1,
+                (b'\'', _) => {
+                    escape_quote = i > 0 && matches!(bytes[i - 1], b'e' | b'E');
+                    mode = 1;
+                }
                 (b'"', _) => mode = 2,
                 (b'-', Some(b'-')) => { mode = 3; i += 1; }
                 (b'/', Some(b'*')) => { mode = 4; block_depth = 1; i += 1; }
@@ -676,7 +679,9 @@ fn positional_marker(sql: &str) -> bool {
             },
             1 | 2 => {
                 let quote = if mode == 1 { b'\'' } else { b'"' };
-                if bytes[i] == quote {
+                if mode == 1 && escape_quote && bytes[i] == b'\\' {
+                    i += 1;
+                } else if bytes[i] == quote {
                     if next == Some(quote) { i += 1; } else { mode = 0; }
                 }
             }
