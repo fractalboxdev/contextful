@@ -685,7 +685,7 @@ fn positional_marker(sql: &str) -> bool {
                     if next == Some(quote) { i += 1; } else { mode = 0; }
                 }
             }
-            3 => if bytes[i] == b'\n' { mode = 0; },
+            3 => if matches!(bytes[i], b'\n' | b'\r') { mode = 0; },
             4 => match (bytes[i], next) {
                 (b'/', Some(b'*')) => { block_depth += 1; i += 1; }
                 (b'*', Some(b'/')) => { block_depth -= 1; i += 1; if block_depth == 0 { mode = 0; } }
