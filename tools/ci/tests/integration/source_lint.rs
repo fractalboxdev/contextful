@@ -31,3 +31,17 @@ fn subject_binding_and_non_sql_formatting_pass_source_lint() {
     let out = r.run_ci(&["source-lint"]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }
+
+#[test]
+fn crate_graph_stage_runs_the_source_lint() {
+    let r = Repo::init();
+    r.write(
+        "crates/demo/src/lib.rs",
+        "pub fn query(subject: &str) -> String {\n    format!(\"SELECT * FROM rows WHERE subject = '{subject}'\")\n}\n",
+    );
+    r.lock();
+    r.commit("fixture");
+
+    let err = refused(&r.gate(&["--stage", "crate-graph"]), "EnforceInterpolatedSubjectClaim");
+    assert!(err.contains("crates/demo/src/lib.rs:2"), "{err}");
+}
