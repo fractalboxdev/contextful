@@ -283,6 +283,20 @@ fn a_selected_root_page_token_at_the_listing_cap_refuses_by_name() {
     assert_eq!(fake.received("/drive/v3/files").len(), contextful_connectors::drive::LISTING_CAP);
 }
 
+/// A malformed listing cannot prove that previously captured files left the selection.
+#[test]
+fn malformed_selected_root_listings_refuse_before_removals() {
+    for fixture in ["malformed-files.json", "malformed-token.json"] {
+        let fake = Fake::start();
+        fake.overlay(fixture);
+        let d = drive(fake.config(json!({})));
+        let prior = json!({"files": {"retained": {"modified": "2031-01-01T00:00:00Z", "path": "retained", "name": "retained", "pages": 1}}});
+        let failure = d.source("files").unwrap().pull(&request(Some(prior)), &Never).unwrap_err();
+        assert_eq!(failure.tag, FailureTag::Permanent, "{fixture}: {failure}");
+        assert!(failure.message.contains("listing") && failure.message.contains("root-f"), "{fixture}: {failure}");
+    }
+}
+
 /// `metadata-only` records exact bytes without retaining a body or decoding pages.
 // spec: connector.source.drive-capture-record@b9187adf
 // spec: connector.source.drive-metadata-only@6c032057
