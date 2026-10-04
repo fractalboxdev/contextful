@@ -78,13 +78,18 @@ fn a_reserved_producer_column_refuses_before_any_parquet() {
 
 #[cfg(feature = "read")]
 /// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
+// spec: store.reserve.optional@acdb41f5
 #[test]
 fn a_producer_sets_the_optional_columns_and_modality_is_checked() {
     let f = Fixture::new();
     let d = decl("name = \"notes\"");
     let hash = format!("sha256:{}", "0".repeat(64));
-    f.land(&d, "run-1", json!([{"id": "a", "_modality": "text", "_lang": "en-GB", "_prompt_hash": hash}]), "2030-01-01T00:00:00Z").unwrap();
-    assert_eq!(f.query(&d, Bounds::default(), "SELECT _modality, _lang FROM t"), [[s("text"), s("en-GB")]]);
+    let provenance = r#"[{"table":"research/notes","key":{"note_id":"n1"}}]"#;
+    f.land(&d, "run-1", json!([{"id": "a", "_modality": "text", "_lang": "en-GB", "_provenance": provenance, "_prompt_hash": hash}]), "2030-01-01T00:00:00Z").unwrap();
+    assert_eq!(
+        f.query(&d, Bounds::default(), "SELECT _modality, _lang, _provenance, _prompt_hash FROM t"),
+        [[s("text"), s("en-GB"), s(provenance), s(&hash)]]
+    );
     let err = f.land(&d, "run-2", json!([{"id": "b", "_modality": "video"}]), "2030-01-01T00:01:00Z").unwrap_err();
     assert!(err.to_string().contains("video"), "{err}");
     assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 1, "the invalid batch landed");
