@@ -102,7 +102,7 @@ fn an_image_source_validates_for_an_images_table() {
 fn an_image_source_lands_header_metadata_without_decoding_pixels() {
     let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [{ name = \"images\", primary_key = [\"path\"] }]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
     std::fs::create_dir_all(dir.path().join("photos")).unwrap();
-    let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03\x08\x02\x00\x00\x00";
+    let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03\x08\x02\x00\x00\x00\x36\x88\x49\xd6";
     std::fs::write(dir.path().join("photos/p.png"), png).unwrap();
     ok(&fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z"));
     let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
@@ -147,6 +147,21 @@ fn an_image_source_refuses_a_bad_jpeg_header_with_its_path() {
     let out = fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z");
     let error = stderr(&out);
     assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains("bad.jpg"), "{error}");
+}
+
+#[test]
+fn an_image_source_refuses_truncated_headers_after_dimensions() {
+    for (name, bytes) in [
+        ("short.png", &b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03"[..]),
+        ("short.jpg", &b"\xff\xd8\xff\xc0\x00\x11\x08\x00\x03\x00\x02"[..]),
+    ] {
+        let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+        std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+        std::fs::write(dir.path().join("photos").join(name), bytes).unwrap();
+        let out = fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z");
+        let error = stderr(&out);
+        assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains(name), "{name}: {error}");
+    }
 }
 
 /// Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml`
