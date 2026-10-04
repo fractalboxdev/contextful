@@ -356,6 +356,25 @@ fn metadata_only_changed_version_updates_digest_and_removed_file() {
     assert!(removed["sha256"].is_null());
 }
 
+/// A version or resolved-root change re-reads a file despite an unchanged modification time and path.
+#[test]
+fn held_version_and_resolved_root_trigger_reread() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    let config = selected_roots(&fake, &["root-f"]);
+    let (_, position, _) = pull(&mut drive(config.clone()).source("files").unwrap(), None);
+    let mut prior_version = position.clone();
+    prior_version["files"]["doc-plan"]["version"] = json!(0);
+    let (rows, _, _) = pull(&mut drive(config.clone()).source("files").unwrap(), Some(prior_version));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["file_id"], "doc-plan");
+    let mut prior_root = position;
+    prior_root["files"]["doc-plan"]["resolved_root"] = json!("fin-f");
+    let (rows, _, _) = pull(&mut drive(config).source("files").unwrap(), Some(prior_root));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["resolved_root"], "root-f");
+}
+
 /// The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder,
 /// within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is
 /// followed.
