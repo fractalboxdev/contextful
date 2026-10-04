@@ -268,6 +268,9 @@ fn query_parameters_bind_by_declared_type() {
         (tenant_sql, one("timestamp", json!("yesterday")), "`tenant`"),
         (r#"SELECT note_id FROM "research/notes" WHERE tenant = ?"#, json!({}), "positional"),
         (r#"SELECT note_id FROM "research/notes" WHERE tenant = ?"#, json!({ "1": { "type": "string", "value": "acme" } }), "positional"),
+        ("SELECT $1 AS result -- comment\r, ? AS positional", json!({
+            "1": { "type": "string", "value": "valid" }, "2": { "type": "string", "value": "invalid" }
+        }), "positional"),
         // Numbered placeholders run contiguously from `1`; a gap is a placeholder with no parameter.
         (r#"SELECT note_id FROM "research/notes" WHERE tenant = $2"#, json!({ "2": { "type": "string", "value": "acme" } }), "`1`"),
         (
