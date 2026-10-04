@@ -81,6 +81,48 @@ fn expansion_fails_the_read_on_a_failed_followup() {
     assert!(failure.message.contains("ConnectorExpansionFailed"), "{failure}");
 }
 
+/// Row templates percent-encode scalars, and a template cannot choose its own host.
+#[test]
+fn expansion_template_binds_row_values_under_the_source_host() {
+    for template in ["https://{id}.vendor.example/detail", "https://api.vendor.example/detail"] {
+        let cfg = json!({"endpoint":"https://api.vendor.example/index", "expansion":{"url_template":template, "target_column":"detail"}});
+        assert!(format!("{}", HttpConfig::parse(&cfg).unwrap_err()).contains("ConnectorTemplateRejected"));
+    }
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":\"a/b\"}]"),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"url_template": vendor.url("/detail/{id}"), "target_column":"detail"}}), vec![]);
+    assert_eq!(s.walk(&request(None), &Never).unwrap()[0]["detail"]["ok"], true);
+    assert_eq!(vendor.received("/detail/a%2Fb").len(), 1);
+}
+
+/// A row below the watermark costs no follow-up request.
+#[test]
+fn expansion_runs_after_the_watermark_filter() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":1,\"at\":\"2024-01-01T00:00:00Z\",\"url\":\"/detail/old\"},{\"id\":2,\"at\":\"2026-01-01T00:00:00Z\",\"url\":\"/detail/new\"}]"),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]).watermarked();
+    let rows = s.walk(&request(Some(json!({"field":"at", "at":"2025-01-01T00:00:00Z"}))), &Never).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["id"], 2);
+    assert!(vendor.received("/detail/old").is_empty());
+    assert_eq!(vendor.received("/detail/new").len(), 1);
+}
+
+/// A pointer outside the configured host cannot receive source headers.
+#[test]
+fn expansion_keeps_the_existing_outbound_host_policy() {
+    let outside = Server::start(|_| Response::json(200, "{\"ok\":true}"));
+    let pointer = outside.url("/detail");
+    let vendor = Server::start(move |_| Response::json(200, &json!([{"id":1,"url":pointer}]).to_string()));
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
+    assert!(s.walk(&request(None), &Never).unwrap_err().message.contains("ConnectorExpansionFailed"));
+    assert!(outside.received("/detail").is_empty());
+}
+
 /// A declared non-UTF-8 label decodes CSV and rejects invalid bytes for that label.
 #[test]
 fn csv_declared_encoding_decodes_and_refuses_invalid_bytes() {
