@@ -225,6 +225,8 @@ pub struct Binding {
     #[serde(default)]
     pub allow_image_hosts: Vec<String>,
     #[serde(default)]
+    pub endpoint_host: Option<String>,
+    #[serde(default)]
     pub request_timeout_secs: Option<u64>,
 }
 
@@ -244,6 +246,7 @@ impl Binding {
             "env": self.env,
             "allow_hosts": self.allow_hosts,
             "allow_image_hosts": self.allow_image_hosts,
+            "endpoint_host": self.endpoint_host,
         })
     }
 }
@@ -285,6 +288,26 @@ pub fn bind<'a>(pipeline_id: &str, config: &DeriveConfig, bindings: &'a BTreeMap
             b.driver,
             config.task.name()
         )));
+    }
+    if b.driver == "fetch" {
+        let forbidden = [
+            ("env", !b.env.is_empty()),
+            ("preprocess", !b.preprocess.is_empty()),
+            ("engine", b.engine.is_some()),
+            ("max_output_bytes", b.max_output_bytes.is_some()),
+        ];
+        if let Some((key, _)) = forbidden.into_iter().find(|(_, present)| *present) {
+            return Err(RunError::DeriveFetchBindingKey(format!("fetch engine `{}` declares `{key}`", config.engine)));
+        }
+    }
+    if let Some(host) = &b.endpoint_host {
+        let bare = !host.is_empty()
+            && !host.contains(['/', '?', '#', ':', '@'])
+            && !host.chars().any(char::is_whitespace)
+            && url::Host::parse(host).is_ok();
+        if !bare {
+            return Err(RunError::DeriveEndpointHostNotBare(format!("engine `{}` declares endpoint_host `{host}` with a path, query, port, scheme or invalid host", config.engine)));
+        }
     }
     Ok(b)
 }

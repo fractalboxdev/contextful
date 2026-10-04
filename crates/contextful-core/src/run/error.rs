@@ -54,6 +54,9 @@ pub enum RunError {
     /// A driver and task pairing the tier does not serve. (`run.bind.driver-mismatch`)
     #[error("DeriveDriverMismatch: {0}")]
     DeriveDriverMismatch(String),
+    /// An engine host carrying a path, query, port or scheme. (`run.bind.endpoint-host-bare`)
+    #[error("DeriveEndpointHostNotBare: {0}")]
+    DeriveEndpointHostNotBare(String),
     /// A pipeline naming an engine the machine has not defined. (`run.bind.unbound-engine`)
     #[error("DeriveEngineUnbound: {0}")]
     DeriveEngineUnbound(String),
@@ -63,6 +66,9 @@ pub enum RunError {
     /// Configuration naming another pipeline's output table. (`run.select.foreign-output-table`)
     #[error("DeriveForeignOutputTable: {0}")]
     DeriveForeignOutputTable(String),
+    /// A process-spawning key on a fetch binding. (`run.fetch.binding-key`)
+    #[error("DeriveFetchBindingKey: {0}")]
+    DeriveFetchBindingKey(String),
     /// A derive pipeline configured to journal its pulls. (`run.select.journaled-pull`)
     #[error("DeriveJournaledPull: {0}")]
     DeriveJournaledPull(String),

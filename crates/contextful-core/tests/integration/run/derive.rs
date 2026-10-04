@@ -300,6 +300,8 @@ fn a_driver_the_task_does_not_serve_refuses() {
     assert!(bind("doc-text", &link, &b, "m").is_ok());
 }
 
+// spec: run.fetch.binding-key@e267e119
+// spec: run.bind.endpoint-host-bare@7f200598
 #[test]
 fn a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts() {
     for key in ["env", "preprocess", "engine", "max_output_bytes"] {
@@ -320,6 +322,9 @@ fn a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts() {
         let link = DeriveConfig { task: Task::LinkPreview, ..cfg(base()).unwrap() };
         assert!(matches!(bind("doc-text", &link, &b, "m"), Err(RunError::DeriveEndpointHostNotBare(message)) if message.contains(host)), "{host}");
     }
+    let link = DeriveConfig { task: Task::LinkPreview, ..cfg(base()).unwrap() };
+    let valid = bindings("[derive.reader]\ndriver = \"fetch\"\nendpoint_host = \"example.com\"\n").unwrap();
+    assert!(bind("doc-text", &link, &valid, "m").is_ok());
 }
 
 /// `command` is an argument array run with no shell; a `command` given as one string raises `DeriveShellCommand`.
