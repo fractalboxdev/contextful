@@ -36,6 +36,7 @@ mod hosted {
     use contextful_core::run::ports::Source;
     use contextful_core::run::Failure;
     use contextful_outbound::client::{Client, HeaderValue};
+    use contextful_outbound::egress::Transport;
     use contextful_outbound::Resolver;
     use contextful_wasm::{ComponentHost, Connector, Grant, GuestSource, Hydrate, Limits, Session, Target, WORLD};
     use std::io::Write;
@@ -99,9 +100,13 @@ mod hosted {
         Ok(response.body)
     }
 
-    fn client(url: &Url) -> Result<Client> {
+    fn client(url: &Url, transport: Option<Arc<dyn Transport>>) -> Result<Client> {
         let host = url.host_str().ok_or_else(|| artifact_error(ConnectorError::ConnectorArtifactFetchFailed("artifact reference has no host".into())))?;
-        Ok(Client::new(Allowlist::parse(&[host]).map_err(artifact_error)?, url.clone()))
+        let client = Client::new(Allowlist::parse(&[host]).map_err(artifact_error)?, url.clone());
+        Ok(match transport {
+            Some(transport) => client.with_transport(transport),
+            None => client,
+        })
     }
 
     fn component_layer(manifest: &[u8], reference: &str) -> Result<Digest> {
@@ -142,7 +147,7 @@ mod hosted {
         Ok(vec![("Authorization".to_string(), HeaderValue::Sensitive(resolver.render(&template)?))])
     }
 
-    fn remote(name: &str, decl: &ComponentSource, base: &Path, project: &str, resolver: &Resolver) -> Result<Vec<u8>> {
+    fn remote(name: &str, decl: &ComponentSource, base: &Path, project: &str, resolver: &Resolver, transport: Option<Arc<dyn Transport>>) -> Result<Vec<u8>> {
         let https = match &decl.artifact.form {
             Form::Https(raw) => {
                 let url = Url::parse(raw).with_context(|| format!("artifact `{name}` is not a URL"))?;
@@ -169,12 +174,12 @@ mod hosted {
         let bytes = match &decl.artifact.form {
             Form::Https(_) => {
                 let url = https.expect("HTTPS form parsed before cache lookup");
-                fetch(&client(&url)?, &url, &[])?
+                fetch(&client(&url, transport.clone())?, &url, &[])?
             }
             Form::Oci(raw) => {
                 let reference = OciReference::parse(raw).map_err(artifact_error)?;
                 let root = Url::parse(&format!("https://{}/", reference.authority))?;
-                let client = client(&root)?;
+                let client = client(&root, transport.clone())?;
                 let headers = registry_headers(base, project, &reference.authority, resolver)?;
                 let manifest_url = root.join(&format!("v2/{}/manifests/{}", reference.repository, reference.selector))?;
                 let mut manifest_headers = headers.clone();
@@ -211,7 +216,7 @@ mod hosted {
     fn resolve(name: &str, decl: &ComponentSource, base: &Path, project: &str, resolver: Option<&Resolver>) -> Result<Vec<u8>> {
         match &decl.artifact.form {
             Form::Local(path) => std::fs::read(base.join(path)).with_context(|| format!("reading component artifact `{path}`")),
-            Form::Https(_) | Form::Oci(_) => remote(name, decl, base, project, resolver.expect("remote loads have a resolver")),
+            Form::Https(_) | Form::Oci(_) => remote(name, decl, base, project, resolver.expect("remote loads have a resolver"), None),
             Form::InTree(_) => bail!("connector `{name}` is an in-tree name, not an artifact"),
         }
     }
@@ -273,8 +278,10 @@ mod hosted {
 
     #[cfg(test)]
     mod tests {
-        use super::{component_layer, fetch, registry_headers};
+        use super::{component_layer, fetch, registry_headers, remote};
         use contextful_core::connector::attach::Allowlist;
+        use contextful_core::connector::component::ComponentSource;
+        use contextful_core::connector::package::Digest;
         use contextful_core::ports::FixedClock;
         use contextful_core::time::Instant;
         use contextful_outbound::client::Client;
@@ -282,10 +289,31 @@ mod hosted {
         use contextful_outbound::assemble;
         use std::collections::BTreeMap;
         use std::net::SocketAddr;
-        use std::sync::Arc;
+        use std::sync::{Arc, Mutex};
         use url::Url;
 
         struct ArtifactTransport;
+
+        struct OciTransport {
+            manifest: Vec<u8>,
+            layer: Vec<u8>,
+            seen: Mutex<Vec<String>>,
+        }
+
+        impl Transport for OciTransport {
+            fn resolve(&self, host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
+                assert_eq!((host, port), ("registry.example.test", 443));
+                Ok(vec!["8.8.8.8:443".parse().unwrap()])
+            }
+
+            fn send(&self, request: &Outbound<'_>) -> Result<Inbound, TransportFault> {
+                assert!(request.headers.iter().any(|(name, value)| name == "Authorization" && value.text() == "Bearer registry-secret"));
+                let path = request.url.path().to_string();
+                self.seen.lock().unwrap().push(path.clone());
+                let body = if path.contains("/manifests/") { self.manifest.clone() } else { self.layer.clone() };
+                Ok(Inbound { status: 200, headers: Vec::new(), body })
+            }
+        }
 
         impl Transport for ArtifactTransport {
             fn resolve(&self, host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
@@ -322,6 +350,48 @@ mod hosted {
             let headers = registry_headers(dir.path(), "research", "registry.example.test", &resolver).unwrap();
             assert_eq!(headers.len(), 1);
             assert_eq!(headers[0].1.text(), "Bearer registry-secret");
+        }
+
+        // spec: connector.package.remote-transport@5044139f
+        // spec: connector.package.oci-component-layer@8b743c72
+        // spec: connector.package.oci-layer-integrity@185ef002
+        // spec: connector.package.oci-registry-bearer@0cf0801f
+        #[test]
+        fn oci_fetch_checks_the_layer_and_caches_only_admitted_bytes() {
+            let dir = tempfile::tempdir().unwrap();
+            let config = dir.path().join(".contextful/context/research/config.toml");
+            std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+            std::fs::write(&config, "[connector.registry.\"registry.example.test\"]\nauthorization = \"Bearer ${secret://registry-token}\"\n").unwrap();
+            let vars = BTreeMap::from([
+                ("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES".to_string(), "1".to_string()),
+                ("REGISTRY_TOKEN".to_string(), "registry-secret".to_string()),
+            ]);
+            let resolver = assemble(&vars, Arc::new(FixedClock(Instant::parse("2030-01-01T00:00:00Z").unwrap()))).unwrap();
+            let layer = b"component".to_vec();
+            let pin = Digest::of(&layer);
+            let name = "oci://registry.example.test/repo:stable";
+            let decl = ComponentSource::parse(name, &serde_json::json!({"sha256": pin.as_str()})).unwrap().unwrap();
+            let manifest = format!(r#"{{"schemaVersion":2,"layers":[{{"mediaType":"application/vnd.wasm.content.layer.v1+wasm","digest":"sha256:{pin}"}}]}}"#).into_bytes();
+            let transport = Arc::new(OciTransport { manifest, layer: layer.clone(), seen: Mutex::new(Vec::new()) });
+            let fetched = remote(name, &decl, dir.path(), "research", &resolver, Some(transport.clone())).unwrap();
+            assert_eq!(fetched, layer);
+            assert_eq!(transport.seen.lock().unwrap().as_slice(), ["/v2/repo/manifests/stable", &format!("/v2/repo/blobs/sha256:{pin}")]);
+            let cached = remote(name, &decl, dir.path(), "research", &resolver, Some(transport.clone())).unwrap();
+            assert_eq!(cached, layer);
+            assert_eq!(transport.seen.lock().unwrap().len(), 2);
+
+            let other = tempfile::tempdir().unwrap();
+            let other_config = other.path().join(".contextful/context/research/config.toml");
+            std::fs::create_dir_all(other_config.parent().unwrap()).unwrap();
+            std::fs::copy(&config, &other_config).unwrap();
+            let wrong = Arc::new(OciTransport {
+                manifest: format!(r#"{{"schemaVersion":2,"layers":[{{"mediaType":"application/vnd.wasm.content.layer.v1+wasm","digest":"sha256:{}"}}]}}"#, Digest::of(b"other")).into_bytes(),
+                layer,
+                seen: Mutex::new(Vec::new()),
+            });
+            let err = remote(name, &decl, other.path(), "research", &resolver, Some(wrong)).unwrap_err();
+            assert!(err.to_string().contains("ConnectorOciLayerMismatch"), "{err}");
+            assert!(!other.path().join(".contextful/artifacts/sha256").exists());
         }
 
         #[test]
