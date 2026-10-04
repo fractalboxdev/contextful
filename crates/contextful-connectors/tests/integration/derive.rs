@@ -221,6 +221,22 @@ fn pulled(s: &mut DeriveSource) -> Vec<Value> {
     pull(s, &Never).unwrap()
 }
 
+/// A derive source needs its store root and pipeline id before it reads a table.
+// spec: run.select.no-store-root@1100fcff
+#[test]
+fn a_derive_source_refuses_an_absent_store_root_or_pipeline_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut source = source(dir.path(), json!([]), "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n");
+    source.pipeline_id.clear();
+    let failure = pull(&mut source, &Never).unwrap_err();
+    assert!(failure.message.contains("DeriveNoStoreRoot") && failure.message.contains("pipeline id"), "{failure:?}");
+
+    source.pipeline_id = "doc-text".into();
+    source.cwd = Path::new("").to_path_buf();
+    let failure = pull(&mut source, &Never).unwrap_err();
+    assert!(failure.message.contains("DeriveNoStoreRoot") && failure.message.contains("store root"), "{failure:?}");
+}
+
 /// Missing or blank parent keys and media values count as skipped inputs in the pull.
 #[test]
 fn incomplete_parent_rows_enter_the_derive_pull_skipped_count() {
