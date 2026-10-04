@@ -1,9 +1,13 @@
 //! AES-256-GCM per-file sealing under a wrapped data key.
 
+use crate::error::{ContextError, Result as ContextResult};
+use contextful_core::store::StoreError;
 use contextful_core::store::encrypt::{FileCipher, SealError};
 use ring::aead::{self, Aad, LessSafeKey, Nonce, UnboundKey};
+use sha2::{Digest, Sha256};
 
 const MAGIC: &[u8; 8] = b"CFSEAL01";
+pub(crate) const PARQUET_KEY_NAME: &str = "contextful_project";
 const NONCE_LEN: usize = 12;
 const KEY_LEN: usize = 32;
 const TAG_LEN: usize = 16;
@@ -15,6 +19,58 @@ const PREFIX_LEN: usize = HEADER_LEN + NONCE_LEN + WRAPPED_LEN + NONCE_LEN;
 pub struct AesGcmFileCipher {
     project_key: [u8; KEY_LEN],
     version: u32,
+}
+
+/// Keys held by one encrypted store. No formatter exposes either key.
+pub(crate) struct ProjectEncryption {
+    files: AesGcmFileCipher,
+    parquet_key: [u8; 16],
+}
+
+impl std::fmt::Debug for ProjectEncryption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ProjectEncryption { keys: [redacted] }")
+    }
+}
+
+impl ProjectEncryption {
+    fn from_key(key: [u8; 32]) -> Self {
+        let mut hash = Sha256::new();
+        hash.update(b"contextful/parquet/footer/v1\0");
+        hash.update(key);
+        let digest = hash.finalize();
+        let parquet_key = digest[..16].try_into().expect("SHA-256 holds 16 bytes");
+        Self { files: AesGcmFileCipher::new(key, 1), parquet_key }
+    }
+
+    pub(crate) fn files(&self) -> &AesGcmFileCipher {
+        &self.files
+    }
+
+    pub(crate) fn parquet_key(&self) -> &[u8; 16] {
+        &self.parquet_key
+    }
+}
+
+/// Resolve an environment binding to a raw 32-byte project key.
+pub(crate) fn bind_key_source(source: &str) -> ContextResult<ProjectEncryption> {
+    let Some(var) = source.strip_prefix("env:") else {
+        return Err(StoreError::StoreEncryptionKeyUnbound(format!(
+            "`[encryption] key_source = \"{source}\"` names a key-management service this build has no client for"
+        )).into());
+    };
+    let value = std::env::var(var).map_err(|_| StoreError::StoreEncryptionKeyUnbound(format!(
+        "`[encryption] key_source = \"{source}\"` names `{var}`, which this process lacks"
+    )))?;
+    if value.is_empty() {
+        return Err(StoreError::StoreEncryptionKeyUnbound(format!(
+            "`[encryption] key_source = \"{source}\"` names `{var}`, which this process lacks"
+        )).into());
+    }
+    let key: [u8; 32] = value.as_bytes().try_into().map_err(|_| ContextError::Invalid(format!(
+        "`[encryption] key_source = \"{source}\"` must bind exactly 32 key bytes"
+    )))?;
+    Ok(ProjectEncryption::from_key(key))
 }
 
 impl AesGcmFileCipher {

@@ -88,7 +88,7 @@ impl Face {
         }
         let columns: Vec<String> = Shape::Facts.canonical_columns().iter().map(|c| c.to_string()).collect();
         let observed = request.observed_at.unwrap_or(Bound { at: request.anchor, inclusive: true });
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         let touched = BTreeSet::from([table.to_string()]);
         let ceiling = self.ceiling(session, &touched, request.limit, None);
         // One claim past the ceiling marks the response truncated; gating stops there
@@ -210,4 +210,3 @@ fn keyed_sql(relation: &str, columns: &[String], subject: &str, observed: Bound,
     ]);
     (sql, parameters)
 }
-

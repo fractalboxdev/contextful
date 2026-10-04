@@ -250,7 +250,7 @@ impl Face {
         // content token, skips it (`read.retrieve.dedup-is-gated`).
         let deduplicating = floor.is_some();
         self.bind_valid_time(&touched, bounds)?;
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         let anchor = request.anchor;
         let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();
         let mut tally = super::recall::RecallTally::default();

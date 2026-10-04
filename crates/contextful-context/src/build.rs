@@ -474,8 +474,9 @@ mod materialize {
         let staged = (|| -> std::result::Result<(SnapshotManifest, Schema, u64), ReadFault> {
             let raw = staging.join("__model.parquet");
             let select: Vec<String> = cols.iter().map(|c| ident(&c.name)).collect();
+            let encryption = store.parquet_key().map(|_| format!(", ENCRYPTION_CONFIG {{footer_key: {}}}", literal(crate::encrypt::PARQUET_KEY_NAME))).unwrap_or_default();
             engine.execute(&format!(
-                "COPY (SELECT {} FROM ({sql}) AS __model) TO {} (FORMAT parquet, COMPRESSION zstd)",
+                "COPY (SELECT {} FROM ({sql}) AS __model) TO {} (FORMAT parquet, COMPRESSION zstd{encryption})",
                 select.join(", "),
                 literal(&raw.to_string_lossy())
             ))?;
@@ -483,7 +484,7 @@ mod materialize {
                 cols.iter().map(|c| Field::new(&c.name, parquet_io::data_type(&c.ty), true)).collect::<Vec<_>>(),
             ));
             let batches: Vec<RecordBatch> =
-                parquet_io::read(&raw)?.iter().map(|b| parquet_io::conform(b, &loose)).collect::<Result<_>>()?;
+                store.read_parquet(&raw)?.iter().map(|b| parquet_io::conform(b, &loose)).collect::<Result<_>>()?;
             fs::remove_file(&raw).at(&raw)?;
             let rows = arrow_select::concat::concat_batches(&loose, &batches).map_err(|e| invalid(format!("model `{}`: {e}", spec.id)))?;
             check_rows(spec, &cols, &rows)?;
@@ -500,10 +501,11 @@ mod materialize {
             arrays.push(Arc::new(StringArray::from(vec![req.site_id; n])));
             let batch = RecordBatch::try_new(parquet_io::arrow_schema(&schema), arrays).map_err(|e| invalid(format!("model `{}`: {e}", spec.id)))?;
             let part = part_name(0);
-            parquet_io::write(&staging.join(&part), &batch)?;
+            store.write_parquet(&staging.join(&part), &batch)?;
 
             // The tests read the staged rows under the model's id, beside its inputs.
-            engine.register(&spec.id, &format!("SELECT * FROM read_parquet({})", literal(&staging.join(&part).to_string_lossy())))?;
+            let encrypted = store.parquet_key().map(|_| format!(", encryption_config = {{footer_key: {}}}", literal(crate::encrypt::PARQUET_KEY_NAME))).unwrap_or_default();
+            engine.register(&spec.id, &format!("SELECT * FROM read_parquet({}{encrypted})", literal(&staging.join(&part).to_string_lossy())))?;
             for t in &spec.tests {
                 let test_sql = t.sql.trim().trim_end_matches(';');
                 admit_test(&engine, spec, test_sql, |n| tables.iter().any(|x| x == n))?;

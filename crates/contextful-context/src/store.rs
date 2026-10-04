@@ -2,6 +2,8 @@
 //! schemas, committed runs, and the pointer chain.
 
 use crate::error::{ContextError, IoPath, Result};
+use crate::encrypt::{bind_key_source, ProjectEncryption};
+use crate::vector::Sealing;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{
     is_path_segment, store_root, Pointer, TableLayout, CONFIG_FILE, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
@@ -16,6 +18,7 @@ use std::collections::BTreeSet;
 use contextful_fs::tmp_sibling;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub use contextful_core::store::config::{ConnectorPolicy, EncryptionConfig, NodeConfig, ReplicaConfig, StoreConfig};
 
@@ -26,6 +29,7 @@ pub struct Store {
     config_node_id: Option<String>,
     replica_of: Option<String>,
     require_connector_pin: bool,
+    encryption: Option<Arc<ProjectEncryption>>,
 }
 
 impl Store {
@@ -51,6 +55,7 @@ impl Store {
             config_node_id: config.node.and_then(|n| n.id),
             replica_of: config.replica.map(|r| r.of),
             require_connector_pin: config.connector.is_some_and(|c| c.require_pin),
+            encryption: None,
         })
     }
 
@@ -60,8 +65,31 @@ impl Store {
 
     /// How this store's sidecar files sit on disk. A store declaring `[encryption]` refuses
     /// at [`Store::open`], so every store this build opens holds plaintext sidecars.
-    pub fn sealing(&self) -> crate::vector::Sealing<'static> {
-        crate::vector::Sealing::Plaintext
+    pub fn sealing(&self) -> Sealing<'_> {
+        match &self.encryption {
+            Some(keys) => Sealing::Sealed(keys.files()),
+            None => Sealing::Plaintext,
+        }
+    }
+
+    pub(crate) fn parquet_key(&self) -> Option<&[u8; 16]> {
+        self.encryption.as_ref().map(|keys| keys.parquet_key())
+    }
+
+    pub(crate) fn write_parquet(&self, path: &Path, batch: &arrow_array::RecordBatch) -> Result<()> {
+        crate::parquet_io::write_with_key(path, batch, self.parquet_key())
+    }
+
+    pub(crate) fn read_parquet(&self, path: &Path) -> Result<Vec<arrow_array::RecordBatch>> {
+        crate::parquet_io::read_with_key(path, self.parquet_key())
+    }
+
+    pub(crate) fn parquet_columns(&self, path: &Path) -> Result<Vec<String>> {
+        crate::parquet_io::columns_with_key(path, self.parquet_key())
+    }
+
+    pub(crate) fn parquet_schema(&self, path: &Path) -> Result<Vec<contextful_core::store::reconcile::Column>> {
+        crate::parquet_io::schema_with_key(path, self.parquet_key())
     }
 
     /// The canonical store this store replicates, if it is a replica.
@@ -99,7 +127,11 @@ impl Store {
         let path = self.blob_path(sha256);
         let dir = self.root.join(BLOBS_DIR);
         fs::create_dir_all(&dir).at(&dir)?;
-        contextful_fs::create_new(&path, bytes).at(&path)?;
+        let sealed = match self.sealing() {
+            Sealing::Plaintext => bytes.to_vec(),
+            Sealing::Sealed(cipher) => cipher.seal(bytes).map_err(|e| ContextError::Invalid(format!("{}: sealing: {e}", path.display())))?,
+        };
+        contextful_fs::create_new(&path, &sealed).at(&path)?;
         Ok(())
     }
 
@@ -107,7 +139,10 @@ impl Store {
     pub fn blob(&self, sha256: &str) -> Result<Option<Vec<u8>>> {
         let path = self.blob_path(sha256);
         match fs::read(&path) {
-            Ok(bytes) => Ok(Some(bytes)),
+            Ok(bytes) => match self.sealing() {
+                Sealing::Plaintext => Ok(Some(bytes)),
+                Sealing::Sealed(cipher) => cipher.open(&bytes).map(Some).map_err(|e| ContextError::Invalid(format!("{}: opening: {e}", path.display()))),
+            },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(ContextError::Io { path, source: e }),
         }
@@ -545,20 +580,8 @@ fn check_table_layout(table: &str) -> Result<()> {
 }
 
 fn check_key_source(source: &str) -> Result<()> {
-    if let Some(var) = source.strip_prefix("env:") {
-        if std::env::var_os(var).is_none_or(|v| v.is_empty()) {
-            return Err(StoreError::StoreEncryptionKeyUnbound(format!(
-                "`[encryption] key_source = \"{source}\"` names `{var}`, which this process lacks"
-            ))
-            .into());
-        }
-    } else {
-        return Err(StoreError::StoreEncryptionKeyUnbound(format!(
-            "`[encryption] key_source = \"{source}\"` names a key-management service this build has no client for"
-        ))
-        .into());
-    }
+    let _keys = bind_key_source(source)?;
     Err(ContextError::Invalid(format!(
-        "`[encryption] key_source = \"{source}\"` is bound, and this build links no at-rest cipher; it refuses rather than write cleartext"
+        "`[encryption] key_source = \"{source}\"` is bound, and metadata sealing remains unavailable; the store refuses rather than write cleartext"
     )))
 }

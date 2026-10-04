@@ -10,6 +10,7 @@
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
 use crate::store::{FileLock, Store};
+use crate::vector::Sealing;
 use arrow_array::cast::AsArray;
 use arrow_array::types::{Int32Type, Int64Type, TimestampNanosecondType};
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray, TimestampNanosecondArray};
@@ -46,9 +47,14 @@ pub fn append(store: &Store, table: &str, run_id: &str, node: &NodeId, rows: &[R
     let _lock = FileLock::acquire_within(&lock_path, LOCK_WAIT)?.ok_or_else(|| {
         ContextError::Invalid(format!("`{}` stayed held {} s by another flush of run `{run_id}`", lock_path.display(), LOCK_WAIT.as_secs()))
     })?;
-    let mut all = if path.is_file() { read(&path)? } else { Vec::new() };
+    let mut all = if path.is_file() { read_for_store(store, &path)? } else { Vec::new() };
     all.extend(rows.iter().map(|r| (run_id.to_string(), r.clone())));
-    write_synced(&path, &encode(&path, &all)?)
+    let plain = encode(&path, &all)?;
+    let bytes = match store.sealing() {
+        Sealing::Plaintext => plain,
+        Sealing::Sealed(cipher) => cipher.seal(&plain).map_err(|e| ContextError::Invalid(format!("{}: sealing: {e}", path.display())))?,
+    };
+    write_synced(&path, &bytes)
 }
 
 /// Replace `path` with `bytes`: a synced sibling temporary file renamed into place, then
@@ -91,9 +97,25 @@ pub fn files(store: &Store, table: &str) -> Result<Vec<PathBuf>> {
 /// Every `(run_id, record)` a ledger file holds. A file that does not parse refuses
 /// rather than restarting empty, since committed rows may join onto it.
 pub fn read(path: &Path) -> Result<Vec<(String, RequestRecord)>> {
+    decode(path, parquet_io::read(path)?)
+}
+
+/// Read a ledger with the project key; sealed bytes never touch a temporary file.
+pub fn read_for_store(store: &Store, path: &Path) -> Result<Vec<(String, RequestRecord)>> {
+    match store.sealing() {
+        Sealing::Plaintext => read(path),
+        Sealing::Sealed(cipher) => {
+            let sealed = std::fs::read(path).at(path)?;
+            let plain = cipher.open(&sealed).map_err(|e| ContextError::Invalid(format!("{}: opening: {e}", path.display())))?;
+            decode(path, parquet_io::read_bytes(plain)?)
+        }
+    }
+}
+
+fn decode(path: &Path, batches: Vec<RecordBatch>) -> Result<Vec<(String, RequestRecord)>> {
     let invalid = |what: &str| ContextError::Parquet { path: path.to_path_buf(), message: format!("the ledger column `{what}` is missing or mistyped") };
     let mut out = Vec::new();
-    for batch in parquet_io::read(path)? {
+    for batch in batches {
         let text = |name: &str| batch.column_by_name(name).and_then(|c| c.as_string_opt::<i32>()).ok_or_else(|| invalid(name));
         let int = |name: &str| batch.column_by_name(name).and_then(|c| c.as_primitive_opt::<Int32Type>()).ok_or_else(|| invalid(name));
         let (run, seq, id, vendor, connector, method, host, status) = (

@@ -983,6 +983,8 @@ dependencies = [
  "arrow-row 57.3.1",
  "arrow-schema 57.3.1",
  "arrow-select 57.3.1",
+ "base64 0.22.1",
+ "bytes",
  "contextful-core",
  "contextful-eval",
  "contextful-fs",

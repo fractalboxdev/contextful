@@ -209,9 +209,19 @@ impl SqlEngine {
     /// registered relation. No view directory exists on disk
     /// (`read.register.connection-views`). Every file a view names is immutable under the
     /// pool key the connection serves, so the connection keeps Parquet footers it read.
-    pub fn open(session: &Session) -> Result<SqlEngine, ReadFault> {
+    pub fn open(session: &Session, parquet_key: Option<&[u8; 16]>) -> Result<SqlEngine, ReadFault> {
         let engine = SqlEngine::connect()?;
         let conn = &engine.conn;
+        if let Some(key) = parquet_key {
+            use base64::Engine;
+            let value = base64::engine::general_purpose::STANDARD.encode(key);
+            conn.execute_batch(&format!(
+                "PRAGMA add_parquet_key({}, {})",
+                literal(crate::encrypt::PARQUET_KEY_NAME),
+                literal(&value)
+            ))
+            .map_err(fault)?;
+        }
         conn.execute_batch("SET parquet_metadata_cache = true").map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskHash>(HASH_FUNCTION, session.pepper()).map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskHashBytes>(HASH_BYTES_FUNCTION, session.pepper()).map_err(fault)?;

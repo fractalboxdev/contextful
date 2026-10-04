@@ -132,7 +132,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     let target = parquet_io::arrow_schema(&schema);
     let mut batches = Vec::new();
     for f in &inputs {
-        for b in parquet_io::read(&table_dir.join(f))? {
+        for b in store.read_parquet(&table_dir.join(f))? {
             batches.push(parquet_io::conform(&b, &target)?);
         }
     }
@@ -169,8 +169,8 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     if rows.num_rows() > 0 {
         for (dir, batch) in partition(&rows, decl.partition_by()).map_err(invalid)? {
             let name = if dir.is_empty() { part_name(0) } else { format!("{dir}/{}", part_name(0)) };
-            parquet_io::write(&staging.join(&name), &batch)?;
-            parts.push(PartEntry { name, key_version: 0 });
+            store.write_parquet(&staging.join(&name), &batch)?;
+            parts.push(PartEntry { name, key_version: store.sealing().key_version() });
         }
     }
     let manifest = SnapshotManifest {
