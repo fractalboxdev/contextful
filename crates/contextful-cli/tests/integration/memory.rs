@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 
 const AUD: &str = "contextful://acme-research";
@@ -135,4 +135,62 @@ fn a_direct_write_lands_a_claim_and_refuses_another_shape() {
     );
     assert!(!missing.status.success());
     assert!(String::from_utf8_lossy(&missing.stderr).contains("memory/other"));
+}
+
+// spec: read.recall.cli-verb@4e5cfc78
+#[test]
+fn recall_cli_answers_historical_and_current_claims_as_json() {
+    let (dir, public, token) = project();
+    for (object, observed) in [("Dana", "2025-01-01T00:00:00Z"), ("Lee", "2026-01-01T00:00:00Z")] {
+        stdout(&run(
+            dir.path(),
+            &["memory", "write", "--project", "research", "--into", "memory/facts", "--claim", &one(object), "--observed-at", observed, "--public-key", &public, "--audience", AUD],
+            &[("CONTEXTFUL_TOKEN", &token)],
+        ));
+    }
+    let recall = |observed: Option<&str>| {
+        let mut args = vec!["memory", "recall", "--project", "research", "--table", "memory/facts", "--subject", "acme", "--public-key", &public, "--audience", AUD];
+        if let Some(at) = observed {
+            args.extend(["--observed-at", at]);
+        }
+        serde_json::from_str::<Value>(&stdout(&run(dir.path(), &args, &[("CONTEXTFUL_TOKEN", &token)]))).unwrap()
+    };
+    let historical = recall(Some("2025-06-01T00:00:00Z"));
+    let current = recall(None);
+    let object_at = historical["columns"].as_array().unwrap().iter().position(|c| c == "object").unwrap();
+    assert_eq!(historical["rows"][0][object_at], json!("Dana"));
+    assert_eq!(current["rows"][0][object_at], json!("Lee"));
+    assert_eq!(historical["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(current["rows"].as_array().unwrap().len(), 1);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["mcp", "--project", "research", "--public-key", &public, "--audience", AUD])
+        .current_dir(dir.path())
+        .env("CONTEXTFUL_TOKEN", &token)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let call = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+        "name": "memory.recall", "arguments": { "table": "memory/facts", "subject": "acme", "observed_at": "2025-06-01T00:00:00Z" }
+    } });
+    writeln!(child.stdin.take().unwrap(), "{call}").unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let tool: Value = serde_json::from_slice(output.stdout.split(|b| *b == b'\n').find(|line| !line.is_empty()).unwrap()).unwrap();
+    assert_eq!(historical, tool["result"]["structuredContent"]);
+
+    let memory_only = stdout(&run(
+        dir.path(),
+        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://reader", "--zone", "on-prem:hq", "--action", "read", "--table", "memory/*", "--ttl", "600"],
+        &[],
+    ));
+    let withheld: Value = serde_json::from_str(&stdout(&run(
+        dir.path(),
+        &["memory", "recall", "--project", "research", "--table", "memory/facts", "--subject", "acme", "--observed-at", "2025-06-01T00:00:00Z", "--public-key", &public, "--audience", AUD],
+        &[("CONTEXTFUL_TOKEN", &memory_only)],
+    ))).unwrap();
+    assert!(withheld["rows"].as_array().unwrap().is_empty());
+    assert_eq!(withheld["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"], json!(1));
 }

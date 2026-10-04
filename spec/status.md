@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
-| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
-| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
-| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
+| `read` | 2 | 15 | 180 | 29 | 22 | 21 | 164 | 0 | 164 |
+| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 259 |
+| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 199 | 0 | 199 |
+| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1957 | 569 | 188 | 133 | 1337 | 0 | |
 
 Decision records: 18.
 
@@ -27,12 +27,12 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
-| 2 — The store | 9 | 162 | 130 | passing | closed |
+| 2 — The store | 9 | 162 | 131 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
 | 4 — Ingest | 25 | 468 | 290 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
-| 7 — Memory | 6 | 37 | 37 | passing | closed |
+| 7 — Memory | 6 | 38 | 38 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
@@ -722,6 +722,7 @@ Unscheduled operations: 10.
 | `read.rank.retrieval-block` | `crates/contextful-core/tests/integration/read/rank.rs::the_retrieval_block_and_row_fields_carry_their_names` | performed |
 | `read.rank.three-legs` | `crates/contextful-core/tests/integration/read/rank.rs::ranking_fuses_a_cosine_leg_and_a_bm25_leg` | performed |
 | `read.rank.window-anchor-tolerance` | `crates/contextful-core/tests/integration/read/rank.rs::the_anchor_tolerates_24_hours_and_names_the_basis` | performed |
+| `read.recall.cli-verb` | `crates/contextful-cli/tests/integration/memory.rs::recall_cli_answers_historical_and_current_claims_as_json` | performed |
 | `read.recall.evidence-key` | `crates/contextful-memory/tests/integration/evidence.rs::a_fold_superseding_the_cited_version_keeps_the_claim` | performed |
 | `read.recall.evidence-key-masked` | `crates/contextful-memory/tests/integration/evidence.rs::a_writer_zone_nulling_a_non_key_column_still_stamps_the_key` | performed |
 | `read.recall.evidence-no-value` | `crates/contextful-memory/tests/integration/evidence.rs::a_memory_reader_reads_no_source_key_value` | performed |
@@ -1097,6 +1098,7 @@ Unscheduled operations: 10.
 | `run.transform.typed-cast` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_cast_to_a_binary_or_vector_type_keeps_readable_values_and_types_the_column` | performed |
 | `store.bound-time.as-of` | `crates/contextful-core/tests/integration/store/bound_time.rs::as_of_resolves_to_the_newest_snapshot_at_or_before_it_plus_omitted_runs` | performed |
 | `store.bound-time.as-of-unretained` | `crates/contextful-core/tests/integration/store/bound_time.rs::an_as_of_before_collected_history_is_unretained` | performed |
+| `store.bound-time.beneath-enforcement` | `crates/contextful-context/tests/integration/read/register.rs::historical_retrieval_keeps_row_and_column_enforcement` | performed |
 | `store.bound-time.covering-versions` | `crates/contextful-context/tests/integration/bound_time.rs::an_unkeyed_table_returns_every_covering_version` | performed |
 | `store.bound-time.echo` | `crates/contextful-core/tests/integration/store/bound_time.rs::a_bounded_read_echoes_its_bounds` | performed |
 | `store.bound-time.instant-comparison` | `crates/contextful-core/tests/integration/store/bound_time.rs::bounds_compare_instants_and_a_date_resolves_to_the_next_day_exclusive` | performed |

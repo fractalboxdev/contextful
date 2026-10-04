@@ -1,7 +1,7 @@
-//! `contextful memory` — synthesis passes and the direct write.
+//! `contextful memory` — synthesis, direct write and keyed recall.
 //!
-//! A thin adapter: it admits the writing credential, opens the read face, wires the one
-//! inference endpoint, and prints what the memory crate did. No memory rule lives here.
+//! The adapter admits a credential, opens the read face, wires the inference endpoint
+//! for synthesis, and prints the selected command's result. No memory rule lives here.
 
 use crate::admit::{face, AdmitArgs};
 use crate::project::locate;
@@ -9,13 +9,16 @@ use crate::clock::SystemClock;
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use contextful_context::node;
+use contextful_context::read::RecallRequest;
 use contextful_core::memory::synthesize::CandidateClaim;
 use contextful_core::ports::Clock;
 use contextful_policy::verify::{effect_boundary, Admission};
 use contextful_memory::synthesize::Pass;
 use contextful_core::time::Instant;
+use contextful_core::store::bound_time::Bound;
 use contextful_memory::write::{write_observed, Observation};
 use contextful_outbound::infer::Endpoint;
+use contextful_policy::enforce::session::Request;
 use std::path::PathBuf;
 
 /// The environment variable holding the inference endpoint's bearer key, if it takes one.
@@ -37,6 +40,26 @@ pub struct Project {
 
 #[derive(Subcommand)]
 pub enum MemoryCmd {
+    /// Read one subject's claims at an observed instant.
+    Recall {
+        #[command(flatten)]
+        project: Project,
+        /// The memory facts table to read.
+        #[arg(long)]
+        table: String,
+        /// The exact claim subject.
+        #[arg(long)]
+        subject: String,
+        /// The instant at which the claims hold; absent takes the current instant.
+        #[arg(long)]
+        observed_at: Option<String>,
+        /// The transaction-time bound over claims and evidence.
+        #[arg(long)]
+        as_of_ingest: Option<String>,
+        /// The maximum number of claims returned.
+        #[arg(long)]
+        limit: Option<u64>,
+    },
     /// Run one synthesis pass from a source table into a claims table.
     Synthesize {
         #[command(flatten)]
@@ -71,6 +94,17 @@ pub enum MemoryCmd {
 
 pub fn run(cmd: MemoryCmd) -> Result<()> {
     match cmd {
+        MemoryCmd::Recall { project, table, subject, observed_at, as_of_ingest, limit } => {
+            let observed_at = observed_at.map(|s| Bound::parse(&s)).transpose()?;
+            let as_of_ingest = as_of_ingest.map(|s| Bound::parse(&s)).transpose()?;
+            let request = RecallRequest { observed_at, as_of_ingest, limit, ..RecallRequest::new(table, subject, SystemClock.now()) };
+            let (authority, _) = project.admit.admit(project.project.as_deref(), "memory recall")?;
+            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
+            let session = face.session(&authority, &Request::default(), request.bounds())?;
+            let response = face.recall(&session, &request)?;
+            println!("{}", serde_json::to_string(&response.to_json())?);
+            Ok(())
+        }
         MemoryCmd::Synthesize { project, source, into, endpoint, model } => {
             let (authority, revocation) = project.admit.admit(project.project.as_deref(), "a synthesis pass")?;
             let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));

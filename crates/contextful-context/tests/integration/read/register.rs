@@ -98,6 +98,24 @@ fn every_bare_name_resolves_to_the_callers_relation() {
     assert_eq!(previewed, acme);
 }
 
+// spec: store.bound-time.beneath-enforcement@7d056563
+#[test]
+fn historical_retrieval_keeps_row_and_column_enforcement() {
+    let r = Reads::new();
+    let grant = read(&["research/contacts"], Some(("research/contacts", "acme")));
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![grant]);
+    let bounds = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2030-01-11T00:00:00Z").unwrap()), valid_as_of: None };
+    let session = r.face.session(&authority, &contextful_policy::enforce::session::Request::default(), bounds).unwrap();
+    let request = contextful_context::read::RetrieveRequest::new("research/contacts", "", at("2030-02-01T00:00:00Z"));
+    let response = r.face.retrieve(&session, &request, bounds).unwrap();
+    let rows = column(&response, "_row");
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|row| row["tenant"] == json!("acme") && row["owner"] == json!("agent://research-loop")));
+    assert!(rows.iter().all(|row| row["phone"] == json!("")));
+    assert!(rows.iter().all(|row| row["email"] != json!("dana@acme.example") && row["email"] != json!("lee@acme.example")));
+    assert_eq!(response.to_json()["contextful.bounds"]["as_of"], json!("2030-01-11T00:00:00.000000000Z"));
+}
+
 /// `context.files` returns store-root-relative paths for the tables the caller reads, and a table outside that set contributes no path.
 // spec: read.register.file-listing@14f34390
 #[test]

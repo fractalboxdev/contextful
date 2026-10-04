@@ -140,6 +140,7 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
 - `suppression-count` — A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.
   *because a count discloses that a conclusion was withheld, never what it concluded*
 - `keyed` — `memory.recall` takes `table`, `subject`, `observed_at`, `as_of_ingest` and `limit`, and returns the claims whose `subject` equals `subject` exactly and whose `valid_from` and `valid_to` cover `observed_at` as {{store.bound-time.valid-as-of}} does.
+- `cli-verb` — The `contextful memory recall` verb passes its arguments through {{read.recall.keyed}} and prints the same JSON response as the `memory.recall` tool.
 - `keyed-clocks` — `as_of_ingest` bounds the read as {{store.bound-time.as-of}} does; absent, the read takes the latest committed state, and an absent `observed_at` the call's instant. `contextful.bounds` echoes each supplied bound under its argument name, with a per-name `inclusive` map.
 - `keyed-history` — A claim a successor retired still answers an `observed_at` inside its validity; the keyed read filters on validity alone, never on `superseded_by`.
   *because the question is what held at that instant, and the retired claim is the answer its interval records*
