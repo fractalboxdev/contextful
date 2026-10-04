@@ -212,6 +212,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let (mut staged_rows, mut staged_bytes) = (0u64, 0u64);
         let mut types = Types::new();
         let mut skipped = 0u64;
+        let mut snapshot_complete = false;
         let mut declined: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
         // Columns a staged batch carried with no declared type: their parts hold the
         // inferred type, so a later declaration cannot retype them (`run.land.late-type`).
@@ -282,6 +283,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     (pull.rows, !pull.more)
                 }
             };
+            if last {
+                snapshot_complete = !pull.more && pull.snapshot_complete;
+            }
             let rows = shape.shape(rows)?;
             if !rows.is_empty() {
                 let count = rows.len() as u64;
@@ -320,8 +324,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let lease = execution.lease();
         let moved = position != cached.position;
         let batch_count = parts.len() as u64;
+        let replace_frontier = batch_count == 0 && skipped == 0 && snapshot_complete && plan.cursor_kind != CursorKind::Monotonic && dest.replaces(table);
         let committed_at = self.catalog.now()?;
-        let landed = if batch_count > 0 || moved {
+        let landed = if batch_count > 0 || moved || replace_frontier {
             let precommit = || -> Result<(), Failure> {
                 let Some(l) = execution.lease() else { return Ok(()) };
                 if self.catalog.lease_holds(&l)? {
@@ -343,13 +348,14 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     cursor: position.clone(),
                     committed_at,
                     fence: lease.as_ref().map(|l| l.fence),
+                    replace_frontier,
                 },
                 &precommit,
             )?
         } else {
             Landed::default()
         };
-        let committed = batch_count > 0 || moved;
+        let committed = batch_count > 0 || moved || replace_frontier;
         let mut next = CursorRow {
             position,
             version: 0,

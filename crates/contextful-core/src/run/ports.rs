@@ -42,6 +42,9 @@ pub struct Pull {
     /// Whether another pull follows in this run.
     #[serde(default)]
     pub more: bool,
+    /// The source examined its whole snapshot; a skipped input does not set this.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub snapshot_complete: bool,
     /// Column types the source declares, spelled as a declaration spells them
     /// (`run.land.typed-pull`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -63,7 +66,7 @@ fn is_zero(n: &u64) -> bool {
 impl Pull {
     /// Decode a pull. Bytes outside the shape are a deterministic `SchemaIncompatible`.
     pub fn decode(bytes: &[u8]) -> Result<Pull, Failure> {
-        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\", \"types\", \"skipped\", \"declined\"}}`: {e}")))
+        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\", \"snapshot_complete\", \"types\", \"skipped\", \"declined\"}}`: {e}")))
     }
 }
 
@@ -133,6 +136,8 @@ pub struct Commit {
     pub committed_at: Instant,
     /// The fence of the single-writer lease the commit runs under.
     pub fence: Option<u64>,
+    /// A complete zero-row replacement, distinct from an unchanged pull.
+    pub replace_frontier: bool,
 }
 
 /// What a commit landed, measured at the destination.
@@ -153,6 +158,10 @@ pub struct Marker {
 /// The land path a run commits through: each batch stages as a part under the run's own
 /// directory, and one commit publishes the staged parts together.
 pub trait Destination {
+    /// Whether the table replaces its complete source state.
+    fn replaces(&self, _table: &str) -> bool {
+        false
+    }
     /// Write `stage.rows` as one part of run `stage.run_id`, joining no file list until a
     /// commit names it.
     fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure>;

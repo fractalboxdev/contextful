@@ -24,9 +24,11 @@ fn start(dir: &Path, run: &str, now: &str) -> Output {
 #[test]
 fn a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not() {
     let dir = tempfile::tempdir().unwrap();
+    let bucket = tempfile::tempdir().unwrap();
     let root = dir.path();
     std::fs::create_dir_all(root.join(".contextful/context/research")).unwrap();
-    std::fs::write(root.join(".contextful/context/research/config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    let config = |node: &str| format!("[node]\nid = \"{node}\"\n\n[sync]\nendpoint = \"file://{}\"\nbucket = \"team\"\nprefix = \"research\"\ncoordination = \"cas\"\n", bucket.path().display());
+    std::fs::write(root.join(".contextful/context/research/config.toml"), config("ingest-a")).unwrap();
     std::fs::write(root.join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"inventory\"\nwrite_mode = \"replace\"\n").unwrap();
     std::fs::write(root.join("feed.toml"), "pipeline = \"feed\"\ntable = \"inventory\"\n[cursor]\nkind = \"snapshot-id\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"source.sh\"]\n").unwrap();
     std::fs::write(root.join("source.sh"), "cat payload.json\n").unwrap();
@@ -54,4 +56,18 @@ fn a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not() {
 
     let earlier = ok(&cf(root, &["context", "files", "inventory", "--project", "research", "--as-of", "2030-01-01T00:02:30Z"]));
     assert!(earlier.contains("/runs/filled/"), "{earlier}");
+
+    ok(&cf(root, &["sync", "push", "--project", "research"]));
+    let replica = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(replica.path().join(".contextful/context/research")).unwrap();
+    std::fs::copy(root.join("contextful.toml"), replica.path().join("contextful.toml")).unwrap();
+    std::fs::write(replica.path().join(".contextful/context/research/config.toml"), config("ingest-b")).unwrap();
+    ok(&cf(replica.path(), &["sync", "pull", "--project", "research"]));
+    assert_eq!(rows(replica.path())["rows"], json!([]));
+
+    ok(&cf(root, &["context", "compact", "inventory", "--project", "research", "--now", "2030-01-01T00:04:00Z"]));
+    assert_eq!(rows(root)["rows"], json!([]));
+    ok(&cf(root, &["sync", "push", "--project", "research"]));
+    ok(&cf(replica.path(), &["sync", "pull", "--project", "research"]));
+    assert_eq!(rows(replica.path())["rows"], json!([]));
 }
