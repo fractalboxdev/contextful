@@ -7,6 +7,7 @@ mod allowlist;
 mod artifact;
 mod disk;
 mod domain;
+mod e2e;
 mod features;
 mod image;
 mod lean;

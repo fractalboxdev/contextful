@@ -66,8 +66,10 @@ fn manifest(endpoint: &str) -> String {
          [pipeline.source]\nname = \"s3\"\n\
          config = {{ bucket = \"source\", endpoint = \"{endpoint}\", key = \"notes.jsonl\", format = \"jsonl\", access_key_id = \"secret://source-key-id\", secret_access_key = \"secret://source-secret\" }}\n\
          [[pipeline.tables]]\nname = \"notes\"\n\
-         [[model]]\nid = \"research/titles\"\nsql = \"SELECT note_id, title FROM feed_notes\"\nunique_key = [\"note_id\"]\n\
-         [model.contract]\nversion = \"1.0.0\"\ncolumns = [{{ name = \"note_id\", type = \"utf8\", nullable = false }}, {{ name = \"title\", type = \"utf8\" }}]\n"
+         [[pipeline.transforms]]\nop = \"cast\"\ncolumn = \"embedding\"\nto = \"float32[3]\"\n\
+         [[model]]\nid = \"research/titles\"\nsql = \"SELECT note_id, title, embedding FROM feed_notes\"\nunique_key = [\"note_id\"]\n\
+         [model.contract]\nversion = \"1.0.0\"\ncolumns = [{{ name = \"note_id\", type = \"utf8\", nullable = false }}, {{ name = \"title\", type = \"utf8\" }}, {{ name = \"embedding\", type = \"float32[3]\" }}]\n\
+         [[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n"
     )
 }
 
@@ -101,11 +103,17 @@ fn query(p: &GitRepo, cf: &std::path::Path) -> Value {
     serde_json::from_str(&run(p, cf, &["query", "--json", "--project", PROJECT, "SELECT note_id, title FROM \"research/titles\" ORDER BY note_id"])).unwrap()
 }
 
+fn column(result: &Value, name: &str) -> Vec<Value> {
+    let names = result["columns"].as_array().unwrap();
+    let index = names.iter().position(|column| column == name).unwrap_or_else(|| panic!("no `{name}` column: {result}"));
+    result["rows"].as_array().unwrap().iter().map(|row| row[index].clone()).collect()
+}
+
 #[test]
 fn e2e_consumer_round_trip() {
     let cf = bin("contextful");
     let source = S3Server::start("source");
-    source.seed("notes.jsonl", b"{\"note_id\":\"n1\",\"title\":\"Solar battery storage\"}\n");
+    source.seed("notes.jsonl", b"{\"note_id\":\"n1\",\"title\":\"Solar battery storage\",\"embedding\":[1.0,0.0,0.0]}\n");
     let shared = S3Server::start("shared");
     let first = GitRepo::init();
     node(&first, &source.endpoint, &shared.endpoint, "node-a");
@@ -120,7 +128,8 @@ fn e2e_consumer_round_trip() {
     let public = run(&first, &cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]);
     let token = run(&first, &cf, &[
         "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://ada@acme.example",
-        "--agent", "agent://consumer", "--zone", "on-prem:hq", "--action", "read", "--table", "research/*", "--ttl", "3600",
+        "--agent", "agent://consumer", "--zone", "on-prem:hq", "--action", "read", "--action", "write",
+        "--table", "research/*", "--table", "feed/*", "--table", "memory/*", "--ttl", "3600",
     ]);
     let (_listener, address) = serve(&cf, &first, &public);
     let build_id = built["build_id"].as_str().unwrap();
@@ -132,6 +141,24 @@ fn e2e_consumer_round_trip() {
     );
     assert_eq!(pinned["rows"], before["rows"], "{pinned}");
     assert_eq!(pinned["contextful.resolved"]["research/titles"]["build_id"], json!(build_id), "{pinned}");
+    let ranked = bearer_call(&address, &token, "corpus.retrieve", json!({
+        "prefix": "research/", "query": "solar battery", "query_embedding": [1.0, 0.0, 0.0], "limit": 10,
+    }));
+    assert_eq!(column(&ranked, "_row"), [json!({"note_id":"n1","title":"Solar battery storage"})], "{ranked}");
+    assert_eq!(column(&ranked, "_vscore"), [json!(1.0)], "{ranked}");
+    assert_eq!(ranked["contextful.retrieval"]["returned"], 1, "{ranked}");
+    let evidence_run = column(&ranked, "_run_id")[0].as_str().unwrap().to_string();
+    let claim = json!({
+        "subject": "solar", "predicate": "topic", "object": "battery storage", "confidence": 1.0,
+        "evidence": [{ "table": "research/titles", "run": evidence_run, "seq": 0 }],
+    }).to_string();
+    let written = first.run_env(&cf, &["memory", "write", "--project", PROJECT, "--into", "memory/facts", "--claim", &claim, "--public-key", &public, "--audience", AUDIENCE], &[("CONTEXTFUL_TOKEN", &token)]);
+    assert!(ok(&written).contains("curated"));
+    let recalled = bearer_call(&address, &token, "memory.recall", json!({ "table": "memory/facts", "subject": "solar" }));
+    assert_eq!(column(&recalled, "object"), [json!("battery storage")], "{recalled}");
+    run(&first, &cf, &["audit", "anchor", "--project", PROJECT, "--issuer-key", ".contextful/issuer.seed"]);
+    let verified: Value = serde_json::from_str(&run(&first, &cf, &["audit", "verify", "--project", PROJECT, "--public-key", &public])).unwrap();
+    assert!(verified["seq"].as_u64().is_some_and(|n| n > 0), "{verified}");
     run(&first, &cf, &["sync", "push", "--project", PROJECT]);
 
     let second = GitRepo::init();
