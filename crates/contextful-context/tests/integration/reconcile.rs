@@ -5,11 +5,59 @@ use crate::support::{at, decl, s, Fixture};
 use crate::support::query;
 use contextful_context::fold::fold;
 use contextful_context::parquet_io;
+use contextful_context::ContextError;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::reconcile::{ColumnType, FloatItem};
 use contextful_core::store::StoreError;
 use serde_json::json;
 use std::fs;
+
+#[cfg(feature = "read")]
+#[test]
+fn one_variant_column_keeps_each_scalar_kind_through_land_fold_and_read() {
+    let f = Fixture::new();
+    let d = decl("name = \"attributes\"\ncolumns = { value = \"variant\" }");
+    let variant = ColumnType::parse("variant").expect("variant is a declared column type");
+    f.land_typed(
+        &d,
+        "mixed",
+        json!([
+            {"id": "text", "value": "violet"},
+            {"id": "integer", "value": 9007199254740993_i64},
+            {"id": "float", "value": 1.25},
+            {"id": "bytes", "value": {"kind": "bytes", "bytes": "/wA="}}
+        ]),
+        "2030-01-01T00:00:00Z",
+        &[("value", variant)],
+    )
+    .unwrap();
+    let select = "SELECT id, value.kind, value.str, value.int, value.double, value.bytes FROM t ORDER BY id";
+    let expected = vec![
+        vec![s("bytes"), s("bytes"), None, None, None, s("/wA=")],
+        vec![s("float"), s("double"), None, None, s("1.25"), None],
+        vec![s("integer"), s("int"), None, s("9007199254740993"), None, None],
+        vec![s("text"), s("str"), s("violet"), None, None, None],
+    ];
+    assert_eq!(f.query(&d, Bounds::default(), select), expected);
+    fold(&f.store, &d, at("2030-01-02T00:00:00Z")).unwrap();
+    assert_eq!(f.query(&d, Bounds::default(), select), expected);
+}
+
+#[test]
+fn a_variant_value_with_two_non_null_kinds_refuses_before_parquet() {
+    let f = Fixture::new();
+    let d = decl("name = \"attributes\"\ncolumns = { value = \"variant\" }");
+    let variant = ColumnType::parse("variant").expect("variant is a declared column type");
+    let result = f.land_typed(
+        &d,
+        "conflict",
+        json!([{"id": "conflict", "value": {"kind": "str", "str": "violet", "int": 3}}]),
+        "2030-01-01T00:00:00Z",
+        &[("value", variant)],
+    );
+    assert!(matches!(result, Err(ContextError::Store(StoreError::StoreSchemaIncompatible(_)))), "{result:?}");
+    assert!(!f.table_dir("attributes").join("data/runs/conflict").exists());
+}
 
 #[cfg(feature = "read")]
 /// Every read hands `read_parquet` an explicit sorted file list resolved from the pointer and the manifests, never a glob; a stray file joins nothing.
