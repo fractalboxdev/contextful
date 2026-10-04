@@ -210,6 +210,25 @@ fn pulled(s: &mut DeriveSource) -> Vec<Value> {
     pull(s, &Never).unwrap()
 }
 
+/// Missing or blank parent keys and media values count as skipped inputs in the pull.
+#[test]
+fn incomplete_parent_rows_enter_the_derive_pull_skipped_count() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("memo.txt"), "Hello.\n").unwrap();
+    let parents = json!([
+        {"doc_id": null, "path": "memo.txt"},
+        {"doc_id": "blank", "path": ""},
+        {"doc_id": "space", "path": "  "},
+        {"doc_id": "memo", "path": "memo.txt"}
+    ]);
+    let mut s = source(dir.path(), parents, SRT_ENGINE);
+    let request = PullRequest { step_label: "pull-0".into(), position: None, idempotency_key: "k".into() };
+    let pull = contextful_core::run::ports::Pull::decode(&s.pull(&request, &Never).unwrap()).unwrap();
+    assert_eq!(pull.skipped, 3);
+    assert_eq!(pull.rows.len(), 1);
+    assert_eq!(pull.rows[0]["unit_ref"], "memo");
+}
+
 #[test]
 fn a_link_preview_fetches_a_head_document_through_the_mediated_client() {
     let site = Server::start(|_| Response {

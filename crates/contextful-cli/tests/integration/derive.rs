@@ -85,6 +85,22 @@ fn fire(bin: &std::path::Path, dir: &std::path::Path, run: &str, now: &str, env:
     run_bin(bin, dir, &["pipeline", "run", "split", "--project", "research", "--run-id", run, "--site-id", "site", "--now", now], env)
 }
 
+/// A host task records an incomplete parent in each table run's skipped count.
+#[test]
+fn a_host_task_counts_an_incomplete_parent_on_its_run_records() {
+    let host = host_binary();
+    let dir = host_project(&host_manifest("word-split"));
+    std::fs::write(dir.path().join("missing.jsonl"), "{\"body\":\"orphan\"}\n").unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "missing.jsonl", "--run-id", "load-2", "--site-id", "site", "--now", "2030-01-01T00:30:00Z"]));
+    ok(&fire(&host, dir.path(), "split-1", "2030-01-01T01:00:00Z", &[]));
+    let history = ok(&cf(dir.path(), &["run", "history", "--project", "research", "--export"]));
+    let runs: Vec<serde_json::Value> = history.lines().skip(1).map(|line| serde_json::from_str(line).unwrap()).collect();
+    for table in ["split_words", "split_stats", "split_units"] {
+        let run_id = format!("split-1.{table}");
+        assert_eq!(runs.iter().find(|run| run["run_id"] == run_id).map(|run| &run["skipped"]), Some(&serde_json::json!(1)), "{history}");
+    }
+}
+
 /// A pipeline naming a registered host task builds; an unregistered name raises `DeriveUnknownTask`, listing the
 /// built-in and registered names.
 #[test]
