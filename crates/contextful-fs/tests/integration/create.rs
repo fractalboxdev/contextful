@@ -131,11 +131,10 @@ fn exfat_mount_uses_system_disk_with_custom_tmpdir() {
         return;
     }
 
-    let custom_tmp = tempfile::tempdir().unwrap();
     let output = std::process::Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "create::exfat_mount_uses_system_disk_with_custom_tmpdir", "--nocapture"])
         .env(CHILD, "1")
-        .env("TMPDIR", custom_tmp.path())
+        .env("TMPDIR", "/var/tmp")
         .output()
         .unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
