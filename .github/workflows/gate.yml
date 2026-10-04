@@ -63,8 +63,11 @@ jobs:
       - run: rustup target add ${{ matrix.target }}
       - run: cargo check --locked --target ${{ matrix.target }} --no-default-features -p contextful-core -p contextful-fs -p contextful-policy -p contextful-context
       - run: cargo test --locked --target ${{ matrix.target }} -p contextful-fs --test integration an_open_directory_handle_syncs_its_entries
+      - run: cargo test --locked --target ${{ matrix.target }} -p contextful-fs --test integration a_renamed_open_file_does_not_identify_its_replacement
+      - run: cargo test --locked --target ${{ matrix.target }} -p contextful-fs --test integration racing_creates_land_exactly_one
       - run: cargo test --locked --target ${{ matrix.target }} -p contextful-policy --test integration an_audit_append_syncs_its_directories
       - run: cargo test --locked --target ${{ matrix.target }} --no-default-features -p contextful-context --test integration a_ledger_append_syncs_its_directory
+      - run: cargo test --locked --target ${{ matrix.target }} --no-default-features -p contextful-context --test integration a_renamed_lock_does_not_remove_the_file_that_replaces_it
 
   dispatch:
     if: ${{ vars.FLAREDISPATCH_ENDPOINT != '' && github.event.pull_request.head.repo.full_name == github.repository }}

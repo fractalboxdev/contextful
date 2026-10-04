@@ -145,8 +145,15 @@ fn native_windows_checks_cover_both_targets_and_directory_sync() {
         assert!(workflow.contains(pair), "the native Windows matrix omits {pair}");
     }
     assert!(workflow.contains("cargo check --locked --target ${{ matrix.target }} --no-default-features -p contextful-core -p contextful-fs -p contextful-policy -p contextful-context"));
-    for test in ["an_open_directory_handle_syncs_its_entries", "an_audit_append_syncs_its_directories", "a_ledger_append_syncs_its_directory"] {
-        assert!(workflow.contains(test), "the native Windows matrix omits {test}");
+    for command in [
+        "-p contextful-fs --test integration an_open_directory_handle_syncs_its_entries",
+        "-p contextful-fs --test integration a_renamed_open_file_does_not_identify_its_replacement",
+        "-p contextful-fs --test integration racing_creates_land_exactly_one",
+        "-p contextful-policy --test integration an_audit_append_syncs_its_directories",
+        "-p contextful-context --test integration a_ledger_append_syncs_its_directory",
+        "-p contextful-context --test integration a_renamed_lock_does_not_remove_the_file_that_replaces_it",
+    ] {
+        assert!(workflow.contains(command), "the native Windows matrix omits {command}");
     }
 }
 
