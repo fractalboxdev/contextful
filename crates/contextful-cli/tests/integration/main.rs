@@ -16,6 +16,7 @@ mod context;
 #[cfg(feature = "data-plane")]
 mod derive;
 mod differential;
+mod protocol_differential;
 #[cfg(feature = "data-plane")]
 mod document;
 #[cfg(feature = "data-plane")]
