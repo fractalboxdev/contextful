@@ -91,6 +91,20 @@ fn manifest_refuses_pipeline_host_absent_from_declared_capabilities_at_load() {
     assert!(!cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]).status.success());
 }
 
+/// A relative manifest path stays inside the project after symlinks resolve.
+#[cfg(unix)]
+#[test]
+fn component_manifest_symlink_outside_project_refuses_at_load() {
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], "manifest = \"connector.toml\"\nallow = [\"api.vendor.example\"]"));
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("connector.toml");
+    std::fs::write(&target, "[capabilities]\nallow_hosts = [\"api.vendor.example\"]\n").unwrap();
+    std::os::unix::fs::symlink(&target, dir.path().join("connector.toml")).unwrap();
+
+    let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "project-relative");
+    assert!(stderr.contains("connector.toml"), "{stderr}");
+}
+
 fn run_row(dir: &Path, run: &str) -> serde_json::Value {
     serde_json::from_str(&ok(&cf(dir, &["run", "show", run, "--project", "research"], &[]))).unwrap()
 }
