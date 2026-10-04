@@ -113,7 +113,7 @@ Revisit: host grants gain ports, methods, paths or address ranges.
 
 ## Drive capture binds bounded roots and mode to the position
 
-One Shared Drive and a bounded selected root set define the capture boundary. Validation precedes listing; file identity deduplicates overlapping trees, and the least selected root id resolves its provenance. The position binds the sorted selection, so a changed selection requires a complete walk before removals. Metadata-only capture hashes complete download or export bytes without retaining bodies.
+One Shared Drive and a bounded selected root set define the capture boundary. Validation precedes listing; file identity deduplicates overlapping trees, and the least selected root id resolves its provenance. The position binds the sorted selection and mode, so either change requires a complete walk and fresh byte reads before removals. Metadata-only capture hashes complete download or export bytes without retaining bodies.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

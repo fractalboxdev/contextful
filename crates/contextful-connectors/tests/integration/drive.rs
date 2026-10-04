@@ -289,9 +289,10 @@ fn docs_sheets_and_slides_export_as_pdf_and_other_files_download() {
     assert!(fake.received("/drive/v3/files/form-intake/export").is_empty());
 }
 
-/// A PDF body lands one `pages` row per page under {{connector.source.document-grain}}, decoded behind
-/// {{run.land.parse-boundary}}; bytes land in no column.
-// spec: connector.source.drive-page-grain@35ff9f32
+/// In the default `bytes-and-pages` mode, each PDF page lands one `pages` row under
+/// {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}};
+/// bytes land in no column.
+// spec: connector.source.drive-page-grain@547c8825
 #[test]
 fn a_doc_a_sheet_and_a_deck_land_as_their_pdf_pages() {
     let fake = Fake::start();
@@ -512,9 +513,9 @@ fn each_pull_counts_the_files_it_skipped() {
     assert_eq!(skipped(&files), 0);
 }
 
-/// Every body the drive source reads whole, exported or downloaded, lands as {{store.lay-out.landed-blob}}, and
-/// its file row's `sha256` names that blob.
-// spec: connector.source.drive-bytes@54a5b707
+/// In the default `bytes-and-pages` mode, every whole exported or downloaded body lands
+/// as {{store.lay-out.landed-blob}}, named by its file row's `sha256`.
+// spec: connector.source.drive-bytes@2f79acc3
 #[test]
 fn every_body_read_lands_once_as_the_blob_its_row_names() {
     let fake = Fake::start();
