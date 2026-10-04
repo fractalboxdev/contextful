@@ -112,6 +112,29 @@ pub fn read_for_store(store: &Store, path: &Path) -> Result<Vec<(String, Request
     }
 }
 
+/// Materialize decoded ledger rows in a DuckDB temporary table without a plaintext file.
+#[cfg(feature = "read")]
+pub fn register_memory(conn: &duckdb::Connection, name: &str, rows: &[(String, RequestRecord)]) -> std::result::Result<(), crate::read::ReadFault> {
+    use contextful_core::store::relation::ident;
+    let fail = |e: duckdb::Error| crate::read::ReadFault::Engine(e.to_string());
+    conn.execute_batch(&format!(
+        "CREATE OR REPLACE TEMP TABLE {} (run_id VARCHAR, batch_seq INTEGER, request_id VARCHAR, vendor_request_id VARCHAR, connector VARCHAR, method VARCHAR, url_host VARCHAR, status_code INTEGER, started_at TIMESTAMP_NS, duration_ms BIGINT)",
+        ident(name)
+    )).map_err(fail)?;
+    let mut insert = conn.prepare(&format!(
+        "INSERT INTO {} VALUES (?, ?, ?, ?, ?, ?, ?, ?, make_timestamp_ns(?), ?)", ident(name)
+    )).map_err(fail)?;
+    for (run_id, row) in rows {
+        let nanos = i64::try_from(row.started_at.unix_nanos()).map_err(|_| crate::read::ReadFault::Engine("ledger timestamp exceeds TIMESTAMP_NS".into()))?;
+        let duration = i64::try_from(row.duration_ms).map_err(|_| crate::read::ReadFault::Engine("ledger duration exceeds BIGINT".into()))?;
+        insert.execute(duckdb::params![
+            run_id, row.batch_seq, row.request_id, row.vendor_request_id, row.connector,
+            row.method, row.url_host, row.status_code.map(i32::from), nanos, duration,
+        ]).map_err(fail)?;
+    }
+    Ok(())
+}
+
 fn decode(path: &Path, batches: Vec<RecordBatch>) -> Result<Vec<(String, RequestRecord)>> {
     let invalid = |what: &str| ContextError::Parquet { path: path.to_path_buf(), message: format!("the ledger column `{what}` is missing or mistyped") };
     let mut out = Vec::new();

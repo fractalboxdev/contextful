@@ -407,7 +407,7 @@ impl Face {
         let admitted = admit_in(session, &tree)?;
         let bindings = bind_query(parameters, &admitted.placeholders)?;
         scope::guard(&tree, session, &bindings)?;
-        engine.register_ledgers(session, &admitted.relations)?;
+        engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)
@@ -426,7 +426,7 @@ impl Face {
         let admitted = admit_in(session, &tree)?;
         let parameters = template.bindings(values, &admitted.placeholders);
         scope::guard(&tree, session, &parameters)?;
-        engine.register_ledgers(session, &admitted.relations)?;
+        engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)

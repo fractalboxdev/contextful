@@ -256,9 +256,24 @@ impl SqlEngine {
 
     /// Register the request ledgers among `names`, the relations an admitted statement
     /// names; the connection already admits their files.
-    pub fn register_ledgers(&self, session: &Session, names: &std::collections::BTreeSet<String>) -> Result<(), ReadFault> {
+    pub fn register_ledgers(&self, store: &crate::store::Store, session: &Session, names: &std::collections::BTreeSet<String>) -> Result<(), ReadFault> {
         for l in session.ledgers_named(names)? {
-            self.register(l.name(), l.sql())?;
+            if matches!(store.sealing(), crate::vector::Sealing::Sealed(_)) && !l.files().is_empty() {
+                let decoded = format!("__contextful_decoded_{}", l.name());
+                let mut rows = Vec::new();
+                for file in l.files() {
+                    rows.extend(crate::ledger::read_for_store(store, std::path::Path::new(file))?);
+                }
+                crate::ledger::register_memory(&self.conn, &decoded, &rows)?;
+                let source = contextful_core::store::ledger::ledger_sql(l.files());
+                let sql = l.sql().replace(&source, &format!("SELECT * FROM {}", ident(&decoded)));
+                if sql == l.sql() {
+                    return Err(ReadFault::Engine(format!("ledger `{}` has no registered source", l.name())));
+                }
+                self.register(l.name(), &sql)?;
+            } else {
+                self.register(l.name(), l.sql())?;
+            }
         }
         Ok(())
     }
