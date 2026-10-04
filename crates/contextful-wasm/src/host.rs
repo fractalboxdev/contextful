@@ -429,7 +429,8 @@ impl ComponentHost {
         let component = unsafe { Component::deserialize(&self.engine, &compiled) }.map_err(load_failure)?;
         let pre = self.linker.instantiate_pre(&component).map_err(load_failure)?;
         self.cache_compilations.fetch_add(1, Ordering::Relaxed);
-        write_cached(&path, &compiled).map_err(load_failure)?;
+        // A cache write failure leaves the admitted, linked component usable.
+        let _ = write_cached(&path, &compiled);
         Ok((Connector { pre }, digest))
     }
 

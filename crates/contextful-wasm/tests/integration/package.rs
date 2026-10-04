@@ -54,6 +54,25 @@ fn a_cached_artifact_deserializes_then_recompiles_if_altered_or_incompatible() {
     assert_eq!((host.cache_stats().compilations, host.cache_stats().hits), (3, 1));
 }
 
+#[cfg(unix)]
+#[test]
+fn a_cache_write_failure_does_not_fail_an_admitted_component() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("cache");
+    let host = ComponentHost::with_cache_dir(Target::Native, &cache).unwrap();
+    std::fs::remove_dir(&cache).unwrap();
+    std::fs::write(&cache, b"cache path replaced after host construction").unwrap();
+
+    let pin = Digest::of(PROBE).to_string();
+    let artifact = Artifact::parse("https://dl.vendor.example/probe.wasm", Some(&pin)).unwrap();
+    let (connector, digest) = host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
+    assert_eq!(digest.as_str(), pin);
+    assert_eq!((host.cache_stats().compilations, host.cache_stats().hits), (1, 0));
+    let mut session = host.open(&connector, loopback(), &Limits::default(), None).unwrap();
+    session.open("items", None).unwrap();
+    assert!(session.next().unwrap().is_some());
+}
+
 #[cfg(not(unix))]
 #[test]
 fn a_host_without_private_directory_verification_skips_disk_cache() {
