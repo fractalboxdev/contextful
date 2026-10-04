@@ -62,6 +62,27 @@ fn an_aes_gcm_file_round_trips_without_plaintext_or_key_reuse() {
     assert!(cipher.open(&tampered).is_err());
 }
 
+#[test]
+fn sealed_metadata_files_round_trip_without_plaintext_or_fallback() {
+    use contextful_context::encrypt::{AesGcmFileCipher, MetadataFiles};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("_manifest.json");
+    let canary = b"metadata-canary-5f1e";
+    let value = format!("{{\"marker\":\"{}\"}}", std::str::from_utf8(canary).unwrap());
+    let key = AesGcmFileCipher::new([0x37; 32], 1);
+    let files = MetadataFiles::sealed(&key);
+    assert!(files.create_new(&path, value.as_bytes()).unwrap());
+    assert!(!files.create_new(&path, b"other").unwrap());
+    assert_eq!(files.read(&path).unwrap(), value.as_bytes());
+    let disk = std::fs::read(&path).unwrap();
+    assert!(!disk.windows(canary.len()).any(|part| part == canary));
+    assert!(MetadataFiles::sealed(&AesGcmFileCipher::new([0x42; 32], 1)).read(&path).is_err());
+    assert!(MetadataFiles::plaintext().read(&path).is_ok_and(|bytes| bytes == disk));
+    files.replace(&path, b"{\"marker\":\"next\"}").unwrap();
+    assert_eq!(files.read(&path).unwrap(), b"{\"marker\":\"next\"}");
+}
+
 /// Files under `dir` other than the store's `config.toml`, at any depth.
 fn written(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
