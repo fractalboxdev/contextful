@@ -26,6 +26,7 @@ bundled = ["rusqlite/bundled"]
 
 [dev-dependencies]
 # The journal, blob and awakeable conformance suites every run store adapter passes.
+contextful-context = { path = "../contextful-context" }
 contextful-engine = { path = "../contextful-engine" }
 # Ledger measures record their figures (`assurance.measure.record`).
 contextful-eval = { path = "../../tools/eval" }
