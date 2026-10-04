@@ -186,7 +186,11 @@ A table's declaration block: its key, ordering column and write mode, and what a
 - `write-mode` — `write_mode` is `append`, the default, keeping the last write per key and retiring no key, or `replace`.
 - `replace-frontier` — Under `replace`, a read covers the newest run carrying the source's complete state plus every run committed after it.
 - `replace-retains` — A replacing run leaves the runs it displaced on disk until `retain_runs` passes, writes no erasure receipt and walks no lineage.
-- `empty-run` — A run landing zero rows commits a manifest with no parts and replaces nothing; a table with no rows registers as a zero-row relation over its declared and injected columns.
+- `empty-run` — A run landing zero rows commits a manifest with no parts; without {{store.declare.empty-replacement}} it replaces nothing. A table with no rows registers as a zero-row relation over its declared and injected columns.
+- `empty-replacement` — A complete zero-row `replace` run marks its manifest as a replacement frontier; current reads cover no earlier files, while bounded reads before its commit retain earlier rows.
+  *A-store*
+- `empty-frontier-preserved` — Sync push, sync pull and fold preserve an empty replacement frontier without writing a data row.
+  *A-store*
 - `fold-job` — An enabled compaction job covering a table is a `[[job]]` block of kind `fold` carrying a `schedule`, whose `enabled` is absent or true and whose `target` is absent or names the table's destination name.
   *A-store*
 - `fold-coverage` — `pipeline validate` warns on stderr, naming the table, where a table declares `primary_key` and no job meeting {{store.declare.fold-job}} covers it; the warning alone fails nothing.
