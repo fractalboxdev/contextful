@@ -45,11 +45,22 @@ fn a_not_modified_feed_lands_nothing_and_holds_the_validators() {
     let second = pull(&mut s, Some(validators.clone()));
     assert_eq!(second["rows"], json!([]));
     assert_eq!(second["cursor"], validators, "a 304 holds the position");
+    assert_eq!(second["snapshot_complete"], json!(false), "a 304 has not examined the snapshot");
 
     let seen = vendor.received("/news.rss");
     assert_eq!(seen.len(), 2);
     assert_eq!((seen[0].header("if-none-match"), seen[0].header("if-modified-since")), (None, None));
     assert_eq!((seen[1].header("if-none-match"), seen[1].header("if-modified-since")), (Some(ETAG), Some(MODIFIED)));
+}
+
+#[test]
+fn an_empty_conditional_success_completes_the_snapshot() {
+    let vendor = Server::start(|_| Response { status: 200, headers: vec![("ETag".into(), "empty-v2".into())], body: b"[]".to_vec() });
+    let mut s = source(json!({"endpoint": vendor.url("/items"), "conditional": true}), vec![]);
+    let out = pull(&mut s, Some(json!({"etag": "populated-v1"})));
+    assert_eq!(out["rows"], json!([]));
+    assert_eq!(out["cursor"], json!({"etag": "empty-v2"}));
+    assert_eq!(out["snapshot_complete"], json!(true));
 }
 
 /// A conditional pull issues one request, and the validators are its whole position: no page token or watermark
