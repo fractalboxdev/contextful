@@ -176,7 +176,7 @@ fn a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses() {
 
     let link = with("task", json!("link_preview"));
     let mut link = link;
-    link["grant"] = json!("vendor-quota");
+    link["grant"] = json!({"quota": "vendor-quota", "class": "batch-read"});
     assert!(cfg(link).is_ok());
 }
 
