@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 259 |
-| `store` | 1 | 17 | 238 | 56 | 13 | 19 | 200 | 0 | 200 |
+| `store` | 1 | 17 | 238 | 56 | 13 | 19 | 201 | 0 | 201 |
 | `surface` | 2 | 19 | 93 | 48 | 22 | 5 | 56 | 0 | 56 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1966 | 572 | 188 | 132 | 1342 | 0 | |
+| **total** | 19 | 154 | 1966 | 572 | 188 | 132 | 1343 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
 | 4 — Ingest | 25 | 468 | 290 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
-| 6 — Sync and replicas | 8 | 76 | 70 | passing | closed |
+| 6 — Sync and replicas | 8 | 76 | 71 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
@@ -1224,6 +1224,7 @@ Unscheduled operations: 10.
 | `store.probe.sentinel` | `crates/contextful-sync/tests/integration/push.rs::the_probe_demonstrates_cas_and_leaves_no_sentinel` | performed |
 | `store.probe.unproven` | `crates/contextful-sync/tests/integration/push.rs::a_declared_cas_against_an_undemonstrated_backend_stops_the_push` | performed |
 | `store.pull.before-run` | `crates/contextful-cli/tests/integration/sync/mod.rs::a_cold_node_pulls_the_bucket_before_its_run_reads` | performed |
+| `store.pull.control-head` | `crates/contextful-sync/tests/integration/pull.rs::a_cold_pull_stages_only_the_reachable_control_head_without_applying_it` | performed |
 | `store.pull.convergence` | `crates/contextful-sync/tests/integration/pull.rs::a_key_moving_mid_download_refetches_the_manifest_and_retries_the_shortfall` | performed |
 | `store.pull.digest-mismatch` | `crates/contextful-sync/tests/integration/pull.rs::an_object_whose_digest_differs_from_its_entry_is_refused_and_discarded` | performed |
 | `store.pull.generation` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_restores_exactly_that_generation` | performed |

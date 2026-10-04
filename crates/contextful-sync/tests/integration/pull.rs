@@ -4,15 +4,62 @@ use crate::support::{at, bucket, node, Script, Scripted};
 use contextful_context::fold::fold;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
-use contextful_core::store::object::ObjectStore;
+use contextful_core::store::object::{Condition, ObjectStore};
+use contextful_core::store::sync::{BucketManifest, Entry};
+use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::StoreError;
 use contextful_sync::{PullScope, SyncError};
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use contextful_core::issue::SignatureAlgorithm;
+use contextful_core::surface::control::{receipt_file, snapshot_file, POINTER_FILE as CONTROL_POINTER};
+use contextful_policy::control_receipt::ControlReceipt;
+use contextful_policy::issue::SeedSigner;
 
 const NOW: &str = "2030-01-01T01:00:00Z";
 const PART_A: &str = "team/research/tables/filings/data/runs/run-1/ingest-a/part-00000.parquet";
+
+/// A cold pull stages the listed control ancestry and leaves the local applied pointer absent.
+// spec: store.pull.control-head@26468ef2
+#[test]
+fn a_cold_pull_stages_only_the_reachable_control_head_without_applying_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = node("ingest-a", b.clone(), "");
+    let control = writer.syncer.control_dir.as_ref().unwrap();
+    std::fs::create_dir_all(control).unwrap();
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let first = ControlReceipt::sign("research", 1, None, b"first", &signer).unwrap();
+    let orphan = ControlReceipt::sign("research", 2, Some(&first.digest()), b"orphan", &signer).unwrap();
+    let head = ControlReceipt::sign("research", 3, Some(&first.digest()), b"head", &signer).unwrap();
+    for (version, snapshot, receipt) in [(1, b"first".as_slice(), &first), (2, b"orphan".as_slice(), &orphan), (3, b"head".as_slice(), &head)] {
+        std::fs::write(control.join(snapshot_file(version)), snapshot).unwrap();
+        std::fs::write(control.join(receipt_file(version)), serde_json::to_vec(receipt).unwrap()).unwrap();
+    }
+    std::fs::write(control.join(CONTROL_POINTER), "3\n").unwrap();
+    writer.syncer.push(at(NOW)).unwrap();
+    let mut manifest: BucketManifest = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    for (name, bytes) in [(snapshot_file(2), b"orphan".to_vec()), (receipt_file(2), serde_json::to_vec(&orphan).unwrap())] {
+        let key = format!("research/control/{name}");
+        b.put(&format!("team/{key}"), &bytes, Condition::None).unwrap();
+        manifest.entries.insert(key, Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() });
+    }
+    b.put("team/manifest.json", &serde_json::to_vec(&manifest).unwrap(), Condition::None).unwrap();
+
+    let cold = node("ingest-b", b, "");
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let staged = cold.root().join("control");
+    let pulled: contextful_core::store::sync::ControlHead = serde_json::from_slice(&std::fs::read(staged.join("head.json")).unwrap()).unwrap();
+    assert_eq!(pulled.receipt_sha256, head.digest());
+    for version in [1, 3] {
+        assert!(staged.join(snapshot_file(version)).exists());
+        assert!(staged.join(receipt_file(version)).exists());
+    }
+    assert!(!staged.join(snapshot_file(2)).exists());
+    assert!(!staged.join(receipt_file(2)).exists());
+    assert!(!cold.syncer.control_dir.as_ref().unwrap().join(CONTROL_POINTER).exists());
+}
 
 fn files(n: &crate::support::Node) -> Vec<String> {
     let decl = TableDecl::named("filings");

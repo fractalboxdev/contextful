@@ -860,6 +860,47 @@ impl Syncer {
         key.strip_prefix(&format!("{}/", self.project)).map(|rel| self.store.root().join(rel))
     }
 
+    /// Resolve only the receipt ancestry of the committed head; unrelated control files
+    /// in the manifest do not enter a cold node's staging directory.
+    fn control_reachable(&self, manifest: &BucketManifest) -> Result<(BTreeSet<String>, Option<String>)> {
+        let mut keys = BTreeSet::new();
+        let Some(head) = manifest.control_heads.get(&self.project) else { return Ok((keys, None)) };
+        let mut wanted = Some(head.receipt_sha256.clone());
+        for version in (1..=head.version).rev() {
+            let Some(digest) = wanted.as_deref() else { break };
+            let receipt_key = format!("{}/control/{}", self.project, receipt_file(version));
+            let Some(entry) = manifest.entries.get(&receipt_key) else { continue };
+            let Some((bytes, _)) = self.bucket.get(&self.key(&receipt_key)?)? else {
+                return Ok((keys, Some(receipt_key)));
+            };
+            let receipt: ControlReceipt = match serde_json::from_slice(&bytes) {
+                Ok(receipt) => receipt,
+                Err(_) if version != head.version => continue,
+                Err(e) => return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` holds an unreadable control receipt: {e}")).into()),
+            };
+            if receipt.digest() != digest {
+                continue;
+            }
+            if sha256_hex(&bytes) != entry.sha256 {
+                return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` arrived with a digest other than its entry's; the object is discarded")).into());
+            }
+            let snapshot_key = format!("{}/control/{}", self.project, snapshot_file(version));
+            let Some(snapshot_entry) = manifest.entries.get(&snapshot_key) else {
+                return Ok((keys, Some(snapshot_key)));
+            };
+            if receipt.project != self.project || receipt.version != version || receipt.snapshot_sha256 != snapshot_entry.sha256 {
+                return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` differs from the project, version or listed snapshot digest")).into());
+            }
+            keys.insert(receipt_key);
+            keys.insert(snapshot_key);
+            wanted = receipt.parent;
+        }
+        if let Some(digest) = wanted {
+            return Ok((keys, Some(format!("control predecessor {digest}"))));
+        }
+        Ok((keys, None))
+    }
+
     /// Pull the bucket into the store: download each entry whose digest differs, re-fetching
     /// the manifest when a key moves beneath the download, apply each tombstone, then write
     /// every table pointer the bucket advances, all after every object they reach has landed.
@@ -876,7 +917,9 @@ impl Syncer {
                 .into());
             }
         }
+        let control_prefix = format!("{}/control/", self.project);
         let reaches = |key: &str| -> bool {
+            if key.starts_with(&control_prefix) { return true; }
             match table_of(key) {
                 None => scope.tables.is_empty(),
                 Some(t) => (scope.tables.is_empty() || scope.tables.contains(&t)) && !(replica && scope.replicate_off.contains(&t)),
@@ -910,7 +953,12 @@ impl Syncer {
                 Some((listed, _)) => listed.clone(),
                 None => self.manifest()?.0,
             };
-            for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k)) {
+            let (control_keys, missing_control) = self.control_reachable(&manifest)?;
+            if let Some(missing) = missing_control {
+                shortfall = Some(missing);
+                continue;
+            }
+            for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k))) {
                 // This node's own keys are authoritative here, except in a restore.
                 if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) {
                     continue;
@@ -952,6 +1000,17 @@ impl Syncer {
         }
         if let Some(key) = shortfall {
             return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` kept moving across {PULL_CONVERGENCE} attempts; no pointer is written")).into());
+        }
+        let staged_head = self.store.root().join("control/head.json");
+        if let Some(head) = manifest.control_heads.get(&self.project) {
+            let bytes = serde_json::to_vec_pretty(head).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            write(&staged_head, &bytes)?;
+        } else {
+            match std::fs::remove_file(&staged_head) {
+                Ok(()) => {},
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) => return Err(io(&staged_head, e)),
+            }
         }
         // A tombstone deletes the local copy of the key it names; a restore lists its set whole.
         if generation.is_none() {
