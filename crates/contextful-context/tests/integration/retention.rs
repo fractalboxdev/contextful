@@ -13,11 +13,11 @@ fn old_rows_are_hidden_before_fold_and_inside_an_older_snapshot() {
     let f = Fixture::new();
     let d = decl("name = \"events\"\nretain_rows = { column = \"_ingested_at\", age = \"30d\" }");
     f.land(&d, "old", json!([{"id": "old"}]), "2000-01-01T00:00:00Z").unwrap();
-    f.land(&d, "fresh", json!([{"id": "fresh"}]), "3000-01-01T00:00:00Z").unwrap();
+    f.land(&d, "fresh", json!([{"id": "fresh"}]), "2200-01-01T00:00:00Z").unwrap();
     assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t ORDER BY id"), [[s("fresh")]]);
 
-    fold(&f.store, &d, at("3000-01-02T00:00:00Z")).unwrap();
-    let past = Bounds { as_of: Some(Bound::parse("3000-01-01T12:00:00Z").unwrap()), valid_as_of: None };
+    fold(&f.store, &d, at("2200-01-02T00:00:00Z")).unwrap();
+    let past = Bounds { as_of: Some(Bound::parse("2200-01-01T12:00:00Z").unwrap()), valid_as_of: None };
     assert_eq!(f.query(&d, past, "SELECT id FROM t ORDER BY id"), [[s("fresh")]]);
 }
 
@@ -28,8 +28,8 @@ fn copied_base_arrival_controls_derived_row_expiry() {
     let d = decl("name = \"derived\"\ncolumns = { base_arrived_at = \"timestamp\" }\nretain_rows = { column = \"base_arrived_at\", age = \"30d\" }");
     f.land_typed(&d, "derive", json!([
         {"id": "old-base", "base_arrived_at": "2000-01-01T00:00:00Z"},
-        {"id": "fresh-base", "base_arrived_at": "3000-01-01T00:00:00Z"}
-    ]), "3000-01-02T00:00:00Z", &[("base_arrived_at", ColumnType::Timestamp)]).unwrap();
+        {"id": "fresh-base", "base_arrived_at": "2200-01-01T00:00:00Z"}
+    ]), "2200-01-02T00:00:00Z", &[("base_arrived_at", ColumnType::Timestamp)]).unwrap();
     assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t"), [[s("fresh-base")]]);
 }
 
@@ -38,13 +38,13 @@ fn copied_base_arrival_controls_derived_row_expiry() {
 fn fold_excludes_expired_rows_and_reports_cutoff_and_drops() {
     let f = Fixture::new();
     let d = decl("name = \"events\"\npartition_by = [\"sender_day\"]\nretain_rows = { column = \"_ingested_at\", age = \"30d\" }");
-    f.land(&d, "old", json!([{"id": "old", "sender_day": "old"}]), "3000-01-01T00:00:00Z").unwrap();
-    f.land(&d, "fresh", json!([{"id": "fresh", "sender_day": "fresh"}]), "3000-02-01T00:00:00Z").unwrap();
-    let outcome = fold(&f.store, &d, at("3000-02-02T00:00:00Z")).unwrap();
+    f.land(&d, "old", json!([{"id": "old", "sender_day": "old"}]), "2200-01-01T00:00:00Z").unwrap();
+    f.land(&d, "fresh", json!([{"id": "fresh", "sender_day": "fresh"}]), "2200-02-01T00:00:00Z").unwrap();
+    let outcome = fold(&f.store, &d, at("2200-02-02T00:00:00Z")).unwrap();
     let FoldOutcome::Folded { rows, .. } = &outcome else { panic!("{outcome:?}") };
     assert_eq!(*rows, 1);
     let report = outcome.to_string();
-    assert!(report.contains("3000-01-03"), "{report}");
+    assert!(report.contains("2200-01-03"), "{report}");
     assert!(report.contains("1 row"), "{report}");
     assert!(report.contains("1 partition"), "{report}");
     let files = f.scan(&d, Bounds::default()).unwrap().files;
