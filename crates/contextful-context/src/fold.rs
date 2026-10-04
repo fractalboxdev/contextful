@@ -149,8 +149,10 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     for f in &inputs {
         let path = table_dir.join(f);
         let partition_dir = f.split('/').filter(|part| decl.partition_by().iter().any(|key| part.starts_with(&format!("{key}=")))).collect::<Vec<_>>().join("/");
-        if let (Some(rule), Some(cutoff)) = (&decl.retain_rows, cutoff) {
-            if decl.partition_by().is_empty() || !partition_dir.is_empty() {
+        // A keyed file can hold the winner that suppresses a live older row.
+        // Its rows must reach dedupe before retention can discard the winner.
+        if !decl.is_keyed() && (decl.partition_by().is_empty() || !partition_dir.is_empty()) {
+            if let (Some(rule), Some(cutoff)) = (&decl.retain_rows, cutoff) {
                 if let Some(n) = footer_expired_rows(&path, &rule.column, cutoff)? {
                     footer_expired += n;
                     if !decl.partition_by().is_empty() { footer_partitions.insert(partition_dir); }
@@ -164,6 +166,13 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     }
     let invalid = |e: arrow_schema::ArrowError| ContextError::Invalid(format!("table `{table}`: {e}"));
     let mut rows = concat_batches(&target, &batches).map_err(invalid)?;
+    if decl.is_keyed() {
+        let mut line: Vec<String> = decl.primary_key().to_vec();
+        if let Some(vt) = &decl.valid_time {
+            line.push(vt.from.clone());
+        }
+        rows = dedupe(&rows, &line, decl.order_by()).map_err(invalid)?;
+    }
     let retention = if let Some(rule) = &decl.retain_rows {
         let cutoff = cutoff.expect("declared retention has a parsed age");
         let column = column(&rows, &rule.column).map_err(invalid)?;
@@ -183,13 +192,6 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         rows = filtered;
         Some(RetentionReport { cutoff, rows_expired: count + footer_expired, partitions_dropped: before.difference(&after).count() as u64 })
     } else { None };
-    if decl.is_keyed() {
-        let mut line: Vec<String> = decl.primary_key().to_vec();
-        if let Some(vt) = &decl.valid_time {
-            line.push(vt.from.clone());
-        }
-        rows = dedupe(&rows, &line, decl.order_by()).map_err(invalid)?;
-    }
     if is_derive_key(decl.primary_key()) {
         rows = supersede(&rows, decl.retain_versions == Some(true))?;
     }
