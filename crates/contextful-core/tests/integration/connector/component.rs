@@ -20,8 +20,8 @@ fn an_in_tree_name_is_no_component() {
 
 /// A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading
 /// `sha256`, `allow`, `attach`, `guest`, `memory_bytes`, `manifest` and `require_pin`, the flag of
-/// {{connector.package.pin-requirement}}.
-// spec: connector.package.component-source@9abeee8a
+/// {{connector.package.pin-requirement}} as its manifest flag.
+// spec: connector.package.component-source@54b9a610
 #[test]
 fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
     let c = parse(
