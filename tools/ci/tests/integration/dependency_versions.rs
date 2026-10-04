@@ -35,6 +35,24 @@ version = "58.4.0"
 }
 
 #[test]
+fn aligned_arrow_patch_upgrade_keeps_one_tree() {
+    let aligned = r#"
+[[package]]
+name = "arrow"
+version = "58.5.0"
+
+[[package]]
+name = "arrow-array"
+version = "58.5.0"
+
+[[package]]
+name = "parquet"
+version = "58.5.0"
+"#;
+    assert!(one_arrow_tree(aligned), "one aligned Arrow 58 patch version is one dependency tree");
+}
+
+#[test]
 fn arrow_and_parquet_resolve_once() {
     let lock = std::fs::read_to_string(repo_root().join("Cargo.lock")).unwrap();
     assert!(one_arrow_tree(&lock), "Arrow and Parquet packages must share the exact 58.4.0 version");
