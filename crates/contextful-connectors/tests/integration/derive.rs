@@ -229,6 +229,64 @@ fn a_link_preview_fetches_a_head_document_through_the_mediated_client() {
     assert_eq!(site.received("/article").len(), 1);
 }
 
+fn link_source(dir: &Path, address: &str, extra: &str) -> DeriveSource {
+    let binding = format!("[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n{extra}");
+    let mut s = source(dir, json!([{"doc_id": "article", "path": address}]), &binding);
+    s.config.task = contextful_core::run::derive::config::Task::LinkPreview;
+    s
+}
+
+#[test]
+fn a_link_preview_refuses_non_http_schemes_and_address_literals_before_a_socket() {
+    let site = Server::start(|_| Response::json(200, "{}"));
+    let dir = tempfile::tempdir().unwrap();
+    for (address, error) in [
+        ("file:///etc/passwd".to_string(), "DeriveSchemeUnsupported"),
+        (site.url("/private"), "DeriveAddressLiteral"),
+    ] {
+        let rows = pulled(&mut link_source(dir.path(), &address, ""));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["unit_status"], "failed");
+        assert!(rows[0]["last_error"].as_str().unwrap().contains(error), "{rows:?}");
+    }
+    assert!(site.received("/private").is_empty());
+}
+
+#[test]
+fn a_link_preview_bounds_redirects_and_refuses_non_utf8_documents() {
+    let site = Server::start(|r| {
+        let n: usize = r.path().trim_start_matches('/').parse().unwrap_or(0);
+        if n < 7 {
+            Response { status: 302, headers: vec![("Location".into(), format!("/{}", n + 1))], body: Vec::new() }
+        } else {
+            Response { status: 200, headers: vec![("Content-Type".into(), "text/html; charset=iso-8859-1".into())], body: b"<title>old</title>".to_vec() }
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let first = format!("http://localhost:{}/0", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &first, ""));
+    assert!(rows[0]["last_error"].as_str().unwrap().contains("5 hops"), "{rows:?}");
+    assert_eq!(site.requests.lock().unwrap().len(), 6, "initial request plus five hops");
+
+    let charset = format!("http://localhost:{}/7", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &charset, ""));
+    assert!(rows[0]["last_error"].as_str().unwrap().contains("DeriveCharsetUnsupported"), "{rows:?}");
+    let invalid = Server::start(|_| Response { status: 200, headers: vec![], body: vec![0xff, 0xfe] });
+    let address = format!("http://localhost:{}/invalid", invalid.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, ""));
+    assert!(rows[0]["last_error"].as_str().unwrap().contains("DeriveBytesNotUtf8"), "{rows:?}");
+}
+
+#[test]
+fn a_link_preview_uses_sixty_seconds_for_a_429_without_retry_after() {
+    let site = Server::start(|_| Response { status: 429, headers: vec![], body: vec![] });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/limited", site.port);
+    let failure = pull(&mut link_source(dir.path(), &address, ""), &Never).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::RateLimited);
+    assert_eq!(failure.retry_after_secs, Some(60));
+}
+
 fn unit<'a>(rows: &'a [Value], key: &str) -> &'a Value {
     rows.iter().find(|r| r["unit_ref"] == key).unwrap_or_else(|| panic!("no row for `{key}` in {rows:?}"))
 }
