@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
+| `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 136 | 0 | 136 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1336 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
-| 14 — Assurance | 7 | 130 | 83 | passing | closed |
+| 14 — Assurance | 7 | 130 | 84 | passing | closed |
 
 Unscheduled operations: 10.
 
@@ -126,6 +126,7 @@ Unscheduled operations: 10.
 | `assurance.gate.fork-dispatch` | `tools/ci/tests/integration/workflow.rs::a_fork_pull_request_dispatches_no_stage` | performed |
 | `assurance.gate.formal-stage` | `tools/ci/tests/integration/stages.rs::the_formal_stage_runs_the_audit_the_differential_and_the_protocol_check` | performed |
 | `assurance.gate.free-disk` | `tools/ci/tests/integration/disk.rs::a_stage_starting_under_two_gib_free_refuses_with_exit_28_before_work` | performed |
+| `assurance.gate.interpolated-claim` | `tools/ci/tests/integration/source_lint.rs::interpolated_subject_claim_names_the_source_line` | performed |
 | `assurance.gate.locked-resolve` | `tools/ci/tests/integration/topology.rs::a_lock_file_behind_its_manifests_stops_the_crate_graph` | performed |
 | `assurance.gate.pins-stage` | `tools/ci/tests/integration/stages.rs::the_pins_stage_records_every_pin_fetches_the_locked_crates_and_refuses_a_floating_one` | performed |
 | `assurance.gate.remote-check` | `tools/ci/tests/integration/workflow.rs::the_workflow_dispatches_every_gate_stage` | performed |

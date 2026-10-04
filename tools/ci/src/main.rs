@@ -5,6 +5,7 @@ mod deny;
 mod allowlist;
 mod measure;
 mod release;
+mod source_lint;
 mod probe;
 mod stage;
 mod tag;
@@ -93,6 +94,8 @@ enum Cmd {
     Secrets,
     /// Resolve every `mirrors:` comment under crates/, tools/ and apps/ to a clause id.
     Mirrors,
+    /// Refuse subject claims formatted into SQL text in runtime crates.
+    SourceLint,
     /// Hold the workspace's dependency graph to the topology contract's rules.
     Topology,
     /// Compress one profile's release artifact and hold it to the profile's budget, and its
@@ -228,6 +231,7 @@ fn main() {
         Cmd::Gate { stages, predecessors, base, base_bound_secs } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs)),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
+        Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
         Cmd::Footprint { profile, artifact, build, plan } => std::env::current_dir().map_err(Into::into).and_then(|root| match artifact {
             Some(artifact) if profile.len() == 1 => footprint::check(&root, &profile[0], &artifact),
@@ -428,6 +432,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "features" => features(root, only)?,
         "crate-graph" => {
             committed_lock(root)?;
+            source_lint::check(root)?;
             topology::check(root)?;
             deny::check(root)?;
             allowlist::check(root)?
