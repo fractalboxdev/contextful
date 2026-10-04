@@ -113,7 +113,7 @@ fn expansion_fails_the_read_on_a_failed_followup() {
 // spec: connector.source.template-shape@1a90cc68
 #[test]
 fn expansion_template_binds_row_values_under_the_source_host() {
-    for template in ["https://{id}.vendor.example/detail", "https://api.vendor.example/detail", "https://api.vendor.example/detail/{id"] {
+    for template in ["https://{id}.vendor.example/detail", "//{id}/detail", "https://api.vendor.example/detail", "https://api.vendor.example/detail/{id"] {
         let cfg = json!({"endpoint":"https://api.vendor.example/index", "expansion":{"url_template":template, "target_column":"detail"}});
         assert!(format!("{}", HttpConfig::parse(&cfg).unwrap_err()).contains("ConnectorTemplateRejected"));
     }
@@ -168,6 +168,28 @@ fn expansion_keeps_the_existing_outbound_host_policy() {
     assert!(outside.received("/detail").is_empty());
 }
 
+#[test]
+fn malformed_expansion_pointer_does_not_expose_its_query() {
+    let vendor = Server::start(|_| Response::json(200, "[{\"url\":\"http://[bad]?token=secret-sentinel\"}]"));
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
+    let failure = s.walk(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains("ConnectorPointerColumnMissing"), "{failure}");
+    assert!(!failure.message.contains("secret-sentinel"), "{failure}");
+}
+
+#[test]
+fn expansion_filters_rfc_6901_clock_fields() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"meta\":{\"at\":\"2024-01-01T00:00:00Z\"},\"url\":\"/old\"},{\"meta\":{\"at\":\"2026-01-01T00:00:00Z\"},\"url\":\"/new\"}]"),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]).watermarked_for("/meta/at");
+    let rows = s.walk(&request(Some(json!({"field":"/meta/at", "at":"2025-01-01T00:00:00Z"}))), &Never).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(vendor.received("/new").len(), 1);
+    assert!(vendor.received("/old").is_empty());
+}
+
 /// A declared non-UTF-8 label decodes CSV and rejects invalid bytes for that label.
 // spec: connector.source.declared-encoding@0914dae0
 #[test]
@@ -189,6 +211,14 @@ fn csv_watermark_rejects_variable_width_clocks() {
     let s = source(json!({"endpoint": vendor.url("/rows"), "format":"csv"}), vec![]).watermarked();
     let failure = s.walk(&request(Some(json!({"field":"at", "at":"00"}))), &Never).unwrap_err();
     assert!(failure.message.contains("ConnectorClockColumnRejected"), "{failure}");
+}
+
+#[test]
+fn csv_clock_accepts_an_rfc_6901_root_field() {
+    let vendor = Server::start(|_| Response::json(200, "at,id\n12,1\n13,2\n"));
+    let s = source(json!({"endpoint": vendor.url("/rows"), "format":"csv"}), vec![]).watermarked_for("/at");
+    let rows = s.walk(&request(None), &Never).unwrap();
+    assert_eq!(rows.len(), 2);
 }
 
 /// The generic HTTP source binds credentials through a `headers` table whose values are templates in the
